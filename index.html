@@ -2278,6 +2278,10 @@
                 const userRole = AppState.currentUser?.role || 'guest';
                 const path = `users/${userName.replace(/\s+/g, '_').toLowerCase()}_${userRole}`;
                 console.log(`[ProductionCloudSync] Generated user path: ${path} (from user: ${userName}, role: ${userRole})`);
+                // Add to mobile debug for cross-device testing
+                if (typeof this.addToMobileDebug === 'function') {
+                    this.addToMobileDebug(`User: ${userName} (${userRole})`, 'info');
+                }
                 return path;
             }
 
@@ -2613,6 +2617,41 @@
                         indicator.parentNode.removeChild(indicator);
                     }
                 }, 3000);
+
+                // Add to mobile debug panel
+                this.addToMobileDebug(message, type);
+            }
+
+            static addToMobileDebug(message, type) {
+                // Create mobile debug panel if it doesn't exist
+                let debugPanel = document.getElementById('mobileDebugPanel');
+                if (!debugPanel) {
+                    debugPanel = document.createElement('div');
+                    debugPanel.id = 'mobileDebugPanel';
+                    debugPanel.innerHTML = `
+                        <div style="position: fixed; bottom: 10px; left: 10px; background: rgba(0,0,0,0.9); color: white; padding: 8px; border-radius: 8px; font-size: 11px; max-width: 280px; z-index: 9999; max-height: 150px; overflow-y: auto; font-family: monospace;">
+                            <div style="font-weight: bold; margin-bottom: 5px; cursor: pointer; border-bottom: 1px solid #333; padding-bottom: 3px;" onclick="document.getElementById('debugMessages').innerHTML = ''; this.nextElementSibling.innerHTML = '';">🐛 Mobile Debug (tap to clear)</div>
+                            <div id="debugMessages"></div>
+                        </div>
+                    `;
+                    document.body.appendChild(debugPanel);
+                }
+
+                // Add message to debug panel
+                const messagesDiv = document.getElementById('debugMessages');
+                if (messagesDiv) {
+                    const timestamp = new Date().toLocaleTimeString();
+                    const color = type === 'emergency' ? '#ff4444' : type === 'success' ? '#44ff44' : type === 'warning' ? '#ffaa44' : '#4444ff';
+                    const newMessage = document.createElement('div');
+                    newMessage.style.cssText = `color: ${color}; margin: 1px 0; font-size: 10px; line-height: 1.2;`;
+                    newMessage.textContent = `[${timestamp}] ${message}`;
+                    messagesDiv.insertBefore(newMessage, messagesDiv.firstChild);
+
+                    // Keep only last 8 messages
+                    while (messagesDiv.children.length > 8) {
+                        messagesDiv.removeChild(messagesDiv.lastChild);
+                    }
+                }
             }
 
             static async forceSync() {
@@ -2696,6 +2735,7 @@
                             const newAlerts = recentAlerts.filter(alert => !currentAlertIds.includes(alert.id));
 
                             console.log(`[ProductionCloudSync] Alert comparison - Recent: [${recentAlerts.map(a => a.id).join(',')}], Current: [${currentAlertIds.join(',')}], New: [${newAlerts.map(a => a.id).join(',')}]`);
+                        this.addToMobileDebug(`Alerts: ${recentAlerts.length} recent, ${newAlerts.length} new`, newAlerts.length > 0 ? 'emergency' : 'info');
 
                             // Update EmergencySystem with recent alerts only (don't show old alerts)
                             if (typeof EmergencySystem !== 'undefined') {

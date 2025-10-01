@@ -6928,7 +6928,7 @@
                         golfInfo: {
                             handicap: '18',
                             memberSince: new Date().toISOString().split('T')[0],
-                            homeClub: 'Pattaya Golf Club',
+                            homeClub: '',
                             clubAffiliation: '',
                             playingStyle: '',
                             favoriteClubs: [],
@@ -7125,7 +7125,9 @@
                 const saved = localStorage.getItem(profileKey);
 
                 if (saved) {
-                    return JSON.parse(saved);
+                    const profile = JSON.parse(saved);
+                    console.log('[ProfileSystem] Loading existing profile - homeClub:', profile.golfInfo?.homeClub);
+                    return profile;
                 } else {
                     // Return template with some defaults filled
                     const template = JSON.parse(JSON.stringify(this.profiles[userType].template));
@@ -7137,12 +7139,14 @@
                     if (template.organizationInfo) {
                         template.organizationInfo.organizerName = AppState.currentUser.name;
                     }
+                    console.log('[ProfileSystem] Using template profile - homeClub:', template.golfInfo?.homeClub);
                     return template;
                 }
             },
 
             saveProfile(userType, profileData) {
                 const profileKey = `profile_${userType}_${AppState.currentUser.name}`;
+                console.log('[ProfileSystem] Saving profile with homeClub:', profileData.golfInfo?.homeClub);
                 localStorage.setItem(profileKey, JSON.stringify(profileData));
 
                 // Update current user name if changed
@@ -7153,7 +7157,7 @@
                 }
 
                 this.updateUIWithProfile();
-                console.log(`[SUCCESS] Profile saved for ${userType}`);
+                console.log(`[SUCCESS] Profile saved for ${userType}`, profileData.golfInfo?.homeClub ? `- homeClub: ${profileData.golfInfo.homeClub}` : '- no homeClub');
             },
 
             updateUIWithProfile() {
@@ -7606,7 +7610,7 @@
                     });
 
                     // Update home club displays (show default if empty)
-                    const homeClub = profile.golfInfo?.homeClub || 'Pattaya Golf Club';
+                    const homeClub = profile.golfInfo?.homeClub || 'Not Selected';
                     document.querySelectorAll('.home-club').forEach(el => {
                         el.textContent = homeClub;
                     });
@@ -7740,6 +7744,8 @@
                         const memberSince = document.getElementById('memberSince')?.value || '';
                         const homeClub = document.getElementById('homeClub')?.value?.trim() || '';
 
+                        console.log('[ProfileSystem] Saving golfer profile - homeClub value:', homeClub);
+
                         // Validate handicap
                         if (handicap && (isNaN(handicap) || handicap < 0 || handicap > 54)) {
                             alert('Please enter a valid handicap between 0 and 54.');
@@ -7749,6 +7755,8 @@
                         profile.golfInfo.handicap = handicap;
                         profile.golfInfo.memberSince = memberSince;
                         profile.golfInfo.homeClub = homeClub;
+
+                        console.log('[ProfileSystem] Profile after setting homeClub:', profile.golfInfo.homeClub);
                         profile.golfInfo.clubAffiliation = document.getElementById('clubAffiliation')?.value || '';
                         profile.golfInfo.experienceLevel = document.getElementById('experienceLevel')?.value || '';
                         profile.golfInfo.playingStyle = document.getElementById('playingStyle')?.value?.trim() || '';

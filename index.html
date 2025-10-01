@@ -2164,210 +2164,61 @@
 
         // Production Cloud Sync System - Google Cloud Firestore + Cloudflare
         class ProductionCloudSync {
-            static firestoreConfig = {
-                apiKey: "AIzaSyC8Qr7vM2K5NjP9L4mR1XzWdEcF6TgHyI0",
-                authDomain: "mcipro-golf-sync.firebaseapp.com",
-                projectId: "mcipro-golf-sync",
-                storageBucket: "mcipro-golf-sync.appspot.com",
-                messagingSenderId: "123456789012",
-                appId: "1:123456789012:web:abcdef123456789012"
-            };
-
             static cloudflareWorkerUrl = "https://mcipro-sync.pgatour29.workers.dev";
             static isInitialized = false;
-            static realtimeListeners = new Map();
-            static retryCount = 0;
-            static maxRetries = 3;
 
             static async initialize() {
-                console.log('[ProductionCloudSync] Initializing Cloudflare Workers sync...');
-
+                console.log('[ProductionCloudSync] Initializing simplified sync...');
                 try {
-                    // Test Cloudflare Workers endpoint
-                    await this.initializeCloudflareSync();
-                    this.isInitialized = true;
-
-                    // Start polling for all sync types including global emergency alerts
-                    this.startPolling();
-
-                    console.log('[ProductionCloudSync] Cloudflare Workers sync initialized successfully');
+                    const response = await fetch(`${this.cloudflareWorkerUrl}/health`);
+                    if (response.ok) {
+                        console.log('[ProductionCloudSync] Cloudflare Workers available');
+                        this.isInitialized = true;
+                    }
                 } catch (error) {
-                    console.error('[ProductionCloudSync] Cloudflare failed, falling back to local sync:', error);
-                    this.initializeFallbackSync();
-                    this.isInitialized = true;
-                    console.log('[ProductionCloudSync] Local sync fallback initialized');
+                    console.log('[ProductionCloudSync] Cloudflare unavailable, local only');
                 }
-
-                // Disabled cloud initialization until real config is provided
-                // try {
-                //     // Initialize Firebase if available
-                //     if (typeof firebase !== 'undefined') {
-                //         await this.initializeFirebase();
-                //     } else {
-                //         // Fallback to Cloudflare Workers API
-                //         await this.initializeCloudflareSync();
-                //     }
-                //     this.isInitialized = true;
-                //     this.startRealtimeSync();
-                //     console.log('[ProductionCloudSync] Enterprise sync initialized successfully');
-                // } catch (error) {
-                //     console.error('[ProductionCloudSync] Initialization failed, falling back to local sync:', error);
-                //     this.initializeFallbackSync();
-                // }
-            }
-
-            static async initializeFirebase() {
-                // Initialize Firebase Firestore
-                if (!firebase.apps.length) {
-                    firebase.initializeApp(this.firestoreConfig);
-                }
-
-                this.db = firebase.firestore();
-
-                // Enable offline persistence
-                await this.db.enablePersistence({ synchronizeTabs: true });
-                console.log('[ProductionCloudSync] Firestore initialized with offline persistence');
-            }
-
-            static async initializeCloudflareSync() {
-                // Test Cloudflare Workers endpoint
-                const response = await fetch(`${this.cloudflareWorkerUrl}/health`);
-                if (!response.ok) {
-                    throw new Error('Cloudflare Workers unavailable');
-                }
-                console.log('[ProductionCloudSync] Cloudflare Workers endpoint verified');
-            }
-
-            static startPolling() {
-                // Enhanced local sync with faster updates
-                setInterval(() => this.syncLocalData(), 3000); // 3-second polling
-
-                // Also try to sync from Cloudflare if available
-                setInterval(() => this.syncFromCloudflare(), 10000); // 10-second cloud polling
-                // Check for global emergency alerts every 5 seconds (more frequent for safety)
-                setInterval(() => this.syncGlobalEmergencyAlerts(), 5000); // 5-second emergency polling
-
-                // Listen for storage events from other tabs
-                window.addEventListener('storage', (e) => {
-                    if (e.key && e.key.includes('mcipro_sync_')) {
-                        console.log('[ProductionCloudSync] Detected cross-tab storage change:', e.key);
-                        this.handleStorageSync(e);
-                    }
-                });
-
-                // Also check when tab becomes visible
-                document.addEventListener('visibilitychange', () => {
-                    if (!document.hidden) {
-                        console.log('[ProductionCloudSync] Tab visible, forcing sync check');
-                        setTimeout(() => this.syncLocalData(), 100);
-                        setTimeout(() => this.syncFromCloudflare(), 200);
-                        setTimeout(() => this.syncGlobalEmergencyAlerts(), 50); // Check emergency alerts immediately
-                    }
-                });
-
-                console.log('[ProductionCloudSync] Enhanced sync active: 3s local + 10s cloud + 5s emergency polling');
-            }
-
-            static initializeFallbackSync() {
-                console.log('[ProductionCloudSync] Using enhanced local storage with cross-device sync');
                 this.startPolling();
             }
 
+            static startPolling() {
+                setInterval(() => this.syncFromCloudflare(), 5000);
+                setInterval(() => this.syncGlobalEmergencyAlerts(), 5000);
+            }
+
             static getUserDocPath() {
-                const userName = AppState.currentUser?.name || 'Anonymous';
-                const userRole = AppState.currentUser?.role || 'guest';
-                const path = `users/${userName.replace(/\s+/g, '_').toLowerCase()}_${userRole}`;
-                console.log(`[ProductionCloudSync] Generated user path: ${path} (from user: ${userName}, role: ${userRole})`);
-                // Add to mobile debug for cross-device testing
-                if (typeof this.addToMobileDebug === 'function') {
-                    this.addToMobileDebug(`User: ${userName} (${userRole})`, 'info');
-                }
-                return path;
+                return 'users/golf_data';
             }
 
             static async saveData() {
+                console.log('[ProductionCloudSync] saveData() called');
+
+                const userData = {
+                    user_name: AppState.currentUser?.name || 'Anonymous',
+                    user_role: AppState.currentUser?.role || 'guest',
+                    bookings: JSON.parse(localStorage.getItem('mcipro_bookings') || '[]'),
+                    emergency_alerts: JSON.parse(localStorage.getItem('emergency_alerts') || '[]'),
+                    schedule_items: JSON.parse(localStorage.getItem('schedule_items') || '[]'),
+                    user_profiles: JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]'),
+                    client_timestamp: new Date().toISOString()
+                };
+
+                console.log('[SYNC] Saving data:', {
+                    user: userData.user_name,
+                    bookings: userData.bookings.length,
+                    profiles: userData.user_profiles.length
+                });
+
                 try {
-                    // Try Cloudflare Workers first
-                    const userData = {
-                        user_name: AppState.currentUser?.name || 'Anonymous',
-                        user_role: AppState.currentUser?.role || 'guest',
-                        bookings: JSON.parse(localStorage.getItem('mcipro_bookings') || '[]'),
-                        emergency_alerts: JSON.parse(localStorage.getItem('emergency_alerts') || '[]'),
-                        schedule_items: JSON.parse(localStorage.getItem('schedule_items') || '[]'),
-                        client_timestamp: new Date().toISOString(),
-                        device_info: {
-                            user_agent: navigator.userAgent.substring(0, 100),
-                            platform: navigator.platform,
-                            language: navigator.language
-                        }
-                    };
-
-                    // Save to Cloudflare Workers
                     await this.saveViaCloudflare(userData);
-
-                    // Also save locally for offline access
-                    this.saveLocalData();
-
                 } catch (error) {
-                    console.error('[ProductionCloudSync] Cloudflare save failed, using local only:', error);
-                    this.saveLocalData();
+                    console.error('[ProductionCloudSync] Cloud save failed:', error);
                     this.showSyncStatus('💾 Local Only', 'warning');
                 }
-
-                // Disabled cloud save until real config is provided
-                // if (!this.isInitialized) {
-                //     console.log('[ProductionCloudSync] Not initialized, saving locally only');
-                //     this.saveLocalData();
-                //     return;
-                // }
-
-                // try {
-                //     const userData = {
-                //         user_name: AppState.currentUser?.name || 'Anonymous',
-                //         user_role: AppState.currentUser?.role || 'guest',
-                //         bookings: JSON.parse(localStorage.getItem('mcipro_bookings') || '[]'),
-                //         emergency_alerts: JSON.parse(localStorage.getItem('emergency_alerts') || '[]'),
-                //         schedule_items: JSON.parse(localStorage.getItem('schedule_items') || '[]'),
-                //         last_updated: new Date().toISOString(),
-                //         client_timestamp: new Date().toISOString(),
-                //         device_info: {
-                //             user_agent: navigator.userAgent.substring(0, 100),
-                //             platform: navigator.platform,
-                //             language: navigator.language
-                //         }
-                //     };
-
-                //     if (this.db) {
-                //         // Save to Firestore
-                //         await this.db.doc(this.getUserDocPath()).set(userData, { merge: true });
-                //         console.log('[ProductionCloudSync] Data saved to Firestore');
-                //         this.showSyncStatus('☁️ Synced', 'success');
-                //     } else {
-                //         // Save via Cloudflare Workers
-                //         await this.saveViaCloudflare(userData);
-                //     }
-
-                //     // Also save locally for offline access
-                //     this.saveLocalData();
-                //     this.retryCount = 0; // Reset retry count on success
-
-                // } catch (error) {
-                //     console.error('[ProductionCloudSync] Save failed:', error);
-                //     this.handleSyncError(error);
-                //     this.saveLocalData(); // Fallback to local
-                // }
             }
 
             static async saveViaCloudflare(userData) {
-                const userPath = this.getUserDocPath();
-                console.log('[ProductionCloudSync] Saving to Cloudflare:', {
-                    userPath: userPath,
-                    bookingsCount: userData.bookings?.length || 0,
-                    alertsCount: userData.emergency_alerts?.length || 0,
-                    scheduleCount: userData.schedule_items?.length || 0
-                });
-
-                const response = await fetch(`${this.cloudflareWorkerUrl}/sync/${userPath}`, {
+                const response = await fetch(`${this.cloudflareWorkerUrl}/sync/${this.getUserDocPath()}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -2377,431 +2228,257 @@
                 });
 
                 if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('[ProductionCloudSync] Cloudflare error:', response.status, errorText);
-                    throw new Error(`Cloudflare sync failed: ${response.status} - ${errorText}`);
+                    throw new Error(`Cloudflare sync failed: ${response.status}`);
                 }
 
                 const result = await response.json();
-                console.log('[ProductionCloudSync] Data saved via Cloudflare Workers:', result);
+                console.log('[ProductionCloudSync] Data saved via Cloudflare:', result);
                 this.showSyncStatus('⚡ Edge Synced', 'success');
             }
 
-            static saveLocalData() {
-                const userData = {
-                    user_name: AppState.currentUser?.name || 'Anonymous',
-                    bookings: JSON.parse(localStorage.getItem('mcipro_bookings') || '[]'),
-                    emergency_alerts: JSON.parse(localStorage.getItem('emergency_alerts') || '[]'),
-                    schedule_items: JSON.parse(localStorage.getItem('schedule_items') || '[]'),
-                    last_updated: new Date().toISOString()
-                };
-
-                const userKey = `mcipro_sync_${this.getUserDocPath().replace('/', '_')}`;
-                localStorage.setItem(userKey, JSON.stringify(userData));
-                localStorage.setItem('last_local_sync', new Date().toISOString());
-            }
-
-            static startRealtimeSync() {
-                if (!this.db) return;
-
-                const userDocRef = this.db.doc(this.getUserDocPath());
-
-                // Set up real-time listener
-                const unsubscribe = userDocRef.onSnapshot((doc) => {
-                    if (doc.exists) {
-                        const data = doc.data();
-                        console.log('[ProductionCloudSync] Real-time update received');
-                        this.handleCloudUpdate(data);
-                    }
-                }, (error) => {
-                    console.error('[ProductionCloudSync] Real-time listener error:', error);
-                    this.handleSyncError(error);
-                });
-
-                this.realtimeListeners.set(this.getUserDocPath(), unsubscribe);
-                console.log('[ProductionCloudSync] Real-time sync started');
-            }
-
-            static handleCloudUpdate(cloudData) {
-                try {
-                    const lastLocalUpdate = localStorage.getItem('last_local_sync');
-                    const cloudTimestamp = cloudData.client_timestamp || cloudData.last_updated;
-
-                    console.log('[ProductionCloudSync] Comparing timestamps:', {
-                        local: lastLocalUpdate,
-                        cloud: cloudTimestamp,
-                        hasBookings: cloudData.bookings?.length || 0,
-                        hasAlerts: cloudData.emergency_alerts?.length || 0
-                    });
-
-                    // Only update if cloud data is newer
-                    if (!lastLocalUpdate || cloudTimestamp > lastLocalUpdate) {
-                        console.log('[ProductionCloudSync] Applying cloud update to local data');
-
-                        // Smart merge bookings (don't overwrite, merge by ID)
-                        if (cloudData.bookings && cloudData.bookings.length > 0) {
-                            const localBookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]');
-                            const existingIds = new Set(localBookings.map(b => b.id));
-
-                            // Add only new bookings from cloud that don't exist locally
-                            const newBookings = cloudData.bookings.filter(booking => !existingIds.has(booking.id));
-                            const mergedBookings = [...localBookings, ...newBookings];
-
-                            console.log(`[ProductionCloudSync] Booking merge: Local: ${localBookings.length}, Cloud: ${cloudData.bookings.length}, New: ${newBookings.length}, Total: ${mergedBookings.length}`);
-
-                            localStorage.setItem('mcipro_bookings', JSON.stringify(mergedBookings));
-                            if (typeof BookingManager !== 'undefined') {
-                                BookingManager.bookings = mergedBookings;
-                                console.log('[ProductionCloudSync] Merged bookings successfully - UI will refresh');
-                            }
-                        }
-
-                        if (cloudData.emergency_alerts && cloudData.emergency_alerts.length > 0) {
-                            localStorage.setItem('emergency_alerts', JSON.stringify(cloudData.emergency_alerts));
-                            if (typeof EmergencySystem !== 'undefined') {
-                                EmergencySystem.activeAlerts = cloudData.emergency_alerts;
-                                console.log('[ProductionCloudSync] Updated emergency alerts:', cloudData.emergency_alerts.length);
-                            }
-                        }
-
-                        if (cloudData.schedule_items && cloudData.schedule_items.length > 0) {
-                            localStorage.setItem('schedule_items', JSON.stringify(cloudData.schedule_items));
-                            console.log('[ProductionCloudSync] Updated schedule items:', cloudData.schedule_items.length);
-                        }
-
-                        localStorage.setItem('last_local_sync', cloudTimestamp);
-                        this.refreshUI();
-                        this.showSyncStatus('↓ Cloud Update', 'info');
-                    } else {
-                        console.log('[ProductionCloudSync] Local data is newer, skipping update');
-                    }
-                } catch (error) {
-                    console.error('[ProductionCloudSync] Error handling cloud update:', error);
-                }
-            }
-
-            static syncLocalData() {
-                // Fallback sync method for when cloud is unavailable
-                const userKey = `mcipro_sync_${this.getUserDocPath().replace('/', '_')}`;
-                const syncDataString = localStorage.getItem(userKey);
-
-                if (syncDataString) {
-                    const syncData = JSON.parse(syncDataString);
-                    const lastLocalUpdate = localStorage.getItem('last_local_sync');
-
-                    if (!lastLocalUpdate || syncData.last_updated > lastLocalUpdate) {
-                        this.handleCloudUpdate(syncData);
-                    }
-                }
-            }
-
             static async syncFromCloudflare() {
-                try {
-                    const userPath = this.getUserDocPath();
-                    console.log(`[ProductionCloudSync] Checking Cloudflare for updates: ${userPath}`);
+                if (!this.isInitialized) return;
 
-                    const response = await fetch(`${this.cloudflareWorkerUrl}/sync/${userPath}`, {
-                        method: 'GET',
-                        headers: {
-                            'X-API-Key': 'mcipro-sync-key-2024',
-                            'Content-Type': 'application/json'
-                        }
+                try {
+                    const response = await fetch(`${this.cloudflareWorkerUrl}/sync/${this.getUserDocPath()}`, {
+                        headers: { 'X-API-Key': 'mcipro-sync-key-2024' }
                     });
 
                     if (response.ok) {
                         const cloudData = await response.json();
-                        const lastLocalUpdate = localStorage.getItem('last_local_sync');
-
-                        console.log('[ProductionCloudSync] Retrieved data from Cloudflare:', {
-                            cloudTimestamp: cloudData.client_timestamp,
-                            lastLocalUpdate: lastLocalUpdate,
-                            bookingsCount: cloudData.bookings?.length || 0,
-                            alertsCount: cloudData.emergency_alerts?.length || 0,
-                            cloudUser: cloudData.user_name,
-                            cloudRole: cloudData.user_role,
-                            isNewer: cloudData.client_timestamp && (!lastLocalUpdate || cloudData.client_timestamp > lastLocalUpdate)
-                        });
-
-                        // Smart sync decision: newer timestamp OR new booking IDs
-                        const localBookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]');
-                        const localAlerts = JSON.parse(localStorage.getItem('emergency_alerts') || '[]');
-
-                        // Check for new booking IDs from cloud
-                        const localBookingIds = new Set(localBookings.map(b => b.id));
-                        const hasNewBookings = cloudData.bookings?.some(b => !localBookingIds.has(b.id)) || false;
-
-                        const hasMoreAlerts = (cloudData.emergency_alerts?.length || 0) > localAlerts.length;
-                        const shouldSync = (cloudData.client_timestamp && (!lastLocalUpdate || cloudData.client_timestamp > lastLocalUpdate)) ||
-                                         hasNewBookings || hasMoreAlerts;
-
-                        console.log(`[ProductionCloudSync] Sync decision: timestamp newer: ${cloudData.client_timestamp > lastLocalUpdate}, new bookings: ${hasNewBookings}, more alerts: ${hasMoreAlerts}, will sync: ${shouldSync}`);
-
-                        if (shouldSync) {
-                            console.log('[ProductionCloudSync] Found newer/better cloud data, updating...');
-                            this.handleCloudUpdate(cloudData);
-                            this.showSyncStatus('⚡ Cloud Update', 'info');
-                        } else {
-                            console.log('[ProductionCloudSync] Cloud data is not newer, keeping local data');
-                        }
-                    } else if (response.status === 404) {
-                        // No data in cloud yet, that's okay
-                        console.log('[ProductionCloudSync] No cloud data found (404) - first time or no data saved');
-                    } else {
-                        console.log('[ProductionCloudSync] Cloudflare sync failed:', response.status);
+                        this.handleCloudUpdate(cloudData);
                     }
                 } catch (error) {
-                    console.log('[ProductionCloudSync] Cloudflare sync error (using local):', error.message);
+                    console.error('[ProductionCloudSync] Sync from Cloudflare failed:', error);
                 }
             }
 
-            static handleStorageSync(storageEvent) {
-                if (storageEvent.newValue) {
-                    try {
-                        const syncData = JSON.parse(storageEvent.newValue);
-                        this.handleCloudUpdate(syncData);
-                    } catch (error) {
-                        console.error('[ProductionCloudSync] Error parsing storage sync data:', error);
-                    }
-                }
-            }
-
-            static handleSyncError(error) {
-                this.retryCount++;
-
-                if (this.retryCount <= this.maxRetries) {
-                    console.log(`[ProductionCloudSync] Retrying sync (${this.retryCount}/${this.maxRetries})...`);
-                    setTimeout(() => this.saveData(), 2000 * this.retryCount); // Exponential backoff
-                } else {
-                    console.error('[ProductionCloudSync] Max retries reached, operating in offline mode');
-                    this.showSyncStatus('📴 Offline Mode', 'warning');
-                }
-            }
-
-            static refreshUI() {
+            static handleCloudUpdate(cloudData) {
                 try {
-                    // Refresh all UI components
-                    if (typeof BookingManager !== 'undefined' && BookingManager.loadFromStorage) {
-                        BookingManager.loadFromStorage();
-                    }
-
-                    if (typeof ScheduleSystem !== 'undefined' && ScheduleSystem.updateScheduleTab) {
-                        ScheduleSystem.updateScheduleTab();
-                    }
-
-                    if (typeof PersistentEmergencyAlerts !== 'undefined') {
-                        PersistentEmergencyAlerts.updateAllOverviewAlerts();
-                    }
-
-                    console.log('[ProductionCloudSync] UI refreshed with synced data');
-                } catch (error) {
-                    console.error('[ProductionCloudSync] Error refreshing UI:', error);
-                }
-            }
-
-            static showSyncStatus(message, type) {
-                console.log(`[ProductionCloudSync] ${message}`);
-
-                const indicator = document.createElement('div');
-                indicator.textContent = message;
-                indicator.style.cssText = `
-                    position: fixed; top: 10px; right: 10px;
-                    background: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#3b82f6'};
-                    color: white; padding: 8px 12px; border-radius: 6px;
-                    font-size: 12px; z-index: 9999; opacity: 0.95;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                `;
-                document.body.appendChild(indicator);
-
-                setTimeout(() => {
-                    if (indicator.parentNode) {
-                        indicator.parentNode.removeChild(indicator);
-                    }
-                }, 3000);
-
-                // Add to mobile debug panel
-                this.addToMobileDebug(message, type);
-            }
-
-            static addToMobileDebug(message, type) {
-                // Create mobile debug panel if it doesn't exist
-                let debugPanel = document.getElementById('mobileDebugPanel');
-                if (!debugPanel) {
-                    debugPanel = document.createElement('div');
-                    debugPanel.id = 'mobileDebugPanel';
-                    debugPanel.innerHTML = `
-                        <div style="position: fixed; bottom: 10px; left: 10px; background: rgba(0,0,0,0.9); color: white; padding: 8px; border-radius: 8px; font-size: 11px; max-width: 280px; z-index: 9999; max-height: 150px; overflow-y: auto; font-family: monospace;">
-                            <div style="font-weight: bold; margin-bottom: 5px; cursor: pointer; border-bottom: 1px solid #333; padding-bottom: 3px;" onclick="document.getElementById('debugMessages').innerHTML = ''; this.nextElementSibling.innerHTML = '';">🐛 Mobile Debug (tap to clear)</div>
-                            <div id="debugMessages"></div>
-                        </div>
-                    `;
-                    document.body.appendChild(debugPanel);
-                }
-
-                // Add message to debug panel
-                const messagesDiv = document.getElementById('debugMessages');
-                if (messagesDiv) {
-                    const timestamp = new Date().toLocaleTimeString();
-                    const color = type === 'emergency' ? '#ff4444' : type === 'success' ? '#44ff44' : type === 'warning' ? '#ffaa44' : '#4444ff';
-                    const newMessage = document.createElement('div');
-                    newMessage.style.cssText = `color: ${color}; margin: 1px 0; font-size: 10px; line-height: 1.2;`;
-                    newMessage.textContent = `[${timestamp}] ${message}`;
-                    messagesDiv.insertBefore(newMessage, messagesDiv.firstChild);
-
-                    // Keep only last 8 messages
-                    while (messagesDiv.children.length > 8) {
-                        messagesDiv.removeChild(messagesDiv.lastChild);
-                    }
-                }
-            }
-
-            static async forceSync() {
-                console.log('[ProductionCloudSync] Force sync triggered');
-                await this.saveData();
-                await this.syncFromCloudflare();
-            }
-
-            static async saveGlobalEmergencyAlerts() {
-                try {
-                    const currentLocation = GPSNavigationSystem?.currentPosition;
-                    const alertsData = {
-                        alerts: JSON.parse(localStorage.getItem('emergency_alerts') || '[]'),
-                        property_id: 'default', // TODO: Get from GPS location
-                        property_name: currentLocation?.property || 'Golf Course',
-                        last_updated: new Date().toISOString(),
-                        location: currentLocation ? {
-                            lat: currentLocation.lat,
-                            lng: currentLocation.lng,
-                            course_name: currentLocation.property
-                        } : null
-                    };
-
-                    console.log('[ProductionCloudSync] Saving global emergency alerts:', alertsData.alerts.length);
-
-                    const response = await fetch(`${this.cloudflareWorkerUrl}/global/emergency-alerts`, {
-                        method: 'PUT',
-                        headers: {
-                            'X-API-Key': 'mcipro-sync-key-2024',
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(alertsData)
+                    console.log('[SYNC] Received cloud data:', {
+                        user: cloudData.user_name,
+                        bookings: cloudData.bookings?.length || 0,
+                        profiles: cloudData.user_profiles?.length || 0
                     });
 
-                    if (response.ok) {
-                        const result = await response.json();
-                        console.log('[ProductionCloudSync] Global emergency alerts saved:', result);
-                        this.showSyncStatus('🚨 Global Alert Sent', 'emergency');
-                        return result;
-                    } else {
-                        throw new Error(`Global alerts save failed: ${response.status}`);
+                    if (cloudData.bookings) {
+                        const currentBookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]');
+                        const existingIds = new Set(currentBookings.map(b => b.id));
+                        const newBookings = cloudData.bookings.filter(booking => !existingIds.has(booking.id));
+
+                        if (newBookings.length > 0) {
+                            const mergedBookings = [...currentBookings, ...newBookings];
+                            localStorage.setItem('mcipro_bookings', JSON.stringify(mergedBookings));
+                            if (typeof BookingManager !== 'undefined') {
+                                BookingManager.bookings = mergedBookings;
+                                console.log('[SYNC] Merged bookings - refreshing UI');
+                                BookingManager.render();
+                            }
+                            this.showSyncStatus('↓ Real-time Update', 'info');
+                        }
                     }
+
+                    if (cloudData.user_profiles) {
+                        const currentProfiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+                        const existingNames = new Set(currentProfiles.map(p => p.name));
+                        const newProfiles = cloudData.user_profiles.filter(profile => !existingNames.has(profile.name));
+
+                        if (newProfiles.length > 0) {
+                            const mergedProfiles = [...currentProfiles, ...newProfiles];
+                            localStorage.setItem('mcipro_user_profiles', JSON.stringify(mergedProfiles));
+                            console.log('[SYNC] Merged profiles');
+                            this.showSyncStatus('↓ Real-time Update', 'info');
+                        }
+                    }
+
+                    if (cloudData.emergency_alerts) {
+                        localStorage.setItem('emergency_alerts', JSON.stringify(cloudData.emergency_alerts));
+                        if (typeof EmergencySystem !== 'undefined') {
+                            EmergencySystem.activeAlerts = cloudData.emergency_alerts;
+                        }
+                    }
+
                 } catch (error) {
-                    console.error('[ProductionCloudSync] Failed to save global emergency alerts:', error);
-                    throw error;
+                    console.error('[ProductionCloudSync] Handle cloud update failed:', error);
                 }
             }
 
             static async syncGlobalEmergencyAlerts() {
                 try {
-                    console.log('[ProductionCloudSync] Checking for global emergency alerts...');
-
                     const response = await fetch(`${this.cloudflareWorkerUrl}/global/emergency-alerts`, {
-                        method: 'GET',
-                        headers: {
-                            'X-API-Key': 'mcipro-sync-key-2024',
-                            'Content-Type': 'application/json'
-                        }
+                        headers: { 'X-API-Key': 'mcipro-sync-key-2024' }
                     });
 
                     if (response.ok) {
                         const data = await response.json();
                         if (data.alerts && data.alerts.length > 0) {
-                            console.log('[ProductionCloudSync] Retrieved global emergency alerts:', data.alerts.length);
-
-                            // Filter out old alerts first (older than 2 minutes)
-                            const now = new Date();
-                            const recentAlerts = data.alerts.filter(alert => {
-                                const alertTime = new Date(alert.timestamp);
-                                const timeDiff = (now - alertTime) / 1000 / 60; // minutes
-                                const isRecent = timeDiff <= 2;
-                                if (!isRecent) {
-                                    console.log('[ProductionCloudSync] Filtering out old alert:', alert.id, `${timeDiff.toFixed(1)} minutes old`);
-                                }
-                                return isRecent;
-                            });
-
-                            // Check if these recent alerts are actually new to this device
-                            const currentAlerts = JSON.parse(localStorage.getItem('emergency_alerts') || '[]');
-                            const currentAlertIds = currentAlerts.map(alert => alert.id);
-                            const newAlerts = recentAlerts.filter(alert => !currentAlertIds.includes(alert.id));
-
-                            console.log(`[ProductionCloudSync] Alert comparison - Recent: [${recentAlerts.map(a => a.id).join(',')}], Current: [${currentAlertIds.join(',')}], New: [${newAlerts.map(a => a.id).join(',')}]`);
-                        this.addToMobileDebug(`Alerts: ${recentAlerts.length} recent, ${newAlerts.length} new`, newAlerts.length > 0 ? 'emergency' : 'info');
-
-                            // Update EmergencySystem with recent alerts only (don't show old alerts)
+                            localStorage.setItem('emergency_alerts', JSON.stringify(data.alerts));
                             if (typeof EmergencySystem !== 'undefined') {
-                                EmergencySystem.activeAlerts = recentAlerts;
-                                localStorage.setItem('emergency_alerts', JSON.stringify(recentAlerts));
-                                PersistentEmergencyAlerts.updateAllOverviewAlerts();
-
-                                // Only show notification for truly new alerts
-                                if (newAlerts.length > 0) {
-                                    this.showSyncStatus('🚨 Emergency Alert Received', 'emergency');
-                                    console.log('[ProductionCloudSync] New emergency alerts received:', newAlerts.length);
-
-                                    // Play audio for new emergency alerts (with spam protection)
-                                    newAlerts.forEach(alert => {
-                                        if (['lightning_warning', 'stop_play', 'resume_play'].includes(alert.type) &&
-                                            typeof LightningSafetySystem !== 'undefined') {
-
-                                            // Check if alert is recent (within last 2 minutes) to avoid playing old alerts
-                                            const alertTime = new Date(alert.timestamp);
-                                            const now = new Date();
-                                            const timeDiff = (now - alertTime) / 1000 / 60; // minutes
-
-                                            if (timeDiff > 2) {
-                                                console.log('[ProductionCloudSync] Alert too old for audio:', alert.id, `${timeDiff.toFixed(1)} minutes old`);
-                                                return;
-                                            }
-
-                                            // Check if we've already played audio for this alert
-                                            const playedAlertsKey = 'played_audio_alerts';
-                                            const playedAlerts = JSON.parse(localStorage.getItem(playedAlertsKey) || '[]');
-
-                                            if (!playedAlerts.includes(alert.id)) {
-                                                console.log('[ProductionCloudSync] Playing emergency audio for:', alert.type, alert.id, `${timeDiff.toFixed(1)} minutes old`);
-                                                LightningSafetySystem.playLightningAlert(alert.type);
-
-                                                // Mark this alert as having played audio
-                                                playedAlerts.push(alert.id);
-                                                localStorage.setItem(playedAlertsKey, JSON.stringify(playedAlerts));
-                                            } else {
-                                                console.log('[ProductionCloudSync] Audio already played for alert:', alert.id);
-                                            }
-                                        }
-                                    });
-                                } else {
-                                    console.log('[ProductionCloudSync] Global emergency alerts refreshed (no new alerts)', `Recent: ${recentAlerts.length}, Already have: ${currentAlertIds.length}`);
-                                }
+                                EmergencySystem.activeAlerts = data.alerts;
+                                console.log('[ProductionCloudSync] Updated global emergency alerts');
                             }
                         }
-                    } else if (response.status !== 404) {
-                        console.log('[ProductionCloudSync] Failed to sync global alerts:', response.status);
                     }
                 } catch (error) {
-                    console.log('[ProductionCloudSync] Global alerts sync error:', error.message);
+                    console.error('[ProductionCloudSync] Emergency alerts sync failed:', error);
                 }
             }
 
-            static cleanup() {
-                // Clean up real-time listeners
-                this.realtimeListeners.forEach((unsubscribe) => {
-                    if (typeof unsubscribe === 'function') {
-                        unsubscribe();
+            static showSyncStatus(message, type = 'info') {
+                console.log(`[ProductionCloudSync] ${message}`);
+
+                let statusElement = document.getElementById('sync-status');
+                if (!statusElement) {
+                    statusElement = document.createElement('div');
+                    statusElement.id = 'sync-status';
+                    statusElement.style.cssText = `
+                        position: fixed;
+                        top: 20px;
+                        right: 20px;
+                        padding: 8px 16px;
+                        border-radius: 8px;
+                        font-size: 12px;
+                        font-weight: 600;
+                        z-index: 10000;
+                        transition: all 0.3s ease;
+                    `;
+                    document.body.appendChild(statusElement);
+                }
+
+                const colors = {
+                    success: { bg: '#10b981', color: 'white' },
+                    info: { bg: '#3b82f6', color: 'white' },
+                    warning: { bg: '#f59e0b', color: 'white' },
+                    error: { bg: '#ef4444', color: 'white' }
+                };
+
+                const color = colors[type] || colors.info;
+                statusElement.style.backgroundColor = color.bg;
+                statusElement.style.color = color.color;
+                statusElement.textContent = message;
+                statusElement.style.opacity = '1';
+
+                setTimeout(() => {
+                    if (statusElement) {
+                        statusElement.style.opacity = '0';
                     }
-                });
-                this.realtimeListeners.clear();
-                console.log('[ProductionCloudSync] Cleanup completed');
+                }, 3000);
+        }
+
+        // Alias for backward compatibility
+        const CrossDeviceSync = ProductionCloudSync;
+
+        // Emergency Alert System - Global notifications that sync across all devices
+        class EmergencySystem {
+            static activeAlerts = [];
+            static checkInterval = null;
+
+            static initialize() {
+                console.log('[EmergencySystem] Initializing emergency alerts...');
+                this.loadStoredAlerts();
+                this.startPolling();
             }
+
+            static loadStoredAlerts() {
+                try {
+                    const stored = localStorage.getItem('emergency_alerts');
+                    if (stored) {
+                        this.activeAlerts = JSON.parse(stored);
+                        console.log(`[EmergencySystem] Loaded ${this.activeAlerts.length} stored alerts`);
+                    }
+                } catch (error) {
+                    console.error('[EmergencySystem] Error loading stored alerts:', error);
+                    this.activeAlerts = [];
+                }
+            }
+
+            static startPolling() {
+                // Check for new emergency alerts every 10 seconds
+                this.checkInterval = setInterval(() => {
+                    this.checkForUpdates();
+                }, 10000);
+                console.log('[EmergencySystem] Started polling for emergency alerts');
+            }
+
+            static async checkForUpdates() {
+                try {
+                    const response = await fetch('https://mcipro-sync.pgatour29.workers.dev/global/emergency-alerts', {
+                        headers: { 'X-API-Key': 'mcipro-sync-key-2024' }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.alerts && data.alerts.length > 0) {
+                            this.updateAlerts(data.alerts);
+                        }
+                    }
+                } catch (error) {
+                    console.error('[EmergencySystem] Failed to check for updates:', error);
+                }
+            }
+
+            static updateAlerts(newAlerts) {
+                const previousCount = this.activeAlerts.length;
+                this.activeAlerts = newAlerts;
+                localStorage.setItem('emergency_alerts', JSON.stringify(newAlerts));
+
+                if (newAlerts.length > previousCount) {
+                    console.log(`[EmergencySystem] New emergency alerts detected: ${newAlerts.length}`);
+                    this.showNewAlertNotification();
+                }
+            }
+
+            static showNewAlertNotification() {
+                // Show visual notification for new emergency alerts
+                const notification = document.createElement('div');
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: #dc2626;
+                    color: white;
+                    padding: 16px 24px;
+                    border-radius: 8px;
+                    font-weight: bold;
+                    z-index: 10000;
+                    animation: fadeIn 0.3s ease;
+                `;
+                notification.textContent = '🚨 New Emergency Alert Received';
+                document.body.appendChild(notification);
+
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 5000);
+            }
+
+            static async sendAlert(alertData) {
+                try {
+                    const response = await fetch('https://mcipro-sync.pgatour29.workers.dev/global/emergency-alerts', {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-API-Key': 'mcipro-sync-key-2024'
+                        },
+                        body: JSON.stringify({
+                            alerts: [...this.activeAlerts, alertData],
+                            property_id: 'default',
+                            property_name: 'MciPro Golf Course'
+                        })
+                    });
+
+                    if (response.ok) {
+                        console.log('[EmergencySystem] Alert sent successfully');
+                        return true;
+                    } else {
+                        throw new Error(`Failed to send alert: ${response.status}`);
+                    }
+                } catch (error) {
+                    console.error('[EmergencySystem] Failed to send alert:', error);
+                    return false;
+                }
         }
 
         // Alias for backward compatibility
@@ -3135,9 +2812,10 @@
                 ScreenManager.showScreen(targetDashboard);
                 NotificationManager.show(`Welcome back, ${AppState.currentUser.name}!`, 'success');
 
-                // Start production cloud synchronization after successful login
+                // Load data from Cloudflare AFTER successful login (source of truth)
                 if (typeof ProductionCloudSync !== 'undefined') {
-                    ProductionCloudSync.forceSync();
+                    console.log('[Login] Loading data from Cloudflare after login...');
+                    ProductionCloudSync.loadDataFromCloudflare();
                     console.log('[Login] Initial production sync completed');
                 }
             }
@@ -5176,6 +4854,12 @@
                     id: profileData.id
                 };
                 localStorage.setItem(profileKey, JSON.stringify(formattedProfile));
+
+                // Trigger cloud sync after profile creation
+                if (typeof ProductionCloudSync !== 'undefined') {
+                    console.log('[ProfileCreation] Triggering cloud sync for new profile');
+                    ProductionCloudSync.saveData();
+                }
 
                 NotificationManager.show(`Profile created successfully! Welcome ${currentUser.name}!`, 'success');
 
@@ -8830,10 +8514,9 @@
                     localStorage.setItem('last_local_update', new Date().toISOString());
                     console.log('[BookingManager] Data saved to localStorage');
 
-                    // Trigger production cloud sync after local save
-                    if (typeof ProductionCloudSync !== 'undefined' && AppState.session.isAuthenticated) {
-                        ProductionCloudSync.saveData();
-                    }
+                    // FORCE SYNC IMMEDIATELY
+                    console.log('[BookingManager] BOOKING SAVED - SYNCING NOW');
+                    ProductionCloudSync.saveData();
                 } catch (error) {
                     console.error('[BookingManager] Failed to save to localStorage:', error);
                 }

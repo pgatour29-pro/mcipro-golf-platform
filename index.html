@@ -2163,57 +2163,127 @@
         // ===== CORE SYSTEM FUNCTIONS =====
 
         // Production Cloud Sync System - Google Cloud Firestore + Cloudflare
-        class ProductionCloudSync {
-            static cloudflareWorkerUrl = "https://mcipro-sync.pgatour29.workers.dev";
+        class SimpleCloudSync {
             static isInitialized = false;
 
             static async initialize() {
-                console.log('[ProductionCloudSync] Initializing simplified sync v2...');
-                try {
-                    const response = await fetch(`${this.cloudflareWorkerUrl}/health`);
-                    if (response.ok) {
-                        console.log('[ProductionCloudSync] Cloudflare Workers available');
-                        this.isInitialized = true;
-                    }
-                } catch (error) {
-                    console.log('[ProductionCloudSync] Cloudflare unavailable, local only');
-                }
+                console.log('[SimpleCloudSync] Initializing Netlify Blobs sync...');
+                this.isInitialized = true;
+
+                // Load initial data from cloud
+                await this.loadFromCloud();
+
+                // Start lightweight polling
                 this.startPolling();
             }
 
             static startPolling() {
-                setInterval(() => this.syncFromCloudflare(), 5000);
-                setInterval(() => this.syncGlobalEmergencyAlerts(), 5000);
+                // Lightweight polling every 5 seconds
+                setInterval(() => {
+                    this.loadFromCloud().catch(err => {
+                        console.log('[SimpleCloudSync] Background sync failed:', err.message);
+                    });
+                }, 5000);
             }
 
-            static getUserDocPath() {
-                return 'users/golf_data';
-            }
-
-            static async saveData() {
-                console.log('[ProductionCloudSync] saveData() called');
-
-                const userData = {
-                    user_name: 'shared_user',
-                    user_role: 'shared',
-                    bookings: JSON.parse(localStorage.getItem('mcipro_bookings') || '[]'),
-                    emergency_alerts: JSON.parse(localStorage.getItem('emergency_alerts') || '[]'),
-                    schedule_items: JSON.parse(localStorage.getItem('mcipro_schedule') || '[]'),
-                    user_profiles: JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]'),
-                    client_timestamp: new Date().toISOString()
-                };
-
-                console.log('[SYNC] Saving data:', {
-                    user: userData.user_name,
-                    bookings: userData.bookings.length,
-                    profiles: userData.user_profiles.length
-                });
-
+            static async loadFromCloud() {
                 try {
-                    await this.saveViaCloudflare(userData);
+                    const res = await fetch('/.netlify/functions/bookings', { method: 'GET' });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+                    const cloudData = await res.json();
+                    console.log('[SimpleCloudSync] Loaded from cloud:', {
+                        bookings: cloudData.bookings?.length || 0,
+                        profiles: cloudData.user_profiles?.length || 0,
+                        updatedAt: cloudData.updatedAt
+                    });
+
+                    // Get local data timestamp
+                    const localData = JSON.parse(localStorage.getItem('mcipro_data') || '{}');
+
+                    // Only update if cloud data is newer
+                    if (!localData.updatedAt || (cloudData.updatedAt && cloudData.updatedAt > localData.updatedAt)) {
+                        console.log('[SimpleCloudSync] Cloud data is newer, updating local storage');
+
+                        // Update individual localStorage items for compatibility
+                        if (cloudData.bookings) {
+                            localStorage.setItem('mcipro_bookings', JSON.stringify(cloudData.bookings));
+                            if (typeof BookingManager !== 'undefined' && BookingManager.bookings) {
+                                BookingManager.bookings = cloudData.bookings;
+                                console.log('[SimpleCloudSync] Updated BookingManager with', cloudData.bookings.length, 'bookings');
+                            }
+                        }
+
+                        if (cloudData.user_profiles) {
+                            localStorage.setItem('mcipro_user_profiles', JSON.stringify(cloudData.user_profiles));
+                        }
+
+                        if (cloudData.schedule_items) {
+                            localStorage.setItem('mcipro_schedule', JSON.stringify(cloudData.schedule_items));
+                        }
+
+                        if (cloudData.emergency_alerts) {
+                            localStorage.setItem('emergency_alerts', JSON.stringify(cloudData.emergency_alerts));
+                            if (typeof EmergencySystem !== 'undefined') {
+                                EmergencySystem.activeAlerts = cloudData.emergency_alerts;
+                            }
+                        }
+
+                        // Store the unified data with timestamp
+                        localStorage.setItem('mcipro_data', JSON.stringify(cloudData));
+
+                        this.showSyncStatus('↓ Cloud Update', 'info');
+                        return true;
+                    }
+
+                    return false;
                 } catch (error) {
-                    console.error('[ProductionCloudSync] Cloud save failed:', error);
+                    console.error('[SimpleCloudSync] Failed to load from cloud:', error);
+                    return false;
+                }
+            }
+
+            static async saveToCloud() {
+                try {
+                    const localData = {
+                        bookings: JSON.parse(localStorage.getItem('mcipro_bookings') || '[]'),
+                        user_profiles: JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]'),
+                        schedule_items: JSON.parse(localStorage.getItem('mcipro_schedule') || '[]'),
+                        emergency_alerts: JSON.parse(localStorage.getItem('emergency_alerts') || '[]'),
+                        updatedAt: Date.now(),
+                        clientTimestamp: new Date().toISOString()
+                    };
+
+                    console.log('[SimpleCloudSync] Saving to cloud:', {
+                        bookings: localData.bookings.length,
+                        profiles: localData.user_profiles.length,
+                        schedules: localData.schedule_items.length,
+                        alerts: localData.emergency_alerts.length
+                    });
+
+                    const res = await fetch('/.netlify/functions/bookings', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(localData)
+                    });
+
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+                    const result = await res.json();
+
+                    // Update local storage with the timestamp
+                    localStorage.setItem('mcipro_data', JSON.stringify({
+                        ...localData,
+                        updatedAt: result.updatedAt
+                    }));
+
+                    console.log('[SimpleCloudSync] Saved to cloud successfully');
+                    this.showSyncStatus('☁️ Synced', 'success');
+                    return true;
+                } catch (error) {
+                    console.error('[SimpleCloudSync] Failed to save to cloud:', error);
                     this.showSyncStatus('💾 Local Only', 'warning');
+                    return false;
                 }
             }
 
@@ -2398,9 +2468,10 @@
         }
 
         // Alias for backward compatibility
-        window.CrossDeviceSync = ProductionCloudSync;
-
-        const CrossDeviceSync = ProductionCloudSync;
+        window.CrossDeviceSync = SimpleCloudSync;
+        window.ProductionCloudSync = SimpleCloudSync; // Also alias the old name
+        const CrossDeviceSync = SimpleCloudSync;
+        const ProductionCloudSync = SimpleCloudSync;
 
         // Screen Management System
         class ScreenManager {
@@ -3920,7 +3991,7 @@
                 OTPAuthentication.setupOTPInputHandlers();
 
                 // Initialize production cloud synchronization system
-                ProductionCloudSync.initialize();
+                SimpleCloudSync.initialize();
 
                 // Initialize booking system and load saved data
                 BookingManager.initialize();

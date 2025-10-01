@@ -2198,7 +2198,7 @@
                     user_role: 'shared',
                     bookings: JSON.parse(localStorage.getItem('mcipro_bookings') || '[]'),
                     emergency_alerts: JSON.parse(localStorage.getItem('emergency_alerts') || '[]'),
-                    schedule_items: JSON.parse(localStorage.getItem('schedule_items') || '[]'),
+                    schedule_items: JSON.parse(localStorage.getItem('mcipro_schedule') || '[]'),
                     user_profiles: JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]'),
                     client_timestamp: new Date().toISOString()
                 };
@@ -2363,6 +2363,37 @@
                         statusElement.style.opacity = '0';
                     }
                 }, 3000);
+            }
+
+            // Add missing methods that are being called
+            static async forceSync() {
+                console.log('[ProductionCloudSync] forceSync() called');
+                try {
+                    await this.saveData();
+                    await this.syncFromCloudflare();
+                    console.log('[ProductionCloudSync] Force sync completed');
+                } catch (error) {
+                    console.error('[ProductionCloudSync] Force sync failed:', error);
+                }
+            }
+
+            static async loadDataFromCloudflare() {
+                console.log('[ProductionCloudSync] loadDataFromCloudflare() called');
+                try {
+                    const response = await fetch(`${this.cloudflareWorkerUrl}/sync/${this.getUserDocPath()}`, {
+                        headers: { 'X-API-Key': 'mcipro-sync-key-2024' }
+                    });
+
+                    if (response.ok) {
+                        const cloudData = await response.json();
+                        this.handleCloudUpdate(cloudData);
+                        console.log('[ProductionCloudSync] Initial data loaded from cloud');
+                    } else {
+                        console.log('[ProductionCloudSync] No cloud data found for initial load');
+                    }
+                } catch (error) {
+                    console.error('[ProductionCloudSync] Failed to load initial data:', error);
+                }
             }
         }
 
@@ -8196,17 +8227,19 @@
                 return false;
             },
 
-            // Initialize - now always starts empty (no demo data)
+            // Initialize - load existing bookings instead of clearing
             initialize() {
-                console.log('[BookingManager] Initializing with clean state (no demo data)');
+                console.log('[BookingManager] Initializing - loading existing bookings');
 
-                // Always start with empty state
-                this.bookings = [];
-                this.waitlists = {};
+                // Load existing bookings first
+                const loaded = this.loadFromStorage();
+                if (!loaded) {
+                    // Only start empty if no data exists
+                    this.bookings = [];
+                    this.waitlists = {};
+                }
 
-                // Save empty state to localStorage
-                this.saveToLocalStorage();
-
+                console.log('[BookingManager] Initialized with', this.bookings.length, 'existing bookings');
                 return;
                 // Sample golf event bookings for golfers
                 this.bookings = [

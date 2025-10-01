@@ -3903,6 +3903,19 @@
                 // Initialize session tracking
                 AppState.session.lastActivity = new Date().toISOString();
 
+                // Clear old emergency alerts first
+                console.log('[INIT] Clearing old emergency alerts...');
+                const existingAlerts = JSON.parse(localStorage.getItem('emergency_alerts') || '[]');
+                const now = new Date();
+                const cutoffTime = new Date(now.getTime() - 60 * 60 * 1000); // 1 hour ago
+                const validAlerts = existingAlerts.filter(alert => {
+                    const alertTime = new Date(alert.timestamp);
+                    return alertTime > cutoffTime;
+                });
+                localStorage.setItem('emergency_alerts', JSON.stringify(validAlerts));
+                EmergencySystem.activeAlerts = validAlerts;
+                console.log(`[INIT] Cleared ${existingAlerts.length - validAlerts.length} old alerts`);
+
                 // Initialize persistent emergency alerts
                 PersistentEmergencyAlerts.updateAllOverviewAlerts();
 
@@ -7380,6 +7393,7 @@
                         const handicap = document.getElementById('handicap')?.value?.trim() || '';
                         const memberSince = document.getElementById('memberSince')?.value || '';
                         const homeClub = document.getElementById('homeClub')?.value?.trim() || '';
+                        console.log('[ProfileSystem] Form homeClub value from DOM:', homeClub);
 
                         console.log('[ProfileSystem] Saving golfer profile - homeClub value:', homeClub);
 
@@ -7392,8 +7406,26 @@
                         profile.golfInfo.handicap = handicap;
                         profile.golfInfo.memberSince = memberSince;
                         profile.golfInfo.homeClub = homeClub;
-
                         console.log('[ProfileSystem] Profile after setting homeClub:', profile.golfInfo.homeClub);
+
+                        // Force update the profile data with sync
+                        const profilesArray = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+                        const existingIndex = profilesArray.findIndex(p => p.name === `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`);
+                        const profileForSync = {
+                            name: `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`,
+                            role: 'golfer',
+                            golfInfo: profile.golfInfo,
+                            personalInfo: profile.personalInfo,
+                            timestamp: new Date().toISOString()
+                        };
+
+                        if (existingIndex >= 0) {
+                            profilesArray[existingIndex] = profileForSync;
+                        } else {
+                            profilesArray.push(profileForSync);
+                        }
+                        localStorage.setItem('mcipro_user_profiles', JSON.stringify(profilesArray));
+                        console.log('[ProfileSystem] Updated mcipro_user_profiles with homeClub:', homeClub);
                         profile.golfInfo.clubAffiliation = document.getElementById('clubAffiliation')?.value || '';
                         profile.golfInfo.experienceLevel = document.getElementById('experienceLevel')?.value || '';
                         profile.golfInfo.playingStyle = document.getElementById('playingStyle')?.value?.trim() || '';

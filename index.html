@@ -1050,7 +1050,11 @@
                 'mci-pro-language',
                 'caddie_system_data',
                 'golf_courses_data',
-                'societies_data'
+                'societies_data',
+                'mcipro_sync_users_',
+                'last_local_sync',
+                'last_local_update',
+                'played_audio_alerts'
             ];
 
             // Keys to force remove (all demo/activity data)
@@ -2182,6 +2186,10 @@
                     // Test Cloudflare Workers endpoint
                     await this.initializeCloudflareSync();
                     this.isInitialized = true;
+
+                    // Start polling for all sync types including global emergency alerts
+                    this.startPolling();
+
                     console.log('[ProductionCloudSync] Cloudflare Workers sync initialized successfully');
                 } catch (error) {
                     console.error('[ProductionCloudSync] Cloudflare failed, falling back to local sync:', error);
@@ -2230,14 +2238,14 @@
                 console.log('[ProductionCloudSync] Cloudflare Workers endpoint verified');
             }
 
-            static initializeFallbackSync() {
-                console.log('[ProductionCloudSync] Using enhanced local storage with cross-device sync');
-
+            static startPolling() {
                 // Enhanced local sync with faster updates
                 setInterval(() => this.syncLocalData(), 3000); // 3-second polling
 
                 // Also try to sync from Cloudflare if available
                 setInterval(() => this.syncFromCloudflare(), 10000); // 10-second cloud polling
+                // Check for global emergency alerts every 5 seconds (more frequent for safety)
+                setInterval(() => this.syncGlobalEmergencyAlerts(), 5000); // 5-second emergency polling
 
                 // Listen for storage events from other tabs
                 window.addEventListener('storage', (e) => {
@@ -2253,10 +2261,16 @@
                         console.log('[ProductionCloudSync] Tab visible, forcing sync check');
                         setTimeout(() => this.syncLocalData(), 100);
                         setTimeout(() => this.syncFromCloudflare(), 200);
+                        setTimeout(() => this.syncGlobalEmergencyAlerts(), 50); // Check emergency alerts immediately
                     }
                 });
 
-                console.log('[ProductionCloudSync] Enhanced sync active: 3s local + 10s cloud polling');
+                console.log('[ProductionCloudSync] Enhanced sync active: 3s local + 10s cloud + 5s emergency polling');
+            }
+
+            static initializeFallbackSync() {
+                console.log('[ProductionCloudSync] Using enhanced local storage with cross-device sync');
+                this.startPolling();
             }
 
             static getUserDocPath() {
@@ -2469,6 +2483,8 @@
             static async syncFromCloudflare() {
                 try {
                     const userPath = this.getUserDocPath();
+                    console.log(`[ProductionCloudSync] Checking Cloudflare for updates: ${userPath}`);
+
                     const response = await fetch(`${this.cloudflareWorkerUrl}/sync/${userPath}`, {
                         method: 'GET',
                         headers: {
@@ -2481,15 +2497,32 @@
                         const cloudData = await response.json();
                         const lastLocalUpdate = localStorage.getItem('last_local_sync');
 
-                        // Only update if cloud data is newer
-                        if (cloudData.client_timestamp && (!lastLocalUpdate || cloudData.client_timestamp > lastLocalUpdate)) {
-                            console.log('[ProductionCloudSync] Found newer cloud data, updating...');
+                        console.log('[ProductionCloudSync] Retrieved data from Cloudflare:', {
+                            cloudTimestamp: cloudData.client_timestamp,
+                            lastLocalUpdate: lastLocalUpdate,
+                            bookingsCount: cloudData.bookings?.length || 0,
+                            alertsCount: cloudData.emergency_alerts?.length || 0,
+                            cloudUser: cloudData.user_name,
+                            cloudRole: cloudData.user_role,
+                            isNewer: cloudData.client_timestamp && (!lastLocalUpdate || cloudData.client_timestamp > lastLocalUpdate)
+                        });
+
+                        // Only update if cloud data is newer OR if it has more data than local
+                        const localBookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]');
+                        const localAlerts = JSON.parse(localStorage.getItem('emergency_alerts') || '[]');
+                        const hasMoreData = (cloudData.bookings?.length || 0) > localBookings.length ||
+                                          (cloudData.emergency_alerts?.length || 0) > localAlerts.length;
+
+                        if ((cloudData.client_timestamp && (!lastLocalUpdate || cloudData.client_timestamp > lastLocalUpdate)) || hasMoreData) {
+                            console.log('[ProductionCloudSync] Found newer/better cloud data, updating...');
                             this.handleCloudUpdate(cloudData);
                             this.showSyncStatus('⚡ Cloud Update', 'info');
+                        } else {
+                            console.log('[ProductionCloudSync] Cloud data is not newer, keeping local data');
                         }
                     } else if (response.status === 404) {
                         // No data in cloud yet, that's okay
-                        console.log('[ProductionCloudSync] No cloud data found (first time)');
+                        console.log('[ProductionCloudSync] No cloud data found (404) - first time or no data saved');
                     } else {
                         console.log('[ProductionCloudSync] Cloudflare sync failed:', response.status);
                     }
@@ -2567,6 +2600,137 @@
                 console.log('[ProductionCloudSync] Force sync triggered');
                 await this.saveData();
                 await this.syncFromCloudflare();
+            }
+
+            static async saveGlobalEmergencyAlerts() {
+                try {
+                    const currentLocation = GPSNavigationSystem?.currentPosition;
+                    const alertsData = {
+                        alerts: JSON.parse(localStorage.getItem('emergency_alerts') || '[]'),
+                        property_id: 'default', // TODO: Get from GPS location
+                        property_name: currentLocation?.property || 'Golf Course',
+                        last_updated: new Date().toISOString(),
+                        location: currentLocation ? {
+                            lat: currentLocation.lat,
+                            lng: currentLocation.lng,
+                            course_name: currentLocation.property
+                        } : null
+                    };
+
+                    console.log('[ProductionCloudSync] Saving global emergency alerts:', alertsData.alerts.length);
+
+                    const response = await fetch(`${this.cloudflareWorkerUrl}/global/emergency-alerts`, {
+                        method: 'PUT',
+                        headers: {
+                            'X-API-Key': 'mcipro-sync-key-2024',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(alertsData)
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        console.log('[ProductionCloudSync] Global emergency alerts saved:', result);
+                        this.showSyncStatus('🚨 Global Alert Sent', 'emergency');
+                        return result;
+                    } else {
+                        throw new Error(`Global alerts save failed: ${response.status}`);
+                    }
+                } catch (error) {
+                    console.error('[ProductionCloudSync] Failed to save global emergency alerts:', error);
+                    throw error;
+                }
+            }
+
+            static async syncGlobalEmergencyAlerts() {
+                try {
+                    console.log('[ProductionCloudSync] Checking for global emergency alerts...');
+
+                    const response = await fetch(`${this.cloudflareWorkerUrl}/global/emergency-alerts`, {
+                        method: 'GET',
+                        headers: {
+                            'X-API-Key': 'mcipro-sync-key-2024',
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.alerts && data.alerts.length > 0) {
+                            console.log('[ProductionCloudSync] Retrieved global emergency alerts:', data.alerts.length);
+
+                            // Filter out old alerts first (older than 2 minutes)
+                            const now = new Date();
+                            const recentAlerts = data.alerts.filter(alert => {
+                                const alertTime = new Date(alert.timestamp);
+                                const timeDiff = (now - alertTime) / 1000 / 60; // minutes
+                                const isRecent = timeDiff <= 2;
+                                if (!isRecent) {
+                                    console.log('[ProductionCloudSync] Filtering out old alert:', alert.id, `${timeDiff.toFixed(1)} minutes old`);
+                                }
+                                return isRecent;
+                            });
+
+                            // Check if these recent alerts are actually new to this device
+                            const currentAlerts = JSON.parse(localStorage.getItem('emergency_alerts') || '[]');
+                            const currentAlertIds = currentAlerts.map(alert => alert.id);
+                            const newAlerts = recentAlerts.filter(alert => !currentAlertIds.includes(alert.id));
+
+                            console.log(`[ProductionCloudSync] Alert comparison - Recent: [${recentAlerts.map(a => a.id).join(',')}], Current: [${currentAlertIds.join(',')}], New: [${newAlerts.map(a => a.id).join(',')}]`);
+
+                            // Update EmergencySystem with recent alerts only (don't show old alerts)
+                            if (typeof EmergencySystem !== 'undefined') {
+                                EmergencySystem.activeAlerts = recentAlerts;
+                                localStorage.setItem('emergency_alerts', JSON.stringify(recentAlerts));
+                                PersistentEmergencyAlerts.updateAllOverviewAlerts();
+
+                                // Only show notification for truly new alerts
+                                if (newAlerts.length > 0) {
+                                    this.showSyncStatus('🚨 Emergency Alert Received', 'emergency');
+                                    console.log('[ProductionCloudSync] New emergency alerts received:', newAlerts.length);
+
+                                    // Play audio for new emergency alerts (with spam protection)
+                                    newAlerts.forEach(alert => {
+                                        if (['lightning_warning', 'stop_play', 'resume_play'].includes(alert.type) &&
+                                            typeof LightningSafetySystem !== 'undefined') {
+
+                                            // Check if alert is recent (within last 2 minutes) to avoid playing old alerts
+                                            const alertTime = new Date(alert.timestamp);
+                                            const now = new Date();
+                                            const timeDiff = (now - alertTime) / 1000 / 60; // minutes
+
+                                            if (timeDiff > 2) {
+                                                console.log('[ProductionCloudSync] Alert too old for audio:', alert.id, `${timeDiff.toFixed(1)} minutes old`);
+                                                return;
+                                            }
+
+                                            // Check if we've already played audio for this alert
+                                            const playedAlertsKey = 'played_audio_alerts';
+                                            const playedAlerts = JSON.parse(localStorage.getItem(playedAlertsKey) || '[]');
+
+                                            if (!playedAlerts.includes(alert.id)) {
+                                                console.log('[ProductionCloudSync] Playing emergency audio for:', alert.type, alert.id, `${timeDiff.toFixed(1)} minutes old`);
+                                                LightningSafetySystem.playLightningAlert(alert.type);
+
+                                                // Mark this alert as having played audio
+                                                playedAlerts.push(alert.id);
+                                                localStorage.setItem(playedAlertsKey, JSON.stringify(playedAlerts));
+                                            } else {
+                                                console.log('[ProductionCloudSync] Audio already played for alert:', alert.id);
+                                            }
+                                        }
+                                    });
+                                } else {
+                                    console.log('[ProductionCloudSync] Global emergency alerts refreshed (no new alerts)', `Recent: ${recentAlerts.length}, Already have: ${currentAlertIds.length}`);
+                                }
+                            }
+                        }
+                    } else if (response.status !== 404) {
+                        console.log('[ProductionCloudSync] Failed to sync global alerts:', response.status);
+                    }
+                } catch (error) {
+                    console.log('[ProductionCloudSync] Global alerts sync error:', error.message);
+                }
             }
 
             static cleanup() {
@@ -3759,6 +3923,15 @@
                     // Remove from active alerts
                     EmergencySystem.activeAlerts.splice(alertIndex, 1);
 
+                    // Update local storage
+                    localStorage.setItem('emergency_alerts', JSON.stringify(EmergencySystem.activeAlerts));
+
+                    // Sync resolution globally so all devices see it
+                    if (typeof ProductionCloudSync !== 'undefined') {
+                        ProductionCloudSync.saveGlobalEmergencyAlerts();
+                        console.log('[Emergency] Alert resolved globally:', alertId);
+                    }
+
                     NotificationManager.show(`Alert ${alertId} resolved and removed`, 'success');
                     this.updateAllOverviewAlerts();
                 }
@@ -4066,10 +4239,10 @@
                 // Save emergency alerts to localStorage for sync
                 localStorage.setItem('emergency_alerts', JSON.stringify(EmergencySystem.activeAlerts));
 
-                // Trigger production cloud sync for emergency alerts
+                // Trigger GLOBAL emergency alert sync for all users on property
                 if (typeof ProductionCloudSync !== 'undefined') {
-                    ProductionCloudSync.saveData();
-                    console.log('[Emergency] Triggered production cloud sync for emergency alerts');
+                    ProductionCloudSync.saveGlobalEmergencyAlerts();
+                    console.log('[Emergency] Triggered GLOBAL emergency alert sync for all users on property');
                 }
 
                 PersistentEmergencyAlerts.updateAllOverviewAlerts();

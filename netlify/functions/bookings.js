@@ -1,9 +1,9 @@
-// CommonJS version to avoid ESM pitfalls
+// CommonJS Netlify Function using Netlify Blobs
 const { getStore } = require('@netlify/blobs');
 
 exports.handler = async (event) => {
   try {
-    const store = getStore('mcipro'); // a named bucket
+    const store = getStore('mcipro'); // named bucket
     const key = 'all.json';
 
     // Add CORS headers
@@ -33,6 +33,7 @@ exports.handler = async (event) => {
         updatedAt: Date.now()
       });
 
+      console.log('GET request - returning data');
       return {
         statusCode: 200,
         headers,
@@ -47,17 +48,11 @@ exports.handler = async (event) => {
       body.updatedAt = Date.now();
       body.serverUpdatedAt = new Date().toISOString();
 
-      // Validate basic structure
-      if (!body.bookings) body.bookings = [];
-      if (!body.user_profiles) body.user_profiles = [];
-      if (!body.schedule_items) body.schedule_items = [];
-      if (!body.emergency_alerts) body.emergency_alerts = [];
-
-      console.log('Saving data:', {
-        bookings: body.bookings.length,
-        profiles: body.user_profiles.length,
-        schedules: body.schedule_items.length,
-        alerts: body.emergency_alerts.length
+      console.log('PUT request - saving data:', {
+        bookings: body.bookings?.length || 0,
+        profiles: body.user_profiles?.length || 0,
+        schedules: body.schedule_items?.length || 0,
+        alerts: body.emergency_alerts?.length || 0
       });
 
       await store.set(key, JSON.stringify(body), { addRandomSuffix: false });
@@ -68,12 +63,7 @@ exports.handler = async (event) => {
         body: JSON.stringify({
           ok: true,
           updatedAt: body.updatedAt,
-          itemCounts: {
-            bookings: body.bookings.length,
-            profiles: body.user_profiles.length,
-            schedules: body.schedule_items.length,
-            alerts: body.emergency_alerts.length
-          }
+          saved: true
         }),
       };
     }
@@ -83,12 +73,18 @@ exports.handler = async (event) => {
       headers,
       body: JSON.stringify({ error: 'Method Not Allowed' })
     };
+
   } catch (err) {
+    // Make the actual error visible in browser & Netlify logs
     console.error('Function error:', err);
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: `Function error: ${err.message}` })
+      body: JSON.stringify({
+        error: 'Function error',
+        message: err && err.message ? err.message : String(err),
+        stack: err && err.stack ? err.stack : undefined
+      })
     };
   }
 };

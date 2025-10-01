@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pattaya Golf Cloud — Graphite Glass Whiteboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root{
+      --graphite-0:#0f1115; /* near-black */
+      --graphite-1:#13161c;
+      --graphite-2:#171b22;
+      --graphite-3:#1b2028; /* main bg */
+      --ink:#e8eaee;        /* near-white text */
+      --ink-dim:#c9cdd6;
+      --stroke:rgba(255,255,255,.16);
+      --stroke-strong:rgba(255,255,255,.28);
+      --chip:rgba(255,255,255,.08);
+      --glass:rgba(255,255,255,.10);
+      --brand:#b9f; /* subtle lavender accent */
+      --ease:cubic-bezier(.22,.61,.36,1);
+    }
+    html,body{height:100%;background:var(--graphite-3);color:var(--ink);font-family:ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";}
+    *{box-sizing:border-box}
+    /* Stationary graphite background with a monochrome golf image + vignette */
+    .bg-graphite{
+      position:fixed; inset:0; z-index:-20;
+      background:
+        radial-gradient(1200px 800px at 80% -10%, rgba(255,255,255,.05), transparent 60%),
+        radial-gradient(1000px 1200px at -10% 110%, rgba(255,255,255,.04), transparent 70%),
+        var(--graphite-3);
+    }
+    .bg-graphite::before{
+      content:""; position:absolute; inset:0;
+      background-image:url('https://images.unsplash.com/photo-1519311965067-363e25d8e09f?q=80&w=2000&auto=format&fit=crop'); /* golf ball close-up */
+      background-size:cover; background-position:center;
+      filter:grayscale(1) brightness(.55) contrast(1.05) saturate(.9);
+      opacity:.6; /* stationary, subtle */
+    }
+    .bg-graphite::after{
+      content:""; position:absolute; inset:0;
+      background:
+        radial-gradient(1200px 800px at 50% -10%, rgba(255,255,255,.10), transparent 70%),
+        radial-gradient(1200px 700px at 50% 120%, rgba(0,0,0,.35), transparent 70%); /* vignette */
+      pointer-events:none;
+    }
+    /* Fine noise for depth (Apple-like grain) */
+    .noise{
+      position:fixed; inset:0; z-index:-10; pointer-events:none;
+      background-image:url('data:image/svg+xml;utf8,\
+      <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"160\" height=\"160\" viewBox=\"0 0 160 160\">\
+        <filter id=\"n\"><feTurbulence type=\"fractalNoise\" baseFrequency=\"0.8\" numOctaves=\"2\" stitchTiles=\"stitch\"/></filter>\
+        <rect width=\"100%\" height=\"100%\" filter=\"url(%23n)\" opacity=\"0.03\"/>\
+      </svg>');
+      background-size:160px 160px; mix-blend-mode:overlay;
+    }
+    /* Glass whiteboard frame + micro-reflections */
+    .whiteboard-frame::before{
+      content:""; position:fixed; inset:32px; border-radius:28px;
+      border:1px solid var(--stroke);
+      box-shadow: 0 0 0 1px rgba(255,255,255,.05) inset,
+                  0 30px 60px rgba(0,0,0,.25) inset;
+      pointer-events:none;
+    }
+    .whiteboard-frame::after{
+      content:""; position:fixed; inset:32px; border-radius:28px;
+      background:
+        linear-gradient(120deg, rgba(255,255,255,.10), transparent 40%),
+        linear-gradient(300deg, rgba(255,255,255,.08), transparent 35%);
+      mask: linear-gradient(#000, transparent 60%);
+      pointer-events:none;
+    }
+    /* Static pane sheen (very subtle) */
+    .sheen{ position:fixed; inset:0; pointer-events:none; opacity:.22;
+      background:linear-gradient( to bottom, rgba(255,255,255,.06), transparent 35%, rgba(255,255,255,.04));
+      mix-blend-mode:screen;
+    }
+    /* Foreground dynamics (only UI moves) */
+    .parallax-y{will-change:transform; transform:translate3d(0,0,0);}
+    .parallax-x{will-change:transform; transform:translate3d(0,0,0);}
+    /* Components */
+    .pill{ border:1px solid var(--stroke); border-radius:999px; padding:.34rem .8rem; transition:all .18s var(--ease); }
+    .pill:hover{ background:var(--chip); }
+    .tab{ border:1px solid var(--stroke-strong); border-radius:999px; padding:.42rem .95rem; transition:all .18s var(--ease); }
+    .tab:hover{ border-color:rgba(255,255,255,.5); transform:translateY(-1px); }
+    .tab.active{ background:white; color:#0f1115; box-shadow:0 6px 24px rgba(0,0,0,.35); }
+    .kpi{ border:1px solid var(--stroke); border-radius:22px; padding:1rem 1.1rem; background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.005)); }
+    .kpi p.title{ color:var(--ink-dim); letter-spacing:.2px; }
+    .kpi p.value{ font-weight:700; font-size:1.6rem; text-shadow:0 1px 0 rgba(255,255,255,.04); }
+    .table th{ border-bottom:1px solid var(--stroke); font-weight:600; padding:.6rem .45rem; white-space:nowrap; color:var(--ink); }
+    .table td{ padding:.55rem .45rem; white-space:nowrap; color:var(--ink); opacity:.92; }
+    .chip{ border:1px solid var(--stroke); border-radius:999px; padding:.32rem .7rem; background:var(--glass); }
+    .ghost{ color:var(--ink-dim); }
+    .brand{ color:var(--brand); }
+  </style>
+</head>
+<body class="h-screen w-screen overflow-auto">
+  <!-- Stationary graphite background + golf image -->
+  <div class="bg-graphite"></div>
+  <div class="noise"></div>
+  <div class="whiteboard-frame"></div>
+  <div class="sheen"></div>
+
+  <!-- Foreground content (moves) -->
+  <div id="ui" class="relative z-10 min-h-[200vh]">
+    <!-- Header -->
+    <header class="sticky top-0 z-20 px-4 py-3 sm:px-6" style="backdrop-filter:none;">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3 parallax-y">
+          <div class="grid h-10 w-10 place-content-center rounded-2xl bg-white text-black shadow-sm">
+            <!-- golf-ball icon -->
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="8"/><path d="M8 10h.01M12 10h.01M16 10h.01M10 14h.01M14 14h.01"/>
+            </svg>
+          </div>
+          <div>
+            <h1 class="font-semibold tracking-wide">Pattaya Golf Cloud</h1>
+            <p class="text-xs ghost">Thailand • Prototype</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 parallax-x">
+          <div id="lang" class="flex gap-1 bg-white/5 border border-white/15 rounded-full p-1">
+            <button class="pill" data-lang="en">EN</button>
+            <button class="pill" data-lang="th">TH</button>
+            <button class="pill" data-lang="ko">KO</button>
+            <button class="pill" data-lang="ja">JA</button>
+          </div>
+          <div id="frameToggle" class="flex gap-1 bg-white/5 border border-white/15 rounded-full p-1">
+            <button class="pill" data-frame="on">Frame</button>
+            <button class="pill" data-frame="off">No Frame</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <section class="px-4 sm:px-6 pt-6">
+      <div class="parallax-x flex flex-wrap items-center gap-2">
+        <button class="tab active" data-tab="overview">Overview</button>
+        <button class="tab" data-tab="tee">Book Tee Time</button>
+        <button class="tab" data-tab="wallet">Wallet (THB)</button>
+        <button class="tab" data-tab="handicap">Handicap</button>
+      </div>
+
+      <!-- KPIs -->
+      <div class="parallax-y grid grid-cols-12 gap-4 mt-4">
+        <div class="kpi col-span-12 sm:col-span-4">
+          <p class="title">Upcoming Rounds</p>
+          <p class="value">2</p>
+        </div>
+        <div class="kpi col-span-12 sm:col-span-4">
+          <p class="title">Wallet</p>
+          <p class="value">฿ 2,450</p>
+        </div>
+        <div class="kpi col-span-12 sm:col-span-4">
+          <p class="title">Handicap Index</p>
+          <p class="value">12.4</p>
+        </div>
+      </div>
+
+      <!-- Course chips -->
+      <div class="parallax-x mt-4 flex flex-wrap gap-2">
+        <span class="chip">Laem Chabang</span>
+        <span class="chip">Siam CC</span>
+        <span class="chip">Phoenix Gold</span>
+        <span class="chip">Burapha</span>
+      </div>
+
+      <!-- Table -->
+      <div class="parallax-y mt-6 overflow-x-auto">
+        <table class="table text-sm w-full">
+          <thead><tr><th>Type</th><th>Amount</th><th>Method</th><th>When</th></tr></thead>
+          <tbody>
+            <tr class="hover:bg-white/[.03]"><td>Top‑Up</td><td>฿ 1,000</td><td>Krungthai</td><td>Today</td></tr>
+            <tr class="hover:bg-white/[.03]"><td>Green Fee (Siam CC)</td><td>฿ 2,200</td><td>VISA</td><td>Sun</td></tr>
+            <tr class="hover:bg-white/[.03]"><td>Caddie Tip</td><td>฿ 200</td><td>Wallet</td><td>Sun</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Spacer to feel motion -->
+      <div class="h-[120vh]"></div>
+    </section>
+  </div>
+
+  <script>
+    // i18n quick swap (keeps THB)
+    const i18n = {
+      en:{overview:'Overview', tee:'Book Tee Time', wallet:'Wallet (THB)', handicap:'Handicap',
+          k1:'Upcoming Rounds', k2:'Wallet', k3:'Handicap Index'},
+      th:{overview:'ภาพรวม', tee:'จองเวลาออกรอบ', wallet:'กระเป๋าเงิน (฿)', handicap:'แฮนดิแคป',
+          k1:'รอบที่จะถึง', k2:'กระเป๋าเงิน', k3:'แฮนดิแคป'},
+      ko:{overview:'개요', tee:'티타임 예약', wallet:'지갑 (฿)', handicap:'핸디캡',
+          k1:'다가오는 라운드', k2:'지갑', k3:'핸디캡 지수'},
+      ja:{overview:'概要', tee:'ティータイム予約', wallet:'ウォレット (฿)', handicap:'ハンディ',
+          k1:'今後のラウンド', k2:'ウォレット', k3:'ハンディ指数'}
+    };
+    const $ = (s,root=document)=>root.querySelector(s);
+    const $$ = (s,root=document)=>[...root.querySelectorAll(s)];
+    // language switching
+    $$('#lang [data-lang]').forEach(b=> b.addEventListener('click', ()=>{
+      const lang = b.getAttribute('data-lang');
+      const t = k => (i18n[lang] && i18n[lang][k]) || i18n.en[k] || k;
+      const tabs = $$('#tabs .tab'); // if present
+      const topTabs = $$('.tab'); // header tabs in this demo
+      // top tabs
+      if(topTabs.length>=4){ topTabs[0].textContent=t('overview'); topTabs[1].textContent=t('tee'); topTabs[2].textContent=t('wallet'); topTabs[3].textContent=t('handicap'); }
+      // KPIs
+      const titles = $$('.kpi .title');
+      if(titles.length>=3){ titles[0].textContent=t('k1'); titles[1].textContent=t('k2'); titles[2].textContent=t('k3'); }
+    }));
+    // frame toggle
+    $$('#frameToggle [data-frame]').forEach(b=> b.addEventListener('click', ()=>{
+      const on = b.getAttribute('data-frame')==='on';
+      document.body.classList.toggle('no-frame', !on);
+      $('.whiteboard-frame').style.display = on? 'block':'none';
+      $('.sheen').style.display = on? 'block':'none';
+    }));
+
+    // parallax (foreground only)
+    const clamp=(n,min,max)=>Math.min(max,Math.max(min,n));
+    window.addEventListener('scroll', ()=>{
+      const y = window.scrollY || 0;
+      $$('.parallax-y').forEach(el=>{ el.style.transform = `translate3d(0, ${clamp(y*.06,-30,60)}px, 0)`; });
+      $$('.parallax-x').forEach(el=>{ el.style.transform = `translate3d(${clamp(Math.sin(y*.004)*20,-24,24)}px,0,0)`; });
+    }, {passive:true});
+  </script>
+</body>
+</html>

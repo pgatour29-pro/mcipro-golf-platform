@@ -78,6 +78,8 @@ function handleHealth(origin) {
         headers: {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, X-API-Key',
         },
     });
 }
@@ -104,6 +106,8 @@ async function handleSaveUserData(userPath, request, origin, env) {
             headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : '*',
+                'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, X-API-Key',
             },
         });
 
@@ -117,6 +121,8 @@ async function handleSaveUserData(userPath, request, origin, env) {
             headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : '*',
+                'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, X-API-Key',
             },
         });
     }
@@ -161,6 +167,8 @@ async function handleGetUserData(userPath, origin, env) {
             headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : '*',
+                'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, X-API-Key',
             },
         });
     }
@@ -190,6 +198,8 @@ async function handleSaveGlobalAlerts(request, origin, env) {
             headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : '*',
+                'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, X-API-Key',
             },
         });
 
@@ -203,6 +213,8 @@ async function handleSaveGlobalAlerts(request, origin, env) {
             headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : '*',
+                'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, X-API-Key',
             },
         });
     }
@@ -249,6 +261,8 @@ async function handleGetGlobalAlerts(origin, env) {
             headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : '*',
+                'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, X-API-Key',
             },
         });
     }

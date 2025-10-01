@@ -2432,12 +2432,21 @@
                     if (!lastLocalUpdate || cloudTimestamp > lastLocalUpdate) {
                         console.log('[ProductionCloudSync] Applying cloud update to local data');
 
-                        // Update local storage
+                        // Smart merge bookings (don't overwrite, merge by ID)
                         if (cloudData.bookings && cloudData.bookings.length > 0) {
-                            localStorage.setItem('mcipro_bookings', JSON.stringify(cloudData.bookings));
+                            const localBookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]');
+                            const existingIds = new Set(localBookings.map(b => b.id));
+
+                            // Add only new bookings from cloud that don't exist locally
+                            const newBookings = cloudData.bookings.filter(booking => !existingIds.has(booking.id));
+                            const mergedBookings = [...localBookings, ...newBookings];
+
+                            console.log(`[ProductionCloudSync] Booking merge: Local: ${localBookings.length}, Cloud: ${cloudData.bookings.length}, New: ${newBookings.length}, Total: ${mergedBookings.length}`);
+
+                            localStorage.setItem('mcipro_bookings', JSON.stringify(mergedBookings));
                             if (typeof BookingManager !== 'undefined') {
-                                BookingManager.bookings = cloudData.bookings;
-                                console.log('[ProductionCloudSync] Updated bookings:', cloudData.bookings.length);
+                                BookingManager.bookings = mergedBookings;
+                                console.log('[ProductionCloudSync] Merged bookings successfully - UI will refresh');
                             }
                         }
 
@@ -2507,13 +2516,21 @@
                             isNewer: cloudData.client_timestamp && (!lastLocalUpdate || cloudData.client_timestamp > lastLocalUpdate)
                         });
 
-                        // Only update if cloud data is newer OR if it has more data than local
+                        // Smart sync decision: newer timestamp OR new booking IDs
                         const localBookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]');
                         const localAlerts = JSON.parse(localStorage.getItem('emergency_alerts') || '[]');
-                        const hasMoreData = (cloudData.bookings?.length || 0) > localBookings.length ||
-                                          (cloudData.emergency_alerts?.length || 0) > localAlerts.length;
 
-                        if ((cloudData.client_timestamp && (!lastLocalUpdate || cloudData.client_timestamp > lastLocalUpdate)) || hasMoreData) {
+                        // Check for new booking IDs from cloud
+                        const localBookingIds = new Set(localBookings.map(b => b.id));
+                        const hasNewBookings = cloudData.bookings?.some(b => !localBookingIds.has(b.id)) || false;
+
+                        const hasMoreAlerts = (cloudData.emergency_alerts?.length || 0) > localAlerts.length;
+                        const shouldSync = (cloudData.client_timestamp && (!lastLocalUpdate || cloudData.client_timestamp > lastLocalUpdate)) ||
+                                         hasNewBookings || hasMoreAlerts;
+
+                        console.log(`[ProductionCloudSync] Sync decision: timestamp newer: ${cloudData.client_timestamp > lastLocalUpdate}, new bookings: ${hasNewBookings}, more alerts: ${hasMoreAlerts}, will sync: ${shouldSync}`);
+
+                        if (shouldSync) {
                             console.log('[ProductionCloudSync] Found newer/better cloud data, updating...');
                             this.handleCloudUpdate(cloudData);
                             this.showSyncStatus('⚡ Cloud Update', 'info');

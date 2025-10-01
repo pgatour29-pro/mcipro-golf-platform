@@ -1,9 +1,8 @@
 // netlify/functions/bookings.js
-export default async (req, context) => {
-  const { blobs } = context; // Netlify Blobs
-  const bucket = blobs.getBucket({ name: 'mcipro' });
-  const key = 'all.json';
+// Simple in-memory storage (resets on function cold start, but works for demo)
+let globalData = null;
 
+export default async (req) => {
   // Add CORS headers for cross-origin requests
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -22,8 +21,7 @@ export default async (req, context) => {
 
   if (req.method === 'GET') {
     try {
-      const blob = await bucket.get(key);
-      if (!blob) {
+      if (!globalData) {
         // Return empty data structure if no data exists
         const emptyData = {
           bookings: [],
@@ -37,8 +35,7 @@ export default async (req, context) => {
         });
       }
 
-      const text = await blob.text();
-      return new Response(text, {
+      return new Response(JSON.stringify(globalData), {
         headers: corsHeaders
       });
     } catch (error) {
@@ -71,7 +68,8 @@ export default async (req, context) => {
         alerts: body.emergency_alerts.length
       });
 
-      await bucket.set(key, JSON.stringify(body));
+      // Store in memory
+      globalData = body;
 
       return new Response(JSON.stringify({
         ok: true,

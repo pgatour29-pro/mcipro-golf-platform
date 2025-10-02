@@ -22202,5 +22202,160 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     })();
     </script>
 
+    <script>
+(function(){
+  const USERS_KEY = 'mcipro_users';
+  const CURRENT_USER_KEY = 'mcipro_current_user';
+
+  const Auth = {
+    _users: null,
+
+    async loadUsers() {
+      if (this._users) return this._users;
+
+      // 1) read local
+      let local = [];
+      try { local = JSON.parse(localStorage.getItem(USERS_KEY) || '[]'); } catch {}
+
+      // 2) read cloud (best-effort; won't throw the page)
+      let cloud = [];
+      try {
+        if (window.SimpleCloudSync) {
+          const server = (typeof SimpleCloudSync.loadFromCloud === 'function')
+            ? await SimpleCloudSync.loadFromCloud()
+            : null;
+
+          if (server) {
+            if (Array.isArray(server.users)) cloud = server.users;
+            else if (server.users && typeof server.users === 'object') cloud = Object.values(server.users);
+          }
+        }
+      } catch (e) {
+        console.warn('[Auth] cloud users load failed:', e);
+      }
+
+      // 3) normalize + merge by emailLower
+      const byEmail = new Map();
+      const add = (u) => {
+        if (!u) return;
+        const emailLower = (u.email || u.username || '').trim().toLowerCase();
+        if (!emailLower) return;
+        const prev = byEmail.get(emailLower) || {};
+        byEmail.set(emailLower, { ...prev, ...u, email: u.email || u.username, emailLower });
+      };
+      [...local, ...cloud].forEach(add);
+
+      this._users = [...byEmail.values()];
+
+      // 4) write back local for consistency
+      try { localStorage.setItem(USERS_KEY, JSON.stringify(this._users)); } catch {}
+      return this._users;
+    },
+
+    async saveUsers() {
+      try { localStorage.setItem(USERS_KEY, JSON.stringify(this._users || [])); } catch {}
+      // best-effort cloud save
+      try {
+        if (window.SimpleCloudSync && typeof SimpleCloudSync.saveToCloud === 'function') {
+          await SimpleCloudSync.saveToCloud({ users: this._users, updatedAt: Date.now() });
+        }
+      } catch (e) { console.warn('[Auth] cloud save failed:', e); }
+    },
+
+    // simple stable hash (emailLower:password) for compat when some users have passwordHash
+    hash(pw, emailLower) {
+      const s = (emailLower||'') + ':' + (pw||'');
+      let h = 0; for (let i=0;i<s.length;i++){ h = (h*31 + s.charCodeAt(i))|0; }
+      return 'h' + (h>>>0).toString(16);
+    },
+
+    passwordsMatch(user, inputPw) {
+      const emailLower = (user.emailLower || user.email || user.username || '').toLowerCase();
+      if (user.passwordHash) return user.passwordHash === this.hash(inputPw, emailLower);
+      if (user.password)     return user.password === inputPw; // legacy plaintext support
+      return false;
+    },
+
+    async login(emailOrRole, pw) {
+      // Support both login(email, pw) and login(role) for fallback auth
+      if (!pw && typeof emailOrRole === 'string' && ['golfer','caddie','manager','proshop','maintenance'].includes(emailOrRole)) {
+        // This is fallback login with role only
+        if (window.FallbackAuthentication && typeof FallbackAuthentication.login === 'function') {
+          return FallbackAuthentication.login(emailOrRole);
+        }
+        throw new Error('FALLBACK_AUTH_NOT_AVAILABLE');
+      }
+
+      // Normal email/password login
+      const email = (emailOrRole || document.getElementById('loginEmail')?.value || '').trim();
+      const password = (pw || document.getElementById('loginPassword')?.value || '').trim();
+
+      if (!email || !password) throw new Error('MISSING_CREDENTIALS');
+
+      const emailLower = email.toLowerCase();
+      const users = await this.loadUsers();
+
+      const u = users.find(x => (x.emailLower || (x.email||x.username||'').toLowerCase()) === emailLower);
+      if (!u) throw new Error('NO_SUCH_USER');
+
+      if (!this.passwordsMatch(u, password)) throw new Error('BAD_PASSWORD');
+
+      const current = {
+        id: u.id || emailLower,
+        name: u.name || u.fullName || email,
+        role: u.role || 'golfer',
+        email
+      };
+      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(current));
+      window.AppState = window.AppState || {};
+      window.AppState.user = current;
+
+      // Navigate
+      const dashboardMap = {
+        'golfer': 'golferDashboard',
+        'caddie': 'caddieDashboard',
+        'manager': 'managerDashboard',
+        'proshop': 'proshopDashboard',
+        'maintenance': 'maintenanceDashboard'
+      };
+      const to = dashboardMap[current.role] || 'golferDashboard';
+      if (window.ScreenManager?.showScreen) ScreenManager.showScreen(to);
+      else location.hash = '#' + to;
+
+      return true;
+    },
+
+    async create(email, pw, role='golfer', name='') {
+      email = (email || document.getElementById('signupEmail')?.value || '').trim();
+      pw    = (pw    || document.getElementById('signupPassword')?.value || '').trim();
+      role  = (role  || document.getElementById('signupRole')?.value || 'golfer').trim();
+      name  = name || document.getElementById('signupName')?.value || '';
+
+      const emailLower = email.toLowerCase();
+      const users = await this.loadUsers();
+
+      if (users.some(u => (u.emailLower||'') === emailLower)) throw new Error('EXISTS');
+
+      const user = {
+        id: emailLower,
+        email, emailLower,
+        role, name,
+        passwordHash: this.hash(pw, emailLower)
+      };
+      users.push(user);
+      this._users = users;
+      await this.saveUsers();
+
+      return this.login(email, pw);
+    }
+  };
+
+  // expose safe globals used by the page's buttons
+  window.Auth = Auth;
+  window.login = (emailOrRole, pw) => Auth.login(emailOrRole, pw);
+  window.createAccount = () => Auth.create();
+})();
+    </script>
+
 </body>
 </html>

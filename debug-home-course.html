@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Home Course Issue</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .debug-box { padding: 15px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
+        .success { background-color: #d4edda; }
+        .error { background-color: #f8d7da; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; }
+        button { padding: 10px 15px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Home Course Debug Tool</h1>
+    <p>Open this on the main app page, then open the profile modal and run these tests:</p>
+
+    <div class="debug-box">
+        <h3>Step 1: Test Element Detection</h3>
+        <button onclick="testElementDetection()">Test Element Detection</button>
+        <pre id="elementResult">Click button to test</pre>
+    </div>
+
+    <div class="debug-box">
+        <h3>Step 2: Test Value Reading</h3>
+        <p>First select a home course in the profile modal, then:</p>
+        <button onclick="testValueReading()">Test Value Reading</button>
+        <pre id="valueResult">Click button to test</pre>
+    </div>
+
+    <div class="debug-box">
+        <h3>Step 3: Test Form Reader Function</h3>
+        <button onclick="testFormReader()">Test getHomeClubFromForm()</button>
+        <pre id="formReaderResult">Click button to test</pre>
+    </div>
+
+    <div class="debug-box">
+        <h3>Step 4: Manual Save Test</h3>
+        <button onclick="manualSaveTest()">Manual Save with Debug</button>
+        <pre id="saveResult">Click button to test</pre>
+    </div>
+
+    <script>
+        function testElementDetection() {
+            const selectors = ['#homeClub', '#homeCourse', '[name="homeClub"]', '[name="homeCourse"]'];
+            let result = 'Element Detection Results:\n\n';
+
+            selectors.forEach(sel => {
+                const el = document.querySelector(sel);
+                result += `${sel}: ${el ? 'FOUND' : 'NOT FOUND'}\n`;
+                if (el) {
+                    result += `  - ID: ${el.id}\n`;
+                    result += `  - Name: ${el.name}\n`;
+                    result += `  - Options: ${el.options ? el.options.length : 'none'}\n`;
+                    result += `  - Selected Index: ${el.selectedIndex}\n`;
+                }
+            });
+
+            document.getElementById('elementResult').textContent = result;
+        }
+
+        function testValueReading() {
+            const el = document.querySelector('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]');
+            let result = 'Value Reading Results:\n\n';
+
+            if (!el) {
+                result += 'ERROR: No element found!\n';
+            } else {
+                result += `Element: ${el.id} (${el.tagName})\n`;
+                result += `Raw value: "${el.value}"\n`;
+                result += `Selected index: ${el.selectedIndex}\n`;
+
+                if (el.selectedOptions && el.selectedOptions[0]) {
+                    const opt = el.selectedOptions[0];
+                    result += `Selected option:\n`;
+                    result += `  - value: "${opt.value}"\n`;
+                    result += `  - text: "${opt.textContent}"\n`;
+                    result += `  - data-course-id: "${opt.dataset?.courseId || 'none'}"\n`;
+                    result += `  - data-value: "${opt.dataset?.value || 'none'}"\n`;
+                } else {
+                    result += 'No selected option found\n';
+                }
+            }
+
+            document.getElementById('valueResult').textContent = result;
+        }
+
+        function testFormReader() {
+            let result = 'Form Reader Test:\n\n';
+
+            try {
+                // Test if the function exists
+                if (typeof getHomeClubFromForm === 'function') {
+                    const value = getHomeClubFromForm();
+                    result += `getHomeClubFromForm() returned: "${value}"\n`;
+                } else {
+                    result += 'ERROR: getHomeClubFromForm function not found!\n';
+                    result += 'Trying manual implementation...\n';
+
+                    const el = document.querySelector('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]');
+                    if (el) {
+                        let v = (el.value || '').trim();
+                        result += `Manual read - raw value: "${v}"\n`;
+
+                        if (!v && el.selectedOptions && el.selectedOptions[0]) {
+                            const opt = el.selectedOptions[0];
+                            v = (opt.value || opt.textContent || '').trim();
+                            result += `Manual read - option fallback: "${v}"\n`;
+                        }
+
+                        result += `Manual final result: "${v}"\n`;
+                    } else {
+                        result += 'ERROR: No element found for manual test!\n';
+                    }
+                }
+            } catch (error) {
+                result += `ERROR: ${error.message}\n`;
+            }
+
+            document.getElementById('formReaderResult').textContent = result;
+        }
+
+        function manualSaveTest() {
+            let result = 'Manual Save Test:\n\n';
+
+            try {
+                const el = document.querySelector('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]');
+                if (!el) {
+                    result += 'ERROR: No home course element found!\n';
+                } else {
+                    const homeClub = (el.value || '').trim();
+                    result += `Read homeClub value: "${homeClub}"\n`;
+
+                    // Create test profile
+                    const profile = {
+                        userId: 'test-user',
+                        homeClub: homeClub,
+                        updatedAt: Date.now()
+                    };
+
+                    // Save to localStorage
+                    localStorage.setItem('mcipro_user_profile', JSON.stringify(profile));
+                    result += 'Saved to localStorage\n';
+
+                    // Verify save
+                    const saved = JSON.parse(localStorage.getItem('mcipro_user_profile') || 'null');
+                    result += `Verification - saved homeClub: "${saved?.homeClub}"\n`;
+
+                    if (saved?.homeClub) {
+                        result += '✅ SUCCESS: Home course was saved!\n';
+                    } else {
+                        result += '❌ FAILED: Home course was not saved correctly\n';
+                    }
+                }
+            } catch (error) {
+                result += `ERROR: ${error.message}\n`;
+            }
+
+            document.getElementById('saveResult').textContent = result;
+        }
+    </script>
+
+    <div class="debug-box">
+        <h3>Instructions:</h3>
+        <ol>
+            <li>Open this page in a new tab alongside the main app</li>
+            <li>On main app: open profile modal and select a home course</li>
+            <li>Run the tests above in sequence</li>
+            <li>If any test fails, copy the error message</li>
+        </ol>
+    </div>
+
+</body>
+</html>

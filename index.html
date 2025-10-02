@@ -7277,7 +7277,10 @@
 
             applyHomeClubToForm(slug) {
                 if (!slug) return;
-                const el = document.querySelector('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]');
+
+                // Target the profile modal specifically
+                const el = document.querySelector('#profileModal #homeClub') ||
+                          document.querySelector('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]');
                 if (!el) return;
 
                 const opts = Array.from(el.options || []);
@@ -7286,9 +7289,9 @@
                 const pick = byValue || byData;
                 if (pick) {
                     el.value = pick.value; // select it
-                    console.log('[ProfileSystem] Applied homeClub to form:', slug, '-> option value:', pick.value);
+                    console.log('[ProfileSystem] Applied homeClub to form:', slug, '-> option value:', pick.value, 'in modal:', !!el.closest('#profileModal'));
                 } else {
-                    console.log('[ProfileSystem] Could not find matching option for homeClub:', slug);
+                    console.log('[ProfileSystem] Could not find matching option for homeClub:', slug, 'in element:', el.id);
                 }
             },
 
@@ -7888,7 +7891,10 @@
                         const handicap = document.getElementById('handicap')?.value?.trim() || '';
                         const memberSince = document.getElementById('memberSince')?.value || '';
                         function getHomeClubFromForm() {
-                            const el = document.querySelector('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]');
+                            // Look specifically in the profile modal first, then fallback to any homeClub
+                            const el = document.querySelector('#profileModal #homeClub') ||
+                                      document.querySelector('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]');
+
                             if (!el) {
                                 console.log('[HomeClub Debug] No element found');
                                 return '';
@@ -7896,13 +7902,19 @@
 
                             // Get the selected value directly
                             let v = (el.value || '').trim();
-                            console.log('[HomeClub Debug] Element found:', el.id, 'Raw value:', v, 'Selected index:', el.selectedIndex);
+                            console.log('[HomeClub Debug] Element found:', el.id, 'Raw value:', v, 'Selected index:', el.selectedIndex, 'Parent:', el.closest('#profileModal') ? 'Profile Modal' : 'Other');
 
-                            // If empty, try the selected option's value/text
-                            if (!v && el.selectedOptions && el.selectedOptions[0]) {
+                            // If empty or placeholder, try the selected option's value
+                            if ((!v || v === '' || el.selectedIndex === 0) && el.selectedOptions && el.selectedOptions[0] && el.selectedIndex > 0) {
                                 const opt = el.selectedOptions[0];
-                                v = (opt.value || opt.textContent || '').trim();
-                                console.log('[HomeClub Debug] Using option fallback:', v);
+                                v = (opt.value || '').trim();
+                                console.log('[HomeClub Debug] Using option value:', v);
+                            }
+
+                            // Reject placeholder values
+                            if (v === '' || v.includes('Select') || el.selectedIndex === 0) {
+                                console.log('[HomeClub Debug] Rejecting placeholder value');
+                                return '';
                             }
 
                             // Log final result

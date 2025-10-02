@@ -2141,7 +2141,7 @@
             },
 
             navigation: {
-                currentScreen: 'login',
+                currentScreen: 'loginScreen',
                 lastScreen: null,
                 activeTab: '',
                 breadcrumb: []
@@ -2620,6 +2620,12 @@
                     ProfileSystem.updateUIWithProfile();
                 }
 
+                // Refresh ScheduleSystem to reflect merged schedule
+                if (typeof ScheduleSystem !== 'undefined' && ScheduleSystem.loadFromStorage) {
+                    ScheduleSystem.loadFromStorage();
+                    ScheduleSystem.updateScheduleTab();
+                }
+
                 console.log('[SimpleCloudSync] Local storage updated from server:', {
                     bookings: serverData.bookings?.length || 0,
                     profiles: serverData.user_profiles?.length || 0,
@@ -2910,7 +2916,7 @@
 
             static initializeScreen(screenId, data) {
                 const initMap = {
-                    'login': () => this.initLoginScreen(),
+                    'loginScreen': () => this.initLoginScreen(),
                     'otpScreen': () => this.initOTPScreen(),
                     'golferDashboard': () => this.initGolferDashboard(),
                     'caddieDashboard': () => this.initCaddyDashboard(),
@@ -3268,7 +3274,7 @@
                 AppState.session.authMethod = null;
                 AppState.session.loginTime = null;
 
-                ScreenManager.showScreen('login');
+                ScreenManager.showScreen('loginScreen');
                 NotificationManager.show('Logged out successfully', 'info');
             }
         }
@@ -3974,7 +3980,7 @@
                 } catch (e) {
                     console.log('Fallback alert sound failed');
                 }
-            }
+            },
 
             static showSafetyInfo() {
                 this.closeEmergencyModal();
@@ -4541,7 +4547,7 @@
                 ScheduleSystem.initializeSchedule();
 
                 // Initialize screen management
-                ScreenManager.showScreen('login');
+                ScreenManager.showScreen('loginScreen');
 
                 // Initialize session tracking
                 AppState.session.lastActivity = new Date().toISOString();
@@ -4843,7 +4849,7 @@
         }
 
         function goBackToLogin() {
-            showScreen('login');
+            showScreen('loginScreen');
         }
 
         // Profile Management Functions
@@ -15863,7 +15869,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
 <body>
     <!-- Login Screen -->
-    <div id="login" class="screen active">
+    <div id="loginScreen" class="screen active">
         <div class="min-h-screen hero-gradient flex items-center justify-center p-6">
             <div class="glass-card p-10 w-full max-w-lg">
                 <div class="text-center mb-10">
@@ -15999,7 +16005,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 </div>
 
                 <div class="mt-10 text-center">
-                    <button onclick="showScreen('login')" class="text-primary-600 hover:text-primary-700 font-medium text-sm transition-colors">
+                    <button onclick="showScreen('loginScreen')" class="text-primary-600 hover:text-primary-700 font-medium text-sm transition-colors">
                         <span class="material-symbols-outlined text-sm mr-1">arrow_back</span>
                         Back to Login Options
                     </button>
@@ -21403,6 +21409,12 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
         // OpenStreetMap Initialization with Leaflet
         function initOpenStreetMap() {
+            // Guard against undefined GPSNavigationSystem
+            if (!window.GPSNavigationSystem || !GPSNavigationSystem.courseData) {
+                console.warn('GPSNavigationSystem not available, skipping map initialization');
+                return;
+            }
+
             // Initialize the map
             googleMap = L.map('courseMap').setView([GPSNavigationSystem.courseData.center.lat, GPSNavigationSystem.courseData.center.lng], 16);
 

@@ -3920,66 +3920,19 @@
                 return overlay;
             }
 
-            // EMERGENCY SIREN SYSTEM
+            // EMERGENCY SIREN SYSTEM - delegated to global helpers
             static playEmergencySiren() {
-                try {
-                    // Create audio context if needed
-                    const AudioContext = window.AudioContext || window.webkitAudioContext;
-                    if (!AudioContext) {
-                        console.log('Web Audio API not supported - using alert sound fallback');
-                        this.playFallbackAlert();
-                        return;
-                    }
-
-                    const audioContext = new AudioContext();
-
-                    // Create emergency siren sound (alternating high-low tones)
-                    const oscillator1 = audioContext.createOscillator();
-                    const oscillator2 = audioContext.createOscillator();
-                    const gainNode = audioContext.createGain();
-
-                    // Connect oscillators to gain and output
-                    oscillator1.connect(gainNode);
-                    oscillator2.connect(gainNode);
-                    gainNode.connect(audioContext.destination);
-
-                    // Configure emergency siren frequencies
-                    oscillator1.frequency.setValueAtTime(800, audioContext.currentTime);
-                    oscillator2.frequency.setValueAtTime(1000, audioContext.currentTime);
-
-                    // Create volume envelope for dramatic effect
-                    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-                    gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.1);
-
-                    // Alternating siren pattern
-                    for (let i = 0; i < 6; i++) {
-                        const time = audioContext.currentTime + i * 0.5;
-                        oscillator1.frequency.setValueAtTime(800 + (i % 2) * 400, time);
-                        oscillator2.frequency.setValueAtTime(1000 + (i % 2) * 200, time);
-                    }
-
-                    // Start and stop oscillators
-                    oscillator1.start(audioContext.currentTime);
-                    oscillator2.start(audioContext.currentTime);
-                    oscillator1.stop(audioContext.currentTime + 3);
-                    oscillator2.stop(audioContext.currentTime + 3);
-
-                    console.log('Emergency siren played');
-
-                } catch (error) {
-                    console.log('Emergency siren failed, using fallback:', error);
-                    this.playFallbackAlert();
+                if (typeof window.playEmergencySiren === 'function') {
+                    return window.playEmergencySiren();
                 }
+                return true;
             }
 
             static playFallbackAlert() {
-                // Simple beep fallback
-                try {
-                    const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBzaH1u/PgC0GJXrG7+OZRA0PVqzn6KhVFAhEnufzvyoiCjaG1e7Ufz8OJnzG7+GVQ'" );
-                    audio.play();
-                } catch (e) {
-                    console.log('Fallback alert sound failed');
+                if (typeof window.playFallbackAlert === 'function') {
+                    return window.playFallbackAlert();
                 }
+                return true;
             },
 
             static showSafetyInfo() {
@@ -15864,11 +15817,52 @@ Total Rounds: ${ningCaddy.totalRounds}`;
             }, 500);
         });
 
-        // Expose login function globally for inline onclick handlers
-        window.login = function(role) {
-            if (typeof FallbackAuthentication !== 'undefined' && FallbackAuthentication.login) {
-                FallbackAuthentication.login(role);
+        // BEGIN: emergency sound helpers
+        window.playEmergencySiren = async function () {
+            try {
+                const audio = new Audio('/assets/sounds/emergency-siren.mp3');
+                await audio.play();
+                return true;
+            } catch (err) {
+                console.warn('Emergency siren failed; using fallback', err);
+                return window.playFallbackAlert();
             }
+        };
+
+        window.playFallbackAlert = function () {
+            try {
+                const Ctx = window.AudioContext || window.webkitAudioContext;
+                const ctx = new Ctx();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = 880;
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                setTimeout(() => {
+                    try { osc.stop(); ctx.close(); } catch {}
+                }, 600);
+                return true;
+            } catch {
+                return false;
+            }
+        };
+        // END: emergency sound helpers
+
+        // Expose login function globally for inline onclick handlers
+        window.login = async function () {
+            if (window.Authentication?.login) return Authentication.login();
+            if (window.Auth?.login) return Auth.login();
+            if (window.FallbackAuthentication?.login) return FallbackAuthentication.login(...arguments);
+            if (window.LineAuthentication?.login) return LineAuthentication.login();
+            // Fallback: just route to golfer dashboard for demos/dev
+            if (window.ScreenManager?.navigateTo) {
+                ScreenManager.navigateTo('golferDashboard');
+                return true;
+            }
+            console.warn('No login handler found.');
+            return false;
         };
 
     </script>

@@ -2162,9 +2162,60 @@
 
         // ===== CORE SYSTEM FUNCTIONS =====
 
+        // Helper functions for sync operations
+        function toArray(x) {
+            if (Array.isArray(x)) return x;
+            if (x?.items) return x.items;                      // support {items:[...]}
+            if (x && typeof x === 'object') return Object.values(x); // legacy object map
+            return [];
+        }
+
+        function upsertById(list, item, key='id') {
+            const a = [...(list || [])];
+            const i = a.findIndex(x => x && x[key] === item[key]);
+            if (i >= 0) a[i] = { ...a[i], ...item }; else a.push(item);
+            return a;
+        }
+
+        // Generate stable, deterministic booking ID to prevent duplicates
+        function newBookingId(booking) {
+            // deterministic enough to survive retries; include seconds to avoid natural collisions
+            const t = booking.teeTime || booking.date + 'T' + (booking.time || '08:00') + ':00Z';
+            const course = booking.courseId || booking.course || 'unknown';
+            const user = window.Auth?.currentUserId || booking.golferId || 'anon';
+            return `bk_${course}_${t}_${user}`.replace(/[^a-zA-Z0-9_]/g, '_');
+        }
+
+        // Guard against double-tap and duplicate handlers
+        let creatingBooking = false;
+
+        // Add schedule event once for booking (prevents duplicates)
+        function addScheduleEventOnceForBooking(booking) {
+            let schedule = toArray(JSON.parse(localStorage.getItem('mcipro_schedule') || '[]'));
+            const eventId = `sch_${booking.id}`;
+            const evt = {
+                id: eventId,
+                title: `Round at ${booking.course || booking.courseName}`,
+                date: booking.date,
+                time: booking.time,
+                type: 'golf',
+                description: booking.eventName || 'Golf round',
+                bookingId: booking.id,
+                updatedAt: Date.now(),
+                createdAt: Date.now()
+            };
+            schedule = upsertById(schedule, evt, 'id'); // ← prevents duplicate
+            localStorage.setItem('mcipro_schedule', JSON.stringify(schedule));
+        }
+
         // Production Cloud Sync System - Google Cloud Firestore + Cloudflare
         class SimpleCloudSync {
             static isInitialized = false;
+            static pushTimer = null;
+            static DEBOUNCE_DELAY = 800; // 800ms debounce to reduce conflicts
+            static FUNCTION_URL = 'https://mcipro-golf-platform.netlify.app/.netlify/functions/bookings';
+            static API_KEY = 'mcipro-site-key-2024';
+            static MAX_RETRIES = 5;
 
             static async initialize() {
                 console.log('[SimpleCloudSync] Initializing Netlify Blobs sync...');
@@ -2188,13 +2239,17 @@
 
             static async loadFromCloud() {
                 try {
-                    const res = await fetch('/.netlify/functions/bookings', { method: 'GET' });
+                    const res = await fetch('/.netlify/functions/bookings', {
+                        method: 'GET',
+                        headers: { 'Authorization': 'Bearer mcipro-site-key-2024' }
+                    });
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
                     const cloudData = await res.json();
                     console.log('[SimpleCloudSync] Loaded from cloud:', {
                         bookings: cloudData.bookings?.length || 0,
                         profiles: cloudData.user_profiles?.length || 0,
+                        schedule: (cloudData.schedule_items || cloudData.schedule || []).length,
                         updatedAt: cloudData.updatedAt
                     });
 
@@ -2216,10 +2271,33 @@
 
                         if (cloudData.user_profiles) {
                             localStorage.setItem('mcipro_user_profiles', JSON.stringify(cloudData.user_profiles));
+
+                            // Find current user's profile and update individual profile storage
+                            const currentUserId = (window.Auth?.currentUserId) || AppState?.currentUser?.name || 'anon';
+                            const userProfile = cloudData.user_profiles.find(p =>
+                                p.userId === currentUserId ||
+                                p.name === currentUserId ||
+                                (AppState?.currentUser?.name && p.name === AppState.currentUser.name)
+                            );
+
+                            if (userProfile) {
+                                localStorage.setItem('mcipro_user_profile', JSON.stringify(userProfile));
+                                console.log('[SimpleCloudSync] Updated individual profile with homeClub:', userProfile.golfInfo?.homeClub || userProfile.homeClub);
+
+                                // Pass profile to UI updater
+                                try {
+                                    if (typeof ProfileSystem !== 'undefined' && ProfileSystem.updateUIWithProfile) {
+                                        ProfileSystem.updateUIWithProfile(userProfile);
+                                    }
+                                } catch (e) {
+                                    console.warn('[SimpleCloudSync] ProfileSystem updateUI failed:', e);
+                                }
+                            }
                         }
 
                         if (cloudData.schedule_items) {
-                            localStorage.setItem('mcipro_schedule', JSON.stringify(cloudData.schedule_items));
+                            const scheduleFromServer = toArray(cloudData.schedule_items || cloudData.schedule || []);
+                            localStorage.setItem('mcipro_schedule', JSON.stringify(scheduleFromServer));
                         }
 
                         if (cloudData.emergency_alerts) {
@@ -2243,39 +2321,147 @@
                 }
             }
 
-            static async saveToCloud() {
+            static ensureStableIds(data) {
+                // Ensure all items have stable IDs and updatedAt timestamps
+
+                // Fix bookings
+                data.bookings = (data.bookings || []).map(booking => ({
+                    ...booking,
+                    id: booking.id || `booking_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    updatedAt: booking.updatedAt || Date.now()
+                }));
+
+                // Fix profiles with stable userId instead of name
+                data.user_profiles = (data.user_profiles || []).map(profile => ({
+                    ...profile,
+                    userId: profile.userId || `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    updatedAt: profile.updatedAt || Date.now()
+                }));
+
+                // Fix schedule items - ensure it's an array
+                let scheduleItems = data.schedule_items || [];
+                if (typeof scheduleItems === 'object' && !Array.isArray(scheduleItems)) {
+                    // Convert object to array if needed
+                    if (scheduleItems.events) {
+                        scheduleItems = scheduleItems.events || [];
+                    } else {
+                        scheduleItems = [];
+                    }
+                }
+                data.schedule_items = scheduleItems.map(item => ({
+                    ...item,
+                    id: item.id || `schedule_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    updatedAt: item.updatedAt || Date.now()
+                }));
+
+                // Fix emergency alerts
+                data.emergency_alerts = (data.emergency_alerts || []).map(alert => ({
+                    ...alert,
+                    id: alert.id || `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    updatedAt: alert.updatedAt || Date.now()
+                }));
+
+                return data;
+            }
+
+            static async saveToCloud(retryCount = 0) {
+                const MAX_RETRIES = 3;
+                const BASE_DELAY = 500; // 500ms base delay
+
                 try {
+                    // Get current server version for conflict detection
+                    const cloudRes = await fetch('/.netlify/functions/bookings', {
+                        method: 'GET',
+                        headers: { 'Authorization': 'Bearer mcipro-site-key-2024' }
+                    });
+                    const currentCloudData = cloudRes.ok ? await cloudRes.json() : { version: 0 };
+
+                    // Get user profiles from both storage formats
+                    let userProfiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+                    const singleProfile = JSON.parse(localStorage.getItem('mcipro_user_profile') || 'null');
+
+                    // If we have a single profile but no profiles array, use the single profile
+                    if (singleProfile && userProfiles.length === 0) {
+                        userProfiles = [singleProfile];
+                    }
+
+                    // Read from localStorage and coerce to array using helper
+                    let schedule = JSON.parse(localStorage.getItem('mcipro_schedule') || '[]');
+                    schedule = toArray(schedule);
+
+                    // Ensure stable ID and updatedAt for schedule items
+                    const scheduleItems = schedule.map(evt => {
+                        if (!evt.id) evt.id = (crypto.randomUUID?.() || 'sch_' + Date.now() + '_' + Math.random().toString(36).slice(2));
+                        if (!evt.updatedAt) evt.updatedAt = Date.now();
+                        return evt;
+                    });
+
                     const localData = {
-                        bookings: JSON.parse(localStorage.getItem('mcipro_bookings') || '[]'),
-                        user_profiles: JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]'),
-                        schedule_items: JSON.parse(localStorage.getItem('mcipro_schedule') || '[]'),
-                        emergency_alerts: JSON.parse(localStorage.getItem('emergency_alerts') || '[]'),
-                        updatedAt: Date.now(),
-                        clientTimestamp: new Date().toISOString()
+                        bookings: toArray(JSON.parse(localStorage.getItem('mcipro_bookings') || '[]')),
+                        user_profiles: toArray(userProfiles),
+                        schedule_items: scheduleItems,
+                        emergency_alerts: toArray(JSON.parse(localStorage.getItem('emergency_alerts') || '[]')),
+                        caddies: toArray(JSON.parse(localStorage.getItem('mcipro_caddies') || '[]')),
+                        waitlist: toArray(JSON.parse(localStorage.getItem('mcipro_waitlist') || '[]')),
+                        baseVersion: currentCloudData.version
                     };
 
-                    console.log('[SimpleCloudSync] Saving to cloud:', {
-                        bookings: localData.bookings.length,
-                        profiles: localData.user_profiles.length,
-                        schedules: localData.schedule_items.length,
-                        alerts: localData.emergency_alerts.length
+                    // Ensure all items have stable IDs and timestamps
+                    const dataWithIds = this.ensureStableIds(localData);
+
+                    console.log('[SimpleCloudSync] Sending data to server for merge:', {
+                        bookings: dataWithIds.bookings.length,
+                        profiles: dataWithIds.user_profiles.length,
+                        baseVersion: dataWithIds.baseVersion,
+                        attempt: retryCount + 1
                     });
 
                     const res = await fetch('/.netlify/functions/bookings', {
                         method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(localData)
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer mcipro-site-key-2024'
+                        },
+                        body: JSON.stringify(dataWithIds)
                     });
 
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    if (res.status === 409) {
+                        // Conflict detected - retry with exponential backoff
+                        if (retryCount < MAX_RETRIES) {
+                            const conflictData = await res.json();
+                            console.log('[SimpleCloudSync] Conflict detected, retrying with backoff');
+                            this.updateLocalStorageFromServer(conflictData.serverData);
+
+                            const jitter = Math.random() * 100; // 0-100ms jitter
+                            const delay = BASE_DELAY * Math.pow(2, retryCount) + jitter;
+
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            return this.saveToCloud(retryCount + 1);
+                        } else {
+                            throw new Error('Max conflict retries exceeded');
+                        }
+                    }
+
+                    if (!res.ok) {
+                        // 5xx errors: retry with backoff
+                        if (res.status >= 500 && retryCount < MAX_RETRIES) {
+                            console.log(`[SimpleCloudSync] Server error ${res.status}, retrying with backoff`);
+
+                            const jitter = Math.random() * 100;
+                            const delay = BASE_DELAY * Math.pow(2, retryCount) + jitter;
+
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            return this.saveToCloud(retryCount + 1);
+                        }
+                        throw new Error(`HTTP ${res.status}`);
+                    }
 
                     const result = await res.json();
 
-                    // Update local storage with the timestamp
-                    localStorage.setItem('mcipro_data', JSON.stringify({
-                        ...localData,
-                        updatedAt: result.updatedAt
-                    }));
+                    // Server returns the final merged state - use it
+                    this.updateLocalStorageFromServer(result.mergedData);
+
+                    console.log('[SimpleCloudSync] Server-side merge completed, version:', result.version);
 
                     console.log('[SimpleCloudSync] Saved to cloud successfully');
                     this.showSyncStatus('☁️ Synced', 'success');
@@ -2284,6 +2470,93 @@
                     console.error('[SimpleCloudSync] Failed to save to cloud:', error);
                     this.showSyncStatus('💾 Local Only', 'warning');
                     return false;
+                }
+            }
+
+            static updateLocalStorageFromServer(serverData) {
+                // Helper function to normalize to array
+                function toArray(x) {
+                    if (Array.isArray(x)) return x;
+                    if (x?.items) return x.items;
+                    if (x && typeof x === 'object') return Object.values(x);
+                    return [];
+                }
+
+                const scheduleData = toArray(serverData.schedule_items || serverData.schedule || []);
+
+                // Update local storage with server's authoritative state - all as arrays
+                localStorage.setItem('mcipro_bookings', JSON.stringify(serverData.bookings || []));
+                localStorage.setItem('mcipro_user_profiles', JSON.stringify(serverData.user_profiles || []));
+                localStorage.setItem('mcipro_schedule', JSON.stringify(scheduleData));
+                localStorage.setItem('emergency_alerts', JSON.stringify(serverData.emergency_alerts || []));
+                localStorage.setItem('mcipro_caddies', JSON.stringify(serverData.caddies || []));
+                localStorage.setItem('mcipro_waitlist', JSON.stringify(serverData.waitlist || []));
+                localStorage.setItem('mcipro_data', JSON.stringify({
+                    ...serverData,
+                    schedule: scheduleData, // Ensure schedule is in envelope
+                    lastSyncVersion: serverData.version
+                }));
+
+                // Update in-memory data structures
+                if (typeof BookingManager !== 'undefined' && BookingManager.bookings) {
+                    BookingManager.bookings = serverData.bookings || [];
+                    console.log('[SimpleCloudSync] Updated BookingManager with server data:', BookingManager.bookings.length, 'bookings');
+                }
+
+                // Update ProfileSystem UI with synced profile data
+                if (typeof ProfileSystem !== 'undefined' && ProfileSystem.updateUIWithProfile) {
+                    console.log('[SimpleCloudSync] Updating ProfileSystem UI with synced data');
+
+                    // Also update single profile format and re-apply form selection
+                    const currentUserId = (window.AppState && window.AppState.currentUser && window.AppState.currentUser.id) ||
+                                        (window.Auth && window.Auth.currentUserId) || 'anon';
+                    const userProfile = (serverData.user_profiles || []).find(u => u.userId === currentUserId);
+
+                    if (userProfile) {
+                        localStorage.setItem('mcipro_user_profile', JSON.stringify(userProfile));
+                        console.log('[SimpleCloudSync] Updated single profile format with homeClub:', userProfile.homeClub || '(none)');
+
+                        // Re-apply home club selection to form if it exists
+                        if (userProfile.homeClub && typeof ProfileSystem.applyHomeClubToForm === 'function') {
+                            ProfileSystem.applyHomeClubToForm(userProfile.homeClub);
+                        }
+                    }
+
+                    ProfileSystem.updateUIWithProfile();
+                }
+
+                console.log('[SimpleCloudSync] Local storage updated from server:', {
+                    bookings: serverData.bookings?.length || 0,
+                    profiles: serverData.user_profiles?.length || 0,
+                    schedule: scheduleData.length,
+                    version: serverData.version
+                });
+            }
+
+            static async handleDeletion(entityType, id) {
+                // Send a deletion tombstone to the server
+                const deletionData = {};
+                deletionData[entityType] = [{
+                    id: id,
+                    deleted: true,
+                    updatedAt: Date.now()
+                }];
+
+                console.log(`[SimpleCloudSync] Sending deletion tombstone for ${entityType}:${id}`);
+
+                const res = await fetch('/.netlify/functions/bookings', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer mcipro-site-key-2024'
+                    },
+                    body: JSON.stringify(deletionData)
+                });
+
+                if (res.ok) {
+                    const result = await res.json();
+                    this.updateLocalStorageFromServer(result.mergedData);
+                    console.log(`[SimpleCloudSync] Deletion synced for ${entityType}:${id}`);
                 }
             }
 
@@ -2473,6 +2746,15 @@
                 } catch (error) {
                     console.error('[ProductionCloudSync] Failed to load initial data:', error);
                 }
+            }
+
+            // Debounced sync to prevent conflict storms
+            static saveToCloudSoon() {
+                clearTimeout(this.pushTimer);
+                this.pushTimer = setTimeout(() => {
+                    console.log('[SimpleCloudSync] Debounced sync executing...');
+                    this.saveToCloud();
+                }, this.DEBOUNCE_DELAY);
             }
         }
 
@@ -2813,7 +3095,7 @@
                 // Load data from Cloudflare AFTER successful login (source of truth)
                 if (typeof ProductionCloudSync !== 'undefined') {
                     console.log('[Login] Loading data from Cloudflare after login...');
-                    ProductionCloudSync.syncFromCloudflare();
+                    SimpleCloudSync.loadFromCloud();
                     console.log('[Login] Initial production sync completed');
                 }
             }
@@ -3663,7 +3945,7 @@
 
                     // Sync resolution globally so all devices see it
                     if (typeof ProductionCloudSync !== 'undefined') {
-                        ProductionCloudSync.saveGlobalEmergencyAlerts();
+                        SimpleCloudSync.saveToCloudSoon();
                         console.log('[Emergency] Alert resolved globally:', alertId);
                     }
 
@@ -3976,7 +4258,7 @@
 
                 // Trigger GLOBAL emergency alert sync for all users on property
                 if (typeof ProductionCloudSync !== 'undefined') {
-                    ProductionCloudSync.saveGlobalEmergencyAlerts();
+                    SimpleCloudSync.saveToCloudSoon();
                     console.log('[Emergency] Triggered GLOBAL emergency alert sync for all users on property');
                 }
 
@@ -4869,7 +5151,7 @@
                 // Trigger cloud sync after profile creation
                 if (typeof ProductionCloudSync !== 'undefined') {
                     console.log('[ProfileCreation] Triggering cloud sync for new profile');
-                    ProductionCloudSync.saveData();
+                    SimpleCloudSync.saveToCloudSoon();
                 }
 
                 NotificationManager.show(`Profile created successfully! Welcome ${currentUser.name}!`, 'success');
@@ -6875,26 +7157,46 @@
             },
 
             getCurrentProfile(userType) {
-                const profileKey = `profile_${userType}_${AppState.currentUser.name}`;
-                const saved = localStorage.getItem(profileKey);
+                try {
+                    const profileKey = `profile_${userType}_${AppState.currentUser.name}`;
+                    const saved = localStorage.getItem(profileKey);
 
-                if (saved) {
-                    const profile = JSON.parse(saved);
-                    console.log('[ProfileSystem] Loading existing profile - homeClub:', profile.golfInfo?.homeClub);
-                    return profile;
-                } else {
-                    // Return template with some defaults filled
-                    const template = JSON.parse(JSON.stringify(this.profiles[userType].template));
-                    if (template.personalInfo) {
-                        const nameParts = AppState.currentUser.name.split(' ');
-                        template.personalInfo.firstName = nameParts[0] || '';
-                        template.personalInfo.lastName = nameParts.slice(1).join(' ') || '';
+                    if (saved) {
+                        const profile = JSON.parse(saved);
+                        console.log('[ProfileSystem] Loading existing profile - homeClub:', profile.golfInfo?.homeClub);
+                        return profile;
+                    } else {
+                        // Safe template access with fallback
+                        const template = this.profiles && this.profiles[userType] && this.profiles[userType].template
+                            ? JSON.parse(JSON.stringify(this.profiles[userType].template))
+                            : {
+                                personalInfo: { firstName: '', lastName: '' },
+                                golfInfo: { homeClub: '', handicap: '18' },
+                                preferences: {},
+                                media: {},
+                                privacy: {}
+                            };
+
+                        if (template.personalInfo) {
+                            const nameParts = (AppState.currentUser?.name || '').split(' ');
+                            template.personalInfo.firstName = nameParts[0] || '';
+                            template.personalInfo.lastName = nameParts.slice(1).join(' ') || '';
+                        }
+                        if (template.organizationInfo) {
+                            template.organizationInfo.organizerName = AppState.currentUser?.name || '';
+                        }
+                        console.log('[ProfileSystem] Using template profile - homeClub:', template.golfInfo?.homeClub);
+                        return template;
                     }
-                    if (template.organizationInfo) {
-                        template.organizationInfo.organizerName = AppState.currentUser.name;
-                    }
-                    console.log('[ProfileSystem] Using template profile - homeClub:', template.golfInfo?.homeClub);
-                    return template;
+                } catch (e) {
+                    console.warn('[ProfileSystem] getCurrentProfile error, using fallback:', e);
+                    return {
+                        personalInfo: { firstName: '', lastName: '' },
+                        golfInfo: { homeClub: '', handicap: '18' },
+                        preferences: {},
+                        media: {},
+                        privacy: {}
+                    };
                 }
             },
 
@@ -6929,39 +7231,85 @@
                 console.log(`[SUCCESS] Profile saved for ${userType}`, profileData.golfInfo?.homeClub ? `- homeClub: ${profileData.golfInfo.homeClub}` : '- no homeClub');
             },
 
-            updateUIWithProfile() {
-                // Update all user name displays
-                document.querySelectorAll('.user-name-display').forEach(el => {
-                    el.textContent = AppState.currentUser.name;
-                });
+            updateUIWithProfile(incoming) {
+                try {
+                    // Use incoming profile or get current profile safely
+                    const profile = (incoming && typeof incoming === 'object')
+                        ? incoming
+                        : this.getCurrentProfile(AppState.currentUser?.role || 'golfer');
 
-                // Update user avatar if available
-                const profile = this.getCurrentProfile(AppState.currentUser.role);
-                const avatarUrl = profile.media?.profilePhoto || profile.media?.societyLogo;
-
-                if (avatarUrl) {
-                    document.querySelectorAll('.user-avatar').forEach(el => {
-                        el.src = avatarUrl;
-                        el.style.display = 'block';
+                    // Update all user name displays
+                    const userName = AppState.currentUser?.name || '';
+                    document.querySelectorAll('.user-name-display').forEach(el => {
+                        el.textContent = userName;
                     });
-                }
 
-                // Update home club displays
-                const homeClub = profile.golfInfo?.homeClub || 'Not Selected';
-                console.log('[ProfileSystem] updateUIWithProfile - homeClub debug:', {
-                    profile: profile,
-                    golfInfo: profile.golfInfo,
-                    homeClub: profile.golfInfo?.homeClub,
-                    finalDisplay: homeClub,
-                    homeClubElements: document.querySelectorAll('.home-club').length
-                });
-                document.querySelectorAll('.home-club').forEach(el => {
-                    el.textContent = homeClub;
-                });
-                console.log('[ProfileSystem] Updated UI with homeClub:', homeClub);
+                    // Update user avatar if available
+                    const avatarUrl = profile.media?.profilePhoto || profile.media?.societyLogo;
+                    if (avatarUrl) {
+                        document.querySelectorAll('.user-avatar').forEach(el => {
+                            el.src = avatarUrl;
+                            el.style.display = 'block';
+                        });
+                    }
+
+                    // Update home club displays
+                    const homeClub = profile.golfInfo?.homeClub || 'Not Selected';
+                    console.log('[ProfileSystem] updateUIWithProfile - homeClub debug:', {
+                        profile: profile,
+                        golfInfo: profile.golfInfo,
+                        homeClub: profile.golfInfo?.homeClub,
+                        finalDisplay: homeClub,
+                        homeClubElements: document.querySelectorAll('.home-club').length
+                    });
+                    document.querySelectorAll('.home-club').forEach(el => {
+                        el.textContent = homeClub;
+                    });
+                    console.log('[ProfileSystem] Updated UI with homeClub:', homeClub);
+
+                    // Also update the form field if it exists
+                    this.applyHomeClubToForm(profile.golfInfo?.homeClub);
+                } catch (e) {
+                    console.warn('[ProfileSystem] updateUIWithProfile error:', e);
+                    // Continue gracefully, just don't update UI
+                }
             },
 
-            showProfileModal() {
+            applyHomeClubToForm(slug) {
+                if (!slug) return;
+                const el = document.querySelector('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]');
+                if (!el) return;
+
+                const opts = Array.from(el.options || []);
+                const byValue = opts.find(o => (o.value || '').trim() === slug);
+                const byData  = opts.find(o => (o.dataset.courseId || o.dataset.value || '').trim() === slug);
+                const pick = byValue || byData;
+                if (pick) {
+                    el.value = pick.value; // select it
+                    console.log('[ProfileSystem] Applied homeClub to form:', slug, '-> option value:', pick.value);
+                } else {
+                    console.log('[ProfileSystem] Could not find matching option for homeClub:', slug);
+                }
+            },
+
+            // Wait for dropdown options to load
+            waitForOptions(selector, min = 2) {
+                return new Promise(resolve => {
+                    const el = document.querySelector(selector);
+                    if (el && el.options && el.options.length >= min) return resolve();
+                    const obs = new MutationObserver(() => {
+                        if (el && el.options && el.options.length >= min) {
+                            obs.disconnect();
+                            resolve();
+                        }
+                    });
+                    obs.observe(el || document.body, { childList: true, subtree: true });
+                    // Timeout after 3 seconds
+                    setTimeout(() => { obs.disconnect(); resolve(); }, 3000);
+                });
+            },
+
+            async showProfileModal() {
                 const userType = AppState.currentUser.role;
                 const profile = this.getCurrentProfile(userType);
 
@@ -7008,6 +7356,20 @@
 
                 document.body.appendChild(modal);
                 window.currentProfileModal = modal;
+
+                // Wait for home course options to load, then apply current selection
+                setTimeout(async () => {
+                    try {
+                        await this.waitForOptions('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]', 2);
+                        const currentProfile = this.getCurrentProfile(userType);
+                        if (currentProfile.golfInfo?.homeClub) {
+                            this.applyHomeClubToForm(currentProfile.golfInfo.homeClub);
+                            console.log('[ProfileSystem] Applied existing homeClub after options loaded:', currentProfile.golfInfo.homeClub);
+                        }
+                    } catch (error) {
+                        console.log('[ProfileSystem] Options loading timeout or error:', error);
+                    }
+                }, 100);
             },
 
             closeProfileModal() {
@@ -7525,15 +7887,29 @@
                         // Golf Info with validation
                         const handicap = document.getElementById('handicap')?.value?.trim() || '';
                         const memberSince = document.getElementById('memberSince')?.value || '';
-                        const homeClubElement = document.getElementById('homeClub');
-                        const homeClub = homeClubElement?.value?.trim() || '';
+                        function getHomeClubFromForm() {
+                            const el = document.querySelector('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]');
+                            if (!el) return '';
+
+                            // Prefer normal value first
+                            let v = (el.value || '').trim();
+
+                            // Fallback to dataset on selected option
+                            if ((!v || v === 'placeholder') && el.selectedOptions && el.selectedOptions[0]) {
+                                const opt = el.selectedOptions[0];
+                                v = (opt.dataset.courseId || opt.dataset.value || '').trim();
+                            }
+                            return v;
+                        }
+
+                        const homeClub = getHomeClubFromForm();
                         console.log('[ProfileSystem] Form homeClub debugging:', {
-                            element: homeClubElement,
-                            exists: !!homeClubElement,
-                            value: homeClubElement?.value,
+                            element: document.getElementById('homeClub'),
+                            exists: !!document.getElementById('homeClub'),
+                            value: document.getElementById('homeClub')?.value,
                             trimmed: homeClub,
-                            selectedIndex: homeClubElement?.selectedIndex,
-                            selectedOption: homeClubElement?.selectedOptions?.[0]?.text
+                            selectedIndex: document.getElementById('homeClub')?.selectedIndex,
+                            selectedOption: document.getElementById('homeClub')?.selectedOptions?.[0]?.text
                         });
 
                         console.log('[ProfileSystem] Saving golfer profile - homeClub value:', homeClub);
@@ -7622,10 +7998,9 @@
                     // Update dashboard data immediately
                     this.updateDashboardData();
 
-                    // Force cloud sync for profile data
-                    if (typeof ProductionCloudSync !== 'undefined') {
-                        ProductionCloudSync.forceSync();
-                    }
+                    // Debounced cloud sync for profile data
+                    console.log('[ProfileSystem] PROFILE SAVED - SCHEDULING CLOUD SYNC');
+                    SimpleCloudSync.saveToCloudSoon();
 
                     // Show success message
                     const successModal = document.createElement('div');
@@ -7698,6 +8073,10 @@
                 try {
                     localStorage.setItem('mcipro_schedule', JSON.stringify(this.scheduleData));
                     console.log('[ScheduleSystem] Saved schedule to localStorage');
+
+                    // DEBOUNCED CLOUD SYNC after schedule changes
+                    console.log('[ScheduleSystem] SCHEDULE CHANGED - SCHEDULING CLOUD SYNC');
+                    SimpleCloudSync.saveToCloudSoon();
                 } catch (error) {
                     console.error('[ScheduleSystem] Failed to save to localStorage:', error);
                 }
@@ -8024,7 +8403,7 @@
 
             // Force sync to get latest data
             if (typeof ProductionCloudSync !== 'undefined') {
-                ProductionCloudSync.forceSync();
+                SimpleCloudSync.saveToCloudSoon();
             }
 
             setTimeout(() => {
@@ -8286,7 +8665,7 @@
 
                 // Force sync to get latest data
                 if (typeof ProductionCloudSync !== 'undefined') {
-                    ProductionCloudSync.forceSync();
+                    SimpleCloudSync.saveToCloudSoon();
                 }
 
                 // Update schedule display
@@ -8500,36 +8879,22 @@
             },
 
             addBooking(bookingData) {
+                // Generate stable ID to prevent duplicates
+                const bookingId = newBookingId(bookingData);
+
                 const booking = {
-                    id: 'booking_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+                    id: bookingId,
                     ...bookingData,
-                    createdAt: new Date().toISOString()
+                    updatedAt: Date.now(),
+                    createdAt: bookingData.createdAt || new Date().toISOString()
                 };
-                this.bookings.push(booking);
 
-                // Persist to localStorage
-                try {
-                    localStorage.setItem('mcipro_bookings', JSON.stringify(this.bookings));
-                    console.log('[BookingManager] Booking saved to localStorage:', booking.id);
-                } catch (error) {
-                    console.error('[BookingManager] Failed to save to localStorage:', error);
-                }
+                // Use upsert to prevent duplicates
+                this.bookings = upsertById(this.bookings, booking, 'id');
 
-                // Add to Schedule System
+                // Add schedule event once (prevents duplicates)
                 if (bookingData.type === 'teeTime') {
-                    ScheduleSystem.addEvent({
-                        type: 'teeTime',
-                        title: `Round at ${bookingData.course}`,
-                        date: new Date(bookingData.date),
-                        time: bookingData.time,
-                        duration: 240,
-                        course: bookingData.course,
-                        status: bookingData.status || 'confirmed',
-                        players: bookingData.players || 1,
-                        notes: bookingData.eventName || 'Golf round',
-                        canEdit: true,
-                        canCancel: true
-                    });
+                    addScheduleEventOnceForBooking(booking);
                 }
 
                 if (bookingData.caddieId) {
@@ -8547,6 +8912,10 @@
                     });
                 }
 
+                // CRITICAL FIX: Save to localStorage and trigger debounced cloud sync
+                console.log('[BookingManager] BOOKING ADDED - SAVING AND SYNCING');
+                this.saveToLocalStorage();
+
                 return booking;
             },
 
@@ -8555,6 +8924,10 @@
                 if (booking) {
                     booking.status = status;
                     booking.updatedAt = new Date().toISOString();
+
+                    // Save to localStorage and trigger cloud sync
+                    console.log('[BookingManager] BOOKING STATUS UPDATED - SAVING AND SYNCING');
+                    this.saveToLocalStorage();
                 }
                 return booking;
             },
@@ -8576,9 +8949,9 @@
                     localStorage.setItem('last_local_update', new Date().toISOString());
                     console.log('[BookingManager] Data saved to localStorage');
 
-                    // FORCE SYNC IMMEDIATELY
-                    console.log('[BookingManager] BOOKING SAVED - SYNCING NOW');
-                    ProductionCloudSync.saveData();
+                    // DEBOUNCED SYNC TO PREVENT CONFLICTS
+                    console.log('[BookingManager] BOOKING SAVED - SCHEDULING SYNC');
+                    SimpleCloudSync.saveToCloudSoon();
                 } catch (error) {
                     console.error('[BookingManager] Failed to save to localStorage:', error);
                 }
@@ -9563,8 +9936,16 @@
         }
 
         function confirmBooking() {
+            // Guard against double-tap & duplicate handlers
+            if (creatingBooking) {
+                console.log('[confirmBooking] Already creating booking, ignoring duplicate call');
+                return;
+            }
+            creatingBooking = true;
+
             if (!bookingCart.course) {
                 NotificationManager.show('Please select a course first', 'error');
+                creatingBooking = false;
                 return;
             }
 
@@ -9654,9 +10035,14 @@
                     showGolferTab('schedule', null);
                 }, 2000);
 
+                // Reset cooldown after successful booking
+                setTimeout(() => creatingBooking = false, 800);
+
             } catch (error) {
                 console.error('Booking error:', error);
                 NotificationManager.show('Booking failed. Please try again.', 'error');
+                // Reset cooldown on error too
+                setTimeout(() => creatingBooking = false, 800);
             }
         }
 
@@ -14783,6 +15169,13 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 if (confirm(confirmMsg)) {
                     // Remove from bookings
                     this.bookings = this.bookings.filter(b => b.id !== bookingId);
+
+                    // Send deletion tombstone to server
+                    console.log('[BookingManager] BOOKING CANCELLED - SENDING DELETION TOMBSTONE');
+                    SimpleCloudSync.handleDeletion('bookings', bookingId);
+
+                    // Also save local state
+                    this.saveToLocalStorage();
 
                     // If it's a caddie booking, notify next person on waitlist
                     if (booking.type === 'caddie' && booking.caddieId) {

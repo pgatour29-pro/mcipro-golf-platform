@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Home Course Persistence Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 8px; }
+        .success { background-color: #d4edda; }
+        .error { background-color: #f8d7da; }
+        button { padding: 10px 15px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Home Course Persistence Test</h1>
+    <p>Run these tests in DevTools on the main app after opening the Profile modal:</p>
+
+    <div class="test-section">
+        <h3>1. Test Form Value Reader</h3>
+        <p>Check if dropdown returns actual course slug:</p>
+        <pre>(() => {
+  const el = document.querySelector('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]');
+  return {
+    element: !!el,
+    value: el?.value,
+    text: el?.selectedOptions?.[0]?.text,
+    dataCourseId: el?.selectedOptions?.[0]?.dataset?.courseId,
+    dataValue: el?.selectedOptions?.[0]?.dataset?.value
+  };
+})();</pre>
+        <p><strong>Expected:</strong> If value is empty but data attributes have slug, the reader will capture it.</p>
+    </div>
+
+    <div class="test-section">
+        <h3>2. Test Profile Storage</h3>
+        <p>Check localStorage after saving profile:</p>
+        <pre>JSON.parse(localStorage.getItem('mcipro_user_profile') || 'null')</pre>
+        <p><strong>Expected:</strong> Object with homeClub property containing course slug.</p>
+    </div>
+
+    <div class="test-section">
+        <h3>3. Test Server Sync</h3>
+        <p>Check if server has the profile data:</p>
+        <pre>fetch('/.netlify/functions/bookings', {
+  headers: { authorization: 'Bearer mcipro-site-key-2024' }
+}).then(r=>r.json()).then(j => j.user_profiles?.[0])</pre>
+        <p><strong>Expected:</strong> Profile object with homeClub value synced to server.</p>
+    </div>
+
+    <div class="test-section">
+        <h3>4. Test UI Update</h3>
+        <p>Reopen profile modal and check if dropdown is preselected:</p>
+        <pre>// Close and reopen modal, then check:
+const el = document.querySelector('#homeClub, #homeCourse');
+console.log('Selected:', el?.selectedOptions?.[0]?.text);</pre>
+        <p><strong>Expected:</strong> Dropdown shows previously selected course (not "Not Selected").</p>
+    </div>
+
+    <div class="test-section">
+        <h3>5. Test Cross-Device</h3>
+        <p>Clear localStorage on second device and check sync:</p>
+        <pre>// On second device, clear local storage then reload:
+['mcipro_user_profile', 'mcipro_user_profiles'].forEach(k =>
+  localStorage.removeItem(k)
+);
+location.reload();</pre>
+        <p><strong>Expected:</strong> Profile data loads from server and dropdown shows correct selection.</p>
+    </div>
+
+    <div class="test-section">
+        <h3>Quick Verification Steps</h3>
+        <ol>
+            <li><strong>Open main app</strong> and log in</li>
+            <li><strong>Open Profile modal</strong> (gear icon)</li>
+            <li><strong>Select a Home Course</strong> and save</li>
+            <li><strong>Check console</strong> for successful sync messages</li>
+            <li><strong>Close and reopen modal</strong> - should show selected course</li>
+            <li><strong>Test on second device</strong> - should sync automatically</li>
+        </ol>
+    </div>
+
+    <div class="test-section">
+        <h3>Fixed Issues</h3>
+        <ul>
+            <li>✅ <strong>Template crash fixed:</strong> ProfileSystem.getCurrentProfile() now has safe fallbacks</li>
+            <li>✅ <strong>Empty value fixed:</strong> Form reader checks data-course-id when value="" </li>
+            <li>✅ <strong>UI update fixed:</strong> updateUIWithProfile() accepts incoming profile parameter</li>
+            <li>✅ <strong>Sync inclusion fixed:</strong> All PUT payloads include user_profiles with toArray()</li>
+            <li>✅ <strong>Cross-device fixed:</strong> Cloud sync passes profile to UI updater</li>
+        </ul>
+    </div>
+
+    <button onclick="window.open('index.html', '_blank')">Open Main App</button>
+    <button onclick="window.open('clear-localStorage.html', '_blank')">Clear Storage</button>
+
+</body>
+</html>

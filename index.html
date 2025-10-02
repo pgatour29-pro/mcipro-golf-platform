@@ -2189,6 +2189,39 @@
         // Guard against double-tap and duplicate handlers
         let creatingBooking = false;
 
+        // Clean up any bad home course values from localStorage
+        (function normalizeBadHomeClub() {
+            try {
+                const PLACEHOLDER_TEXTS = new Set([
+                    'Select your home course...', 'Select your home course', 'Select home course', 'Not Selected', '—'
+                ]);
+
+                const p = JSON.parse(localStorage.getItem('mcipro_user_profile') || 'null');
+                if (p && (PLACEHOLDER_TEXTS.has(p.homeClub) || !p.homeClub || p.homeClub.includes('Select'))) {
+                    console.log('[ProfileSystem] Cleaning bad homeClub value:', p.homeClub);
+                    p.homeClub = '';
+                    localStorage.setItem('mcipro_user_profile', JSON.stringify(p));
+                    localStorage.setItem('mcipro_user_profiles', JSON.stringify([p]));
+                }
+
+                // Also clean the array format
+                const profiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+                let cleaned = false;
+                profiles.forEach(profile => {
+                    if (profile.homeClub && (PLACEHOLDER_TEXTS.has(profile.homeClub) || profile.homeClub.includes('Select'))) {
+                        console.log('[ProfileSystem] Cleaning bad homeClub in profiles array:', profile.homeClub);
+                        profile.homeClub = '';
+                        cleaned = true;
+                    }
+                });
+                if (cleaned) {
+                    localStorage.setItem('mcipro_user_profiles', JSON.stringify(profiles));
+                }
+            } catch (e) {
+                console.warn('[ProfileSystem] Error cleaning bad homeClub values:', e);
+            }
+        })();
+
         // Add schedule event once for booking (prevents duplicates)
         function addScheduleEventOnceForBooking(booking) {
             let schedule = toArray(JSON.parse(localStorage.getItem('mcipro_schedule') || '[]'));
@@ -7890,8 +7923,12 @@
                         // Golf Info with validation
                         const handicap = document.getElementById('handicap')?.value?.trim() || '';
                         const memberSince = document.getElementById('memberSince')?.value || '';
-                        function getHomeClubFromForm() {
-                            // Look specifically in the profile modal first, then fallback to any homeClub
+                        // Strict home course extraction - only accepts real slugs, never placeholders
+                        const PLACEHOLDER_TEXTS = new Set([
+                            'Select your home course...', 'Select your home course', 'Select home course', 'Not Selected', '—'
+                        ]);
+
+                        function getHomeClubFromFormStrict() {
                             const el = document.querySelector('#profileModal #homeClub') ||
                                       document.querySelector('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]');
 
@@ -7900,37 +7937,53 @@
                                 return '';
                             }
 
-                            // Get the selected value directly
-                            let v = (el.value || '').trim();
-                            console.log('[HomeClub Debug] Element found:', el.id, 'Raw value:', v, 'Selected index:', el.selectedIndex, 'Parent:', el.closest('#profileModal') ? 'Profile Modal' : 'Other');
-
-                            // If empty or placeholder, try the selected option's value
-                            if ((!v || v === '' || el.selectedIndex === 0) && el.selectedOptions && el.selectedOptions[0] && el.selectedIndex > 0) {
-                                const opt = el.selectedOptions[0];
-                                v = (opt.value || '').trim();
-                                console.log('[HomeClub Debug] Using option value:', v);
-                            }
-
-                            // Reject placeholder values
-                            if (v === '' || v.includes('Select') || el.selectedIndex === 0) {
-                                console.log('[HomeClub Debug] Rejecting placeholder value');
+                            // If still on the first option (placeholder), treat as empty
+                            if (el.selectedIndex === 0) {
+                                console.log('[HomeClub Debug] Still on placeholder option (index 0)');
                                 return '';
                             }
 
-                            // Log final result
-                            console.log('[HomeClub Debug] Final result:', v);
-                            return v;
+                            const opt  = el.selectedOptions && el.selectedOptions[0];
+                            const val  = (opt?.value || '').trim();
+                            const data = (opt?.dataset?.courseId || opt?.dataset?.value || '').trim();
+                            const text = (opt?.textContent || '').trim();
+
+                            console.log('[HomeClub Debug] Reading from selectedIndex:', el.selectedIndex, 'value:', val, 'text:', text);
+
+                            // Ignore placeholder-like text entirely
+                            if (PLACEHOLDER_TEXTS.has(text)) {
+                                console.log('[HomeClub Debug] Rejecting placeholder text:', text);
+                                return '';
+                            }
+
+                            // Only accept a real slug (prefer value, then data-*)
+                            const result = val || data || '';
+                            console.log('[HomeClub Debug] Final strict result:', result);
+                            return result;
                         }
 
-                        const homeClub = getHomeClubFromForm();
+                        const homeClub = getHomeClubFromFormStrict();
                         console.log('[ProfileSystem] Form homeClub debugging:', {
                             element: document.getElementById('homeClub'),
                             exists: !!document.getElementById('homeClub'),
                             value: document.getElementById('homeClub')?.value,
-                            trimmed: homeClub,
+                            strictResult: homeClub,
                             selectedIndex: document.getElementById('homeClub')?.selectedIndex,
                             selectedOption: document.getElementById('homeClub')?.selectedOptions?.[0]?.text
                         });
+
+                        // Block saving if no valid home course selected
+                        if (!homeClub) {
+                            const el = document.querySelector('#profileModal #homeClub') ||
+                                      document.querySelector('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]');
+                            if (el) {
+                                el.setCustomValidity('Please select your home course');
+                                el.reportValidity();
+                            }
+                            alert('Please select a home course before saving your profile.');
+                            console.warn('[ProfileSystem] Blocked save: no valid homeClub selected');
+                            return;
+                        }
 
                         console.log('[ProfileSystem] Saving golfer profile - homeClub value:', homeClub);
 

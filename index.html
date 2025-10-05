@@ -4846,6 +4846,20 @@
 
         // Application Initialization
         document.addEventListener('DOMContentLoaded', function() {
+            // Clear cache if requested via URL parameter
+            if (window.location.search.includes('clearCache=1')) {
+                console.log('[Dashboard] Clearing localStorage cache...');
+                const keys = Object.keys(localStorage);
+                keys.forEach(key => {
+                    if (key.includes('mcipro') || key.includes('booking')) {
+                        localStorage.removeItem(key);
+                    }
+                });
+                console.log('[Dashboard] Cache cleared, closing tab...');
+                setTimeout(() => window.close(), 1000);
+                return;
+            }
+
             console.log('MciPro Enterprise Platform initializing...');
 
             try {
@@ -8692,7 +8706,7 @@
                 foodOrders: []
             },
 
-            currentFilter: 'upcoming',
+            currentFilter: 'all',
             searchQuery: '',
 
             initializeSchedule() {
@@ -8984,6 +8998,11 @@
                     }
                 }
 
+                console.log('[renderScheduleList] Total bookings to process:', bookings.length);
+                if (bookings.length > 0) {
+                    console.log('[renderScheduleList] Sample booking:', bookings[0]);
+                }
+
                 // Group bookings by groupId
                 const groups = {};
                 for (const b of bookings) {
@@ -9021,8 +9040,13 @@
                 }
 
                 // Convert groups to array and filter
+                console.log('[renderScheduleList] Raw groups:', Object.keys(groups).length, 'Sample:', Object.values(groups)[0]);
                 let groupedBookings = Object.values(groups).filter(g => g.tee); // Only show groups with a tee time
                 console.log('[renderScheduleList] Grouped bookings before filter:', groupedBookings.length);
+                if (groupedBookings.length === 0 && Object.keys(groups).length > 0) {
+                    console.error('[renderScheduleList] ERROR: Groups exist but no tee bookings found!');
+                    console.error('[renderScheduleList] Sample group:', Object.values(groups)[0]);
+                }
 
                 // Apply filter (using Bangkok timezone)
                 const now = new Date();
@@ -9996,10 +10020,29 @@
 
             saveToLocalStorage() {
                 try {
+                    // DEBUG: Check what's being saved for tee bookings
+                    const teeBookings = this.bookings.filter(b => b.kind === 'tee');
+                    if (teeBookings.length > 0) {
+                        console.log('[BookingManager.saveToLocalStorage] TEE BOOKINGS TO SAVE:', teeBookings.length);
+                        teeBookings.forEach(tb => {
+                            console.log('[BookingManager.saveToLocalStorage]   ID:', tb.id, 'courseId:', tb.courseId, 'teeSheetCourse:', tb.teeSheetCourse);
+                        });
+                    }
+
                     localStorage.setItem('mcipro_bookings', JSON.stringify(this.bookings));
                     localStorage.setItem('mcipro_waitlists', JSON.stringify(this.waitlists));
                     localStorage.setItem('last_local_update', new Date().toISOString());
                     console.log('[BookingManager] Data saved to localStorage:', this.bookings.length, 'bookings');
+
+                    // DEBUG: Verify what was actually written to localStorage
+                    const savedData = JSON.parse(localStorage.getItem('mcipro_bookings'));
+                    const savedTeeBookings = savedData.filter(b => b.kind === 'tee');
+                    if (savedTeeBookings.length > 0) {
+                        console.log('[BookingManager.saveToLocalStorage] VERIFIED IN LOCALSTORAGE:', savedTeeBookings.length, 'tee bookings');
+                        savedTeeBookings.forEach(tb => {
+                            console.log('[BookingManager.saveToLocalStorage]   SAVED ID:', tb.id, 'courseId:', tb.courseId, 'teeSheetCourse:', tb.teeSheetCourse);
+                        });
+                    }
 
                     // FIXED: IMMEDIATE SYNC (not debounced) for faster mobile updates
                     console.log('[BookingManager] BOOKING SAVED - TRIGGERING IMMEDIATE SYNC');
@@ -10283,13 +10326,12 @@
             // Set minimum date for booking
             const dateInput = document.getElementById('bookingDate');
             if (dateInput) {
-                const tomorrow = new Date();
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                dateInput.min = tomorrow.toISOString().split('T')[0];
+                const today = new Date();
+                dateInput.min = today.toISOString().split('T')[0];
 
-                // Set default date to tomorrow if no date is selected
+                // Set default date to today if no date is selected
                 if (!dateInput.value) {
-                    dateInput.value = tomorrow.toISOString().split('T')[0];
+                    dateInput.value = today.toISOString().split('T')[0];
                 }
             }
 
@@ -10478,44 +10520,153 @@
 
         // ===== TEE SHEET AVAILABILITY SERVICE =====
         const TeeSheetAvailabilityService = {
-            async loadAvailability() {
-                console.log('[TeeSheet Availability] Loading availability for Pattana...');
+            lastLoadedDate: null,
+            isBuilt: false,
 
+            getTeeSheetSettings() {
+                // Get Pattana tee sheet settings from localStorage
+                const saved = localStorage.getItem('pattana-tee-sheet-settings');
+                if (saved) {
+                    return JSON.parse(saved);
+                }
+                // Default settings matching Pattana's setup
+                return {
+                    startTime: '06:00',
+                    endTime: '17:00',
+                    interval: '5 min',
+                    complex: '27 holes (A/B/C)',
+                    teesPerCourse: 1
+                };
+            },
+
+            buildTimeSlots(startTime, endTime, intervalMinutes) {
+                const slots = [];
+                const [startHour, startMin] = startTime.split(':').map(Number);
+                const [endHour, endMin] = endTime.split(':').map(Number);
+
+                let currentMinutes = startHour * 60 + startMin;
+                const endMinutes = endHour * 60 + endMin;
+
+                while (currentMinutes <= endMinutes) {
+                    const hours = Math.floor(currentMinutes / 60);
+                    const minutes = currentMinutes % 60;
+                    const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+                    slots.push(timeStr);
+                    currentMinutes += intervalMinutes;
+                }
+
+                return slots;
+            },
+
+            loadAvailability() {
                 const date = document.getElementById('bookingDate')?.value;
                 if (!date) {
                     console.warn('[TeeSheet Availability] No date selected');
                     return;
                 }
 
+                // Only rebuild if date changed or not yet built
+                if (this.isBuilt && this.lastLoadedDate === date) {
+                    console.log('[TeeSheet Availability] Already loaded for', date, '- skipping rebuild');
+                    return;
+                }
+
+                console.log('[TeeSheet Availability] Loading availability for Pattana on', date);
+
                 try {
-                    // Fetch cloud bookings
-                    const response = await fetch('/.netlify/functions/bookings');
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
-                    }
+                    // Get tee sheet settings
+                    const settings = this.getTeeSheetSettings();
+                    const intervalMinutes = parseInt(settings.interval?.replace(/\D/g, '') || '5');
 
-                    const data = await response.json();
-                    const allBookings = data.bookings || [];
+                    // Use bookings already loaded by BookingManager (no need to fetch again)
+                    const allBookings = BookingManager.bookings || [];
 
-                    // Filter for Pattana tee sheet bookings on selected date (both teesheet and dashboard-pattana)
-                    const pattanaBookings = allBookings.filter(b =>
-                        (b.source === 'teesheet' || b.source === 'dashboard-pattana') &&
-                        b.date === date &&
-                        (b.course === 'Course A' || b.course === 'Course B' || b.course === 'Course C' || b.courseName === 'Pattana Golf Resort & Spa')
-                    );
+                    // Filter for Pattana tee sheet bookings on selected date
+                    // Include: teesheet (pro shop), dashboard-pattana (golfer), and dashboard (golfer) sources
+                    const pattanaBookings = allBookings.filter(b => {
+                        // Must have date matching
+                        if (b.date !== date) return false;
 
-                    console.log('[TeeSheet Availability] Found', pattanaBookings.length, 'tee sheet bookings for', date);
+                        // Must be Pattana course
+                        const isPattana = b.course === 'Course A' ||
+                                         b.course === 'Course B' ||
+                                         b.course === 'Course C' ||
+                                         b.courseName === 'Pattana Golf Resort & Spa' ||
+                                         b.courseId === 'pattana-golf-resort';
+
+                        if (!isPattana) return false;
+
+                        // Include teesheet (pro shop), dashboard (golfer), and dashboard-pattana (golfer legacy) sources
+                        return b.source === 'teesheet' ||
+                               b.source === 'dashboard-pattana' ||
+                               b.source === 'dashboard';
+                    });
+
+                    console.log('[TeeSheet Availability] Found', pattanaBookings.length, 'bookings');
 
                     // Extract booked time slots
                     const bookedTimes = pattanaBookings.map(b => b.time || b.slotTime?.split('T')[1]?.substring(0, 5));
-                    console.log('[TeeSheet Availability] Booked times:', bookedTimes);
 
-                    // Update time picker to show availability
-                    this.updateTimePickerAvailability(bookedTimes);
+                    // Rebuild time picker with tee sheet intervals
+                    this.rebuildTimePicker(settings.startTime, settings.endTime, intervalMinutes, bookedTimes);
+
+                    // Mark as built and save the date
+                    this.isBuilt = true;
+                    this.lastLoadedDate = date;
 
                 } catch (error) {
                     console.error('[TeeSheet Availability] Error loading:', error);
                 }
+            },
+
+            rebuildTimePicker(startTime, endTime, intervalMinutes, bookedTimes) {
+                const timeSelect = document.getElementById('bookingTime');
+                if (!timeSelect) return;
+
+                // Save current selection
+                const currentValue = timeSelect.value;
+
+                // Generate time slots based on tee sheet settings
+                const timeSlots = this.buildTimeSlots(startTime, endTime, intervalMinutes);
+
+                // Use DocumentFragment for faster DOM manipulation
+                const fragment = document.createDocumentFragment();
+
+                // Add placeholder
+                const placeholder = document.createElement('option');
+                placeholder.value = '';
+                placeholder.textContent = 'Choose time...';
+                fragment.appendChild(placeholder);
+
+                // Add new time slots using fragment
+                timeSlots.forEach(time => {
+                    const option = document.createElement('option');
+                    option.value = time;
+
+                    const isBooked = bookedTimes.includes(time);
+
+                    if (isBooked) {
+                        option.textContent = `${time} (Booked)`;
+                        option.disabled = true;
+                        option.style.color = '#9ca3af';
+                        option.style.fontStyle = 'italic';
+                    } else {
+                        option.textContent = time;
+                    }
+
+                    fragment.appendChild(option);
+                });
+
+                // Replace all options at once (much faster than individual appends)
+                timeSelect.innerHTML = '';
+                timeSelect.appendChild(fragment);
+
+                // Restore previous selection if it still exists
+                if (currentValue && timeSlots.includes(currentValue)) {
+                    timeSelect.value = currentValue;
+                }
+
+                console.log('[TeeSheet Availability] Built', timeSlots.length, 'slots in', intervalMinutes, 'min intervals');
             },
 
             updateTimePickerAvailability(bookedTimes) {
@@ -10562,15 +10713,11 @@
 
         function loadCaddysForCourse(homeClub) {
             console.log('loadCaddysForCourse called with homeClub:', homeClub);
-            console.log('Available caddies:', CaddySystem.allCaddys);
 
             // Filter caddies by their home club
-            const courseCaddys = CaddySystem.allCaddys.filter(caddie => {
-                console.log(`Checking caddie ${caddie.name}: ${caddie.homeClub} === ${homeClub}?`, caddie.homeClub === homeClub);
-                return caddie.homeClub === homeClub;
-            });
+            const courseCaddys = CaddySystem.allCaddys.filter(caddie => caddie.homeClub === homeClub);
 
-            console.log('Filtered caddies for course:', courseCaddys);
+            console.log('Filtered caddies for course:', courseCaddys.length, 'caddies');
 
             filteredCaddys = courseCaddys;
             renderCaddys(courseCaddys);
@@ -11171,7 +11318,12 @@
                 }
 
                 // Build teeTime ISO string
-                const teeTime = new Date(date + 'T' + time + ':00').toISOString();
+                // IMPORTANT: Treat date/time as Bangkok timezone (UTC+7)
+                // User selects "2025-10-05" and "09:05" meaning 9:05 AM Bangkok time
+                // We want ISO: 2025-10-05T09:05:00+07:00 (or 2025-10-05T02:05:00.000Z in UTC)
+                // BUT for display purposes, store as Bangkok local time to avoid timezone confusion
+                const teeTime = `${date}T${time}:00+07:00`;
+
                 if (isNaN(+new Date(teeTime))) {
                     NotificationManager.show('Invalid date/time', 'error');
                     return;
@@ -11185,24 +11337,24 @@
                 }
 
                 const userId = currentUser.name.toLowerCase().replace(/\s+/g, '_');
-                const courseId = bookingCart.course.slug || bookingCart.course.name.replace(/\s+/g, '_');
+                const courseSlug = bookingCart.course.slug || bookingCart.course.name.replace(/\s+/g, '_');
                 const courseName = bookingCart.course.name;
 
                 // 2) Build normalized booking records - NO kind='teeTime', use 'tee'
-                const groupId = `round_${courseId}_${teeTime}_${userId}`;
+                const groupId = `round_${courseSlug}_${teeTime}_${userId}`;
 
                 const toCreate = [];
 
                 // Main tee time
                 const mainTeeBooking = {
-                    id: `bk_${courseId}_${teeTime}_${userId}_tee_main`,
+                    id: `bk_${courseSlug}_${teeTime}_${userId}_tee_main`,
                     kind: 'tee',
                     golferId: userId,
                     golferName: currentUser.name,
                     eventName: `Round at ${courseName}`,
                     course: courseName,
                     courseName: courseName,
-                    courseId: courseId,
+                    courseId: courseSlug,  // FIXED: Now properly saving courseId
                     date: date,
                     time: time,
                     teeTime: teeTime,
@@ -11211,37 +11363,67 @@
                     durationMin: 240,
                     status: 'confirmed',
                     groupId: groupId,
-                    updatedAt: Date.now()
+                    updatedAt: Date.now(),
+                    bookingType: 'regular',
+                    teeNumber: 1, // Default tee number for compatibility
+                    notes: '', // Notes field for tee sheet compatibility
+                    notesLang: 'en', // Notes language for tee sheet compatibility
+                    isPrivate: false, // Public booking by default
+                    source: 'dashboard', // Mark all dashboard bookings for tee sheet sync
+
+                    // Add golfers array for tee sheet compatibility
+                    golfers: [{
+                        id: userId,
+                        name: currentUser.name,
+                        phone: currentUser.phone || '',
+                        email: currentUser.email || '',
+                        handicap: currentUser.handicap || 0,
+                        isVIP: false,
+                        inputLang: 'en'
+                    }],
+
+                    // Add caddyBookings array for tee sheet compatibility
+                    caddyBookings: []
                 };
 
-                // If Pattana Golf Resort, mark for tee sheet sync
-                if (courseId === 'pattana-golf-resort' || courseName === 'Pattana Golf Resort & Spa') {
+                // If Pattana Golf Resort, mark for tee sheet sync with specific course
+                if (courseSlug === 'pattana-golf-resort' || courseName === 'Pattana Golf Resort & Spa') {
                     mainTeeBooking.source = 'dashboard-pattana';
                     mainTeeBooking.teeSheetCourse = 'Course A'; // Default to Course A
                     console.log('[confirmBooking] Pattana booking - will sync to tee sheet');
                 }
-
-                toCreate.push(mainTeeBooking);
 
                 // Caddies - with 22:00 cutoff rule
                 (bookingCart.caddies || []).forEach(caddie => {
                     // Calculate caddy status based on 22:00 rule
                     const caddyStatus = calculateCaddyStatus(date, time);
 
+                    // Add to mainTeeBooking caddyBookings array for tee sheet compatibility
+                    mainTeeBooking.caddyBookings.push({
+                        golferId: userId,
+                        caddyId: caddie.id,
+                        golferName: currentUser.name,
+                        caddyName: caddie.name,
+                        caddyNumber: caddie.number || '000',
+                        status: caddyStatus === 'pending' ? 'pending' : 'confirmed',
+                        isWaitlisted: false
+                    });
+
                     toCreate.push({
-                        id: `bk_${courseId}_${teeTime}_${userId}_caddie_${caddie.id}`,
+                        id: `bk_${courseSlug}_${teeTime}_${userId}_caddie_${caddie.id}`,
                         kind: 'caddie',
                         golferId: userId,
                         golferName: currentUser.name,
                         eventName: `Caddie: ${caddie.name}`,
                         course: courseName,
                         courseName: courseName,
-                        courseId: courseId,
+                        courseId: courseSlug,
                         date: date,
                         time: time,
                         teeTime: teeTime,
                         caddieId: caddie.id,
                         caddieName: caddie.name,
+                        caddieNumber: caddie.number || '000',
                         status: caddyStatus, // 'confirmed' or 'pending'
                         caddyConfirmationRequired: caddyStatus === 'pending',
                         groupId: groupId,
@@ -11251,37 +11433,57 @@
 
                 // Waitlist Caddies
                 (bookingCart.waitlists || []).forEach(caddie => {
+                    // Add to mainTeeBooking caddyBookings array for tee sheet compatibility
+                    mainTeeBooking.caddyBookings.push({
+                        golferId: userId,
+                        caddyId: caddie.id,
+                        golferName: currentUser.name,
+                        caddyName: caddie.name,
+                        caddyNumber: caddie.number || '000',
+                        status: 'waitlisted',
+                        isWaitlisted: true
+                    });
+
                     toCreate.push({
-                        id: `bk_${courseId}_${teeTime}_${userId}_caddie_waitlist_${caddie.id}`,
+                        id: `bk_${courseSlug}_${teeTime}_${userId}_caddie_waitlist_${caddie.id}`,
                         kind: 'caddie',
                         golferId: userId,
                         golferName: currentUser.name,
                         eventName: `Caddie Waitlist: ${caddie.name}`,
                         course: courseName,
                         courseName: courseName,
-                        courseId: courseId,
+                        courseId: courseSlug,
                         date: date,
                         time: time,
                         teeTime: teeTime,
                         caddieId: caddie.id,
                         caddieName: caddie.name,
+                        caddieNumber: caddie.number || '000',
                         status: 'waitlist',
                         groupId: groupId,
                         updatedAt: Date.now()
                     });
                 });
 
+                toCreate.push(mainTeeBooking);
+                console.log('[confirmBooking] Added mainTeeBooking with kind:', mainTeeBooking.kind, 'groupId:', mainTeeBooking.groupId);
+                console.log('[confirmBooking] mainTeeBooking FULL OBJECT:', JSON.stringify(mainTeeBooking, null, 2));
+                console.log('[confirmBooking] courseSlug value:', courseSlug);
+                console.log('[confirmBooking] courseName value:', courseName);
+                console.log('[confirmBooking] mainTeeBooking.courseId:', mainTeeBooking.courseId);
+                console.log('[confirmBooking] mainTeeBooking.teeSheetCourse:', mainTeeBooking.teeSheetCourse);
+
                 // Services
                 (bookingCart.services || []).forEach(service => {
                     toCreate.push({
-                        id: `bk_${courseId}_${teeTime}_${userId}_service_${service.id}`,
+                        id: `bk_${courseSlug}_${teeTime}_${userId}_service_${service.id}`,
                         kind: 'service',
                         golferId: userId,
                         golferName: currentUser.name,
                         eventName: `Service: ${service.name}`,
                         course: courseName,
                         courseName: courseName,
-                        courseId: courseId,
+                        courseId: courseSlug,
                         date: date,
                         time: time,
                         teeTime: teeTime,
@@ -11299,7 +11501,21 @@
                 // 3) Batch upsert locally (faster)
                 toCreate.forEach(b => {
                     try {
-                        BookingManager.addBooking(b);
+                        const addedBooking = BookingManager.addBooking(b);
+                        if (b.kind === 'tee') {
+                            console.log('[confirmBooking] TEE BOOKING ADDED - Verifying fields:');
+                            console.log('[confirmBooking]   Input courseId:', b.courseId);
+                            console.log('[confirmBooking]   Input teeSheetCourse:', b.teeSheetCourse);
+                            console.log('[confirmBooking]   Returned courseId:', addedBooking.courseId);
+                            console.log('[confirmBooking]   Returned teeSheetCourse:', addedBooking.teeSheetCourse);
+
+                            // Also check what's in BookingManager.bookings
+                            const savedBooking = BookingManager.bookings.find(bk => bk.id === addedBooking.id);
+                            if (savedBooking) {
+                                console.log('[confirmBooking]   In BookingManager.bookings courseId:', savedBooking.courseId);
+                                console.log('[confirmBooking]   In BookingManager.bookings teeSheetCourse:', savedBooking.teeSheetCourse);
+                            }
+                        }
                     } catch (e) {
                         console.warn('[confirmBooking] addBooking failed, continuing', b.id, e);
                     }
@@ -15570,9 +15786,8 @@
             // Set minimum date for booking
             const dateInput = document.getElementById('bookingDate');
             if (dateInput) {
-                const tomorrow = new Date();
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                dateInput.min = tomorrow.toISOString().split('T')[0];
+                const today = new Date();
+                dateInput.min = today.toISOString().split('T')[0];
             }
 
             // Course selection handlers
@@ -15603,14 +15818,28 @@
 
                 // Update new booking cart display to enable/disable confirm button
                 updateBookingCartDisplay();
-
-                // If Pattana is selected, reload availability when date changes
-                if (selectedCourse && selectedCourse.id === 'pattana-golf-resort') {
-                    TeeSheetAvailabilityService.loadAvailability();
-                }
             }, 200);
 
-            ['bookingDate', 'bookingTime', 'playerCount'].forEach(id => {
+            // Separate handler for date changes (not throttled)
+            const handleDateChange = function() {
+                // Reset the availability service when date changes
+                if (selectedCourse && selectedCourse.id === 'pattana-golf-resort') {
+                    // Force reload on date change
+                    TeeSheetAvailabilityService.isBuilt = false;
+                    TeeSheetAvailabilityService.loadAvailability();
+                }
+
+                // Also update booking system
+                throttledBookingUpdate();
+            };
+
+            // Add event listener for date changes (dateInput already declared above)
+            if (dateInput) {
+                dateInput.addEventListener('change', handleDateChange);
+            }
+
+            // Time and player count use throttled update
+            ['bookingTime', 'playerCount'].forEach(id => {
                 const element = document.getElementById(id);
                 if (element) {
                     element.addEventListener('change', throttledBookingUpdate);
@@ -17329,30 +17558,30 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                         <label class="form-label">Preferred Time</label>
                                         <select id="bookingTime" class="form-input">
                                             <option value="">Choose time...</option>
-                                            <option value="06:00">6:00 AM</option>
-                                            <option value="06:30">6:30 AM</option>
-                                            <option value="07:00">7:00 AM</option>
-                                            <option value="07:30">7:30 AM</option>
-                                            <option value="08:00">8:00 AM</option>
-                                            <option value="08:30">8:30 AM</option>
-                                            <option value="09:00">9:00 AM</option>
-                                            <option value="09:30">9:30 AM</option>
-                                            <option value="10:00">10:00 AM</option>
-                                            <option value="10:30">10:30 AM</option>
-                                            <option value="11:00">11:00 AM</option>
-                                            <option value="11:30">11:30 AM</option>
-                                            <option value="12:00">12:00 PM</option>
-                                            <option value="12:30">12:30 PM</option>
-                                            <option value="13:00">1:00 PM</option>
-                                            <option value="13:30">1:30 PM</option>
-                                            <option value="14:00">2:00 PM</option>
-                                            <option value="14:30">2:30 PM</option>
-                                            <option value="15:00">3:00 PM</option>
-                                            <option value="15:30">3:30 PM</option>
-                                            <option value="16:00">4:00 PM</option>
-                                            <option value="16:30">4:30 PM</option>
-                                            <option value="17:00">5:00 PM</option>
-                                            <option value="17:30">5:30 PM</option>
+                                            <option value="06:00">06:00</option>
+                                            <option value="06:30">06:30</option>
+                                            <option value="07:00">07:00</option>
+                                            <option value="07:30">07:30</option>
+                                            <option value="08:00">08:00</option>
+                                            <option value="08:30">08:30</option>
+                                            <option value="09:00">09:00</option>
+                                            <option value="09:30">09:30</option>
+                                            <option value="10:00">10:00</option>
+                                            <option value="10:30">10:30</option>
+                                            <option value="11:00">11:00</option>
+                                            <option value="11:30">11:30</option>
+                                            <option value="12:00">12:00</option>
+                                            <option value="12:30">12:30</option>
+                                            <option value="13:00">13:00</option>
+                                            <option value="13:30">13:30</option>
+                                            <option value="14:00">14:00</option>
+                                            <option value="14:30">14:30</option>
+                                            <option value="15:00">15:00</option>
+                                            <option value="15:30">15:30</option>
+                                            <option value="16:00">16:00</option>
+                                            <option value="16:30">16:30</option>
+                                            <option value="17:00">17:00</option>
+                                            <option value="17:30">17:30</option>
                                         </select>
                                     </div>
                                 </div>

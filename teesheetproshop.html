@@ -329,9 +329,19 @@
             // Extract date and time from slot
             // bookingDate is in YYYY-MM-DD format from filters.date
             // slot.time is just the time string like "09:45"
+
+            // CRITICAL FIX: Validate bookingDate is in correct format
+            if (!bookingDate || !bookingDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+              console.error('[CloudSync] Invalid bookingDate:', bookingDate, 'for booking:', teeSheetBooking.id);
+              // Try to use today's date as fallback
+              bookingDate = new Date().toISOString().split('T')[0];
+            }
+
             const slotDate = bookingDate;
             const slotTime = slot.time;
             const teeTimeISO = `${bookingDate}T${slot.time}:00.000Z`;
+
+            console.log('[CloudSync] Converting booking - date:', slotDate, 'time:', slotTime, 'id:', teeSheetBooking.id);
 
             // Create main tee time booking
             const mainBooking = {
@@ -422,20 +432,80 @@
             return [mainBooking, ...caddieBookings];
           }
 
+          // Fix corrupted date field (handles old bookings with time in date field)
+          static fixCorruptedDate(booking) {
+            const date = booking.date;
+
+            // If date looks like a proper date (YYYY-MM-DD), return it
+            if (date && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+              return date;
+            }
+
+            // If date looks like a time (HH:MM), extract from teeTime
+            if (booking.teeTime) {
+              const extracted = booking.teeTime.split('T')[0];
+              if (extracted && extracted.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                console.log('[CloudSync] Fixed corrupted date for booking:', booking.id, 'from', date, 'to', extracted);
+                return extracted;
+              }
+            }
+
+            // Last resort: use today's date
+            const today = new Date().toISOString().split('T')[0];
+            console.warn('[CloudSync] Could not fix date for booking:', booking.id, 'using today:', today);
+            return today;
+          }
+
+          // Fix corrupted time field
+          static fixCorruptedTime(booking) {
+            const time = booking.time;
+
+            // If time looks like HH:MM, return it
+            if (time && time.match(/^\d{2}:\d{2}$/)) {
+              return time;
+            }
+
+            // Extract from teeTime if available
+            if (booking.teeTime) {
+              const parts = booking.teeTime.split('T');
+              if (parts.length > 1) {
+                const extracted = parts[1].substring(0, 5);
+                if (extracted && extracted.match(/^\d{2}:\d{2}$/)) {
+                  console.log('[CloudSync] Fixed corrupted time for booking:', booking.id, 'from', time, 'to', extracted);
+                  return extracted;
+                }
+              }
+            }
+
+            // Last resort: use 09:00
+            console.warn('[CloudSync] Could not fix time for booking:', booking.id, 'using default: 09:00');
+            return '09:00';
+          }
+
           // Convert unified format back to tee sheet format
           static convertFromUnifiedFormat(unifiedBookings) {
+            console.log('[CloudSync] Converting', unifiedBookings.length, 'unified bookings to tee sheet format');
+
             // Group by groupId
             const groups = {};
             unifiedBookings.forEach(booking => {
-              if (!booking.groupId) return;
+              if (!booking.groupId) {
+                console.warn('[CloudSync] Skipping booking without groupId:', booking.id);
+                return;
+              }
               if (!groups[booking.groupId]) groups[booking.groupId] = [];
               groups[booking.groupId].push(booking);
             });
 
+            console.log('[CloudSync] Grouped into', Object.keys(groups).length, 'groups');
+
             // Convert each group to tee sheet booking
-            return Object.entries(groups).map(([groupId, bookings]) => {
+            const converted = Object.entries(groups).map(([groupId, bookings]) => {
               const mainBooking = bookings.find(b => b.kind === 'tee');
-              if (!mainBooking) return null;
+              if (!mainBooking) {
+                console.warn('[CloudSync] Group', groupId, 'has no tee booking, skipping. Kinds:', bookings.map(b => b.kind));
+                return null;
+              }
 
               const caddieBookings = bookings.filter(b => b.kind === 'caddie');
 
@@ -463,9 +533,18 @@
                 // Tee sheet specific fields
                 slotTime: mainBooking.teeTime,
                 course: mainBooking.course,
-                teeNumber: mainBooking.teeNumber
+                teeNumber: mainBooking.teeNumber,
+
+                // CRITICAL: Include date, time, and source for filtering
+                // FIX: Handle corrupted date fields (some old bookings have time in date field)
+                date: this.fixCorruptedDate(mainBooking),
+                time: this.fixCorruptedTime(mainBooking),
+                source: mainBooking.source
               };
             }).filter(Boolean);
+
+            console.log('[CloudSync] Converted to', converted.length, 'tee sheet bookings');
+            return converted;
           }
 
           // Save bookings to cloud
@@ -2489,8 +2568,8 @@
                 }
               },
                 React.createElement('table', {
-                  style: { 
-                    width: '100%', 
+                  style: {
+                    width: '100%',
                     borderCollapse: 'collapse',
                     fontSize: '0.8rem',
                     minWidth: '800px'
@@ -2499,9 +2578,9 @@
                   React.createElement('thead', null,
                     React.createElement('tr', null,
                       React.createElement('th', {
-                        style: { 
+                        style: {
                           padding: '10px 6px',
-                          border: '1px solid #e5e7eb',
+                          border: '2px solid #374151',
                           backgroundColor: '#f9fafb',
                           fontSize: '0.7rem',
                           color: '#6b7280',
@@ -2517,16 +2596,16 @@
                         
                         return React.createElement('th', {
                           key: col.key,
-                          style: { 
+                          style: {
                             padding: '6px 4px',
-                            border: '1px solid #e5e7eb',
+                            border: '2px solid #374151',
                             backgroundColor: col.color,
                             fontSize: '0.7rem',
                             fontWeight: '600',
                             textAlign: 'center',
                             minWidth: '100px',
                             color: '#1f2937',
-                            borderLeft: needsDivider ? `3px solid ${col.color}` : '1px solid #e5e7eb',
+                            borderLeft: needsDivider ? `3px solid ${col.color}` : '2px solid #374151',
                             position: 'relative'
                           }
                         },
@@ -2564,9 +2643,9 @@
                     ),
                     React.createElement('tr', null,
                       React.createElement('th', {
-                        style: { 
+                        style: {
                           padding: '6px',
-                          border: '1px solid #e5e7eb',
+                          border: '2px solid #374151',
                           backgroundColor: '#f9fafb',
                           fontSize: '0.7rem',
                           fontWeight: '600',
@@ -2581,13 +2660,13 @@
                         
                         return React.createElement('th', {
                           key: `${col.key}-sub`,
-                          style: { 
+                          style: {
                             padding: '3px',
-                            border: '1px solid #e5e7eb',
+                            border: '2px solid #374151',
                             backgroundColor: '#f9fafb',
                             fontSize: '0.65rem',
                             color: '#6b7280',
-                            borderLeft: needsDivider ? `3px solid ${col.color}` : '1px solid #e5e7eb',
+                            borderLeft: needsDivider ? `3px solid ${col.color}` : '2px solid #374151',
                             position: 'relative'
                           }
                         },
@@ -2610,11 +2689,17 @@
                   ),
                   React.createElement('tbody', null,
                     ...enhancedRows.map((row, timeIdx) =>
-                      React.createElement('tr', { key: row.time },
+                      React.createElement('tr', {
+                        key: row.time,
+                        style: {
+                          borderBottom: '3px solid #1f2937'
+                        }
+                      },
                         React.createElement('td', {
-                          style: { 
+                          style: {
                             padding: '6px',
-                            border: '1px solid #e5e7eb',
+                            border: '1px solid #d1d5db',
+                            borderBottom: '3px solid #000000',
                             backgroundColor: '#f9fafb',
                             fontWeight: '600',
                             fontSize: '0.7rem',
@@ -2634,15 +2719,26 @@
                           
                           return React.createElement('td', {
                             key: slot.id,
-                            style: { 
-                              padding: '1px',
-                              border: '1px solid #e5e7eb',
-                              height: '45px',
+                            style: {
+                              padding: '0',
+                              border: '1px solid #d1d5db',
+                              height: '48px',
                               verticalAlign: 'middle',
-                              borderLeft: needsDivider ? `3px solid ${currentCol?.color}` : '1px solid #e5e7eb',
+                              borderLeft: needsDivider ? `3px solid ${currentCol?.color}` : '1px solid #d1d5db',
                               position: 'relative'
                             }
                           },
+                            React.createElement('div', {
+                              style: {
+                                position: 'absolute',
+                                bottom: 0,
+                                left: 0,
+                                right: 0,
+                                height: '3px',
+                                backgroundColor: '#000000',
+                                zIndex: 100
+                              }
+                            }),
                             needsDivider && React.createElement('div', {
                               style: {
                                 position: 'absolute',
@@ -2862,55 +2958,33 @@
           }
         ];
 
+        // Real caddy database - loaded from main system
         const demoCaddies = [
-          { id: 'c001', number: '001', name: 'Somchai', nameEn: 'Somchai', nameTh: 'สมชาย', nameKo: '솜차이', rating: 4.8, languages: ['Thai', 'English'], status: 'available' },
-          { id: 'c003', number: '003', name: 'Niran', nameEn: 'Niran', nameTh: 'นิรันดร์', nameKo: '니란', rating: 4.6, languages: ['Thai', 'English', 'Japanese'], status: 'available' },
-          { id: 'c007', number: '007', name: 'Mali', nameEn: 'Mali', nameTh: 'มาลี', nameKo: '말리', rating: 4.9, languages: ['Thai', 'English'], status: 'available' },
-          { id: 'c012', number: '012', name: 'Porn', nameEn: 'Porn', nameTh: 'พร', nameKo: '폰', rating: 4.7, languages: ['Thai', 'Korean'], status: 'available' },
-          { id: 'c015', number: '015', name: 'Lek', nameEn: 'Lek', nameTh: 'เล็ก', nameKo: '렉', rating: 4.8, languages: ['Thai', 'Korean', 'English'], status: 'available' },
-          { id: 'c023', number: '023', name: 'Malee', nameEn: 'Malee', nameTh: 'มาลี', nameKo: '말리', rating: 4.5, languages: ['Thai', 'English'], status: 'available' },
-          { id: 'c031', number: '031', name: 'Jin', nameEn: 'Jin', nameTh: 'จิน', nameKo: '진', rating: 4.4, languages: ['Thai', 'Korean'], status: 'booked' },
-          { id: 'c042', number: '042', name: 'Noi', nameEn: 'Noi', nameTh: 'น้อย', nameKo: '노이', rating: 4.9, languages: ['Thai', 'English', 'Chinese'], status: 'on-course' },
-          { id: 'c056', number: '056', name: 'Benz', nameEn: 'Benz', nameTh: 'เบนซ์', nameKo: '벤츠', rating: 4.3, languages: ['Thai', 'English'], status: 'on-break' },
-          { id: 'c067', number: '067', name: 'Oy', nameEn: 'Oy', nameTh: 'อ้อย', nameKo: '오이', rating: 4.6, languages: ['Thai', 'Japanese'], status: 'available' }
+                // PATTANA GOLF RESORT & SPA (20 caddies)
+                { id: 'pat002', name: 'Sunan Rojana', rating: 4.8, experience: 12, languages: ['Thai', 'English', 'German'], avatar: '👨', photo: 'images/caddies/caddy5.jpg', specialty: 'Resort Experience', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 3456, reviews: 421, personality: 'Luxury service focused', strengths: ['Resort Services', 'Guest Relations', 'Ocean Course'] },
+                { id: 'pat003', name: 'Ploy Siriwat', rating: 4.7, experience: 6, languages: ['Thai', 'English'], avatar: '👩', photo: 'images/caddies/caddy6.jpg', specialty: 'Spa & Golf Package', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 1847, reviews: 198, personality: 'Relaxed and wellness-focused', strengths: ['Wellness Integration', 'Relaxation', 'Course Enjoyment'] },
+                { id: 'pat004', name: 'Anuwat Teerachai', rating: 4.6, experience: 9, languages: ['Thai', 'English', 'Russian'], avatar: '👨‍🦳', photo: 'images/caddies/caddy7.jpg', specialty: 'International Guests', homeClub: 'pattana-golf-resort', availability: 'booked', totalRounds: 2734, reviews: 312, personality: 'Cultural bridge specialist', strengths: ['Language Skills', 'Cultural Awareness', 'International Etiquette'] },
+                { id: 'pat005', name: 'Siriporn Nakamura', rating: 4.9, experience: 11, languages: ['Thai', 'English', 'Japanese'], avatar: '👩', photo: 'images/caddies/caddy8.jpg', specialty: 'International Service', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 3921, reviews: 456, personality: 'Precise and culturally aware', strengths: ['Japanese Guests', 'Precision', 'Cultural Service'] },
+                { id: 'pat006', name: 'Kamon Srisuk', rating: 4.5, experience: 7, languages: ['Thai', 'English'], avatar: '👨', photo: 'images/caddies/caddy9.jpg', specialty: 'Ocean Course Expert', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 2156, reviews: 234, personality: 'Ocean course specialist', strengths: ['Wind Reading', 'Coastal Play', 'Weather Adaptation'] },
+                { id: 'pat007', name: 'Niran Phongsri', rating: 4.7, experience: 10, languages: ['Thai', 'English', 'Chinese'], avatar: '👨‍🦲', photo: 'images/caddies/caddy10.jpg', specialty: 'VIP Championship', homeClub: 'pattana-golf-resort', availability: 'booked', totalRounds: 3245, reviews: 387, personality: 'Championship focused', strengths: ['Tournament Prep', 'Elite Service', 'Course Management'] },
+                { id: 'pat008', name: 'Wassana Chitpong', rating: 4.6, experience: 5, languages: ['Thai', 'English'], avatar: '👩‍🦱', photo: 'images/caddies/caddy11.jpg', specialty: 'Family Resort Golf', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 1567, reviews: 178, personality: 'Family-oriented and fun', strengths: ['Family Groups', 'Resort Activities', 'Fun Golf'] },
+                { id: 'pat009', name: 'Thanapon Wira', rating: 4.8, experience: 14, languages: ['Thai', 'English', 'French'], avatar: '👨', photo: 'images/caddies/caddy12.jpg', specialty: 'Luxury Resort Service', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 4123, reviews: 523, personality: 'Luxury service expert', strengths: ['Premium Service', 'Fine Dining', 'Resort Concierge'] },
+                { id: 'pat010', name: 'Kulthida Manee', rating: 4.7, experience: 8, languages: ['Thai', 'English'], avatar: '👩', photo: 'images/caddies/caddy13.jpg', specialty: 'Ladies Golf Specialist', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 2234, reviews: 267, personality: 'Supportive and encouraging', strengths: ['Ladies Golf', 'Technique Teaching', 'Confidence Building'] },
+                { id: 'pat011', name: 'Sombat Rattana', rating: 4.9, experience: 16, languages: ['Thai', 'English', 'Korean'], avatar: '👨‍🦳', photo: 'images/caddies/caddy14.jpg', specialty: 'Master Caddy', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 5234, reviews: 634, personality: 'Master of the course', strengths: ['Course History', 'Expert Knowledge', 'Elite Guidance'] },
+                { id: 'pat012', name: 'Pensri Kamal', rating: 4.5, experience: 4, languages: ['Thai', 'English'], avatar: '👩', photo: 'images/caddies/caddy15.jpg', specialty: 'New Golfer Support', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 1123, reviews: 134, personality: 'Patient and teaching-focused', strengths: ['Beginner Support', 'Basic Instruction', 'Encouragement'] },
+                { id: 'pat013', name: 'Wichai Thongchai', rating: 4.6, experience: 9, languages: ['Thai', 'English', 'Spanish'], avatar: '👨', photo: 'images/caddies/caddy16.jpg', specialty: 'International Tourism', homeClub: 'pattana-golf-resort', availability: 'booked', totalRounds: 2567, reviews: 298, personality: 'Tourism and hospitality expert', strengths: ['Tourism Knowledge', 'Local Culture', 'Hospitality'] },
+                { id: 'pat014', name: 'Siriporn Jaidee', rating: 4.8, experience: 11, languages: ['Thai', 'English', 'Japanese'], avatar: '👩‍🦲', photo: 'images/caddies/caddy17.jpg', specialty: 'Precision Golf', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 3456, reviews: 412, personality: 'Precision and technique focused', strengths: ['Technical Analysis', 'Precision Play', 'Shot Planning'] },
+                { id: 'pat015', name: 'Charn Wongsa', rating: 4.7, experience: 13, languages: ['Thai', 'English', 'Chinese'], avatar: '👨', photo: 'images/caddies/caddy18.jpg', specialty: 'Business Golf', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 3834, reviews: 445, personality: 'Business-focused and professional', strengths: ['Business Etiquette', 'Networking Support', 'Professional Service'] },
+                { id: 'pat016', name: 'Mayuree Tanin', rating: 4.5, experience: 6, languages: ['Thai', 'English'], avatar: '👩', photo: 'images/caddies/caddy19.jpg', specialty: 'Resort Leisure Golf', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 1789, reviews: 201, personality: 'Leisure and relaxation focused', strengths: ['Leisure Golf', 'Relaxation', 'Resort Experience'] },
+                { id: 'pat017', name: 'Narong Sila', rating: 4.8, experience: 10, languages: ['Thai', 'English', 'Italian'], avatar: '👨‍🦲', photo: 'images/caddies/caddy20.jpg', specialty: 'European Guests', homeClub: 'pattana-golf-resort', availability: 'booked', totalRounds: 2923, reviews: 356, personality: 'European culture specialist', strengths: ['European Customs', 'Cultural Adaptation', 'International Service'] },
+                { id: 'pat018', name: 'Amporn Ritual', rating: 4.6, experience: 7, languages: ['Thai', 'English'], avatar: '👩‍🦱', photo: 'images/caddies/caddy21.jpg', specialty: 'Course Photography', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 2012, reviews: 234, personality: 'Artistic and scenic focused', strengths: ['Photo Spots', 'Scenic Views', 'Memory Making'] },
+                { id: 'pat019', name: 'Preecha Nawin', rating: 4.9, experience: 15, languages: ['Thai', 'English', 'Arabic'], avatar: '👨', photo: 'images/caddies/caddy22.jpg', specialty: 'Premium Championship', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 4567, reviews: 556, personality: 'Championship excellence focused', strengths: ['Elite Performance', 'Championship Standards', 'Premium Service'] },
+                { id: 'pat020', name: 'Ratana Sompong', rating: 4.7, experience: 8, languages: ['Thai', 'English'], avatar: '👩', photo: 'images/caddies/caddy23.jpg', specialty: 'Wellness Golf', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 2345, reviews: 278, personality: 'Health and wellness focused', strengths: ['Wellness Integration', 'Health Benefits', 'Mindful Golf'] },
+
+                // Note: Add other club caddies as needed - only showing Pattana caddies for tee sheet for now
         ];
 
-        const sampleBookings = [
-          {
-            id: 'booking-1',
-            golfers: [
-              { id: 'g1', name: 'John Smith', handicap: 8, inputLang: 'en' },
-              { id: 'g2', name: 'Mike Johnson', handicap: 12, inputLang: 'en' }
-            ],
-            notes: 'VIP members, prefer Course A',
-            notesLang: 'en',
-            bookingType: 'vip',
-            status: 'confirmed',
-            caddyBookings: [
-              { golferId: 'g1', caddyId: 'c001', golferName: 'John Smith', caddyName: 'Somchai', caddyNumber: '001', status: 'confirmed' },
-              { golferId: 'g2', caddyId: 'c007', golferName: 'Mike Johnson', caddyName: 'Mali', caddyNumber: '007', status: 'confirmed' }
-            ]
-          },
-          {
-            id: 'booking-2',
-            golfers: [
-              { id: 'g3', name: '박지성', handicap: 15, inputLang: 'ko' },
-              { id: 'g4', name: '김민수', handicap: 6, inputLang: 'ko' },
-              { id: 'g5', name: 'สมศักดิ์', handicap: 20, inputLang: 'th' },
-              { id: 'g6', name: 'วิชาย', handicap: 10, inputLang: 'th' }
-            ],
-            notes: '기업 토너먼트 그룹 / กลุ่มทัวร์นาเมนต์บริษัท',
-            notesLang: 'ko',
-            bookingType: 'tournament',
-            status: 'confirmed',
-            caddyBookings: [
-              { golferId: 'g3', caddyId: 'c012', golferName: '박지성', caddyName: 'Porn', caddyNumber: '012', status: 'confirmed' },
-              { golferId: 'g4', caddyId: 'c015', golferName: '김민수', caddyName: 'Lek', caddyNumber: '015', status: 'confirmed' },
-              { golferId: 'g5', caddyId: 'c023', golferName: 'สมศักดิ์', caddyName: 'Malee', caddyNumber: '023', status: 'confirmed' },
-              { golferId: 'g6', caddyId: 'c067', golferName: 'วิชาย', caddyName: 'Oy', caddyNumber: '067', status: 'confirmed' }
-            ]
-          }
-        ];
+        // REMOVED: sampleBookings - no longer needed, using real cloud bookings only
 
         const TeeSheetDemo = () => {
           const [modalOpen, setModalOpen] = useState(false);
@@ -2949,6 +3023,10 @@
           useEffect(() => {
             const { date, ...settingsWithoutDate } = filters;
             localStorage.setItem('teesheet_settings', JSON.stringify(settingsWithoutDate));
+
+            // Also save as Pattana-specific settings for golfer dashboard sync
+            localStorage.setItem('pattana-tee-sheet-settings', JSON.stringify(settingsWithoutDate));
+
             console.log('[TeeSheet] Settings saved (without date):', settingsWithoutDate);
           }, [filters]);
 
@@ -3046,39 +3124,10 @@
                     capacity: 4,
                     players: 0,
                     availableCaddies: demoCaddies,
-                    locked: Math.random() < 0.05
+                    locked: false
                   };
 
-                  if (time === '08:30' && lane.courseId === 'course-a' && teeNum === 1) {
-                    slot.booking = sampleBookings[0];
-                  } else if (time === '09:00' && lane.courseId === 'course-b' && teeNum === 1) {
-                    slot.booking = sampleBookings[1];
-                  } else if (Math.random() < 0.12) {
-                    const languages = ['en', 'th', 'ko'];
-                    const randomLang = languages[Math.floor(Math.random() * languages.length)];
-                    const randomNames = {
-                      en: ['Player', 'Golfer', 'Member'],
-                      th: ['ผู้เล่น', 'นักกอล์ฟ', 'สมาชิก'],
-                      ko: ['플레이어', '골퍼', '회원']
-                    };
-                    
-                    const randomBooking = {
-                      id: `random-${Math.random()}`,
-                      golfers: [
-                        { 
-                          id: 'rg1', 
-                          name: `${randomNames[randomLang][Math.floor(Math.random() * randomNames[randomLang].length)]} ${Math.floor(Math.random() * 100)}`,
-                          handicap: Math.floor(Math.random() * 28),
-                          inputLang: randomLang
-                        }
-                      ],
-                      bookingType: ['regular', 'vip', 'society'][Math.floor(Math.random() * 3)],
-                      status: 'confirmed',
-                      notes: Math.random() < 0.3 ? 'Special requests noted' : undefined,
-                      notesLang: randomLang
-                    };
-                    slot.booking = randomBooking;
-                  }
+                  // NO DEMO BOOKINGS - Only show real bookings from cloud
 
                   return slot;
                 })
@@ -3103,19 +3152,28 @@
               const cloudBookings = result.bookings || [];
               console.log('[TeeSheet] Loaded', cloudBookings.length, 'bookings from cloud');
 
-              if (cloudBookings.length === 0) {
-                return; // No bookings to merge
+              // Filter bookings for current date
+              console.log('[TeeSheet] Filtering bookings - filters.date:', filters.date);
+              console.log('[TeeSheet] Sample booking dates:', cloudBookings.slice(0, 3).map(b => ({ id: b.id, date: b.date, source: b.source })));
+              const todaysBookings = cloudBookings.filter(b => b.date === filters.date);
+              console.log('[TeeSheet] Found', todaysBookings.length, 'bookings for', filters.date);
+
+              if (todaysBookings.length === 0) {
+                return; // No bookings to merge for this date
               }
 
               // Merge cloud bookings into existing slots (including dashboard-pattana bookings)
+              let mergeCount = 0;
               setDemoRows(prevRows => {
                 return prevRows.map(row => ({
                   ...row,
                   slots: row.slots.map(slot => {
                     // Find matching booking for this slot
-                    const matchingBooking = cloudBookings.find(booking => {
-                      // Only include teesheet or dashboard-pattana bookings
-                      if (booking.source !== 'teesheet' && booking.source !== 'dashboard-pattana') {
+                    const matchingBooking = todaysBookings.find(booking => {
+                      // Only include teesheet, dashboard, or dashboard-pattana bookings
+                      if (booking.source !== 'teesheet' &&
+                          booking.source !== 'dashboard-pattana' &&
+                          booking.source !== 'dashboard') {
                         return false;
                       }
 
@@ -3126,24 +3184,81 @@
                       // Check if times match (handle both formats)
                       const timesMatch = bookingTime === slotTime || slot.time.startsWith(bookingTime);
 
-                      // For dashboard-pattana bookings, match by teeSheetCourse or default Course A
+                      // DEBUG: Log first slot attempt (only first slot to avoid spam)
+                      if (slot.id === '14:00-course-a-1' || slot.id === '14:05-course-a-1') {
+                        console.log('[TeeSheet] DEBUG matching first slot:', {
+                          slotId: slot.id,
+                          slotTime: slot.time,
+                          slotCourseId: slot.courseId,
+                          bookingTime: bookingTime,
+                          bookingCourseId: booking.courseId,
+                          bookingCourse: booking.course,
+                          bookingTeeSheetCourse: booking.teeSheetCourse,
+                          bookingSource: booking.source,
+                          timesMatch: timesMatch
+                        });
+                      }
+
+                      // For dashboard bookings, match by teeSheetCourse or course name/ID
                       let courseMatch = false;
-                      if (booking.source === 'dashboard-pattana') {
-                        const targetCourse = booking.teeSheetCourse || 'Course A';
-                        courseMatch = slot.id.includes(targetCourse.toLowerCase().replace(/\s+/g, '-'));
+                      let matchMethod = 'none';
+                      if (booking.source === 'dashboard-pattana' || booking.source === 'dashboard') {
+                        // First try teeSheetCourse if specified (e.g., "Course A")
+                        if (booking.teeSheetCourse) {
+                          const targetCourse = booking.teeSheetCourse;
+                          courseMatch = slot.id.includes(targetCourse.toLowerCase().replace(/\s+/g, '-'));
+                          if (courseMatch) matchMethod = 'teeSheetCourse';
+                        }
+
+                        // Fallback: Try courseId if present
+                        if (!courseMatch && booking.courseId) {
+                          courseMatch = slot.id.includes(booking.courseId.toLowerCase().replace(/\s+/g, '-')) ||
+                                       slot.courseId === booking.courseId;
+                          if (courseMatch) matchMethod = 'courseId';
+                        }
+
+                        // Last resort: Try course name
+                        if (!courseMatch && booking.course) {
+                          courseMatch = slot.id.includes(booking.course.toLowerCase().replace(/\s+/g, '-'));
+                          if (courseMatch) matchMethod = 'courseName';
+                        }
                       } else {
                         // Original teesheet booking matching
                         courseMatch = slot.id.includes(booking.course?.toLowerCase().replace(/\s+/g, '-')) ||
-                                     slot.courseId === booking.courseId;
+                                     (booking.courseId && slot.courseId === booking.courseId);
+                        if (courseMatch) matchMethod = 'teesheet';
+                      }
+
+                      // DEBUG: Log matching details for 14:00/14:05
+                      if (slot.id === '14:00-course-a-1' || slot.id === '14:05-course-a-1') {
+                        console.log('[TeeSheet] DEBUG course matching:', {
+                          slotId: slot.id,
+                          courseMatch,
+                          matchMethod,
+                          teeSheetCourse: booking.teeSheetCourse,
+                          teeSheetCourseLower: booking.teeSheetCourse?.toLowerCase().replace(/\s+/g, '-'),
+                          slotIdIncludesIt: slot.id.includes(booking.teeSheetCourse?.toLowerCase().replace(/\s+/g, '-') || 'xxx')
+                        });
                       }
 
                       // Check tee number if available
                       const teeMatch = !booking.teeNumber || slot.id.includes(`-${booking.teeNumber}`);
 
+                      // DEBUG: Log match result for 14:00
+                      if (slot.time === '14:00' && booking.time === '14:00') {
+                        console.log('[TeeSheet] DEBUG match result:', {
+                          timesMatch,
+                          courseMatch,
+                          teeMatch,
+                          finalMatch: timesMatch && courseMatch && teeMatch
+                        });
+                      }
+
                       return timesMatch && courseMatch && teeMatch;
                     });
 
                     if (matchingBooking) {
+                      mergeCount++;
                       console.log('[TeeSheet] Merged booking into slot:', slot.id, matchingBooking.id);
                       return {
                         ...slot,
@@ -3156,7 +3271,22 @@
                 }));
               });
 
-              console.log('[TeeSheet] Cloud bookings merged successfully');
+              console.log('[TeeSheet] Cloud bookings merged successfully. Merged', mergeCount, 'of', todaysBookings.length, 'bookings');
+
+              if (mergeCount === 0 && todaysBookings.length > 0) {
+                console.error('[TeeSheet] ERROR: No bookings were merged! Debugging first booking:');
+                const firstBooking = todaysBookings[0];
+                console.error('[TeeSheet] Booking:', {
+                  id: firstBooking.id,
+                  time: firstBooking.time,
+                  slotTime: firstBooking.slotTime,
+                  course: firstBooking.course,
+                  courseId: firstBooking.courseId,
+                  teeSheetCourse: firstBooking.teeSheetCourse,
+                  source: firstBooking.source
+                });
+                console.error('[TeeSheet] Sample slot IDs:', demoRows[0]?.slots.slice(0, 3).map(s => s.id));
+              }
             }
 
             // Load after a short delay to ensure demoRows is initialized
@@ -3165,7 +3295,7 @@
             }, 500);
 
             return () => clearTimeout(timer);
-          }, [filters.date]); // Reload when date changes
+          }, [filters.date, demoRows.length]); // Reload when date changes OR slots are created
 
           const handleSelectSlot = (slot) => {
             setSelectedSlot(slot);
@@ -3413,6 +3543,19 @@
     if (document.querySelector('[data-slot-id]')) ready = true;
     if (!ready && n>0) setTimeout(function(){ tryInstall(n-1); }, 250);
   }
+  // Clear cache if requested via URL parameter
+  if (window.location.search.includes('clearCache=1')) {
+    console.log('[TeeSheet] Clearing localStorage cache...');
+    const keys = Object.keys(localStorage);
+    keys.forEach(key => {
+      if (key.includes('mcipro') || key.includes('teesheet')) {
+        localStorage.removeItem(key);
+      }
+    });
+    console.log('[TeeSheet] Cache cleared, closing tab...');
+    setTimeout(() => window.close(), 1000);
+  }
+
   document.addEventListener('DOMContentLoaded', function(){ tryInstall(20); });
   window.addEventListener('load', function(){ tryInstall(10); });
   window.addEventListener('resize', updateGuides);

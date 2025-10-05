@@ -9643,18 +9643,31 @@
                 return;
             }
 
-            // FIXED: Delete from bookings (single source of truth)
+            // FIXED: Delete ALL related bookings (tee + caddies + services) using groupId
             const bookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]');
-            const booking = bookings.find(b => b.id === itemId);
+            const mainBooking = bookings.find(b => b.id === itemId);
 
-            if (!booking) {
+            if (!mainBooking) {
                 NotificationManager.show('Booking not found', 'error');
                 return;
             }
 
-            // Mark as deleted with tombstone
-            booking.deleted = true;
-            booking.updatedAt = Date.now();
+            // Get the groupId to find ALL related bookings
+            const groupId = mainBooking.groupId;
+            console.log('[cancelScheduleItem] Deleting booking group:', groupId);
+
+            // Mark ALL bookings in this group as deleted with tombstone
+            let deletedCount = 0;
+            bookings.forEach(booking => {
+                if (booking.groupId === groupId) {
+                    booking.deleted = true;
+                    booking.updatedAt = Date.now();
+                    deletedCount++;
+                    console.log('[cancelScheduleItem] Marked deleted:', booking.id, 'kind:', booking.kind);
+                }
+            });
+
+            console.log('[cancelScheduleItem] Deleted', deletedCount, 'bookings in group');
 
             // Save locally
             localStorage.setItem('mcipro_bookings', JSON.stringify(bookings));
@@ -9671,7 +9684,7 @@
             ScheduleSystem.renderScheduleList();
             ScheduleSystem.refreshStats();
 
-            NotificationManager.show('Booking cancelled successfully', 'success');
+            NotificationManager.show(`Booking cancelled successfully (${deletedCount} items deleted)`, 'success');
         }
 
         async function saveScheduleItemChanges(itemId, itemType, modal) {

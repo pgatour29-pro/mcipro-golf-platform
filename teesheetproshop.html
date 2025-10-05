@@ -3107,13 +3107,18 @@
                 return; // No bookings to merge
               }
 
-              // Merge cloud bookings into existing slots
+              // Merge cloud bookings into existing slots (including dashboard-pattana bookings)
               setDemoRows(prevRows => {
                 return prevRows.map(row => ({
                   ...row,
                   slots: row.slots.map(slot => {
                     // Find matching booking for this slot
                     const matchingBooking = cloudBookings.find(booking => {
+                      // Only include teesheet or dashboard-pattana bookings
+                      if (booking.source !== 'teesheet' && booking.source !== 'dashboard-pattana') {
+                        return false;
+                      }
+
                       // Match by time and course
                       const bookingTime = booking.slotTime?.split('T')[1]?.substring(0, 5) || booking.time;
                       const slotTime = slot.time;
@@ -3121,9 +3126,16 @@
                       // Check if times match (handle both formats)
                       const timesMatch = bookingTime === slotTime || slot.time.startsWith(bookingTime);
 
-                      // Check if course matches
-                      const courseMatch = slot.id.includes(booking.course?.toLowerCase().replace(/\s+/g, '-')) ||
-                                         slot.courseId === booking.courseId;
+                      // For dashboard-pattana bookings, match by teeSheetCourse or default Course A
+                      let courseMatch = false;
+                      if (booking.source === 'dashboard-pattana') {
+                        const targetCourse = booking.teeSheetCourse || 'Course A';
+                        courseMatch = slot.id.includes(targetCourse.toLowerCase().replace(/\s+/g, '-'));
+                      } else {
+                        // Original teesheet booking matching
+                        courseMatch = slot.id.includes(booking.course?.toLowerCase().replace(/\s+/g, '-')) ||
+                                     slot.courseId === booking.courseId;
+                      }
 
                       // Check tee number if available
                       const teeMatch = !booking.teeNumber || slot.id.includes(`-${booking.teeNumber}`);

@@ -24,11 +24,11 @@ CREATE INDEX IF NOT EXISTS idx_bookings_date_teetime ON bookings(date, tee_time)
 -- USER_PROFILES TABLE INDEXES
 -- =====================================================
 
--- Index on line_user_id for LINE login lookups
-CREATE INDEX IF NOT EXISTS idx_user_profiles_line_user_id ON user_profiles(line_user_id);
+-- Index on line_user_id for LINE login lookups (PRIMARY KEY already indexed)
+-- Not needed - line_user_id is PRIMARY KEY and automatically indexed
 
--- Index on username for username lookups
-CREATE INDEX IF NOT EXISTS idx_user_profiles_username ON user_profiles(username);
+-- Index on name for search lookups
+CREATE INDEX IF NOT EXISTS idx_user_profiles_name ON user_profiles(name);
 
 -- Index on user_role for role-based queries
 CREATE INDEX IF NOT EXISTS idx_user_profiles_user_role ON user_profiles(user_role);

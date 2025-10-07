@@ -3573,6 +3573,24 @@
                             }
                         }, 100);
                     }
+
+                    if (tabName === 'maintenance') {
+                        setTimeout(() => {
+                            if (typeof MaintenanceManagement !== 'undefined' && MaintenanceManagement.init) {
+                                MaintenanceManagement.init();
+                                console.log('[TabManager] Maintenance Management initialized');
+                            }
+                        }, 100);
+                    }
+
+                    if (tabName === 'weather') {
+                        setTimeout(() => {
+                            if (typeof WeatherIntegration !== 'undefined' && WeatherIntegration.init) {
+                                WeatherIntegration.init();
+                                console.log('[TabManager] Weather Integration initialized');
+                            }
+                        }, 100);
+                    }
                 }
 
                 // Update persistent emergency alerts when switching to overview or pos (proshop default) tabs
@@ -21769,6 +21787,14 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <span class="material-symbols-outlined text-sm">settings</span>
                         <span class="hidden sm:inline ml-1">Settings</span>
                     </button>
+                    <button onclick="showManagerTab('maintenance', event)" class="tab-button px-2 md:px-4" id="manager-maintenance-tab">
+                        <span class="material-symbols-outlined text-sm">build</span>
+                        <span class="hidden sm:inline ml-1">Maintenance</span>
+                    </button>
+                    <button onclick="showManagerTab('weather', event)" class="tab-button px-2 md:px-4" id="manager-weather-tab">
+                        <span class="material-symbols-outlined text-sm">wb_cloudy</span>
+                        <span class="hidden sm:inline ml-1">Weather</span>
+                    </button>
                 </div>
             </div>
         </nav>
@@ -22565,6 +22591,151 @@ Total Rounds: ${ningCaddy.totalRounds}`;
             <div id="manager-settings" class="tab-content hidden">
                 <!-- Admin Pricing Control Dashboard -->
                 <div id="admin-pricing-dashboard"></div>
+            </div>
+
+            <!-- Maintenance Tab -->
+            <div id="manager-maintenance" class="tab-content hidden">
+                <div class="mb-6">
+                    <h2 class="text-2xl font-bold mb-2">Maintenance Management</h2>
+                    <p class="text-gray-600">Course maintenance, work orders, and equipment tracking</p>
+                </div>
+
+                <div class="flex gap-2 mb-6 flex-wrap">
+                    <button onclick="MaintenanceManagement.showCreateWorkOrderModal()" class="btn-primary">
+                        <span class="material-symbols-outlined text-sm">build</span>
+                        New Work Order
+                    </button>
+                    <button onclick="MaintenanceManagement.scheduleMaintenanceWindow()" class="btn-secondary">
+                        <span class="material-symbols-outlined text-sm">calendar_today</span>
+                        Schedule Maintenance
+                    </button>
+                    <button onclick="MaintenanceManagement.generateMaintenanceReport()" class="btn-secondary">
+                        <span class="material-symbols-outlined text-sm">summarize</span>
+                        Generate Report
+                    </button>
+                </div>
+
+                <!-- Metrics Grid -->
+                <div id="maintenance-metrics-container" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6"></div>
+
+                <!-- Main Content Grid -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Weather Widget (tied to weather tab) -->
+                    <div id="maintenance-weather-widget" class="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold">Current Weather</h3>
+                            <span class="material-symbols-outlined cursor-pointer" onclick="showManagerTab('weather', event)">open_in_new</span>
+                        </div>
+                        <div id="maint-weather-temp" class="text-4xl font-bold mb-2">--°C</div>
+                        <div id="maint-weather-desc" class="text-sm opacity-90 mb-4">Loading...</div>
+                        <div id="maint-weather-details" class="text-xs opacity-80">--</div>
+                    </div>
+
+                    <!-- Weather Recommendations -->
+                    <div class="card col-span-2">
+                        <h3 class="font-semibold mb-3">Weather-Based Recommendations</h3>
+                        <div id="maintenance-weather-recommendations" class="space-y-2">
+                            <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                                Loading weather recommendations...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Active Work Orders -->
+                <div class="card mt-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold">Active Work Orders</h3>
+                        <select id="work-order-filter" onchange="MaintenanceManagement.filterWorkOrders(this.value)" class="form-select text-sm">
+                            <option value="all">All Work Orders</option>
+                            <option value="pending">Pending</option>
+                            <option value="in-progress">In Progress</option>
+                            <option value="on-hold">On Hold</option>
+                        </select>
+                    </div>
+                    <div id="work-orders-container"></div>
+                </div>
+
+                <!-- Course Conditions -->
+                <div class="card mt-6">
+                    <h3 class="text-lg font-semibold mb-4">Course Conditions</h3>
+                    <div id="course-conditions-container"></div>
+                </div>
+            </div>
+
+            <!-- Weather Tab -->
+            <div id="manager-weather" class="tab-content hidden">
+                <div class="mb-6">
+                    <h2 class="text-2xl font-bold mb-2">Weather & Course Conditions</h2>
+                    <p class="text-gray-600">Real-time weather monitoring and impact on course operations</p>
+                </div>
+
+                <!-- Current Weather & Forecast -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                    <!-- Current Weather Card -->
+                    <div class="card bg-gradient-to-br from-blue-500 to-blue-700 text-white">
+                        <h3 class="text-lg font-semibold mb-4">Current Conditions</h3>
+                        <div id="weather-current-temp" class="text-5xl font-bold mb-2">--°C</div>
+                        <div id="weather-current-desc" class="text-lg mb-4">Loading...</div>
+                        <div class="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <div class="opacity-80">Humidity</div>
+                                <div id="weather-humidity" class="font-semibold text-lg">--%</div>
+                            </div>
+                            <div>
+                                <div class="opacity-80">Wind Speed</div>
+                                <div id="weather-wind" class="font-semibold text-lg">-- km/h</div>
+                            </div>
+                            <div>
+                                <div class="opacity-80">Pressure</div>
+                                <div id="weather-pressure" class="font-semibold text-lg">-- hPa</div>
+                            </div>
+                            <div>
+                                <div class="opacity-80">Visibility</div>
+                                <div id="weather-visibility" class="font-semibold text-lg">-- km</div>
+                            </div>
+                        </div>
+                        <div class="mt-4 pt-4 border-t border-white/20">
+                            <div class="text-xs opacity-80" id="weather-location">Bang Lamung, Chon Buri</div>
+                            <div class="text-xs opacity-60" id="weather-updated">Updated: --</div>
+                        </div>
+                    </div>
+
+                    <!-- 3-Hour Forecast -->
+                    <div class="card col-span-2">
+                        <h3 class="text-lg font-semibold mb-4">3-Hour Forecast</h3>
+                        <div id="weather-forecast-3h" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+                    </div>
+                </div>
+
+                <!-- Weather Alerts & Impact -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                    <!-- Weather Alerts -->
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-4">Weather Alerts</h3>
+                        <div id="weather-alerts-container"></div>
+                    </div>
+
+                    <!-- Course Impact -->
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-4">Course Impact</h3>
+                        <div id="weather-course-impact"></div>
+                    </div>
+                </div>
+
+                <!-- Playability Status -->
+                <div class="card">
+                    <h3 class="text-lg font-semibold mb-4">Course Playability Status</h3>
+                    <div id="weather-playability-status" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+                </div>
+
+                <!-- Historical Weather Data -->
+                <div class="card mt-6">
+                    <h3 class="text-lg font-semibold mb-4">7-Day Weather History</h3>
+                    <div id="weather-history-chart" class="h-64 flex items-center justify-center text-gray-500">
+                        Chart will be rendered here
+                    </div>
+                </div>
             </div>
 
             <!-- OLD SETTINGS REMOVED - REPLACED WITH PRICING CONTROL -->
@@ -26777,6 +26948,12 @@ window.AdminSystem = AdminSystem;
     <!-- Staff Management System -->
     <script src="staff-security.js"></script>
     <script src="staff-management.js"></script>
+
+    <!-- Maintenance Management System -->
+    <script src="maintenance-management.js"></script>
+
+    <!-- Weather Integration System -->
+    <script src="weather-integration.js"></script>
 
     <script>
     // Initialize Society Analytics when Analytics tab opens

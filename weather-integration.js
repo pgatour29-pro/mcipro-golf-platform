@@ -22,7 +22,13 @@ const WeatherIntegration = {
         forecast: null,
         alerts: [],
         lastUpdated: null,
-        history: []
+        history: [],
+        map: null,
+        radarLayers: [],
+        radarTimestamps: [],
+        currentRadarFrame: 0,
+        radarAnimationInterval: null,
+        isRadarPlaying: false
     },
 
     STORAGE_KEY: 'mcipro_weather_data',
@@ -600,6 +606,220 @@ const WeatherIntegration = {
         }
 
         return { status, overallColor, emoji, message, factors, recommendations };
+    },
+
+    // ============================================
+    // LIVE RADAR MAP (RainViewer + Leaflet)
+    // ============================================
+
+    async initializeRadarMap() {
+        // Check if Leaflet is loaded
+        if (typeof L === 'undefined') {
+            console.error('[WeatherIntegration] Leaflet.js not loaded');
+            return;
+        }
+
+        // Check if map container exists
+        const mapContainer = document.getElementById('weather-radar-map');
+        if (!mapContainer) {
+            console.error('[WeatherIntegration] Radar map container not found');
+            return;
+        }
+
+        // Destroy existing map if any
+        if (this.state.map) {
+            this.state.map.remove();
+            this.state.map = null;
+        }
+
+        // Create map centered on golf course
+        this.state.map = L.map('weather-radar-map').setView(
+            [this.config.latitude, this.config.longitude],
+            10  // Zoom level (10 = regional view)
+        );
+
+        // Add base map tiles (OpenStreetMap)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap',
+            maxZoom: 18
+        }).addTo(this.state.map);
+
+        // Add marker for golf course
+        const courseMarker = L.marker([this.config.latitude, this.config.longitude])
+            .addTo(this.state.map)
+            .bindPopup('<strong>Golf Course</strong><br>Location Center');
+
+        // Add wind direction arrow if weather data available
+        if (this.state.currentWeather) {
+            this.addWindArrow();
+        }
+
+        // Load radar frames from RainViewer API
+        await this.loadRadarFrames();
+
+        console.log('[WeatherIntegration] Radar map initialized');
+    },
+
+    async loadRadarFrames() {
+        try {
+            // Fetch available radar timestamps from RainViewer API
+            const response = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+            const data = await response.json();
+
+            // Get last 10 radar frames (past + nowcast)
+            const radarFrames = data.radar.past.concat(data.radar.nowcast);
+            this.state.radarTimestamps = radarFrames.map(frame => ({
+                time: frame.time,
+                path: frame.path
+            }));
+
+            // Load all radar layers
+            this.state.radarLayers = [];
+            this.state.radarTimestamps.forEach((frame, index) => {
+                const layer = L.tileLayer(
+                    `https://tilecache.rainviewer.com${frame.path}/256/{z}/{x}/{y}/2/1_1.png`,
+                    {
+                        tileSize: 256,
+                        opacity: 0,  // Start invisible
+                        zIndex: 10
+                    }
+                );
+                layer.addTo(this.state.map);
+                this.state.radarLayers.push(layer);
+            });
+
+            // Show first frame
+            if (this.state.radarLayers.length > 0) {
+                this.state.radarLayers[0].setOpacity(0.6);
+                this.updateRadarTimestamp(0);
+            }
+
+            console.log(`[WeatherIntegration] Loaded ${this.state.radarLayers.length} radar frames`);
+
+        } catch (error) {
+            console.error('[WeatherIntegration] Error loading radar frames:', error);
+        }
+    },
+
+    addWindArrow() {
+        if (!this.state.map || !this.state.currentWeather) return;
+
+        const weather = this.state.currentWeather;
+        const windSpeed = weather.windSpeed;
+        const windDirection = weather.windDirection;
+
+        // Create wind arrow icon
+        const windIcon = L.divIcon({
+            className: 'wind-arrow-icon',
+            html: `
+                <div style="
+                    transform: rotate(${windDirection}deg);
+                    font-size: 32px;
+                    color: #3b82f6;
+                    text-shadow: 0 0 3px white;
+                ">
+                    ↑
+                </div>
+            `,
+            iconSize: [40, 40],
+            iconAnchor: [20, 20]
+        });
+
+        // Add wind marker near golf course
+        const windLatOffset = 0.05;  // Slightly offset from course
+        const windMarker = L.marker(
+            [this.config.latitude + windLatOffset, this.config.longitude],
+            { icon: windIcon }
+        ).addTo(this.state.map);
+
+        windMarker.bindPopup(`<strong>Wind</strong><br>${windSpeed} km/h from ${this.getWindDirectionName(windDirection)}`);
+    },
+
+    getWindDirectionName(degrees) {
+        const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+        const index = Math.round(degrees / 45) % 8;
+        return directions[index];
+    },
+
+    toggleRadarAnimation() {
+        if (this.state.isRadarPlaying) {
+            this.stopRadarAnimation();
+        } else {
+            this.startRadarAnimation();
+        }
+    },
+
+    startRadarAnimation() {
+        if (this.state.radarLayers.length === 0) {
+            console.warn('[WeatherIntegration] No radar frames loaded');
+            return;
+        }
+
+        this.state.isRadarPlaying = true;
+
+        // Update play button
+        const playIcon = document.getElementById('radar-play-icon');
+        const playBtn = document.getElementById('radar-play-pause');
+        if (playIcon) playIcon.textContent = '⏸';
+        if (playBtn) playBtn.innerHTML = `<span id="radar-play-icon">⏸</span> Pause`;
+
+        // Animate radar frames
+        this.state.radarAnimationInterval = setInterval(() => {
+            this.showNextRadarFrame();
+        }, 500);  // 500ms per frame = 2 FPS
+
+        console.log('[WeatherIntegration] Radar animation started');
+    },
+
+    stopRadarAnimation() {
+        this.state.isRadarPlaying = false;
+
+        if (this.state.radarAnimationInterval) {
+            clearInterval(this.state.radarAnimationInterval);
+            this.state.radarAnimationInterval = null;
+        }
+
+        // Update play button
+        const playIcon = document.getElementById('radar-play-icon');
+        const playBtn = document.getElementById('radar-play-pause');
+        if (playIcon) playIcon.textContent = '▶';
+        if (playBtn) playBtn.innerHTML = `<span id="radar-play-icon">▶</span> Play`;
+
+        console.log('[WeatherIntegration] Radar animation stopped');
+    },
+
+    showNextRadarFrame() {
+        // Hide current frame
+        this.state.radarLayers[this.state.currentRadarFrame].setOpacity(0);
+
+        // Move to next frame
+        this.state.currentRadarFrame = (this.state.currentRadarFrame + 1) % this.state.radarLayers.length;
+
+        // Show next frame
+        this.state.radarLayers[this.state.currentRadarFrame].setOpacity(0.6);
+
+        // Update timestamp
+        this.updateRadarTimestamp(this.state.currentRadarFrame);
+    },
+
+    updateRadarTimestamp(frameIndex) {
+        const timestampEl = document.getElementById('radar-timestamp');
+        if (!timestampEl || !this.state.radarTimestamps[frameIndex]) return;
+
+        const frameTime = new Date(this.state.radarTimestamps[frameIndex].time * 1000);
+        const now = new Date();
+        const diffMinutes = Math.round((now - frameTime) / 60000);
+
+        let timeLabel;
+        if (diffMinutes < 0) {
+            timeLabel = `+${Math.abs(diffMinutes)}m (forecast)`;
+        } else if (diffMinutes === 0) {
+            timeLabel = 'Now';
+        } else {
+            timeLabel = `-${diffMinutes}m`;
+        }
+
+        timestampEl.textContent = timeLabel;
     },
 
     // ============================================

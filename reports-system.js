@@ -754,25 +754,65 @@ const ReportsSystem = {
     generateEODReconciliation(date = new Date()) {
         const dateStr = date.toISOString().split('T')[0];
         const registers = this.getCashRegisters();
-        const revenue = this.generateDailyRevenueSummary(date);
+
+        // Get actual bookings and orders for the selected date
+        const bookings = this.getAllBookings().filter(b => b.date === dateStr);
+        const orders = this.getAllOrders().filter(o => o.date === dateStr);
+        const proShopSales = this.getAllProShopSales().filter(s => s.date === dateStr);
+
+        // Calculate actual revenue per location
+        const greenFeesTotal = bookings.reduce((sum, b) => sum + parseFloat(b.greenFee || 0), 0);
+        const caddyFeesTotal = bookings.reduce((sum, b) => sum + parseFloat(b.caddyFee || 0), 0);
+        const fnbTotal = orders.reduce((sum, o) => sum + parseFloat(o.total || 0), 0);
+        const proShopTotal = proShopSales.reduce((sum, s) => sum + parseFloat(s.total || 0), 0);
 
         const reconciliation = {};
+        let totalStarting = 0;
+        let totalRevenue = 0;
+        let totalExpected = 0;
+        let totalActual = 0;
+
         Object.keys(registers).forEach(key => {
             const reg = registers[key];
-            const expected = reg.startingCash + (revenue.cashByLocation[reg.name]?.revenue || 0);
+            let locationRevenue = 0;
+
+            // Assign revenue to correct locations
+            if (reg.name === 'Reception') {
+                locationRevenue = greenFeesTotal + caddyFeesTotal;
+            } else if (reg.name === 'Restaurant' || reg.name === 'Drink Kiosk') {
+                locationRevenue = reg.name === 'Restaurant' ? fnbTotal : 0;
+            } else if (reg.name === 'Pro Shop') {
+                locationRevenue = proShopTotal;
+            }
+
+            const expected = reg.startingCash + locationRevenue;
+            const variance = reg.currentCash - expected;
+
             reconciliation[reg.name] = {
                 startingCash: reg.startingCash,
-                revenue: revenue.cashByLocation[reg.name]?.revenue || 0,
+                revenue: locationRevenue,
                 expected,
                 actual: reg.currentCash,
-                variance: reg.currentCash - expected
+                variance
             };
+
+            totalStarting += reg.startingCash;
+            totalRevenue += locationRevenue;
+            totalExpected += expected;
+            totalActual += reg.currentCash;
         });
 
         return {
             reportType: 'End of Day Reconciliation',
             date: dateStr,
-            reconciliation
+            reconciliation,
+            totals: {
+                startingCash: totalStarting,
+                revenue: totalRevenue,
+                expected: totalExpected,
+                actual: totalActual,
+                variance: totalActual - totalExpected
+            }
         };
     },
 
@@ -1207,6 +1247,70 @@ const ReportsSystem = {
                     `;
                 });
                 html += `
+                        </div>
+                    </div>
+                `;
+                break;
+
+            case 'End of Day Reconciliation':
+                html += `
+                    <div class="mb-6">
+                        <h3 class="text-lg font-semibold text-gray-900 mb-4">POS Location Reconciliation</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full border-collapse">
+                                <thead>
+                                    <tr class="bg-gray-100">
+                                        <th class="border-2 border-gray-400 px-4 py-3 text-left text-sm font-semibold text-gray-900">Location</th>
+                                        <th class="border-2 border-gray-400 px-4 py-3 text-right text-sm font-semibold text-gray-900">Starting Cash</th>
+                                        <th class="border-2 border-gray-400 px-4 py-3 text-right text-sm font-semibold text-gray-900">Revenue</th>
+                                        <th class="border-2 border-gray-400 px-4 py-3 text-right text-sm font-semibold text-gray-900">Expected</th>
+                                        <th class="border-2 border-gray-400 px-4 py-3 text-right text-sm font-semibold text-gray-900">Actual</th>
+                                        <th class="border-2 border-gray-400 px-4 py-3 text-right text-sm font-semibold text-gray-900">Variance</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                `;
+                Object.entries(data.reconciliation).forEach(([location, rec]) => {
+                    const varianceColor = rec.variance === 0 ? 'text-gray-900' : rec.variance > 0 ? 'text-green-600' : 'text-red-600';
+                    const rowBg = rec.variance === 0 ? 'bg-white' : rec.variance > 0 ? 'bg-green-50' : 'bg-red-50';
+                    html += `
+                        <tr class="${rowBg}">
+                            <td class="border-2 border-gray-400 px-4 py-3 font-medium text-gray-900">${location}</td>
+                            <td class="border-2 border-gray-400 px-4 py-3 text-right text-gray-700">${formatCurrency(rec.startingCash)}</td>
+                            <td class="border-2 border-gray-400 px-4 py-3 text-right text-green-600 font-medium">${formatCurrency(rec.revenue)}</td>
+                            <td class="border-2 border-gray-400 px-4 py-3 text-right text-blue-600 font-semibold">${formatCurrency(rec.expected)}</td>
+                            <td class="border-2 border-gray-400 px-4 py-3 text-right text-gray-900 font-semibold">${formatCurrency(rec.actual)}</td>
+                            <td class="border-2 border-gray-400 px-4 py-3 text-right ${varianceColor} font-bold">${rec.variance >= 0 ? '+' : ''}${formatCurrency(rec.variance)}</td>
+                        </tr>
+                    `;
+                });
+                html += `
+                                </tbody>
+                                <tfoot>
+                                    <tr class="bg-gray-800 text-white font-bold">
+                                        <td class="border-2 border-gray-400 px-4 py-3">TOTAL</td>
+                                        <td class="border-2 border-gray-400 px-4 py-3 text-right">${formatCurrency(data.totals.startingCash)}</td>
+                                        <td class="border-2 border-gray-400 px-4 py-3 text-right">${formatCurrency(data.totals.revenue)}</td>
+                                        <td class="border-2 border-gray-400 px-4 py-3 text-right">${formatCurrency(data.totals.expected)}</td>
+                                        <td class="border-2 border-gray-400 px-4 py-3 text-right">${formatCurrency(data.totals.actual)}</td>
+                                        <td class="border-2 border-gray-400 px-4 py-3 text-right ${data.totals.variance >= 0 ? 'text-green-400' : 'text-red-400'}">${data.totals.variance >= 0 ? '+' : ''}${formatCurrency(data.totals.variance)}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-blue-50 p-4 rounded-lg border-2 border-blue-300">
+                            <p class="text-sm text-blue-600 mb-1">Total Expected Cash</p>
+                            <p class="text-2xl font-bold text-blue-900">${formatCurrency(data.totals.expected)}</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg border-2 border-gray-400">
+                            <p class="text-sm text-gray-600 mb-1">Total Actual Cash</p>
+                            <p class="text-2xl font-bold text-gray-900">${formatCurrency(data.totals.actual)}</p>
+                        </div>
+                        <div class="bg-${data.totals.variance >= 0 ? 'green' : 'red'}-50 p-4 rounded-lg border-2 border-${data.totals.variance >= 0 ? 'green' : 'red'}-300">
+                            <p class="text-sm text-${data.totals.variance >= 0 ? 'green' : 'red'}-600 mb-1">Total Variance</p>
+                            <p class="text-2xl font-bold text-${data.totals.variance >= 0 ? 'green' : 'red'}-900">${data.totals.variance >= 0 ? '+' : ''}${formatCurrency(data.totals.variance)}</p>
                         </div>
                     </div>
                 `;

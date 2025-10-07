@@ -11,6 +11,10 @@ const SUPABASE_CONFIG = {
 // Initialize Supabase Client
 class SupabaseClient {
     constructor() {
+        this.ready = false;
+        this.readyPromise = new Promise((resolve) => {
+            this.resolveReady = resolve;
+        });
         // Load Supabase library
         this.loadSupabaseLibrary();
     }
@@ -32,7 +36,15 @@ class SupabaseClient {
     initClient() {
         const { createClient } = window.supabase;
         this.client = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
-        console.log('[Supabase] Client initialized');
+        this.ready = true;
+        this.resolveReady();
+        console.log('[Supabase] Client initialized and ready');
+    }
+
+    async waitForReady() {
+        if (!this.ready) {
+            await this.readyPromise;
+        }
     }
 
     // =====================================================
@@ -40,6 +52,7 @@ class SupabaseClient {
     // =====================================================
 
     async getBookings() {
+        await this.waitForReady();
         const { data, error } = await this.client
             .from('bookings')
             .select('*')
@@ -54,6 +67,7 @@ class SupabaseClient {
     }
 
     async saveBooking(booking) {
+        await this.waitForReady();
         // Normalize booking fields (snake_case for Supabase)
         const normalizedBooking = {
             id: booking.id,
@@ -144,6 +158,7 @@ class SupabaseClient {
     }
 
     async getAllProfiles() {
+        await this.waitForReady();
         const { data, error } = await this.client
             .from('user_profiles')
             .select('*');

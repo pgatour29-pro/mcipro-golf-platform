@@ -278,15 +278,14 @@ const WeatherIntegration = {
         if (!container || !this.state.forecast) return;
 
         container.innerHTML = this.state.forecast.map(period => {
-            const time = period.time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            const time = period.time.toLocaleTimeString('en-US', { hour: 'numeric' });
 
             return `
-                <div class="text-center p-3 bg-gray-50 rounded-lg">
-                    <div class="text-sm font-medium text-gray-600 mb-2">${time}</div>
-                    <div class="text-2xl mb-2">${this.getWeatherEmoji(period.condition)}</div>
-                    <div class="text-xl font-bold text-gray-900 mb-1">${period.temperature}°C</div>
-                    <div class="text-xs text-gray-600 mb-2">${period.description}</div>
-                    <div class="text-xs text-blue-600">💧 ${period.precipitation}%</div>
+                <div class="text-center p-2 bg-gray-50 rounded border border-gray-100">
+                    <div class="text-xs text-gray-500 mb-1">${time}</div>
+                    <div class="text-xl mb-1">${this.getWeatherEmoji(period.condition)}</div>
+                    <div class="text-sm font-semibold text-gray-900">${period.temperature}°</div>
+                    ${period.precipitation > 30 ? `<div class="text-xs text-blue-600 mt-1">${period.precipitation}%</div>` : ''}
                 </div>
             `;
         }).join('');
@@ -299,28 +298,22 @@ const WeatherIntegration = {
         const alerts = this.generateWeatherAlerts();
 
         if (alerts.length === 0) {
-            container.innerHTML = `
-                <div class="text-center py-4 text-gray-500">
-                    <span class="material-symbols-outlined text-4xl mb-2">check_circle</span>
-                    <p class="text-sm">No weather alerts</p>
-                </div>
-            `;
+            container.innerHTML = `<div class="text-xs text-gray-500">No alerts</div>`;
             return;
         }
 
-        container.innerHTML = alerts.map(alert => `
-            <div class="p-3 mb-3 bg-${alert.severity === 'high' ? 'red' : alert.severity === 'medium' ? 'yellow' : 'blue'}-50 border-l-4 border-${alert.severity === 'high' ? 'red' : alert.severity === 'medium' ? 'yellow' : 'blue'}-500 rounded">
-                <div class="flex items-start gap-2">
-                    <span class="material-symbols-outlined text-${alert.severity === 'high' ? 'red' : alert.severity === 'medium' ? 'yellow' : 'blue'}-600">
-                        ${alert.icon}
-                    </span>
-                    <div>
-                        <div class="font-semibold text-sm mb-1">${alert.title}</div>
-                        <div class="text-xs text-gray-700">${alert.message}</div>
+        container.innerHTML = alerts.map(alert => {
+            const color = alert.severity === 'high' ? 'red' : alert.severity === 'medium' ? 'yellow' : 'blue';
+            return `
+                <div class="flex items-start gap-2 p-2 bg-${color}-50 rounded text-xs border border-${color}-200">
+                    <span class="material-symbols-outlined text-sm text-${color}-600">${alert.icon}</span>
+                    <div class="flex-1">
+                        <div class="font-semibold text-${color}-900">${alert.title}</div>
+                        <div class="text-${color}-700 mt-0.5">${alert.message}</div>
                     </div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     },
 
     generateWeatherAlerts() {
@@ -392,26 +385,17 @@ const WeatherIntegration = {
 
         const impacts = this.calculateCourseImpact();
 
-        container.innerHTML = `
-            <div class="space-y-3">
-                ${impacts.map(impact => `
-                    <div class="flex items-start gap-3">
-                        <div class="flex-shrink-0 w-10 h-10 rounded-full bg-${impact.color}-100 flex items-center justify-center">
-                            <span class="material-symbols-outlined text-${impact.color}-600 text-sm">${impact.icon}</span>
-                        </div>
-                        <div class="flex-1">
-                            <div class="font-medium text-sm">${impact.area}</div>
-                            <div class="text-xs text-gray-600">${impact.impact}</div>
-                        </div>
-                        <div class="flex-shrink-0">
-                            <span class="px-2 py-1 bg-${impact.statusColor}-100 text-${impact.statusColor}-800 text-xs rounded-full">
-                                ${impact.status}
-                            </span>
-                        </div>
-                    </div>
-                `).join('')}
+        container.innerHTML = impacts.map(impact => `
+            <div class="flex items-center justify-between p-2 bg-gray-50 rounded text-xs border border-gray-100">
+                <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-sm text-${impact.statusColor}-600">${impact.icon}</span>
+                    <span class="font-medium text-gray-700">${impact.area}</span>
+                </div>
+                <span class="px-2 py-0.5 bg-${impact.statusColor}-100 text-${impact.statusColor}-800 rounded-full font-medium">
+                    ${impact.status}
+                </span>
             </div>
-        `;
+        `).join('');
     },
 
     calculateCourseImpact() {
@@ -502,29 +486,22 @@ const WeatherIntegration = {
         const playability = this.calculatePlayability();
 
         container.innerHTML = `
-            <div class="text-center p-6 bg-${playability.overallColor}-50 rounded-lg border-2 border-${playability.overallColor}-200">
-                <div class="text-4xl mb-2">${playability.emoji}</div>
-                <div class="text-xl font-bold text-${playability.overallColor}-900 mb-2">${playability.status}</div>
-                <div class="text-sm text-gray-700">${playability.message}</div>
-            </div>
-            <div class="p-4 bg-white rounded-lg border border-gray-200">
-                <div class="text-sm font-semibold mb-3">Conditions Summary</div>
-                <div class="space-y-2">
-                    ${playability.factors.map(factor => `
-                        <div class="flex justify-between items-center text-xs">
-                            <span class="text-gray-600">${factor.name}</span>
-                            <span class="px-2 py-1 bg-${factor.color}-100 text-${factor.color}-800 rounded-full">
-                                ${factor.rating}
-                            </span>
-                        </div>
-                    `).join('')}
+            <div class="flex items-center gap-4 mb-3 p-3 bg-${playability.overallColor}-50 rounded border border-${playability.overallColor}-200">
+                <div class="text-2xl">${playability.emoji}</div>
+                <div class="flex-1">
+                    <div class="font-bold text-${playability.overallColor}-900 text-sm">${playability.status}</div>
+                    <div class="text-xs text-gray-600 mt-0.5">${playability.message}</div>
                 </div>
             </div>
-            <div class="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <div class="text-sm font-semibold mb-2">Recommendations</div>
-                <ul class="text-xs text-gray-700 space-y-1">
-                    ${playability.recommendations.map(rec => `<li>• ${rec}</li>`).join('')}
-                </ul>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                ${playability.factors.map(factor => `
+                    <div class="flex justify-between items-center p-2 bg-gray-50 rounded border border-gray-100 text-xs">
+                        <span class="text-gray-600">${factor.name}</span>
+                        <span class="px-2 py-0.5 bg-${factor.color}-100 text-${factor.color}-800 rounded-full font-medium">
+                            ${factor.rating}
+                        </span>
+                    </div>
+                `).join('')}
             </div>
         `;
     },

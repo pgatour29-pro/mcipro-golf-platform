@@ -162,25 +162,25 @@ const MaintenanceManagement = {
 
         const metrics = [
             {
-                label: 'Active Work Orders',
+                label: 'Active',
                 value: this.state.metrics.activeWorkOrders,
                 icon: 'assignment',
                 color: 'blue'
             },
             {
-                label: 'Critical Issues',
+                label: 'Critical',
                 value: this.state.metrics.criticalIssues,
                 icon: 'priority_high',
                 color: 'red'
             },
             {
-                label: 'Completed Today',
+                label: 'Done',
                 value: this.state.metrics.completedToday,
                 icon: 'check_circle',
                 color: 'green'
             },
             {
-                label: 'Course Condition',
+                label: 'Condition',
                 value: this.getOverallCourseCondition(),
                 icon: 'emoji_events',
                 color: 'yellow'
@@ -188,12 +188,12 @@ const MaintenanceManagement = {
         ];
 
         container.innerHTML = metrics.map(metric => `
-            <div class="bg-white rounded-lg border border-gray-200 p-4">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm text-gray-600">${metric.label}</span>
-                    <span class="material-symbols-outlined text-${metric.color}-600">${metric.icon}</span>
+            <div class="bg-white rounded-lg border border-gray-200 p-3">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs text-gray-500">${metric.label}</span>
+                    <span class="material-symbols-outlined text-sm text-${metric.color}-600">${metric.icon}</span>
                 </div>
-                <div class="text-2xl font-bold text-gray-900">${metric.value}</div>
+                <div class="text-xl font-bold text-gray-900">${metric.value}</div>
             </div>
         `).join('');
     },
@@ -414,19 +414,20 @@ const MaintenanceManagement = {
 
         const recommendations = this.getWeatherBasedRecommendations(weather);
 
-        container.innerHTML = recommendations.map(rec => `
-            <div class="p-3 bg-${rec.type === 'warning' ? 'yellow' : 'blue'}-50 border border-${rec.type === 'warning' ? 'yellow' : 'blue'}-200 rounded-lg">
-                <div class="flex items-start gap-2">
-                    <span class="material-symbols-outlined text-${rec.type === 'warning' ? 'yellow' : 'blue'}-600 text-sm">
-                        ${rec.type === 'warning' ? 'warning' : 'info'}
-                    </span>
-                    <div class="text-sm">
-                        <div class="font-semibold mb-1">${rec.title}</div>
-                        <div class="text-gray-700">${rec.message}</div>
-                    </div>
+        if (recommendations.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        container.innerHTML = recommendations.slice(0, 2).map(rec => {
+            const color = rec.type === 'warning' ? 'yellow' : 'blue';
+            return `
+                <div class="flex items-start gap-2 p-2 bg-${color}-50 rounded text-xs border border-${color}-200">
+                    <span class="material-symbols-outlined text-sm text-${color}-600">${rec.type === 'warning' ? 'warning' : 'info'}</span>
+                    <div class="text-${color}-900">${rec.title}</div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     },
 
     getWeatherBasedRecommendations(weather) {

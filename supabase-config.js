@@ -68,21 +68,29 @@ class SupabaseClient {
 
     async saveBooking(booking) {
         await this.waitForReady();
+
+        // Extract date in YYYY-MM-DD format
+        let dateStr = booking.date;
+        if (dateStr && dateStr.includes('T')) {
+            // If date includes time (ISO format), extract just the date part
+            dateStr = dateStr.split('T')[0];
+        }
+
         // Normalize booking fields (snake_case for Supabase)
         const normalizedBooking = {
             id: booking.id,
-            name: booking.name,
-            date: booking.date,
+            name: booking.name || booking.golferName || 'Unknown',
+            date: dateStr,
             time: booking.time,
-            tee_time: booking.teeTime || booking.tee_time,
+            tee_time: booking.teeTime || booking.tee_time || booking.slotTime,
             status: booking.status || 'pending',
             players: booking.players || 1,
-            caddy_number: booking.caddyNumber || booking.caddy_number,
+            caddy_number: booking.caddyNumber || booking.caddy_number || booking.caddyNumber,
             current_hole: booking.currentHole || booking.current_hole,
             last_hole_update: booking.lastHoleUpdate || booking.last_hole_update,
-            notes: booking.notes,
-            phone: booking.phone,
-            email: booking.email
+            notes: booking.notes || '',
+            phone: booking.phone || '',
+            email: booking.email || ''
         };
 
         const { data, error } = await this.client

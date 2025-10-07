@@ -5413,9 +5413,8 @@
             TabManager.showTab(dashboardId, tabName, event);
         }
 
-        window.login = function(role) {
-            FallbackAuthentication.login(role);
-        };
+        // REMOVED: window.login definition here - conflicts with global one
+        // The global window.login at line 19539 handles all auth systems
 
         window.loginWithCustomProfile = function(profileData) {
             LoadingManager.show('Logging in with your profile...');
@@ -19536,10 +19535,14 @@ Total Rounds: ${ningCaddy.totalRounds}`;
         // END: emergency sound helpers
 
         // Expose login function globally for inline onclick handlers
-        window.login = async function () {
-            if (window.Authentication?.login) return Authentication.login();
-            if (window.Auth?.login) return Auth.login();
-            if (window.FallbackAuthentication?.login) return FallbackAuthentication.login(...arguments);
+        window.login = async function (role) {
+            console.log('[window.login] Called with role:', role);
+            if (window.FallbackAuthentication?.login) {
+                console.log('[window.login] Using FallbackAuthentication');
+                return FallbackAuthentication.login(role);
+            }
+            if (window.Authentication?.login) return Authentication.login(role);
+            if (window.Auth?.login) return Auth.login(role);
             if (window.LineAuthentication?.login) return LineAuthentication.login();
             // Fallback: just route to golfer dashboard for demos/dev
             if (window.ScreenManager?.navigateTo) {
@@ -26207,14 +26210,8 @@ Total Rounds: ${ningCaddy.totalRounds}`;
         };
       }
 
-      // Global function that satisfies inline onclick="login(role)"
-      window.login = function (role) {
-        console.log('[window.login] Called with role:', role);
-        const impl = resolveLoginImpl();
-        console.log('[window.login] Found implementation:', impl.name || 'anonymous');
-        // Always pass the role argument
-        return impl(role);
-      };
+      // REMOVED: window.login definition here - conflicts with one in HEAD
+      // The window.login at line 19538 handles all auth systems properly
 
       // If the button exists, (re)bind it in case an element id shadowed a function earlier
       document.addEventListener('DOMContentLoaded', function () {
@@ -26374,18 +26371,8 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
   // expose safe globals used by the page's buttons
   window.Auth = Auth;
-  window.login = async (emailOrRole, pw) => {
-    try {
-      console.log('[window.login] Calling Auth.login with:', emailOrRole, pw ? '[password]' : '[no password]');
-      const result = await Auth.login(emailOrRole, pw);
-      console.log('[window.login] Success:', result);
-      return result;
-    } catch (err) {
-      console.error('[window.login] Error:', err.message);
-      alert('Login failed: ' + err.message);
-      throw err;
-    }
-  };
+  // REMOVED: window.login definition here - conflicts with ones defined earlier
+  // The global window.login definitions at lines 19539 and 26211 handle all auth systems
   window.createAccount = () => Auth.create();
 })();
 

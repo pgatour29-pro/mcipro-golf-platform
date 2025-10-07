@@ -53,10 +53,18 @@ class SupabaseClient {
 
     async getBookings() {
         await this.waitForReady();
+
+        // PERFORMANCE: Only fetch last 7 days + future bookings
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const cutoffDate = sevenDaysAgo.toISOString().split('T')[0];
+
         const { data, error } = await this.client
             .from('bookings')
             .select('*')
-            .order('date', { ascending: true });
+            .gte('date', cutoffDate)
+            .order('date', { ascending: true })
+            .limit(500);
 
         if (error) {
             console.error('[Supabase] Error fetching bookings:', error);

@@ -2512,13 +2512,23 @@
               // DELETE MODE: Confirm and delete selected bookings
               const confirmMsg = `Delete ${deleteSelection.length} booking${deleteSelection.length > 1 ? 's' : ''}?`;
               if (confirm(confirmMsg)) {
+                // Delete from Supabase
                 for (const bookingId of deleteSelection) {
                   await CloudSyncAdapter.deleteBooking(bookingId);
                 }
-                console.log('[TeeSheet] Deleted', deleteSelection.length, 'bookings');
+                console.log('[TeeSheet] Deleted', deleteSelection.length, 'bookings from Supabase');
 
-                // Reload bookings from cloud
-                window.location.reload();
+                // FIXED: Instead of full page reload, trigger refresh callback
+                if (onRefresh) {
+                  onRefresh();
+                } else {
+                  // Fallback: reload just the bookings data without full page refresh
+                  const result = await CloudSyncAdapter.loadBookings();
+                  if (result.success && onFilterChange) {
+                    // Trigger a re-render with updated data
+                    onFilterChange(filters);
+                  }
+                }
               }
             } else if (isDragging && dragStartSlot && dragEndSlot && selectedSlots.length > 0) {
               // BOOKING MODE: Open modal with time range pre-filled
@@ -3657,12 +3667,11 @@
             return () => clearTimeout(createTimer);
           }, [filters.startTime, filters.endTime, filters.interval, filters.teesPerCourse, filters.date]); // FIXED: Recreate slots when date changes
 
-          // Load bookings from cloud on mount and when filters change
-          useEffect(() => {
-            async function loadCloudBookings() {
-              setIsLoading(true);
-              setLoadingMessage(`Loading bookings for ${filters.date}...`);
-              console.log('[TeeSheet] Loading bookings from cloud...');
+          // Load bookings from cloud - exposed as function for manual refresh
+          const loadCloudBookings = React.useCallback(async () => {
+            setIsLoading(true);
+            setLoadingMessage(`Loading bookings for ${filters.date}...`);
+            console.log('[TeeSheet] Loading bookings from cloud...');
 
               const result = await CloudSyncAdapter.loadBookings();
 
@@ -3859,8 +3868,10 @@
                 setIsLoading(false);
                 setLoadingMessage('');
               }, 300);
-            }
+          }, [filters.date, demoRows]); // Dependencies for useCallback
 
+          // Load bookings from cloud on mount and when filters change
+          useEffect(() => {
             // CRITICAL FIX: Only load bookings when slots are ready
             if (demoRows.length === 0) {
               console.log('[TeeSheet] Waiting for slots to be created before loading bookings...');
@@ -4168,6 +4179,7 @@
               onLanguageChange: setLanguage,
               onToggleLock: handleToggleLock,
               onMoveBooking: handleMoveBooking,
+              onRefresh: loadCloudBookings, // Pass refresh handler for fast deletions
               onFilterChange: (newFilters) => {
                 // FIXED: Allow TeeSheet to update parent filters (especially date)
                 setFilters(prev => ({ ...prev, ...newFilters }));

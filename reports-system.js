@@ -1102,13 +1102,166 @@ const ReportsSystem = {
 
                     <!-- Report Content -->
                     <div class="p-6">
-                        <pre class="bg-gray-50 p-4 rounded-lg text-sm overflow-x-auto">${JSON.stringify(reportData, null, 2)}</pre>
+                        ${this.formatReportHTML(reportData)}
                     </div>
                 </div>
             </div>
         `;
 
         document.body.insertAdjacentHTML('beforeend', html);
+    },
+
+    formatReportHTML(data) {
+        const formatCurrency = (amount) => `฿${parseFloat(amount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        const formatNumber = (num) => parseFloat(num || 0).toLocaleString('en-US');
+
+        let html = '<div class="space-y-6">';
+
+        // Handle different report types
+        switch(data.reportType) {
+            case 'Tee Sheet Utilization':
+                html += `
+                    <div class="grid grid-cols-3 gap-4 mb-6">
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <p class="text-sm text-blue-600 mb-1">Total Bookings</p>
+                            <p class="text-2xl font-bold text-blue-900">${data.totalBookings}</p>
+                        </div>
+                        <div class="bg-green-50 p-4 rounded-lg">
+                            <p class="text-sm text-green-600 mb-1">Overall Utilization</p>
+                            <p class="text-2xl font-bold text-green-900">${data.overallUtilization}</p>
+                        </div>
+                        <div class="bg-orange-50 p-4 rounded-lg">
+                            <p class="text-sm text-orange-600 mb-1">Empty Slots</p>
+                            <p class="text-2xl font-bold text-orange-900">${data.emptySlots}</p>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-gray-900 mb-3">Hourly Breakdown</h3>
+                        <div class="space-y-2">
+                `;
+                Object.entries(data.hourlyUtilization).forEach(([hour, stats]) => {
+                    const utilPct = parseFloat(stats.utilization);
+                    const color = utilPct > 75 ? 'red' : utilPct > 50 ? 'yellow' : 'green';
+                    html += `
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm font-medium w-16">${hour}</span>
+                            <div class="flex-1 bg-gray-200 rounded-full h-6 overflow-hidden">
+                                <div class="bg-${color}-500 h-full flex items-center justify-end pr-2" style="width: ${stats.utilization}%">
+                                    <span class="text-xs text-white font-medium">${stats.utilization}%</span>
+                                </div>
+                            </div>
+                            <span class="text-sm text-gray-600 w-24">${stats.bookings}/${stats.slots} slots</span>
+                        </div>
+                    `;
+                });
+                html += `
+                        </div>
+                    </div>
+                    <div class="bg-purple-50 p-4 rounded-lg">
+                        <p class="text-sm text-purple-600 mb-1">Peak Hour</p>
+                        <p class="text-lg font-bold text-purple-900">${data.peakHour.time} - ${data.peakHour.bookings} bookings</p>
+                    </div>
+                `;
+                break;
+
+            case 'Daily Revenue Summary':
+                html += `
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-green-50 p-4 rounded-lg">
+                            <p class="text-sm text-green-600 mb-1">Green Fees</p>
+                            <p class="text-xl font-bold text-green-900">${formatCurrency(data.summary.greenFees)}</p>
+                        </div>
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <p class="text-sm text-blue-600 mb-1">Caddy Fees</p>
+                            <p class="text-xl font-bold text-blue-900">${formatCurrency(data.summary.caddyFees)}</p>
+                        </div>
+                        <div class="bg-orange-50 p-4 rounded-lg">
+                            <p class="text-sm text-orange-600 mb-1">F&B Revenue</p>
+                            <p class="text-xl font-bold text-orange-900">${formatCurrency(data.summary.fnbRevenue)}</p>
+                        </div>
+                        <div class="bg-purple-50 p-4 rounded-lg">
+                            <p class="text-sm text-purple-600 mb-1">Pro Shop</p>
+                            <p class="text-xl font-bold text-purple-900">${formatCurrency(data.summary.proShopRevenue)}</p>
+                        </div>
+                    </div>
+                    <div class="bg-gradient-to-r from-emerald-500 to-emerald-600 p-6 rounded-lg text-white mb-6">
+                        <p class="text-sm opacity-90 mb-1">Total Revenue</p>
+                        <p class="text-3xl font-bold">${formatCurrency(data.summary.totalRevenue)}</p>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-gray-900 mb-3">Cash by Location</h3>
+                        <div class="space-y-3">
+                `;
+                Object.entries(data.cashByLocation).forEach(([location, cash]) => {
+                    html += `
+                        <div class="bg-gray-50 p-4 rounded-lg">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="font-medium text-gray-900">${location}</span>
+                                <span class="text-sm text-gray-500">Expected: ${formatCurrency(cash.expected)}</span>
+                            </div>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-gray-600">Starting: ${formatCurrency(cash.startingCash)}</span>
+                                <span class="text-green-600">+ Revenue: ${formatCurrency(cash.revenue)}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += `
+                        </div>
+                    </div>
+                `;
+                break;
+
+            default:
+                // Generic formatter for all other reports
+                html += this.formatGenericReport(data);
+                break;
+        }
+
+        html += '</div>';
+        return html;
+    },
+
+    formatGenericReport(data) {
+        const formatValue = (val) => {
+            if (typeof val === 'number') {
+                if (val > 1000) return `฿${val.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+                return val.toLocaleString('en-US');
+            }
+            if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+                let html = '<div class="ml-4 space-y-2">';
+                Object.entries(val).forEach(([k, v]) => {
+                    html += `
+                        <div class="flex justify-between items-center py-1 border-b border-gray-100">
+                            <span class="text-sm text-gray-600">${k.replace(/([A-Z])/g, ' $1').trim()}</span>
+                            <span class="text-sm font-medium text-gray-900">${formatValue(v)}</span>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                return html;
+            }
+            if (Array.isArray(val)) {
+                return `<ul class="ml-4 list-disc text-sm text-gray-700">${val.map(item => `<li>${formatValue(item)}</li>`).join('')}</ul>`;
+            }
+            return val;
+        };
+
+        let html = '';
+        Object.entries(data).forEach(([key, value]) => {
+            if (key === 'reportType') return;
+
+            html += `
+                <div class="mb-4">
+                    <h3 class="text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">${key.replace(/([A-Z])/g, ' $1').trim()}</h3>
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        ${formatValue(value)}
+                    </div>
+                </div>
+            `;
+        });
+
+        return html;
     },
 
     exportReportPDF(funcName) {

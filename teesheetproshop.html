@@ -602,8 +602,6 @@
               const newTime = newSlot.id.split('-')[0];
               const newDateTime = `${newDate}T${newTime}:00+07:00`;
 
-              const baseVersion = parseInt(localStorage.getItem('mcipro_cloud_version') || '0');
-
               // Update ALL bookings in group with new time and modification tracking
               const updatedBookings = bookingsToUpdate.map(b => ({
                 ...b,
@@ -621,34 +619,27 @@
 
               console.log('[CloudSync] Updating', updatedBookings.length, 'bookings with new time:', newTime);
 
-              const response = await fetch(this.API_URL, {
-                method: 'PUT',
-                headers: {
-                  'Authorization': `Bearer ${this.SITE_KEY}`,
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  baseVersion: baseVersion,
-                  bookings: updatedBookings
-                })
-              });
+              // UPDATED FOR SUPABASE: Save each updated booking to Supabase
+              if (!window.SupabaseDB) {
+                throw new Error('Supabase not initialized');
+              }
+              await window.SupabaseDB.waitForReady();
 
-              if (response.status === 409) {
-                console.warn('[CloudSync] Conflict detected on update, retrying...');
-                const cloudData = await response.json();
-                localStorage.setItem('mcipro_cloud_version', cloudData.version);
-                return await this.updateBookingTime(bookingId, newSlot, newLane, newDate);
+              let updatedCount = 0;
+              for (const booking of updatedBookings) {
+                try {
+                  await window.SupabaseDB.saveBooking(booking);
+                  updatedCount++;
+                } catch (err) {
+                  console.error('[CloudSync] Error updating booking:', booking.id, err);
+                }
               }
 
-              if (!response.ok) {
-                throw new Error(`Update failed: ${response.status}`);
-              }
+              const version = Date.now();
+              localStorage.setItem('mcipro_cloud_version', version);
 
-              const result = await response.json();
-              localStorage.setItem('mcipro_cloud_version', result.version);
-
-              console.log('[CloudSync] Updated', updatedBookings.length, 'bookings successfully');
-              return { success: true, updatedCount: updatedBookings.length };
+              console.log('[CloudSync] Updated', updatedCount, 'bookings successfully in Supabase');
+              return { success: true, updatedCount: updatedCount };
 
             } catch (error) {
               console.error('[CloudSync] Update error:', error);
@@ -656,48 +647,37 @@
             }
           }
 
-          // Save bookings to cloud
+          // Save bookings to cloud (UPDATED FOR SUPABASE)
           static async saveBookings(bookings, slot, lane, bookingDate) {
             try {
-              // Get current version
-              const baseVersion = parseInt(localStorage.getItem('mcipro_cloud_version') || '0');
+              if (!window.SupabaseDB) {
+                throw new Error('Supabase not initialized');
+              }
+              await window.SupabaseDB.waitForReady();
 
               // Convert to unified format
               const unifiedBookings = bookings.flatMap(booking =>
                 this.convertToUnifiedFormat(booking, slot, lane, bookingDate)
               );
 
-              console.log('[CloudSync] Saving bookings:', unifiedBookings.length, 'records');
+              console.log('[CloudSync] Saving bookings to Supabase:', unifiedBookings.length, 'records');
 
-              const response = await fetch(this.API_URL, {
-                method: 'PUT',
-                headers: {
-                  'Authorization': `Bearer ${this.SITE_KEY}`,
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  baseVersion: baseVersion,
-                  bookings: unifiedBookings
-                })
-              });
-
-              if (response.status === 409) {
-                console.warn('[CloudSync] Conflict detected, retrying...');
-                // Reload and retry
-                const cloudData = await response.json();
-                localStorage.setItem('mcipro_cloud_version', cloudData.version);
-                return await this.saveBookings(bookings, slot, lane, bookingDate);
+              // Save each booking to Supabase
+              let savedCount = 0;
+              for (const booking of unifiedBookings) {
+                try {
+                  await window.SupabaseDB.saveBooking(booking);
+                  savedCount++;
+                } catch (err) {
+                  console.error('[CloudSync] Error saving booking:', booking.id, err);
+                }
               }
 
-              if (!response.ok) {
-                throw new Error(`Cloud sync failed: ${response.status}`);
-              }
+              const version = Date.now();
+              localStorage.setItem('mcipro_cloud_version', version);
 
-              const result = await response.json();
-              localStorage.setItem('mcipro_cloud_version', result.version);
-
-              console.log('[CloudSync] Saved successfully, version:', result.version);
-              return { success: true, version: result.version };
+              console.log('[CloudSync] Saved', savedCount, 'bookings successfully to Supabase');
+              return { success: true, version: version };
 
             } catch (error) {
               console.error('[CloudSync] Save error:', error);
@@ -705,21 +685,16 @@
             }
           }
 
-          // Load RAW bookings from cloud (without conversion) - for internal use
+          // Load RAW bookings from cloud (without conversion) - for internal use (UPDATED FOR SUPABASE)
           static async loadBookingsFromCloud() {
-            const response = await fetch(this.API_URL, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${this.SITE_KEY}`
-              }
-            });
-
-            if (!response.ok) {
-              throw new Error(`Failed to load: ${response.status}`);
+            if (!window.SupabaseDB) {
+              console.error('[CloudSync] Supabase not initialized');
+              return [];
             }
+            await window.SupabaseDB.waitForReady();
 
-            const data = await response.json();
-            return data.bookings || [];
+            const { bookings } = await window.SupabaseDB.getBookings();
+            return bookings || [];
           }
 
           // Load bookings from cloud
@@ -758,8 +733,15 @@
           // Delete booking from cloud - handles GROUP deletions
           static async deleteBooking(bookingId) {
             try {
-              // First, fetch all bookings from cloud to find the group
-              const cloudBookings = await this.loadBookingsFromCloud();
+              // UPDATED FOR SUPABASE: Delete directly from Supabase database
+              if (!window.SupabaseDB) {
+                console.error('[CloudSync] Supabase not initialized');
+                return { success: false, error: 'Supabase not initialized' };
+              }
+              await window.SupabaseDB.waitForReady();
+
+              // First, fetch all bookings from Supabase to find the group
+              const { bookings: cloudBookings } = await window.SupabaseDB.getBookings();
               const mainBooking = cloudBookings.find(b => b.id === bookingId);
 
               if (!mainBooking) {
@@ -774,46 +756,20 @@
               const bookingsToDelete = cloudBookings.filter(b => b.groupId === groupId);
               console.log('[CloudSync] Found', bookingsToDelete.length, 'bookings in group to delete');
 
-              const baseVersion = parseInt(localStorage.getItem('mcipro_cloud_version') || '0');
-
-              // FIXED: Mark ALL bookings in group as CANCELLED (not deleted) so golfer sees notification
-              const cancelledBookings = bookingsToDelete.map(b => ({
-                ...b, // Keep all booking data
-                status: 'cancelled',
-                cancelledByStaff: true,
-                cancelledAt: Date.now(),
-                cancellationReason: 'Cancelled by pro shop due to schedule conflict',
-                updatedAt: Date.now()
-              }));
-
-              const response = await fetch(this.API_URL, {
-                method: 'PUT',
-                headers: {
-                  'Authorization': `Bearer ${this.SITE_KEY}`,
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  baseVersion: baseVersion,
-                  bookings: cancelledBookings
-                })
-              });
-
-              if (response.status === 409) {
-                console.warn('[CloudSync] Conflict detected on delete, retrying...');
-                const cloudData = await response.json();
-                localStorage.setItem('mcipro_cloud_version', cloudData.version);
-                return await this.deleteBooking(bookingId);
+              // Delete each booking from Supabase
+              let deletedCount = 0;
+              for (const booking of bookingsToDelete) {
+                try {
+                  await window.SupabaseDB.deleteBooking(booking.id);
+                  deletedCount++;
+                  console.log('[CloudSync] Deleted booking from Supabase:', booking.id);
+                } catch (err) {
+                  console.error('[CloudSync] Error deleting booking:', booking.id, err);
+                }
               }
 
-              if (!response.ok) {
-                throw new Error(`Delete failed: ${response.status}`);
-              }
-
-              const result = await response.json();
-              localStorage.setItem('mcipro_cloud_version', result.version);
-
-              console.log('[CloudSync] Cancelled', cancelledBookings.length, 'bookings successfully');
-              return { success: true, cancelledCount: cancelledBookings.length };
+              console.log('[CloudSync] Deleted', deletedCount, 'bookings successfully from Supabase');
+              return { success: true, deletedCount: deletedCount };
 
             } catch (error) {
               console.error('[CloudSync] Delete error:', error);

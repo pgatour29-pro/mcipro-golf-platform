@@ -2748,7 +2748,7 @@
                 localStorage.setItem('mcipro_last_sync', Date.now().toString());
             }
 
-            static async loadFromCloud() {
+            static async loadFromCloud(forceLoadAllProfiles = false) {
                 // Guard: Skip pull during active push to prevent partial state corruption
                 if (this.pushing) {
                     console.log('[SimpleCloudSync] Push in progress, skipping pull');
@@ -2768,14 +2768,22 @@
                     const bookings = bookingsResult.bookings || [];
 
                     // PERFORMANCE: Lazy load only essential profiles (current user + visible bookings)
-                    const currentUserId = (window.AppState?.currentUser?.id) ||
-                                        (window.Auth?.currentUserId) ||
-                                        localStorage.getItem('line_user_id') || null;
+                    // EXCEPT during login - need all profiles to check if user exists
+                    let profilesResult;
 
-                    const profilesResult = await window.SupabaseDB.getEssentialProfiles(
-                        currentUserId,
-                        bookings
-                    );
+                    if (forceLoadAllProfiles) {
+                        console.log('[SimpleCloudSync] Loading ALL profiles (login/registration)');
+                        profilesResult = await window.SupabaseDB.getAllProfiles();
+                    } else {
+                        const currentUserId = (window.AppState?.currentUser?.id) ||
+                                            (window.Auth?.currentUserId) ||
+                                            localStorage.getItem('line_user_id') || null;
+
+                        profilesResult = await window.SupabaseDB.getEssentialProfiles(
+                            currentUserId,
+                            bookings
+                        );
+                    }
 
                     const cloudData = {
                         bookings: bookings,
@@ -3849,7 +3857,8 @@
                 console.log('[LINE] Loading latest profiles from cloud...');
                 if (typeof SimpleCloudSync !== 'undefined') {
                     try {
-                        await SimpleCloudSync.loadFromCloud();
+                        // Force load ALL profiles during login to check if user exists
+                        await SimpleCloudSync.loadFromCloud(true);
                         console.log('[LINE] Cloud sync completed');
                     } catch (err) {
                         console.warn('[LINE] Cloud sync failed, using local only:', err);
@@ -5689,9 +5698,9 @@
                 LoadingManager.show('Syncing profiles from cloud...');
                 console.log('[ForceSync] Forcing profile load from cloud...');
 
-                // Force load from cloud
+                // Force load from cloud (need ALL profiles to check)
                 if (typeof SimpleCloudSync !== 'undefined') {
-                    await SimpleCloudSync.loadFromCloud();
+                    await SimpleCloudSync.loadFromCloud(true);
                 }
 
                 // Check if we now have a profile

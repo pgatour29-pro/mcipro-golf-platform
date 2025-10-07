@@ -194,6 +194,9 @@ CREATE POLICY "Bookings are insertable by everyone" ON bookings
 CREATE POLICY "Bookings are updatable by everyone" ON bookings
   FOR UPDATE USING (true);
 
+CREATE POLICY "Bookings are deletable by everyone" ON bookings
+  FOR DELETE USING (true);
+
 -- Public access for user profiles
 CREATE POLICY "User profiles are viewable by everyone" ON user_profiles
   FOR SELECT USING (true);

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Booking Sync Test</title>
+</head>
+<body>
+    <h1>Booking & Schedule Sync Test</h1>
+    <button onclick="testBookingCreation()">Test Booking Creation</button>
+    <button onclick="checkLocalStorage()">Check Local Storage</button>
+    <button onclick="checkServerData()">Check Server Data</button>
+    <div id="results"></div>
+
+    <script>
+        const API_KEY = 'Bearer mcipro-site-key-2024';
+        const FUNCTION_URL = 'https://mcipro-golf-platform.netlify.app/.netlify/functions/bookings';
+
+        function testBookingCreation() {
+            // Simulate what the booking system does
+            const booking = {
+                id: 'test-booking-' + Date.now(),
+                golferId: 'test-user',
+                golferName: 'Test User',
+                eventName: 'Test Round',
+                course: 'Test Course',
+                date: '2024-10-02',
+                time: '10:00',
+                players: 2,
+                status: 'confirmed',
+                totalCost: 3000,
+                type: 'teeTime',
+                createdAt: new Date().toISOString(),
+                updatedAt: Date.now()
+            };
+
+            const scheduleItem = {
+                id: 'test-schedule-' + Date.now(),
+                title: 'Test Golf Round',
+                date: '2024-10-02',
+                time: '10:00',
+                type: 'golf',
+                description: 'Test booking schedule item',
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+            };
+
+            // Save to localStorage (simulating BookingManager and ScheduleSystem)
+            const bookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]');
+            const schedule = JSON.parse(localStorage.getItem('mcipro_schedule') || '[]');
+
+            bookings.push(booking);
+            schedule.push(scheduleItem);
+
+            localStorage.setItem('mcipro_bookings', JSON.stringify(bookings));
+            localStorage.setItem('mcipro_schedule', JSON.stringify(schedule));
+
+            document.getElementById('results').innerHTML = `
+                <h3>Booking Created Locally</h3>
+                <p>Booking ID: ${booking.id}</p>
+                <p>Schedule ID: ${scheduleItem.id}</p>
+                <p>Local bookings: ${bookings.length}</p>
+                <p>Local schedule: ${schedule.length}</p>
+            `;
+        }
+
+        function checkLocalStorage() {
+            const bookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]');
+            const schedule = JSON.parse(localStorage.getItem('mcipro_schedule') || '[]');
+            const profiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+
+            document.getElementById('results').innerHTML = `
+                <h3>Local Storage State</h3>
+                <p>Bookings: ${bookings.length}</p>
+                <p>Schedule items: ${schedule.length}</p>
+                <p>Profiles: ${profiles.length}</p>
+                <pre>${JSON.stringify({bookings, schedule, profiles}, null, 2)}</pre>
+            `;
+        }
+
+        async function checkServerData() {
+            try {
+                const response = await fetch(FUNCTION_URL, {
+                    headers: { 'Authorization': API_KEY, 'Content-Type': 'application/json' }
+                });
+                const serverData = await response.json();
+
+                document.getElementById('results').innerHTML = `
+                    <h3>Server State</h3>
+                    <p>Bookings: ${serverData.bookings?.length || 0}</p>
+                    <p>Schedule items: ${serverData.schedule_items?.length || 0}</p>
+                    <p>Profiles: ${serverData.user_profiles?.length || 0}</p>
+                    <p>Version: ${serverData.version}</p>
+                    <pre>${JSON.stringify(serverData, null, 2)}</pre>
+                `;
+            } catch (error) {
+                document.getElementById('results').innerHTML = `<p>Error: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

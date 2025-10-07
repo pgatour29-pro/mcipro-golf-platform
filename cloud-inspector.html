@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cloud Inspector</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        button {
+            background: #2196F3;
+            color: white;
+            padding: 15px 30px;
+            font-size: 18px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button.danger {
+            background: #f44336;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>☁️ Cloud Data Inspector</h1>
+
+    <button onclick="showCloud()">🔍 Show Cloud Data</button>
+    <button onclick="deleteAllCloudProfiles()" class="danger">🗑️ DELETE ALL PROFILES FROM CLOUD</button>
+
+    <div id="output"></div>
+
+    <script>
+        function log(message) {
+            const output = document.getElementById('output');
+            output.textContent += message + '\n';
+            console.log(message);
+        }
+
+        async function showCloud() {
+            document.getElementById('output').textContent = '';
+            log('Fetching cloud data...\n');
+
+            try {
+                const response = await fetch('/.netlify/functions/bookings', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': 'Bearer mcipro-site-key-2024'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                log('=== CLOUD DATA ===');
+                log(`Version: ${data.version}`);
+                log(`Updated: ${new Date(data.updatedAt).toLocaleString()}`);
+                log(`Bookings: ${data.bookings?.length || 0}`);
+                log(`Profiles: ${data.user_profiles?.length || 0}\n`);
+
+                if (data.user_profiles && data.user_profiles.length > 0) {
+                    log('=== PROFILES IN CLOUD ===\n');
+                    data.user_profiles.forEach((p, i) => {
+                        log(`Profile ${i + 1}:`);
+                        log(`  ID: ${p.id || 'NO ID'}`);
+                        log(`  Username: ${p.username || 'NO USERNAME'}`);
+                        log(`  Name: ${p.firstName} ${p.lastName}`);
+                        log(`  LINE User ID: ${p.lineUserId || 'NOT SET'}`);
+                        log(`  LINE Picture: ${p.linePictureUrl || 'NONE'}`);
+                        log(`  Created: ${p.createdAt || 'unknown'}`);
+                        log(`  Updated: ${p.updatedAt || 'unknown'}`);
+                        log('');
+                    });
+                } else {
+                    log('No profiles in cloud.');
+                }
+
+            } catch (error) {
+                log('❌ ERROR: ' + error.message);
+            }
+        }
+
+        async function deleteAllCloudProfiles() {
+            if (!confirm('⚠️ DANGER: This will DELETE ALL PROFILES from the cloud!\n\nBookings will be preserved.\n\nAre you ABSOLUTELY SURE?')) {
+                return;
+            }
+
+            document.getElementById('output').textContent = '';
+            log('Deleting all profiles from cloud...\n');
+
+            try {
+                // Get current data
+                const getResponse = await fetch('/.netlify/functions/bookings', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': 'Bearer mcipro-site-key-2024'
+                    }
+                });
+
+                const cloudData = await getResponse.json();
+                log(`Current cloud has ${cloudData.user_profiles?.length || 0} profiles`);
+
+                // Send empty profiles array
+                const response = await fetch('/.netlify/functions/bookings', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer mcipro-site-key-2024'
+                    },
+                    body: JSON.stringify({
+                        bookings: cloudData.bookings || [],
+                        user_profiles: [], // EMPTY
+                        baseVersion: cloudData.version
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const result = await response.json();
+                log('✅ ALL PROFILES DELETED FROM CLOUD!');
+                log(`New version: ${result.version}`);
+
+            } catch (error) {
+                log('❌ ERROR: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

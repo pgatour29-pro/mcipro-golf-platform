@@ -2545,7 +2545,7 @@
             }
 
             static async initialize() {
-                console.log('[SimpleCloudSync] Initializing Supabase sync...');
+                console.log('[SimpleCloudSync] Initializing Supabase realtime sync...');
                 this.isInitialized = true;
 
                 // PERFORMANCE: Load data in background (non-blocking)
@@ -2553,43 +2553,199 @@
                     console.error('[SimpleCloudSync] Initial load failed:', err);
                 });
 
-                // Start lightweight polling immediately
-                this.startPolling();
+                // PERFORMANCE: Start Realtime WebSocket subscriptions (replaces polling)
+                this.startRealtimeSync();
             }
 
-            static startPolling() {
-                // Adaptive polling: Fast during emergencies, slow otherwise
-                let emergencyPollCount = 0;
-                let normalPollCount = 0;
+            static startRealtimeSync() {
+                // Wait for SupabaseDB to be ready
+                if (!window.SupabaseDB || !window.SupabaseDB.ready) {
+                    console.log('[SimpleCloudSync] Waiting for Supabase...');
+                    setTimeout(() => this.startRealtimeSync(), 500);
+                    return;
+                }
 
-                const emergencyInterval = setInterval(() => {
-                    if (emergencyPollCount > 0 && emergencyPollCount <= 12) {
-                        // Fast polling for 60 seconds during emergency mode (12 x 5s = 60s)
-                        this.loadFromCloud().catch(err => {
-                            console.log('[SimpleCloudSync] Emergency sync failed:', err.message);
-                        });
-                        emergencyPollCount++;
+                console.log('[SimpleCloudSync] 🚀 Starting Realtime WebSocket subscriptions (0 polling)');
 
-                        if (emergencyPollCount > 12) {
-                            console.log('[SimpleCloudSync] Emergency mode ended, switching to normal polling');
-                        }
-                    }
-                }, 5000); // 5 seconds during emergencies only
-
-                // Normal polling every 30 seconds (optimized for performance)
-                const normalInterval = setInterval(() => {
-                    if (emergencyPollCount === 0 || emergencyPollCount > 12) {
-                        this.loadFromCloud().catch(err => {
-                            console.log('[SimpleCloudSync] Background sync failed:', err.message);
-                        });
-                    }
-                }, 30000); // 30 seconds for normal sync - balanced performance
-
-                // Reset emergency mode when new alert is sent
-                window.addEventListener('emergency-alert-sent', () => {
-                    emergencyPollCount = 1; // Start emergency polling
-                    console.log('[SimpleCloudSync] 🚨 Emergency mode activated - fast polling for 30s');
+                // Subscribe to bookings changes via WebSocket
+                window.SupabaseDB.subscribeToBookings((payload) => {
+                    console.log('[SimpleCloudSync] 🔄 Booking update received via WebSocket:', payload.eventType);
+                    this.handleRealtimeBookingChange(payload);
                 });
+
+                // Subscribe to profile changes via WebSocket
+                window.SupabaseDB.subscribeToProfiles((payload) => {
+                    console.log('[SimpleCloudSync] 🔄 Profile update received via WebSocket:', payload.eventType);
+                    this.handleRealtimeProfileChange(payload);
+                });
+
+                // Fallback: Light sync every 5 minutes as safety net
+                setInterval(() => {
+                    console.log('[SimpleCloudSync] Safety sync (5min fallback)');
+                    this.loadFromCloud().catch(err => {
+                        console.log('[SimpleCloudSync] Fallback sync failed:', err.message);
+                    });
+                }, 300000); // 5 minutes
+
+                console.log('[SimpleCloudSync] ✅ Realtime sync active - instant updates via WebSocket');
+            }
+
+            static handleRealtimeBookingChange(payload) {
+                const { eventType, new: newRecord, old: oldRecord } = payload;
+
+                // Get current local bookings
+                const localBookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]');
+
+                switch(eventType) {
+                    case 'INSERT':
+                        // Add new booking if not already present
+                        if (!localBookings.find(b => b.id === newRecord.id)) {
+                            // Convert snake_case to camelCase
+                            const booking = this.convertBookingFromSupabase(newRecord);
+                            localBookings.push(booking);
+                            localStorage.setItem('mcipro_bookings', JSON.stringify(localBookings));
+                            console.log('[SimpleCloudSync] ➕ New booking added:', booking.id);
+
+                            // Trigger UI update
+                            window.dispatchEvent(new CustomEvent('booking-added', { detail: booking }));
+                        }
+                        break;
+
+                    case 'UPDATE':
+                        // Update existing booking
+                        const updateIndex = localBookings.findIndex(b => b.id === newRecord.id);
+                        if (updateIndex !== -1) {
+                            const booking = this.convertBookingFromSupabase(newRecord);
+                            localBookings[updateIndex] = booking;
+                            localStorage.setItem('mcipro_bookings', JSON.stringify(localBookings));
+                            console.log('[SimpleCloudSync] ✏️ Booking updated:', booking.id);
+
+                            // Trigger UI update
+                            window.dispatchEvent(new CustomEvent('booking-updated', { detail: booking }));
+                        }
+                        break;
+
+                    case 'DELETE':
+                        // Remove deleted booking
+                        const deleteIndex = localBookings.findIndex(b => b.id === oldRecord.id);
+                        if (deleteIndex !== -1) {
+                            localBookings.splice(deleteIndex, 1);
+                            localStorage.setItem('mcipro_bookings', JSON.stringify(localBookings));
+                            console.log('[SimpleCloudSync] 🗑️ Booking deleted:', oldRecord.id);
+
+                            // Trigger UI update
+                            window.dispatchEvent(new CustomEvent('booking-deleted', { detail: { id: oldRecord.id } }));
+                        }
+                        break;
+                }
+            }
+
+            static handleRealtimeProfileChange(payload) {
+                const { eventType, new: newRecord, old: oldRecord } = payload;
+
+                // Get current local profiles
+                const localProfiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+
+                switch(eventType) {
+                    case 'INSERT':
+                    case 'UPDATE':
+                        // Upsert profile
+                        const existingIndex = localProfiles.findIndex(p =>
+                            p.line_user_id === newRecord.line_user_id
+                        );
+
+                        if (existingIndex !== -1) {
+                            localProfiles[existingIndex] = newRecord;
+                            console.log('[SimpleCloudSync] ✏️ Profile updated:', newRecord.line_user_id);
+                        } else {
+                            localProfiles.push(newRecord);
+                            console.log('[SimpleCloudSync] ➕ Profile added:', newRecord.line_user_id);
+                        }
+
+                        localStorage.setItem('mcipro_user_profiles', JSON.stringify(localProfiles));
+                        break;
+
+                    case 'DELETE':
+                        // Remove deleted profile
+                        const deleteIndex = localProfiles.findIndex(p =>
+                            p.line_user_id === oldRecord.line_user_id
+                        );
+
+                        if (deleteIndex !== -1) {
+                            localProfiles.splice(deleteIndex, 1);
+                            localStorage.setItem('mcipro_user_profiles', JSON.stringify(localProfiles));
+                            console.log('[SimpleCloudSync] 🗑️ Profile deleted:', oldRecord.line_user_id);
+                        }
+                        break;
+                }
+            }
+
+            static convertBookingFromSupabase(booking) {
+                // Convert snake_case fields to camelCase for app compatibility
+                return {
+                    id: booking.id,
+                    name: booking.name,
+                    date: booking.date,
+                    time: booking.time,
+                    teeTime: booking.tee_time,
+                    status: booking.status,
+                    players: booking.players,
+                    caddyNumber: booking.caddy_number,
+                    currentHole: booking.current_hole,
+                    lastHoleUpdate: booking.last_hole_update,
+                    notes: booking.notes,
+                    phone: booking.phone,
+                    email: booking.email,
+                    groupId: booking.group_id,
+                    kind: booking.kind,
+                    golferId: booking.golfer_id,
+                    golferName: booking.golfer_name,
+                    eventName: booking.event_name,
+                    courseId: booking.course_id,
+                    courseName: booking.course_name,
+                    course: booking.course,
+                    teeSheetCourse: booking.tee_sheet_course,
+                    teeNumber: booking.tee_number,
+                    bookingType: booking.booking_type,
+                    durationMin: booking.duration_min,
+                    caddieId: booking.caddie_id,
+                    caddieName: booking.caddie_name,
+                    caddieStatus: booking.caddie_status,
+                    caddyConfirmationRequired: booking.caddy_confirmation_required,
+                    serviceName: booking.service_name,
+                    service: booking.service,
+                    source: booking.source,
+                    isPrivate: booking.is_private,
+                    isVIP: booking.is_vip,
+                    deleted: booking.deleted,
+                    createdAt: booking.created_at,
+                    updatedAt: booking.updated_at
+                };
+            }
+
+            // PERFORMANCE: Prefetch data on tab hover (instant loading)
+            static prefetchData() {
+                // Throttle prefetch - don't spam if user hovers multiple times
+                if (this.prefetchTimeout) return;
+
+                this.prefetchTimeout = setTimeout(() => {
+                    this.prefetchTimeout = null;
+                }, 2000); // Throttle to once per 2 seconds
+
+                // Only prefetch if data is stale (older than 30s)
+                const lastLoad = localStorage.getItem('mcipro_last_sync');
+                if (lastLoad && Date.now() - parseInt(lastLoad) < 30000) {
+                    return; // Data is fresh, no need to prefetch
+                }
+
+                console.log('[SimpleCloudSync] 🚀 Prefetching data on hover...');
+
+                // Non-blocking prefetch
+                this.loadFromCloud().catch(err => {
+                    console.log('[SimpleCloudSync] Prefetch failed (non-critical):', err.message);
+                });
+
+                localStorage.setItem('mcipro_last_sync', Date.now().toString());
             }
 
             static async loadFromCloud() {
@@ -2607,22 +2763,31 @@
                 }
 
                 try {
-                    // Load from Supabase instead of Netlify Functions
-                    const [bookingsResult, profilesResult] = await Promise.all([
-                        window.SupabaseDB.getBookings(),
-                        window.SupabaseDB.getAllProfiles()
-                    ]);
+                    // PERFORMANCE: Load bookings first
+                    const bookingsResult = await window.SupabaseDB.getBookings();
+                    const bookings = bookingsResult.bookings || [];
+
+                    // PERFORMANCE: Lazy load only essential profiles (current user + visible bookings)
+                    const currentUserId = (window.AppState?.currentUser?.id) ||
+                                        (window.Auth?.currentUserId) ||
+                                        localStorage.getItem('line_user_id') || null;
+
+                    const profilesResult = await window.SupabaseDB.getEssentialProfiles(
+                        currentUserId,
+                        bookings
+                    );
 
                     const cloudData = {
-                        bookings: bookingsResult.bookings || [],
+                        bookings: bookings,
                         user_profiles: profilesResult || [],
                         version: Date.now(), // Use timestamp as version
                         updatedAt: new Date().toISOString()
                     };
 
-                    console.log('[SimpleCloudSync] Loaded from Supabase:', {
+                    console.log('[SimpleCloudSync] 🚀 Loaded from Supabase (LAZY):', {
                         bookings: cloudData.bookings?.length || 0,
                         profiles: cloudData.user_profiles?.length || 0,
+                        profilesLoadedRatio: `${cloudData.user_profiles?.length || 0} (only essential)`,
                         version: cloudData.version,
                         updatedAt: cloudData.updatedAt
                     });
@@ -2776,30 +2941,45 @@
                         attempt: retryCount + 1
                     });
 
-                    // Save to Supabase instead of Netlify Functions
-                    // Save all bookings
-                    const savePromises = cleanBookings.map(booking =>
-                        window.SupabaseDB.saveBooking(booking).catch(err => {
-                            console.error('[SimpleCloudSync] Failed to save booking:', booking.id, err);
-                            return null;
-                        })
+                    // PERFORMANCE: Batch save to Supabase (1 request instead of N)
+                    try {
+                        // Batch save all bookings in one transaction
+                        await window.SupabaseDB.batchSaveBookings(cleanBookings);
+
+                        // Batch save all profiles
+                        const profilePromises = profiles.map(profile =>
+                            window.SupabaseDB.saveUserProfile(profile).catch(err => {
+                                console.error('[SimpleCloudSync] Failed to save profile:', profile.line_user_id || profile.lineUserId, err);
+                                return null;
+                            })
+                        );
+
+                        await Promise.all(profilePromises);
+                        console.log('[SimpleCloudSync] ✅ Batch save complete');
+                    } catch (err) {
+                        console.error('[SimpleCloudSync] Batch save failed, falling back to individual saves');
+                        // Fallback to individual saves
+                        const savePromises = cleanBookings.map(booking =>
+                            window.SupabaseDB.saveBooking(booking).catch(err => {
+                                console.error('[SimpleCloudSync] Failed to save booking:', booking.id, err);
+                                return null;
+                            })
+                        );
+                        await Promise.all(savePromises);
+                    }
+
+                    // PERFORMANCE: Get updated data from Supabase with lazy profile loading
+                    const bookingsResult = await window.SupabaseDB.getBookings();
+                    const bookings = bookingsResult.bookings || [];
+
+                    const currentUserId = (window.AppState?.currentUser?.id) ||
+                                        (window.Auth?.currentUserId) ||
+                                        localStorage.getItem('line_user_id') || null;
+
+                    const profilesResult = await window.SupabaseDB.getEssentialProfiles(
+                        currentUserId,
+                        bookings
                     );
-
-                    // Save all profiles
-                    const profilePromises = profiles.map(profile =>
-                        window.SupabaseDB.saveUserProfile(profile).catch(err => {
-                            console.error('[SimpleCloudSync] Failed to save profile:', profile.line_user_id || profile.lineUserId, err);
-                            return null;
-                        })
-                    );
-
-                    await Promise.all([...savePromises, ...profilePromises]);
-
-                    // Get updated data from Supabase to merge
-                    const [bookingsResult, profilesResult] = await Promise.all([
-                        window.SupabaseDB.getBookings(),
-                        window.SupabaseDB.getAllProfiles()
-                    ]);
 
                     const result = {
                         bookings: bookingsResult.bookings || [],
@@ -5136,6 +5316,18 @@
 
                 // Initialize OTP input handlers
                 OTPAuthentication.setupOTPInputHandlers();
+
+                // PERFORMANCE: Register Service Worker for offline-first caching
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.register('/sw.js')
+                        .then((registration) => {
+                            console.log('[ServiceWorker] Registered successfully:', registration.scope);
+                            console.log('[ServiceWorker] 🚀 Offline-first caching enabled');
+                        })
+                        .catch((error) => {
+                            console.error('[ServiceWorker] Registration failed:', error);
+                        });
+                }
 
                 // Initialize production cloud synchronization system
                 SimpleCloudSync.initialize();
@@ -21778,35 +21970,35 @@ Total Rounds: ${ningCaddy.totalRounds}`;
         <nav class="tab-navigation border-b">
             <div class="max-w-7xl mx-auto px-2 lg:px-4">
                 <div class="flex flex-wrap gap-1">
-                    <button onclick="showManagerTab('overview', event)" class="tab-button active" id="manager-overview-tab">
+                    <button onclick="showManagerTab('overview', event)" onmouseenter="SimpleCloudSync.prefetchData()" class="tab-button active" id="manager-overview-tab">
                         <span class="material-symbols-outlined">dashboard</span>
                         <span class="hidden sm:inline">Overview</span>
                     </button>
-                    <button onclick="showManagerTab('traffic', event)" class="tab-button" id="manager-traffic-tab">
+                    <button onclick="showManagerTab('traffic', event)" onmouseenter="SimpleCloudSync.prefetchData()" class="tab-button" id="manager-traffic-tab">
                         <span class="material-symbols-outlined">map</span>
                         <span class="hidden sm:inline">Traffic</span>
                     </button>
-                    <button onclick="showManagerTab('staff', event)" class="tab-button" id="manager-staff-tab">
+                    <button onclick="showManagerTab('staff', event)" onmouseenter="SimpleCloudSync.prefetchData()" class="tab-button" id="manager-staff-tab">
                         <span class="material-symbols-outlined">groups</span>
                         <span class="hidden sm:inline">Staff</span>
                     </button>
-                    <button onclick="showManagerTab('analytics', event)" class="tab-button" id="manager-analytics-tab">
+                    <button onclick="showManagerTab('analytics', event)" onmouseenter="SimpleCloudSync.prefetchData()" class="tab-button" id="manager-analytics-tab">
                         <span class="material-symbols-outlined">analytics</span>
                         <span class="hidden sm:inline">Analytics</span>
                     </button>
-                    <button onclick="showManagerTab('reports', event)" class="tab-button" id="manager-reports-tab">
+                    <button onclick="showManagerTab('reports', event)" onmouseenter="SimpleCloudSync.prefetchData()" class="tab-button" id="manager-reports-tab">
                         <span class="material-symbols-outlined">description</span>
                         <span class="hidden sm:inline">Reports</span>
                     </button>
-                    <button onclick="showManagerTab('settings', event)" class="tab-button" id="manager-settings-tab">
+                    <button onclick="showManagerTab('settings', event)" onmouseenter="SimpleCloudSync.prefetchData()" class="tab-button" id="manager-settings-tab">
                         <span class="material-symbols-outlined">settings</span>
                         <span class="hidden sm:inline">Settings</span>
                     </button>
-                    <button onclick="showManagerTab('maintenance', event)" class="tab-button" id="manager-maintenance-tab">
+                    <button onclick="showManagerTab('maintenance', event)" onmouseenter="WeatherIntegration.fetchWeatherData?.()" class="tab-button" id="manager-maintenance-tab">
                         <span class="material-symbols-outlined">build</span>
                         <span class="hidden sm:inline">Maint</span>
                     </button>
-                    <button onclick="showManagerTab('weather', event)" class="tab-button" id="manager-weather-tab">
+                    <button onclick="showManagerTab('weather', event)" onmouseenter="WeatherIntegration.fetchWeatherData?.()" class="tab-button" id="manager-weather-tab">
                         <span class="material-symbols-outlined">wb_cloudy</span>
                         <span class="hidden sm:inline">Weather</span>
                     </button>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MciPro Automated Acceptance Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test { margin: 20px 0; padding: 10px; border: 1px solid #ccc; }
+        .pass { background-color: #d4edda; border-color: #28a745; }
+        .fail { background-color: #f8d7da; border-color: #dc3545; }
+        .pending { background-color: #fff3cd; border-color: #ffc107; }
+    </style>
+</head>
+<body>
+    <h1>MciPro Automated Acceptance Test</h1>
+    <div id="results"></div>
+
+    <script>
+        const API_KEY = 'Bearer mcipro-site-key-2024';
+        const FUNCTION_URL = 'https://mcipro-golf-platform.netlify.app/.netlify/functions/bookings';
+
+        async function runTest(testName, testFn) {
+            const results = document.getElementById('results');
+            const testDiv = document.createElement('div');
+            testDiv.className = 'test pending';
+            testDiv.innerHTML = `<h3>${testName}</h3><p>Running...</p>`;
+            results.appendChild(testDiv);
+
+            try {
+                const result = await testFn();
+                testDiv.className = 'test pass';
+                testDiv.innerHTML = `<h3>✅ ${testName}</h3><pre>${result}</pre>`;
+            } catch (error) {
+                testDiv.className = 'test fail';
+                testDiv.innerHTML = `<h3>❌ ${testName}</h3><p>Error: ${error.message}</p>`;
+            }
+        }
+
+        async function testLocalMapping() {
+            // Get server state
+            const response = await fetch(FUNCTION_URL, {
+                headers: { 'Authorization': API_KEY, 'Content-Type': 'application/json' }
+            });
+            const serverData = await response.json();
+
+            // Get local state
+            const localBookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]');
+            const localProfiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+            const localSchedule = JSON.parse(localStorage.getItem('mcipro_schedule') || '[]');
+            const localAlerts = JSON.parse(localStorage.getItem('emergency_alerts') || '[]');
+
+            return `Local → Server mapping:
+Bookings: ${localBookings.length} → ${serverData.bookings?.length || 0}
+Profiles: ${localProfiles.length} → ${serverData.user_profiles?.length || 0}
+Schedule: ${localSchedule.length} → ${serverData.schedule_items?.length || 0}
+Alerts: ${localAlerts.length} → ${serverData.emergency_alerts?.length || 0}
+
+Server version: ${serverData.version}
+Server timestamp: ${new Date(serverData.updatedAt).toLocaleString()}`;
+        }
+
+        async function testCreateAndSync() {
+            // Create test data
+            const testBooking = {
+                id: 'test-booking-' + Date.now(),
+                customerName: 'Test Customer',
+                date: '2024-10-02',
+                time: '08:00',
+                players: 2,
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+            };
+
+            const testSchedule = {
+                id: 'test-schedule-' + Date.now(),
+                title: 'Test Golf Event',
+                date: '2024-10-02',
+                time: '08:00',
+                description: 'Automated test event',
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+            };
+
+            // Save to local storage
+            const bookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]');
+            const schedule = JSON.parse(localStorage.getItem('mcipro_schedule') || '[]');
+
+            bookings.push(testBooking);
+            schedule.push(testSchedule);
+
+            localStorage.setItem('mcipro_bookings', JSON.stringify(bookings));
+            localStorage.setItem('mcipro_schedule', JSON.stringify(schedule));
+
+            // Get current server version for CAS
+            const getResponse = await fetch(FUNCTION_URL, {
+                headers: { 'Authorization': API_KEY, 'Content-Type': 'application/json' }
+            });
+            const currentData = await getResponse.json();
+
+            // Sync to server
+            const syncData = {
+                baseVersion: currentData.version,
+                bookings: bookings,
+                schedule_items: schedule,
+                user_profiles: JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]'),
+                emergency_alerts: JSON.parse(localStorage.getItem('emergency_alerts') || '[]'),
+                caddies: [],
+                waitlist: []
+            };
+
+            const syncResponse = await fetch(FUNCTION_URL, {
+                method: 'PUT',
+                headers: { 'Authorization': API_KEY, 'Content-Type': 'application/json' },
+                body: JSON.stringify(syncData)
+            });
+
+            const syncResult = await syncResponse.json();
+
+            if (syncResponse.ok) {
+                return `Created and synced test data:
+Booking ID: ${testBooking.id}
+Schedule ID: ${testSchedule.id}
+New server version: ${syncResult.version}
+Status: ${syncResult.ok ? 'SUCCESS' : 'FAILED'}`;
+            } else {
+                throw new Error(`Sync failed: ${syncResult.error || 'Unknown error'}`);
+            }
+        }
+
+        async function testRefreshPersistence() {
+            // Get current data counts before refresh
+            const beforeBookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]').length;
+            const beforeSchedule = JSON.parse(localStorage.getItem('mcipro_schedule') || '[]').length;
+
+            // Simulate refresh by clearing localStorage and re-fetching from server
+            const serverResponse = await fetch(FUNCTION_URL, {
+                headers: { 'Authorization': API_KEY, 'Content-Type': 'application/json' }
+            });
+            const serverData = await serverResponse.json();
+
+            // Update localStorage from server (simulating what the app does on refresh)
+            localStorage.setItem('mcipro_bookings', JSON.stringify(serverData.bookings || []));
+            localStorage.setItem('mcipro_user_profiles', JSON.stringify(serverData.user_profiles || []));
+            localStorage.setItem('mcipro_schedule', JSON.stringify(serverData.schedule_items || []));
+            localStorage.setItem('emergency_alerts', JSON.stringify(serverData.emergency_alerts || []));
+
+            const afterBookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]').length;
+            const afterSchedule = JSON.parse(localStorage.getItem('mcipro_schedule') || '[]').length;
+
+            return `Refresh persistence test:
+Before: Bookings=${beforeBookings}, Schedule=${beforeSchedule}
+After: Bookings=${afterBookings}, Schedule=${afterSchedule}
+Data persisted: ${beforeBookings === afterBookings && beforeSchedule === afterSchedule ? 'YES' : 'NO'}`;
+        }
+
+        // Run all tests
+        async function runAllTests() {
+            await runTest('Test 7: Local Storage Mapping', testLocalMapping);
+            await runTest('Test 1: Create and Sync Data', testCreateAndSync);
+            await runTest('Test 2: Refresh Persistence', testRefreshPersistence);
+            await runTest('Test 7 (After): Verify Final Mapping', testLocalMapping);
+        }
+
+        window.addEventListener('load', runAllTests);
+    </script>
+</body>
+</html>

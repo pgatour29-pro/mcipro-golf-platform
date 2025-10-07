@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Pairings Module</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { background:#f6f7fb; }
+    .drag-over { outline:2px dashed #7c3aed; outline-offset:4px; }
+    @media print {
+      .no-print { display:none !important; }
+      body { background:white; }
+    }
+  </style>
+</head>
+<body class="min-h-screen">
+  <div class="mx-auto max-w-7xl p-4">
+    <header class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">Pairings (Organizer)</h1>
+        <p class="text-sm text-gray-600">Dynamic until cutoff. Drag & drop; apply partner requests; then Print T‑Sheet.</p>
+      </div>
+      <nav class="no-print flex items-center gap-2 text-sm">
+        <a href="organizer_dashboard.html" class="rounded-lg border bg-white px-3 py-1.5 shadow">Organizer</a>
+        <a href="golfer_registration.html" class="rounded-lg border bg-white px-3 py-1.5 shadow">Golfer Registration</a>
+      </nav>
+    </header>
+    <div id="root"></div>
+  </div>
+
+  <script type="text/babel">
+const { useState, useEffect, useRef } = React;
+const LS_EVENTS = "society_events_v1";
+const LS_REG = "event_registrations_v1";
+const LS_PAIR = "event_pairings_v1";
+
+function useQuery(){ const p = new URLSearchParams(location.search); return Object.fromEntries(p.entries()); }
+function loadEvents(){ try { return JSON.parse(localStorage.getItem(LS_EVENTS)) || []; } catch { return []; } }
+function loadRegistrations(){ try { return JSON.parse(localStorage.getItem(LS_REG)) || {}; } catch { return {}; } }
+function saveRegistrations(r){ localStorage.setItem(LS_REG, JSON.stringify(r)); }
+function loadPairings(){ try { return JSON.parse(localStorage.getItem(LS_PAIR)) || {}; } catch { return {}; } }
+function savePairings(p){ localStorage.setItem(LS_PAIR, JSON.stringify(p)); }
+
+function PlayerBadge({p}){
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-lg bg-white px-2 py-1 shadow-sm border">
+      <span className="text-sm">{p.name}</span>
+      <span className="text-xs text-gray-600">{Math.round(p.hdcp)}</span>
+    </div>
+  );
+}
+
+function GroupCard({group, i, onDrop, onRemove, groupSize, disabled}){
+  const ref = useRef(null);
+  useEffect(()=>{
+    const el = ref.current;
+    const onDragOver = (e)=>{ if(disabled) return; e.preventDefault(); el.classList.add("drag-over"); };
+    const onLeave = ()=> el.classList.remove("drag-over");
+    const onDropEv = (e)=>{
+      if(disabled) return;
+      e.preventDefault(); el.classList.remove("drag-over");
+      try{ const data = JSON.parse(e.dataTransfer.getData("text/plain"));
+        if (data?.type==="player") onDrop(data.id, i);
+      }catch{}
+    };
+    el.addEventListener("dragover", onDragOver);
+    el.addEventListener("dragleave", onLeave);
+    el.addEventListener("drop", onDropEv);
+    return ()=>{ el.removeEventListener("dragover", onDragOver); el.removeEventListener("dragleave", onLeave); el.removeEventListener("drop", onDropEv); }
+  }, [i, onDrop, disabled]);
+
+  return (
+    <div ref={ref} className={"rounded-2xl border bg-white p-3 shadow-sm " + (disabled ? "opacity-60" : "")}>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-violet-600/10 text-xs font-semibold text-violet-700">{i+1}</span>
+          <h4 className="text-sm font-semibold">Group {i+1}</h4>
+        </div>
+        <span className="text-xs text-gray-500">{group.length}/{groupSize}</span>
+      </div>
+      <div className="grid gap-2">
+        {group.map(p => (
+          <div key={p.id} className="relative">
+            <PlayerBadge p={p}/>
+            {!disabled && <button onClick={()=>onRemove(p.id, i)} className="absolute right-2 top-1/2 -translate-y-1/2 rounded border bg-white px-2 py-0.5 text-xs shadow">Remove</button>}
+          </div>
+        ))}
+        {group.length === 0 && <div className="rounded-lg border border-dashed p-4 text-center text-xs text-gray-500">{disabled? "Locked" : "Drop players here"}</div>}
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  const q = useQuery();
+  const evId = q.eventId;
+  const events = loadEvents();
+  const event = events.find(e=>e.id===evId) || {name:"(Unknown)"};
+  const [regs, setRegs] = useState(loadRegistrations());
+  const [pairings, setPairings] = useState(()=> loadPairings());
+  const [groupSize, setGroupSize] = useState(()=> pairings[evId]?.groupSize || 4);
+  const [numGroups, setNumGroups] = useState(()=> pairings[evId]?.groups?.length || 4);
+  const [groups, setGroups] = useState(()=> {
+    const ids = pairings[evId]?.groups || Array.from({length:4}, ()=>[]);
+    const roster = regs[evId] || [];
+    return ids.map(gIds => gIds.map(id => roster.find(p=>p.id===id)).filter(Boolean));
+  });
+  const cutoffPassed = event.cutoff ? (new Date() > new Date(event.cutoff)) : false;
+  const locked = cutoffPassed || !!pairings[evId]?.lockedAt;
+
+  useEffect(()=>{
+    const ids = groups.map(g => g.map(p=>p.id));
+    const nextP = {...pairings, [evId]: {groupSize, groups: ids, lockedAt: pairings[evId]?.lockedAt}};
+    setPairings(nextP);
+    savePairings(nextP);
+
+    const roster = (regs[evId]||[]).map(r=> ({...r, pairedGroup: null}));
+    ids.forEach((g, gi)=> g.forEach(id=>{
+      const rr = roster.find(x=>x.id===id); if (rr) rr.pairedGroup = gi;
+    }));
+    const nextR = {...regs, [evId]: roster};
+    setRegs(nextR); saveRegistrations(nextR);
+  }, [groups, groupSize, evId]);
+
+  useEffect(()=>{
+    setGroups(prev => Array.from({length:numGroups}, (_,i)=> prev[i] || []));
+  }, [numGroups]);
+
+  function dropPlayerToGroup(playerId, gi){
+    if (locked) return;
+    const roster = regs[evId] || [];
+    const player = roster.find(p=>p.id===playerId) || groups.flat().find(p=>p.id===playerId);
+    if (!player) return;
+    const cleaned = groups.map(g => g.filter(x => x.id !== playerId));
+    if (cleaned[gi].length >= groupSize) return;
+    cleaned[gi] = [...cleaned[gi], player];
+    setGroups(cleaned);
+  }
+  function removePlayerFromGroup(playerId, gi){
+    if (locked) return;
+    setGroups(groups.map((g,i)=> i===gi ? g.filter(x=>x.id!==playerId) : g));
+  }
+  function clearGroups(){ if (locked) return; setGroups(Array.from({length:numGroups}, ()=>[])); }
+
+  // Build partner-request-based groups (mutual pairs prioritized)
+  function applyPartnerRequests(){
+    if (locked) return;
+    const roster = (regs[evId]||[]).map(r => ({...r, prefs: r.prefs || []}));
+    const byId = Object.fromEntries(roster.map(r => [r.id, r]));
+    const used = new Set();
+    const packs = [];
+
+    // mutual pairs
+    roster.forEach(a => {
+      if (used.has(a.id)) return;
+      for (const bid of a.prefs){
+        const b = byId[bid];
+        if (!b || used.has(b.id) || a.id===b.id) continue;
+        if ((b.prefs||[]).includes(a.id)){ // mutual
+          packs.push([a,b]);
+          used.add(a.id); used.add(b.id);
+          return;
+        }
+      }
+    });
+
+    // remaining singles
+    roster.forEach(r => { if (!used.has(r.id)) packs.push([r]); });
+
+    // fill groups
+    const built = Array.from({length:numGroups}, ()=>[]);
+    let gi = 0;
+    packs.forEach(pk => {
+      // If doesn't fit in current group, move to next
+      if (built[gi].length + pk.length > groupSize) gi = (gi + 1) % numGroups;
+      // simple placement: try find a group with room
+      let tries = 0;
+      while (built[gi].length + pk.length > groupSize && tries < numGroups){
+        gi = (gi + 1) % numGroups; tries++;
+      }
+      if (built[gi].length + pk.length <= groupSize){
+        built[gi] = built[gi].concat(pk);
+      }else{
+        // if no room anywhere, push into the smallest group
+        let minIdx = 0;
+        for (let i=1;i<numGroups;i++){ if (built[i].length < built[minIdx].length) minIdx = i; }
+        built[minIdx] = built[minIdx].concat(pk.slice(0, groupSize - built[minIdx].length));
+      }
+    });
+
+    // compute satisfied mutuals count
+    let satisfied = 0;
+    packs.forEach(pk => {
+      if (pk.length===2){
+        const [a,b] = pk;
+        const gIndex = built.findIndex(g => g.find(x=>x.id===a.id) && g.find(x=>x.id===b.id));
+        if (gIndex !== -1) satisfied++;
+      }
+    });
+
+    setGroups(built);
+    // transient banner
+    const el = document.getElementById("req-status");
+    if (el){
+      el.textContent = `Applied partner requests — mutual pairs together: ${satisfied}`;
+      el.classList.remove("hidden");
+      setTimeout(()=> el.classList.add("hidden"), 2000);
+    }
+  }
+
+  function printPreview(){ window.print(); }
+  function lockAndPrint(){
+    const np = {...pairings, [evId]: {...pairings[evId], groupSize, groups: groups.map(g=> g.map(p=>p.id)), lockedAt: new Date().toISOString()}};
+    savePairings(np); setPairings(np);
+    setTimeout(()=> window.print(), 50);
+  }
+
+  const roster = (regs[evId]||[]);
+  const assignedIds = new Set(groups.flat().map(p=>p.id));
+  const unassigned = roster.filter(p=>!assignedIds.has(p.id)).sort((a,b)=> a.hdcp - b.hdcp);
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border bg-white p-4 shadow flex items-center justify-between">
+        <div>
+          <div className="text-lg font-semibold">{event.name}</div>
+          <div className="text-xs text-gray-600">Cutoff: {event.cutoff || '-'}</div>
+          <div className="text-xs text-gray-600">Status: {locked ? "Locked" : "Open"}</div>
+        </div>
+        <div className="no-print flex flex-wrap items-center gap-2">
+          <label className="text-sm">Group Size</label>
+          <input type="number" min="2" max="8" value={groupSize} onChange={e=>setGroupSize(parseInt(e.target.value)||4)} className="w-16 rounded-lg border px-2 py-1"/>
+          <label className="text-sm"># Groups</label>
+          <input type="number" min="1" value={numGroups} onChange={e=>setNumGroups(parseInt(e.target.value)||4)} className="w-16 rounded-lg border px-2 py-1"/>
+          <button onClick={applyPartnerRequests} className="rounded-lg border bg-white px-3 py-1.5">Apply Partner Requests</button>
+          {!locked && <button onClick={clearGroups} className="rounded-lg border bg-white px-3 py-1.5">Clear</button>}
+          <button onClick={printPreview} className="rounded-lg border bg-white px-3 py-1.5">Print Preview</button>
+          <button onClick={lockAndPrint} className="rounded-lg bg-violet-600 px-3 py-1.5 text-white">{locked? "Print T‑Sheet" : "Lock & Print"}</button>
+        </div>
+      </div>
+
+      <div id="req-status" className="hidden rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700"></div>
+
+      <div className="no-print rounded-2xl border bg-white p-4 shadow">
+        <div className="text-sm font-semibold mb-3">Unassigned Players (drag into groups)</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+          {unassigned.map(p => (
+            <div key={p.id} draggable onDragStart={e=>{e.dataTransfer.setData("text/plain", JSON.stringify({type:"player", id:p.id})); e.dataTransfer.effectAllowed="move";}} className="cursor-move">
+              <PlayerBadge p={p}/>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {groups.map((g, i)=> (
+          <GroupCard key={i} i={i} group={g} onDrop={dropPlayerToGroup} onRemove={removePlayerFromGroup} groupSize={groupSize} disabled={locked}/>
+        ))}
+      </div>
+
+      <div className="print:block no-print:hidden">
+        <h2 className="text-xl font-semibold mb-2">T‑Sheet — {event.name}</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {groups.map((g, gi)=> (
+            <div key={gi} className="rounded border p-3">
+              <div className="mb-2 font-semibold">Group {gi+1}</div>
+              <table className="w-full text-sm">
+                <thead><tr className="text-left"><th>Name</th><th>HDCP</th></tr></thead>
+                <tbody>
+                  {g.map(p => <tr key={p.id}><td>{p.name}</td><td>{Math.round(p.hdcp)}</td></tr>)}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App/>);
+  </script>
+</body>
+</html>

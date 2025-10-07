@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Organizer Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { background:#f6f7fb; }
+    .modal-backdrop { position: fixed; inset:0; background: rgba(0,0,0,0.5); backdrop-filter: blur(6px); display:none; align-items:center; justify-content:center; z-index:50; }
+    .modal-backdrop.show { display:flex; }
+    .tab { cursor:pointer; }
+    .tab.active { border-bottom: 2px solid #7c3aed; color:#7c3aed; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <div class="mx-auto max-w-7xl p-4">
+    <header class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-semibold text-gray-900">Organizer Dashboard</h1>
+        <p class="text-sm text-gray-600">Manage events. Pairings are in a separate module (button on each event).</p>
+      </div>
+      <nav class="flex items-center gap-2 text-sm">
+        <a href="golfer_registration.html" class="rounded-lg border bg-white px-3 py-1.5 shadow">Golfer Registration</a>
+      </nav>
+    </header>
+
+    <div id="root"></div>
+  </div>
+
+  <!-- Roster Modal -->
+  <div id="backdrop" class="modal-backdrop">
+    <div class="w-[95%] max-w-3xl rounded-2xl bg-white shadow-2xl">
+      <div class="flex items-center justify-between rounded-t-2xl bg-gradient-to-r from-violet-600 to-violet-400 px-5 py-4 text-white">
+        <div>
+          <div id="mTitle" class="text-lg font-semibold">Roster</div>
+          <div id="mSub" class="text-xs text-violet-100"></div>
+        </div>
+        <button id="mClose" class="rounded-lg bg-white/20 px-2 py-1 text-white hover:bg-white/30">✕</button>
+      </div>
+      <div class="max-h-[70vh] overflow-y-auto p-5 space-y-4">
+        <div class="flex gap-6 border-b pb-2 text-sm">
+          <div id="tabConfirmed" class="tab active">Confirmed</div>
+          <div id="tabWaitlist" class="tab">Waitlist</div>
+        </div>
+        <div id="rosterRoot"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="text/babel">
+const { useState, useEffect } = React;
+const LS_EVENTS = "society_events_v1";
+const LS_REG = "event_registrations_v1";
+const LS_WAIT = "event_waitlist_v1";
+const newId = () => Math.random().toString(36).slice(2,9);
+
+function loadEvents(){ try { return JSON.parse(localStorage.getItem(LS_EVENTS)) || []; } catch { return []; } }
+function saveEvents(e){ localStorage.setItem(LS_EVENTS, JSON.stringify(e)); }
+function loadRegistrations(){ try { return JSON.parse(localStorage.getItem(LS_REG)) || {}; } catch { return {}; } }
+function saveRegistrations(r){ localStorage.setItem(LS_REG, JSON.stringify(r)); }
+function loadWait(){ try { return JSON.parse(localStorage.getItem(LS_WAIT)) || {}; } catch { return {}; } }
+function saveWait(w){ localStorage.setItem(LS_WAIT, JSON.stringify(w)); }
+
+function reconcileWaitlist(ev){
+  const regsMap = loadRegistrations();
+  const waitMap = loadWait();
+  const arr = regsMap[ev.id] || [];
+  const q = waitMap[ev.id] || [];
+  const max = Number.isFinite(ev.maxPlayers) ? ev.maxPlayers : null;
+  if (max==null) return; // No cap
+  let moved = 0;
+  while (arr.length < max && q.length){
+    const next = q.shift(); // FIFO
+    arr.push({ id: newId(), name: next.name, hdcp: next.hdcp, prefs: [], wantTransport: next.wantTransport||false, wantCompetition: next.wantCompetition||false });
+    moved++;
+  }
+  regsMap[ev.id] = arr;
+  waitMap[ev.id] = q;
+  saveRegistrations(regsMap);
+  saveWait(waitMap);
+  return moved;
+}
+
+function EventForm({initial, onSave, onCancel}){
+  const [form, setForm] = useState(initial);
+  function set(k, v){ setForm(s => ({...s, [k]: v})); }
+  return (
+    <div className="rounded-2xl border bg-white p-4 shadow space-y-3">
+      <div className="grid grid-cols-12 gap-3">
+        <label className="col-span-3 text-xs text-gray-600">Event Name</label>
+        <input value={form.name} onChange={e=>set('name', e.target.value)} className="col-span-9 rounded-lg border px-2 py-1"/>
+        <label className="col-span-3 text-xs text-gray-600">Date</label>
+        <input type="date" value={form.date} onChange={e=>set('date', e.target.value)} className="col-span-9 rounded-lg border px-2 py-1"/>
+        <label className="col-span-3 text-xs text-gray-600">Cutoff</label>
+        <input type="datetime-local" value={form.cutoff} onChange={e=>set('cutoff', e.target.value)} className="col-span-9 rounded-lg border px-2 py-1"/>
+      </div>
+      <div className="grid grid-cols-12 gap-3">
+        <label className="col-span-3 text-xs text-gray-600">Base Fee</label>
+        <input type="number" value={form.baseFee} onChange={e=>set('baseFee', Number(e.target.value)||0)} className="col-span-3 rounded-lg border px-2 py-1"/>
+        <label className="col-span-3 text-xs text-gray-600">Cart Fee</label>
+        <input type="number" value={form.cartFee} onChange={e=>set('cartFee', Number(e.target.value)||0)} className="col-span-3 rounded-lg border px-2 py-1"/>
+        <label className="col-span-3 text-xs text-gray-600">Caddy Fee</label>
+        <input type="number" value={form.caddyFee} onChange={e=>set('caddyFee', Number(e.target.value)||0)} className="col-span-3 rounded-lg border px-2 py-1"/>
+        <label className="col-span-3 text-xs text-gray-600">Transportation Fee</label>
+        <input type="number" value={form.transportFee} onChange={e=>set('transportFee', Number(e.target.value)||0)} className="col-span-3 rounded-lg border px-2 py-1"/>
+        <label className="col-span-3 text-xs text-gray-600">Competition Fee</label>
+        <input type="number" value={form.competitionFee} onChange={e=>set('competitionFee', Number(e.target.value)||0)} className="col-span-3 rounded-lg border px-2 py-1"/>
+        <label className="col-span-3 text-xs text-gray-600">Max Players</label>
+        <input type="number" min="1" value={form.maxPlayers ?? ''} onChange={e=>set('maxPlayers', e.target.value==='' ? null : (Number(e.target.value)||0))} className="col-span-3 rounded-lg border px-2 py-1" placeholder="e.g. 40"/>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={()=>onSave(form)} className="rounded-lg bg-violet-600 px-4 py-2 text-white">Save</button>
+        <button onClick={onCancel} className="rounded-lg border bg-white px-4 py-2">Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function RosterConfirmed({ev, regs, onRemove}){
+  const max = Number.isFinite(ev.maxPlayers) ? ev.maxPlayers : null;
+  const spots = max!=null ? Math.max(0, max - regs.length) : "—";
+  return (
+    <div>
+      <div className="text-sm text-gray-600 mb-2">Registered: {regs.length}{max!=null ? ` / ${max} (Spots left: ${spots})` : ""}</div>
+      <table className="w-full text-sm">
+        <thead><tr className="text-left"><th className="py-1">Name</th><th>HDCP</th><th>Transport</th><th>Comp</th><th>Prefs</th><th></th></tr></thead>
+        <tbody>
+          {regs.map(r => (
+            <tr key={r.id} className="border-t">
+              <td className="py-1">{r.name}</td>
+              <td>{Math.round(r.hdcp)}</td>
+              <td>{r.wantTransport ? "✓" : "-"}</td>
+              <td>{r.wantCompetition ? "✓" : "-"}</td>
+              <td className="text-xs text-gray-600">{(r.prefs||[]).length}</td>
+              <td className="text-right"><button onClick={()=>onRemove(r.id)} className="text-xs rounded border px-2 py-1">Remove</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function RosterWaitlist({waits, onRemove}){
+  return (
+    <div>
+      <div className="text-sm text-gray-600 mb-2">On Waitlist: {waits.length}</div>
+      <table className="w-full text-sm">
+        <thead><tr className="text-left"><th className="py-1">Name</th><th>HDCP</th><th>Requested</th><th></th></tr></thead>
+        <tbody>
+          {waits.map(r => (
+            <tr key={r.id} className="border-t">
+              <td className="py-1">{r.name}</td>
+              <td>{Math.round(r.hdcp)}</td>
+              <td className="text-xs text-gray-600">{new Date(r.ts).toLocaleString()}</td>
+              <td className="text-right"><button onClick={()=>onRemove(r.id)} className="text-xs rounded border px-2 py-1">Remove</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function EventCard({ev, onEdit, onDelete, regsCount, onRoster}){
+  const urlPair = `pairings_module.html?eventId=${ev.id}`;
+  const urlReg = `golfer_registration.html?eventId=${ev.id}`;
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+
+  function copyLink(){
+    navigator.clipboard.writeText(location.origin + location.pathname.replace(/[^/]*$/, '') + urlReg).then(()=>{
+      const el = document.getElementById("copyStatus-"+ev.id);
+      if (el){ el.classList.remove("hidden"); setTimeout(()=> el.classList.add("hidden"), 1200); }
+    });
+  }
+
+  const max = Number.isFinite(ev.maxPlayers) ? ev.maxPlayers : null;
+  const spots = max!=null ? Math.max(0, max - regsCount) : "—";
+
+  return (
+    <div className="rounded-2xl border bg-white p-4 shadow space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5">
+          <div className="text-lg font-semibold">{ev.name}</div>
+          <div className="text-xs text-gray-600">Date: {ev.date || '-'}</div>
+          <div className="text-xs text-gray-600">Cutoff: {ev.cutoff || '-'}</div>
+          <div className="text-xs text-gray-600">Registered: {regsCount}{max!=null ? ` / ${max} (Left: ${spots})` : ""}</div>
+        </div>
+        <div className="flex flex-col gap-2 items-end">
+          <div className="flex gap-2">
+            <a href={urlPair} className="rounded-lg bg-violet-600 px-3 py-1.5 text-white">Pairings</a>
+            <a href={urlReg} className="rounded-lg border bg-white px-3 py-1.5">Registration</a>
+            <button onClick={copyLink} className="rounded-lg border bg-white px-3 py-1.5">Copy Link</button>
+          </div>
+          <div id={"copyStatus-"+ev.id} className="hidden text-[11px] text-emerald-600">Copied!</div>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-sm text-gray-700">
+        <div>Base: ฿{ev.baseFee||0}</div><div>Cart: ฿{ev.cartFee||0}</div>
+        <div>Caddy: ฿{ev.caddyFee||0}</div><div>Transport: ฿{ev.transportFee||0}</div>
+        <div>Competition: ฿{ev.competitionFee||0}</div>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={()=>onRoster(ev)} className="rounded-lg border bg-white px-3 py-1.5">View Roster</button>
+        <button onClick={()=>onEdit(ev)} className="rounded-lg border bg-white px-3 py-1.5">Edit</button>
+        {!confirmDelete && <button onClick={()=>setConfirmDelete(true)} className="rounded-lg border bg-white px-3 py-1.5">Delete</button>}
+        {confirmDelete && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-red-600">Confirm?</span>
+            <button onClick={()=>onDelete(ev.id)} className="rounded bg-red-600 px-2 py-1 text-white text-xs">Delete</button>
+            <button onClick={()=>setConfirmDelete(false)} className="rounded border px-2 py-1 text-xs">Cancel</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  const [events, setEvents] = useState(()=> loadEvents());
+  const [regs, setRegs] = useState(()=> loadRegistrations());
+  const [waits, setWaits] = useState(()=> loadWait());
+  const [editing, setEditing] = useState(null);
+
+  useEffect(()=> saveEvents(events), [events]);
+  useEffect(()=> saveRegistrations(regs), [regs]);
+  useEffect(()=> saveWait(waits), [waits]);
+
+  useEffect(()=>{
+    // Auto-promote on load and when data changes
+    events.forEach(ev => {
+      const moved = reconcileWaitlist(ev);
+      if (moved){ setRegs(loadRegistrations()); setWaits(loadWait()); }
+    });
+  }, [events, waits]);
+
+  // modal controls
+  useEffect(()=>{
+    const back = document.getElementById("backdrop");
+    const close = () => back.classList.remove("show");
+    document.getElementById("mClose").onclick = close;
+    back.addEventListener("click", (e)=>{ if (e.target.id === "backdrop") close(); });
+  }, []);
+
+  function addNew(){
+    const now = new Date();
+    setEditing({
+      id: newId(),
+      name: "New Society Event",
+      date: now.toISOString().slice(0,10),
+      cutoff: new Date(now.getTime() + 7*86400000).toISOString().slice(0,16),
+      baseFee: 0, cartFee: 0, caddyFee: 0, transportFee: 0, competitionFee: 0,
+      maxPlayers: 40
+    });
+  }
+  function save(ev){
+    setEvents(prev => {
+      const idx = prev.findIndex(e=>e.id===ev.id);
+      if (idx >= 0){ const next=[...prev]; next[idx]=ev; return next; }
+      else return [ev, ...prev];
+    });
+    // After changing max, auto-promote
+    setTimeout(()=>{
+      const moved = reconcileWaitlist(ev);
+      if (moved){ setRegs(loadRegistrations()); setWaits(loadWait()); }
+    }, 0);
+    setEditing(null);
+  }
+  function removeEvent(id){
+    setEvents(prev => prev.filter(e=>e.id!==id));
+  }
+
+  function openRoster(ev){
+    const el = document.getElementById("backdrop");
+    document.getElementById("mTitle").textContent = `Roster — ${ev.name}`;
+    document.getElementById("mSub").textContent = ev.date || "";
+    const render = (tab="confirmed") => {
+      document.getElementById("tabConfirmed").classList.toggle("active", tab==="confirmed");
+      document.getElementById("tabWaitlist").classList.toggle("active", tab==="waitlist");
+      const roster = regs[ev.id] || [];
+      const wl = waits[ev.id] || [];
+      if (tab==="confirmed"){
+        ReactDOM.createRoot(document.getElementById("rosterRoot")).render(<RosterConfirmed ev={ev} regs={roster} onRemove={(rid)=>{
+          const next = {...regs}; next[ev.id] = roster.filter(r=>r.id!==rid); setRegs(next);
+          // After removal, auto-promote
+          setTimeout(()=>{
+            const moved = reconcileWaitlist(ev);
+            if (moved){ setRegs(loadRegistrations()); setWaits(loadWait()); }
+            render("confirmed");
+          },0);
+        }}/>);
+      }else{
+        ReactDOM.createRoot(document.getElementById("rosterRoot")).render(<RosterWaitlist waits={wl} onRemove={(rid)=>{
+          const next = {...waits}; next[ev.id] = wl.filter(r=>r.id!==rid); setWaits(next);
+          render("waitlist");
+        }}/>);
+      }
+    };
+    document.getElementById("tabConfirmed").onclick = ()=> render("confirmed");
+    document.getElementById("tabWaitlist").onclick = ()=> render("waitlist");
+    render("confirmed");
+    el.classList.add("show");
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-gray-600">Create, edit events. Pairings handled in the dedicated module.</div>
+        <button onClick={addNew} className="rounded-lg bg-violet-600 px-3 py-1.5 text-white">New Event</button>
+      </div>
+      {editing && <EventForm initial={editing} onSave={save} onCancel={()=>setEditing(null)}/>}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {events.map(ev => (
+          <EventCard key={ev.id} ev={ev} onEdit={setEditing} onDelete={removeEvent} regsCount={(regs[ev.id]||[]).length} onRoster={openRoster}/>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App/>);
+  </script>
+</body>
+</html>

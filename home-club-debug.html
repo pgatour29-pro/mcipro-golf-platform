@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Home Club Debug Test</title>
+</head>
+<body>
+    <h1>Home Club Debug Test</h1>
+
+    <h2>Test Form</h2>
+    <select id="homeClub">
+        <option value="">Select home course</option>
+        <option value="Pattana Golf Resort & Spa">Pattana Golf Resort & Spa</option>
+        <option value="Crystal Bay Golf Club">Crystal Bay Golf Club</option>
+        <option value="Phoenix Gold Golf Club">Phoenix Gold Golf Club</option>
+    </select>
+
+    <button onclick="testGetValue()">Test Get Value</button>
+    <button onclick="testSetValue()">Test Set Value</button>
+
+    <div id="results"></div>
+
+    <script>
+        function getHomeClubFromForm() {
+            const el =
+                document.getElementById('homeClub') ||
+                document.getElementById('homeCourse') ||
+                document.querySelector('[name="homeClub"], [name="homeCourse"]');
+
+            if (!el) return '';
+
+            // Try standard value first
+            let v = (el.value || '').trim();
+
+            // Fallbacks: selected option data attributes or data-value
+            if (!v && el.selectedOptions && el.selectedOptions[0]) {
+                const opt = el.selectedOptions[0];
+                v = (opt.dataset.courseId || opt.dataset.value || '').trim();
+            }
+            return v;
+        }
+
+        function applyHomeClubToForm(homeClubValue) {
+            if (!homeClubValue) return;
+
+            const el = document.querySelector('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]');
+            if (!el || !homeClubValue) return;
+
+            // Try value match first
+            const byValue = Array.from(el.options).find(o => o.value === homeClubValue);
+            // Or dataset match
+            const byData = Array.from(el.options).find(o => o.dataset.courseId === homeClubValue);
+            const opt = byValue || byData;
+
+            if (opt) {
+                el.value = opt.value || '';
+                console.log('Applied homeClub to form:', homeClubValue, '-> option value:', opt.value);
+                return true;
+            } else {
+                console.log('Could not find matching option for homeClub:', homeClubValue);
+                return false;
+            }
+        }
+
+        function testGetValue() {
+            const value = getHomeClubFromForm();
+            document.getElementById('results').innerHTML = `
+                <h3>Get Value Result:</h3>
+                <p><strong>Value:</strong> "${value}"</p>
+                <p><strong>Selected Index:</strong> ${document.getElementById('homeClub').selectedIndex}</p>
+                <p><strong>Selected Text:</strong> ${document.getElementById('homeClub').selectedOptions[0]?.text || 'None'}</p>
+            `;
+        }
+
+        function testSetValue() {
+            const success = applyHomeClubToForm('Crystal Bay Golf Club');
+            document.getElementById('results').innerHTML += `
+                <h3>Set Value Result:</h3>
+                <p><strong>Success:</strong> ${success}</p>
+                <p><strong>Current Value:</strong> "${document.getElementById('homeClub').value}"</p>
+                <p><strong>Selected Text:</strong> ${document.getElementById('homeClub').selectedOptions[0]?.text || 'None'}</p>
+            `;
+        }
+    </script>
+</body>
+</html>

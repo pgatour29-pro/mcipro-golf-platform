@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Golfer Registration</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); }
+    .glass { background: rgba(255,255,255,0.85); backdrop-filter: blur(14px); }
+    .modal-backdrop { position: fixed; inset:0; background: rgba(0,0,0,0.5); backdrop-filter: blur(6px); display:none; align-items:center; justify-content:center; z-index:50; }
+    .modal-backdrop.show { display:flex; }
+    @media (max-width: 768px){
+      .grid-events { grid-template-columns: 1fr !important; }
+    }
+  </style>
+</head>
+<body class="min-h-screen">
+  <div class="mx-auto max-w-7xl p-4">
+    <header class="mb-3 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-bold text-sky-700">Events</h1>
+        <p class="text-sm text-slate-600">Register once. Then just pick preferred partners.</p>
+      </div>
+      <nav class="flex items-center gap-2 text-sm">
+        <a href="organizer_dashboard.html" class="rounded-lg glass px-3 py-1.5 shadow border">Organizer</a>
+        <a href="golfer_registration.html" class="rounded-lg glass px-3 py-1.5 shadow border">Registration</a>
+      </nav>
+    </header>
+
+    <div id="globalStatus" class="hidden mb-4 rounded-xl border px-3 py-2 text-sm"></div>
+
+    <div id="root"></div>
+  </div>
+
+  <!-- Registration Modal (first-time only) -->
+  <div id="backdrop" class="modal-backdrop">
+    <div class="w-[95%] max-w-2xl rounded-2xl bg-white shadow-2xl">
+      <div class="flex items-center justify-between rounded-t-2xl bg-gradient-to-r from-sky-600 to-sky-400 px-5 py-4 text-white">
+        <div>
+          <div id="mTitle" class="text-lg font-semibold">Register</div>
+          <div id="mSub" class="text-xs text-sky-100"></div>
+        </div>
+        <button id="mClose" class="rounded-lg bg-white/20 px-2 py-1 text-white hover:bg-white/30">✕</button>
+      </div>
+      <div class="max-h-[70vh] overflow-y-auto p-5 space-y-4">
+        <div class="rounded-xl bg-slate-50 p-3 border">
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <label class="col-span-3 text-xs text-slate-600">Your Name</label>
+            <div class="col-span-9">
+              <input id="inpName" class="w-full rounded-lg border px-2 py-1.5" placeholder="e.g. John Smith"/>
+              <div id="errName" class="mt-1 hidden text-xs text-red-600">Please enter your name</div>
+            </div>
+            <label class="col-span-3 text-xs text-slate-600">Handicap</label>
+            <div class="col-span-3">
+              <input id="inpHdcp" class="w-full rounded-lg border px-2 py-1.5" placeholder="e.g. 12"/>
+              <div id="errHdcp" class="mt-1 hidden text-xs text-red-600">Enter a number for handicap</div>
+            </div>
+            <div class="col-span-6 text-xs text-slate-500">Only your name and a whole number for handicap are shown to other golfers.</div>
+          </div>
+        </div>
+
+        <div class="rounded-xl bg-slate-50 p-3 border">
+          <div class="grid grid-cols-2 gap-2 text-sm">
+            <div class="flex justify-between"><span>Green Fee</span><span id="feeGreen">฿0</span></div>
+            <div class="flex justify-between"><span>Caddy Fee</span><span id="feeCaddy">฿0</span></div>
+            <div class="flex justify-between"><span>Cart Fee</span><span id="feeCart">฿0</span></div>
+            <div class="col-span-2 border-t pt-2 flex justify-between font-semibold">
+              <span>Base Total</span><span id="feeBase">฿0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-xl bg-sky-50 p-3 border border-sky-200">
+          <div class="text-sm font-semibold mb-2">Optional Services</div>
+          <div class="grid grid-cols-2 gap-2 text-sm">
+            <label class="flex items-center gap-2">
+              <input type="checkbox" id="chkTransport" class="h-4 w-4"/>
+              <span>Transportation</span>
+            </label>
+            <div class="text-right"><span id="feeTransport">฿0</span></div>
+            <label class="flex items-center gap-2">
+              <input type="checkbox" id="chkCompetition" class="h-4 w-4"/>
+              <span>Competition Entry</span>
+            </label>
+            <div class="text-right"><span id="feeCompetition">฿0</span></div>
+          </div>
+        </div>
+
+        <div class="rounded-xl bg-slate-100 p-3 border flex items-center justify-between">
+          <div class="text-sm font-semibold">Final Total</div>
+          <div id="feeFinal" class="text-lg font-bold text-sky-700">฿0</div>
+        </div>
+
+        <div class="flex justify-end">
+          <button id="btnConfirm" class="rounded-xl bg-sky-600 px-4 py-2 text-white shadow hover:bg-sky-700">
+            Confirm Registration
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    const LS_EVENTS = "society_events_v1";
+    const LS_REG = "event_registrations_v1";
+    const LS_ME = "current_reg_user_v1";
+    const LS_WAIT = "event_waitlist_v1";
+    const currency = (n) => "฿" + (Number(n)||0).toLocaleString();
+    const newId = () => Math.random().toString(36).slice(2,9);
+
+    const loadEvents = () => { try { return JSON.parse(localStorage.getItem(LS_EVENTS)) || []; } catch { return []; } };
+    const loadRegistrations = () => { try { return JSON.parse(localStorage.getItem(LS_REG)) || {}; } catch { return {}; } };
+    const loadWait = () => { try { return JSON.parse(localStorage.getItem(LS_WAIT)) || {}; } catch { return {}; } };
+    const saveWait = (w) => localStorage.setItem(LS_WAIT, JSON.stringify(w));
+    const saveRegistrations = (r) => localStorage.setItem(LS_REG, JSON.stringify(r));
+    const loadMe = () => { try { return JSON.parse(localStorage.getItem(LS_ME)) || {}; } catch { return {}; } };
+    const saveMe = (m) => localStorage.setItem(LS_ME, JSON.stringify(m));
+
+    function showGlobalStatus(kind, msg){
+      const bar = document.getElementById("globalStatus");
+      bar.textContent = msg;
+      bar.className = "mb-4 rounded-xl border px-3 py-2 text-sm " + (kind==="ok" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-red-50 border-red-200 text-red-700");
+      bar.classList.remove("hidden");
+      clearTimeout(window.__status_to);
+      window.__status_to = setTimeout(()=> bar.classList.add("hidden"), 2000);
+    }
+
+    function RegistrationModal({event, onRegistered, mode}){
+      useEffect(()=>{
+        if (!event) return;
+        document.getElementById("mTitle").textContent = (mode==="waitlist"? "Join Waitlist — " : "Register — ") + (event.name || "Event");
+        document.getElementById("mSub").textContent = event.date ? new Date(event.date).toDateString() : "";
+        const base = (event.baseFee||0) + (event.caddyFee||0) + (event.cartFee||0);
+        document.getElementById("feeGreen").textContent = currency(event.baseFee || 0);
+        document.getElementById("feeCaddy").textContent = currency(event.caddyFee || 0);
+        document.getElementById("feeCart").textContent = currency(event.cartFee || 0);
+        document.getElementById("feeBase").textContent = currency(base);
+        document.getElementById("feeTransport").textContent = currency(event.transportFee||0);
+        document.getElementById("feeCompetition").textContent = currency(event.competitionFee||0);
+        document.getElementById("chkTransport").checked = false;
+        document.getElementById("chkCompetition").checked = false;
+        document.getElementById("inpName").value = "";
+        document.getElementById("inpHdcp").value = "";
+
+        const updateFinal = () => {
+          const incT = document.getElementById("chkTransport").checked;
+          const incC = document.getElementById("chkCompetition").checked;
+          const total = base + (incT ? (event.transportFee||0) : 0) + (incC ? (event.competitionFee||0) : 0);
+          document.getElementById("feeFinal").textContent = currency(total);
+        };
+        document.getElementById("chkTransport").onchange = updateFinal;
+        document.getElementById("chkCompetition").onchange = updateFinal;
+        updateFinal();
+
+        const close = () => document.getElementById("backdrop").classList.remove("show");
+        const confirm = () => {
+          const regs = loadRegistrations();
+          const waits = loadWait();
+          const arr = [...(regs[event.id]||[])];
+          const wl = [...(waits[event.id]||[])];
+          const nameEl = document.getElementById("inpName");
+          const hdEl = document.getElementById("inpHdcp");
+          const name = nameEl.value.trim();
+          const hd = Number(hdEl.value);
+          document.getElementById("errName").classList.add("hidden");
+          document.getElementById("errHdcp").classList.add("hidden");
+          nameEl.classList.remove("border-red-500");
+          hdEl.classList.remove("border-red-500");
+          if (!name){ document.getElementById("errName").classList.remove("hidden"); nameEl.classList.add("border-red-500"); nameEl.focus(); return; }
+          if (!Number.isFinite(hd)){ document.getElementById("errHdcp").classList.remove("hidden"); hdEl.classList.add("border-red-500"); hdEl.focus(); return; }
+
+                    // If in waitlist mode OR full, add to waitlist
+          const duplicateInRegs = arr.some(p => p.name.toLowerCase() === name.toLowerCase());
+          const duplicateInWait = wl.some(p => p.name.toLowerCase() === name.toLowerCase());
+          if (mode==="waitlist" || (Number.isFinite(event.maxPlayers) && arr.length >= event.maxPlayers)){
+            if (duplicateInRegs){ showGlobalStatus("error", "You're already registered."); return; }
+            if (duplicateInWait){ showGlobalStatus("error", "You're already on the waitlist."); return; }
+            const wrec = { id: newId(), name, hdcp: hd, wantTransport: document.getElementById("chkTransport").checked, wantCompetition: document.getElementById("chkCompetition").checked, ts: Date.now() };
+            const nextW = {...waits, [event.id]: [...wl, wrec]};
+            saveWait(nextW);
+            close();
+            showGlobalStatus("ok", "Added to waitlist. You'll be moved in automatically when a spot opens.");
+            return;
+          }
+          if (duplicateInRegs){ showGlobalStatus("error", "You're already registered for this event."); return; }
+          if (duplicateInWait){ showGlobalStatus("error", "You're already on the waitlist."); return; }
+          const record = { id: newId(), name, hdcp: hd, prefs: [], wantTransport: document.getElementById("chkTransport").checked, wantCompetition: document.getElementById("chkCompetition").checked };
+          arr.push(record);
+          const next = {...regs, [event.id]: arr};
+          saveRegistrations(next);
+          const me = loadMe(); me[event.id] = record.id; saveMe(me);
+          close();
+          showGlobalStatus("ok", "Registered! You can now pick partners.");
+          onRegistered(record.id);
+        };
+        document.getElementById("btnConfirm").onclick = confirm;
+        document.getElementById("mClose").onclick = close;
+        document.getElementById("backdrop").addEventListener("click", (e)=>{ if (e.target.id === "backdrop") close(); });
+        document.getElementById("backdrop").classList.add("show");
+        return ()=>{
+          document.getElementById("btnConfirm").onclick = null;
+          document.getElementById("mClose").onclick = null;
+        };
+      }, [event]);
+      return null;
+    }
+
+    function PartnerGrid({eventId, meId, onPickMe}){
+      const [regs, setRegs] = useState(loadRegistrations());
+      useEffect(()=>{
+        const onStorage = () => setRegs(loadRegistrations());
+        window.addEventListener("storage", onStorage);
+        return ()=> window.removeEventListener("storage", onStorage);
+      }, []);
+      const roster = regs[eventId] || [];
+      const me = roster.find(r => r.id === meId) || null;
+      const pairedIds = new Set(roster.filter(r => r.pairedGroup != null).map(r => r.id));
+      const prefs = new Set((me?.prefs)||[]);
+
+      function togglePartner(id){
+        if (!me) { onPickMe?.(); return; }
+        if (id === me.id) return;
+        const updated = {...regs};
+        const arr = [...(updated[eventId]||[])];
+        const mine = arr.find(r => r.id === me.id);
+        mine.prefs = mine.prefs || [];
+        if (mine.prefs.includes(id)) mine.prefs = mine.prefs.filter(x=>x!==id);
+        else if (mine.prefs.length < 3) mine.prefs.push(id);
+        updated[eventId] = arr;
+        saveRegistrations(updated);
+        setRegs(updated);
+        showGlobalStatus("ok", "Preferences saved");
+      }
+
+      function setIdentity(id){
+        const meMap = loadMe(); meMap[eventId] = id; saveMe(meMap);
+        showGlobalStatus("ok", "You're set. Pick up to 3 partners.");
+        onPickMe?.(id);
+      }
+
+      return (
+        <div className="space-y-2">
+          {!me && (
+            <div className="rounded-xl border bg-amber-50 border-amber-200 p-3 text-sm">
+              Tap <strong>your name</strong> below to continue, or <button
+                onClick={()=> window.dispatchEvent(new CustomEvent('open-register'))}
+                className="underline text-sky-700">register</button> if you're not on the list yet.
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+            {roster.sort((a,b)=> a.name.localeCompare(b.name)).map(p => {
+              const disabled = pairedIds.has(p.id);
+              const isMe = me && p.id === me.id;
+              const selected = me && prefs.has(p.id);
+              let cls = "flex items-center justify-between rounded-lg border px-3 py-2 ";
+              if (disabled) cls += "bg-gray-100 text-gray-400 cursor-not-allowed ";
+              else if (isMe) cls += "bg-sky-50 border-sky-600 ";
+              else if (selected) cls += "bg-emerald-50 border-emerald-600 ";
+              else cls += "bg-white hover:bg-emerald-50 ";
+              return (
+                <button key={p.id} disabled={disabled}
+                  onClick={()=> me ? togglePartner(p.id) : setIdentity(p.id)}
+                  className={cls}>
+                  <span className="text-sm">{p.name}</span>
+                  <span className="ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-xs">{Math.round(p.hdcp)}</span>
+                </button>
+              );
+            })}
+          </div>
+          {me && (
+            <div className="text-xs text-slate-600">Selected: {((me.prefs||[]).length||0)} / 3</div>
+          )}
+        </div>
+      );
+    }
+
+    function EventGrid(){
+      const [events, setEvents] = useState(loadEvents());
+      const [regs, setRegs] = useState(loadRegistrations());
+      const meMap = loadMe();
+      useEffect(()=>{
+        const onStorage = () => { setEvents(loadEvents()); setRegs(loadRegistrations()); };
+        window.addEventListener("storage", onStorage);
+        return ()=> window.removeEventListener("storage", onStorage);
+      }, []);
+
+      function openRegister(ev){
+        window.__register_event = ev;
+        window.dispatchEvent(new CustomEvent('open-register'));
+      }
+      window.addEventListener('open-register', ()=>{
+        const ev = window.__register_event; if (!ev) return;
+        const roster = (loadRegistrations()[ev.id]||[]);
+        const mode = (Number.isFinite(ev.maxPlayers) && roster.length >= ev.maxPlayers) ? 'waitlist' : 'register';
+        ReactDOM.createRoot(document.getElementById('reg-modal-root')).render(<RegistrationModal event={ev} mode={mode} onRegistered={(id)=>{ const m = loadMe(); m[ev.id] = id; saveMe(m); }}/>);
+      });
+      window.addEventListener('open-waitlist', ()=>{
+        const ev = window.__register_event; if (!ev) return;
+        ReactDOM.createRoot(document.getElementById('reg-modal-root')).render(<RegistrationModal event={ev} mode={'waitlist'} onRegistered={()=>{}}/>);
+      });
+
+      function goPrefs(ev){
+        const url = new URL(location.href);
+        url.searchParams.set("eventId", ev.id);
+        history.pushState({}, "", url.toString());
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }
+
+      return (
+        <div className="grid grid-events grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {events.length ? events.map(ev => {
+            const roster = regs[ev.id] || [];
+            const meId = meMap[ev.id];
+            const iAmIn = meId && roster.some(r => r.id === meId);
+            const max = Number.isFinite(ev.maxPlayers) ? ev.maxPlayers : null;
+            const spots = max!=null ? Math.max(0, max - roster.length) : "—";
+            const isFull = max!=null ? roster.length >= max : false;
+
+            return (
+              <div key={ev.id} className="glass rounded-2xl border shadow hover:shadow-lg transition">
+                <div className="bg-gradient-to-r from-sky-600 to-sky-400 text-white p-4 rounded-t-2xl">
+                  <div className="text-sm opacity-90">{ev.date || "-"}</div>
+                  <div className="text-xl font-bold">{ev.name}</div>
+                </div>
+                <div className="p-4 space-y-3">
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div><div className="text-[10px] uppercase text-slate-500">Max Players</div><div className="font-semibold">{max!=null ? max : "—"}</div></div>
+                    <div><div className="text-[10px] uppercase text-slate-500">Registered</div><div className="font-semibold">{roster.length}</div></div>
+                    <div><div className="text-[10px] uppercase text-slate-500">Spots Left</div><div className="font-semibold">{spots}</div></div>
+                  </div>
+
+                  <div className="rounded-lg bg-slate-50 border p-3 text-sm">
+                    <div className="flex justify-between"><span>Green Fee</span><span>{(ev.baseFee||0).toLocaleString('en-US',{style:'currency',currency:'THB'}).replace('THB','฿')}</span></div>
+                    <div className="flex justify-between"><span>Caddy Fee</span><span>{(ev.caddyFee||0).toLocaleString('en-US',{style:'currency',currency:'THB'}).replace('THB','฿')}</span></div>
+                    <div className="flex justify-between"><span>Cart Fee</span><span>{(ev.cartFee||0).toLocaleString('en-US',{style:'currency',currency:'THB'}).replace('THB','฿')}</span></div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    {!iAmIn && !isFull && <button onClick={()=>openRegister(ev)} className="flex-1 rounded-xl bg-sky-600 py-3 font-semibold text-white shadow hover:bg-sky-700">Register</button>}
+                    {!iAmIn && isFull && <button onClick={()=>{ window.__register_event = ev; window.dispatchEvent(new CustomEvent('open-waitlist')); }} className="flex-1 rounded-xl bg-amber-600 py-3 font-semibold text-white shadow hover:bg-amber-700">Join Waitlist</button>}
+                    {!iAmIn && isFull && <button disabled className="flex-1 rounded-xl bg-gray-300 py-3 font-semibold text-white shadow cursor-not-allowed">Full</button>}
+                    {iAmIn && <button onClick={()=>goPrefs(ev)} className="flex-1 rounded-xl bg-emerald-600 py-3 font-semibold text-white shadow hover:bg-emerald-700">Edit Preferences</button>}
+                    <button onClick={()=>goPrefs(ev)} className="rounded-xl border px-3">Roster</button>
+                  </div>
+                </div>
+              </div>
+            );
+          }) : (
+            <div className="col-span-full glass rounded-xl p-4 border text-slate-600">
+              No events yet. Go to <a href='organizer_dashboard.html' class='underline'>Organizer</a> to create one.
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function EventFocus({evId}){
+      const events = loadEvents();
+      const ev = events.find(e=>e.id===evId);
+      const meMap = loadMe();
+      const meId = meMap[evId] || null;
+      if (!ev) return <div className="glass rounded-xl p-4 border">Event not found.</div>;
+      return (
+        <div className="space-y-4">
+          <div className="glass rounded-2xl border p-4 shadow">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs text-slate-500">{ev.date || '-'}</div>
+                <div className="text-lg font-semibold">{ev.name}</div>
+              </div>
+              <div className="text-xs text-slate-500">Cutoff: {ev.cutoff || '-'}</div>
+            </div>
+          </div>
+          <div className="glass rounded-2xl border p-4 shadow">
+            <div className="text-sm font-semibold mb-2">Partner Preferences</div>
+            <PartnerGrid eventId={evId} meId={meId} onPickMe={(id)=>{
+              const m = loadMe(); m[evId] = id; saveMe(m);
+            }}/>
+          </div>
+          <div>
+            <button onClick={()=>{ const url = new URL(location.href); url.searchParams.delete("eventId"); history.pushState({}, "", url.toString()); window.dispatchEvent(new PopStateEvent("popstate")); }} className="rounded-lg border bg-white px-3 py-1.5">← All Events</button>
+          </div>
+          <div id="reg-modal-root"></div>
+        </div>
+      );
+    }
+
+    function App(){
+      const params = new URLSearchParams(location.search);
+      const focus = params.get("eventId");
+      const [evId, setEvId] = useState(focus);
+      useEffect(()=>{
+        const onPop = ()=> {
+          const p = new URLSearchParams(location.search);
+          setEvId(p.get("eventId"));
+        };
+        window.addEventListener("popstate", onPop);
+        return ()=> window.removeEventListener("popstate", onPop);
+      }, []);
+      return (
+        <div>
+          {!evId && <EventGrid/>}
+          {evId && <EventFocus evId={evId}/>}
+          <div id="reg-modal-root"></div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App/>);
+  </script>
+</body>
+</html>

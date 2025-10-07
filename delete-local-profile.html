@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Delete Local Profile</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        button {
+            background: #f44336;
+            color: white;
+            padding: 15px 30px;
+            font-size: 18px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:hover {
+            background: #d32f2f;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>⚠️ Delete Local Profile (Desktop)</h1>
+    <p>This will delete ALL profile data from this device's localStorage.</p>
+
+    <button onclick="deleteAll()">🗑️ DELETE ALL PROFILES FROM THIS DEVICE</button>
+
+    <div id="output"></div>
+
+    <script>
+        function log(message) {
+            const output = document.getElementById('output');
+            output.textContent += message + '\n';
+            console.log(message);
+        }
+
+        function deleteAll() {
+            document.getElementById('output').textContent = '';
+            log('=== NUKING ALL PROFILE DATA ===\n');
+
+            try {
+                let deletedCount = 0;
+
+                // Show what's there first
+                log('Current localStorage keys:');
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    log(`  - ${key}`);
+                }
+                log('');
+
+                // Delete mcipro_user_profiles array
+                log('Deleting mcipro_user_profiles...');
+                localStorage.removeItem('mcipro_user_profiles');
+                deletedCount++;
+
+                // Delete ALL profile_* keys
+                const keysToDelete = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith('profile_')) {
+                        keysToDelete.push(key);
+                    }
+                }
+
+                log(`Found ${keysToDelete.length} profile_* keys to delete`);
+                keysToDelete.forEach(key => {
+                    log(`  Deleting: ${key}`);
+                    localStorage.removeItem(key);
+                    deletedCount++;
+                });
+
+                // Clear AppState current user
+                log('\nClearing AppState...');
+                if (window.AppState) {
+                    window.AppState.currentUser = null;
+                }
+
+                log(`\n✅ DELETED ${deletedCount} ITEMS`);
+                log('\n=== VERIFICATION ===');
+                log('Remaining profile keys:');
+                let remaining = 0;
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && (key.includes('profile') || key.includes('user'))) {
+                        log(`  STILL THERE: ${key}`);
+                        remaining++;
+                    }
+                }
+
+                // Set a flag to prevent auto-load
+                localStorage.setItem('PROFILE_DELETE_FLAG', 'true');
+
+                if (remaining === 0) {
+                    log('✅ ALL PROFILES DELETED!');
+                    log('\n🔄 Redirecting to login in 2 seconds...');
+                    setTimeout(() => {
+                        window.location.href = '/?forceLogin=true';
+                    }, 2000);
+                } else {
+                    log(`⚠️ ${remaining} profile items still exist!`);
+                    log('\nTrying localStorage.clear() to nuke EVERYTHING...');
+
+                    // Nuclear option - clear EVERYTHING
+                    localStorage.clear();
+
+                    log('✅ localStorage.clear() executed');
+                    log('\n🔄 Redirecting to login in 2 seconds...');
+                    localStorage.setItem('PROFILE_DELETE_FLAG', 'true');
+                    setTimeout(() => {
+                        window.location.href = '/?forceLogin=true';
+                    }, 2000);
+                }
+
+            } catch (error) {
+                log('❌ ERROR: ' + error.message);
+                log(error.stack);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Profile Debug</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 10px;
+            font-size: 11px;
+        }
+        button {
+            background: #06C755;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            margin: 5px;
+            width: 100%;
+            font-size: 14px;
+        }
+        #output {
+            background: #f0f0f0;
+            padding: 10px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <h2>🔍 Profile Debug</h2>
+
+    <button onclick="checkEverything()">RUN FULL CHECK</button>
+
+    <div id="output"></div>
+
+    <script>
+        const LineConfig = {
+            liffId: '2008228481-xBBwXqp1',
+            channelId: '2008228481'
+        };
+
+        function log(msg) {
+            document.getElementById('output').textContent += msg + '\n';
+        }
+
+        async function checkEverything() {
+            document.getElementById('output').textContent = '';
+            log('=== PROFILE DEBUG ===\n');
+
+            try {
+                // 1. Check LINE
+                log('1. Initializing LINE...');
+                await liff.init({ liffId: LineConfig.liffId });
+
+                if (!liff.isLoggedIn()) {
+                    log('❌ NOT LOGGED IN TO LINE');
+                    log('Redirecting to login...');
+                    liff.login();
+                    return;
+                }
+
+                log('✅ LINE logged in\n');
+
+                // 2. Get LINE profile
+                log('2. Getting LINE profile...');
+                const lineProfile = await liff.getProfile();
+                log('LINE User ID: ' + lineProfile.userId);
+                log('LINE Name: ' + lineProfile.displayName);
+                log('LINE Picture: ' + (lineProfile.pictureUrl || 'NONE'));
+                log('');
+
+                // 3. Check localStorage
+                log('3. Checking localStorage...');
+
+                const userProfiles = localStorage.getItem('mcipro_user_profiles');
+                if (userProfiles) {
+                    const profiles = JSON.parse(userProfiles);
+                    log('mcipro_user_profiles: ' + profiles.length + ' profiles');
+                    profiles.forEach((p, i) => {
+                        log(`  [${i}] ${p.firstName} ${p.lastName} (@${p.username})`);
+                        log(`      LINE ID: ${p.lineUserId || 'NONE'}`);
+                        log(`      Picture: ${p.linePictureUrl || 'NONE'}`);
+                    });
+                } else {
+                    log('mcipro_user_profiles: EMPTY');
+                }
+                log('');
+
+                // 4. Check individual profile keys
+                log('4. Checking profile_* keys...');
+                let foundProfile = false;
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key.startsWith('profile_')) {
+                        foundProfile = true;
+                        const profile = JSON.parse(localStorage.getItem(key));
+                        log(`Found: ${key}`);
+                        log(`  Name: ${profile.personalInfo?.firstName} ${profile.personalInfo?.lastName}`);
+                        log(`  Username: ${profile.personalInfo?.username || profile.username}`);
+                        log(`  LINE ID: ${profile.lineUserId || 'NONE'}`);
+                        log(`  Picture: ${profile.linePictureUrl || 'NONE'}`);
+                        log('');
+                    }
+                }
+                if (!foundProfile) {
+                    log('No profile_* keys found');
+                }
+                log('');
+
+                // 5. Check AppState
+                log('5. Checking window.AppState...');
+                if (window.AppState && window.AppState.currentUser) {
+                    const user = window.AppState.currentUser;
+                    log('AppState.currentUser exists:');
+                    log('  Name: ' + user.name);
+                    log('  LINE ID: ' + user.lineUserId);
+                    log('  Avatar: ' + (user.avatar || 'NONE'));
+                } else {
+                    log('AppState.currentUser: NOT SET');
+                }
+
+                log('\n=== END DEBUG ===');
+
+            } catch (error) {
+                log('ERROR: ' + error.message);
+                log(error.stack);
+            }
+        }
+
+        // Auto-run on load
+        window.onload = checkEverything;
+    </script>
+</body>
+</html>

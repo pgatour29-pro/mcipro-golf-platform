@@ -268,6 +268,124 @@ class SupabaseClient {
         return data || [];
     }
 
+    // PERFORMANCE: Lazy load only specific profiles (instead of all)
+    async getProfilesByIds(lineUserIds) {
+        await this.waitForReady();
+
+        if (!lineUserIds || lineUserIds.length === 0) {
+            return [];
+        }
+
+        const { data, error } = await this.client
+            .from('user_profiles')
+            .select('*')
+            .in('line_user_id', lineUserIds);
+
+        if (error) {
+            console.error('[Supabase] Error fetching profiles by IDs:', error);
+            return [];
+        }
+
+        console.log(`[Supabase] Lazy loaded ${data?.length || 0} profiles`);
+        return data || [];
+    }
+
+    // PERFORMANCE: Get only current user + profiles for visible bookings
+    async getEssentialProfiles(currentUserId, bookings) {
+        await this.waitForReady();
+
+        // Get unique golfer IDs from bookings
+        const golferIds = [...new Set(
+            bookings
+                .map(b => b.golfer_id || b.golferId)
+                .filter(id => id)
+        )];
+
+        // Always include current user
+        if (currentUserId && !golferIds.includes(currentUserId)) {
+            golferIds.push(currentUserId);
+        }
+
+        console.log(`[Supabase] Loading ${golferIds.length} essential profiles (current user + visible bookings)`);
+
+        return this.getProfilesByIds(golferIds);
+    }
+
+    // =====================================================
+    // BATCH OPERATIONS (Combine multiple requests)
+    // =====================================================
+
+    // PERFORMANCE: Batch save multiple bookings in one transaction
+    async batchSaveBookings(bookings) {
+        await this.waitForReady();
+
+        if (!bookings || bookings.length === 0) {
+            return [];
+        }
+
+        console.log(`[Supabase] Batch saving ${bookings.length} bookings...`);
+
+        // Normalize all bookings
+        const normalizedBookings = bookings.map(booking => {
+            let dateStr = booking.date;
+            if (dateStr && dateStr.includes('T')) {
+                dateStr = dateStr.split('T')[0];
+            }
+
+            return {
+                id: booking.id,
+                name: booking.name || booking.golferName || 'Unknown',
+                date: dateStr,
+                time: booking.time,
+                tee_time: booking.teeTime || booking.tee_time || booking.slotTime,
+                status: booking.status || 'pending',
+                players: booking.players || 1,
+                caddy_number: booking.caddyNumber || booking.caddy_number,
+                current_hole: booking.currentHole || booking.current_hole,
+                last_hole_update: booking.lastHoleUpdate || booking.last_hole_update,
+                notes: booking.notes || '',
+                phone: booking.phone || '',
+                email: booking.email || '',
+                group_id: booking.groupId || booking.group_id || booking.id,
+                kind: booking.kind || 'tee',
+                golfer_id: booking.golferId || booking.golfer_id,
+                golfer_name: booking.golferName || booking.golfer_name || booking.name,
+                event_name: booking.eventName || booking.event_name,
+                course_id: booking.courseId || booking.course_id,
+                course_name: booking.courseName || booking.course_name,
+                course: booking.course,
+                tee_sheet_course: booking.teeSheetCourse || booking.tee_sheet_course,
+                tee_number: booking.teeNumber || booking.tee_number,
+                booking_type: booking.bookingType || booking.booking_type || 'regular',
+                duration_min: booking.durationMin || booking.duration_min,
+                caddie_id: booking.caddieId || booking.caddie_id,
+                caddie_name: booking.caddieName || booking.caddie_name,
+                caddie_status: booking.caddieStatus || booking.caddie_status,
+                caddy_confirmation_required: booking.caddyConfirmationRequired || booking.caddy_confirmation_required || false,
+                service_name: booking.serviceName || booking.service_name,
+                service: booking.service,
+                source: booking.source,
+                is_private: booking.isPrivate || booking.is_private || false,
+                is_vip: booking.isVIP || booking.is_vip || false,
+                deleted: booking.deleted || false
+            };
+        });
+
+        // Batch upsert all bookings in one query
+        const { data, error } = await this.client
+            .from('bookings')
+            .upsert(normalizedBookings, { onConflict: 'id' })
+            .select();
+
+        if (error) {
+            console.error('[Supabase] Batch save error:', error);
+            throw error;
+        }
+
+        console.log(`[Supabase] ✅ Batch saved ${data?.length || 0} bookings`);
+        return data;
+    }
+
     // =====================================================
     // GPS POSITIONS (Real-time tracking)
     // =====================================================
@@ -401,6 +519,42 @@ class SupabaseClient {
 
     unsubscribeFromChannel(channel) {
         this.client.removeChannel(channel);
+    }
+
+    // =====================================================
+    // REALTIME SUBSCRIPTIONS (WebSocket - replaces polling)
+    // =====================================================
+
+    subscribeToBookings(callback) {
+        const channel = this.client
+            .channel('bookings-changes')
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'bookings' },
+                (payload) => {
+                    console.log('[Supabase Realtime] Booking changed:', payload);
+                    callback(payload);
+                }
+            )
+            .subscribe();
+
+        console.log('[Supabase Realtime] Subscribed to bookings changes');
+        return channel;
+    }
+
+    subscribeToProfiles(callback) {
+        const channel = this.client
+            .channel('profiles-changes')
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'user_profiles' },
+                (payload) => {
+                    console.log('[Supabase Realtime] Profile changed:', payload);
+                    callback(payload);
+                }
+            )
+            .subscribe();
+
+        console.log('[Supabase Realtime] Subscribed to profile changes');
+        return channel;
     }
 
     // =====================================================

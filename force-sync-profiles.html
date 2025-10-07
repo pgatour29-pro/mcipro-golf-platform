@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Force Profile Sync</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 15px 30px;
+            font-size: 18px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>Force Profile Sync to Cloud</h1>
+    <p>This will manually push your profiles to the cloud server.</p>
+
+    <button onclick="syncProfiles()">📤 Push Profiles to Cloud</button>
+    <button onclick="checkProfiles()">🔍 Check Local Profiles</button>
+    <button onclick="checkAllStorage()">🔎 Show ALL LocalStorage</button>
+    <button onclick="forceReplaceCloud()" style="background: #ff5722;">🔄 REPLACE Cloud (Force Overwrite)</button>
+
+    <div id="output"></div>
+
+    <script>
+        function log(message) {
+            const output = document.getElementById('output');
+            output.textContent += message + '\n';
+            console.log(message);
+        }
+
+        function checkAllStorage() {
+            document.getElementById('output').textContent = '';
+            log('=== ALL LOCALSTORAGE KEYS ===');
+            log(`Total keys: ${localStorage.length}\n`);
+
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                const value = localStorage.getItem(key);
+                log(`\n[${i + 1}] ${key}:`);
+
+                if (key.includes('profile') || key.includes('user')) {
+                    try {
+                        const parsed = JSON.parse(value);
+                        log(JSON.stringify(parsed, null, 2));
+                    } catch {
+                        log(value.substring(0, 200) + (value.length > 200 ? '...' : ''));
+                    }
+                } else {
+                    log('  (length: ' + value.length + ' chars)');
+                }
+            }
+        }
+
+        function checkProfiles() {
+            document.getElementById('output').textContent = '';
+            const profiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+            log('=== LOCAL PROFILES ===');
+            log(`Total profiles: ${profiles.length}`);
+            profiles.forEach((p, i) => {
+                log(`\nProfile ${i + 1}:`);
+                log(`  Name: ${p.firstName} ${p.lastName}`);
+                log(`  Username: ${p.username}`);
+                log(`  LINE User ID: ${p.lineUserId || 'NOT SET'}`);
+                log(`  Role: ${p.role}`);
+            });
+
+            // Also check individual profile keys
+            log('\n=== INDIVIDUAL PROFILE KEYS ===');
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key.startsWith('profile_')) {
+                    log(`\nFound: ${key}`);
+                    try {
+                        const profile = JSON.parse(localStorage.getItem(key));
+                        log(`  Name: ${profile.personalInfo?.firstName} ${profile.personalInfo?.lastName}`);
+                        log(`  Username: ${profile.personalInfo?.username || profile.username}`);
+                        log(`  LINE ID: ${profile.lineUserId || 'NOT SET'}`);
+                    } catch (e) {
+                        log(`  Error parsing: ${e.message}`);
+                    }
+                }
+            }
+        }
+
+        async function syncProfiles() {
+            document.getElementById('output').textContent = '';
+            log('Starting profile sync...');
+
+            try {
+                // Collect ALL profile data from localStorage
+                let profiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+                log(`Found ${profiles.length} profiles in mcipro_user_profiles array`);
+
+                // ALSO scan for individual profile_* keys
+                const individualProfiles = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key.startsWith('profile_')) {
+                        try {
+                            const profile = JSON.parse(localStorage.getItem(key));
+                            log(`Found profile in key: ${key}`);
+
+                            // Convert to array format
+                            const profileData = {
+                                username: profile.personalInfo?.username || profile.username || 'unknown',
+                                firstName: profile.personalInfo?.firstName || profile.firstName || '',
+                                lastName: profile.personalInfo?.lastName || profile.lastName || '',
+                                email: profile.personalInfo?.email || profile.email || '',
+                                phone: profile.personalInfo?.phone || profile.phone || '',
+                                role: 'golfer',
+                                lineUserId: profile.lineUserId || '',
+                                golfInfo: profile.golfInfo || {},
+                                roleSpecific: profile.roleSpecific || profile.golfInfo || {},
+                                preferences: profile.preferences || {},
+                                media: profile.media || {},
+                                createdAt: profile.createdAt || new Date().toISOString(),
+                                updatedAt: new Date().toISOString()
+                            };
+
+                            individualProfiles.push(profileData);
+                        } catch (e) {
+                            log(`  Error parsing ${key}: ${e.message}`);
+                        }
+                    }
+                }
+
+                log(`Found ${individualProfiles.length} individual profile keys`);
+
+                // Merge all profiles - dedupe by username or lineUserId
+                const allProfiles = [...profiles, ...individualProfiles];
+                const uniqueProfiles = [];
+                const seen = new Set();
+
+                allProfiles.forEach(p => {
+                    // FILTER OUT invalid profiles (no username, no name, etc.)
+                    if (!p.username || p.username === 'unknown') {
+                        log(`⚠️ Skipping invalid profile: ${JSON.stringify(p)}`);
+                        return;
+                    }
+
+                    if (!p.firstName || !p.lastName) {
+                        log(`⚠️ Skipping profile with missing name: ${p.username}`);
+                        return;
+                    }
+
+                    const key = p.lineUserId || p.username || `${p.firstName}_${p.lastName}`;
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        uniqueProfiles.push(p);
+                    }
+                });
+
+                log(`Total unique VALID profiles to sync: ${uniqueProfiles.length}`);
+
+                if (uniqueProfiles.length === 0) {
+                    log('❌ No profiles found to sync!');
+                    return;
+                }
+
+                // Save consolidated profiles back to mcipro_user_profiles
+                localStorage.setItem('mcipro_user_profiles', JSON.stringify(uniqueProfiles));
+                log('✅ Consolidated profiles into mcipro_user_profiles');
+
+                const bookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]');
+                const baseVersion = JSON.parse(localStorage.getItem('mcipro_baseVersion') || '0');
+
+                log('Sending to cloud...');
+                const response = await fetch('/.netlify/functions/bookings', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer mcipro-site-key-2024'
+                    },
+                    body: JSON.stringify({
+                        bookings: bookings,
+                        user_profiles: uniqueProfiles,
+                        baseVersion: baseVersion
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const result = await response.json();
+                log('✅ SUCCESS! Profiles synced to cloud');
+                log(`Server version: ${result.version}`);
+
+                // Update local version
+                localStorage.setItem('mcipro_baseVersion', JSON.stringify(result.version));
+
+                log('\n=== SYNCED PROFILES ===');
+                uniqueProfiles.forEach((p, i) => {
+                    log(`${i + 1}. ${p.firstName} ${p.lastName} (@${p.username}) - LINE ID: ${p.lineUserId || 'NOT SET'}`);
+                });
+
+            } catch (error) {
+                log('❌ ERROR: ' + error.message);
+                log('Stack: ' + error.stack);
+            }
+        }
+
+        async function forceReplaceCloud() {
+            if (!confirm('⚠️ WARNING: This will DELETE ALL profiles from cloud and replace with your local profile.\n\nAre you sure?')) {
+                return;
+            }
+
+            document.getElementById('output').textContent = '';
+            log('🔄 FORCE REPLACE MODE - Clearing cloud first...');
+
+            try {
+                // Step 1: Get current cloud data
+                log('Step 1: Fetching current cloud data...');
+                const getResponse = await fetch('/.netlify/functions/bookings', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': 'Bearer mcipro-site-key-2024'
+                    }
+                });
+
+                const cloudData = await getResponse.json();
+                log(`Cloud has ${cloudData.user_profiles?.length || 0} profiles currently`);
+                log(`Cloud version: ${cloudData.version}`);
+
+                // Step 2: Collect local profile
+                const profiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+                const individualProfiles = [];
+
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key.startsWith('profile_')) {
+                        try {
+                            const profile = JSON.parse(localStorage.getItem(key));
+                            const profileData = {
+                                username: profile.personalInfo?.username || profile.username || 'unknown',
+                                firstName: profile.personalInfo?.firstName || profile.firstName || '',
+                                lastName: profile.personalInfo?.lastName || profile.lastName || '',
+                                email: profile.personalInfo?.email || profile.email || '',
+                                phone: profile.personalInfo?.phone || profile.phone || '',
+                                role: 'golfer',
+                                lineUserId: profile.lineUserId || '',
+                                linePictureUrl: profile.linePictureUrl || '',
+                                golfInfo: profile.golfInfo || {},
+                                roleSpecific: profile.roleSpecific || profile.golfInfo || {},
+                                preferences: profile.preferences || {},
+                                media: profile.media || {},
+                                personalInfo: profile.personalInfo || {},
+                                createdAt: profile.createdAt || new Date().toISOString(),
+                                updatedAt: new Date().toISOString()
+                            };
+
+                            if (profileData.username !== 'unknown' && profileData.firstName && profileData.lastName) {
+                                individualProfiles.push(profileData);
+                            }
+                        } catch (e) {
+                            log(`Error parsing ${key}: ${e.message}`);
+                        }
+                    }
+                }
+
+                const myProfile = individualProfiles[0] || profiles[0];
+                if (!myProfile) {
+                    log('❌ No valid local profile found!');
+                    return;
+                }
+
+                log('\nStep 2: Your local profile:');
+                log(`  Name: ${myProfile.firstName} ${myProfile.lastName}`);
+                log(`  Username: ${myProfile.username}`);
+                log(`  LINE ID: ${myProfile.lineUserId || 'NOT SET'}`);
+                log(`  Picture URL: ${myProfile.linePictureUrl || 'NONE'}`);
+
+                if (!myProfile.linePictureUrl) {
+                    log('\n⚠️ WARNING: Profile has NO picture URL!');
+                    log('Checking if we can get it from LINE now...');
+
+                    if (typeof liff !== 'undefined' && liff.isLoggedIn()) {
+                        try {
+                            const lineProfile = await liff.getProfile();
+                            myProfile.linePictureUrl = lineProfile.pictureUrl;
+                            log('✅ Got picture from LINE: ' + lineProfile.pictureUrl);
+                        } catch (e) {
+                            log('❌ Could not get LINE picture: ' + e.message);
+                        }
+                    }
+                }
+
+                // Step 3: Send ONLY this one profile (cloud will replace all)
+                log('\nStep 3: Replacing cloud with YOUR profile only...');
+                const response = await fetch('/.netlify/functions/bookings', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer mcipro-site-key-2024'
+                    },
+                    body: JSON.stringify({
+                        bookings: cloudData.bookings || [],
+                        user_profiles: [myProfile], // ONLY your profile
+                        baseVersion: cloudData.version
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const result = await response.json();
+                localStorage.setItem('mcipro_baseVersion', JSON.stringify(result.version));
+
+                log('\n✅ SUCCESS! Cloud now has ONLY your profile:');
+                log(`  ${myProfile.firstName} ${myProfile.lastName} (@${myProfile.username})`);
+                log(`  LINE ID: ${myProfile.lineUserId}`);
+                log(`  New version: ${result.version}`);
+
+            } catch (error) {
+                log('❌ ERROR: ' + error.message);
+                log('Stack: ' + error.stack);
+            }
+        }
+    </script>
+</body>
+</html>

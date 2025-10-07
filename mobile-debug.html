@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mobile Debug - LINE Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://static.line-scdn.net/liff/edge/2.1/sdk.js"></script>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 10px;
+            font-size: 10px;
+            background: #000;
+            color: #0f0;
+        }
+        #logs {
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .error { color: #f00; }
+        .success { color: #0f0; }
+        .info { color: #0ff; }
+        button {
+            background: #06C755;
+            color: white;
+            padding: 15px;
+            border: none;
+            border-radius: 5px;
+            margin: 10px 0;
+            width: 100%;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <h2>🔍 LINE Login Debug</h2>
+    <button onclick="testLogin()">Test LINE Login</button>
+    <button onclick="checkStatus()">Check Current Status</button>
+    <button onclick="clearLogs()">Clear Logs</button>
+    <div id="logs"></div>
+
+    <script>
+        const LineConfig = {
+            liffId: '2008228481-xBBwXqp1',
+            channelId: '2008228481'
+        };
+
+        function log(msg, type = 'info') {
+            const logs = document.getElementById('logs');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type;
+            logs.innerHTML += `<div class="${className}">[${timestamp}] ${msg}</div>`;
+            logs.scrollTop = logs.scrollHeight;
+            console.log(msg);
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+
+        async function checkStatus() {
+            log('=== CHECKING STATUS ===', 'info');
+
+            try {
+                log('1. Initializing LIFF...', 'info');
+                await liff.init({ liffId: LineConfig.liffId });
+                log('✅ LIFF initialized', 'success');
+
+                log('2. Checking login status...', 'info');
+                const isLoggedIn = liff.isLoggedIn();
+                log(`liff.isLoggedIn() = ${isLoggedIn}`, isLoggedIn ? 'success' : 'error');
+
+                if (isLoggedIn) {
+                    log('3. Getting LINE profile...', 'info');
+                    const profile = await liff.getProfile();
+                    log(`✅ Profile retrieved`, 'success');
+                    log(`  User ID: ${profile.userId}`, 'info');
+                    log(`  Display Name: ${profile.displayName}`, 'info');
+                    log(`  Picture: ${profile.pictureUrl ? 'YES' : 'NO'}`, 'info');
+
+                    log('4. Checking localStorage profiles...', 'info');
+                    const profiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+                    log(`  Total profiles: ${profiles.length}`, 'info');
+
+                    const myProfile = profiles.find(p => p.lineUserId === profile.userId);
+                    if (myProfile) {
+                        log(`✅ Found profile for LINE user`, 'success');
+                        log(`  Name: ${myProfile.firstName} ${myProfile.lastName}`, 'info');
+                        log(`  Username: ${myProfile.username}`, 'info');
+                        log(`  Role: ${myProfile.role}`, 'info');
+                    } else {
+                        log(`❌ NO profile found for LINE user: ${profile.userId}`, 'error');
+                        log(`  Profiles in localStorage:`, 'info');
+                        profiles.forEach((p, i) => {
+                            log(`    [${i}] ${p.firstName} ${p.lastName} - LINE ID: ${p.lineUserId || 'NONE'}`, 'info');
+                        });
+                    }
+                } else {
+                    log('❌ Not logged in to LINE', 'error');
+                }
+
+            } catch (error) {
+                log(`❌ ERROR: ${error.message}`, 'error');
+                log(`Stack: ${error.stack}`, 'error');
+            }
+        }
+
+        async function testLogin() {
+            log('=== TESTING LINE LOGIN ===', 'info');
+
+            try {
+                log('1. Initializing LIFF...', 'info');
+                await liff.init({ liffId: LineConfig.liffId });
+                log('✅ LIFF initialized', 'success');
+
+                if (!liff.isLoggedIn()) {
+                    log('2. Not logged in, calling liff.login()...', 'info');
+                    liff.login();
+                } else {
+                    log('2. Already logged in!', 'success');
+                    const profile = await liff.getProfile();
+                    log(`✅ User: ${profile.displayName} (${profile.userId})`, 'success');
+
+                    // Check if profile exists
+                    const profiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+                    const myProfile = profiles.find(p => p.lineUserId === profile.userId);
+
+                    if (myProfile) {
+                        log('✅ Profile found! Should redirect to dashboard', 'success');
+                        log('Redirecting to main app...', 'info');
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 2000);
+                    } else {
+                        log('❌ No profile found - need to create profile', 'error');
+                    }
+                }
+
+            } catch (error) {
+                log(`❌ ERROR: ${error.message}`, 'error');
+                log(`Stack: ${error.stack}`, 'error');
+            }
+        }
+
+        // Auto-check on load
+        window.onload = () => {
+            log('Mobile Debug Page Loaded', 'success');
+            setTimeout(checkStatus, 500);
+        };
+    </script>
+</body>
+</html>

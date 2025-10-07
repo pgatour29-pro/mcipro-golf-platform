@@ -1,0 +1,408 @@
+================================================================================
+CRITICAL ISSUE: BOOKINGS DISAPPEARING AFTER 3-5 MINUTES
+================================================================================
+
+ROOT CAUSES IDENTIFIED:
+========================
+
+1. NETLIFY FUNCTION IN-MEMORY STORAGE (Primary Cause)
+   File: netlify/functions/bookings.js
+   Lines: 1-12
+
+   Problem:
+   ┌─────────────────────────────────────────────────────────────┐
+   │ let storage = { bookings: [], ... }  ← STORED IN RAM ONLY   │
+   │                                                              │
+   │ ⏰ After 3-5 min idle → Netlify container shuts down        │
+   │ 🔄 Next request → NEW container → EMPTY storage             │
+   │ 💀 ALL BOOKINGS LOST                                        │
+   └─────────────────────────────────────────────────────────────┘
+
+2. LOGIN FUNCTION WIPES ALL BOOKINGS (Secondary Cause)
+   File: index.html
+   Lines: 4566, 4613-4727
+
+   Problem:
+   ┌─────────────────────────────────────────────────────────────┐
+   │ function loginWithCustomProfile(profileData) {              │
+   │     ensureCleanSlateForNewUser(profileData);  ← WIPES DATA! │
+   │ }                                                            │
+   │                                                              │
+   │ ensureCleanSlateForNewUser() does:                          │
+   │   ❌ localStorage.removeItem('mcipro_bookings')            │
+   │   ❌ BookingManager.bookings = []                          │
+   │   ❌ localStorage.setItem('mcipro_bookings', JSON.stringify([])) │
+   │                                                              │
+   │ 🔁 HAPPENS ON EVERY LOGIN                                   │
+   │ 💀 ALL BOOKINGS WIPED                                       │
+   └─────────────────────────────────────────────────────────────┘
+
+3. POOR CLOUD SYNC OVERWRITES LOCAL DATA (Tertiary Cause)
+   File: index.html
+   Lines: 2343-2351, 2314, 9434
+
+   Problem:
+   ┌─────────────────────────────────────────────────────────────┐
+   │ 1. User creates booking → localStorage ✓                    │
+   │ 2. Debounced sync (800ms delay)                            │
+   │ 3. Netlify function cold-starts → returns []               │
+   │ 4. Cloud polling (every 15s) gets empty array              │
+   │ 5. Timestamp check: server time > local time               │
+   │ 6. Overwrites local bookings with empty array              │
+   │                                                              │
+   │ 💀 ALL BOOKINGS LOST                                        │
+   └─────────────────────────────────────────────────────────────┘
+
+================================================================================
+DATA FLOW - CURRENT (BROKEN)
+================================================================================
+
+┌─────────────┐      ┌──────────────────┐      ┌─────────────────┐
+│   USER      │      │  BookingManager  │      │  localStorage   │
+│  Creates    │─────▶│   addBooking()   │─────▶│  mcipro_bookings│
+│  Booking    │      │   (Line 9356)    │      │    = [booking]  │
+└─────────────┘      └──────────────────┘      └─────────────────┘
+                              │
+                              ▼
+                     ┌──────────────────┐
+                     │ saveToLocalStorage│
+                     │   (Line 9425)     │
+                     └──────────────────┘
+                              │
+                              ▼
+                     ┌──────────────────────────┐
+                     │ SimpleCloudSync.         │
+                     │ saveToCloudSoon()        │
+                     │ (800ms DEBOUNCE DELAY)   │
+                     └──────────────────────────┘
+                              │
+                              ▼
+                     ┌──────────────────────────┐
+                     │ Netlify Function         │
+                     │ PUT /bookings            │
+                     │ ✓ Saves to RAM           │
+                     └──────────────────────────┘
+                              │
+                              ▼
+                     ⏰ Wait 3-5 minutes...
+                              │
+                              ▼
+                     ┌──────────────────────────┐
+                     │ Netlify Container        │
+                     │ COLD START               │
+                     │ ❌ RAM cleared           │
+                     │ storage = { bookings:[] }│
+                     └──────────────────────────┘
+                              │
+                              ▼
+                     ┌──────────────────────────┐
+                     │ Cloud Polling (15s)      │
+                     │ GET /bookings            │
+                     │ Returns: []              │
+                     └──────────────────────────┐
+                              │
+                              ▼
+                     ┌──────────────────────────┐
+                     │ loadFromCloud()          │
+                     │ if (cloud.updatedAt >    │
+                     │     local.updatedAt)     │
+                     │   ❌ OVERWRITE LOCAL     │
+                     └──────────────────────────┘
+                              │
+                              ▼
+                     ┌──────────────────────────┐
+                     │ localStorage.setItem(    │
+                     │   'mcipro_bookings', []  │
+                     │ )                        │
+                     │ BookingManager.bookings  │
+                     │   = []                   │
+                     └──────────────────────────┘
+                              │
+                              ▼
+                          💀 GONE!
+
+ALTERNATIVE PATH - Login wipes data:
+
+┌─────────────┐      ┌──────────────────────────┐
+│   USER      │      │  loginWithCustomProfile  │
+│ Logs In     │─────▶│     (Line 4566)          │
+└─────────────┘      └──────────────────────────┘
+                              │
+                              ▼
+                     ┌──────────────────────────┐
+                     │ ensureCleanSlateForNewUser│
+                     │     (Line 4613)          │
+                     └──────────────────────────┘
+                              │
+                              ▼
+                     ┌──────────────────────────┐
+                     │ dataKeysToForceRemove    │
+                     │   includes:              │
+                     │   'mcipro_bookings'      │
+                     │                          │
+                     │ ❌ localStorage.removeItem│
+                     │ ❌ BookingManager = []   │
+                     │ ❌ Save empty array      │
+                     └──────────────────────────┘
+                              │
+                              ▼
+                          💀 GONE!
+
+================================================================================
+DATA FLOW - FIXED
+================================================================================
+
+┌─────────────┐      ┌──────────────────┐      ┌─────────────────┐
+│   USER      │      │  BookingManager  │      │  localStorage   │
+│  Creates    │─────▶│   addBooking()   │─────▶│  mcipro_bookings│
+│  Booking    │      │   (Line 9356)    │      │    = [booking]  │
+└─────────────┘      └──────────────────┘      └─────────────────┘
+                              │
+                              ▼
+                     ┌──────────────────┐
+                     │ saveToLocalStorage│
+                     │   (FIXED)         │
+                     └──────────────────┘
+                              │
+                              ▼
+                     ┌──────────────────────────┐
+                     │ SimpleCloudSync.         │
+                     │ saveToCloud()            │
+                     │ ✓ IMMEDIATE (no delay)   │
+                     └──────────────────────────┘
+                              │
+                              ▼
+                     ┌──────────────────────────┐
+                     │ Netlify Function (FIXED) │
+                     │ PUT /bookings            │
+                     │ ✓ Saves to NETLIFY BLOBS │
+                     │   (Persistent Storage)   │
+                     └──────────────────────────┘
+                              │
+                              ▼
+                     ⏰ Wait 3-5 minutes...
+                              │
+                              ▼
+                     ┌──────────────────────────┐
+                     │ Netlify Container        │
+                     │ COLD START               │
+                     │ ✓ Loads from Blobs       │
+                     │ storage = getStorage()   │
+                     │   = { bookings:[...] }   │
+                     └──────────────────────────┘
+                              │
+                              ▼
+                     ┌──────────────────────────┐
+                     │ Cloud Polling (5s)       │
+                     │ GET /bookings            │
+                     │ Returns: [...bookings]   │
+                     └──────────────────────────┐
+                              │
+                              ▼
+                     ┌──────────────────────────┐
+                     │ loadFromCloud() (FIXED)  │
+                     │ if (cloud.version >      │
+                     │     local.version)       │
+                     │   ✓ UPDATE LOCAL         │
+                     │ else if local has data & │
+                     │     cloud is empty       │
+                     │   ✓ PUSH LOCAL TO CLOUD  │
+                     └──────────────────────────┘
+                              │
+                              ▼
+                          ✅ SAFE!
+
+ALTERNATIVE PATH - Login preserves data:
+
+┌─────────────┐      ┌──────────────────────────┐
+│   USER      │      │  loginWithCustomProfile  │
+│ Logs In     │─────▶│     (FIXED)              │
+└─────────────┘      └──────────────────────────┘
+                              │
+                              ▼
+                     ┌──────────────────────────┐
+                     │ ensureCleanSlateForNewUser│
+                     │     DISABLED              │
+                     │                          │
+                     │ keysToPreserve includes: │
+                     │   ✓ mcipro_bookings      │
+                     │   ✓ mcipro_schedule      │
+                     │   ✓ mcipro_data          │
+                     │                          │
+                     │ Only clears:             │
+                     │   - food_orders          │
+                     │   - chat_messages        │
+                     │   - cart_data            │
+                     └──────────────────────────┘
+                              │
+                              ▼
+                          ✅ SAFE!
+
+================================================================================
+EXACT LINE NUMBERS OF BUGS
+================================================================================
+
+FILE: netlify/functions/bookings.js
+────────────────────────────────────
+Line 2-12:   In-memory storage (volatile)
+             let storage = { bookings: [], ... }
+             ❌ LOST ON COLD START
+
+FILE: C:/Users/pete/Documents/MciPro/index.html
+────────────────────────────────────────────────
+Line 4566:   Calls ensureCleanSlateForNewUser() on every login
+             ❌ TRIGGERS DATA WIPE
+
+Line 4613:   Function ensureCleanSlateForNewUser() definition
+             ❌ DESTRUCTIVE FUNCTION
+
+Line 4628:   Includes 'mcipro_bookings' in deletion list
+             const dataKeysToForceRemove = ['mcipro_bookings', ...]
+             ❌ MARKS BOOKINGS FOR DELETION
+
+Line 4645:   Actually deletes bookings
+             dataKeysToForceRemove.forEach(key => localStorage.removeItem(key))
+             ❌ DELETES FROM LOCALSTORAGE
+
+Line 4658:   Empties in-memory array
+             BookingManager.bookings = []
+             ❌ WIPES MEMORY
+
+Line 4662:   Overwrites with empty array
+             localStorage.setItem('mcipro_bookings', JSON.stringify([]))
+             ❌ SAVES EMPTY ARRAY
+
+Line 4711:   Wipes again after timeout
+             BookingManager.bookings = []
+             ❌ DOUBLE WIPE
+
+Line 2272:   Debounce delay
+             static DEBOUNCE_DELAY = 800
+             ⚠️ SLOW SYNC
+
+Line 2314:   Polling interval
+             }, 15000)
+             ⚠️ SLOW POLLING (15 seconds)
+
+Line 2343:   Timestamp-based sync
+             if (cloudData.updatedAt > localData.updatedAt)
+             ⚠️ UNRELIABLE COMPARISON
+
+Line 2350:   Overwrites without validation
+             BookingManager.bookings = cloudData.bookings
+             ❌ BLINDLY OVERWRITES
+
+Line 9434:   Debounced sync
+             SimpleCloudSync.saveToCloudSoon()
+             ⚠️ DELAYED SYNC
+
+MISSING:     No storage event listener
+             ❌ NO CROSS-DEVICE SYNC
+
+MISSING:     No retry logic
+             ❌ NO SYNC RETRY
+
+================================================================================
+FIXES APPLIED
+================================================================================
+
+✅ FIX 1: Persistent Storage (Server)
+   File: netlify/functions/bookings-FIXED.js
+   - Replace in-memory storage with Netlify Blobs
+   - Use getStorage() and setStorage() functions
+   - Survives cold starts
+
+✅ FIX 2: Preserve Bookings on Login (Client)
+   File: index.html (Line 4566, 4613-4727)
+   - Disable ensureCleanSlateForNewUser()
+   - OR: Add bookings to keysToPreserve
+   - Never wipe booking data
+
+✅ FIX 3: Version-Based Sync (Client)
+   File: index.html (Line 2343+)
+   - Replace timestamp comparison with version numbers
+   - Push local to cloud if cloud is empty
+   - Prevent empty cloud from overwriting local
+
+✅ FIX 4: Immediate Sync (Client)
+   File: index.html (Line 9434)
+   - Call saveToCloud() directly (no debounce)
+   - Fallback to debounced on error
+   - Faster cloud persistence
+
+✅ FIX 5: Cross-Device Sync (Client)
+   File: index.html (After line 4545)
+   - Add storage event listener
+   - Sync bookings across tabs instantly
+   - Better user experience
+
+✅ FIX 6: Faster Polling (Client)
+   File: index.html (Line 2314)
+   - Change from 15000ms to 5000ms
+   - 3x faster sync detection
+   - Quicker cross-device updates
+
+✅ FIX 7: Sync Retry Logic (Client)
+   File: index.html (New method)
+   - Add saveToCloudWithRetry() method
+   - Exponential backoff
+   - Handle network failures
+
+================================================================================
+FILES CREATED
+================================================================================
+
+1. netlify/functions/bookings-FIXED.js
+   → Server-side fix with persistent Netlify Blobs storage
+
+2. FIXES-client-side.html
+   → All 6 client-side fixes with detailed comments
+
+3. BUG-REPORT-BOOKING-DISAPPEARANCE.md
+   → Comprehensive bug analysis with line numbers
+
+4. QUICK-FIX-GUIDE.md
+   → Step-by-step deployment instructions
+
+5. ISSUE-SUMMARY.txt (this file)
+   → Visual flow diagrams and summary
+
+================================================================================
+DEPLOYMENT STEPS
+================================================================================
+
+1. Install dependency:
+   npm install @netlify/blobs
+
+2. Replace server function:
+   cp netlify/functions/bookings-FIXED.js netlify/functions/bookings.js
+
+3. Apply client fixes from FIXES-client-side.html to index.html
+
+4. Test locally:
+   - Create booking
+   - Wait 5 minutes
+   - Refresh page
+   - Verify booking persists
+
+5. Deploy:
+   git add .
+   git commit -m "Fix: Booking data loss - persistent storage + sync fixes"
+   git push origin main
+
+6. Verify in production:
+   - Check Netlify function logs
+   - Check Netlify Blobs dashboard
+   - Test all user flows
+
+================================================================================
+SUCCESS CRITERIA
+================================================================================
+
+✅ Bookings survive 5+ minute idle time
+✅ Bookings persist through logout/login
+✅ Bookings sync across browser tabs
+✅ Netlify function logs show persistent storage
+✅ No data loss reported by users
+
+================================================================================

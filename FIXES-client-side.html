@@ -1,0 +1,301 @@
+<!-- CRITICAL FIXES FOR BOOKING DISAPPEARANCE ISSUE -->
+
+<script>
+// ============================================================================
+// FIX 1: REMOVE CLEAN SLATE FUNCTION THAT WIPES BOOKINGS ON LOGIN
+// Location: Line 4566 and 4613-4727 in index.html
+// Problem: Every login clears ALL bookings from localStorage
+// ============================================================================
+
+// REPLACE the ensureCleanSlateForNewUser function (lines 4613-4727) with this FIXED version:
+
+function ensureCleanSlateForNewUser(profileData) {
+    const userName = `${profileData.firstName} ${profileData.lastName}`;
+
+    console.log(`[FIXED] Setting up user: ${userName} (${profileData.role}) - PRESERVING BOOKINGS`);
+
+    // FIXED: Only clear user-specific UI data, NOT bookings or schedules
+    const keysToPreserve = [
+        'mcipro_user_profiles',
+        'mcipro_bookings',        // FIXED: PRESERVE bookings
+        'mcipro_schedule',         // FIXED: PRESERVE schedule
+        'schedule_items',          // FIXED: PRESERVE schedule items
+        'mcipro_data',            // FIXED: PRESERVE cloud sync data
+        'mci-pro-language',
+        'caddie_system_data',
+        'golf_courses_data'
+    ];
+
+    // Only clear temporary/UI data (NOT bookings)
+    const dataKeysToClear = [
+        'food_orders',           // OK to clear - user-specific
+        'chat_messages',         // OK to clear - user-specific
+        'cart_data',             // OK to clear - user-specific
+        'order_history'          // OK to clear - user-specific
+    ];
+
+    // Clear only temporary data
+    dataKeysToClear.forEach(key => {
+        localStorage.removeItem(key);
+    });
+
+    console.log(`[FIXED] User setup completed - bookings and schedules PRESERVED`);
+
+    // REMOVED: All the code that was wiping BookingManager.bookings = []
+    // REMOVED: Lines 4657-4718 that were resetting all systems
+
+    // Initialize ChatSystem for the new user only
+    if (window.ChatSystem) {
+        ChatSystem.currentUser = {
+            id: profileData.role + '_' + userName.replace(/\s+/g, '_').toLowerCase(),
+            name: userName,
+            role: profileData.role,
+            avatar: profileData.profilePicture || profileData.roleSpecific?.avatar || '👤'
+        };
+        ChatSystem.messages = [];
+        ChatSystem.saveMessages();
+        console.log('ChatSystem initialized for new user');
+    }
+}
+
+// ============================================================================
+// FIX 2: IMPROVE CLOUD SYNC TO PREVENT DATA OVERWRITE
+// Location: Line 2343 in index.html
+// Problem: Cloud data overwrites local bookings even when local is newer
+// ============================================================================
+
+// REPLACE the loadFromCloud function's update logic (around line 2343) with this:
+
+// In SimpleCloudSync.loadFromCloud(), replace lines 2338-2409 with:
+static async loadFromCloud() {
+    try {
+        const res = await fetch('/.netlify/functions/bookings', {
+            method: 'GET',
+            headers: { 'Authorization': 'Bearer mcipro-site-key-2024' }
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const cloudData = await res.json();
+        console.log('[SimpleCloudSync] Loaded from cloud:', {
+            bookings: cloudData.bookings?.length || 0,
+            profiles: cloudData.user_profiles?.length || 0,
+            schedule: (cloudData.schedule_items || cloudData.schedule || []).length,
+            version: cloudData.version,
+            updatedAt: cloudData.updatedAt
+        });
+
+        // FIXED: Get local data with version tracking
+        const localData = JSON.parse(localStorage.getItem('mcipro_data') || '{}');
+        const localBookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]');
+
+        // FIXED: Use version-based sync, not timestamp
+        const cloudVersion = cloudData.version || 0;
+        const localVersion = localData.lastSyncVersion || 0;
+
+        console.log('[SimpleCloudSync] Version check: cloud=' + cloudVersion + ', local=' + localVersion);
+
+        // FIXED: Only update if cloud version is actually newer
+        if (cloudVersion > localVersion) {
+            console.log('[SimpleCloudSync] Cloud data is newer (v' + cloudVersion + ' > v' + localVersion + '), updating local storage');
+
+            // Update bookings
+            if (cloudData.bookings) {
+                localStorage.setItem('mcipro_bookings', JSON.stringify(cloudData.bookings));
+                if (typeof BookingManager !== 'undefined' && BookingManager.bookings) {
+                    BookingManager.bookings = cloudData.bookings;
+                    console.log('[SimpleCloudSync] Updated BookingManager with', cloudData.bookings.length, 'bookings');
+                }
+            }
+
+            // Update profiles
+            if (cloudData.user_profiles) {
+                localStorage.setItem('mcipro_user_profiles', JSON.stringify(cloudData.user_profiles));
+
+                const currentUserId = (window.Auth?.currentUserId) || AppState?.currentUser?.name || 'anon';
+                const userProfile = cloudData.user_profiles.find(p =>
+                    p.userId === currentUserId ||
+                    p.name === currentUserId ||
+                    (AppState?.currentUser?.name && p.name === AppState.currentUser.name)
+                );
+
+                if (userProfile) {
+                    localStorage.setItem('mcipro_user_profile', JSON.stringify(userProfile));
+                    console.log('[SimpleCloudSync] Updated individual profile');
+
+                    try {
+                        if (typeof ProfileSystem !== 'undefined' && ProfileSystem.updateUIWithProfile) {
+                            ProfileSystem.updateUIWithProfile(userProfile);
+                        }
+                    } catch (e) {
+                        console.warn('[SimpleCloudSync] ProfileSystem updateUI failed:', e);
+                    }
+                }
+            }
+
+            // Update schedule
+            if (cloudData.schedule_items) {
+                const scheduleFromServer = toArray(cloudData.schedule_items || cloudData.schedule || []);
+                const scheduleWrapper = { events: scheduleFromServer, caddieBookings: [], waitlists: [] };
+                localStorage.setItem('mcipro_schedule', JSON.stringify(scheduleWrapper));
+
+                if (typeof ScheduleSystem !== 'undefined' && ScheduleSystem.refreshStats) {
+                    ScheduleSystem.refreshStats();
+                }
+            }
+
+            // Update emergency alerts
+            if (cloudData.emergency_alerts) {
+                localStorage.setItem('emergency_alerts', JSON.stringify(cloudData.emergency_alerts));
+                if (typeof EmergencySystem !== 'undefined') {
+                    EmergencySystem.activeAlerts = cloudData.emergency_alerts;
+                    const newAlert = cloudData.emergency_alerts[cloudData.emergency_alerts.length - 1];
+                    if (newAlert) {
+                        console.log('[Emergency] Displaying synced alert:', newAlert);
+                        EmergencySystem.createFullScreenEmergencyOverlay(newAlert);
+                    }
+                }
+            }
+
+            // FIXED: Store with proper version tracking
+            localStorage.setItem('mcipro_data', JSON.stringify({
+                ...cloudData,
+                lastSyncVersion: cloudVersion
+            }));
+
+            this.showSyncStatus('↓ Cloud Update', 'info');
+            return true;
+        } else if (localBookings.length > 0 && (!cloudData.bookings || cloudData.bookings.length === 0)) {
+            // FIXED: If we have local bookings but cloud is empty, push to cloud
+            console.log('[SimpleCloudSync] Local has data, cloud is empty - pushing local to cloud');
+            await this.saveToCloud();
+            return false;
+        } else {
+            console.log('[SimpleCloudSync] Local is up-to-date (v' + localVersion + ')');
+            return false;
+        }
+
+    } catch (error) {
+        console.error('[SimpleCloudSync] Failed to load from cloud:', error);
+        return false;
+    }
+}
+
+// ============================================================================
+// FIX 3: ADD IMMEDIATE SYNC AFTER BOOKING CREATION
+// Location: Line 9434 in index.html
+// Problem: Debounced sync delays can cause data loss
+// ============================================================================
+
+// REPLACE BookingManager.saveToLocalStorage (lines 9425-9438) with:
+
+saveToLocalStorage() {
+    try {
+        localStorage.setItem('mcipro_bookings', JSON.stringify(this.bookings));
+        localStorage.setItem('mcipro_waitlists', JSON.stringify(this.waitlists));
+        localStorage.setItem('last_local_update', new Date().toISOString());
+        console.log('[BookingManager] Data saved to localStorage:', this.bookings.length, 'bookings');
+
+        // FIXED: Immediate sync for critical booking data
+        if (typeof SimpleCloudSync !== 'undefined') {
+            console.log('[BookingManager] TRIGGERING IMMEDIATE CLOUD SYNC');
+
+            // Do BOTH: immediate sync AND debounced backup
+            SimpleCloudSync.saveToCloud().then(() => {
+                console.log('[BookingManager] Immediate sync completed');
+            }).catch(err => {
+                console.error('[BookingManager] Immediate sync failed:', err);
+                // Fallback to debounced sync
+                SimpleCloudSync.saveToCloudSoon();
+            });
+        }
+    } catch (error) {
+        console.error('[BookingManager] Failed to save to localStorage:', error);
+    }
+}
+
+// ============================================================================
+// FIX 4: ADD STORAGE EVENT LISTENER FOR CROSS-DEVICE SYNC
+// Location: Add after line 4545 in index.html (in DOMContentLoaded)
+// Problem: No cross-device sync via localStorage events
+// ============================================================================
+
+// ADD this code inside the DOMContentLoaded event handler (after line 4545):
+
+// FIXED: Add cross-device sync via storage events
+window.addEventListener('storage', (e) => {
+    if (e.key === 'mcipro_bookings' && e.newValue) {
+        console.log('[CrossDevice] Bookings updated on another device/tab');
+        try {
+            const newBookings = JSON.parse(e.newValue);
+            if (typeof BookingManager !== 'undefined') {
+                BookingManager.bookings = newBookings;
+                console.log('[CrossDevice] Updated BookingManager with', newBookings.length, 'bookings from other device');
+                // Trigger UI refresh if needed
+                if (typeof BookingManager.render === 'function') {
+                    BookingManager.render();
+                }
+            }
+        } catch (err) {
+            console.error('[CrossDevice] Failed to parse bookings from storage event:', err);
+        }
+    }
+});
+
+console.log('[INIT] Cross-device sync via localStorage events enabled');
+
+// ============================================================================
+// FIX 5: REDUCE POLLING INTERVAL FOR FASTER SYNC
+// Location: Line 2314 in index.html
+// Problem: 15-second polling is too slow
+// ============================================================================
+
+// REPLACE line 2314 with:
+}, 5000);  // FIXED: Poll every 5 seconds instead of 15 for faster cross-device sync
+
+// ============================================================================
+// FIX 6: ADD RETRY LOGIC FOR FAILED SYNCS
+// Location: Add to SimpleCloudSync class
+// ============================================================================
+
+// ADD this method to SimpleCloudSync class:
+
+static async saveToCloudWithRetry(maxRetries = 3) {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            const success = await this.saveToCloud();
+            if (success) {
+                console.log('[SimpleCloudSync] Sync successful on attempt', i + 1);
+                return true;
+            }
+        } catch (err) {
+            console.error('[SimpleCloudSync] Sync attempt', i + 1, 'failed:', err);
+            if (i < maxRetries - 1) {
+                // Exponential backoff
+                const delay = Math.min(1000 * Math.pow(2, i), 5000);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+    console.error('[SimpleCloudSync] All sync attempts failed');
+    return false;
+}
+
+</script>
+
+<!-- DEPLOYMENT INSTRUCTIONS -->
+<!--
+1. Replace bookings.js with bookings-FIXED.js in netlify/functions/
+2. Install @netlify/blobs package: npm install @netlify/blobs
+3. Apply the 6 fixes above to index.html
+4. Test thoroughly before deploying to production
+5. Monitor Netlify function logs for any errors
+
+KEY CHANGES:
+- FIX 1: Removed clean slate that wipes bookings on every login (LINE 4613-4727)
+- FIX 2: Improved cloud sync to use version-based updates (LINE 2343+)
+- FIX 3: Immediate sync after booking save (LINE 9425-9438)
+- FIX 4: Cross-device sync via storage events (ADD after LINE 4545)
+- FIX 5: Faster polling interval 5s vs 15s (LINE 2314)
+- FIX 6: Retry logic for failed syncs (ADD to class)
+- SERVER FIX: Persistent storage using Netlify Blobs (bookings.js)
+-->

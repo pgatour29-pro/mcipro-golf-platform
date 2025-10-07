@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cloud Data Reset</title>
+</head>
+<body>
+    <h1>Cloud Data Reset</h1>
+    <button onclick="resetCloudData()">Reset Cloud Data</button>
+    <div id="results"></div>
+
+    <script>
+        const API_KEY = 'Bearer mcipro-site-key-2024';
+        const FUNCTION_URL = 'https://mcipro-golf-platform.netlify.app/.netlify/functions/bookings';
+
+        async function resetCloudData() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<p>Resetting cloud data...</p>';
+
+            try {
+                // 1. Get current data
+                const getResponse = await fetch(FUNCTION_URL, {
+                    headers: { 'Authorization': API_KEY, 'Content-Type': 'application/json' }
+                });
+                const currentData = await getResponse.json();
+
+                results.innerHTML += `<p>Current version: ${currentData.version}</p>`;
+                results.innerHTML += `<p>Current bookings: ${currentData.bookings?.length || 0}</p>`;
+
+                // 2. Send delete tombstones for all existing items
+                const deletePayload = {
+                    baseVersion: currentData.version,
+                    bookings: (currentData.bookings || []).map(b => ({...b, deleted: true})),
+                    user_profiles: (currentData.user_profiles || []).map(p => ({...p, deleted: true})),
+                    schedule_items: (currentData.schedule_items || []).map(s => ({...s, deleted: true})),
+                    emergency_alerts: [],
+                    caddies: [],
+                    waitlist: []
+                };
+
+                const deleteResponse = await fetch(FUNCTION_URL, {
+                    method: 'PUT',
+                    headers: { 'Authorization': API_KEY, 'Content-Type': 'application/json' },
+                    body: JSON.stringify(deletePayload)
+                });
+
+                const deleteResult = await deleteResponse.json();
+                results.innerHTML += `<p>Delete result: ${deleteResult.ok ? 'SUCCESS' : 'FAILED'}</p>`;
+                results.innerHTML += `<p>New version: ${deleteResult.version}</p>`;
+
+                if (deleteResult.ok) {
+                    results.innerHTML += `<p>✅ Cloud data reset complete!</p>`;
+                    results.innerHTML += `<p>Now clear localStorage on each device.</p>`;
+                }
+
+            } catch (error) {
+                results.innerHTML += `<p>❌ Error: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

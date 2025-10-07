@@ -261,61 +261,57 @@ const MaintenanceManagement = {
         const isOverdue = dueDate < new Date() && workOrder.status !== 'completed';
 
         return `
-            <div class="border border-gray-200 rounded-lg p-4 mb-4 hover:shadow-md transition-shadow">
-                <div class="flex items-start justify-between mb-3">
+            <div class="border border-gray-200 rounded p-3 mb-3 hover:border-gray-300 transition-colors">
+                <div class="flex items-start justify-between mb-2">
                     <div class="flex-1">
-                        <h4 class="font-semibold text-gray-900 mb-1">${workOrder.title}</h4>
-                        <p class="text-sm text-gray-600 mb-2">${workOrder.description}</p>
-                        <div class="flex gap-2 flex-wrap">
-                            <span class="px-2 py-1 bg-${priorityColors[workOrder.priority]}-100 text-${priorityColors[workOrder.priority]}-800 text-xs rounded-full font-medium">
-                                ${workOrder.priority.toUpperCase()}
+                        <h4 class="font-semibold text-sm text-gray-900 mb-1">${workOrder.title}</h4>
+                        <div class="flex gap-1 mb-2">
+                            <span class="px-1.5 py-0.5 bg-${priorityColors[workOrder.priority]}-100 text-${priorityColors[workOrder.priority]}-800 text-xs rounded">
+                                ${workOrder.priority}
                             </span>
-                            <span class="px-2 py-1 bg-${statusColors[workOrder.status]}-100 text-${statusColors[workOrder.status]}-800 text-xs rounded-full">
-                                ${workOrder.status.replace('-', ' ').toUpperCase()}
+                            <span class="px-1.5 py-0.5 bg-${statusColors[workOrder.status]}-100 text-${statusColors[workOrder.status]}-800 text-xs rounded">
+                                ${workOrder.status.replace('-', ' ')}
                             </span>
-                            ${isOverdue ? '<span class="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">OVERDUE</span>' : ''}
+                            ${isOverdue ? '<span class="px-1.5 py-0.5 bg-red-100 text-red-800 text-xs rounded">overdue</span>' : ''}
                         </div>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4 mb-3 text-sm text-gray-600">
-                    <div>
-                        <strong>Assigned:</strong> ${staffName}
-                    </div>
-                    <div>
-                        <strong>Due:</strong> ${this.formatDateTime(dueDate)}
-                    </div>
-                    <div>
-                        <strong>Category:</strong> ${workOrder.category || 'general'}
-                    </div>
-                    <div>
-                        <strong>Location:</strong> ${workOrder.location || 'N/A'}
-                    </div>
+                <div class="text-xs text-gray-600 mb-2 space-y-0.5">
+                    <div><strong>Assigned:</strong> ${staffName}</div>
+                    <div><strong>Due:</strong> ${this.formatDateTime(dueDate)}</div>
                 </div>
 
-                <div class="mb-3">
-                    <div class="flex justify-between text-xs text-gray-600 mb-1">
+                <div class="mb-2">
+                    <div class="flex justify-between text-xs text-gray-500 mb-1">
                         <span>Progress</span>
                         <span>${workOrder.progress}%</span>
                     </div>
-                    <div class="w-full bg-gray-200 rounded-full h-2">
-                        <div class="bg-blue-600 h-2 rounded-full transition-all" style="width: ${workOrder.progress}%"></div>
+                    <div class="w-full bg-gray-200 rounded-full h-1.5">
+                        <div class="bg-blue-600 h-1.5 rounded-full transition-all" style="width: ${workOrder.progress}%"></div>
                     </div>
                 </div>
 
-                <div class="flex gap-2 flex-wrap">
-                    <button onclick="MaintenanceManagement.updateProgress(${workOrder.id})" class="btn-sm btn-secondary">
-                        Update Progress
-                    </button>
-                    <button onclick="MaintenanceManagement.reassignWorkOrder(${workOrder.id})" class="btn-sm btn-secondary">
-                        Reassign
-                    </button>
-                    <button onclick="MaintenanceManagement.changeStatus(${workOrder.id})" class="btn-sm btn-secondary">
-                        Change Status
-                    </button>
-                    <button onclick="MaintenanceManagement.viewDetails(${workOrder.id})" class="btn-sm btn-primary">
-                        Details
-                    </button>
+                <div class="flex gap-1">
+                    <select onchange="MaintenanceManagement.handleAction(${workOrder.id}, 'progress', this.value); this.value=''" class="form-select text-xs flex-1">
+                        <option value="">Progress...</option>
+                        <option value="0">0%</option>
+                        <option value="25">25%</option>
+                        <option value="50">50%</option>
+                        <option value="75">75%</option>
+                        <option value="100">100%</option>
+                    </select>
+                    <select onchange="MaintenanceManagement.handleAction(${workOrder.id}, 'status', this.value); this.value=''" class="form-select text-xs flex-1">
+                        <option value="">Status...</option>
+                        <option value="pending">Pending</option>
+                        <option value="in-progress">In Progress</option>
+                        <option value="on-hold">On Hold</option>
+                        <option value="completed">Completed</option>
+                    </select>
+                    <select onchange="MaintenanceManagement.handleAction(${workOrder.id}, 'assign', this.value); this.value=''" class="form-select text-xs flex-1">
+                        <option value="">Assign...</option>
+                        ${this.state.staff.map(s => `<option value="${s.id}">${s.name.split(' ')[0]}</option>`).join('')}
+                    </select>
                 </div>
             </div>
         `;
@@ -334,12 +330,12 @@ const MaintenanceManagement = {
         if (!container) return;
 
         const conditions = [
-            { name: 'Greens Quality', key: 'greens', icon: 'golf_course' },
-            { name: 'Fairway Condition', key: 'fairways', icon: 'landscape' },
-            { name: 'Bunker Condition', key: 'bunkers', icon: 'spa' },
-            { name: 'Cart Path Condition', key: 'cartPaths', icon: 'route' },
-            { name: 'Tee Condition', key: 'tees', icon: 'flag' },
-            { name: 'Rough Condition', key: 'rough', icon: 'grass' }
+            { name: 'Greens', key: 'greens' },
+            { name: 'Fairways', key: 'fairways' },
+            { name: 'Bunkers', key: 'bunkers' },
+            { name: 'Paths', key: 'cartPaths' },
+            { name: 'Tees', key: 'tees' },
+            { name: 'Rough', key: 'rough' }
         ];
 
         container.innerHTML = conditions.map(condition => {
@@ -347,13 +343,10 @@ const MaintenanceManagement = {
             const colorClass = this.getConditionColorClass(currentCondition);
 
             return `
-                <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg mb-2">
-                    <div class="flex items-center gap-3">
-                        <span class="material-symbols-outlined text-gray-600">${condition.icon}</span>
-                        <span class="font-medium">${condition.name}</span>
-                    </div>
+                <div class="flex items-center justify-between p-2 border border-gray-100 rounded mb-1.5">
+                    <span class="text-xs font-medium text-gray-700">${condition.name}</span>
                     <select onchange="MaintenanceManagement.updateCourseCondition('${condition.key}', this.value)"
-                            class="form-select text-sm ${colorClass}">
+                            class="form-select text-xs ${colorClass}">
                         <option value="excellent" ${currentCondition === 'excellent' ? 'selected' : ''}>Excellent</option>
                         <option value="good" ${currentCondition === 'good' ? 'selected' : ''}>Good</option>
                         <option value="fair" ${currentCondition === 'fair' ? 'selected' : ''}>Fair</option>
@@ -485,6 +478,43 @@ const MaintenanceManagement = {
     // ============================================
     // WORK ORDER ACTIONS
     // ============================================
+
+    handleAction(workOrderId, actionType, value) {
+        if (!value) return;
+
+        const workOrder = this.state.workOrders.find(wo => wo.id === workOrderId);
+        if (!workOrder) return;
+
+        switch(actionType) {
+            case 'progress':
+                const progress = parseInt(value);
+                workOrder.progress = progress;
+                if (progress === 100 && workOrder.status !== 'completed') {
+                    workOrder.status = 'completed';
+                    workOrder.completedAt = new Date().toISOString();
+                }
+                this.showToast(`Progress updated to ${progress}%`, 'success');
+                break;
+
+            case 'status':
+                workOrder.status = value;
+                if (value === 'completed') {
+                    workOrder.completedAt = new Date().toISOString();
+                    workOrder.progress = 100;
+                }
+                this.showToast(`Status changed to ${value.replace('-', ' ')}`, 'success');
+                break;
+
+            case 'assign':
+                const newStaffName = this.getStaffName(value);
+                workOrder.assignee = value;
+                this.showToast(`Reassigned to ${newStaffName}`, 'success');
+                break;
+        }
+
+        this.saveToStorage();
+        this.renderDashboard();
+    },
 
     showCreateWorkOrderModal() {
         // Create modal HTML

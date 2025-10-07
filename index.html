@@ -3355,6 +3355,13 @@
             static initManagerDashboard() {
                 TabManager.showTab('managerDashboard', 'overview');
                 UserInterface.updateUserDisplays();
+                // Load real data from Supabase
+                setTimeout(() => {
+                    if (typeof ManagerAnalytics !== 'undefined') {
+                        ManagerAnalytics.updateOverview();
+                        ManagerAnalytics.updateUI();
+                    }
+                }, 500);
             }
 
             static initProshopDashboard() {
@@ -7071,8 +7078,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Manager Analytics Data Engine
         const ManagerAnalytics = {
             // Calculate all analytics from existing data sources
-            calculate() {
-                const bookings = this.getBookings();
+            async calculate() {
+                const bookings = await this.getBookings();
                 const orders = this.getOrders();
                 const profiles = this.getProfiles();
 
@@ -7084,9 +7091,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 };
             },
 
-            getBookings() {
-                const cloud = JSON.parse(localStorage.getItem('mcipro_bookings_cloud') || '{"bookings":[]}');
-                return cloud.bookings || [];
+            async getBookings() {
+                // UPDATED: Use Supabase instead of localStorage
+                if (window.SupabaseDB) {
+                    try {
+                        await window.SupabaseDB.waitForReady();
+                        const { bookings } = await window.SupabaseDB.getBookings();
+                        console.log('[ManagerAnalytics] Loaded bookings from Supabase:', bookings.length);
+                        return bookings || [];
+                    } catch (error) {
+                        console.error('[ManagerAnalytics] Error loading from Supabase:', error);
+                        // Fallback to localStorage if Supabase fails
+                        const cloud = JSON.parse(localStorage.getItem('mcipro_bookings_cloud') || '{"bookings":[]}');
+                        return cloud.bookings || [];
+                    }
+                } else {
+                    // Fallback to localStorage if Supabase not initialized
+                    const cloud = JSON.parse(localStorage.getItem('mcipro_bookings_cloud') || '{"bookings":[]}');
+                    return cloud.bookings || [];
+                }
             },
 
             getOrders() {
@@ -7197,8 +7220,8 @@ document.addEventListener('DOMContentLoaded', function() {
             },
 
             // Update UI with calculated data
-            updateUI() {
-                const data = this.calculate();
+            async updateUI() {
+                const data = await this.calculate();
 
                 // Revenue metrics
                 this.updateElement('analytics-revenue-now', `฿${data.revenue.now.toLocaleString()}`);
@@ -7245,12 +7268,65 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 if (barEl) barEl.style.width = `${percentage}%`;
                 if (pctEl) pctEl.textContent = `${percentage}%`;
+            },
+
+            // Update Overview tab stat cards
+            async updateOverview() {
+                const data = await this.calculate();
+
+                // Today's Rounds stat card
+                const roundsCard = document.querySelector('#managerDashboard .stat-card:nth-child(1)');
+                if (roundsCard) {
+                    roundsCard.querySelector('.text-2xl').textContent = data.revenue.rounds;
+                    roundsCard.querySelector('.text-2xl').classList.remove('text-gray-400');
+                    roundsCard.querySelector('.text-2xl').classList.add('text-blue-600');
+                    roundsCard.querySelector('.text-xs').textContent = `${data.utilization.overall}% utilization`;
+                    roundsCard.querySelector('.text-xs').classList.remove('text-gray-400');
+                    roundsCard.querySelector('.text-xs').classList.add('text-blue-500');
+                }
+
+                // Active Caddies stat card
+                const caddiesCard = document.querySelector('#managerDashboard .stat-card:nth-child(2)');
+                if (caddiesCard) {
+                    caddiesCard.querySelector('.text-2xl').textContent = data.revenue.caddies;
+                    caddiesCard.querySelector('.text-2xl').classList.remove('text-gray-400');
+                    caddiesCard.querySelector('.text-2xl').classList.add('text-green-600');
+                    caddiesCard.querySelector('.text-xs').textContent = `${data.staff.totalCaddies} total available`;
+                    caddiesCard.querySelector('.text-xs').classList.remove('text-gray-400');
+                    caddiesCard.querySelector('.text-xs').classList.add('text-green-500');
+                }
+
+                // Course Occupancy stat card
+                const occupancyCard = document.querySelector('#managerDashboard .stat-card:nth-child(3)');
+                if (occupancyCard) {
+                    occupancyCard.querySelector('.text-2xl').textContent = `${data.utilization.overall}%`;
+                    occupancyCard.querySelector('.text-2xl').classList.remove('text-gray-400');
+                    occupancyCard.querySelector('.text-2xl').classList.add('text-orange-600');
+                    occupancyCard.querySelector('.text-xs').textContent = `${data.revenue.rounds} of 50 slots`;
+                    occupancyCard.querySelector('.text-xs').classList.remove('text-gray-400');
+                    occupancyCard.querySelector('.text-xs').classList.add('text-orange-500');
+                }
+
+                // Current Rounds badge
+                const roundsBadge = document.querySelector('#manager-overview .card-header .badge');
+                if (roundsBadge) {
+                    roundsBadge.textContent = `${data.revenue.rounds} Active`;
+                }
+
+                // Staff Status counts
+                const staffCards = document.querySelectorAll('#manager-overview .space-y-4 .text-sm.font-bold');
+                if (staffCards.length >= 1) {
+                    staffCards[0].textContent = `${data.revenue.caddies}/${data.staff.totalCaddies}`;
+                }
+
+                console.log('[ManagerAnalytics] Overview updated with real data');
             }
         };
 
         // Auto-refresh analytics every 30 seconds when on manager dashboard
         setInterval(() => {
             if (window.location.hash.includes('manager') || AppState?.currentUser?.role === 'manager') {
+                ManagerAnalytics.updateOverview();
                 ManagerAnalytics.updateUI();
             }
         }, 30000);
@@ -7266,6 +7342,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Initialize analytics if on manager dashboard
             setTimeout(() => {
                 if (AppState?.currentUser?.role === 'manager') {
+                    ManagerAnalytics.updateOverview();
                     ManagerAnalytics.updateUI();
                 }
             }, 1000);

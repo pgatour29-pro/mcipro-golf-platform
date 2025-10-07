@@ -753,7 +753,10 @@ const ReportsSystem = {
 
     generateEODReconciliation(date = new Date()) {
         const dateStr = date.toISOString().split('T')[0];
-        const registers = this.getCashRegisters();
+
+        // Check if cash registers have been initialized/configured (not using defaults)
+        const hasSavedRegisters = localStorage.getItem('cash_registers') !== null;
+        const registers = hasSavedRegisters ? JSON.parse(localStorage.getItem('cash_registers')) : {};
 
         // Get actual bookings and orders for the selected date
         const bookings = this.getAllBookings().filter(b => b.date === dateStr);
@@ -766,40 +769,51 @@ const ReportsSystem = {
         const fnbTotal = orders.reduce((sum, o) => sum + parseFloat(o.total || 0), 0);
         const proShopTotal = proShopSales.reduce((sum, s) => sum + parseFloat(s.total || 0), 0);
 
+        // Default POS locations (always show these even if not configured)
+        const defaultLocations = ['Reception', 'Restaurant', 'Pro Shop', 'Drink Kiosk'];
+
         const reconciliation = {};
         let totalStarting = 0;
         let totalRevenue = 0;
         let totalExpected = 0;
         let totalActual = 0;
 
-        Object.keys(registers).forEach(key => {
-            const reg = registers[key];
+        defaultLocations.forEach(locationName => {
+            // Find register for this location
+            const regKey = Object.keys(registers).find(k => registers[k].name === locationName);
+            const reg = regKey ? registers[regKey] : null;
+
             let locationRevenue = 0;
 
             // Assign revenue to correct locations
-            if (reg.name === 'Reception') {
+            if (locationName === 'Reception') {
                 locationRevenue = greenFeesTotal + caddyFeesTotal;
-            } else if (reg.name === 'Restaurant' || reg.name === 'Drink Kiosk') {
-                locationRevenue = reg.name === 'Restaurant' ? fnbTotal : 0;
-            } else if (reg.name === 'Pro Shop') {
+            } else if (locationName === 'Restaurant') {
+                locationRevenue = fnbTotal;
+            } else if (locationName === 'Pro Shop') {
                 locationRevenue = proShopTotal;
+            } else if (locationName === 'Drink Kiosk') {
+                locationRevenue = 0; // Drink Kiosk revenue (add if tracked separately)
             }
 
-            const expected = reg.startingCash + locationRevenue;
-            const variance = reg.currentCash - expected;
+            // Use register data if available, otherwise zeros
+            const startingCash = reg ? (reg.startingCash || 0) : 0;
+            const currentCash = reg ? (reg.currentCash || 0) : 0;
+            const expected = startingCash + locationRevenue;
+            const variance = currentCash - expected;
 
-            reconciliation[reg.name] = {
-                startingCash: reg.startingCash,
+            reconciliation[locationName] = {
+                startingCash,
                 revenue: locationRevenue,
                 expected,
-                actual: reg.currentCash,
+                actual: currentCash,
                 variance
             };
 
-            totalStarting += reg.startingCash;
+            totalStarting += startingCash;
             totalRevenue += locationRevenue;
             totalExpected += expected;
-            totalActual += reg.currentCash;
+            totalActual += currentCash;
         });
 
         return {

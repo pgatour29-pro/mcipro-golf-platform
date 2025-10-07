@@ -3,10 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enhanced Multilang Golf Tee Sheet Demo</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Enhanced Multilang Golf Tee Sheet Demo - v<?php echo time(); ?></title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+    <!-- Supabase for Real-time Database (Replaces Netlify Blobs) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+
+    <!-- CACHE BUSTER: Force reload on every page load -->
+    <script>
+      window.TEESHEET_VERSION = Date.now();
+      console.log('🔄 Tee Sheet Version:', window.TEESHEET_VERSION);
+    </script>
 
 <style id="timeslot-rowlines">
 /* Draw a crisp line at the top of every slot cell */
@@ -17,6 +30,14 @@
 [data-slot-id] > div { margin-top: -1px; } /* pull content down so double lines don't appear */
 </style>
 
+
+<style id="loading-spinner">
+/* Loading spinner animation */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+</style>
 
 <style id="modal-polish">
 /* Modal polish: slightly larger headings, consistent padding, better contrast */
@@ -339,9 +360,10 @@
 
             const slotDate = bookingDate;
             const slotTime = slot.time;
-            const teeTimeISO = `${bookingDate}T${slot.time}:00.000Z`;
+            // FIXED: Use Bangkok timezone (+07:00) consistently, not UTC (Z)
+            const teeTimeISO = `${bookingDate}T${slot.time}:00+07:00`;
 
-            console.log('[CloudSync] Converting booking - date:', slotDate, 'time:', slotTime, 'id:', teeSheetBooking.id);
+            console.log('[CloudSync] Converting booking - bookingDate param:', bookingDate, 'slotDate:', slotDate, 'time:', slotTime, 'teeTimeISO:', teeTimeISO, 'id:', teeSheetBooking.id);
 
             // Create main tee time booking
             const mainBooking = {
@@ -349,7 +371,7 @@
               kind: 'tee',
               groupId: groupId,
 
-              // Time fields
+              // Time fields - CRITICAL: date must be YYYY-MM-DD format
               date: slotDate,
               time: slotTime,
               teeTime: teeTimeISO,
@@ -549,6 +571,83 @@
             return converted;
           }
 
+          // Update booking time/date - handles GROUP updates with modification tracking
+          static async updateBookingTime(bookingId, newSlot, newLane, newDate) {
+            try {
+              // Fetch all bookings from cloud to find the group
+              const cloudBookings = await this.loadBookingsFromCloud();
+              const mainBooking = cloudBookings.find(b => b.id === bookingId);
+
+              if (!mainBooking) {
+                console.warn('[CloudSync] Booking not found for update:', bookingId);
+                return { success: false, error: 'Booking not found' };
+              }
+
+              const groupId = mainBooking.groupId;
+              console.log('[CloudSync] Updating booking group time/date:', groupId);
+
+              // Find ALL bookings in this group
+              const bookingsToUpdate = cloudBookings.filter(b => b.groupId === groupId && !b.deleted);
+              console.log('[CloudSync] Found', bookingsToUpdate.length, 'bookings in group to update');
+
+              // Extract new time from slot ID (format: "15:00-course-a-1")
+              const newTime = newSlot.id.split('-')[0];
+              const newDateTime = `${newDate}T${newTime}:00+07:00`;
+
+              const baseVersion = parseInt(localStorage.getItem('mcipro_cloud_version') || '0');
+
+              // Update ALL bookings in group with new time and modification tracking
+              const updatedBookings = bookingsToUpdate.map(b => ({
+                ...b,
+                teeTime: newDateTime,
+                slotTime: newDateTime,
+                date: newDate,
+                time: newTime,
+                teeSheetCourse: newLane.name || newLane.label || newLane.labelEn,
+                courseId: newLane.courseId || newLane.id,
+                updatedAt: Date.now(),
+                modifiedByStaff: true, // CRITICAL: Mark as modified by pro shop
+                modifiedAt: Date.now(),
+                modificationReason: `Time changed from ${mainBooking.time} to ${newTime} by pro shop`
+              }));
+
+              console.log('[CloudSync] Updating', updatedBookings.length, 'bookings with new time:', newTime);
+
+              const response = await fetch(this.API_URL, {
+                method: 'PUT',
+                headers: {
+                  'Authorization': `Bearer ${this.SITE_KEY}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  baseVersion: baseVersion,
+                  bookings: updatedBookings
+                })
+              });
+
+              if (response.status === 409) {
+                console.warn('[CloudSync] Conflict detected on update, retrying...');
+                const cloudData = await response.json();
+                localStorage.setItem('mcipro_cloud_version', cloudData.version);
+                return await this.updateBookingTime(bookingId, newSlot, newLane, newDate);
+              }
+
+              if (!response.ok) {
+                throw new Error(`Update failed: ${response.status}`);
+              }
+
+              const result = await response.json();
+              localStorage.setItem('mcipro_cloud_version', result.version);
+
+              console.log('[CloudSync] Updated', updatedBookings.length, 'bookings successfully');
+              return { success: true, updatedCount: updatedBookings.length };
+
+            } catch (error) {
+              console.error('[CloudSync] Update error:', error);
+              return { success: false, error: error.message };
+            }
+          }
+
           // Save bookings to cloud
           static async saveBookings(bookings, slot, lane, bookingDate) {
             try {
@@ -598,34 +697,48 @@
             }
           }
 
+          // Load RAW bookings from cloud (without conversion) - for internal use
+          static async loadBookingsFromCloud() {
+            const response = await fetch(this.API_URL, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${this.SITE_KEY}`
+              }
+            });
+
+            if (!response.ok) {
+              throw new Error(`Failed to load: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data.bookings || [];
+          }
+
           // Load bookings from cloud
           static async loadBookings() {
             try {
-              console.log('[CloudSync] Loading bookings from cloud...');
+              console.log('[CloudSync] Loading bookings from Supabase...');
 
-              const response = await fetch(this.API_URL, {
-                method: 'GET',
-                headers: {
-                  'Authorization': `Bearer ${this.SITE_KEY}`
-                }
-              });
-
-              if (!response.ok) {
-                throw new Error(`Failed to load: ${response.status}`);
+              // Load from Supabase instead of Netlify Functions
+              if (!window.SupabaseDB) {
+                throw new Error('Supabase not initialized');
               }
 
-              const data = await response.json();
-              localStorage.setItem('mcipro_cloud_version', data.version);
+              await window.SupabaseDB.waitForReady();
+              const result = await window.SupabaseDB.getBookings();
+              const version = Date.now();
 
-              console.log('[CloudSync] Loaded', data.bookings?.length || 0, 'bookings');
+              localStorage.setItem('mcipro_cloud_version', version);
+
+              console.log('[CloudSync] Loaded', result.bookings?.length || 0, 'bookings');
 
               // Convert to tee sheet format
-              const teeSheetBookings = this.convertFromUnifiedFormat(data.bookings || []);
+              const teeSheetBookings = this.convertFromUnifiedFormat(result.bookings || []);
 
               return {
                 success: true,
                 bookings: teeSheetBookings,
-                version: data.version
+                version: version
               };
 
             } catch (error) {
@@ -634,14 +747,37 @@
             }
           }
 
-          // Delete booking from cloud
+          // Delete booking from cloud - handles GROUP deletions
           static async deleteBooking(bookingId) {
             try {
+              // First, fetch all bookings from cloud to find the group
+              const cloudBookings = await this.loadBookingsFromCloud();
+              const mainBooking = cloudBookings.find(b => b.id === bookingId);
+
+              if (!mainBooking) {
+                console.warn('[CloudSync] Booking not found:', bookingId);
+                return { success: false, error: 'Booking not found' };
+              }
+
+              const groupId = mainBooking.groupId;
+              console.log('[CloudSync] Deleting booking group:', groupId);
+
+              // Find ALL bookings in this group (tee + caddies + services)
+              const bookingsToDelete = cloudBookings.filter(b => b.groupId === groupId);
+              console.log('[CloudSync] Found', bookingsToDelete.length, 'bookings in group to delete');
+
               const baseVersion = parseInt(localStorage.getItem('mcipro_cloud_version') || '0');
 
-              console.log('[CloudSync] Deleting booking:', bookingId);
+              // FIXED: Mark ALL bookings in group as CANCELLED (not deleted) so golfer sees notification
+              const cancelledBookings = bookingsToDelete.map(b => ({
+                ...b, // Keep all booking data
+                status: 'cancelled',
+                cancelledByStaff: true,
+                cancelledAt: Date.now(),
+                cancellationReason: 'Cancelled by pro shop due to schedule conflict',
+                updatedAt: Date.now()
+              }));
 
-              // Mark as deleted (tombstone)
               const response = await fetch(this.API_URL, {
                 method: 'PUT',
                 headers: {
@@ -650,17 +786,12 @@
                 },
                 body: JSON.stringify({
                   baseVersion: baseVersion,
-                  bookings: [{
-                    id: bookingId,
-                    deleted: true,
-                    updatedAt: Date.now()
-                  }]
+                  bookings: cancelledBookings
                 })
               });
 
               if (response.status === 409) {
                 console.warn('[CloudSync] Conflict detected on delete, retrying...');
-                // Reload and retry
                 const cloudData = await response.json();
                 localStorage.setItem('mcipro_cloud_version', cloudData.version);
                 return await this.deleteBooking(bookingId);
@@ -673,8 +804,8 @@
               const result = await response.json();
               localStorage.setItem('mcipro_cloud_version', result.version);
 
-              console.log('[CloudSync] Deleted successfully');
-              return { success: true };
+              console.log('[CloudSync] Cancelled', cancelledBookings.length, 'bookings successfully');
+              return { success: true, cancelledCount: cancelledBookings.length };
 
             } catch (error) {
               console.error('[CloudSync] Delete error:', error);
@@ -906,7 +1037,7 @@
                 padding: '6px 10px',
                 border: '1px solid #d1d5db',
                 borderRadius: '6px',
-                fontSize: '0.75rem',
+                fontSize: '0.7rem',
                 backgroundColor: '#f8fafc',
                 color: '#374151',
                 fontWeight: '500'
@@ -1304,7 +1435,18 @@
           const t = useCallback((key) => {
             return translations[language][key] || key;
           }, [language]);
-          
+
+          // Helper: Calculate how many 5-minute slots between two times
+          const calculateSlotCount = (start, end) => {
+            if (!start || !end) return 0;
+            const [startHour, startMin] = start.split(':').map(Number);
+            const [endHour, endMin] = end.split(':').map(Number);
+            const startMinutes = startHour * 60 + startMin;
+            const endMinutes = endHour * 60 + endMin;
+            const diffMinutes = endMinutes - startMinutes;
+            return Math.ceil(diffMinutes / 5); // 5-minute intervals
+          };
+
           const [golfers, setGolfers] = useState([
             { id: 'g1', name: '', handicap: undefined, inputLang: language }
           ]);
@@ -1316,6 +1458,13 @@
           const [caddySearchTerm, setCaddySearchTerm] = useState('');
           const [caddySearchLang, setCaddySearchLang] = useState(language);
           const [isPrivate, setIsPrivate] = useState(false);
+
+          // NEW: Time range booking features
+          const [bookingDate, setBookingDate] = useState(slot?.date || new Date().toISOString().split('T')[0]);
+          const [isRangeBooking, setIsRangeBooking] = useState(false);
+          const [startTime, setStartTime] = useState(slot?.time || '09:00');
+          const [endTime, setEndTime] = useState(slot?.time || '09:00');
+          const [requiresApproval, setRequiresApproval] = useState(false);
 
           useEffect(() => {
             setNotesInputLang(language);
@@ -1333,11 +1482,38 @@
                 setBookingType(slot.booking.bookingType);
                 setIsPrivate(slot.booking.isPrivate || false);
 
+                // FIXED: Load booking's original date and time range if it exists
+                setBookingDate(slot.booking.bookingDate || slot.booking.date || slot.date);
+                setIsRangeBooking(slot.booking.isRangeBooking || false);
+                setStartTime(slot.booking.startTime || slot.time || '09:00');
+                setEndTime(slot.booking.endTime || slot.time || '09:00');
+
                 const caddyMap = {};
                 slot.booking.caddyBookings?.forEach(cb => {
-                  caddyMap[cb.golferId] = cb.caddyId;
+                  // FIXED: Support multiple caddies per golfer (confirmed + waitlist)
+                  if (!caddyMap[cb.golferId]) {
+                    caddyMap[cb.golferId] = [];
+                  }
+                  const isWaitlist = cb.status === 'waitlist' || cb.status === 'waitlisted' || cb.isWaitlisted;
+                  caddyMap[cb.golferId].push(isWaitlist ? `${cb.caddyId}-waitlist` : cb.caddyId);
                 });
                 setSelectedCaddies(caddyMap);
+              } else if (slot.isRangeSelection) {
+                // NEW: Drag selection - auto-populate time range
+                setIsEditing(false);
+                setGolfers([{ id: 'g1', name: '', handicap: undefined, inputLang: language }]);
+                setNotes('');
+                setNotesInputLang(language);
+                setBookingType('regular');
+                setIsPrivate(false);
+                setSelectedCaddies({});
+
+                // Auto-fill from drag selection
+                setBookingDate(slot.date || new Date().toISOString().split('T')[0]);
+                setIsRangeBooking(true);
+                setStartTime(slot.startTime);
+                setEndTime(slot.endTime);
+                setRequiresApproval(false); // Pro shop has no restrictions
               } else {
                 setIsEditing(false);
                 setGolfers([{ id: 'g1', name: '', handicap: undefined, inputLang: language }]);
@@ -1346,6 +1522,12 @@
                 setBookingType('regular');
                 setSelectedCaddies({});
                 setIsPrivate(false);
+
+                // NEW: Reset to current slot/tee sheet date when creating new booking
+                setBookingDate(slot.date || new Date().toISOString().split('T')[0]);
+                setIsRangeBooking(false);
+                setStartTime(slot.time || '09:00');
+                setEndTime(slot.time || '09:00');
               }
               setCaddySearchTerm('');
               setCaddySearchLang(language);
@@ -1432,30 +1614,52 @@
           const handleSave = async () => {
             const validGolfers = golfers.filter(g => g.name.trim());
             if (validGolfers.length === 0) {
-              const alertMessage = language === 'th' 
-                ? 'กรุณาเพิ่มผู้เล่นอย่างน้อย 1 คน' 
-                : language === 'ko' 
+              const alertMessage = language === 'th'
+                ? 'กรุณาเพิ่มผู้เล่นอย่างน้อย 1 คน'
+                : language === 'ko'
                 ? '최소 1명의 골퍼를 추가해주세요'
                 : 'Please add at least one golfer';
               alert(alertMessage);
               return;
             }
 
-            const caddyBookings = Object.entries(selectedCaddies).map(([golferId, caddySelection]) => {
+            // NEW: Validate range booking
+            if (isRangeBooking) {
+              const slotCount = calculateSlotCount(startTime, endTime);
+
+              if (slotCount <= 0) {
+                alert('End time must be after start time');
+                return;
+              }
+
+              // Pro shop staff can book any range without restrictions
+              const confirmed = confirm(
+                `You are about to book ${slotCount} time slots (${startTime} to ${endTime}).\n\n` +
+                'Continue with this booking?'
+              );
+              if (!confirmed) return;
+            }
+
+            // FIXED: Handle multiple caddies per golfer (array format)
+            const caddyBookings = Object.entries(selectedCaddies).flatMap(([golferId, caddySelections]) => {
               const golfer = validGolfers.find(g => g.id === golferId);
-              const isWaitlisted = caddySelection.includes('-waitlist');
-              const caddyId = caddySelection.replace('-waitlist', '');
-              const caddy = availableCaddies.find(c => c.id === caddyId);
-              
-              return {
-                golferId,
-                caddyId,
-                golferName: golfer?.name || '',
-                caddyName: caddy?.name || '',
-                caddyNumber: caddy?.number || '000',
-                status: isWaitlisted ? 'waitlisted' : 'confirmed',
-                isWaitlisted
-              };
+
+              // caddySelections is now an array
+              return caddySelections.map(caddySelection => {
+                const isWaitlisted = caddySelection.includes('-waitlist');
+                const caddyId = caddySelection.replace('-waitlist', '');
+                const caddy = availableCaddies.find(c => c.id === caddyId);
+
+                return {
+                  golferId,
+                  caddyId,
+                  golferName: golfer?.name || '',
+                  caddyName: caddy?.name || '',
+                  caddyNumber: caddy?.number || '000',
+                  status: isWaitlisted ? 'waitlisted' : 'confirmed',
+                  isWaitlisted
+                };
+              });
             }).filter(booking => booking.caddyId);
 
             const booking = {
@@ -1464,9 +1668,17 @@
               notes,
               notesLang: notesInputLang,
               bookingType,
-              status: 'confirmed',
+              status: 'confirmed', // Pro shop bookings are always confirmed
               caddyBookings,
-              isPrivate  // Privacy control - only staff/proshop can see details if true
+              isPrivate,  // Privacy control - only staff/proshop can see details if true
+              // NEW: Range booking metadata
+              isRangeBooking,
+              ...(isRangeBooking && {
+                bookingDate,
+                startTime,
+                endTime,
+                slotCount: calculateSlotCount(startTime, endTime)
+              })
             };
 
             const syncManager = ScheduleSyncManager.getInstance();
@@ -1535,12 +1747,13 @@
               zIndex: 10000
             }
           },
-            React.createElement('div', { className: 'modal-card modal-forced', 
+            React.createElement('div', { className: 'modal-card modal-forced',
               style: {
                 backgroundColor: 'white',
                 borderRadius: '12px',
-                padding: '24px',
-                maxWidth: '800px',
+                padding: '20px',
+                maxWidth: '95vw',
+                width: 'fit-content',
                 maxHeight: '90vh',
                 overflowY: 'auto',
                 boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
@@ -1565,10 +1778,113 @@
                 }, '×')
               ),
 
-              React.createElement('div', { style: { marginBottom: '20px' } },
+              // MAIN 2-COLUMN LAYOUT
+              React.createElement('div', {
+                style: {
+                  display: 'grid',
+                  gridTemplateColumns: 'auto auto',
+                  gap: '24px',
+                  justifyContent: 'start'
+                }
+              },
+                // LEFT COLUMN - Caddies, Date, Range, Type
+                React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
+
+              // Assign Caddies Section at top of left column
+              React.createElement('div', { style: { maxWidth: '400px' } },
                 React.createElement('label', {
                   style: { display: 'block', marginBottom: '8px', fontSize: '0.875rem', fontWeight: '500', color: '#374151' }
                 }, t('assignCaddies')),
+
+                // Current Assignments - moved to top
+                golfers.length > 0 && React.createElement('div', {
+                  style: {
+                    marginBottom: '12px',
+                    padding: '12px',
+                    backgroundColor: '#f0f9ff',
+                    borderRadius: '6px',
+                    border: '1px solid #bae6fd'
+                  }
+                },
+                  React.createElement('div', {
+                    style: { fontSize: '0.8rem', fontWeight: '600', color: '#0c4a6e', marginBottom: '8px' }
+                  }, '👥 Current Assignments:'),
+                  ...golfers.map((golfer, index) => {
+                    if (!golfer.name.trim()) return null;
+                    const assignments = selectedCaddies[golfer.id] || [];
+                    const hasAssignments = assignments.length > 0;
+
+                    return React.createElement('div', {
+                      key: golfer.id,
+                      style: {
+                        padding: '4px 6px',
+                        marginBottom: '4px',
+                        backgroundColor: '#f3f4f6',
+                        borderRadius: '4px',
+                        border: '1px solid #d1d5db'
+                      }
+                    },
+                      React.createElement('div', {
+                        style: { fontSize: '0.8rem', fontWeight: '500', marginBottom: '4px' }
+                      }, golfer.name),
+
+                      hasAssignments ? assignments.map((assignment, idx) => {
+                        const isWaitlisted = assignment?.includes('-waitlist');
+                        const caddyId = assignment?.replace('-waitlist', '');
+                        const assignedCaddy = caddyId ? demoCaddies.find(c => c.id === caddyId) : null;
+
+                        return React.createElement('div', {
+                          key: `${golfer.id}-${idx}`,
+                          style: {
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '4px 6px',
+                            marginBottom: '2px',
+                            backgroundColor: isWaitlisted ? '#fef3c7' : '#dcfce7',
+                            borderRadius: '3px',
+                            border: `1px solid ${isWaitlisted ? '#f59e0b' : '#16a34a'}`
+                          }
+                        },
+                          React.createElement('span', {
+                            style: {
+                              fontSize: '0.7rem',
+                              color: isWaitlisted ? '#d97706' : '#16a34a',
+                              fontWeight: '500'
+                            }
+                          }, `${isWaitlisted ? '📋' : '✅'} #${assignedCaddy?.number} ${assignedCaddy?.name}${isWaitlisted ? ' (Waitlist)' : ''}`),
+                          React.createElement('button', {
+                            onClick: () => {
+                              const newSelectedCaddies = { ...selectedCaddies };
+                              newSelectedCaddies[golfer.id] = newSelectedCaddies[golfer.id].filter((_, i) => i !== idx);
+                              if (newSelectedCaddies[golfer.id].length === 0) {
+                                delete newSelectedCaddies[golfer.id];
+                              }
+                              setSelectedCaddies(newSelectedCaddies);
+                            },
+                            style: {
+                              background: 'none',
+                              border: 'none',
+                              color: '#ef4444',
+                              cursor: 'pointer',
+                              fontSize: '0.8rem',
+                              padding: '2px',
+                              marginLeft: '4px'
+                            }
+                          }, '✖')
+                        );
+                      }) : React.createElement('div', {
+                        style: {
+                          fontSize: '0.7rem',
+                          color: '#6b7280',
+                          fontStyle: 'italic',
+                          padding: '4px 6px'
+                        }
+                      }, 'No caddy assigned')
+                    );
+                  }).filter(Boolean)
+                ),
+
                 React.createElement('div', {
                   style: { marginBottom: '12px' }
                 },
@@ -1584,7 +1900,7 @@
                 ),
                 React.createElement('div', {
                   style: {
-                    maxHeight: '200px',
+                    maxHeight: '450px',
                     overflowY: 'auto',
                     border: '1px solid #e5e7eb',
                     borderRadius: '6px',
@@ -1616,16 +1932,24 @@
                           transition: 'all 0.2s ease'
                         },
                         onClick: () => {
-                          // Quick assign to first available golfer without caddy
-                          const availableGolfer = golfers.find(g => g.name.trim() && !selectedCaddies[g.id]);
+                          // FIXED: Support adding multiple caddies per golfer
+                          // First try to find golfer without any caddy, then find first golfer
+                          const golferWithoutCaddy = golfers.find(g => g.name.trim() && (!selectedCaddies[g.id] || selectedCaddies[g.id].length === 0));
+                          const availableGolfer = golferWithoutCaddy || golfers.find(g => g.name.trim());
+
                           if (availableGolfer) {
                             const newSelectedCaddies = { ...selectedCaddies };
-                            if (caddy.status === 'available') {
-                              newSelectedCaddies[availableGolfer.id] = caddy.id;
-                            } else {
-                              newSelectedCaddies[availableGolfer.id] = `${caddy.id}-waitlist`;
+                            if (!newSelectedCaddies[availableGolfer.id]) {
+                              newSelectedCaddies[availableGolfer.id] = [];
                             }
-                            setSelectedCaddies(newSelectedCaddies);
+
+                            const caddyAssignment = caddy.status === 'available' ? caddy.id : `${caddy.id}-waitlist`;
+
+                            // Only add if not already assigned
+                            if (!newSelectedCaddies[availableGolfer.id].includes(caddyAssignment)) {
+                              newSelectedCaddies[availableGolfer.id] = [...newSelectedCaddies[availableGolfer.id], caddyAssignment];
+                              setSelectedCaddies(newSelectedCaddies);
+                            }
                           }
                         },
                         onMouseEnter: (e) => {
@@ -1691,130 +2015,19 @@
                         )
                       );
                     })
-                ),
-                golfers.length > 0 && React.createElement('div', {
-                  style: { 
-                    marginTop: '16px', 
-                    padding: '12px',
-                    backgroundColor: '#f0f9ff',
-                    borderRadius: '6px',
-                    border: '1px solid #bae6fd'
-                  }
-                },
-                  React.createElement('div', {
-                    style: { fontSize: '0.8rem', fontWeight: '600', color: '#0c4a6e', marginBottom: '8px' }
-                  }, '👥 Current Assignments:'),
-                  ...golfers.map((golfer, index) => {
-                    if (!golfer.name.trim()) return null;
-                    const assignment = selectedCaddies[golfer.id];
-                    const isWaitlisted = assignment?.includes('-waitlist');
-                    const caddyId = assignment?.replace('-waitlist', '');
-                    const assignedCaddy = caddyId ? demoCaddies.find(c => c.id === caddyId) : null;
-                    
-                    return React.createElement('div', {
-                      key: golfer.id,
-                      style: {
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '6px 8px',
-                        marginBottom: '4px',
-                        backgroundColor: assignment ? (isWaitlisted ? '#fef3c7' : '#dcfce7') : '#f3f4f6',
-                        borderRadius: '4px',
-                        border: `1px solid ${assignment ? (isWaitlisted ? '#f59e0b' : '#16a34a') : '#d1d5db'}`
-                      }
-                    },
-                      React.createElement('span', {
-                        style: { fontSize: '0.8rem', fontWeight: '500' }
-                      }, golfer.name),
-                      React.createElement('div', {
-                        style: { fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px' }
-                      },
-                        assignment ? (
-                          React.createElement('span', {
-                            style: { 
-                              color: isWaitlisted ? '#d97706' : '#16a34a',
-                              fontWeight: '500'
-                            }
-                          }, `${isWaitlisted ? '📋' : '✅'} #${assignedCaddy?.number} ${assignedCaddy?.name}${isWaitlisted ? ' (Waitlist)' : ''}`)
-                        ) : (
-                          React.createElement('span', {
-                            style: { color: '#6b7280', fontStyle: 'italic' }
-                          }, 'No caddy assigned')
-                        ),
-                        assignment && React.createElement('button', {
-                          onClick: () => {
-                            const newSelectedCaddies = { ...selectedCaddies };
-                            delete newSelectedCaddies[golfer.id];
-                            setSelectedCaddies(newSelectedCaddies);
-                          },
-                          style: {
-                            background: 'none',
-                            border: 'none',
-                            color: '#ef4444',
-                            cursor: 'pointer',
-                            fontSize: '0.8rem',
-                            padding: '2px',
-                            marginLeft: '4px'
-                          }
-                        }, '✖')
-                      )
-                    );
-                  }).filter(Boolean)
                 )
-              ),
+              )
+                ), // END LEFT COLUMN
 
-              React.createElement('div', {
-                style: {
-                  backgroundColor: '#f8fafc',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px',
-                  padding: '12px',
-                  marginBottom: '20px'
-                }
-              },
+                // RIGHT COLUMN - Golfers, Privacy, Notes
+                React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
+
+              React.createElement('div', null,
                 React.createElement('div', {
-                  style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
-                },
-                  React.createElement('span', {
-                    style: { fontSize: '0.875rem', fontWeight: '500', color: '#374151' }
-                  }, t('languageSettings')),
-                  React.createElement(LanguageBulkControl, {
-                    onSetAll: handleBulkLanguageChange,
-                    currentDistribution: getLanguageDistribution(),
-                    modalLanguage: language
-                  })
-                )
-              ),
-
-              React.createElement('div', { style: { marginBottom: '20px' } },
-                React.createElement('label', {
-                  style: { display: 'block', marginBottom: '8px', fontSize: '0.875rem', fontWeight: '500', color: '#374151' }
-                }, t('bookingType')),
-                React.createElement('select', {
-                  value: bookingType,
-                  onChange: (e) => setBookingType(e.target.value),
-                  style: {
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '2px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '0.875rem'
-                  }
-                },
-                  React.createElement('option', { value: 'regular' }, t('regular')),
-                  React.createElement('option', { value: 'vip' }, t('vip')),
-                  React.createElement('option', { value: 'tournament' }, t('tournament')),
-                  React.createElement('option', { value: 'society' }, t('society'))
-                )
-              ),
-
-              React.createElement('div', { style: { marginBottom: '20px' } },
-                React.createElement('div', {
-                  style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }
+                  style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }
                 },
                   React.createElement('label', {
-                    style: { fontSize: '0.875rem', fontWeight: '500', color: '#374151' }
+                    style: { fontSize: '0.75rem', fontWeight: '500', color: '#374151' }
                   }, `${t('golfers')} (${golfers.length}/4)`),
                   React.createElement('button', {
                     onClick: addGolfer,
@@ -1834,11 +2047,11 @@
                 ...golfers.map((golfer, index) =>
                   React.createElement('div', {
                     key: golfer.id,
-                    style: { 
-                      display: 'grid', 
-                      gridTemplateColumns: '1fr 100px 40px', 
-                      gap: '8px', 
-                      marginBottom: '8px',
+                    style: {
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 70px 32px',
+                      gap: '6px',
+                      marginBottom: '6px',
                       alignItems: 'center'
                     }
                   },
@@ -1860,36 +2073,145 @@
                       value: golfer.handicap || '',
                       onChange: (e) => updateGolfer(index, 'handicap', e.target.value),
                       style: {
-                        padding: '8px 12px',
-                        border: '2px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '0.875rem'
+                        padding: '6px 4px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                        textAlign: 'center'
                       }
                     }),
                     React.createElement('button', {
                       onClick: () => removeGolfer(index),
                       disabled: golfers.length <= 1,
                       style: {
-                        padding: '8px',
+                        padding: '6px',
                         backgroundColor: golfers.length <= 1 ? '#d1d5db' : '#ef4444',
                         color: 'white',
                         border: 'none',
                         borderRadius: '4px',
-                        cursor: golfers.length <= 1 ? 'not-allowed' : 'pointer'
+                        cursor: golfers.length <= 1 ? 'not-allowed' : 'pointer',
+                        fontSize: '0.75rem'
                       }
                     }, '-')
                   )
                 )
               ),
 
+              // Date Picker
+              React.createElement('div', null,
+                React.createElement('label', {
+                  style: { display: 'block', marginBottom: '4px', fontSize: '0.75rem', fontWeight: '500', color: '#374151' }
+                }, 'Booking Date'),
+                React.createElement('input', {
+                  type: 'date',
+                  value: bookingDate,
+                  onChange: (e) => setBookingDate(e.target.value),
+                  min: new Date().toISOString().split('T')[0],
+                  style: {
+                    width: '100%',
+                    maxWidth: '180px',
+                    padding: '6px 8px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    fontSize: '0.75rem'
+                  }
+                })
+              ),
+
+              // Time Range Booking Toggle
+              React.createElement('div', { style: { padding: '12px', backgroundColor: '#f3f4f6', borderRadius: '8px', maxWidth: '280px' } },
+                React.createElement('label', {
+                  style: { display: 'flex', alignItems: 'center', cursor: 'pointer', marginBottom: isRangeBooking ? '12px' : '0' }
+                },
+                  React.createElement('input', {
+                    type: 'checkbox',
+                    checked: isRangeBooking,
+                    onChange: (e) => setIsRangeBooking(e.target.checked),
+                    style: { marginRight: '8px' }
+                  }),
+                  React.createElement('span', { style: { fontSize: '0.75rem', fontWeight: '500', color: '#374151' }}, 'Book Multiple Time Slots (Range)')
+                ),
+
+                // Show time range selectors when enabled
+                isRangeBooking && React.createElement('div', { style: { marginTop: '12px' } },
+                  React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '8px' } },
+                    React.createElement('div', {},
+                      React.createElement('label', { style: { display: 'block', marginBottom: '2px', fontSize: '0.7rem', color: '#6b7280' }}, 'Start Time'),
+                      React.createElement('input', {
+                        type: 'time',
+                        value: startTime,
+                        onChange: (e) => setStartTime(e.target.value),
+                        style: {
+                          width: '100%',
+                          padding: '4px 6px',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: '0.875rem'
+                        }
+                      })
+                    ),
+                    React.createElement('div', {},
+                      React.createElement('label', { style: { display: 'block', marginBottom: '2px', fontSize: '0.7rem', color: '#6b7280' }}, 'End Time'),
+                      React.createElement('input', {
+                        type: 'time',
+                        value: endTime,
+                        onChange: (e) => setEndTime(e.target.value),
+                        style: {
+                          width: '100%',
+                          padding: '4px 6px',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: '0.875rem'
+                        }
+                      })
+                    )
+                  ),
+                  // Show info about slot count
+                  React.createElement('div', {
+                    style: {
+                      padding: '8px 12px',
+                      backgroundColor: '#dbeafe',
+                      border: '1px solid #3b82f6',
+                      borderRadius: '6px',
+                      fontSize: '0.7rem',
+                      color: '#1e40af',
+                      marginTop: '8px'
+                    }
+                  }, `ℹ️ Booking ${calculateSlotCount(startTime, endTime)} time slots (${startTime} to ${endTime})`)
+                )
+              ),
+
+              // Booking Type
+              React.createElement('div', null,
+                React.createElement('label', {
+                  style: { display: 'block', marginBottom: '4px', fontSize: '0.75rem', fontWeight: '500', color: '#374151' }
+                }, t('bookingType')),
+                React.createElement('select', {
+                  value: bookingType,
+                  onChange: (e) => setBookingType(e.target.value),
+                  style: {
+                    width: '100%',
+                    maxWidth: '180px',
+                    padding: '6px 8px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    fontSize: '0.75rem'
+                  }
+                },
+                  React.createElement('option', { value: 'regular' }, t('regular')),
+                  React.createElement('option', { value: 'vip' }, t('vip')),
+                  React.createElement('option', { value: 'tournament' }, t('tournament')),
+                  React.createElement('option', { value: 'society' }, t('society'))
+                )
+              ),
+
               // Privacy Control Checkbox
               React.createElement('div', {
                 style: {
-                  marginBottom: '20px',
-                  padding: '12px',
+                  padding: '8px',
                   backgroundColor: '#f3f4f6',
-                  borderRadius: '8px',
-                  border: '2px solid' + (isPrivate ? '#3b82f6' : '#d1d5db')
+                  borderRadius: '6px',
+                  border: '1px solid' + (isPrivate ? '#3b82f6' : '#d1d5db')
                 }
               },
                 React.createElement('label', {
@@ -1920,7 +2242,7 @@
                 ),
                 React.createElement('div', {
                   style: {
-                    fontSize: '0.75rem',
+                    fontSize: '0.7rem',
                     color: '#6b7280',
                     marginTop: '6px',
                     marginLeft: '28px'
@@ -1935,9 +2257,9 @@
                 )
               ),
 
-              React.createElement('div', { style: { marginBottom: '20px' } },
+              React.createElement('div', null,
                 React.createElement('label', {
-                  style: { display: 'block', marginBottom: '8px', fontSize: '0.875rem', fontWeight: '500', color: '#374151' }
+                  style: { display: 'block', marginBottom: '4px', fontSize: '0.75rem', fontWeight: '500', color: '#374151' }
                 }, t('notes')),
                 React.createElement(MultiLangInput, {
                   type: 'textarea',
@@ -1960,8 +2282,9 @@
                 }, `${notes.length}/500 ${notes ? `• ${detectLanguage(notes)} detected` : ''}`)
               ),
 
+              // BUTTONS ROW (inside right column, below notes)
               React.createElement('div', {
-                style: { display: 'flex', gap: '12px', justifyContent: 'flex-end' }
+                style: { display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e5e7eb' }
               },
                 React.createElement('button', {
                   onClick: onClose,
@@ -2014,14 +2337,16 @@
                   }
                 }, isEditing ? t('updateBooking') : t('saveBooking'))
               )
+                ) // END RIGHT COLUMN
+              ) // END 2-COLUMN GRID
             )
           );
         };
 
         const TeeSheet = (props) => {
-          const { 
+          const {
             date, lanes, rows, filters, totalTees = 4, matches = 0,
-            onSelectSlot, onRangeChange, onRefresh, onFindNext, onClearDay, onMoveBooking, onLanguageChange, onToggleLock 
+            onSelectSlot, onRangeChange, onFilterChange, onRefresh, onFindNext, onClearDay, onMoveBooking, onLanguageChange, onToggleLock
           } = props;
           
           const { t, language, setLanguage } = useI18n();
@@ -2031,6 +2356,16 @@
           const [currentSearchIndex, setCurrentSearchIndex] = useState(0);
           const [highlightedSlot, setHighlightedSlot] = useState(null);
           const [searchInputLang, setSearchInputLang] = useState(language);
+
+          // NEW: Drag selection state for time range booking
+          const [isDragging, setIsDragging] = useState(false);
+          const [dragStartSlot, setDragStartSlot] = useState(null);
+          const [dragEndSlot, setDragEndSlot] = useState(null);
+          const [selectedSlots, setSelectedSlots] = useState([]);
+
+          // NEW: Delete mode for drag-to-delete multiple bookings
+          const [deleteMode, setDeleteMode] = useState(false);
+          const [deleteSelection, setDeleteSelection] = useState([]);
 
           useEffect(() => {
             if (onLanguageChange) {
@@ -2115,13 +2450,138 @@
           const updateFilters = (newFilters) => {
             const updatedFilters = { ...localFilters, ...newFilters };
             setLocalFilters(updatedFilters);
-            
+
+            // FIXED: Notify parent of filter changes (including date)
+            if (onFilterChange) {
+              onFilterChange(newFilters);
+            }
+
             if (onRangeChange && (newFilters.startTime || newFilters.endTime)) {
               onRangeChange(
                 updatedFilters.startTime || '08:00',
                 updatedFilters.endTime || '12:00'
               );
             }
+          };
+
+          // NEW: Calculate selected slots range when dragging
+          const calculateSelectedSlots = (startSlot, endSlot) => {
+            if (!startSlot || !endSlot) return [];
+
+            // Extract time and course from slot IDs
+            const startTime = startSlot.time;
+            const endTime = endSlot.time;
+            const courseId = startSlot.id.split('-').slice(1).join('-'); // Get course part (e.g., "course-a-1")
+
+            // Find all slots in this course between start and end times
+            const allTimes = timeSlots;
+            const startIdx = allTimes.indexOf(startTime);
+            const endIdx = allTimes.indexOf(endTime);
+
+            if (startIdx === -1 || endIdx === -1) return [startSlot];
+
+            const minIdx = Math.min(startIdx, endIdx);
+            const maxIdx = Math.max(startIdx, endIdx);
+
+            const selectedTimes = allTimes.slice(minIdx, maxIdx + 1);
+            return selectedTimes.map(time => `${time}-${courseId}`);
+          };
+
+          // NEW: Handle mouse down to start drag selection
+          const handleSlotMouseDown = (slot, e) => {
+            if (deleteMode) {
+              // DELETE MODE: Start selecting bookings to delete
+              if (slot.booking && !slot.locked) {
+                e.preventDefault();
+                setIsDragging(true);
+                setDragStartSlot(slot);
+                setDragEndSlot(slot);
+                setDeleteSelection([slot.booking.id]);
+              }
+            } else {
+              // BOOKING MODE: Only start drag selection if slot is empty and not locked
+              if (!slot.booking && !slot.locked && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                setIsDragging(true);
+                setDragStartSlot(slot);
+                setDragEndSlot(slot);
+                setSelectedSlots([slot.id]);
+              }
+            }
+          };
+
+          // NEW: Handle mouse enter while dragging
+          const handleSlotMouseEnter = (slot) => {
+            if (isDragging && dragStartSlot) {
+              // Only allow selection in same course
+              const startCourse = dragStartSlot.id.split('-').slice(1).join('-');
+              const currentCourse = slot.id.split('-').slice(1).join('-');
+
+              if (deleteMode) {
+                // DELETE MODE: Select bookings to delete
+                if (startCourse === currentCourse && slot.booking && !slot.locked) {
+                  setDragEndSlot(slot);
+                  const selected = calculateSelectedSlots(dragStartSlot, slot);
+                  const bookingsToDelete = selected
+                    .map(slotId => {
+                      const row = enhancedRows.find(r => r.slots.some(s => s.id === slotId));
+                      const foundSlot = row?.slots.find(s => s.id === slotId);
+                      return foundSlot?.booking?.id;
+                    })
+                    .filter(Boolean);
+                  setDeleteSelection(bookingsToDelete);
+                }
+              } else {
+                // BOOKING MODE: Select empty slots
+                if (startCourse === currentCourse && !slot.booking && !slot.locked) {
+                  setDragEndSlot(slot);
+                  const selected = calculateSelectedSlots(dragStartSlot, slot);
+                  setSelectedSlots(selected);
+                }
+              }
+            }
+          };
+
+          // NEW: Handle mouse up to complete drag selection
+          const handleSlotMouseUp = async (slot) => {
+            if (deleteMode && isDragging && deleteSelection.length > 0) {
+              // DELETE MODE: Confirm and delete selected bookings
+              const confirmMsg = `Delete ${deleteSelection.length} booking${deleteSelection.length > 1 ? 's' : ''}?`;
+              if (confirm(confirmMsg)) {
+                for (const bookingId of deleteSelection) {
+                  await CloudSyncAdapter.deleteBooking(bookingId);
+                }
+                console.log('[TeeSheet] Deleted', deleteSelection.length, 'bookings');
+
+                // Reload bookings from cloud
+                window.location.reload();
+              }
+            } else if (isDragging && dragStartSlot && dragEndSlot && selectedSlots.length > 0) {
+              // BOOKING MODE: Open modal with time range pre-filled
+              const startTime = dragStartSlot.time;
+              const endTime = dragEndSlot.time;
+
+              // Create a composite slot with range information
+              const rangeSlot = {
+                ...dragStartSlot,
+                isRangeSelection: true,
+                date: filters.date, // FIXED: Include the current filter date
+                startTime: startTime < endTime ? startTime : endTime,
+                endTime: startTime < endTime ? endTime : startTime,
+                slotCount: selectedSlots.length
+              };
+
+              if (onSelectSlot) {
+                onSelectSlot(rangeSlot);
+              }
+            }
+
+            // Reset drag state
+            setIsDragging(false);
+            setDragStartSlot(null);
+            setDragEndSlot(null);
+            setSelectedSlots([]);
+            setDeleteSelection([]);
           };
 
           const enhancedRows = useMemo(() => {
@@ -2291,7 +2751,7 @@
                       color: 'white',
                       border: 'none',
                       borderRadius: '4px',
-                      fontSize: '0.75rem',
+                      fontSize: '0.7rem',
                       cursor: 'pointer',
                       fontWeight: '500'
                     }
@@ -2305,7 +2765,7 @@
                       color: 'white',
                       border: 'none',
                       borderRadius: '4px',
-                      fontSize: '0.75rem',
+                      fontSize: '0.7rem',
                       cursor: searchResults.length === 0 ? 'not-allowed' : 'pointer',
                       fontWeight: '500'
                     }
@@ -2370,6 +2830,20 @@
                     ),
                     
                     React.createElement('button', {
+                      onClick: () => setDeleteMode(!deleteMode),
+                      style: {
+                        padding: '6px 10px',
+                        backgroundColor: deleteMode ? '#f59e0b' : '#6b7280',
+                        color: 'white',
+                        border: deleteMode ? '2px solid #d97706' : '1px solid #4b5563',
+                        borderRadius: '4px',
+                        fontSize: '0.7rem',
+                        cursor: 'pointer',
+                        fontWeight: '600'
+                      }
+                    }, deleteMode ? '🗑️ DELETE MODE (drag to delete)' : '🗑️ Delete Mode'),
+
+                    React.createElement('button', {
                       onClick: () => {
                         if (confirm(`⚠️ ${t('confirmDeleteBooking')?.replace('booking', 'ALL BOOKINGS FOR THE DAY')} This action cannot be undone!`)) {
                           if (confirm('🚨 FINAL WARNING: You are about to delete ALL bookings for the entire day. Are you absolutely sure?')) {
@@ -2394,35 +2868,35 @@
               ),
 
               React.createElement('div', {
-                style: { 
+                style: {
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '8px',
-                  marginTop: '8px',
-                  paddingTop: '8px',
+                  gap: '4px',
+                  marginTop: '4px',
+                  paddingTop: '4px',
                   borderTop: '1px solid #e5e7eb'
                 }
               },
                 React.createElement('div', {
                   style: {
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                    gap: '12px'
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                    gap: '6px'
                   }
                 },
                   React.createElement('div', null,
                     React.createElement('label', {
-                      style: { display: 'block', marginBottom: '4px', fontSize: '0.75rem', fontWeight: '500', color: '#374151' }
+                      style: { display: 'block', marginBottom: '2px', fontSize: '0.7rem', fontWeight: '500', color: '#374151' }
                     }, t('complex')),
                     React.createElement('select', {
                       value: localFilters.complex || '36 holes (A/B/C/D)',
                       onChange: (e) => updateFilters({complex: e.target.value}),
                       style: {
                         width: '100%',
-                        padding: '6px 8px',
+                        padding: '4px 6px',
                         border: '1px solid #d1d5db',
                         borderRadius: '4px',
-                        fontSize: '0.75rem'
+                        fontSize: '0.7rem'
                       }
                     },
                       React.createElement('option', null, '36 holes (A/B/C/D)'),
@@ -2433,32 +2907,41 @@
 
                   React.createElement('div', null,
                     React.createElement('label', {
-                      style: { display: 'block', marginBottom: '4px', fontSize: '0.75rem', fontWeight: '500', color: '#374151' }
+                      style: { display: 'block', marginBottom: '2px', fontSize: '0.7rem', fontWeight: '500', color: '#374151' }
                     }, t('date')),
                     React.createElement('input', {
                       type: 'date',
                       value: localFilters.date || date,
-                      onChange: (e) => updateFilters({date: e.target.value}),
+                      onChange: (e) => {
+                        const newDate = e.target.value;
+                        console.log('📅 DATE PICKER CHANGED:', newDate);
+                        updateFilters({date: newDate});
+
+                        // CRITICAL: Force immediate parent update (same as teesPerCourse)
+                        if (onFilterChange) {
+                          onFilterChange({date: newDate});
+                        }
+                      },
                       style: {
                         width: '100%',
-                        padding: '6px 8px',
+                        padding: '4px 6px',
                         border: '1px solid #d1d5db',
                         borderRadius: '4px',
-                        fontSize: '0.75rem'
+                        fontSize: '0.7rem'
                       }
                     })
                   ),
 
                   React.createElement('div', null,
                     React.createElement('label', {
-                      style: { display: 'block', marginBottom: '4px', fontSize: '0.75rem', fontWeight: '500', color: '#374151' }
+                      style: { display: 'block', marginBottom: '2px', fontSize: '0.7rem', fontWeight: '500', color: '#374151' }
                     }, t('totalTees')),
                     React.createElement('div', {
                       style: { 
-                        padding: '6px 8px',
+                        padding: '4px 6px',
                         backgroundColor: '#f3f4f6',
                         borderRadius: '4px',
-                        fontSize: '0.75rem',
+                        fontSize: '0.7rem',
                         fontWeight: '500',
                         color: '#374151',
                         border: '1px solid #e5e7eb'
@@ -2476,7 +2959,7 @@
                 },
                   React.createElement('div', null,
                     React.createElement('label', {
-                      style: { display: 'block', marginBottom: '4px', fontSize: '0.75rem', fontWeight: '500', color: '#374151' }
+                      style: { display: 'block', marginBottom: '2px', fontSize: '0.7rem', fontWeight: '500', color: '#374151' }
                     }, `${t('start')} / ${t('end')}`),
                     React.createElement('div', {
                       style: { display: 'flex', gap: '6px' }
@@ -2487,10 +2970,10 @@
                         onChange: (e) => updateFilters({startTime: e.target.value}),
                         style: {
                           flex: 1,
-                          padding: '6px 8px',
+                          padding: '4px 6px',
                           border: '1px solid #d1d5db',
                           borderRadius: '4px',
-                          fontSize: '0.75rem'
+                          fontSize: '0.7rem'
                         }
                       }),
                       React.createElement('input', {
@@ -2499,10 +2982,10 @@
                         onChange: (e) => updateFilters({endTime: e.target.value}),
                         style: {
                           flex: 1,
-                          padding: '6px 8px',
+                          padding: '4px 6px',
                           border: '1px solid #d1d5db',
                           borderRadius: '4px',
-                          fontSize: '0.75rem'
+                          fontSize: '0.7rem'
                         }
                       })
                     )
@@ -2510,7 +2993,7 @@
 
                   React.createElement('div', null,
                     React.createElement('label', {
-                      style: { display: 'block', marginBottom: '4px', fontSize: '0.75rem', fontWeight: '500', color: '#374151' }
+                      style: { display: 'block', marginBottom: '2px', fontSize: '0.7rem', fontWeight: '500', color: '#374151' }
                     }, `${t('interval')} / ${t('teesPerCourse')}`),
                     React.createElement('div', {
                       style: { display: 'flex', gap: '6px' }
@@ -2520,14 +3003,16 @@
                         onChange: (e) => updateFilters({interval: e.target.value}),
                         style: {
                           flex: 1,
-                          padding: '6px 8px',
+                          padding: '4px 6px',
                           border: '1px solid #d1d5db',
                           borderRadius: '4px',
-                          fontSize: '0.75rem'
+                          fontSize: '0.7rem'
                         }
                       },
                         React.createElement('option', null, '5 min'),
+                        React.createElement('option', null, '7 min'),
                         React.createElement('option', null, '10 min'),
+                        React.createElement('option', null, '12 min'),
                         React.createElement('option', null, '15 min')
                       ),
                       React.createElement('select', {
@@ -2535,10 +3020,10 @@
                         onChange: (e) => updateFilters({teesPerCourse: parseInt(e.target.value)}),
                         style: {
                           flex: 1,
-                          padding: '6px 8px',
+                          padding: '4px 6px',
                           border: '1px solid #d1d5db',
                           borderRadius: '4px',
-                          fontSize: '0.75rem'
+                          fontSize: '0.7rem'
                         }
                       },
                         React.createElement('option', { value: 1 }, '1'),
@@ -2581,12 +3066,13 @@
                     React.createElement('tr', null,
                       React.createElement('th', {
                         style: {
-                          padding: '10px 6px',
+                          padding: '3px 4px',
                           border: '2px solid #374151',
                           backgroundColor: '#f9fafb',
-                          fontSize: '0.7rem',
+                          fontSize: '0.65rem',
                           color: '#6b7280',
-                          minWidth: '60px',
+                          minWidth: '45px',
+                          width: '45px',
                           position: 'sticky',
                           left: 0,
                           zIndex: 10
@@ -2599,13 +3085,13 @@
                         return React.createElement('th', {
                           key: col.key,
                           style: {
-                            padding: '6px 4px',
+                            padding: '3px 4px',
                             border: '2px solid #374151',
                             backgroundColor: col.color,
-                            fontSize: '0.7rem',
+                            fontSize: '0.65rem',
                             fontWeight: '600',
                             textAlign: 'center',
-                            minWidth: '100px',
+                            minWidth: '80px',
                             color: '#1f2937',
                             borderLeft: needsDivider ? `3px solid ${col.color}` : '2px solid #374151',
                             position: 'relative'
@@ -2699,16 +3185,18 @@
                       },
                         React.createElement('td', {
                           style: {
-                            padding: '6px',
+                            padding: '3px 2px',
                             border: '1px solid #d1d5db',
                             borderBottom: '3px solid #000000',
                             backgroundColor: '#f9fafb',
                             fontWeight: '600',
-                            fontSize: '0.7rem',
+                            fontSize: '0.65rem',
                             textAlign: 'center',
                             position: 'sticky',
                             left: 0,
-                            zIndex: 5
+                            zIndex: 5,
+                            minWidth: '45px',
+                            width: '45px'
                           }
                         }, row.time),
                         ...row.slots.map((slot, colIdx) => {
@@ -2758,26 +3246,35 @@
                               style: {
                                 width: '100%',
                                 height: '100%',
-                                backgroundColor: slot.locked ? '#fef2f2' : 
-                                               isDropTarget ? '#dbeafe' : 
+                                backgroundColor: slot.locked ? '#fef2f2' :
+                                               deleteSelection.includes(slot.booking?.id) ? '#fecaca' :
+                                               selectedSlots.includes(slot.id) ? '#bfdbfe' :
+                                               isDropTarget ? '#dbeafe' :
                                                highlightedSlot === slot.id ? '#fef3c7' :
                                                hasBooking ? '#eff6ff' : 'white',
-                                border: isDropTarget ? '2px dashed #3b82f6' : 
+                                border: deleteSelection.includes(slot.booking?.id) ? '2px solid #dc2626' :
+                                       selectedSlots.includes(slot.id) ? '2px solid #3b82f6' :
+                                       isDropTarget ? '2px dashed #3b82f6' :
                                        highlightedSlot === slot.id ? '3px solid #f59e0b' :
                                        slot.locked ? '2px solid #ef4444' :
                                        '1px solid transparent',
                                 borderRadius: '4px',
                                 padding: '2px',
-                                cursor: slot.locked ? 'not-allowed' : hasBooking ? 'grab' : 'pointer',
+                                cursor: slot.locked ? 'not-allowed' :
+                                       deleteMode && hasBooking ? 'pointer' :
+                                       hasBooking ? 'grab' : 'pointer',
                                 display: 'flex',
                                 flexDirection: 'column',
                                 justifyContent: 'center',
                                 position: 'relative',
                                 overflow: 'hidden',
-                                boxShadow: highlightedSlot === slot.id ? '0 0 8px rgba(245, 158, 11, 0.6)' : 
+                                boxShadow: deleteSelection.includes(slot.booking?.id) ? '0 0 12px rgba(220, 38, 38, 0.6)' :
+                                         selectedSlots.includes(slot.id) ? '0 0 10px rgba(59, 130, 246, 0.5)' :
+                                         highlightedSlot === slot.id ? '0 0 8px rgba(245, 158, 11, 0.6)' :
                                          hasBooking ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                                transition: 'all 0.3s ease',
-                                minHeight: '40px'
+                                transition: 'all 0.1s ease',
+                                minHeight: '40px',
+                                userSelect: 'none'
                               },
                               draggable: (!!slot.booking && !slot.locked),
                               onDragStart: (e) => {
@@ -2804,8 +3301,26 @@
                                 }
                                 if (setDragOverSlot) setDragOverSlot(null);
                               },
-    
+
+                              // NEW: Drag selection handlers
+                              onMouseDown: (e) => {
+                                if (e.button === 0) { // Left mouse button only
+                                  handleSlotMouseDown(slot, e);
+                                }
+                              },
+                              onMouseEnter: () => {
+                                handleSlotMouseEnter(slot);
+                              },
+                              onMouseUp: () => {
+                                handleSlotMouseUp(slot);
+                              },
+
                               onClick: (e) => {
+                                // Prevent default click if we just completed a drag selection
+                                if (isDragging || selectedSlots.length > 0) {
+                                  return;
+                                }
+
                                 if (e.ctrlKey || e.metaKey) {
                                   e.preventDefault();
                                   if (onToggleLock) {
@@ -2962,9 +3477,10 @@
 
         // Real caddy database - loaded from main system
         const demoCaddies = [
-                // PATTANA GOLF RESORT & SPA (20 caddies)
-                { id: 'pat002', number: '002', number: '002', name: 'Sunan Rojana', rating: 4.8, experience: 12, languages: ['Thai', 'English', 'German'], avatar: '👨', photo: 'images/caddies/caddy5.jpg', specialty: 'Resort Experience', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 3456, reviews: 421, personality: 'Luxury service focused', strengths: ['Resort Services', 'Guest Relations', 'Ocean Course'] },
-                { id: 'pat003', number: '003', number: '003', name: 'Ploy Siriwat', rating: 4.7, experience: 6, languages: ['Thai', 'English'], avatar: '👩', photo: 'images/caddies/caddy6.jpg', specialty: 'Spa & Golf Package', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 1847, reviews: 198, personality: 'Relaxed and wellness-focused', strengths: ['Wellness Integration', 'Relaxation', 'Course Enjoyment'] },
+                // PATTANA GOLF RESORT & SPA (21 caddies - including pat001 Ning Prasert)
+                { id: 'pat001', number: '001', name: 'Ning Prasert', rating: 4.9, experience: 8, languages: ['Thai', 'English'], avatar: '👨‍🦲', photo: 'images/caddies/caddy24.jpg', specialty: 'Championship Course', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 3, reviews: 2, personality: 'Professional and detail-oriented', strengths: ['Course Knowledge', 'Club Selection', 'Reading Greens'] },
+                { id: 'pat002', number: '002', name: 'Sunan Rojana', rating: 4.8, experience: 12, languages: ['Thai', 'English', 'German'], avatar: '👨', photo: 'images/caddies/caddy5.jpg', specialty: 'Resort Experience', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 3456, reviews: 421, personality: 'Luxury service focused', strengths: ['Resort Services', 'Guest Relations', 'Ocean Course'] },
+                { id: 'pat003', number: '003', name: 'Ploy Siriwat', rating: 4.7, experience: 6, languages: ['Thai', 'English'], avatar: '👩', photo: 'images/caddies/caddy6.jpg', specialty: 'Spa & Golf Package', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 1847, reviews: 198, personality: 'Relaxed and wellness-focused', strengths: ['Wellness Integration', 'Relaxation', 'Course Enjoyment'] },
                 { id: 'pat004', number: '004', name: 'Anuwat Teerachai', rating: 4.6, experience: 9, languages: ['Thai', 'English', 'Russian'], avatar: '👨‍🦳', photo: 'images/caddies/caddy7.jpg', specialty: 'International Guests', homeClub: 'pattana-golf-resort', availability: 'booked', totalRounds: 2734, reviews: 312, personality: 'Cultural bridge specialist', strengths: ['Language Skills', 'Cultural Awareness', 'International Etiquette'] },
                 { id: 'pat005', number: '005', name: 'Siriporn Nakamura', rating: 4.9, experience: 11, languages: ['Thai', 'English', 'Japanese'], avatar: '👩', photo: 'images/caddies/caddy8.jpg', specialty: 'International Service', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 3921, reviews: 456, personality: 'Precise and culturally aware', strengths: ['Japanese Guests', 'Precision', 'Cultural Service'] },
                 { id: 'pat006', number: '006', name: 'Kamon Srisuk', rating: 4.5, experience: 7, languages: ['Thai', 'English'], avatar: '👨', photo: 'images/caddies/caddy9.jpg', specialty: 'Ocean Course Expert', homeClub: 'pattana-golf-resort', availability: 'available', totalRounds: 2156, reviews: 234, personality: 'Ocean course specialist', strengths: ['Wind Reading', 'Coastal Play', 'Weather Adaptation'] },
@@ -2993,27 +3509,51 @@
           const [selectedSlot, setSelectedSlot] = useState(null);
           const [demoRows, setDemoRows] = useState([]);
           const [language, setLanguage] = useState('en');
+          const [isLoading, setIsLoading] = useState(false);
+          const [loadingMessage, setLoadingMessage] = useState('');
           
-          // Load saved settings from localStorage or use Pattana Golf Club defaults
+          // Load saved settings from localStorage or use GM config/defaults
           const loadSavedSettings = () => {
-            const saved = localStorage.getItem('teesheet_settings');
             const today = new Date().toISOString().split('T')[0];
 
+            // Load GM pricing configuration if available
+            let gmConfig = {};
+            try {
+              const pricingConfig = localStorage.getItem('mcipro_pricing_config');
+              if (pricingConfig) {
+                const parsed = JSON.parse(pricingConfig);
+                gmConfig = {
+                  startTime: parsed.courseSettings?.operatingHours?.start || '06:00',
+                  endTime: parsed.courseSettings?.operatingHours?.end || '17:00',
+                  interval: `${parsed.courseSettings?.slotInterval || 10} min`,
+                  maxPlayers: parsed.courseSettings?.maxPlayersPerSlot || 4
+                };
+                console.log('[TeeSheet] Loaded GM config:', gmConfig);
+              }
+            } catch (e) {
+              console.warn('[TeeSheet] Failed to load GM pricing config:', e);
+            }
+
+            const saved = localStorage.getItem('teesheet_settings');
             if (saved) {
               try {
                 const settings = JSON.parse(saved);
-                // Always use today's date, but keep other saved settings
-                return { ...settings, date: today };
+                // Merge saved settings with GM config (GM config takes precedence for interval/hours)
+                return {
+                  ...settings,
+                  ...gmConfig,
+                  date: settings.date || today
+                };
               } catch (e) {
                 console.warn('[TeeSheet] Failed to parse saved settings:', e);
               }
             }
-            // Pattana Golf Club defaults: 27 holes (A/B/C), 2 tees per nine, 6am-5pm, 5min intervals
+            // Defaults: Use GM config if available, otherwise fallback to Pattana defaults
             return {
               complex: '27 holes (A/B/C)',
-              startTime: '06:00',
-              endTime: '17:00',
-              interval: '5 min',
+              startTime: gmConfig.startTime || '06:00',
+              endTime: gmConfig.endTime || '17:00',
+              interval: gmConfig.interval || '10 min',
               teesPerCourse: 2,
               date: today
             };
@@ -3021,15 +3561,16 @@
 
           const [filters, setFilters] = useState(loadSavedSettings());
 
-          // Save settings to localStorage whenever they change (but not the date)
+          // Save settings to localStorage whenever they change (INCLUDING the date now)
           useEffect(() => {
-            const { date, ...settingsWithoutDate } = filters;
-            localStorage.setItem('teesheet_settings', JSON.stringify(settingsWithoutDate));
+            // FIXED: Save the date too so it persists when changing dates
+            localStorage.setItem('teesheet_settings', JSON.stringify(filters));
 
-            // Also save as Pattana-specific settings for golfer dashboard sync
+            // Also save as Pattana-specific settings for golfer dashboard sync (without date for time settings only)
+            const { date, ...settingsWithoutDate } = filters;
             localStorage.setItem('pattana-tee-sheet-settings', JSON.stringify(settingsWithoutDate));
 
-            console.log('[TeeSheet] Settings saved (without date):', settingsWithoutDate);
+            console.log('[TeeSheet] Settings saved (with date):', filters);
           }, [filters]);
 
           const getInstructionText = (lang) => {
@@ -3110,44 +3651,61 @@
           };
 
           useEffect(() => {
-            const intervalMinutes = parseInt(filters.interval?.replace(/\D/g, '') || '10');
-            const timeSlots = buildTimes(filters.startTime, filters.endTime, intervalMinutes);
-            
-            const initialRows = timeSlots.map(time => ({
-              time,
-              slots: demoLanes.flatMap(lane => 
-                Array.from({length: filters.teesPerCourse}, (_, teeIndex) => {
-                  const teeNum = teeIndex + 1;
-                  const slotId = `${time}-${lane.courseId}-${teeNum}`;
-                  const slot = {
-                    id: slotId,
-                    courseId: lane.courseId,
-                    time,
-                    capacity: 4,
-                    players: 0,
-                    availableCaddies: demoCaddies,
-                    locked: false
-                  };
+            // CRITICAL FIX: Complete reset when date changes - like a soft refresh
+            console.log('[TeeSheet] Date/settings changed - performing soft refresh...');
+            setIsLoading(true);
+            setLoadingMessage(`Loading ${filters.date}...`);
 
-                  // NO DEMO BOOKINGS - Only show real bookings from cloud
+            // STEP 1: Clear all existing slots immediately (force clean slate)
+            setDemoRows([]);
 
-                  return slot;
-                })
-              )
-            }));
+            // STEP 2: Small delay to ensure state clears
+            const createTimer = setTimeout(() => {
+              const intervalMinutes = parseInt(filters.interval?.replace(/\D/g, '') || '10');
+              const timeSlots = buildTimes(filters.startTime, filters.endTime, intervalMinutes);
 
-            setDemoRows(initialRows);
-          }, [filters.startTime, filters.endTime, filters.interval, filters.teesPerCourse]);
+              const initialRows = timeSlots.map(time => ({
+                time,
+                slots: demoLanes.flatMap(lane =>
+                  Array.from({length: filters.teesPerCourse}, (_, teeIndex) => {
+                    const teeNum = teeIndex + 1;
+                    const slotId = `${time}-${lane.courseId}-${teeNum}`;
+                    const slot = {
+                      id: slotId,
+                      courseId: lane.courseId,
+                      time,
+                      date: filters.date, // CRITICAL FIX: Include date so bookings save to correct date
+                      capacity: 4,
+                      players: 0,
+                      availableCaddies: demoCaddies,
+                      locked: false
+                    };
+
+                    return slot;
+                  })
+                )
+              }));
+
+              console.log('[TeeSheet] Created', initialRows.length, 'rows with', initialRows[0]?.slots.length, 'slots each for date:', filters.date);
+              setDemoRows(initialRows);
+            }, 100);
+
+            return () => clearTimeout(createTimer);
+          }, [filters.startTime, filters.endTime, filters.interval, filters.teesPerCourse, filters.date]); // FIXED: Recreate slots when date changes
 
           // Load bookings from cloud on mount and when filters change
           useEffect(() => {
             async function loadCloudBookings() {
+              setIsLoading(true);
+              setLoadingMessage(`Loading bookings for ${filters.date}...`);
               console.log('[TeeSheet] Loading bookings from cloud...');
 
               const result = await CloudSyncAdapter.loadBookings();
 
               if (!result.success) {
                 console.error('[TeeSheet] Failed to load bookings:', result.error);
+                setIsLoading(false);
+                setLoadingMessage('');
                 return;
               }
 
@@ -3155,27 +3713,60 @@
               console.log('[TeeSheet] Loaded', cloudBookings.length, 'bookings from cloud');
 
               // Filter bookings for current date
-              console.log('[TeeSheet] Filtering bookings - filters.date:', filters.date);
-              console.log('[TeeSheet] Sample booking dates:', cloudBookings.slice(0, 3).map(b => ({ id: b.id, date: b.date, source: b.source })));
-              const todaysBookings = cloudBookings.filter(b => b.date === filters.date);
-              console.log('[TeeSheet] Found', todaysBookings.length, 'bookings for', filters.date);
+              console.log('[TeeSheet] ===== DATE FILTER DEBUG =====');
+              console.log('[TeeSheet] filters.date:', filters.date, 'type:', typeof filters.date);
+              console.log('[TeeSheet] All booking dates:', cloudBookings.map(b => ({ id: b.id, date: b.date, time: b.time, teeTime: b.teeTime })));
+
+              // FIXED: Normalize date formats before comparison
+              const normalizedFilterDate = filters.date?.split('T')[0]; // Remove any time component
+              console.log('[TeeSheet] Normalized filter date:', normalizedFilterDate);
+
+              const todaysBookings = cloudBookings.filter(b => {
+                const bookingDate = b.date?.split('T')[0]; // Remove any time component
+                const matches = bookingDate === normalizedFilterDate;
+                if (!matches && cloudBookings.length < 5) {
+                  console.log('[TeeSheet] No match - booking date:', bookingDate, 'vs filter:', normalizedFilterDate);
+                }
+                return matches;
+              });
+              console.log('[TeeSheet] Found', todaysBookings.length, 'bookings for', normalizedFilterDate);
+              console.log('[TeeSheet] ===== END DEBUG =====');
 
               if (todaysBookings.length === 0) {
+                setIsLoading(false);
+                setLoadingMessage('');
                 return; // No bookings to merge for this date
               }
 
               // Merge cloud bookings into existing slots (including dashboard-pattana bookings)
               let mergeCount = 0;
+
               setDemoRows(prevRows => {
+                // DEBUG: Check if 07:05 slots exist
+                const has0705 = prevRows.some(row => row.time === '07:05');
+                console.log('[TeeSheet] DEBUG: Has 07:05 slots?', has0705);
+                console.log('[TeeSheet] DEBUG: All row times (first 20):', prevRows.slice(0, 20).map(r => r.time));
+
                 return prevRows.map(row => ({
                   ...row,
                   slots: row.slots.map(slot => {
                     // Find matching booking for this slot
                     const matchingBooking = todaysBookings.find(booking => {
+                      // Skip cancelled bookings - they shouldn't appear on tee sheet
+                      if (booking.status === 'cancelled' || booking.cancelledByStaff) {
+                        if (slot.time === '07:05') {
+                          console.log('[TeeSheet] DEBUG 07:05 - Booking filtered (cancelled):', booking.id);
+                        }
+                        return false;
+                      }
+
                       // Only include teesheet, dashboard, or dashboard-pattana bookings
                       if (booking.source !== 'teesheet' &&
                           booking.source !== 'dashboard-pattana' &&
                           booking.source !== 'dashboard') {
+                        if (slot.time === '07:05') {
+                          console.log('[TeeSheet] DEBUG 07:05 - Booking filtered (wrong source):', booking.source);
+                        }
                         return false;
                       }
 
@@ -3246,11 +3837,16 @@
                       // Check tee number if available
                       const teeMatch = !booking.teeNumber || slot.id.includes(`-${booking.teeNumber}`);
 
-                      // DEBUG: Log match result for 14:00
-                      if (slot.time === '14:00' && booking.time === '14:00') {
-                        console.log('[TeeSheet] DEBUG match result:', {
+                      // DEBUG: Log match result for 07:05 and 14:00
+                      if ((slot.time === '07:05' && booking.time === '07:05') || (slot.time === '14:00' && booking.time === '14:00')) {
+                        console.log('[TeeSheet] DEBUG match result for', slot.time, ':', {
+                          slotId: slot.id,
+                          bookingId: booking.id,
+                          bookingTime: bookingTime,
+                          slotTime: slotTime,
                           timesMatch,
                           courseMatch,
+                          matchMethod,
                           teeMatch,
                           finalMatch: timesMatch && courseMatch && teeMatch
                         });
@@ -3268,7 +3864,11 @@
                       };
                     }
 
-                    return slot;
+                    // FIXED: Clear booking if no match found (prevents bookings from appearing on wrong dates)
+                    return {
+                      ...slot,
+                      booking: undefined
+                    };
                   })
                 }));
               });
@@ -3289,14 +3889,36 @@
                 });
                 console.error('[TeeSheet] Sample slot IDs:', demoRows[0]?.slots.slice(0, 3).map(s => s.id));
               }
+
+              // Clear loading state
+              setTimeout(() => {
+                setIsLoading(false);
+                setLoadingMessage('');
+              }, 300);
             }
 
-            // Load after a short delay to ensure demoRows is initialized
+            // CRITICAL FIX: Only load bookings when slots are ready
+            if (demoRows.length === 0) {
+              console.log('[TeeSheet] Waiting for slots to be created before loading bookings...');
+              return;
+            }
+
+            console.log('[TeeSheet] Slots ready, loading bookings for', filters.date);
+
+            // Load bookings immediately when slots are ready
             const timer = setTimeout(() => {
               loadCloudBookings();
-            }, 500);
+            }, 200); // Small delay after slots are created
 
-            return () => clearTimeout(timer);
+            // REAL-TIME: Poll for new bookings every 2 seconds for multi-terminal sync
+            const pollInterval = setInterval(() => {
+              loadCloudBookings();
+            }, 2000);
+
+            return () => {
+              clearTimeout(timer);
+              clearInterval(pollInterval);
+            };
           }, [filters.date, demoRows.length]); // Reload when date changes OR slots are created
 
           const handleSelectSlot = (slot) => {
@@ -3333,6 +3955,113 @@
               return;
             }
 
+            // NEW: Handle range booking - create bookings for all slots in range
+            if (booking.isRangeBooking && booking.startTime && booking.endTime) {
+              console.log('[TeeSheet] Range booking detected:', booking.startTime, 'to', booking.endTime);
+
+              // Generate all time slots in the range
+              const intervalMinutes = parseInt(filters.interval?.replace(/\D/g, '') || '5');
+              const startMinutes = parseInt(booking.startTime.split(':')[0]) * 60 + parseInt(booking.startTime.split(':')[1]);
+              const endMinutes = parseInt(booking.endTime.split(':')[0]) * 60 + parseInt(booking.endTime.split(':')[1]);
+
+              const timeSlots = [];
+              for (let m = startMinutes; m <= endMinutes; m += intervalMinutes) {
+                const h = Math.floor(m / 60);
+                const min = m % 60;
+                timeSlots.push(`${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`);
+              }
+
+              console.log('[TeeSheet] Creating bookings for time slots:', timeSlots);
+
+              // Get the course/tee number from the original slot
+              const slotParts = slot.id.split('-'); // e.g., "09:00-course-a-1" -> ["09:00", "course", "a", "1"]
+              const courseAndTee = slotParts.slice(1).join('-'); // "course-a-1"
+
+              // Create bookings and slot objects for each time in range
+              const rangeGroupId = booking.id; // Use first booking ID as groupId for the range
+
+              const bookingsWithSlots = timeSlots.map((time, index) => {
+                const slotId = `${time}-${courseAndTee}`;
+                const slotBooking = {
+                  ...booking,
+                  id: index === 0 ? booking.id : `${booking.id}-${index}`,
+                  groupId: rangeGroupId, // All bookings in range share same groupId
+                  time,
+                  slotTime: `${filters.date}T${time}:00+07:00`,
+                };
+
+                // Create a slot object for this specific time
+                const timeSlot = {
+                  ...slot,
+                  id: slotId,
+                  time: time
+                };
+
+                return {
+                  booking: slotBooking,
+                  slot: timeSlot,
+                  slotId
+                };
+              });
+
+              // Update local state for ALL slots in range
+              setDemoRows(prevRows =>
+                prevRows.map(row => ({
+                  ...row,
+                  slots: row.slots.map(s => {
+                    const update = bookingsWithSlots.find(u => u.slotId === s.id);
+                    return update ? { ...s, booking: update.booking } : s;
+                  })
+                }))
+              );
+
+              // FIXED: Save all range bookings in a SINGLE batch to avoid conflicts
+              // Convert all bookings to unified format using their respective time slots
+              const unifiedBookings = bookingsWithSlots.flatMap(({ booking, slot: timeSlot }) => {
+                return CloudSyncAdapter.convertToUnifiedFormat(booking, timeSlot, {
+                  id: lane.courseId,
+                  name: lane.label || lane.labelEn || 'Course'
+                }, filters.date);
+              });
+
+              console.log('[TeeSheet] Saving', unifiedBookings.length, 'unified bookings in single batch');
+
+              // Save all as a single atomic operation
+              const baseVersion = parseInt(localStorage.getItem('mcipro_cloud_version') || '0');
+              const response = await fetch(CloudSyncAdapter.API_URL, {
+                method: 'PUT',
+                headers: {
+                  'Authorization': `Bearer ${CloudSyncAdapter.SITE_KEY}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  baseVersion: baseVersion,
+                  bookings: unifiedBookings
+                })
+              });
+
+              if (response.status === 409) {
+                console.warn('[TeeSheet] Conflict on range booking save, retrying...');
+                const cloudData = await response.json();
+                localStorage.setItem('mcipro_cloud_version', cloudData.version);
+                // Retry by re-calling handleSaveBooking
+                alert('⚠️ Conflict detected, please try again.');
+                return;
+              }
+
+              if (!response.ok) {
+                console.error('[TeeSheet] Cloud sync failed:', response.statusText);
+                alert(`⚠️ Booking saved locally, but cloud sync failed: ${response.statusText}\nYour booking may not appear on other devices.`);
+                return;
+              }
+
+              const result = await response.json();
+              localStorage.setItem('mcipro_cloud_version', result.version);
+              console.log('[TeeSheet] Range booking saved and synced to cloud, version:', result.version);
+              return;
+            }
+
+            // Single slot booking (original logic)
             // Update local state first
             setDemoRows(prevRows =>
               prevRows.map(row => ({
@@ -3387,8 +4116,14 @@
             });
           }
 
-          const handleMoveBooking = (fromSlotId, toSlotId) => {
+          const handleMoveBooking = async (fromSlotId, toSlotId) => {
             if (!fromSlotId || !toSlotId || fromSlotId === toSlotId) return;
+
+            let movedBooking = null;
+            let toSlot = null;
+            let toLane = null;
+
+            // Update local UI first
             setDemoRows(prevRows => {
               let moved = null;
               let destHas = null;
@@ -3398,10 +4133,12 @@
                 slots: row.slots.map(s => {
                   if (s.id === fromSlotId) {
                     moved = s.booking ? { ...s.booking } : null;
+                    movedBooking = moved; // Capture for cloud sync
                     return { ...s, booking: undefined };
                   }
                   if (s.id === toSlotId) {
                     destHas = s.booking ? { ...s.booking } : null;
+                    toSlot = s; // Capture destination slot
                   }
                   return s;
                 })
@@ -3422,12 +4159,39 @@
               }));
               return applied;
             });
+
+            // CRITICAL: Sync booking move to cloud (updates entire group)
+            if (movedBooking && movedBooking.id && toSlot) {
+              // Find the lane for the destination slot
+              toLane = demoLanes.find(l => toSlotId.includes(l.courseId)) || {
+                id: 'unknown',
+                name: 'Unknown Course',
+                courseId: 'unknown'
+              };
+
+              console.log('[TeeSheet] Syncing booking move to cloud:', movedBooking.id, 'to slot', toSlotId);
+
+              const syncResult = await CloudSyncAdapter.updateBookingTime(
+                movedBooking.id,
+                toSlot,
+                toLane,
+                filters.date
+              );
+
+              if (syncResult.success) {
+                console.log('[TeeSheet] Booking move synced to cloud, updated', syncResult.updatedCount, 'bookings');
+                alert(`✅ Booking moved and ${syncResult.updatedCount} related bookings updated. Golfer will see the change on their schedule.`);
+              } else {
+                console.error('[TeeSheet] Cloud sync failed:', syncResult.error);
+                alert(`⚠️ Booking moved locally, but cloud sync failed: ${syncResult.error}\nGolfer may not see the change.`);
+              }
+            }
           };
 ;
 
           const totalTees = demoLanes.length * filters.teesPerCourse;
 
-          return React.createElement('div', null,
+          return React.createElement('div', { style: { position: 'relative' } },
             React.createElement(TeeSheet, {
               date: filters.date,
               lanes: demoLanes,
@@ -3440,6 +4204,10 @@
               onLanguageChange: setLanguage,
               onToggleLock: handleToggleLock,
               onMoveBooking: handleMoveBooking,
+              onFilterChange: (newFilters) => {
+                // FIXED: Allow TeeSheet to update parent filters (especially date)
+                setFilters(prev => ({ ...prev, ...newFilters }));
+              },
               onRangeChange: (from, to) => {
                 setFilters(prev => ({
                   ...prev,
@@ -3458,54 +4226,7 @@
                 setSelectedSlot(null);
               },
               onSaveBooking: handleSaveBooking
-            }),
-            
-            React.createElement('div', {
-              style: {
-                position: 'fixed',
-                bottom: '10px',
-                right: '10px',
-                backgroundColor: 'rgba(0, 0, 0, 0.9)',
-                color: 'white',
-                padding: '12px',
-                borderRadius: '8px',
-                fontSize: '0.7rem',
-                maxWidth: '280px',
-                zIndex: 9999,
-                border: '1px solid rgba(255,255,255,0.1)',
-                backdropFilter: 'blur(10px)',
-                boxSizing: 'border-box'
-              }
-            },
-              React.createElement('div', {
-                style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }
-              },
-                React.createElement('h4', {
-                  style: { margin: 0, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }
-                }, `🌏️‍♂️ ${getInstructionText(language).title}`),
-                React.createElement('select', {
-                  value: language,
-                  onChange: (e) => setLanguage(e.target.value),
-                  style: {
-                    padding: '2px 4px',
-                    fontSize: '0.65rem',
-                    backgroundColor: 'rgba(255,255,255,0.1)',
-                    color: 'white',
-                    border: '1px solid rgba(255,255,255,0.3)',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                  }
-                },
-                  React.createElement('option', { value: 'en', style: { backgroundColor: '#000', color: 'white' } }, '🇺🇸 EN'),
-                  React.createElement('option', { value: 'th', style: { backgroundColor: '#000', color: 'white' } }, '🇹🇭 TH'),
-                  React.createElement('option', { value: 'ko', style: { backgroundColor: '#000', color: 'white' } }, '🇰🇷 KO')
-                )
-              ),
-              React.createElement('div', {
-                style: { lineHeight: '1.3' },
-                dangerouslySetInnerHTML: { __html: getInstructionText(language).content }
-              })
-            )
+            })
           );
         };
 

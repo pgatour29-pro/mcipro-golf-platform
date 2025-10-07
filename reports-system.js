@@ -1402,21 +1402,125 @@ const ReportsSystem = {
             reportData = this[funcName](startDate, endDate);
         }
 
+        // Use the same formatted HTML as the modal display
+        const formattedHTML = this.formatReportHTML(reportData);
+
         const printWindow = window.open('', '_blank');
         printWindow.document.write(`
             <html>
                 <head>
                     <title>${reportData.reportType}</title>
                     <style>
-                        body { font-family: Arial, sans-serif; padding: 20px; }
-                        h1 { color: #059669; }
-                        pre { background: #f3f4f6; padding: 15px; border-radius: 8px; }
+                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                        body {
+                            font-family: Arial, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                            padding: 30px;
+                            line-height: 1.6;
+                            color: #111827;
+                        }
+                        h1 {
+                            color: #059669;
+                            margin-bottom: 10px;
+                            font-size: 28px;
+                        }
+                        h2, h3 {
+                            color: #374151;
+                            margin: 20px 0 10px 0;
+                        }
+                        p { margin: 5px 0; }
+
+                        /* Table styles */
+                        table {
+                            border-collapse: collapse;
+                            width: 100%;
+                            margin: 20px 0;
+                            page-break-inside: avoid;
+                        }
+                        th, td {
+                            border: 2px solid #6b7280;
+                            padding: 10px;
+                            text-align: left;
+                        }
+                        th {
+                            background-color: #f3f4f6;
+                            font-weight: 600;
+                        }
+                        tfoot {
+                            background-color: #1f2937;
+                            color: white;
+                            font-weight: bold;
+                        }
+
+                        /* Card styles */
+                        .bg-green-50 { background: #f0fdf4; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #86efac; }
+                        .bg-blue-50 { background: #eff6ff; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #93c5fd; }
+                        .bg-orange-50 { background: #fff7ed; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #fdba74; }
+                        .bg-purple-50 { background: #faf5ff; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #d8b4fe; }
+                        .bg-red-50 { background: #fef2f2; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #fca5a5; }
+                        .bg-yellow-50 { background: #fefce8; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #fde047; }
+                        .bg-indigo-50 { background: #eef2ff; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #a5b4fc; }
+                        .bg-gray-50 { background: #f9fafb; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #e5e7eb; }
+
+                        /* Color text */
+                        .text-green-600 { color: #16a34a; }
+                        .text-blue-600 { color: #2563eb; }
+                        .text-orange-600 { color: #ea580c; }
+                        .text-purple-600 { color: #9333ea; }
+                        .text-red-600 { color: #dc2626; }
+                        .text-gray-600 { color: #4b5563; }
+                        .text-gray-900 { color: #111827; }
+
+                        /* Utility */
+                        .font-bold { font-weight: bold; }
+                        .font-semibold { font-weight: 600; }
+                        .text-2xl { font-size: 24px; }
+                        .text-3xl { font-size: 30px; }
+                        .text-xl { font-size: 20px; }
+                        .text-lg { font-size: 18px; }
+                        .text-sm { font-size: 14px; }
+                        .text-xs { font-size: 12px; }
+                        .space-y-6 > * + * { margin-top: 24px; }
+                        .space-y-4 > * + * { margin-top: 16px; }
+                        .space-y-3 > * + * { margin-top: 12px; }
+                        .space-y-2 > * + * { margin-top: 8px; }
+                        .grid { display: grid; gap: 16px; }
+                        .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
+                        .grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+                        .flex { display: flex; }
+                        .justify-between { justify-content: space-between; }
+                        .items-center { align-items: center; }
+                        .rounded-lg { border-radius: 8px; }
+                        .p-4 { padding: 16px; }
+                        .p-6 { padding: 24px; }
+                        .mb-1 { margin-bottom: 4px; }
+                        .mb-2 { margin-bottom: 8px; }
+                        .mb-3 { margin-bottom: 12px; }
+                        .mb-6 { margin-bottom: 24px; }
+
+                        /* Progress bar */
+                        .bg-gray-200 { background: #e5e7eb; }
+                        .rounded-full { border-radius: 9999px; }
+                        .h-6 { height: 24px; }
+                        .overflow-hidden { overflow: hidden; }
+                        .bg-red-500, .bg-yellow-500, .bg-green-500 { height: 100%; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; }
+                        .bg-red-500 { background: #ef4444; }
+                        .bg-yellow-500 { background: #eab308; }
+                        .bg-green-500 { background: #22c55e; }
+                        .text-white { color: white; }
+
+                        @media print {
+                            body { padding: 20px; }
+                            .page-break { page-break-before: always; }
+                        }
                     </style>
                 </head>
                 <body>
                     <h1>${reportData.reportType}</h1>
-                    <p>${reportData.date || reportData.period || ''}</p>
-                    <pre>${JSON.stringify(reportData, null, 2)}</pre>
+                    <p style="color: #6b7280; margin-bottom: 20px;">${reportData.date || reportData.period || reportData.week || reportData.month || ''}</p>
+                    ${formattedHTML}
+                    <div style="margin-top: 40px; padding-top: 20px; border-top: 2px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 12px;">
+                        Generated by MciPro Golf Management Platform • ${new Date().toLocaleString()}
+                    </div>
                 </body>
             </html>
         `);

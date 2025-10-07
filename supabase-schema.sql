@@ -18,6 +18,37 @@ CREATE TABLE IF NOT EXISTS bookings (
   notes TEXT,
   phone TEXT,
   email TEXT,
+
+  -- CRITICAL: Fields needed for tee sheet display
+  group_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  golfer_id TEXT,
+  golfer_name TEXT,
+  event_name TEXT,
+  course_id TEXT,
+  course_name TEXT,
+  course TEXT,
+  tee_sheet_course TEXT,
+  tee_number INTEGER,
+  booking_type TEXT,
+  duration_min INTEGER,
+
+  -- Caddie-specific fields
+  caddie_id TEXT,
+  caddie_name TEXT,
+  caddie_status TEXT,
+  caddy_confirmation_required BOOLEAN DEFAULT FALSE,
+
+  -- Service-specific fields
+  service_name TEXT,
+  service TEXT,
+
+  -- Metadata
+  source TEXT,
+  is_private BOOLEAN DEFAULT FALSE,
+  is_vip BOOLEAN DEFAULT FALSE,
+  deleted BOOLEAN DEFAULT FALSE,
+
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -26,6 +57,9 @@ CREATE TABLE IF NOT EXISTS bookings (
 CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date);
 CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
 CREATE INDEX IF NOT EXISTS idx_bookings_caddy ON bookings(caddy_number);
+CREATE INDEX IF NOT EXISTS idx_bookings_group_id ON bookings(group_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_kind ON bookings(kind);
+CREATE INDEX IF NOT EXISTS idx_bookings_golfer_id ON bookings(golfer_id);
 
 -- =====================================================
 -- 2. USER PROFILES TABLE

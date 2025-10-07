@@ -63,7 +63,58 @@ class SupabaseClient {
             return { bookings: [] };
         }
 
-        return { bookings: data || [] };
+        // Convert snake_case fields back to camelCase for app compatibility
+        const bookings = (data || []).map(booking => ({
+            id: booking.id,
+            name: booking.name,
+            date: booking.date,
+            time: booking.time,
+            teeTime: booking.tee_time,
+            status: booking.status,
+            players: booking.players,
+            caddyNumber: booking.caddy_number,
+            currentHole: booking.current_hole,
+            lastHoleUpdate: booking.last_hole_update,
+            notes: booking.notes,
+            phone: booking.phone,
+            email: booking.email,
+
+            // CRITICAL: Convert all fields needed for tee sheet
+            groupId: booking.group_id,
+            kind: booking.kind,
+            golferId: booking.golfer_id,
+            golferName: booking.golfer_name,
+            eventName: booking.event_name,
+            courseId: booking.course_id,
+            courseName: booking.course_name,
+            course: booking.course,
+            teeSheetCourse: booking.tee_sheet_course,
+            teeNumber: booking.tee_number,
+            bookingType: booking.booking_type,
+            durationMin: booking.duration_min,
+
+            // Caddie fields
+            caddieId: booking.caddie_id,
+            caddieName: booking.caddie_name,
+            caddieStatus: booking.caddie_status,
+            caddyConfirmationRequired: booking.caddy_confirmation_required,
+
+            // Service fields
+            serviceName: booking.service_name,
+            service: booking.service,
+
+            // Metadata
+            source: booking.source,
+            isPrivate: booking.is_private,
+            isVIP: booking.is_vip,
+            deleted: booking.deleted,
+
+            // Timestamps
+            createdAt: booking.created_at,
+            updatedAt: booking.updated_at
+        }));
+
+        return { bookings };
     }
 
     async saveBooking(booking) {
@@ -85,12 +136,42 @@ class SupabaseClient {
             tee_time: booking.teeTime || booking.tee_time || booking.slotTime,
             status: booking.status || 'pending',
             players: booking.players || 1,
-            caddy_number: booking.caddyNumber || booking.caddy_number || booking.caddyNumber,
+            caddy_number: booking.caddyNumber || booking.caddy_number,
             current_hole: booking.currentHole || booking.current_hole,
             last_hole_update: booking.lastHoleUpdate || booking.last_hole_update,
             notes: booking.notes || '',
             phone: booking.phone || '',
-            email: booking.email || ''
+            email: booking.email || '',
+
+            // CRITICAL: Fields needed for tee sheet display
+            group_id: booking.groupId || booking.group_id || booking.id, // Fallback to ID if no groupId
+            kind: booking.kind || 'tee',
+            golfer_id: booking.golferId || booking.golfer_id,
+            golfer_name: booking.golferName || booking.golfer_name || booking.name,
+            event_name: booking.eventName || booking.event_name,
+            course_id: booking.courseId || booking.course_id,
+            course_name: booking.courseName || booking.course_name,
+            course: booking.course,
+            tee_sheet_course: booking.teeSheetCourse || booking.tee_sheet_course,
+            tee_number: booking.teeNumber || booking.tee_number,
+            booking_type: booking.bookingType || booking.booking_type || 'regular',
+            duration_min: booking.durationMin || booking.duration_min,
+
+            // Caddie-specific fields
+            caddie_id: booking.caddieId || booking.caddie_id,
+            caddie_name: booking.caddieName || booking.caddie_name,
+            caddie_status: booking.caddieStatus || booking.caddie_status,
+            caddy_confirmation_required: booking.caddyConfirmationRequired || booking.caddy_confirmation_required || false,
+
+            // Service-specific fields
+            service_name: booking.serviceName || booking.service_name,
+            service: booking.service,
+
+            // Metadata
+            source: booking.source,
+            is_private: booking.isPrivate || booking.is_private || false,
+            is_vip: booking.isVIP || booking.is_vip || false,
+            deleted: booking.deleted || false
         };
 
         const { data, error } = await this.client

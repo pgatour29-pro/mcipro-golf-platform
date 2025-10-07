@@ -511,9 +511,10 @@
             // Group by groupId
             const groups = {};
             unifiedBookings.forEach(booking => {
+              // FIXED: Auto-generate groupId if missing (use booking ID as fallback)
               if (!booking.groupId) {
-                console.warn('[CloudSync] Skipping booking without groupId:', booking.id);
-                return;
+                console.warn('[CloudSync] Booking missing groupId, using ID as groupId:', booking.id);
+                booking.groupId = booking.id;
               }
               if (!groups[booking.groupId]) groups[booking.groupId] = [];
               groups[booking.groupId].push(booking);
@@ -523,10 +524,17 @@
 
             // Convert each group to tee sheet booking
             const converted = Object.entries(groups).map(([groupId, bookings]) => {
-              const mainBooking = bookings.find(b => b.kind === 'tee');
+              // FIXED: If no 'tee' kind booking, use first booking in group (and set kind to 'tee')
+              let mainBooking = bookings.find(b => b.kind === 'tee');
               if (!mainBooking) {
-                console.warn('[CloudSync] Group', groupId, 'has no tee booking, skipping. Kinds:', bookings.map(b => b.kind));
-                return null;
+                console.warn('[CloudSync] Group', groupId, 'has no tee booking, using first booking. Kinds:', bookings.map(b => b.kind));
+                mainBooking = bookings[0];
+                if (mainBooking) {
+                  mainBooking.kind = 'tee'; // Set kind to tee for compatibility
+                } else {
+                  console.error('[CloudSync] Group', groupId, 'has no bookings at all!');
+                  return null;
+                }
               }
 
               const caddieBookings = bookings.filter(b => b.kind === 'caddie');

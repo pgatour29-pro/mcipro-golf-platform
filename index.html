@@ -3853,56 +3853,55 @@
                 // SECURITY: Store LINE User ID for authorization
                 const lineUserId = profile.userId;
 
-                // FIRST: Load latest profiles from cloud to sync across devices
-                console.log('[LINE] Loading latest profiles from cloud...');
-                if (typeof SimpleCloudSync !== 'undefined') {
-                    try {
-                        // Force load ALL profiles during login to check if user exists
-                        await SimpleCloudSync.loadFromCloud(true);
-                        console.log('[LINE] Cloud sync completed');
-                    } catch (err) {
-                        console.warn('[LINE] Cloud sync failed, using local only:', err);
+                console.log('[LINE] Looking up profile for LINE user:', lineUserId);
+
+                // Query Supabase DIRECTLY for this user's profile
+                let userProfile = null;
+                try {
+                    if (window.SupabaseDB) {
+                        await window.SupabaseDB.waitForReady();
+                        userProfile = await window.SupabaseDB.getUserProfile(lineUserId);
+                        console.log('[LINE] Supabase query result:', userProfile);
                     }
+                } catch (err) {
+                    console.error('[LINE] Failed to query Supabase:', err);
                 }
-
-                // Check if user already has a profile in localStorage (now synced from cloud)
-                const existingProfiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
-                let userProfile = existingProfiles.find(p => p.lineUserId === lineUserId);
-
-                console.log('[LINE] Profile search:', {
-                    lineUserId,
-                    totalProfiles: existingProfiles.length,
-                    profilesWithLineId: existingProfiles.filter(p => p.lineUserId).length,
-                    foundProfile: !!userProfile
-                });
-
-                // REMOVED: Fallback that was assigning random profiles to users
-                // Users without profiles should create their own profile, not inherit someone else's
 
                 if (userProfile) {
                     // User has a profile - load it
-                    console.log('[LINE] Existing profile found for LINE user:', lineUserId);
-                    AppState.currentUser = {
-                        ...AppState.currentUser,
+                    console.log('[LINE] Profile found:', {
                         role: userProfile.role,
-                        name: `${userProfile.firstName} ${userProfile.lastName}`,
-                        username: userProfile.username,
+                        name: userProfile.name,
+                        lineUserId: userProfile.line_user_id
+                    });
+
+                    AppState.currentUser = {
+                        role: userProfile.role || 'golfer',
+                        name: userProfile.name || profile.displayName,
+                        username: userProfile.username || lineUserId,
                         lineId: lineUserId,
                         lineUserId: lineUserId,
-                        avatar: userProfile.linePictureUrl || profile.pictureUrl,
-                        handicap: userProfile.roleSpecific?.handicap || null,
+                        avatar: profile.pictureUrl,
+                        email: userProfile.email,
+                        phone: userProfile.phone,
+                        handicap: null,
                         membershipLevel: userProfile.role === 'golfer' ? 'premium' : 'staff',
-                        joinDate: userProfile.createdAt || new Date().toISOString(),
-                        stats: {
-                            ...AppState.currentUser.stats,
-                            rating: userProfile.roleSpecific?.rating || 0
-                        },
-                        permissions: this.getPermissions(userProfile.role),
+                        joinDate: userProfile.created_at || new Date().toISOString(),
+                        stats: {},
+                        permissions: this.getPermissions(userProfile.role || 'golfer'),
                         profileData: userProfile
                     };
+
+                    AppState.session = {
+                        isAuthenticated: true,
+                        authMethod: 'line',
+                        loginTime: new Date().toISOString()
+                    };
+
+                    console.log('[LINE] User logged in:', AppState.currentUser);
                 } else {
                     // New user - show profile creation screen
-                    console.log('[LINE] New user detected - showing profile creation:', lineUserId);
+                    console.log('[LINE] No profile found - showing profile creation for:', lineUserId);
 
                     // Store LINE info temporarily
                     localStorage.setItem('pending_line_profile', JSON.stringify({
@@ -3914,14 +3913,9 @@
                     // Show create profile screen
                     ScreenManager.showScreen('createProfileScreen');
                     NotificationManager.show('Welcome! Please create your profile to continue.', 'info');
+                    LoadingManager.hide();
                     return; // Don't continue with login
                 }
-
-                AppState.session.isAuthenticated = true;
-                AppState.session.authMethod = 'line';
-                AppState.session.loginTime = new Date().toISOString();
-
-                console.log('User profile set from LINE:', AppState.currentUser);
             }
 
             static redirectToDashboard() {

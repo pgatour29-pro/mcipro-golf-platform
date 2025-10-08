@@ -3901,20 +3901,20 @@
                         profileData: userProfile
                     };
                 } else {
-                    // New user - needs to create profile
-                    console.log('[LINE] New user detected - needs profile creation:', lineUserId);
-                    AppState.currentUser = {
-                        ...AppState.currentUser,
-                        role: 'golfer', // Default role
-                        name: profile.displayName,
-                        lineId: lineUserId,
+                    // New user - show profile creation screen
+                    console.log('[LINE] New user detected - showing profile creation:', lineUserId);
+
+                    // Store LINE info temporarily
+                    localStorage.setItem('pending_line_profile', JSON.stringify({
                         lineUserId: lineUserId,
-                        avatar: profile.pictureUrl,
-                        membershipLevel: 'basic',
-                        joinDate: new Date().toISOString(),
-                        needsProfileCreation: true, // FLAG: needs profile
-                        permissions: this.getPermissions('golfer')
-                    };
+                        displayName: profile.displayName,
+                        pictureUrl: profile.pictureUrl
+                    }));
+
+                    // Show create profile screen
+                    ScreenManager.showScreen('createProfileScreen');
+                    NotificationManager.show('Welcome! Please create your profile to continue.', 'info');
+                    return; // Don't continue with login
                 }
 
                 AppState.session.isAuthenticated = true;
@@ -3927,14 +3927,6 @@
             static redirectToDashboard() {
                 console.log('[redirectToDashboard] Called with user:', AppState.currentUser);
 
-                // Check if user needs to create profile first
-                if (AppState.currentUser.needsProfileCreation) {
-                    console.log('[redirectToDashboard] User needs profile creation, redirecting to create profile screen');
-                    ScreenManager.showScreen('createProfileScreen');
-                    NotificationManager.show(`Welcome to MciPro! Please create your profile to continue.`, 'info');
-                    return;
-                }
-
                 const dashboardMap = {
                     'golfer': 'golferDashboard',
                     'caddie': 'caddieDashboard',
@@ -3945,9 +3937,17 @@
                 };
 
                 const targetDashboard = dashboardMap[AppState.currentUser.role] || 'golferDashboard';
-                console.log('[redirectToDashboard] Redirecting to:', targetDashboard);
+                console.log('[redirectToDashboard] Redirecting to:', targetDashboard, 'for role:', AppState.currentUser.role);
                 ScreenManager.showScreen(targetDashboard);
-                NotificationManager.show(`Welcome back, ${AppState.currentUser.name}!`, 'success');
+
+                const userName = AppState.currentUser.name || AppState.currentUser.displayName || 'User';
+
+                // Update UI with user data
+                if (typeof UserInterface !== 'undefined' && UserInterface.updateUserDisplays) {
+                    UserInterface.updateUserDisplays();
+                }
+
+                NotificationManager.show(`Welcome back, ${userName}!`, 'success');
 
                 // Load data from Cloudflare AFTER successful login (source of truth)
                 if (typeof ProductionCloudSync !== 'undefined') {
@@ -4209,43 +4209,35 @@
                     const profile = userProfiles[role];
 
                     AppState.currentUser = {
-                        ...AppState.currentUser,
                         role: role,
                         name: profile.name,
+                        username: role + '_user',
+                        lineId: null,
+                        lineUserId: null,
+                        avatar: null,
+                        email: null,
+                        phone: null,
                         handicap: profile.handicap || null,
                         membershipLevel: role === 'golfer' ? 'premium' : 'staff',
                         joinDate: new Date().toISOString(),
-                        stats: {
-                            ...AppState.currentUser.stats,
-                            ...profile.stats
-                        },
+                        stats: profile.stats || {},
                         permissions: LineAuthentication.getPermissions(role)
                     };
 
-                    AppState.session.isAuthenticated = true;
-                    AppState.session.authMethod = 'fallback';
-                    AppState.session.loginTime = new Date().toISOString();
+                    AppState.session = {
+                        isAuthenticated: true,
+                        authMethod: 'fallback',
+                        loginTime: new Date().toISOString()
+                    };
+
+                    console.log('[FallbackAuth] User set:', AppState.currentUser);
 
                     LoadingManager.hide();
 
-                    // Load actual user profile data and update UI
-                    setTimeout(() => {
-                        const actualProfile = ProfileSystem.getCurrentProfile(role);
-                        if (actualProfile && actualProfile.personalInfo && actualProfile.personalInfo.firstName) {
-                            // Use actual profile name if available
-                            const actualName = `${actualProfile.personalInfo.firstName} ${actualProfile.personalInfo.lastName}`.trim();
-                            if (actualName.length > 1) {
-                                AppState.currentUser.name = actualName;
-                            }
-                        }
-
-                        // Update UI with profile data
-                        ProfileSystem.updateUIWithProfile();
+                    // Update UI with user data
+                    if (typeof UserInterface !== 'undefined' && UserInterface.updateUserDisplays) {
                         UserInterface.updateUserDisplays();
-                    }, 100);
-
-                    // Initialize ChatSystem for the logged-in user
-                    ChatSystem.initialize();
+                    }
 
                     // Navigate to dashboard
                     const dashboardMap = {
@@ -4257,8 +4249,9 @@
                         'maintenance': 'maintenanceDashboard'
                     };
                     const targetDashboard = dashboardMap[role] || 'golferDashboard';
-                    console.log('[FallbackAuth] Navigating to:', targetDashboard);
+                    console.log('[FallbackAuth] Navigating to:', targetDashboard, 'for role:', role);
                     ScreenManager.showScreen(targetDashboard);
+                    NotificationManager.show(`Welcome, ${profile.name}!`, 'success');
 
                 }, 1500);
             }

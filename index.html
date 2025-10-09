@@ -2266,12 +2266,51 @@
             });
         }
 
+        // ============================================================
+        // UNIQUE ID SYSTEM - Generate UUID for user identification
+        // ============================================================
+        const UserIDSystem = {
+            // Generate a unique UUID v4
+            generateUUID() {
+                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    const r = Math.random() * 16 | 0;
+                    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                });
+            },
+
+            // Get or create unique ID for a user
+            // Priority: 1. lineUserId, 2. existing userId, 3. generate new UUID
+            getUserUniqueID(user) {
+                // LINE users - use their lineUserId
+                if (user.lineUserId) {
+                    return user.lineUserId;
+                }
+
+                // Check if user already has a userId stored
+                if (user.userId) {
+                    return user.userId;
+                }
+
+                // Generate new UUID and store it
+                const newUUID = this.generateUUID();
+                console.log('[UserIDSystem] Generated new UUID:', newUUID, 'for user:', user.name);
+                return newUUID;
+            },
+
+            // Get profile key using unique ID
+            getProfileKey(userType, uniqueId) {
+                return `profile_${uniqueId}`;
+            }
+        };
+
         // Application State
         const AppState = {
             currentUser: {
                 role: 'guest',
                 name: 'Guest User',
                 lineId: null,
+                userId: null, // UNIQUE ID - lineUserId or UUID
                 avatar: null,
                 email: null,
                 phone: null,
@@ -9657,66 +9696,75 @@ document.addEventListener('DOMContentLoaded', function() {
                         return null;
                     }
 
-                    let saved = null;
-                    let profileKey = null;
-
-                    // STRATEGY 1: Try to find by lineUserId in mcipro_user_profiles array (most reliable)
-                    if (AppState.currentUser?.lineUserId) {
-                        const profiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
-                        const matchingProfile = profiles.find(p =>
-                            p.lineUserId === AppState.currentUser.lineUserId &&
-                            p.role === userType
-                        );
-
-                        if (matchingProfile) {
-                            // Found by lineUserId - now get the individual profile from storage
-                            const possibleKeys = Object.keys(localStorage).filter(k =>
-                                k.startsWith(`profile_${userType}_`) &&
-                                localStorage.getItem(k).includes(AppState.currentUser.lineUserId)
-                            );
-
-                            if (possibleKeys.length > 0) {
-                                profileKey = possibleKeys[0];
-                                saved = localStorage.getItem(profileKey);
-                                console.log('[ProfileSystem] Found profile by lineUserId:', profileKey);
-                            }
-                        }
+                    // Get unique ID for current user
+                    const uniqueId = UserIDSystem.getUserUniqueID(AppState.currentUser);
+                    if (!uniqueId) {
+                        console.warn('[ProfileSystem] No unique ID available for user');
+                        return null;
                     }
 
-                    // STRATEGY 2: Fall back to name-based lookup
-                    if (!saved) {
-                        profileKey = `profile_${userType}_${AppState.currentUser.name}`;
-                        saved = localStorage.getItem(profileKey);
-                        console.log('[ProfileSystem] Trying name-based lookup:', profileKey, 'found:', !!saved);
+                    // Ensure userId is set in AppState
+                    if (!AppState.currentUser.userId) {
+                        AppState.currentUser.userId = uniqueId;
                     }
 
-                    // STRATEGY 3: Search all profile keys for this user type and see if any match
-                    if (!saved) {
-                        const allProfileKeys = Object.keys(localStorage).filter(k => k.startsWith(`profile_${userType}_`));
-                        console.log('[ProfileSystem] Searching all profiles for user type:', userType, 'found keys:', allProfileKeys);
+                    // NEW: Use unique ID-based key
+                    const newProfileKey = UserIDSystem.getProfileKey(userType, uniqueId);
+                    let saved = localStorage.getItem(newProfileKey);
 
-                        for (const key of allProfileKeys) {
-                            const testProfile = JSON.parse(localStorage.getItem(key));
-                            if (testProfile.lineUserId === AppState.currentUser.lineUserId) {
-                                profileKey = key;
-                                saved = localStorage.getItem(key);
-                                console.log('[ProfileSystem] Found matching profile by scanning:', key);
-                                break;
-                            }
-                        }
-                    }
-
-                    console.log('[ProfileSystem] getCurrentProfile DEBUG:', {
-                        userType,
-                        userName: AppState.currentUser.name,
-                        lineUserId: AppState.currentUser.lineUserId,
-                        profileKey,
-                        foundInStorage: !!saved,
-                        allStorageKeys: Object.keys(localStorage).filter(k => k.includes('profile'))
+                    console.log('[ProfileSystem] Looking up profile with unique ID:', {
+                        uniqueId: uniqueId.substring(0, 12) + '...',
+                        newKey: newProfileKey,
+                        foundWithNewKey: !!saved
                     });
+
+                    // MIGRATION: If not found with new key, try old name-based keys and migrate
+                    if (!saved) {
+                        console.log('[ProfileSystem] Profile not found with new key, attempting migration...');
+
+                        // Try old name-based key
+                        const oldNameKey = `profile_${userType}_${AppState.currentUser.name}`;
+                        const oldSaved = localStorage.getItem(oldNameKey);
+
+                        if (oldSaved) {
+                            console.log('[ProfileSystem] Found old profile, migrating to new key:', oldNameKey, '->', newProfileKey);
+
+                            // Migrate to new key
+                            localStorage.setItem(newProfileKey, oldSaved);
+                            saved = oldSaved;
+
+                            // Keep old key for backward compatibility (will be cleaned up later)
+                            // Don't delete yet to allow rollback if needed
+                        } else {
+                            // Try scanning all old profile keys
+                            const allOldKeys = Object.keys(localStorage).filter(k => k.startsWith(`profile_${userType}_`));
+
+                            for (const oldKey of allOldKeys) {
+                                try {
+                                    const testProfile = JSON.parse(localStorage.getItem(oldKey));
+                                    if (testProfile.lineUserId === uniqueId) {
+                                        console.log('[ProfileSystem] Found matching old profile, migrating:', oldKey, '->', newProfileKey);
+                                        localStorage.setItem(newProfileKey, localStorage.getItem(oldKey));
+                                        saved = localStorage.getItem(oldKey);
+                                        break;
+                                    }
+                                } catch (e) {
+                                    console.warn('[ProfileSystem] Error parsing old profile key:', oldKey, e);
+                                }
+                            }
+                        }
+                    }
 
                     if (saved) {
                         const profile = JSON.parse(saved);
+
+                        // Ensure profile has the unique ID stored
+                        if (!profile.userId) {
+                            profile.userId = uniqueId;
+                        }
+                        if (!profile.lineUserId && AppState.currentUser.lineUserId) {
+                            profile.lineUserId = AppState.currentUser.lineUserId;
+                        }
 
                         // NORMALIZE: If profile has data at root level (new format), move to nested structure (old format)
                         if (profile.firstName && !profile.personalInfo) {
@@ -9736,6 +9784,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
 
                         console.log('[ProfileSystem] Loading existing profile:', {
+                            uniqueId: uniqueId.substring(0, 12) + '...',
                             handicap: profile.golfInfo?.handicap,
                             homeClub: profile.golfInfo?.homeClub,
                             clubAffiliation: profile.golfInfo?.clubAffiliation
@@ -9777,23 +9826,69 @@ document.addEventListener('DOMContentLoaded', function() {
             },
 
             saveProfile(userType, profileData) {
-                const profileKey = `profile_${userType}_${AppState.currentUser.name}`;
+                // Get unique ID for current user
+                const uniqueId = UserIDSystem.getUserUniqueID(AppState.currentUser);
+                if (!uniqueId) {
+                    console.error('[ProfileSystem] Cannot save profile - no unique ID');
+                    return;
+                }
+
+                // Ensure userId is set in AppState
+                if (!AppState.currentUser.userId) {
+                    AppState.currentUser.userId = uniqueId;
+                }
+
+                // Ensure profile has unique ID
+                if (!profileData.userId) {
+                    profileData.userId = uniqueId;
+                }
+                if (!profileData.lineUserId && AppState.currentUser.lineUserId) {
+                    profileData.lineUserId = AppState.currentUser.lineUserId;
+                }
+
+                // NEW: Use unique ID-based key
+                const newProfileKey = UserIDSystem.getProfileKey(userType, uniqueId);
+
                 console.log('[ProfileSystem] Saving profile - BEFORE save:', {
-                    key: profileKey,
+                    uniqueId: uniqueId.substring(0, 12) + '...',
+                    newKey: newProfileKey,
                     homeClub: profileData.golfInfo?.homeClub,
                     fullGolfInfo: profileData.golfInfo,
                     userType: userType,
                     userName: AppState.currentUser.name
                 });
-                localStorage.setItem(profileKey, JSON.stringify(profileData));
+
+                localStorage.setItem(newProfileKey, JSON.stringify(profileData));
+
+                // Also update mcipro_user_profiles array
+                const profiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+                const existingIndex = profiles.findIndex(p => p.lineUserId === uniqueId || p.userId === uniqueId);
+
+                const profileSummary = {
+                    userId: uniqueId,
+                    lineUserId: uniqueId,
+                    role: userType,
+                    name: AppState.currentUser.name,
+                    username: profileData.personalInfo?.username || AppState.currentUser.username,
+                    email: profileData.personalInfo?.email,
+                    phone: profileData.personalInfo?.phone
+                };
+
+                if (existingIndex >= 0) {
+                    profiles[existingIndex] = { ...profiles[existingIndex], ...profileSummary };
+                } else {
+                    profiles.push(profileSummary);
+                }
+                localStorage.setItem('mcipro_user_profiles', JSON.stringify(profiles));
 
                 // Verify it was saved correctly
-                const savedCheck = localStorage.getItem(profileKey);
+                const savedCheck = localStorage.getItem(newProfileKey);
                 const parsedCheck = JSON.parse(savedCheck);
                 console.log('[ProfileSystem] Saving profile - AFTER save verification:', {
-                    key: profileKey,
+                    newKey: newProfileKey,
                     savedHomeClub: parsedCheck.golfInfo?.homeClub,
-                    savedCorrectly: parsedCheck.golfInfo?.homeClub === profileData.golfInfo?.homeClub
+                    savedCorrectly: parsedCheck.golfInfo?.homeClub === profileData.golfInfo?.homeClub,
+                    savedUserId: parsedCheck.userId
                 });
 
                 // Update current user name if changed
@@ -9804,7 +9899,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 this.updateUIWithProfile();
-                console.log(`[SUCCESS] Profile saved for ${userType}`, profileData.golfInfo?.homeClub ? `- homeClub: ${profileData.golfInfo.homeClub}` : '- no homeClub');
+                console.log(`[SUCCESS] Profile saved with unique ID for ${userType}`, profileData.golfInfo?.homeClub ? `- homeClub: ${profileData.golfInfo.homeClub}` : '- no homeClub');
             },
 
             updateUIWithProfile(incoming) {
@@ -10376,24 +10471,28 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (!debugPanel) {
                             debugPanel = document.createElement('div');
                             debugPanel.id = 'mobile-debug-panel';
-                            debugPanel.style.cssText = 'position:fixed;top:60px;right:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-size:10px;z-index:99999;max-width:200px;border:2px solid #0f0;font-family:monospace;';
+                            debugPanel.style.cssText = 'position:fixed;top:60px;right:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-size:10px;z-index:99999;max-width:220px;border:2px solid #0f0;font-family:monospace;';
                             document.body.appendChild(debugPanel);
                         }
-                        const profileKey = `profile_${AppState.currentUser.role}_${AppState.currentUser.name}`;
+                        const uniqueId = UserIDSystem.getUserUniqueID(AppState.currentUser);
+                        const newProfileKey = UserIDSystem.getProfileKey(AppState.currentUser.role, uniqueId);
                         const storageKeys = Object.keys(localStorage).filter(k => k.includes('profile'));
                         debugPanel.innerHTML = `
-                            <div style="margin-bottom:5px;font-weight:bold;">MOBILE DEBUG</div>
+                            <div style="margin-bottom:5px;font-weight:bold;color:#0ff;">UNIQUE ID SYSTEM</div>
                             <div>User: ${AppState.currentUser?.name}</div>
                             <div>Role: ${AppState.currentUser?.role}</div>
-                            <div>Key: ${profileKey}</div>
-                            <div>Exists: ${!!localStorage.getItem(profileKey)}</div>
+                            <div style="margin-top:5px;color:#ff0;">UNIQUE ID:</div>
+                            <div style="font-size:8px;">${uniqueId ? uniqueId.substring(0, 20) + '...' : 'null'}</div>
+                            <div style="margin-top:5px;color:#ff0;">NEW KEY:</div>
+                            <div style="font-size:8px;">${newProfileKey}</div>
+                            <div>Exists: ${!!localStorage.getItem(newProfileKey)}</div>
                             <div style="margin-top:5px;color:#ff0;">PROFILE DATA:</div>
                             <div>HCP: ${profile.golfInfo?.handicap || 'null'}</div>
                             <div>Club: ${profile.golfInfo?.homeClub || 'null'}</div>
                             <div>Affil: ${profile.golfInfo?.clubAffiliation || 'null'}</div>
-                            <div style="margin-top:5px;color:#f0f;">STORAGE KEYS:</div>
-                            <div style="font-size:8px;">${storageKeys.join(', ')}</div>
-                            <div style="margin-top:5px;color:#0ff;">Elements:</div>
+                            <div style="margin-top:5px;color:#f0f;">OLD KEYS (${storageKeys.length}):</div>
+                            <div style="font-size:7px;">${storageKeys.slice(0,3).join(', ')}${storageKeys.length > 3 ? '...' : ''}</div>
+                            <div style="margin-top:5px;color:#0ff;">DOM Elements:</div>
                             <div>.user-handicap: ${document.querySelectorAll('.user-handicap').length}</div>
                             <div>.home-club: ${document.querySelectorAll('.home-club').length}</div>
                         `;

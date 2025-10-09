@@ -3988,6 +3988,7 @@
                         username: userProfile.username || lineUserId,
                         lineId: lineUserId,
                         lineUserId: lineUserId,
+                        userId: lineUserId, // UNIQUE ID - Use lineUserId as primary unique identifier
                         avatar: profile.pictureUrl,
                         email: userProfile.email,
                         phone: userProfile.phone,
@@ -3998,6 +3999,11 @@
                         permissions: this.getPermissions(userProfile.role || 'golfer'),
                         profileData: userProfile
                     };
+
+                    console.log('[LINE] ✓ Unique ID set:', {
+                        userId: AppState.currentUser.userId,
+                        profileKey: UserIDSystem.getProfileKey(AppState.currentUser.role, AppState.currentUser.userId)
+                    });
 
                     AppState.session = {
                         isAuthenticated: true,
@@ -4203,16 +4209,36 @@
                     await new Promise(resolve => setTimeout(resolve, 1500));
 
                     if (enteredOTP === this.otpCode) {
+                        // Check if this phone number already has a userId in localStorage
+                        const phoneKey = `phone_userId_${this.currentPhoneNumber}`;
+                        let existingUserId = localStorage.getItem(phoneKey);
+
+                        // Generate or reuse UUID for OTP users
+                        if (!existingUserId) {
+                            existingUserId = UserIDSystem.generateUUID();
+                            localStorage.setItem(phoneKey, existingUserId);
+                            console.log('[OTP] ✓ Generated new UUID for phone:', this.currentPhoneNumber, '→', existingUserId.substring(0, 12) + '...');
+                        } else {
+                            console.log('[OTP] ✓ Reusing existing UUID for phone:', this.currentPhoneNumber, '→', existingUserId.substring(0, 12) + '...');
+                        }
+
                         // Set user data for OTP authentication
                         AppState.currentUser = {
                             ...AppState.currentUser,
                             role: 'golfer', // Default to golfer for OTP users
                             name: 'Mobile User',
+                            userId: existingUserId, // UNIQUE ID - UUID for OTP users
                             phone: this.currentPhoneNumber,
                             membershipLevel: 'basic',
                             joinDate: new Date().toISOString(),
                             permissions: LineAuthentication.getPermissions('golfer')
                         };
+
+                        console.log('[OTP] ✓ Unique ID set:', {
+                            userId: AppState.currentUser.userId.substring(0, 12) + '...',
+                            phone: this.currentPhoneNumber,
+                            profileKey: UserIDSystem.getProfileKey('golfer', existingUserId)
+                        });
 
                         AppState.session.isAuthenticated = true;
                         AppState.session.authMethod = 'otp';
@@ -4310,12 +4336,26 @@
 
                     const profile = userProfiles[role];
 
+                    // Check if this dev user already has a UUID stored
+                    const devUserKey = `dev_userId_${role}`;
+                    let devUserId = localStorage.getItem(devUserKey);
+
+                    // Generate or reuse UUID for dev users
+                    if (!devUserId) {
+                        devUserId = UserIDSystem.generateUUID();
+                        localStorage.setItem(devUserKey, devUserId);
+                        console.log('[DevMode] ✓ Generated new UUID for role:', role, '→', devUserId.substring(0, 12) + '...');
+                    } else {
+                        console.log('[DevMode] ✓ Reusing existing UUID for role:', role, '→', devUserId.substring(0, 12) + '...');
+                    }
+
                     AppState.currentUser = {
                         role: role,
                         name: profile.name,
                         username: role + '_user',
                         lineId: null,
                         lineUserId: null,
+                        userId: devUserId, // UNIQUE ID - UUID for dev mode users
                         avatar: null,
                         email: null,
                         phone: null,
@@ -4325,6 +4365,12 @@
                         stats: profile.stats || {},
                         permissions: LineAuthentication.getPermissions(role)
                     };
+
+                    console.log('[DevMode] ✓ Unique ID set:', {
+                        role: role,
+                        userId: devUserId.substring(0, 12) + '...',
+                        profileKey: UserIDSystem.getProfileKey(role, devUserId)
+                    });
 
                     AppState.session = {
                         isAuthenticated: true,
@@ -5518,11 +5564,26 @@
             ensureCleanSlateForNewUser(profileData);
 
             setTimeout(() => {
+                // Get or generate unique ID for custom profile
+                let customUserId = profileData.userId || profileData.lineUserId;
+
+                if (!customUserId) {
+                    // Check if profile has an ID stored
+                    if (profileData.id) {
+                        customUserId = profileData.id;
+                    } else {
+                        // Generate new UUID for custom profiles
+                        customUserId = UserIDSystem.generateUUID();
+                        console.log('[CustomProfile] ✓ Generated new UUID:', customUserId.substring(0, 12) + '...');
+                    }
+                }
+
                 // Set AppState to use the custom profile with clean slate
                 AppState.currentUser = {
                     role: profileData.role,
                     name: `${profileData.firstName} ${profileData.lastName}`,
                     lineId: null,
+                    userId: customUserId, // UNIQUE ID - lineUserId or UUID
                     avatar: profileData.profilePicture || profileData.roleSpecific?.avatar || null,
                     email: profileData.email,
                     phone: profileData.phone,
@@ -5544,6 +5605,11 @@
                         theme: 'light'
                     }
                 };
+
+                console.log('[CustomProfile] ✓ Unique ID set:', {
+                    userId: AppState.currentUser.userId.substring(0, 12) + '...',
+                    profileKey: UserIDSystem.getProfileKey(profileData.role, customUserId)
+                });
 
                 AppState.session.isAuthenticated = true;
                 AppState.session.authMethod = 'custom_profile';
@@ -6604,20 +6670,27 @@
                 existingProfiles.push(savedProfile);
                 localStorage.setItem('mcipro_user_profiles', JSON.stringify(existingProfiles));
 
+                // Use lineUserId as unique ID for new profiles
+                const uniqueId = savedProfile.lineUserId;
+
                 // Set current user with username
                 currentUser = {
                     id: savedProfile.id,
                     username: savedProfile.username,
                     role: savedProfile.role,
                     name: `${savedProfile.firstName} ${savedProfile.lastName}`,
+                    userId: uniqueId, // UNIQUE ID - lineUserId for new profiles
+                    lineUserId: uniqueId,
                     email: savedProfile.email,
                     phone: savedProfile.phone,
                     profileData: savedProfile
                 };
 
-                // Also store this profile in the expected format for ProfileSystem
-                const profileKey = `profile_${savedProfile.role}_${currentUser.name}`;
+                // Also store this profile in the expected format for ProfileSystem using UNIQUE ID KEY
+                const profileKey = UserIDSystem.getProfileKey(savedProfile.role, uniqueId);
                 const formattedProfile = {
+                    userId: uniqueId,
+                    lineUserId: uniqueId,
                     personalInfo: {
                         firstName: savedProfile.firstName,
                         lastName: savedProfile.lastName,
@@ -6631,6 +6704,12 @@
                     id: savedProfile.id
                 };
                 localStorage.setItem(profileKey, JSON.stringify(formattedProfile));
+
+                console.log('[ProfileCreation] ✓ New profile saved with unique ID:', {
+                    uniqueId: uniqueId.substring(0, 12) + '...',
+                    profileKey: profileKey,
+                    name: currentUser.name
+                });
 
                 // Trigger cloud sync after profile creation
                 if (typeof ProductionCloudSync !== 'undefined') {
@@ -10465,38 +10544,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         isMobile: window.innerWidth < 768
                     });
 
-                    // MOBILE DEBUG OVERLAY - Show profile data on screen
-                    if (window.innerWidth < 768) {
-                        let debugPanel = document.getElementById('mobile-debug-panel');
-                        if (!debugPanel) {
-                            debugPanel = document.createElement('div');
-                            debugPanel.id = 'mobile-debug-panel';
-                            debugPanel.style.cssText = 'position:fixed;top:60px;right:10px;background:rgba(0,0,0,0.9);color:#0f0;padding:10px;font-size:10px;z-index:99999;max-width:220px;border:2px solid #0f0;font-family:monospace;';
-                            document.body.appendChild(debugPanel);
-                        }
-                        const uniqueId = UserIDSystem.getUserUniqueID(AppState.currentUser);
-                        const newProfileKey = UserIDSystem.getProfileKey(AppState.currentUser.role, uniqueId);
-                        const storageKeys = Object.keys(localStorage).filter(k => k.includes('profile'));
-                        debugPanel.innerHTML = `
-                            <div style="margin-bottom:5px;font-weight:bold;color:#0ff;">UNIQUE ID SYSTEM</div>
-                            <div>User: ${AppState.currentUser?.name}</div>
-                            <div>Role: ${AppState.currentUser?.role}</div>
-                            <div style="margin-top:5px;color:#ff0;">UNIQUE ID:</div>
-                            <div style="font-size:8px;">${uniqueId ? uniqueId.substring(0, 20) + '...' : 'null'}</div>
-                            <div style="margin-top:5px;color:#ff0;">NEW KEY:</div>
-                            <div style="font-size:8px;">${newProfileKey}</div>
-                            <div>Exists: ${!!localStorage.getItem(newProfileKey)}</div>
-                            <div style="margin-top:5px;color:#ff0;">PROFILE DATA:</div>
-                            <div>HCP: ${profile.golfInfo?.handicap || 'null'}</div>
-                            <div>Club: ${profile.golfInfo?.homeClub || 'null'}</div>
-                            <div>Affil: ${profile.golfInfo?.clubAffiliation || 'null'}</div>
-                            <div style="margin-top:5px;color:#f0f;">OLD KEYS (${storageKeys.length}):</div>
-                            <div style="font-size:7px;">${storageKeys.slice(0,3).join(', ')}${storageKeys.length > 3 ? '...' : ''}</div>
-                            <div style="margin-top:5px;color:#0ff;">DOM Elements:</div>
-                            <div>.user-handicap: ${document.querySelectorAll('.user-handicap').length}</div>
-                            <div>.home-club: ${document.querySelectorAll('.home-club').length}</div>
-                        `;
-                    }
+                    // Debug panel removed - unique ID system working correctly
 
                     // Update handicap ONLY if it exists in profile
                     if (profile.golfInfo?.handicap !== undefined && profile.golfInfo?.handicap !== null && profile.golfInfo?.handicap !== '') {

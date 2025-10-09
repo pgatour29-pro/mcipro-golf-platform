@@ -10476,11 +10476,18 @@ document.addEventListener('DOMContentLoaded', function() {
             async saveProfileFromForm(userType) {
                 const profile = this.getCurrentProfile(userType);
 
-                // SECURITY: Link profile to LINE User ID if not already linked
-                if (typeof liff !== 'undefined' && liff.isLoggedIn() && !profile.lineUserId) {
-                    const lineProfile = await liff.getProfile();
-                    profile.lineUserId = lineProfile.userId;
-                    console.log('[ProfileSystem] Linking profile to LINE User ID:', lineProfile.userId);
+                // Cache LINE profile once at the start (single API call)
+                let linePictureUrl = AppState.currentUser?.avatar || profile.linePictureUrl || '';
+                if (typeof liff !== 'undefined' && liff.isLoggedIn()) {
+                    try {
+                        const lineProfile = await liff.getProfile();
+                        if (!profile.lineUserId) {
+                            profile.lineUserId = lineProfile.userId;
+                        }
+                        linePictureUrl = lineProfile.pictureUrl || linePictureUrl;
+                    } catch (e) {
+                        console.error('[ProfileSystem] LIFF error:', e);
+                    }
                 }
 
                 try {
@@ -10492,52 +10499,30 @@ document.addEventListener('DOMContentLoaded', function() {
                         const firstName = firstNameEl?.value?.trim() || '';
                         const lastName = lastNameEl?.value?.trim() || '';
 
-                        console.log('[ProfileSystem] Form values:', {
-                            firstName,
-                            lastName,
-                            firstNameEl: !!firstNameEl,
-                            lastNameEl: !!lastNameEl,
-                            existingFirst: profile.personalInfo?.firstName,
-                            existingLast: profile.personalInfo?.lastName
-                        });
-
                         // Check names
                         const hasFirstName = firstName || profile.personalInfo?.firstName || profile.firstName;
                         const hasLastName = lastName || profile.personalInfo?.lastName || profile.lastName;
 
                         if (!hasFirstName || !hasLastName) {
-                            console.error('[ProfileSystem] SAVE BLOCKED - Missing names:', {
-                                formFirstName: firstName,
-                                formLastName: lastName,
-                                profileFirstName: profile.personalInfo?.firstName || profile.firstName,
-                                profileLastName: profile.personalInfo?.lastName || profile.lastName,
-                                firstNameElement: !!firstNameEl,
-                                lastNameElement: !!lastNameEl
-                            });
-                            alert('ERROR: Missing first or last name.\n\nWhat the system found:\n' +
-                                  'First Name in form: "' + (firstName || 'EMPTY') + '"\n' +
-                                  'Last Name in form: "' + (lastName || 'EMPTY') + '"\n\n' +
-                                  'The form fields may not be loading correctly. Check browser console for details.');
+                            alert('ERROR: Missing first or last name.\n\nFirst Name: "' + (firstName || 'EMPTY') + '"\nLast Name: "' + (lastName || 'EMPTY') + '"');
                             return;
                         }
 
-                        console.log('[ProfileSystem] Name check passed');
-
-                        // Ensure profile objects exist FIRST before accessing any properties
+                        // Ensure profile objects exist
                         if (!profile.golfInfo) profile.golfInfo = {};
                         if (!profile.roleSpecific) profile.roleSpecific = {};
                         if (!profile.personalInfo) profile.personalInfo = {};
                         if (!profile.preferences) profile.preferences = {};
                         if (!profile.media) profile.media = {};
 
-                        // Username - can only be set once, cannot be changed
+                        // Username (set once only)
                         const usernameInput = document.getElementById('profileUsername');
                         if (usernameInput && !profile.personalInfo.username && !profile.username) {
                             const newUsername = usernameInput.value?.trim();
                             if (newUsername) {
                                 profile.personalInfo.username = newUsername;
-                                profile.username = newUsername; // Also set at root level
-                                AppState.currentUser.username = newUsername; // Update current user
+                                profile.username = newUsername;
+                                AppState.currentUser.username = newUsername;
                             }
                         }
 
@@ -10577,34 +10562,16 @@ document.addEventListener('DOMContentLoaded', function() {
                             const el = document.querySelector('#profileModal #homeClub') ||
                                       document.querySelector('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]');
 
-                            if (!el) {
-                                console.log('[HomeClub Debug] No element found');
-                                return '';
-                            }
-
-                            // If still on the first option (placeholder), treat as empty
-                            if (el.selectedIndex === 0) {
-                                console.log('[HomeClub Debug] Still on placeholder option (index 0)');
-                                return '';
-                            }
+                            if (!el || el.selectedIndex === 0) return '';
 
                             const opt  = el.selectedOptions && el.selectedOptions[0];
                             const val  = (opt?.value || '').trim();
                             const data = (opt?.dataset?.courseId || opt?.dataset?.value || '').trim();
                             const text = (opt?.textContent || '').trim();
 
-                            console.log('[HomeClub Debug] Reading from selectedIndex:', el.selectedIndex, 'value:', val, 'text:', text);
+                            if (PLACEHOLDER_TEXTS.has(text)) return '';
 
-                            // Ignore placeholder-like text entirely
-                            if (PLACEHOLDER_TEXTS.has(text)) {
-                                console.log('[HomeClub Debug] Rejecting placeholder text:', text);
-                                return '';
-                            }
-
-                            // Only accept a real slug (prefer value, then data-*)
-                            const result = val || data || '';
-                            console.log('[HomeClub Debug] Final strict result:', result);
-                            return result;
+                            return val || data || '';
                         }
 
                         // Get home club from form OR preserve existing value
@@ -10612,29 +10579,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         const existingHomeClub = profile.golfInfo?.homeClub || profile.roleSpecific?.homeClub || '';
                         const homeClub = homeClubFromForm || existingHomeClub;
 
-                        console.log('[ProfileSystem] Form homeClub debugging:', {
-                            element: document.getElementById('homeClub'),
-                            exists: !!document.getElementById('homeClub'),
-                            value: document.getElementById('homeClub')?.value,
-                            strictResult: homeClubFromForm,
-                            existingHomeClub: existingHomeClub,
-                            finalHomeClub: homeClub,
-                            selectedIndex: document.getElementById('homeClub')?.selectedIndex,
-                            selectedOption: document.getElementById('homeClub')?.selectedOptions?.[0]?.text
-                        });
-
                         // Warn about missing home course but allow save
                         if (!homeClub && !existingHomeClub) {
-                            console.warn('[ProfileSystem] WARNING: No home course selected');
                             const continueWithoutHome = confirm('WARNING: No home course selected.\n\nYou can add it later, but it\'s recommended to select one now.\n\nContinue saving without home course?');
-                            if (!continueWithoutHome) {
-                                console.log('[ProfileSystem] User chose to go back and select home course');
-                                return;
-                            }
+                            if (!continueWithoutHome) return;
                         }
-                        console.log('[ProfileSystem] Home course check passed:', { homeClub, existingHomeClub });
-
-                        console.log('[ProfileSystem] Saving golfer profile - homeClub value:', homeClub);
 
                         // Golf Info - save in both formats
                         const savedClubAffiliation = document.getElementById('clubAffiliation')?.value || profile.golfInfo.clubAffiliation || profile.roleSpecific.clubAffiliation || '';
@@ -10658,8 +10607,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         profile.roleSpecific.playingStyle = savedPlayingStyle;
                         profile.roleSpecific.golfGoals = savedGolfGoals;
 
-                        console.log('[ProfileSystem] Profile after setting homeClub:', profile.golfInfo.homeClub);
-
                         // Preferences - save in both formats
                         const savedPreferredTeeTime = document.getElementById('preferredTeeTime')?.value || profile.preferences?.preferredTeeTime || profile.roleSpecific?.preferredTeeTime || '';
                         const savedPreferredCaddyType = document.getElementById('preferredCaddyType')?.value || profile.preferences?.preferredCaddyType || profile.roleSpecific?.preferredCaddyType || '';
@@ -10680,20 +10627,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         profile.roleSpecific.notifications = savedNotifications;
                         profile.roleSpecific.dietaryRestrictions = savedDietaryRestrictions;
 
-                        // Force update the profile data with sync - COMPLETE PROFILE DATA
+                        // Update profile data in localStorage
                         const profilesArray = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
-
-                        // Get fresh LINE picture URL if available
-                        let linePictureUrl = AppState.currentUser?.avatar || profile.linePictureUrl || '';
-                        if (typeof liff !== 'undefined' && liff.isLoggedIn()) {
-                            try {
-                                const lineProfile = await liff.getProfile();
-                                linePictureUrl = lineProfile.pictureUrl || linePictureUrl;
-                                console.log('[ProfileSystem] ✅ Got LINE picture URL:', linePictureUrl);
-                            } catch (e) {
-                                console.warn('[ProfileSystem] Could not refresh LINE picture:', e);
-                            }
-                        }
 
                         // Find existing by username OR lineUserId OR name
                         const existingIndex = profilesArray.findIndex(p =>
@@ -10738,19 +10673,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             // Update existing profile (preserve createdAt)
                             profileForSync.createdAt = profilesArray[existingIndex].createdAt || profileForSync.createdAt;
                             profilesArray[existingIndex] = profileForSync;
-                            console.log('[ProfileSystem] Updated existing profile in array at index:', existingIndex);
                         } else {
                             profilesArray.push(profileForSync);
-                            console.log('[ProfileSystem] Added new profile to array');
                         }
 
                         localStorage.setItem('mcipro_user_profiles', JSON.stringify(profilesArray));
-                        console.log('[ProfileSystem] Updated mcipro_user_profiles with complete data:', {
-                            username: profileForSync.username,
-                            lineUserId: profileForSync.lineUserId,
-                            homeClub: homeClub,
-                            totalProfiles: profilesArray.length
-                        });
 
                         // Media
                         const profilePhoto = document.getElementById('profilePhotoPreview')?.src;
@@ -10796,10 +10723,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Update dashboard data
                     this.updateDashboardData();
 
-                    // Cloud sync happens automatically in background (don't wait for it)
-                    console.log('[ProfileSystem] PROFILE SAVED - Cloud sync will happen in background');
-
-                    // Show quick success message (auto-dismiss faster)
+                    // Show quick success message
                     const successModal = document.createElement('div');
                     successModal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
                     successModal.innerHTML = `

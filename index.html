@@ -25563,6 +25563,75 @@ Total Rounds: ${ningCaddy.totalRounds}`;
         </div>
     </div>
 
+    <!-- Pairings Modal -->
+    <div id="pairingsModal" class="modal-backdrop" style="display: none;">
+        <div class="modal-container max-w-6xl">
+            <div class="modal-header bg-gradient-to-r from-green-600 to-green-400 text-white">
+                <div>
+                    <h2 id="pairingsEventName" class="text-lg font-bold">Event Pairings</h2>
+                    <p id="pairingsEventDate" class="text-xs text-green-100"></p>
+                </div>
+                <button onclick="SocietyOrganizerSystem.closePairingsModal()" class="text-white hover:bg-white/20 rounded-lg p-1">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Pairing Controls -->
+                <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Group Size</label>
+                            <select id="pairingsGroupSize" class="w-full rounded-lg border px-3 py-2">
+                                <option value="4">4-Ball (Groups of 4)</option>
+                                <option value="3">3-Ball (Groups of 3)</option>
+                                <option value="2">2-Ball (Groups of 2)</option>
+                            </select>
+                        </div>
+                        <div class="flex items-end">
+                            <button onclick="SocietyOrganizerSystem.autoPairPlayers()" class="btn-primary w-full">
+                                <span class="material-symbols-outlined text-sm">auto_awesome</span>
+                                Auto-Pair Players
+                            </button>
+                        </div>
+                        <div class="flex items-end">
+                            <button onclick="SocietyOrganizerSystem.shufflePairings()" class="btn-secondary w-full">
+                                <span class="material-symbols-outlined text-sm">shuffle</span>
+                                Shuffle
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pairings Display -->
+                <div id="pairingsContainer" class="space-y-3">
+                    <div class="text-center py-8 text-gray-500">
+                        <span class="material-symbols-outlined text-5xl mb-2">groups</span>
+                        <p class="text-sm">Click "Auto-Pair Players" to generate pairings</p>
+                    </div>
+                </div>
+
+                <!-- Unpaired Players -->
+                <div id="unpairedPlayersSection" class="mt-6 bg-amber-50 rounded-lg p-4" style="display: none;">
+                    <h3 class="text-sm font-bold text-amber-900 mb-3">Unpaired Players</h3>
+                    <div id="unpairedPlayersList" class="space-y-2"></div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex gap-3 mt-6">
+                    <button onclick="SocietyOrganizerSystem.savePairings()" class="flex-1 btn-primary">
+                        <span class="material-symbols-outlined text-sm">save</span>
+                        Save Pairings
+                    </button>
+                    <button onclick="SocietyOrganizerSystem.exportPairings()" class="flex-1 btn-secondary">
+                        <span class="material-symbols-outlined text-sm">download</span>
+                        Export PDF
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Add Score Modal -->
     <div id="addScoreModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" style="display: none;">
         <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-screen overflow-hidden">
@@ -29122,8 +29191,196 @@ class SocietyOrganizerManager {
     }
 
     async openPairingsModal(eventId) {
-        NotificationManager.show('Pairings module coming soon...', 'info');
-        // TODO: Implement pairings modal
+        try {
+            // Load event
+            this.currentRosterEvent = this.events.find(e => e.id === eventId);
+            if (!this.currentRosterEvent) {
+                NotificationManager.show('Event not found', 'error');
+                return;
+            }
+
+            // Load registered players
+            const registrations = await SocietyGolfDB.getRegistrations(eventId);
+            this.currentPairings = {
+                eventId: eventId,
+                players: registrations,
+                groups: [],
+                groupSize: 4
+            };
+
+            // Set modal title
+            document.getElementById('pairingsEventName').textContent = this.currentRosterEvent.name;
+            document.getElementById('pairingsEventDate').textContent = this.currentRosterEvent.date;
+
+            // Try to load existing pairings
+            const existingPairings = await SocietyGolfDB.getPairings(eventId);
+            if (existingPairings && existingPairings.groups) {
+                this.currentPairings.groups = existingPairings.groups;
+                this.currentPairings.groupSize = existingPairings.groupSize || 4;
+                document.getElementById('pairingsGroupSize').value = this.currentPairings.groupSize;
+                this.renderPairings();
+            }
+
+            // Show modal
+            document.getElementById('pairingsModal').style.display = 'flex';
+        } catch (error) {
+            console.error('[SocietyOrganizer] Error opening pairings:', error);
+            NotificationManager.show('Failed to load pairings', 'error');
+        }
+    }
+
+    closePairingsModal() {
+        document.getElementById('pairingsModal').style.display = 'none';
+        this.currentPairings = null;
+    }
+
+    autoPairPlayers() {
+        if (!this.currentPairings || !this.currentPairings.players.length) {
+            NotificationManager.show('No players to pair', 'warning');
+            return;
+        }
+
+        const groupSize = parseInt(document.getElementById('pairingsGroupSize').value);
+        this.currentPairings.groupSize = groupSize;
+
+        // Shuffle players for random pairing
+        const players = [...this.currentPairings.players];
+        for (let i = players.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [players[i], players[j]] = [players[j], players[i]];
+        }
+
+        // Create groups
+        const groups = [];
+        for (let i = 0; i < players.length; i += groupSize) {
+            groups.push(players.slice(i, i + groupSize));
+        }
+
+        this.currentPairings.groups = groups;
+        this.renderPairings();
+        NotificationManager.show(`Created ${groups.length} groups`, 'success');
+    }
+
+    shufflePairings() {
+        if (!this.currentPairings || !this.currentPairings.groups.length) {
+            NotificationManager.show('No pairings to shuffle', 'warning');
+            return;
+        }
+
+        // Flatten all groups
+        const allPlayers = this.currentPairings.groups.flat();
+
+        // Shuffle
+        for (let i = allPlayers.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [allPlayers[i], allPlayers[j]] = [allPlayers[j], allPlayers[i]];
+        }
+
+        // Recreate groups
+        const groupSize = this.currentPairings.groupSize;
+        const groups = [];
+        for (let i = 0; i < allPlayers.length; i += groupSize) {
+            groups.push(allPlayers.slice(i, i + groupSize));
+        }
+
+        this.currentPairings.groups = groups;
+        this.renderPairings();
+        NotificationManager.show('Pairings shuffled', 'success');
+    }
+
+    renderPairings() {
+        const container = document.getElementById('pairingsContainer');
+        const groups = this.currentPairings.groups;
+
+        if (!groups || groups.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-8 text-gray-500">
+                    <span class="material-symbols-outlined text-5xl mb-2">groups</span>
+                    <p class="text-sm">Click "Auto-Pair Players" to generate pairings</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = groups.map((group, groupIndex) => {
+            const avgHandicap = group.reduce((sum, p) => sum + p.handicap, 0) / group.length;
+            return `
+                <div class="bg-white border-2 border-green-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-bold text-gray-900">Group ${groupIndex + 1}</h3>
+                        <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                            Avg HCP: ${avgHandicap.toFixed(1)}
+                        </span>
+                    </div>
+                    <div class="space-y-2">
+                        ${group.map((player, playerIndex) => `
+                            <div class="flex items-center justify-between bg-gray-50 rounded p-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold text-gray-500">#${playerIndex + 1}</span>
+                                    <span class="font-medium text-gray-900">${player.playerName}</span>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-sm text-gray-600">HCP ${Math.round(player.handicap)}</span>
+                                    ${player.wantTransport ? '<span class="text-xs">🚐</span>' : ''}
+                                    ${player.wantCompetition ? '<span class="text-xs">🏆</span>' : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async savePairings() {
+        if (!this.currentPairings || !this.currentPairings.groups.length) {
+            NotificationManager.show('No pairings to save', 'warning');
+            return;
+        }
+
+        try {
+            await SocietyGolfDB.savePairings(this.currentPairings.eventId, {
+                groupSize: this.currentPairings.groupSize,
+                groups: this.currentPairings.groups
+            });
+            NotificationManager.show('Pairings saved successfully', 'success');
+        } catch (error) {
+            console.error('[SocietyOrganizer] Error saving pairings:', error);
+            NotificationManager.show('Failed to save pairings', 'error');
+        }
+    }
+
+    exportPairings() {
+        if (!this.currentPairings || !this.currentPairings.groups.length) {
+            NotificationManager.show('No pairings to export', 'warning');
+            return;
+        }
+
+        // Generate CSV
+        let csv = `${this.currentRosterEvent.name} - Pairings\n`;
+        csv += `Date: ${this.currentRosterEvent.date}\n\n`;
+
+        this.currentPairings.groups.forEach((group, groupIndex) => {
+            csv += `Group ${groupIndex + 1}\n`;
+            group.forEach((player, playerIndex) => {
+                csv += `${playerIndex + 1}. ${player.playerName} (HCP ${Math.round(player.handicap)})`;
+                if (player.wantTransport) csv += ' - Transport';
+                if (player.wantCompetition) csv += ' - Competition';
+                csv += '\n';
+            });
+            csv += '\n';
+        });
+
+        // Download CSV
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${this.currentRosterEvent.name.replace(/\s+/g, '-')}-pairings.csv`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+
+        NotificationManager.show('Pairings exported', 'success');
     }
 
     // =====================================================

@@ -29715,6 +29715,9 @@ class SocietyOrganizerManager {
     async saveSocietyProfile() {
         try {
             const organizerId = AppState.currentUser?.lineUserId;
+            console.log('[SocietyOrganizer] Current user:', AppState.currentUser);
+            console.log('[SocietyOrganizer] Organizer ID:', organizerId);
+
             if (!organizerId) {
                 NotificationManager.show('User not logged in', 'error');
                 return;
@@ -29727,18 +29730,26 @@ class SocietyOrganizerManager {
                 societyLogo: this.tempLogoData || this.societyProfile?.societyLogo || null
             };
 
+            console.log('[SocietyOrganizer] Profile data to save:', profileData);
+
             if (!profileData.societyName) {
                 NotificationManager.show('Please enter society name', 'error');
                 return;
             }
 
+            console.log('[SocietyOrganizer] Existing profile:', this.societyProfile);
+
             if (this.societyProfile) {
                 // Update existing profile
-                await SocietyGolfDB.updateSocietyProfile(organizerId, profileData);
+                console.log('[SocietyOrganizer] Updating existing profile...');
+                const result = await SocietyGolfDB.updateSocietyProfile(organizerId, profileData);
+                console.log('[SocietyOrganizer] Update result:', result);
                 NotificationManager.show('Profile updated successfully', 'success');
             } else {
                 // Create new profile
-                await SocietyGolfDB.createSocietyProfile(profileData);
+                console.log('[SocietyOrganizer] Creating new profile...');
+                const result = await SocietyGolfDB.createSocietyProfile(profileData);
+                console.log('[SocietyOrganizer] Create result:', result);
                 NotificationManager.show('Profile created successfully', 'success');
             }
 
@@ -29749,7 +29760,8 @@ class SocietyOrganizerManager {
             await this.loadEvents();
         } catch (error) {
             console.error('[SocietyOrganizer] Error saving profile:', error);
-            NotificationManager.show('Failed to save profile', 'error');
+            console.error('[SocietyOrganizer] Error details:', JSON.stringify(error, null, 2));
+            NotificationManager.show('ERROR: ' + (error.message || error.toString()), 'error');
         }
     }
 

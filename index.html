@@ -27992,12 +27992,25 @@ class SocietyGolfSupabase {
     // EVENTS MANAGEMENT
     // =====================================================
 
-    async getEvents() {
+    async getEvents(organizerId = null) {
         await this.waitForSupabase();
-        const { data, error } = await window.SupabaseDB.client
+
+        // If no organizerId provided, use current user
+        if (!organizerId) {
+            organizerId = AppState.currentUser?.lineUserId;
+        }
+
+        let query = window.SupabaseDB.client
             .from('society_events')
             .select('*')
             .order('date', { ascending: true });
+
+        // Filter by organizer if provided
+        if (organizerId) {
+            query = query.eq('organizer_id', organizerId);
+        }
+
+        const { data, error } = await query;
 
         if (error) {
             console.error('[SocietyGolf] Error fetching events:', error);
@@ -28024,6 +28037,7 @@ class SocietyGolfSupabase {
             courseId: e.course_id,
             courseName: e.course_name,
             notes: e.notes,
+            registeredCount: e.registered_count || 0,
             recurring: e.recurring || false,
             recurFrequency: e.recur_frequency,
             recurDayOfWeek: e.recur_day_of_week,
@@ -29608,29 +29622,14 @@ class SocietyCalendar {
     }
 
     async loadEvents() {
-        const userId = AppState.currentUser?.lineUserId;
-        if (!userId) {
-            console.error('[Calendar] No user ID found');
-            return;
-        }
-
         try {
-            const { data, error } = await window.SupabaseDB.client
-                .from('society_events')
-                .select('*')
-                .eq('organizer_id', userId)
-                .order('date', { ascending: true });
-
-            if (error) {
-                console.error('[Calendar] Error loading events:', error);
-                NotificationManager.show('Failed to load events', 'error');
-                return;
-            }
-
-            this.events = data || [];
+            // Use the same SocietyGolfDB method as Events tab for consistency
+            const events = await window.SocietyGolfDB.getEvents();
+            this.events = events || [];
             console.log(`[Calendar] Loaded ${this.events.length} events`);
         } catch (error) {
             console.error('[Calendar] Exception loading events:', error);
+            NotificationManager.show('Failed to load events', 'error');
         }
     }
 
@@ -29732,8 +29731,8 @@ class SocietyCalendar {
         }
 
         // Check if closed/full
-        const registered = event.registered_count || 0;
-        const max = event.max_players || 0;
+        const registered = event.registeredCount || 0;
+        const max = event.maxPlayers || 0;
         if (event.status === 'closed' || (max > 0 && registered >= max)) {
             return '<span class="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-700">Full</span>';
         }
@@ -29744,8 +29743,8 @@ class SocietyCalendar {
         }
 
         // Closing soon (within 48 hours)
-        if (event.registration_cutoff) {
-            const cutoff = new Date(event.registration_cutoff);
+        if (event.cutoff) {
+            const cutoff = new Date(event.cutoff);
             const hoursUntil = (cutoff - today) / (1000 * 60 * 60);
             if (hoursUntil > 0 && hoursUntil <= 48) {
                 return '<span class="px-2 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-700">Closing Soon</span>';
@@ -29774,20 +29773,20 @@ class SocietyCalendar {
             day: 'numeric'
         });
 
-        const registered = event.registered_count || 0;
-        const max = event.max_players || 0;
+        const registered = event.registeredCount || 0;
+        const max = event.maxPlayers || 0;
         const percentFull = max > 0 ? Math.round((registered / max) * 100) : 0;
 
         // Calculate fees
-        const baseFee = event.base_fee || 0;
-        const cartFee = event.cart_fee || 0;
-        const caddyFee = event.caddy_fee || 0;
-        const transportFee = event.transport_fee || 0;
-        const compFee = event.competition_fee || 0;
+        const baseFee = event.baseFee || 0;
+        const cartFee = event.cartFee || 0;
+        const caddyFee = event.caddyFee || 0;
+        const transportFee = event.transportFee || 0;
+        const compFee = event.competitionFee || 0;
 
         sidebar.innerHTML = `
             <div class="mb-4 pb-4 border-b border-gray-200">
-                <h3 class="text-lg font-bold text-gray-800 mb-1">${event.event_name}</h3>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">${event.name}</h3>
                 <p class="text-sm text-gray-600">${dateDisplay}</p>
                 <div class="mt-2">
                     ${this.getStatusBadge(event)}
@@ -29797,18 +29796,18 @@ class SocietyCalendar {
             <div class="space-y-3 text-sm">
                 <div>
                     <div class="text-xs text-gray-500 uppercase font-medium">Format</div>
-                    <div class="text-gray-800">${event.event_format || 'Not specified'}</div>
+                    <div class="text-gray-800">${event.eventFormat || 'Not specified'}</div>
                 </div>
 
                 <div>
                     <div class="text-xs text-gray-500 uppercase font-medium">Course</div>
-                    <div class="text-gray-800">${event.course_name || 'TBD'}</div>
+                    <div class="text-gray-800">${event.courseName || 'TBD'}</div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <div class="text-xs text-gray-500 uppercase font-medium">Departure</div>
-                        <div class="text-gray-800">${event.departure_time || 'TBD'}</div>
+                        <div class="text-gray-800">${event.startTime || 'TBD'}</div>
                     </div>
                     <div>
                         <div class="text-xs text-gray-500 uppercase font-medium">Players</div>
@@ -29887,7 +29886,7 @@ class SocietyCalendar {
 
         // Check if closed
         if (event.status === 'closed' ||
-            (event.max_players && event.registered_count >= event.max_players)) {
+            (event.maxPlayers && event.registeredCount >= event.maxPlayers)) {
             return 'bg-red-500';
         }
 
@@ -29920,8 +29919,8 @@ class SocietyCalendar {
 
         events.forEach(event => {
             const statusColor = this.getEventColor(event).replace('bg-', '');
-            const registered = event.registered_count || 0;
-            const max = event.max_players || 0;
+            const registered = event.registeredCount || 0;
+            const max = event.maxPlayers || 0;
 
             html += `
                 <div class="p-3 border border-gray-200 rounded-lg hover:shadow-md transition cursor-pointer"
@@ -29929,14 +29928,14 @@ class SocietyCalendar {
                     <div class="flex items-start gap-2 mb-2">
                         <div class="w-3 h-3 rounded-full ${this.getEventColor(event)} mt-1"></div>
                         <div class="flex-1">
-                            <div class="font-semibold text-gray-800">${event.event_name}</div>
-                            <div class="text-xs text-gray-600">${event.event_format || 'Format not set'}</div>
+                            <div class="font-semibold text-gray-800">${event.name}</div>
+                            <div class="text-xs text-gray-600">${event.eventFormat || 'Format not set'}</div>
                         </div>
                     </div>
                     <div class="text-xs text-gray-600 space-y-1">
-                        <div>📍 ${event.golf_club || 'Location TBD'}</div>
+                        <div>📍 ${event.courseName || 'Location TBD'}</div>
                         <div>👥 ${registered}/${max} players</div>
-                        ${event.departure_time ? `<div>🚐 Departs ${event.departure_time}</div>` : ''}
+                        ${event.startTime ? `<div>🚐 Departs ${event.startTime}</div>` : ''}
                     </div>
                     <div class="mt-2 flex gap-2">
                         <button onclick="event.stopPropagation(); window.SocietyOrganizerSystem?.viewRoster('${event.id}')"
@@ -29977,7 +29976,7 @@ class SocietyCalendar {
         document.getElementById('calendarStatThisMonth').textContent = eventsThisMonth.length;
 
         // Total players
-        const totalPlayers = eventsThisMonth.reduce((sum, e) => sum + (e.registered_count || 0), 0);
+        const totalPlayers = eventsThisMonth.reduce((sum, e) => sum + (e.registeredCount || 0), 0);
         document.getElementById('calendarStatPlayers').textContent = totalPlayers;
 
         // Upcoming in next 7 days
@@ -29995,16 +29994,16 @@ class SocietyCalendar {
 
         // Events needing attention (near capacity or near cutoff)
         const needAttention = eventsThisMonth.filter(e => {
-            const registered = e.registered_count || 0;
-            const max = e.max_players || 0;
+            const registered = e.registeredCount || 0;
+            const max = e.maxPlayers || 0;
             const percentFull = max > 0 ? (registered / max) * 100 : 0;
 
             // Near capacity (>80%)
             if (percentFull >= 80 && percentFull < 100) return true;
 
             // Near cutoff (within 48 hours)
-            if (e.registration_cutoff) {
-                const cutoff = new Date(e.registration_cutoff);
+            if (e.cutoff) {
+                const cutoff = new Date(e.cutoff);
                 const hoursUntil = (cutoff - today) / (1000 * 60 * 60);
                 if (hoursUntil > 0 && hoursUntil <= 48) return true;
             }

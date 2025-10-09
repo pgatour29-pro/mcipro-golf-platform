@@ -10292,15 +10292,21 @@ document.addEventListener('DOMContentLoaded', function() {
                     UserInterface.updateUserDisplays();
                     UserInterface.updateRoleSpecificDisplays();
 
-                    // Get current profile with fallback to defaults
+                    // Get current profile - DON'T use fallbacks to avoid overwriting real data
                     const profile = this.getCurrentProfile(AppState.currentUser.role);
+                    if (!profile) {
+                        console.warn('[ProfileSystem] No profile found for updateDashboardData');
+                        return;
+                    }
 
-                    // Update handicap displays (show default if empty)
-                    const handicap = profile.golfInfo?.handicap || '18';
-                    AppState.currentUser.handicap = handicap;
-                    document.querySelectorAll('.user-handicap').forEach(el => {
-                        el.textContent = handicap;
-                    });
+                    // Update handicap ONLY if it exists in profile
+                    if (profile.golfInfo?.handicap !== undefined && profile.golfInfo?.handicap !== null && profile.golfInfo?.handicap !== '') {
+                        const handicap = profile.golfInfo.handicap;
+                        AppState.currentUser.handicap = handicap;
+                        document.querySelectorAll('.user-handicap').forEach(el => {
+                            el.textContent = handicap;
+                        });
+                    }
 
                     // Update member since displays (show current year if empty)
                     const memberSince = profile.golfInfo?.memberSince || new Date().toISOString().split('T')[0];
@@ -10309,11 +10315,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         el.textContent = year || new Date().getFullYear();
                     });
 
-                    // Update home club displays (show default if empty)
-                    const homeClub = profile.golfInfo?.homeClub || 'Not Selected';
-                    document.querySelectorAll('.home-club').forEach(el => {
-                        el.textContent = homeClub;
-                    });
+                    // Update home club ONLY if it exists in profile
+                    if (profile.golfInfo?.homeClub !== undefined && profile.golfInfo?.homeClub !== null && profile.golfInfo?.homeClub !== '') {
+                        const homeClub = profile.golfInfo.homeClub;
+                        document.querySelectorAll('.home-club').forEach(el => {
+                            el.textContent = homeClub;
+                        });
+                    }
 
                     // Update club affiliation displays
                     const clubAffiliation = profile.golfInfo?.clubAffiliation;
@@ -10347,10 +10355,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         });
                     }
 
-                    console.log('Dashboard data updated successfully with profile:', {
-                        handicap,
-                        homeClub,
-                        experienceLevel,
+                    console.log('[ProfileSystem] Dashboard data updated successfully with profile:', {
+                        handicap: profile.golfInfo?.handicap || 'not set',
+                        homeClub: profile.golfInfo?.homeClub || 'not set',
+                        experienceLevel: profile.golfInfo?.experienceLevel || 'not set',
                         memberSince: new Date(memberSince).getFullYear()
                     });
                 } catch (error) {

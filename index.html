@@ -9660,6 +9660,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     const profileKey = `profile_${userType}_${AppState.currentUser.name}`;
                     const saved = localStorage.getItem(profileKey);
 
+                    console.log('[ProfileSystem] getCurrentProfile DEBUG:', {
+                        userType,
+                        userName: AppState.currentUser.name,
+                        profileKey,
+                        foundInStorage: !!saved,
+                        allStorageKeys: Object.keys(localStorage).filter(k => k.includes('profile'))
+                    });
+
                     if (saved) {
                         const profile = JSON.parse(saved);
 
@@ -9680,7 +9688,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             profile.preferences = profile.preferences || {};
                         }
 
-                        console.log('[ProfileSystem] Loading existing profile - homeClub:', profile.golfInfo?.homeClub);
+                        console.log('[ProfileSystem] Loading existing profile:', {
+                            handicap: profile.golfInfo?.handicap,
+                            homeClub: profile.golfInfo?.homeClub,
+                            clubAffiliation: profile.golfInfo?.clubAffiliation
+                        });
                         return profile;
                     } else {
                         // Safe template access with fallback
@@ -10288,6 +10300,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
             updateDashboardData() {
                 try {
+                    console.log('[ProfileSystem] updateDashboardData called - Current user:', {
+                        name: AppState.currentUser?.name,
+                        role: AppState.currentUser?.role
+                    });
+
                     // Update all UI elements with current user data
                     UserInterface.updateUserDisplays();
                     UserInterface.updateRoleSpecificDisplays();
@@ -10299,11 +10316,20 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     }
 
+                    console.log('[ProfileSystem] updateDashboardData using profile:', {
+                        handicap: profile.golfInfo?.handicap,
+                        homeClub: profile.golfInfo?.homeClub,
+                        clubAffiliation: profile.golfInfo?.clubAffiliation,
+                        isMobile: window.innerWidth < 768
+                    });
+
                     // Update handicap ONLY if it exists in profile
                     if (profile.golfInfo?.handicap !== undefined && profile.golfInfo?.handicap !== null && profile.golfInfo?.handicap !== '') {
                         const handicap = profile.golfInfo.handicap;
                         AppState.currentUser.handicap = handicap;
-                        document.querySelectorAll('.user-handicap').forEach(el => {
+                        const handicapElements = document.querySelectorAll('.user-handicap');
+                        console.log('[ProfileSystem] Updating handicap to:', handicap, 'on', handicapElements.length, 'elements');
+                        handicapElements.forEach(el => {
                             el.textContent = handicap;
                         });
                     }
@@ -10318,7 +10344,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Update home club ONLY if it exists in profile
                     if (profile.golfInfo?.homeClub !== undefined && profile.golfInfo?.homeClub !== null && profile.golfInfo?.homeClub !== '') {
                         const homeClub = profile.golfInfo.homeClub;
-                        document.querySelectorAll('.home-club').forEach(el => {
+                        const homeClubElements = document.querySelectorAll('.home-club');
+                        console.log('[ProfileSystem] Updating home club to:', homeClub, 'on', homeClubElements.length, 'elements');
+                        homeClubElements.forEach(el => {
                             el.textContent = homeClub;
                         });
                     }
@@ -10327,6 +10355,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     const clubAffiliation = profile.golfInfo?.clubAffiliation;
                     const affiliationContainers = document.querySelectorAll('.club-affiliation-container, .club-affiliation-stats-container');
                     const affiliationElements = document.querySelectorAll('.club-affiliation');
+
+                    console.log('[ProfileSystem] Updating club affiliation:', clubAffiliation, 'on', affiliationElements.length, 'elements');
 
                     if (clubAffiliation && clubAffiliation !== '') {
                         affiliationElements.forEach(el => {
@@ -10368,9 +10398,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Initialize dashboard with profile data on load
             initializeDashboard() {
+                // Multiple attempts to ensure data loads on both mobile and desktop
                 setTimeout(() => {
                     this.updateDashboardData();
                 }, 100);
+                setTimeout(() => {
+                    this.updateDashboardData();
+                }, 500);
+                setTimeout(() => {
+                    this.updateDashboardData();
+                }, 1000);
             },
 
             resetToDefaults(userType) {

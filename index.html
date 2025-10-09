@@ -6691,6 +6691,13 @@
                     if (eaglesCountEl) eaglesCountEl.textContent = '0';
                 }, 100);
             }
+
+            // Initialize Society Events when that tab is shown
+            if (tabName === 'societyevents' && typeof GolferEventsSystem !== 'undefined') {
+                setTimeout(() => {
+                    GolferEventsSystem.init();
+                }, 100);
+            }
         }
 
         function showCaddyTab(tabName, event) {
@@ -20032,6 +20039,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <span class="material-symbols-outlined text-sm">history</span>
                         <span class="hidden sm:inline ml-1">Round History</span>
                     </button>
+                    <button onclick="showGolferTab('societyevents', event)" class="tab-button px-1 md:px-2">
+                        <span class="material-symbols-outlined text-sm">groups</span>
+                        <span class="hidden sm:inline ml-1">Society Events</span>
+                    </button>
                 </div>
             </div>
         </nav>
@@ -21321,6 +21332,74 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                     <p>Handicap progress chart would appear here</p>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Society Events Tab -->
+            <div id="golfer-societyevents" class="tab-content">
+                <div class="space-y-6">
+                    <!-- Header -->
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-900">Society Golf Events</h2>
+                            <p class="text-sm text-gray-600 mt-1">Browse and register for upcoming society golf events</p>
+                        </div>
+                        <button onclick="GolferEventsSystem.refreshEvents()" class="btn-secondary text-sm">
+                            <span class="material-symbols-outlined text-sm">refresh</span>
+                            Refresh
+                        </button>
+                    </div>
+
+                    <!-- Search and Filters -->
+                    <div class="metric-card">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <!-- Search -->
+                            <div class="lg:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Search Events</label>
+                                <div class="relative">
+                                    <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">search</span>
+                                    <input
+                                        type="text"
+                                        id="societyEventSearch"
+                                        placeholder="Search by name, course, organizer..."
+                                        class="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                        oninput="GolferEventsSystem.filterEvents()"
+                                    >
+                                </div>
+                            </div>
+
+                            <!-- Date Filter -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
+                                <select id="societyEventDateFilter" class="form-select w-full" onchange="GolferEventsSystem.filterEvents()">
+                                    <option value="all">All Dates</option>
+                                    <option value="upcoming">Next 7 Days</option>
+                                    <option value="thismonth">This Month</option>
+                                    <option value="nextmonth">Next Month</option>
+                                </select>
+                            </div>
+
+                            <!-- Status Filter -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                                <select id="societyEventStatusFilter" class="form-select w-full" onchange="GolferEventsSystem.filterEvents()">
+                                    <option value="all">All Status</option>
+                                    <option value="open">Open for Registration</option>
+                                    <option value="filling">Filling Fast</option>
+                                    <option value="waitlist">Waitlist Available</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Event Cards Grid -->
+                    <div id="societyEventsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <!-- Events will be rendered here -->
+                        <div class="col-span-full text-center py-12 text-gray-500">
+                            <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">event_busy</span>
+                            <p class="text-lg">Loading society events...</p>
                         </div>
                     </div>
                 </div>
@@ -25632,6 +25711,145 @@ Total Rounds: ${ningCaddy.totalRounds}`;
         </div>
     </div>
 
+    <!-- Society Event Detail & Registration Modal -->
+    <div id="eventDetailModal" class="modal-backdrop" style="display: none;">
+        <div class="modal-container max-w-4xl">
+            <div class="modal-header bg-gradient-to-r from-green-600 to-green-400 text-white">
+                <div class="flex-1">
+                    <h2 id="eventDetailName" class="text-xl font-bold">Event Name</h2>
+                    <p id="eventDetailOrganizer" class="text-sm text-green-100 mt-1"></p>
+                </div>
+                <button onclick="GolferEventsSystem.closeEventDetail()" class="text-white hover:bg-white/20 rounded-lg p-1">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+
+            <div class="modal-body max-h-[70vh] overflow-y-auto">
+                <!-- Event Info Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <!-- Date & Time -->
+                    <div class="flex items-start space-x-3">
+                        <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <span class="material-symbols-outlined text-green-600">event</span>
+                        </div>
+                        <div>
+                            <div class="text-sm font-medium text-gray-500">Date & Time</div>
+                            <div id="eventDetailDate" class="text-lg font-semibold text-gray-900"></div>
+                        </div>
+                    </div>
+
+                    <!-- Course -->
+                    <div class="flex items-start space-x-3">
+                        <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <span class="material-symbols-outlined text-blue-600">golf_course</span>
+                        </div>
+                        <div>
+                            <div class="text-sm font-medium text-gray-500">Golf Course</div>
+                            <div id="eventDetailCourse" class="text-lg font-semibold text-gray-900"></div>
+                        </div>
+                    </div>
+
+                    <!-- Registration Cutoff -->
+                    <div class="flex items-start space-x-3">
+                        <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <span class="material-symbols-outlined text-amber-600">schedule</span>
+                        </div>
+                        <div>
+                            <div class="text-sm font-medium text-gray-500">Registration Cutoff</div>
+                            <div id="eventDetailCutoff" class="text-lg font-semibold text-gray-900"></div>
+                        </div>
+                    </div>
+
+                    <!-- Availability -->
+                    <div class="flex items-start space-x-3">
+                        <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <span class="material-symbols-outlined text-purple-600">groups</span>
+                        </div>
+                        <div>
+                            <div class="text-sm font-medium text-gray-500">Availability</div>
+                            <div id="eventDetailAvailability" class="text-lg font-semibold text-gray-900"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fees Breakdown -->
+                <div class="bg-gray-50 rounded-lg p-4 mb-6">
+                    <h3 class="font-bold text-gray-900 mb-3 flex items-center">
+                        <span class="material-symbols-outlined text-sm mr-2">payments</span>
+                        Fees Breakdown
+                    </h3>
+                    <div id="eventDetailFees" class="space-y-2 text-sm">
+                        <!-- Fees will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Notes -->
+                <div id="eventDetailNotesSection" class="bg-blue-50 rounded-lg p-4 mb-6" style="display: none;">
+                    <h3 class="font-bold text-gray-900 mb-2 flex items-center">
+                        <span class="material-symbols-outlined text-sm mr-2">info</span>
+                        Event Notes
+                    </h3>
+                    <p id="eventDetailNotes" class="text-sm text-gray-700"></p>
+                </div>
+
+                <!-- Registration Form (Only shown when registering) -->
+                <div id="registrationForm" class="border-t pt-6" style="display: none;">
+                    <h3 class="text-lg font-bold text-gray-900 mb-4">Registration Details</h3>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Player Name *</label>
+                            <input
+                                type="text"
+                                id="regPlayerName"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                                placeholder="Enter your name"
+                            >
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Handicap *</label>
+                            <input
+                                type="number"
+                                id="regHandicap"
+                                step="0.1"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                                placeholder="Your handicap (e.g., 18.5)"
+                            >
+                        </div>
+
+                        <div class="flex items-center space-x-6">
+                            <label class="flex items-center cursor-pointer">
+                                <input type="checkbox" id="regWantTransport" class="mr-2 rounded">
+                                <span class="text-sm text-gray-700">🚐 Request Transportation</span>
+                            </label>
+
+                            <label class="flex items-center cursor-pointer">
+                                <input type="checkbox" id="regWantCompetition" class="mr-2 rounded">
+                                <span class="text-sm text-gray-700">🏆 Join Competition</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="modal-footer">
+                <button onclick="GolferEventsSystem.closeEventDetail()" class="btn-secondary">
+                    Close
+                </button>
+                <button id="eventRegisterBtn" onclick="GolferEventsSystem.showRegistrationForm()" class="btn-primary">
+                    <span class="material-symbols-outlined text-sm">person_add</span>
+                    Register for Event
+                </button>
+                <button id="eventSubmitBtn" onclick="GolferEventsSystem.submitRegistration()" class="btn-primary" style="display: none;">
+                    <span class="material-symbols-outlined text-sm">send</span>
+                    Submit Registration
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Add Score Modal -->
     <div id="addScoreModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" style="display: none;">
         <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-screen overflow-hidden">
@@ -28255,6 +28473,45 @@ class SocietyGolfSupabase {
         }
     }
 
+    async getAllPublicEvents() {
+        await this.waitForSupabase();
+
+        // Get all open/upcoming events with registration count
+        const { data, error } = await window.SupabaseDB.client
+            .from('society_events')
+            .select(`
+                *,
+                event_registrations(count)
+            `)
+            .order('date', { ascending: true });
+
+        if (error) {
+            console.error('[SocietyGolf] Error fetching public events:', error);
+            return [];
+        }
+
+        return (data || []).map(e => ({
+            id: e.id,
+            name: e.name,
+            date: e.date,
+            startTime: e.start_time,
+            cutoff: e.cutoff,
+            baseFee: e.base_fee || 0,
+            cartFee: e.cart_fee || 0,
+            caddyFee: e.caddy_fee || 0,
+            transportFee: e.transport_fee || 0,
+            competitionFee: e.competition_fee || 0,
+            maxPlayers: e.max_players,
+            organizerId: e.organizer_id,
+            organizerName: e.organizer_name,
+            status: e.status,
+            courseName: e.course_name,
+            notes: e.notes,
+            registeredCount: e.event_registrations?.[0]?.count || 0,
+            createdAt: e.created_at
+        }));
+    }
+
     // =====================================================
     // REGISTRATIONS MANAGEMENT
     // =====================================================
@@ -28309,6 +28566,17 @@ class SocietyGolfSupabase {
         }
 
         return data;
+    }
+
+    async registerForEvent(registration) {
+        // Convenience wrapper for golfers registering for events
+        return await this.registerPlayer(registration.eventId, {
+            name: registration.playerName,
+            playerId: registration.playerId,
+            handicap: registration.handicap,
+            wantTransport: registration.wantTransport,
+            wantCompetition: registration.wantCompetition
+        });
     }
 
     async updateRegistration(regId, updates) {
@@ -29649,6 +29917,334 @@ function updateRecurEndOptions() {
 
 // Initialize global instance
 window.SocietyOrganizerSystem = new SocietyOrganizerManager();
+
+// ==================================================================
+// GOLFER EVENTS SYSTEM - Browse and Register for Society Events
+// ==================================================================
+class GolferEventsManager {
+    constructor() {
+        this.allEvents = [];
+        this.filteredEvents = [];
+        this.currentEvent = null;
+    }
+
+    async init() {
+        console.log('[GolferEventsSystem] Initializing...');
+        await this.loadEvents();
+        this.renderEvents();
+    }
+
+    async loadEvents() {
+        try {
+            console.log('[GolferEventsSystem] Loading all society events...');
+
+            // Load ALL society events (not just for one organizer)
+            const events = await window.SocietyGolfDB.getAllPublicEvents();
+
+            this.allEvents = events || [];
+            this.filteredEvents = this.allEvents;
+
+            console.log(`[GolferEventsSystem] Loaded ${this.allEvents.length} events`);
+        } catch (error) {
+            console.error('[GolferEventsSystem] Error loading events:', error);
+            this.allEvents = [];
+            this.filteredEvents = [];
+        }
+    }
+
+    async refreshEvents() {
+        await this.loadEvents();
+        this.filterEvents();
+    }
+
+    filterEvents() {
+        const searchTerm = document.getElementById('societyEventSearch')?.value.toLowerCase() || '';
+        const dateFilter = document.getElementById('societyEventDateFilter')?.value || 'all';
+        const statusFilter = document.getElementById('societyEventStatusFilter')?.value || 'all';
+
+        this.filteredEvents = this.allEvents.filter(event => {
+            // Text search
+            if (searchTerm) {
+                const searchableText = `${event.name} ${event.courseName} ${event.organizerName}`.toLowerCase();
+                if (!searchableText.includes(searchTerm)) return false;
+            }
+
+            // Date filter
+            if (dateFilter !== 'all') {
+                const eventDate = new Date(event.date);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                if (dateFilter === 'upcoming') {
+                    const weekFromNow = new Date(today);
+                    weekFromNow.setDate(weekFromNow.getDate() + 7);
+                    if (eventDate < today || eventDate > weekFromNow) return false;
+                } else if (dateFilter === 'thismonth') {
+                    if (eventDate.getMonth() !== today.getMonth() || eventDate.getFullYear() !== today.getFullYear()) return false;
+                } else if (dateFilter === 'nextmonth') {
+                    const nextMonth = new Date(today);
+                    nextMonth.setMonth(nextMonth.getMonth() + 1);
+                    if (eventDate.getMonth() !== nextMonth.getMonth() || eventDate.getFullYear() !== nextMonth.getFullYear()) return false;
+                }
+            }
+
+            // Status filter
+            if (statusFilter !== 'all') {
+                const registered = event.registeredCount || 0;
+                const max = event.maxPlayers || 999;
+                const availability = max - registered;
+
+                if (statusFilter === 'open' && availability <= 0) return false;
+                if (statusFilter === 'filling' && (availability > max * 0.3 || availability <= 0)) return false;
+                if (statusFilter === 'waitlist' && availability > 0) return false;
+            }
+
+            return true;
+        });
+
+        this.renderEvents();
+    }
+
+    renderEvents() {
+        const grid = document.getElementById('societyEventsGrid');
+        if (!grid) return;
+
+        if (this.filteredEvents.length === 0) {
+            grid.innerHTML = `
+                <div class="col-span-full text-center py-12 text-gray-500">
+                    <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">search_off</span>
+                    <p class="text-lg">No events found</p>
+                    <p class="text-sm">Try adjusting your filters</p>
+                </div>
+            `;
+            return;
+        }
+
+        grid.innerHTML = this.filteredEvents.map(event => this.renderEventCard(event)).join('');
+    }
+
+    renderEventCard(event) {
+        const eventDate = new Date(event.date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const isPast = eventDate < today;
+
+        const registered = event.registeredCount || 0;
+        const max = event.maxPlayers || 0;
+        const availability = max - registered;
+        const isFull = max > 0 && availability <= 0;
+        const isFillingFast = max > 0 && availability > 0 && availability <= max * 0.3;
+
+        let statusBadge = '';
+        if (isPast) {
+            statusBadge = '<span class="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">Past Event</span>';
+        } else if (isFull) {
+            statusBadge = '<span class="px-2 py-1 text-xs font-medium bg-red-100 text-red-600 rounded-full">Full - Waitlist</span>';
+        } else if (isFillingFast) {
+            statusBadge = '<span class="px-2 py-1 text-xs font-medium bg-amber-100 text-amber-600 rounded-full">Filling Fast</span>';
+        } else {
+            statusBadge = '<span class="px-2 py-1 text-xs font-medium bg-green-100 text-green-600 rounded-full">Open</span>';
+        }
+
+        const totalFee = (event.baseFee || 0) + (event.cartFee || 0) + (event.caddyFee || 0);
+
+        return `
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                 onclick="GolferEventsSystem.openEventDetail('${event.id}')">
+                <!-- Header -->
+                <div class="bg-gradient-to-r from-green-500 to-green-400 px-4 py-3 text-white">
+                    <div class="flex items-start justify-between mb-2">
+                        <h3 class="font-bold text-lg flex-1 pr-2">${event.name}</h3>
+                        ${statusBadge}
+                    </div>
+                    <div class="flex items-center text-sm text-green-50">
+                        <span class="material-symbols-outlined text-sm mr-1">person</span>
+                        ${event.organizerName || 'Organizer'}
+                    </div>
+                </div>
+
+                <!-- Body -->
+                <div class="p-4 space-y-3">
+                    <!-- Date -->
+                    <div class="flex items-center text-sm">
+                        <span class="material-symbols-outlined text-gray-400 text-base mr-2">event</span>
+                        <span class="font-medium text-gray-900">${this.formatDate(event.date)}</span>
+                    </div>
+
+                    <!-- Course -->
+                    <div class="flex items-center text-sm">
+                        <span class="material-symbols-outlined text-gray-400 text-base mr-2">golf_course</span>
+                        <span class="text-gray-700">${event.courseName || 'TBD'}</span>
+                    </div>
+
+                    <!-- Availability -->
+                    ${max > 0 ? `
+                    <div class="flex items-center text-sm">
+                        <span class="material-symbols-outlined text-gray-400 text-base mr-2">groups</span>
+                        <span class="text-gray-700">${registered}/${max} registered</span>
+                        <span class="ml-auto text-xs ${availability > 0 ? 'text-green-600' : 'text-red-600'} font-medium">
+                            ${availability > 0 ? `${availability} spots left` : 'Full'}
+                        </span>
+                    </div>
+                    ` : ''}
+
+                    <!-- Fee -->
+                    ${totalFee > 0 ? `
+                    <div class="flex items-center text-sm">
+                        <span class="material-symbols-outlined text-gray-400 text-base mr-2">payments</span>
+                        <span class="text-gray-700">฿${totalFee.toLocaleString()}</span>
+                    </div>
+                    ` : ''}
+                </div>
+
+                <!-- Footer -->
+                <div class="px-4 py-3 bg-gray-50 border-t">
+                    <button class="w-full btn-primary text-sm py-2" onclick="event.stopPropagation(); GolferEventsSystem.openEventDetail('${event.id}')">
+                        <span class="material-symbols-outlined text-sm">info</span>
+                        View Details & Register
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    formatDate(dateStr) {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('en-GB', {
+            weekday: 'short',
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
+    }
+
+    async openEventDetail(eventId) {
+        this.currentEvent = this.allEvents.find(e => e.id === eventId);
+        if (!this.currentEvent) return;
+
+        // Populate modal
+        document.getElementById('eventDetailName').textContent = this.currentEvent.name;
+        document.getElementById('eventDetailOrganizer').textContent = `Organized by ${this.currentEvent.organizerName || 'Society Organizer'}`;
+        document.getElementById('eventDetailDate').textContent = this.formatDate(this.currentEvent.date);
+        document.getElementById('eventDetailCourse').textContent = this.currentEvent.courseName || 'TBD';
+
+        // Cutoff
+        if (this.currentEvent.cutoff) {
+            const cutoffDate = new Date(this.currentEvent.cutoff);
+            document.getElementById('eventDetailCutoff').textContent = cutoffDate.toLocaleString('en-GB', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        } else {
+            document.getElementById('eventDetailCutoff').textContent = 'Not specified';
+        }
+
+        // Availability
+        const registered = this.currentEvent.registeredCount || 0;
+        const max = this.currentEvent.maxPlayers || 0;
+        const availability = max - registered;
+
+        if (max > 0) {
+            document.getElementById('eventDetailAvailability').textContent = `${registered}/${max} registered (${availability} spots left)`;
+        } else {
+            document.getElementById('eventDetailAvailability').textContent = 'Unlimited';
+        }
+
+        // Fees
+        const fees = [];
+        if (this.currentEvent.baseFee) fees.push(`<div class="flex justify-between"><span>Green Fee:</span><span class="font-medium">฿${this.currentEvent.baseFee.toLocaleString()}</span></div>`);
+        if (this.currentEvent.cartFee) fees.push(`<div class="flex justify-between"><span>Cart Fee:</span><span class="font-medium">฿${this.currentEvent.cartFee.toLocaleString()}</span></div>`);
+        if (this.currentEvent.caddyFee) fees.push(`<div class="flex justify-between"><span>Caddy Fee:</span><span class="font-medium">฿${this.currentEvent.caddyFee.toLocaleString()}</span></div>`);
+        if (this.currentEvent.transportFee) fees.push(`<div class="flex justify-between"><span>Transportation:</span><span class="font-medium">฿${this.currentEvent.transportFee.toLocaleString()}</span></div>`);
+        if (this.currentEvent.competitionFee) fees.push(`<div class="flex justify-between"><span>Competition Entry:</span><span class="font-medium">฿${this.currentEvent.competitionFee.toLocaleString()}</span></div>`);
+
+        const totalFee = (this.currentEvent.baseFee || 0) + (this.currentEvent.cartFee || 0) + (this.currentEvent.caddyFee || 0);
+        fees.push(`<div class="flex justify-between pt-2 border-t font-bold"><span>Total (base):</span><span class="text-green-600">฿${totalFee.toLocaleString()}</span></div>`);
+
+        document.getElementById('eventDetailFees').innerHTML = fees.join('');
+
+        // Notes
+        if (this.currentEvent.notes) {
+            document.getElementById('eventDetailNotes').textContent = this.currentEvent.notes;
+            document.getElementById('eventDetailNotesSection').style.display = 'block';
+        } else {
+            document.getElementById('eventDetailNotesSection').style.display = 'none';
+        }
+
+        // Pre-fill player name if available
+        if (AppState.currentUser?.name) {
+            document.getElementById('regPlayerName').value = AppState.currentUser.name;
+        }
+        if (AppState.currentUser?.handicap) {
+            document.getElementById('regHandicap').value = AppState.currentUser.handicap;
+        }
+
+        // Reset registration form
+        document.getElementById('registrationForm').style.display = 'none';
+        document.getElementById('eventRegisterBtn').style.display = 'inline-flex';
+        document.getElementById('eventSubmitBtn').style.display = 'none';
+
+        // Show modal
+        document.getElementById('eventDetailModal').style.display = 'flex';
+    }
+
+    showRegistrationForm() {
+        document.getElementById('registrationForm').style.display = 'block';
+        document.getElementById('eventRegisterBtn').style.display = 'none';
+        document.getElementById('eventSubmitBtn').style.display = 'inline-flex';
+
+        // Scroll to form
+        document.getElementById('registrationForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    async submitRegistration() {
+        const playerName = document.getElementById('regPlayerName').value.trim();
+        const handicap = parseFloat(document.getElementById('regHandicap').value);
+        const wantTransport = document.getElementById('regWantTransport').checked;
+        const wantCompetition = document.getElementById('regWantCompetition').checked;
+
+        // Validation
+        if (!playerName) {
+            alert('Please enter your name');
+            return;
+        }
+        if (isNaN(handicap) || handicap < 0 || handicap > 54) {
+            alert('Please enter a valid handicap (0-54)');
+            return;
+        }
+
+        try {
+            const registration = {
+                eventId: this.currentEvent.id,
+                playerName: playerName,
+                playerId: AppState.currentUser?.lineUserId || null,
+                handicap: handicap,
+                wantTransport: wantTransport,
+                wantCompetition: wantCompetition
+            };
+
+            await window.SocietyGolfDB.registerForEvent(registration);
+
+            alert(`✅ Successfully registered for ${this.currentEvent.name}!\n\nYou will receive confirmation from the event organizer.`);
+
+            this.closeEventDetail();
+            await this.refreshEvents();
+        } catch (error) {
+            console.error('[GolferEventsSystem] Registration error:', error);
+            alert(`❌ Registration failed: ${error.message}`);
+        }
+    }
+
+    closeEventDetail() {
+        document.getElementById('eventDetailModal').style.display = 'none';
+        this.currentEvent = null;
+    }
+}
+
+// Initialize global instance
+window.GolferEventsSystem = new GolferEventsManager();
 
 
     // ===== SOCIETY ORGANIZER PIN AUTHENTICATION (Per-Organizer) =====

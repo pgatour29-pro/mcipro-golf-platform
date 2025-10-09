@@ -9657,12 +9657,59 @@ document.addEventListener('DOMContentLoaded', function() {
                         return null;
                     }
 
-                    const profileKey = `profile_${userType}_${AppState.currentUser.name}`;
-                    const saved = localStorage.getItem(profileKey);
+                    let saved = null;
+                    let profileKey = null;
+
+                    // STRATEGY 1: Try to find by lineUserId in mcipro_user_profiles array (most reliable)
+                    if (AppState.currentUser?.lineUserId) {
+                        const profiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+                        const matchingProfile = profiles.find(p =>
+                            p.lineUserId === AppState.currentUser.lineUserId &&
+                            p.role === userType
+                        );
+
+                        if (matchingProfile) {
+                            // Found by lineUserId - now get the individual profile from storage
+                            const possibleKeys = Object.keys(localStorage).filter(k =>
+                                k.startsWith(`profile_${userType}_`) &&
+                                localStorage.getItem(k).includes(AppState.currentUser.lineUserId)
+                            );
+
+                            if (possibleKeys.length > 0) {
+                                profileKey = possibleKeys[0];
+                                saved = localStorage.getItem(profileKey);
+                                console.log('[ProfileSystem] Found profile by lineUserId:', profileKey);
+                            }
+                        }
+                    }
+
+                    // STRATEGY 2: Fall back to name-based lookup
+                    if (!saved) {
+                        profileKey = `profile_${userType}_${AppState.currentUser.name}`;
+                        saved = localStorage.getItem(profileKey);
+                        console.log('[ProfileSystem] Trying name-based lookup:', profileKey, 'found:', !!saved);
+                    }
+
+                    // STRATEGY 3: Search all profile keys for this user type and see if any match
+                    if (!saved) {
+                        const allProfileKeys = Object.keys(localStorage).filter(k => k.startsWith(`profile_${userType}_`));
+                        console.log('[ProfileSystem] Searching all profiles for user type:', userType, 'found keys:', allProfileKeys);
+
+                        for (const key of allProfileKeys) {
+                            const testProfile = JSON.parse(localStorage.getItem(key));
+                            if (testProfile.lineUserId === AppState.currentUser.lineUserId) {
+                                profileKey = key;
+                                saved = localStorage.getItem(key);
+                                console.log('[ProfileSystem] Found matching profile by scanning:', key);
+                                break;
+                            }
+                        }
+                    }
 
                     console.log('[ProfileSystem] getCurrentProfile DEBUG:', {
                         userType,
                         userName: AppState.currentUser.name,
+                        lineUserId: AppState.currentUser.lineUserId,
                         profileKey,
                         foundInStorage: !!saved,
                         allStorageKeys: Object.keys(localStorage).filter(k => k.includes('profile'))

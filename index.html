@@ -2683,6 +2683,16 @@
                     this.handleRealtimeProfileChange(payload);
                 });
 
+                // Subscribe to emergency alerts via WebSocket (INSTANT DELIVERY)
+                window.SupabaseDB.subscribeToEmergencyAlerts((payload) => {
+                    console.log('[SimpleCloudSync] 🚨 Emergency alert WebSocket received:', payload);
+                    try {
+                        this.handleRealtimeAlertChange(payload);
+                    } catch (error) {
+                        console.error('[SimpleCloudSync] ❌ Error handling alert WebSocket:', error);
+                    }
+                });
+
                 // Fallback: Light sync every 5 minutes as safety net
                 setInterval(() => {
                     console.log('[SimpleCloudSync] Safety sync (5min fallback)');
@@ -2690,6 +2700,15 @@
                         console.log('[SimpleCloudSync] Fallback sync failed:', err.message);
                     });
                 }, 300000); // 5 minutes
+
+                // Auto-cleanup expired emergency alerts every hour
+                setInterval(() => {
+                    if (window.SupabaseDB) {
+                        window.SupabaseDB.cleanupExpiredAlerts()
+                            .then(count => console.log(`[Emergency] Cleaned up ${count} expired alerts`))
+                            .catch(err => console.error('[Emergency] Cleanup failed:', err));
+                    }
+                }, 3600000); // 1 hour
 
                 console.log('[SimpleCloudSync] ✅ Realtime sync active - instant updates via WebSocket');
             }
@@ -2781,6 +2800,101 @@
                             console.log('[SimpleCloudSync] 🗑️ Profile deleted:', oldRecord.line_user_id);
                         }
                         break;
+                }
+            }
+
+            static handleRealtimeAlertChange(payload) {
+                console.log('[SimpleCloudSync] 📥 Processing alert payload:', JSON.stringify(payload, null, 2));
+
+                const { eventType, new: newRecord, old: oldRecord } = payload;
+                console.log('[SimpleCloudSync] Event type:', eventType);
+
+                switch(eventType) {
+                    case 'INSERT':
+                    case 'UPDATE':
+                        console.log('[SimpleCloudSync] 🔄 INSERT/UPDATE - newRecord:', newRecord);
+
+                        // Convert Supabase format to app format
+                        const alert = {
+                            id: newRecord.id,
+                            type: newRecord.type,
+                            message: newRecord.message,
+                            user: newRecord.user_name,
+                            role: newRecord.user_role,
+                            timestamp: newRecord.timestamp,
+                            location: (newRecord.location_lat && newRecord.location_lng) ? {
+                                lat: newRecord.location_lat,
+                                lng: newRecord.location_lng,
+                                hole: newRecord.location_hole
+                            } : null,
+                            status: newRecord.status,
+                            priority: newRecord.priority,
+                            acknowledgedBy: newRecord.acknowledged_by || [],
+                            resolvedBy: newRecord.resolved_by,
+                            resolvedAt: newRecord.resolved_at
+                        };
+                        console.log('[SimpleCloudSync] 📋 Converted alert:', alert);
+
+                        // Update local alerts
+                        const localAlerts = EmergencySystem.activeAlerts || [];
+                        const existingIndex = localAlerts.findIndex(a => a.id === alert.id);
+                        console.log('[SimpleCloudSync] Current activeAlerts count:', localAlerts.length, 'existingIndex:', existingIndex);
+
+                        if (alert.status === 'active') {
+                            if (existingIndex !== -1) {
+                                localAlerts[existingIndex] = alert;
+                                console.log('[SimpleCloudSync] ✏️ Emergency alert updated:', alert.id);
+                            } else {
+                                localAlerts.push(alert);
+                                console.log('[SimpleCloudSync] ➕ New emergency alert received:', alert.id);
+
+                                // Show full-screen overlay for NEW alerts
+                                console.log('[SimpleCloudSync] 🎯 Checking overlay conditions - eventType:', eventType, 'EmergencySystem defined:', typeof EmergencySystem !== 'undefined');
+                                if (eventType === 'INSERT' && typeof EmergencySystem !== 'undefined') {
+                                    console.log('[SimpleCloudSync] 🚨 SHOWING FULL-SCREEN OVERLAY NOW!');
+                                    EmergencySystem.createFullScreenEmergencyOverlay(alert);
+                                    console.log('[SimpleCloudSync] 🔊 PLAYING SIREN NOW!');
+                                    EmergencySystem.playEmergencySiren();
+                                } else {
+                                    console.warn('[SimpleCloudSync] ⚠️ NOT showing overlay - eventType:', eventType, 'EmergencySystem:', typeof EmergencySystem);
+                                }
+                            }
+                        } else {
+                            // Alert resolved/inactive - remove it
+                            if (existingIndex !== -1) {
+                                localAlerts.splice(existingIndex, 1);
+                                console.log('[SimpleCloudSync] ✅ Emergency alert resolved:', alert.id);
+                            }
+                        }
+
+                        EmergencySystem.activeAlerts = localAlerts;
+                        localStorage.setItem('emergency_alerts', JSON.stringify(localAlerts));
+                        console.log('[SimpleCloudSync] 💾 Saved to localStorage - total alerts:', localAlerts.length);
+
+                        // Update all role displays
+                        if (typeof PersistentEmergencyAlerts !== 'undefined') {
+                            PersistentEmergencyAlerts.updateAllOverviewAlerts();
+                            console.log('[SimpleCloudSync] 🔄 Updated role displays');
+                        }
+                        break;
+
+                    case 'DELETE':
+                        console.log('[SimpleCloudSync] 🗑️ DELETE - oldRecord:', oldRecord);
+                        // Remove deleted alert
+                        const deleteIndex = EmergencySystem.activeAlerts?.findIndex(a => a.id === oldRecord.id);
+                        if (deleteIndex !== -1) {
+                            EmergencySystem.activeAlerts.splice(deleteIndex, 1);
+                            localStorage.setItem('emergency_alerts', JSON.stringify(EmergencySystem.activeAlerts));
+                            console.log('[SimpleCloudSync] ❌ Emergency alert deleted:', oldRecord.id);
+
+                            if (typeof PersistentEmergencyAlerts !== 'undefined') {
+                                PersistentEmergencyAlerts.updateAllOverviewAlerts();
+                            }
+                        }
+                        break;
+
+                    default:
+                        console.warn('[SimpleCloudSync] ⚠️ Unknown event type:', eventType);
                 }
             }
 
@@ -3582,6 +3696,23 @@
             }
 
             static initGolferDashboard() {
+                // === PERFORMANCE OPTIMIZATION: Check if already initialized ===
+                const cacheKey = 'golfer_dashboard_init';
+                const cached = GlobalCacheManager.get(cacheKey);
+
+                if (cached) {
+                    console.log('[Dashboard] Using cached Golfer Dashboard (instant load)');
+                    TabManager.showTab('golferDashboard', 'overview');
+                    UserInterface.updateUserDisplays();
+                    // Schedule already rendered from cache
+                    if (typeof ScheduleSystem !== 'undefined' && ScheduleSystem.renderScheduleList) {
+                        ScheduleSystem.renderScheduleList();
+                    }
+                    return;
+                }
+
+                // First-time initialization
+                console.log('[Dashboard] First-time Golfer Dashboard init');
                 TabManager.showTab('golferDashboard', 'overview');
                 UserInterface.updateUserDisplays();
                 ProfileSystem.initializeDashboard();
@@ -3596,6 +3727,8 @@
                     setTimeout(() => {
                         ScheduleSystem.renderScheduleList();
                         console.log('[Dashboard] Schedule re-rendered at 100ms');
+                        // Mark as initialized after first successful render
+                        GlobalCacheManager.set(cacheKey, true, 30000);
                     }, 100);
 
                     setTimeout(() => {
@@ -3642,11 +3775,40 @@
             }
 
             static initCaddyDashboard() {
+                // === PERFORMANCE OPTIMIZATION ===
+                const cacheKey = 'caddy_dashboard_init';
+                const cached = GlobalCacheManager.get(cacheKey);
+
+                if (cached) {
+                    console.log('[Dashboard] Using cached Caddy Dashboard (instant load)');
+                    TabManager.showTab('caddieDashboard', 'overview');
+                    UserInterface.updateUserDisplays();
+                    return;
+                }
+
+                console.log('[Dashboard] First-time Caddy Dashboard init');
                 TabManager.showTab('caddieDashboard', 'overview');
                 UserInterface.updateUserDisplays();
+                GlobalCacheManager.set(cacheKey, true, 30000);
             }
 
             static initManagerDashboard() {
+                // === PERFORMANCE OPTIMIZATION ===
+                const cacheKey = 'manager_dashboard_init';
+                const cached = GlobalCacheManager.get(cacheKey);
+
+                if (cached) {
+                    console.log('[Dashboard] Using cached Manager Dashboard (instant load)');
+                    TabManager.showTab('managerDashboard', 'overview');
+                    UserInterface.updateUserDisplays();
+                    // Analytics already loaded from cache
+                    if (typeof ManagerAnalytics !== 'undefined') {
+                        ManagerAnalytics.updateUI();
+                    }
+                    return;
+                }
+
+                console.log('[Dashboard] First-time Manager Dashboard init');
                 TabManager.showTab('managerDashboard', 'overview');
                 UserInterface.updateUserDisplays();
                 // Load real data from Supabase
@@ -3654,18 +3816,45 @@
                     if (typeof ManagerAnalytics !== 'undefined') {
                         ManagerAnalytics.updateOverview();
                         ManagerAnalytics.updateUI();
+                        GlobalCacheManager.set(cacheKey, true, 30000);
                     }
                 }, 500);
             }
 
             static initProshopDashboard() {
+                // === PERFORMANCE OPTIMIZATION ===
+                const cacheKey = 'proshop_dashboard_init';
+                const cached = GlobalCacheManager.get(cacheKey);
+
+                if (cached) {
+                    console.log('[Dashboard] Using cached Proshop Dashboard (instant load)');
+                    TabManager.showTab('proshopDashboard', 'pos');
+                    UserInterface.updateUserDisplays();
+                    return;
+                }
+
+                console.log('[Dashboard] First-time Proshop Dashboard init');
                 TabManager.showTab('proshopDashboard', 'pos');
                 UserInterface.updateUserDisplays();
+                GlobalCacheManager.set(cacheKey, true, 30000);
             }
 
             static initMaintenanceDashboard() {
+                // === PERFORMANCE OPTIMIZATION ===
+                const cacheKey = 'maintenance_dashboard_init';
+                const cached = GlobalCacheManager.get(cacheKey);
+
+                if (cached) {
+                    console.log('[Dashboard] Using cached Maintenance Dashboard (instant load)');
+                    TabManager.showTab('maintenanceDashboard', 'overview');
+                    UserInterface.updateUserDisplays();
+                    return;
+                }
+
+                console.log('[Dashboard] First-time Maintenance Dashboard init');
                 TabManager.showTab('maintenanceDashboard', 'overview');
                 UserInterface.updateUserDisplays();
+                GlobalCacheManager.set(cacheKey, true, 30000);
             }
 
             static initSocietyOrganizerDashboard() {
@@ -3979,7 +4168,8 @@
                     console.log('[LINE] Profile found:', {
                         role: userProfile.role,
                         name: userProfile.name,
-                        lineUserId: userProfile.line_user_id
+                        lineUserId: userProfile.line_user_id,
+                        hasFullProfileData: !!userProfile.profile_data
                     });
 
                     AppState.currentUser = {
@@ -3992,13 +4182,67 @@
                         avatar: profile.pictureUrl,
                         email: userProfile.email,
                         phone: userProfile.phone,
-                        handicap: null,
+                        handicap: userProfile.profile_data?.handicap || null,
                         membershipLevel: userProfile.role === 'golfer' ? 'premium' : 'staff',
                         joinDate: userProfile.created_at || new Date().toISOString(),
                         stats: {},
                         permissions: this.getPermissions(userProfile.role || 'golfer'),
                         profileData: userProfile
                     };
+
+                    // ===== FIX: Restore FULL profile to localStorage from Supabase =====
+                    if (userProfile.profile_data) {
+                        const profileKey = UserIDSystem.getProfileKey(userProfile.role, lineUserId);
+                        const fullProfile = {
+                            userId: lineUserId,
+                            lineUserId: lineUserId,
+                            username: userProfile.profile_data.username || lineUserId,
+                            linePictureUrl: userProfile.profile_data.linePictureUrl || profile.pictureUrl,
+                            personalInfo: userProfile.profile_data.personalInfo || {},
+                            golfInfo: userProfile.profile_data.golfInfo || {},
+                            professionalInfo: userProfile.profile_data.professionalInfo || {},
+                            skills: userProfile.profile_data.skills || {},
+                            preferences: userProfile.profile_data.preferences || {},
+                            media: userProfile.profile_data.media || {},
+                            privacy: userProfile.profile_data.privacy || {}
+                        };
+
+                        localStorage.setItem(profileKey, JSON.stringify(fullProfile));
+                        console.log('[LINE] ✅ Full profile restored to localStorage:', profileKey);
+                        console.log('[LINE] Handicap from Supabase:', fullProfile.golfInfo?.handicap);
+                        console.log('[LINE] Home Club from Supabase:', fullProfile.golfInfo?.homeClub);
+
+                        // MOBILE DEBUG: Show on-screen confirmation
+                        const debugDiv = document.createElement('div');
+                        debugDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.95);color:#0f0;padding:30px;border:3px solid #0f0;z-index:999999;font-size:18px;max-width:90%;border-radius:10px;';
+                        debugDiv.innerHTML = `
+                            <div style="text-align:center;">
+                                <div style="font-size:24px;margin-bottom:20px;">✅ PROFILE SYNCED!</div>
+                                <div style="margin:10px 0;">Handicap: ${fullProfile.golfInfo?.handicap || 'NOT SET'}</div>
+                                <div style="margin:10px 0;">Home Club: ${fullProfile.golfInfo?.homeClub || 'NOT SET'}</div>
+                                <div style="margin:20px 0;font-size:14px;color:#ff0;">Profile Key: ${profileKey}</div>
+                                <button onclick="this.parentElement.parentElement.remove()" style="background:#0f0;color:#000;border:none;padding:10px 20px;font-size:18px;border-radius:5px;margin-top:10px;">OK</button>
+                            </div>
+                        `;
+                        document.body.appendChild(debugDiv);
+                        setTimeout(() => debugDiv.remove(), 10000);
+                    } else {
+                        console.warn('[LINE] ⚠️ No profile_data in Supabase - profile NOT synced');
+
+                        // MOBILE DEBUG: Show warning
+                        const debugDiv = document.createElement('div');
+                        debugDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.95);color:#f00;padding:30px;border:3px solid #f00;z-index:999999;font-size:18px;max-width:90%;border-radius:10px;';
+                        debugDiv.innerHTML = `
+                            <div style="text-align:center;">
+                                <div style="font-size:24px;margin-bottom:20px;">❌ NO PROFILE DATA</div>
+                                <div style="margin:10px 0;">Supabase returned null profile_data</div>
+                                <div style="margin:10px 0;font-size:14px;">Desktop must save profile first!</div>
+                                <button onclick="this.parentElement.parentElement.remove()" style="background:#f00;color:#fff;border:none;padding:10px 20px;font-size:18px;border-radius:5px;margin-top:10px;">OK</button>
+                            </div>
+                        `;
+                        document.body.appendChild(debugDiv);
+                        setTimeout(() => debugDiv.remove(), 10000);
+                    }
 
                     console.log('[LINE] ✓ Unique ID set:', {
                         userId: AppState.currentUser.userId,
@@ -4527,7 +4771,7 @@
                     priority: 'critical',
                     responseTime: '2-5 minutes',
                     contacts: ['Pro Shop', 'Caddy Master', 'All Management'],
-                    targetRoles: ['proshop', 'manager', 'caddie']
+                    targetRoles: ['golfer', 'proshop', 'manager', 'caddie', 'maintenance']
                 },
                 lightning_warning: {
                     name: 'Lightning Warning',
@@ -4569,7 +4813,7 @@
                     priority: 'high',
                     responseTime: '1-2 minutes',
                     contacts: ['Pro Shop', 'Caddy Master', 'General Manager', 'All Management'],
-                    targetRoles: ['proshop', 'manager', 'caddie']
+                    targetRoles: ['golfer', 'proshop', 'manager', 'caddie', 'maintenance']
                 },
                 security: {
                     name: 'Security Issue',
@@ -4578,7 +4822,7 @@
                     priority: 'high',
                     responseTime: '3-5 minutes',
                     contacts: ['Pro Shop', 'Caddy Master', 'General Manager', 'All Management'],
-                    targetRoles: ['proshop', 'manager', 'caddie']
+                    targetRoles: ['golfer', 'proshop', 'manager', 'caddie', 'maintenance']
                 },
                 equipment: {
                     name: 'Equipment/Cart Issue',
@@ -4587,7 +4831,7 @@
                     priority: 'medium',
                     responseTime: '5-10 minutes',
                     contacts: ['Cart and Mechanic Staff', 'Pro Shop', 'Caddy Master'],
-                    targetRoles: ['proshop', 'caddie', 'maintenance']
+                    targetRoles: ['golfer', 'proshop', 'caddie', 'maintenance', 'manager']
                 },
                 cart_path_only: {
                     name: 'Cart Path Only',
@@ -4735,14 +4979,23 @@
                 // 2. IMMEDIATE save to localStorage
                 localStorage.setItem('emergency_alerts', JSON.stringify(this.activeAlerts));
 
-                // 3. IMMEDIATE sync to cloud - NO DELAYS
-                if (typeof SimpleCloudSync !== 'undefined') {
-                    SimpleCloudSync.saveToCloud()
-                        .then(() => console.log('[Emergency] IMMEDIATE cloud sync completed'))
+                // 3. IMMEDIATE save to Supabase for cross-device sync - NO DELAYS
+                console.log('[Emergency] 💾 Attempting to save alert to Supabase:', alertData);
+                if (typeof window.SupabaseDB !== 'undefined') {
+                    console.log('[Emergency] ✅ SupabaseDB is defined, saving now...');
+                    window.SupabaseDB.saveEmergencyAlert(alertData)
+                        .then((savedAlert) => {
+                            console.log('[Emergency] ✅ IMMEDIATE Supabase sync completed successfully!');
+                            console.log('[Emergency] 📤 Saved alert data:', savedAlert);
+                        })
                         .catch(err => {
-                            console.warn('[Emergency] Sync failed, immediate retry:', err);
-                            SimpleCloudSync.saveToCloud(); // Immediate retry
+                            console.error('[Emergency] ❌ Supabase save failed:', err);
+                            console.error('[Emergency] Error details:', JSON.stringify(err, null, 2));
+                            // Still saved to localStorage, so alert works locally
+                            NotificationManager.show('Alert sent locally (cloud sync pending)', 'warning');
                         });
+                } else {
+                    console.error('[Emergency] ❌ SupabaseDB is NOT defined! Cannot save to cloud!');
                 }
 
                 // 4. Update all systems immediately
@@ -4985,6 +5238,7 @@
                 this.updateRoleAlerts('golfer', activeAlerts);
                 this.updateRoleAlerts('caddie', activeAlerts);
                 this.updateRoleAlerts('manager', activeAlerts);
+                this.updateRoleAlerts('proshop', activeAlerts);
                 this.updateRoleAlerts('maintenance', activeAlerts);
             }
 
@@ -5091,30 +5345,34 @@
                 }
             }
 
-            static resolveAlert(alertId) {
+            static async resolveAlert(alertId) {
                 const alertIndex = EmergencySystem.activeAlerts.findIndex(a => a.id === alertId);
                 if (alertIndex > -1) {
-                    const alert = EmergencySystem.activeAlerts[alertIndex];
-
-                    // Move to resolved alerts
-                    alert.status = 'resolved';
-                    alert.resolvedBy = AppState.currentUser.name;
-                    alert.resolvedAt = new Date().toISOString();
-
-                    // Remove from active alerts
+                    // Remove from active alerts immediately
                     EmergencySystem.activeAlerts.splice(alertIndex, 1);
 
                     // Update local storage
                     localStorage.setItem('emergency_alerts', JSON.stringify(EmergencySystem.activeAlerts));
 
-                    // Sync resolution globally so all devices see it
-                    if (typeof ProductionCloudSync !== 'undefined') {
-                        SimpleCloudSync.saveToCloudSoon();
-                        console.log('[Emergency] Alert resolved globally:', alertId);
+                    // === FIX: DELETE from Supabase permanently (not just mark resolved) ===
+                    if (window.SupabaseDB) {
+                        try {
+                            await window.SupabaseDB.deleteEmergencyAlert(alertId);
+                            console.log('[Emergency] ✅ Alert DELETED permanently from Supabase:', alertId);
+                        } catch (error) {
+                            console.error('[Emergency] ❌ Failed to delete alert from Supabase:', error);
+                            // If delete fails, show error but don't re-add to local
+                            NotificationManager.show('Failed to delete alert from cloud - may reappear', 'error');
+                        }
                     }
 
                     NotificationManager.show(`Alert ${alertId} resolved and removed`, 'success');
                     this.updateAllOverviewAlerts();
+
+                    // Invalidate cache to force refresh on all devices
+                    if (typeof GlobalCacheManager !== 'undefined') {
+                        GlobalCacheManager.invalidatePattern('emergency');
+                    }
                 }
             }
         }
@@ -5519,11 +5777,40 @@
                 // Initialize session tracking
                 AppState.session.lastActivity = new Date().toISOString();
 
-                // Clear ALL old emergency alerts on page load
-                console.log('[INIT] Clearing ALL old emergency alerts...');
-                localStorage.setItem('emergency_alerts', JSON.stringify([]));
-                EmergencySystem.activeAlerts = [];
-                console.log('[INIT] All old alerts cleared - starting fresh');
+                // Load existing emergency alerts from Supabase (cross-device sync)
+                console.log('[INIT] Loading emergency alerts from cloud...');
+                try {
+                    if (window.SupabaseDB) {
+                        window.SupabaseDB.waitForReady().then(async () => {
+                            const cloudAlerts = await window.SupabaseDB.getEmergencyAlerts();
+                            if (cloudAlerts && cloudAlerts.length > 0) {
+                                EmergencySystem.activeAlerts = cloudAlerts;
+                                localStorage.setItem('emergency_alerts', JSON.stringify(cloudAlerts));
+                                console.log(`[INIT] Loaded ${cloudAlerts.length} alerts from Supabase`);
+                                // Update alert displays for all roles
+                                PersistentEmergencyAlerts.updateAllOverviewAlerts();
+                            } else {
+                                // Fallback to localStorage if Supabase has no alerts
+                                const storedAlerts = localStorage.getItem('emergency_alerts');
+                                EmergencySystem.activeAlerts = storedAlerts ? JSON.parse(storedAlerts) : [];
+                                console.log(`[INIT] Loaded ${EmergencySystem.activeAlerts.length} alerts from localStorage`);
+                            }
+                        }).catch(err => {
+                            console.error('[INIT] Error loading from Supabase:', err);
+                            // Fallback to localStorage
+                            const storedAlerts = localStorage.getItem('emergency_alerts');
+                            EmergencySystem.activeAlerts = storedAlerts ? JSON.parse(storedAlerts) : [];
+                        });
+                    } else {
+                        // Fallback to localStorage if Supabase not available
+                        const storedAlerts = localStorage.getItem('emergency_alerts');
+                        EmergencySystem.activeAlerts = storedAlerts ? JSON.parse(storedAlerts) : [];
+                        console.log('[INIT] Supabase not ready, using localStorage');
+                    }
+                } catch (error) {
+                    console.error('[INIT] Error loading alerts:', error);
+                    EmergencySystem.activeAlerts = [];
+                }
 
                 // CRITICAL: Clean corrupted bookings before any rendering
                 console.log('[INIT] Running one-time data cleanup...');
@@ -5997,8 +6284,9 @@
 
         function cleanupProfileData(role, profileName, profileId) {
             try {
-                // Remove profile from ProfileSystem storage
-                const profileKey = `profile_${role}_${profileName}`;
+                // Remove profile from ProfileSystem storage using UNIQUE ID
+                const uniqueId = UserIDSystem.getUserUniqueID(AppState.currentUser);
+                const profileKey = UserIDSystem.getProfileKey(role, uniqueId);
                 localStorage.removeItem(profileKey);
 
                 // Clean up role-specific data
@@ -9502,6 +9790,147 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 500);
         }
 
+        // ===== GLOBAL PERFORMANCE CACHE MANAGER =====
+        // Ultra-fast caching system for all dashboards and modules
+        const GlobalCacheManager = {
+            cache: {},
+            subscriptions: {},
+            cacheDuration: 30000, // 30 seconds default cache
+
+            // Get cached data if fresh
+            get(key) {
+                const cached = this.cache[key];
+                if (!cached) return null;
+
+                const age = Date.now() - cached.timestamp;
+                if (age > cached.duration) {
+                    console.log(`[Cache] Expired: ${key} (${age}ms old)`);
+                    delete this.cache[key];
+                    return null;
+                }
+
+                console.log(`[Cache] HIT: ${key} (${age}ms old)`);
+                return cached.data;
+            },
+
+            // Store data in cache
+            set(key, data, duration = this.cacheDuration) {
+                this.cache[key] = {
+                    data: data,
+                    timestamp: Date.now(),
+                    duration: duration
+                };
+                console.log(`[Cache] SET: ${key} (expires in ${duration}ms)`);
+            },
+
+            // Invalidate specific cache key
+            invalidate(key) {
+                if (this.cache[key]) {
+                    console.log(`[Cache] INVALIDATED: ${key}`);
+                    delete this.cache[key];
+                }
+            },
+
+            // Invalidate all cache
+            invalidateAll() {
+                console.log('[Cache] INVALIDATED ALL');
+                this.cache = {};
+            },
+
+            // Invalidate cache by pattern
+            invalidatePattern(pattern) {
+                Object.keys(this.cache).forEach(key => {
+                    if (key.includes(pattern)) {
+                        console.log(`[Cache] INVALIDATED: ${key} (pattern: ${pattern})`);
+                        delete this.cache[key];
+                    }
+                });
+            },
+
+            // Prevent duplicate subscriptions
+            subscribe(key, subscriptionFn) {
+                if (this.subscriptions[key]) {
+                    console.log(`[Cache] Subscription already exists: ${key}`);
+                    return this.subscriptions[key];
+                }
+
+                console.log(`[Cache] Creating subscription: ${key}`);
+                this.subscriptions[key] = subscriptionFn();
+                return this.subscriptions[key];
+            },
+
+            // Unsubscribe
+            unsubscribe(key) {
+                if (this.subscriptions[key]) {
+                    console.log(`[Cache] Unsubscribing: ${key}`);
+                    if (typeof this.subscriptions[key].unsubscribe === 'function') {
+                        this.subscriptions[key].unsubscribe();
+                    }
+                    delete this.subscriptions[key];
+                }
+            },
+
+            // Clear all subscriptions
+            unsubscribeAll() {
+                console.log('[Cache] Unsubscribing all');
+                Object.keys(this.subscriptions).forEach(key => {
+                    this.unsubscribe(key);
+                });
+            },
+
+            // Cached async fetch wrapper
+            async fetchCached(key, fetchFn, duration = this.cacheDuration) {
+                // Try cache first
+                const cached = this.get(key);
+                if (cached !== null) {
+                    return cached;
+                }
+
+                // Fetch fresh data
+                console.log(`[Cache] MISS: ${key} - fetching...`);
+                const data = await fetchFn();
+                this.set(key, data, duration);
+                return data;
+            }
+        };
+
+        // Make globally available
+        window.GlobalCacheManager = GlobalCacheManager;
+
+        // ===== MOBILE PERFORMANCE OPTIMIZATION =====
+        // Handle app visibility changes (mobile background/foreground)
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'visible') {
+                console.log('[Mobile] App resumed - invalidating stale cache');
+                // Invalidate cache older than 5 minutes when app resumes
+                Object.keys(GlobalCacheManager.cache).forEach(key => {
+                    const cached = GlobalCacheManager.cache[key];
+                    const age = Date.now() - cached.timestamp;
+                    if (age > 300000) { // 5 minutes
+                        console.log(`[Mobile] Invalidating old cache: ${key} (${Math.round(age/1000)}s old)`);
+                        GlobalCacheManager.invalidate(key);
+                    }
+                });
+            }
+        });
+
+        // Handle page focus (mobile/desktop)
+        window.addEventListener('focus', function() {
+            console.log('[Mobile] Window focused');
+            // Don't invalidate cache on focus - use visibility instead
+        });
+
+        // Optimize for mobile memory management
+        window.addEventListener('pagehide', function() {
+            console.log('[Mobile] Page hidden - preparing for background');
+            // Keep cache but unsubscribe from heavy listeners
+            if (typeof GlobalCacheManager.unsubscribeAll === 'function') {
+                // Don't unsubscribe all - this would break realtime
+                // Just log for debugging
+                console.log('[Mobile] Keeping subscriptions active in background');
+            }
+        });
+
         // Profile Management System
         const ProfileSystem = {
             profiles: {
@@ -9975,6 +10404,35 @@ document.addEventListener('DOMContentLoaded', function() {
                     AppState.currentUser.name = `${profileData.personalInfo.firstName} ${profileData.personalInfo.lastName}`;
                 } else if (profileData.organizationInfo?.organizerName) {
                     AppState.currentUser.name = profileData.organizationInfo.organizerName;
+                }
+
+                // ===== FIX: Push FULL profile to Supabase for cross-device sync =====
+                if (window.SupabaseDB && AppState.currentUser.lineUserId) {
+                    window.SupabaseDB.saveUserProfile({
+                        lineUserId: AppState.currentUser.lineUserId,
+                        name: AppState.currentUser.name,
+                        role: userType,
+                        phone: profileData.personalInfo?.phone || AppState.currentUser.phone,
+                        email: profileData.personalInfo?.email || AppState.currentUser.email,
+                        homeClub: profileData.golfInfo?.homeClub || '',
+                        language: profileData.preferences?.communicationLanguage || 'en',
+                        // Full profile data
+                        personalInfo: profileData.personalInfo,
+                        golfInfo: profileData.golfInfo,
+                        professionalInfo: profileData.professionalInfo,
+                        skills: profileData.skills,
+                        preferences: profileData.preferences,
+                        media: profileData.media,
+                        privacy: profileData.privacy,
+                        handicap: profileData.golfInfo?.handicap,
+                        username: profileData.personalInfo?.username,
+                        userId: uniqueId,
+                        linePictureUrl: profileData.linePictureUrl || AppState.currentUser.avatar
+                    }).then(() => {
+                        console.log('[ProfileSystem] ✅ Profile synced to Supabase');
+                    }).catch(err => {
+                        console.error('[ProfileSystem] ❌ Failed to sync profile to Supabase:', err);
+                    });
                 }
 
                 this.updateUIWithProfile();
@@ -10635,8 +11093,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
             resetToDefaults(userType) {
                 if (confirm('Are you sure you want to reset your profile to default values? This will clear all your current information.')) {
-                    // Clear the saved profile
-                    const profileKey = `profile_${userType}_${AppState.currentUser.name}`;
+                    // Clear the saved profile using UNIQUE ID
+                    const uniqueId = UserIDSystem.getUserUniqueID(AppState.currentUser);
+                    const profileKey = UserIDSystem.getProfileKey(userType, uniqueId);
                     localStorage.removeItem(profileKey);
 
                     // Close and reopen the modal with fresh defaults
@@ -10678,8 +11137,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     }
 
-                    // Delete from localStorage
-                    const profileKey = `profile_${userType}_${AppState.currentUser.name}`;
+                    // Delete from localStorage using UNIQUE ID
+                    const uniqueId = UserIDSystem.getUserUniqueID(AppState.currentUser);
+                    const profileKey = UserIDSystem.getProfileKey(userType, uniqueId);
                     localStorage.removeItem(profileKey);
 
                     // Also remove from user profiles list

@@ -31171,8 +31171,19 @@ class LiveScorecardSystem {
         }
 
         this.currentScore += digit.toString();
+        const score = parseInt(this.currentScore);
+
+        // Show score being entered
         document.getElementById('activePlayerName').textContent =
             `${this.players.find(p => p.id === this.currentPlayerId).name} - Score: ${this.currentScore}`;
+
+        // Auto-save if valid score (1-15)
+        if (score >= 1 && score <= 15) {
+            // Small delay so user sees the number appear
+            setTimeout(() => {
+                this.saveCurrentScore();
+            }, 200);
+        }
     }
 
     clearScore() {
@@ -31213,6 +31224,9 @@ class LiveScorecardSystem {
         // Clear input and update UI instantly
         this.currentScore = '';
         this.renderHole();
+
+        // Update leaderboard immediately
+        this.refreshLeaderboard();
 
         // Auto-advance to next player IMMEDIATELY
         const currentIndex = this.players.findIndex(p => p.id === this.currentPlayerId);
@@ -31428,16 +31442,56 @@ class LiveScorecardSystem {
     async getGroupLeaderboard() {
         if (!this.groupId) return [];
 
-        const { data } = await window.SupabaseDB.client
-            .from('scorecards')
-            .select(`
-                *,
-                scores (*)
-            `)
-            .eq('group_id', this.groupId)
-            .order('total_net', { ascending: true });
+        // Build leaderboard from LOCAL cache (instant, works offline)
+        const leaderboard = this.players.map(player => {
+            const playerScores = this.scoresCache[player.id] || {};
+            let totalGross = 0;
+            let totalStableford = 0;
+            let holesPlayed = 0;
 
-        return data || [];
+            // Calculate totals from cache
+            for (let hole = 1; hole <= 18; hole++) {
+                if (playerScores[hole]) {
+                    const gross = playerScores[hole];
+                    const holeData = this.courseData?.holes?.[hole - 1];
+                    const par = holeData?.par || 4;
+                    const strokeIndex = holeData?.strokeIndex || hole;
+
+                    // Calculate stableford points
+                    const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
+                    const netScore = gross - shotsReceived;
+                    const diff = par - netScore;
+                    let points = diff + 2;
+                    if (points < 0) points = 0;
+
+                    totalGross += gross;
+                    totalStableford += points;
+                    holesPlayed++;
+                }
+            }
+
+            return {
+                player_id: player.id,
+                player_name: player.name,
+                handicap: player.handicap,
+                holes_played: holesPlayed,
+                total_gross: totalGross,
+                total_stableford: totalStableford,
+                scores: Object.entries(playerScores).map(([hole, score]) => ({
+                    hole_number: parseInt(hole),
+                    gross_score: score
+                }))
+            };
+        });
+
+        // Sort by stableford points (descending) or gross (ascending) depending on format
+        if (this.scoringFormat === 'stableford') {
+            leaderboard.sort((a, b) => b.total_stableford - a.total_stableford);
+        } else {
+            leaderboard.sort((a, b) => a.total_gross - b.total_gross);
+        }
+
+        return leaderboard;
     }
 
     async getEventLeaderboard() {
@@ -31452,6 +31506,8 @@ class LiveScorecardSystem {
             return '<p class="text-center py-8 text-gray-500">No scores yet</p>';
         }
 
+        const isStableford = this.scoringFormat === 'stableford';
+
         return `
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
@@ -31460,25 +31516,21 @@ class LiveScorecardSystem {
                             <th class="py-2 px-2">Pos</th>
                             <th class="py-2 px-2">Player</th>
                             <th class="py-2 px-2">Thru</th>
-                            <th class="py-2 px-2">Score</th>
-                            <th class="py-2 px-2">Total</th>
+                            <th class="py-2 px-2">${isStableford ? 'Points' : 'Gross'}</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${leaderboard.map((entry, index) => {
-                            const holesPlayed = (entry.scores || []).filter(s => s.gross_score).length;
-                            const thru = holesPlayed === 18 ? 'F' : holesPlayed.toString();
-                            const toPar = entry.total_net - (holesPlayed * 4); // Assuming par 4 average
+                            const holesPlayed = entry.holes_played || 0;
+                            const thru = holesPlayed === 18 ? 'F' : holesPlayed === 0 ? '-' : holesPlayed.toString();
+                            const displayScore = isStableford ? entry.total_stableford : entry.total_gross;
 
                             return `
                                 <tr class="border-b border-gray-200">
                                     <td class="py-2 px-2 font-bold">${index + 1}</td>
                                     <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
                                     <td class="py-2 px-2">${thru}</td>
-                                    <td class="py-2 px-2 ${toPar > 0 ? 'text-red-600' : toPar < 0 ? 'text-green-600' : ''} font-medium">
-                                        ${toPar > 0 ? '+' : ''}${toPar}
-                                    </td>
-                                    <td class="py-2 px-2 font-bold">${entry.total_net || 0}</td>
+                                    <td class="py-2 px-2 font-bold text-lg">${displayScore || 0}</td>
                                 </tr>
                             `;
                         }).join('')}

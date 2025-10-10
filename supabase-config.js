@@ -237,7 +237,23 @@ class SupabaseClient {
             phone: profile.phone,
             email: profile.email,
             home_club: profile.home_club || profile.homeClub,
-            language: profile.language || 'en'
+            language: profile.language || 'en',
+
+            // ===== NEW: Store FULL profile data in JSONB column =====
+            profile_data: {
+                personalInfo: profile.personalInfo || {},
+                golfInfo: profile.golfInfo || {},
+                professionalInfo: profile.professionalInfo || {},
+                skills: profile.skills || {},
+                preferences: profile.preferences || {},
+                media: profile.media || {},
+                privacy: profile.privacy || {},
+                // Store any additional fields
+                handicap: profile.handicap || profile.golfInfo?.handicap || null,
+                username: profile.username || null,
+                userId: profile.userId || profile.lineUserId,
+                linePictureUrl: profile.linePictureUrl || null
+            }
         };
 
         const { data, error } = await this.client
@@ -251,6 +267,7 @@ class SupabaseClient {
             throw error;
         }
 
+        console.log('[Supabase] ✅ Full profile saved to cloud:', data.line_user_id);
         return data;
     }
 
@@ -558,54 +575,205 @@ class SupabaseClient {
     }
 
     // =====================================================
-    // EMERGENCY ALERTS
+    // EMERGENCY ALERTS (Cross-Device Sync)
     // =====================================================
 
-    async getActiveAlerts() {
+    async getEmergencyAlerts() {
+        await this.waitForReady();
+
+        // Get all active alerts (not expired, not resolved)
         const { data, error } = await this.client
             .from('emergency_alerts')
             .select('*')
-            .eq('active', true)
-            .order('created_at', { ascending: false });
+            .eq('status', 'active')
+            .gte('expires_at', new Date().toISOString())
+            .order('timestamp', { ascending: false });
 
         if (error) {
-            console.error('[Supabase] Error fetching alerts:', error);
+            console.error('[Supabase] Error fetching emergency alerts:', error);
             return [];
         }
 
-        return data || [];
+        // Convert to app format
+        const alerts = (data || []).map(alert => ({
+            id: alert.id,
+            type: alert.type,
+            message: alert.message,
+            user: alert.user_name,
+            role: alert.user_role,
+            timestamp: alert.timestamp,
+            location: (alert.location_lat && alert.location_lng) ? {
+                lat: alert.location_lat,
+                lng: alert.location_lng,
+                hole: alert.location_hole
+            } : null,
+            status: alert.status,
+            priority: alert.priority,
+            acknowledged: alert.acknowledged_by ? alert.acknowledged_by.includes(alert.user_name) : false,
+            acknowledgedBy: alert.acknowledged_by || [],
+            resolvedBy: alert.resolved_by,
+            resolvedAt: alert.resolved_at
+        }));
+
+        console.log(`[Supabase] Loaded ${alerts.length} active emergency alerts`);
+        return alerts;
     }
 
-    async createAlert(type, message, createdBy) {
+    async saveEmergencyAlert(alertData) {
+        await this.waitForReady();
+
+        // Normalize alert fields for Supabase
+        const normalizedAlert = {
+            id: alertData.id,
+            type: alertData.type,
+            message: alertData.message,
+            user_name: alertData.user,
+            user_role: alertData.role,
+            timestamp: alertData.timestamp,
+            location_lat: alertData.location?.lat || null,
+            location_lng: alertData.location?.lng || null,
+            location_hole: alertData.location?.hole || null,
+            status: alertData.status || 'active',
+            priority: alertData.priority || 'high',
+            acknowledged_by: alertData.acknowledgedBy || [],
+            resolved_by: alertData.resolvedBy || null,
+            resolved_at: alertData.resolvedAt || null,
+            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hours from now
+        };
+
         const { data, error } = await this.client
             .from('emergency_alerts')
-            .insert({
-                type: type,
-                message: message,
-                active: true,
-                created_by: createdBy
-            })
+            .upsert(normalizedAlert, { onConflict: 'id' })
             .select()
             .single();
 
         if (error) {
-            console.error('[Supabase] Error creating alert:', error);
+            console.error('[Supabase] Error saving emergency alert:', error);
             throw error;
         }
 
+        console.log('[Supabase] Emergency alert saved:', data.id);
         return data;
     }
 
-    async deactivateAlert(alertId) {
+    async updateAlertStatus(alertId, status, resolvedBy = null) {
+        await this.waitForReady();
+
+        const updates = {
+            status: status,
+            updated_at: new Date().toISOString()
+        };
+
+        if (status === 'resolved' && resolvedBy) {
+            updates.resolved_by = resolvedBy;
+            updates.resolved_at = new Date().toISOString();
+        }
+
         const { error } = await this.client
             .from('emergency_alerts')
-            .update({ active: false })
+            .update(updates)
             .eq('id', alertId);
 
         if (error) {
-            console.error('[Supabase] Error deactivating alert:', error);
+            console.error('[Supabase] Error updating alert status:', error);
             throw error;
         }
+
+        console.log(`[Supabase] Alert ${alertId} status updated to ${status}`);
+    }
+
+    async acknowledgeAlert(alertId, userName) {
+        await this.waitForReady();
+
+        // Get current alert
+        const { data: alert } = await this.client
+            .from('emergency_alerts')
+            .select('acknowledged_by')
+            .eq('id', alertId)
+            .single();
+
+        if (!alert) return;
+
+        // Add user to acknowledged list
+        const acknowledgedBy = alert.acknowledged_by || [];
+        if (!acknowledgedBy.includes(userName)) {
+            acknowledgedBy.push(userName);
+        }
+
+        const { error } = await this.client
+            .from('emergency_alerts')
+            .update({ acknowledged_by: acknowledgedBy })
+            .eq('id', alertId);
+
+        if (error) {
+            console.error('[Supabase] Error acknowledging alert:', error);
+            throw error;
+        }
+
+        console.log(`[Supabase] Alert ${alertId} acknowledged by ${userName}`);
+    }
+
+    async deleteEmergencyAlert(alertId) {
+        await this.waitForReady();
+
+        const { error } = await this.client
+            .from('emergency_alerts')
+            .delete()
+            .eq('id', alertId);
+
+        if (error) {
+            console.error('[Supabase] Error deleting emergency alert:', error);
+            throw error;
+        }
+
+        console.log(`[Supabase] ✅ Emergency alert DELETED permanently: ${alertId}`);
+    }
+
+    async cleanupExpiredAlerts() {
+        await this.waitForReady();
+
+        const { data, error } = await this.client
+            .rpc('cleanup_expired_alerts');
+
+        if (error) {
+            console.error('[Supabase] Error cleaning up expired alerts:', error);
+            return 0;
+        }
+
+        console.log(`[Supabase] Cleaned up ${data || 0} expired alerts`);
+        return data || 0;
+    }
+
+    // Subscribe to real-time emergency alerts
+    subscribeToEmergencyAlerts(callback) {
+        console.log('[Supabase] 📡 Setting up emergency alerts WebSocket subscription...');
+
+        const channel = this.client
+            .channel('emergency-alerts')
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'emergency_alerts' },
+                (payload) => {
+                    console.log('[Supabase Realtime] ⚡ Emergency alert WebSocket event received!');
+                    console.log('[Supabase Realtime] Event type:', payload.eventType);
+                    console.log('[Supabase Realtime] Full payload:', payload);
+                    callback(payload);
+                }
+            )
+            .subscribe((status) => {
+                console.log('[Supabase Realtime] 🔌 Subscription status:', status);
+                if (status === 'SUBSCRIBED') {
+                    console.log('[Supabase Realtime] ✅ Successfully subscribed to emergency_alerts table');
+                } else if (status === 'CHANNEL_ERROR') {
+                    console.error('[Supabase Realtime] ❌ Channel error - subscription failed!');
+                } else if (status === 'TIMED_OUT') {
+                    console.error('[Supabase Realtime] ⏱️ Subscription timed out!');
+                } else {
+                    console.log('[Supabase Realtime] Status:', status);
+                }
+            });
+
+        console.log('[Supabase Realtime] 📢 Subscribed to emergency alerts - waiting for confirmation...');
+        return channel;
     }
 }
 

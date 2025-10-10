@@ -1,0 +1,217 @@
+<!-- ========================================
+     SOCIETY ORGANIZER PIN AUTHENTICATION
+     ======================================== -->
+
+<!-- ADD THIS MODAL AFTER THE SOCIETY ORGANIZER DASHBOARD SECTION (around line 25287) -->
+
+<!-- Society Organizer PIN Verification Modal -->
+<div id="societyOrganizerPinModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
+        <div class="p-6 border-b border-gray-200">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="bg-sky-100 rounded-full p-2">
+                        <span class="material-symbols-outlined text-sky-600">lock</span>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-900">Society Organizer Access</h3>
+                        <p class="text-sm text-gray-500">Enter PIN to continue</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-6 space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Access PIN</label>
+                <input type="password" id="societyOrganizerPinInput"
+                       placeholder="Enter PIN"
+                       maxlength="6"
+                       class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-center text-2xl tracking-widest"
+                       onkeypress="if(event.key === 'Enter') SocietyOrganizerAuth.verifyPin()">
+                <p id="pinErrorMessage" class="text-red-500 text-sm mt-2 hidden">Incorrect PIN. Please try again.</p>
+            </div>
+
+            <div class="bg-sky-50 rounded-lg p-4">
+                <div class="flex items-start space-x-2">
+                    <span class="material-symbols-outlined text-sky-600 text-sm">info</span>
+                    <p class="text-xs text-sky-800">
+                        This area is restricted to authorized society organizers only.
+                        Contact your administrator if you need access.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
+            <button onclick="SocietyOrganizerAuth.cancelPinEntry()" class="px-6 py-3 text-gray-700 bg-gray-200 rounded-xl font-semibold hover:bg-gray-300 transition-colors">
+                Cancel
+            </button>
+            <button onclick="SocietyOrganizerAuth.verifyPin()" class="px-6 py-3 bg-sky-600 text-white rounded-xl font-semibold hover:bg-sky-700 transition-colors">
+                Verify
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================
+     JAVASCRIPT: ADD THIS TO THE SCRIPT SECTION (around line 28000+)
+     ======================================== -->
+
+<script>
+// SOCIETY ORGANIZER PIN AUTHENTICATION SYSTEM
+const SocietyOrganizerAuth = {
+    pendingRole: null,
+
+    // Check if user has verified PIN in this session
+    isVerified() {
+        return sessionStorage.getItem('society_organizer_verified') === 'true';
+    },
+
+    // Show PIN entry modal
+    showPinModal(targetRole) {
+        this.pendingRole = targetRole;
+        document.getElementById('societyOrganizerPinModal').style.display = 'flex';
+        document.getElementById('societyOrganizerPinInput').value = '';
+        document.getElementById('pinErrorMessage').classList.add('hidden');
+
+        // Focus on input
+        setTimeout(() => {
+            document.getElementById('societyOrganizerPinInput').focus();
+        }, 100);
+    },
+
+    // Hide PIN modal
+    hidePinModal() {
+        document.getElementById('societyOrganizerPinModal').style.display = 'none';
+        document.getElementById('societyOrganizerPinInput').value = '';
+        document.getElementById('pinErrorMessage').classList.add('hidden');
+    },
+
+    // Verify PIN against database
+    async verifyPin() {
+        const inputPin = document.getElementById('societyOrganizerPinInput').value;
+
+        if (!inputPin || inputPin.trim() === '') {
+            this.showError('Please enter a PIN');
+            return;
+        }
+
+        try {
+            // Call Supabase function to verify PIN
+            const { data, error } = await window.SupabaseDB.client
+                .rpc('verify_society_organizer_pin', { input_pin: inputPin });
+
+            if (error) {
+                console.error('[SocietyAuth] Error verifying PIN:', error);
+                this.showError('Error verifying PIN. Please try again.');
+                return;
+            }
+
+            if (data === true) {
+                // PIN is correct
+                sessionStorage.setItem('society_organizer_verified', 'true');
+                this.hidePinModal();
+
+                // Now proceed with role switch
+                if (this.pendingRole) {
+                    DevMode.proceedWithRoleSwitch(this.pendingRole);
+                }
+            } else {
+                // PIN is incorrect
+                this.showError('Incorrect PIN. Please try again.');
+                document.getElementById('societyOrganizerPinInput').value = '';
+                document.getElementById('societyOrganizerPinInput').focus();
+            }
+        } catch (error) {
+            console.error('[SocietyAuth] Exception verifying PIN:', error);
+            this.showError('Error verifying PIN. Please try again.');
+        }
+    },
+
+    // Cancel PIN entry
+    cancelPinEntry() {
+        this.pendingRole = null;
+        this.hidePinModal();
+    },
+
+    // Show error message
+    showError(message) {
+        const errorEl = document.getElementById('pinErrorMessage');
+        errorEl.textContent = message;
+        errorEl.classList.remove('hidden');
+    },
+
+    // Clear verification (e.g., on logout)
+    clearVerification() {
+        sessionStorage.removeItem('society_organizer_verified');
+    }
+};
+
+// MODIFY THE DevMode.switchToRole FUNCTION TO CHECK PIN FIRST
+// Find the existing DevMode object and update the switchToRole method:
+
+// Store the original function
+if (typeof DevMode !== 'undefined') {
+    DevMode.originalSwitchToRole = DevMode.switchToRole;
+
+    // Override switchToRole to check PIN for society_organizer role
+    DevMode.switchToRole = function(role) {
+        // Check if trying to access society organizer
+        if (role === 'society_organizer') {
+            // Check if already verified
+            if (SocietyOrganizerAuth.isVerified()) {
+                // Already verified, proceed normally
+                this.proceedWithRoleSwitch(role);
+            } else {
+                // Need PIN verification
+                SocietyOrganizerAuth.showPinModal(role);
+            }
+        } else {
+            // Other roles, proceed normally
+            this.proceedWithRoleSwitch(role);
+        }
+    };
+
+    // Add new method to actually perform the role switch
+    DevMode.proceedWithRoleSwitch = function(role) {
+        // This is the original logic from switchToRole
+        if (AppState.currentUser) {
+            AppState.currentUser.role = role;
+
+            // Save to localStorage
+            const profiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+            const myProfile = profiles.find(p => p.lineUserId === AppState.currentUser.lineUserId);
+            if (myProfile) {
+                myProfile.role = role;
+                localStorage.setItem('mcipro_user_profiles', JSON.stringify(profiles));
+            }
+        }
+
+        // Navigate to appropriate screen
+        const screenMap = {
+            'golfer': 'golferDashboard',
+            'caddie': 'caddyDashboard',
+            'manager': 'managerDashboard',
+            'proshop': 'proshopDashboard',
+            'admin': 'adminDashboard',
+            'society_organizer': 'societyOrganizerDashboard'
+        };
+
+        const targetScreen = screenMap[role];
+        if (targetScreen) {
+            ScreenManager.show(targetScreen);
+        }
+
+        this.hide();
+    };
+}
+
+// Add listener to clear verification on page unload (session end)
+window.addEventListener('beforeunload', () => {
+    // Note: sessionStorage automatically clears when browser tab closes
+    // This is just for explicit cleanup if needed
+});
+
+console.log('[SocietyAuth] PIN Authentication System loaded');
+</script>

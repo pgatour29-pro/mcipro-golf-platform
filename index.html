@@ -31292,16 +31292,32 @@ layout: "text_based"
 
         // Create canvas for cropping
         const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
+
+        // Scale up small regions for better OCR (min 200px wide)
+        const scale = w < 200 ? 200 / w : 1;
+        canvas.width = w * scale;
+        canvas.height = h * scale;
         const ctx = canvas.getContext('2d');
 
         // Load source image
         const img = new Image();
         return new Promise((resolve) => {
             img.onload = () => {
-                // Draw cropped region
-                ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
+                // Draw cropped region (scaled if needed)
+                ctx.drawImage(img, x, y, w, h, 0, 0, canvas.width, canvas.height);
+
+                // Apply preprocessing for better OCR
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+
+                // Quick grayscale + threshold
+                for (let i = 0; i < data.length; i += 4) {
+                    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+                    const val = gray > 128 ? 255 : 0;
+                    data[i] = data[i + 1] = data[i + 2] = val;
+                }
+
+                ctx.putImageData(imageData, 0, 0);
                 resolve(canvas.toDataURL());
             };
             img.src = imageData;
@@ -31312,14 +31328,12 @@ layout: "text_based"
         // Crop image to region
         const croppedImage = await this.cropImageRegion(region.bbox, imageData, imgWidth, imgHeight);
 
-        // Run OCR on cropped region
+        // Run OCR on cropped region with FAST settings
         const result = await Tesseract.recognize(croppedImage, 'eng', {
-            tessedit_char_whitelist: '0123456789',
-            logger: (m) => {
-                if (m.status === 'recognizing text') {
-                    console.log(`[OCR Region] ${Math.round(m.progress * 100)}%`);
-                }
-            }
+            tessedit_char_whitelist: '0123456789 ',
+            tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE, // Much faster for single row
+            tessedit_ocr_engine_mode: Tesseract.OEM.TESSERACT_ONLY, // Faster engine
+            // logger removed for speed
         });
 
         console.log('[Scanner] Region OCR text:', result.data.text);
@@ -31513,40 +31527,64 @@ layout: "text_based"
             }
 
             // Template-based extraction (Burapha, etc.)
-            progressEl.textContent = 'Extracting data from regions...';
+            progressEl.textContent = 'Extracting data from regions in parallel...';
 
-            // Extract par values
-            let parValues = [];
+            // Run ALL region extractions in parallel (much faster!)
+            const extractionPromises = [];
+
             if (profile.regions.par_front) {
-                const parFront = await this.extractRegionData(this.capturedImage, profile.regions.par_front, imgWidth, imgHeight);
-                parValues.push(...parFront);
+                extractionPromises.push(
+                    this.extractRegionData(this.capturedImage, profile.regions.par_front, imgWidth, imgHeight)
+                        .then(data => ({ type: 'par_front', data }))
+                );
             }
             if (profile.regions.par_back) {
-                const parBack = await this.extractRegionData(this.capturedImage, profile.regions.par_back, imgWidth, imgHeight);
-                parValues.push(...parBack);
+                extractionPromises.push(
+                    this.extractRegionData(this.capturedImage, profile.regions.par_back, imgWidth, imgHeight)
+                        .then(data => ({ type: 'par_back', data }))
+                );
             }
-
-            // Extract handicap values
-            let handicapValues = [];
             if (profile.regions.handicap_front) {
-                const hcFront = await this.extractRegionData(this.capturedImage, profile.regions.handicap_front, imgWidth, imgHeight);
-                handicapValues.push(...hcFront);
+                extractionPromises.push(
+                    this.extractRegionData(this.capturedImage, profile.regions.handicap_front, imgWidth, imgHeight)
+                        .then(data => ({ type: 'handicap_front', data }))
+                );
             }
             if (profile.regions.handicap_back) {
-                const hcBack = await this.extractRegionData(this.capturedImage, profile.regions.handicap_back, imgWidth, imgHeight);
-                handicapValues.push(...hcBack);
+                extractionPromises.push(
+                    this.extractRegionData(this.capturedImage, profile.regions.handicap_back, imgWidth, imgHeight)
+                        .then(data => ({ type: 'handicap_back', data }))
+                );
             }
-
-            // Extract yardage values
-            let yardageValues = [];
             if (profile.regions.yardage_men_front) {
-                const yardFront = await this.extractRegionData(this.capturedImage, profile.regions.yardage_men_front, imgWidth, imgHeight);
-                yardageValues.push(...yardFront);
+                extractionPromises.push(
+                    this.extractRegionData(this.capturedImage, profile.regions.yardage_men_front, imgWidth, imgHeight)
+                        .then(data => ({ type: 'yardage_front', data }))
+                );
             }
             if (profile.regions.yardage_men_back) {
-                const yardBack = await this.extractRegionData(this.capturedImage, profile.regions.yardage_men_back, imgWidth, imgHeight);
-                yardageValues.push(...yardBack);
+                extractionPromises.push(
+                    this.extractRegionData(this.capturedImage, profile.regions.yardage_men_back, imgWidth, imgHeight)
+                        .then(data => ({ type: 'yardage_back', data }))
+                );
             }
+
+            // Wait for ALL extractions to complete simultaneously
+            const results = await Promise.all(extractionPromises);
+
+            // Organize results
+            let parValues = [];
+            let handicapValues = [];
+            let yardageValues = [];
+
+            results.forEach(result => {
+                if (result.type === 'par_front') parValues.push(...result.data);
+                else if (result.type === 'par_back') parValues.push(...result.data);
+                else if (result.type === 'handicap_front') handicapValues.push(...result.data);
+                else if (result.type === 'handicap_back') handicapValues.push(...result.data);
+                else if (result.type === 'yardage_front') yardageValues.push(...result.data);
+                else if (result.type === 'yardage_back') yardageValues.push(...result.data);
+            });
 
             console.log('[Scanner] Extracted pars:', parValues);
             console.log('[Scanner] Extracted handicaps:', handicapValues);

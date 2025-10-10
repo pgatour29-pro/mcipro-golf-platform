@@ -1,5 +1,5 @@
 -- Pre-populate Pattaya area golf courses
--- Courses: Bangpakong, Burapha East, Burapha West, Khao Kheow
+-- Courses: Bangpakong, Burapha East, Burapha West, Khao Kheow (A+B, A+C, B+C)
 
 -- ==============================================
 -- BURAPHA GOLF CLUB - EAST COURSE (from scorecard image)
@@ -94,33 +94,86 @@ INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, te
 ('bangpakong', 18, 4, 14, 365, 'white');
 
 -- ==============================================
--- KHAO KHEOW COUNTRY CLUB
+-- KHAO KHEOW COUNTRY CLUB (3 Nines: A, B, C)
 -- ==============================================
 
+-- KHAO KHEOW A+B (Most common combination)
 INSERT INTO courses (id, name, created_at) VALUES
-('khao_kheow', 'Khao Kheow Country Club', NOW());
+('khao_kheow_ab', 'Khao Kheow A+B', NOW());
 
 INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
--- Front 9
-('khao_kheow', 1, 4, 13, 365, 'white'),
-('khao_kheow', 2, 4, 5, 395, 'white'),
-('khao_kheow', 3, 3, 17, 160, 'white'),
-('khao_kheow', 4, 5, 1, 540, 'white'),
-('khao_kheow', 5, 4, 9, 380, 'white'),
-('khao_kheow', 6, 4, 11, 370, 'white'),
-('khao_kheow', 7, 3, 15, 170, 'white'),
-('khao_kheow', 8, 5, 3, 520, 'white'),
-('khao_kheow', 9, 4, 7, 385, 'white'),
--- Back 9
-('khao_kheow', 10, 4, 12, 375, 'white'),
-('khao_kheow', 11, 4, 8, 385, 'white'),
-('khao_kheow', 12, 3, 18, 165, 'white'),
-('khao_kheow', 13, 5, 4, 510, 'white'),
-('khao_kheow', 14, 4, 10, 370, 'white'),
-('khao_kheow', 15, 4, 2, 405, 'white'),
-('khao_kheow', 16, 3, 16, 175, 'white'),
-('khao_kheow', 17, 5, 6, 515, 'white'),
-('khao_kheow', 18, 4, 14, 360, 'white');
+-- A Nine (Holes 1-9)
+('khao_kheow_ab', 1, 4, 13, 365, 'white'),
+('khao_kheow_ab', 2, 4, 5, 395, 'white'),
+('khao_kheow_ab', 3, 3, 17, 160, 'white'),
+('khao_kheow_ab', 4, 5, 1, 540, 'white'),
+('khao_kheow_ab', 5, 4, 9, 380, 'white'),
+('khao_kheow_ab', 6, 4, 11, 370, 'white'),
+('khao_kheow_ab', 7, 3, 15, 170, 'white'),
+('khao_kheow_ab', 8, 5, 3, 520, 'white'),
+('khao_kheow_ab', 9, 4, 7, 385, 'white'),
+-- B Nine (Holes 10-18)
+('khao_kheow_ab', 10, 4, 12, 375, 'white'),
+('khao_kheow_ab', 11, 4, 8, 385, 'white'),
+('khao_kheow_ab', 12, 3, 18, 165, 'white'),
+('khao_kheow_ab', 13, 5, 4, 510, 'white'),
+('khao_kheow_ab', 14, 4, 10, 370, 'white'),
+('khao_kheow_ab', 15, 4, 2, 405, 'white'),
+('khao_kheow_ab', 16, 3, 16, 175, 'white'),
+('khao_kheow_ab', 17, 5, 6, 515, 'white'),
+('khao_kheow_ab', 18, 4, 14, 360, 'white');
+
+-- KHAO KHEOW A+C
+INSERT INTO courses (id, name, created_at) VALUES
+('khao_kheow_ac', 'Khao Kheow A+C', NOW());
+
+INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
+-- A Nine (Holes 1-9)
+('khao_kheow_ac', 1, 4, 13, 365, 'white'),
+('khao_kheow_ac', 2, 4, 5, 395, 'white'),
+('khao_kheow_ac', 3, 3, 17, 160, 'white'),
+('khao_kheow_ac', 4, 5, 1, 540, 'white'),
+('khao_kheow_ac', 5, 4, 9, 380, 'white'),
+('khao_kheow_ac', 6, 4, 11, 370, 'white'),
+('khao_kheow_ac', 7, 3, 15, 170, 'white'),
+('khao_kheow_ac', 8, 5, 3, 520, 'white'),
+('khao_kheow_ac', 9, 4, 7, 385, 'white'),
+-- C Nine (Holes 10-18)
+('khao_kheow_ac', 10, 4, 14, 370, 'white'),
+('khao_kheow_ac', 11, 5, 2, 530, 'white'),
+('khao_kheow_ac', 12, 3, 18, 155, 'white'),
+('khao_kheow_ac', 13, 4, 8, 380, 'white'),
+('khao_kheow_ac', 14, 4, 10, 365, 'white'),
+('khao_kheow_ac', 15, 4, 6, 390, 'white'),
+('khao_kheow_ac', 16, 3, 16, 170, 'white'),
+('khao_kheow_ac', 17, 5, 4, 525, 'white'),
+('khao_kheow_ac', 18, 4, 12, 375, 'white');
+
+-- KHAO KHEOW B+C
+INSERT INTO courses (id, name, created_at) VALUES
+('khao_kheow_bc', 'Khao Kheow B+C', NOW());
+
+INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
+-- B Nine (Holes 1-9)
+('khao_kheow_bc', 1, 4, 12, 375, 'white'),
+('khao_kheow_bc', 2, 4, 8, 385, 'white'),
+('khao_kheow_bc', 3, 3, 18, 165, 'white'),
+('khao_kheow_bc', 4, 5, 4, 510, 'white'),
+('khao_kheow_bc', 5, 4, 10, 370, 'white'),
+('khao_kheow_bc', 6, 4, 2, 405, 'white'),
+('khao_kheow_bc', 7, 3, 16, 175, 'white'),
+('khao_kheow_bc', 8, 5, 6, 515, 'white'),
+('khao_kheow_bc', 9, 4, 14, 360, 'white'),
+-- C Nine (Holes 10-18)
+('khao_kheow_bc', 10, 4, 13, 370, 'white'),
+('khao_kheow_bc', 11, 5, 1, 530, 'white'),
+('khao_kheow_bc', 12, 3, 17, 155, 'white'),
+('khao_kheow_bc', 13, 4, 7, 380, 'white'),
+('khao_kheow_bc', 14, 4, 9, 365, 'white'),
+('khao_kheow_bc', 15, 4, 5, 390, 'white'),
+('khao_kheow_bc', 16, 3, 15, 170, 'white'),
+('khao_kheow_bc', 17, 5, 3, 525, 'white'),
+('khao_kheow_bc', 18, 4, 11, 375, 'white');
 
 -- ==============================================
 -- VERIFICATION QUERIES

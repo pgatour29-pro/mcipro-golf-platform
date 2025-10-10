@@ -22269,6 +22269,27 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             </div>
                         </div>
 
+                        <!-- Scoring Format -->
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Scoring Format</label>
+                            <div class="flex flex-col gap-2">
+                                <label class="flex items-center p-3 border-2 border-green-500 bg-green-50 rounded-lg cursor-pointer">
+                                    <input type="radio" name="scoringFormat" value="stableford" checked class="mr-3">
+                                    <div>
+                                        <div class="font-semibold text-gray-900">Modified Stableford</div>
+                                        <div class="text-xs text-gray-600">Standard in Thailand • Points: Eagle +5, Birdie +2, Par 0, Bogey -1, Dbl Bogey -3</div>
+                                    </div>
+                                </label>
+                                <label class="flex items-center p-3 border-2 border-gray-300 bg-white rounded-lg cursor-pointer hover:border-gray-400">
+                                    <input type="radio" name="scoringFormat" value="strokeplay" class="mr-3">
+                                    <div>
+                                        <div class="font-semibold text-gray-900">Stroke Play</div>
+                                        <div class="text-xs text-gray-600">Tournament format • Total strokes counted</div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
                         <!-- Add Players (1-7) -->
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 mb-2">Add Players (1-7)</label>
@@ -30509,6 +30530,7 @@ class LiveScorecardSystem {
         this.eventId = null;
         this.scorecards = {};
         this.scoresCache = {}; // Store scores locally: { playerId: { holeNumber: score } }
+        this.scoringFormat = 'stableford'; // 'stableford' or 'strokeplay'
         this.currentPlayerId = null;
         this.currentScore = '';
         this.leaderboardView = 'group';
@@ -30592,9 +30614,12 @@ class LiveScorecardSystem {
         }
 
         const teeMarker = document.querySelector('input[name="teeMarker"]:checked').value;
+        this.scoringFormat = document.querySelector('input[name="scoringFormat"]:checked').value;
         this.eventId = document.getElementById('scorecardEventSelect').value || null;
 
         this.groupId = `group_${Date.now()}`;
+
+        console.log(`[LiveScorecard] Starting round with ${this.scoringFormat} scoring`);
 
         // Create scorecards for each player
         for (const player of this.players) {
@@ -30647,7 +30672,9 @@ class LiveScorecardSystem {
         const grid = document.getElementById('groupScorecardGrid');
         grid.innerHTML = this.players.map(p => {
             const score = this.getPlayerScore(p.id, this.currentHole);
+            const total = this.getPlayerTotal(p.id);
             const isActive = p.id === this.currentPlayerId;
+            const formatLabel = this.scoringFormat === 'stableford' ? 'pts' : 'strokes';
 
             return `
                 <div onclick="LiveScorecardManager.selectPlayer('${p.id}')"
@@ -30656,6 +30683,7 @@ class LiveScorecardSystem {
                     <div class="text-2xl font-bold ${score ? 'text-gray-900' : 'text-gray-400'}">
                         ${score || '_'}
                     </div>
+                    ${total !== 0 ? `<div class="text-xs text-gray-600 mt-1">Total: ${total > 0 && this.scoringFormat === 'stableford' ? '+' : ''}${total} ${formatLabel}</div>` : ''}
                 </div>
             `;
         }).join('');
@@ -30671,6 +30699,37 @@ class LiveScorecardSystem {
             return null;
         }
         return this.scoresCache[playerId][holeNumber] || null;
+    }
+
+    calculateStablefordPoints(grossScore, par) {
+        // Modified Stableford scoring (Thailand standard)
+        const diff = grossScore - par;
+
+        if (diff <= -3) return 8;  // Double eagle or better
+        if (diff === -2) return 5; // Eagle
+        if (diff === -1) return 2; // Birdie
+        if (diff === 0) return 0;  // Par
+        if (diff === 1) return -1; // Bogey
+        return -3;                  // Double bogey or worse
+    }
+
+    getPlayerTotal(playerId) {
+        // Calculate total based on scoring format
+        let total = 0;
+        const par = 4; // Default par (should be from course data)
+
+        for (let hole = 1; hole <= this.currentHole; hole++) {
+            const score = this.getPlayerScore(playerId, hole);
+            if (score) {
+                if (this.scoringFormat === 'stableford') {
+                    total += this.calculateStablefordPoints(score, par);
+                } else {
+                    total += score; // Stroke play
+                }
+            }
+        }
+
+        return total;
     }
 
     selectPlayer(playerId) {
@@ -30790,6 +30849,7 @@ class LiveScorecardSystem {
         this.currentHole = 1;
         this.scorecards = {};
         this.scoresCache = {}; // Clear score cache
+        this.scoringFormat = 'stableford'; // Reset to default
         this.currentPlayerId = null;
 
         // Show start section

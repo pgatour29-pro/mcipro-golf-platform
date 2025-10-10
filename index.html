@@ -31382,8 +31382,9 @@ class LiveScorecardSystem {
         }
     }
 
-    parseScorecardText(text) {
+    parseScorecardText(text, fullOcrData) {
         console.log('[Scanner] Parsing OCR text...');
+        console.log('[Scanner] Raw text:', text);
 
         // Initialize default data
         const courseData = {
@@ -31402,48 +31403,111 @@ class LiveScorecardSystem {
             });
         }
 
-        // Extract course name (usually first line or contains "Golf", "Club", "Course")
-        const lines = text.split('\n');
+        // Extract course name (first meaningful line with letters)
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 3);
         for (const line of lines) {
-            if (/golf|club|course|resort/i.test(line) && line.length > 5) {
-                courseData.name = line.trim();
-                break;
+            // Look for course name (usually has Golf/Club/Course or is first line with letters)
+            if (/[a-zA-Z]{4,}/.test(line) && !/(par|handicap|hole|tee|men|women|slope|rating|total)/i.test(line)) {
+                courseData.name = line.replace(/[^a-zA-Z\s]/g, '').trim();
+                if (courseData.name.length > 3) break;
             }
         }
 
-        // Look for numbers in the text
-        const numbers = text.match(/\d+/g) || [];
-        console.log('[Scanner] Found numbers:', numbers);
+        // Find Par row - look for line with "Par" followed by numbers 3-5
+        let parValues = [];
+        for (const line of lines) {
+            if (/\bpar\b/i.test(line)) {
+                console.log('[Scanner] Found Par line:', line);
+                // Extract all numbers from this line
+                const nums = line.match(/\d+/g) || [];
+                const pars = nums.filter(n => parseInt(n) >= 3 && parseInt(n) <= 5).map(n => parseInt(n));
+                if (pars.length >= 9) {
+                    parValues = pars;
+                    console.log('[Scanner] Extracted pars:', parValues);
+                    break;
+                }
+            }
+        }
 
-        // Try to extract par values (usually 3, 4, or 5)
-        const parValues = numbers.filter(n => n >= 3 && n <= 5);
-        if (parValues.length >= 9) {
+        // Find Handicap row - look for line with "Handicap" or "Index" followed by numbers 1-18
+        let handicapValues = [];
+        for (const line of lines) {
+            if (/\b(handicap|index|hdcp)\b/i.test(line)) {
+                console.log('[Scanner] Found Handicap line:', line);
+                const nums = line.match(/\d+/g) || [];
+                const indices = nums.filter(n => {
+                    const num = parseInt(n);
+                    return num >= 1 && num <= 18;
+                }).map(n => parseInt(n));
+
+                // Look for 18 unique values between 1-18
+                const uniqueIndices = [...new Set(indices)];
+                if (indices.length >= 9) {
+                    handicapValues = indices;
+                    console.log('[Scanner] Extracted handicaps:', handicapValues);
+                    break;
+                }
+            }
+        }
+
+        // Find yardages - look for rows with "Men", "Women", "White", "Blue", etc.
+        let yardageValues = [];
+        for (const line of lines) {
+            if (/\b(men|white|regular|championship|blue)\b/i.test(line)) {
+                console.log('[Scanner] Found Yardage line:', line);
+                const nums = line.match(/\d+/g) || [];
+                const yards = nums.filter(n => {
+                    const num = parseInt(n);
+                    return num >= 100 && num <= 600;
+                }).map(n => parseInt(n));
+                if (yards.length >= 9) {
+                    yardageValues = yards;
+                    console.log('[Scanner] Extracted yardages:', yardageValues);
+                    break;
+                }
+            }
+        }
+
+        // Apply extracted data to holes
+        // Most Thai scorecards show Front 9 and Back 9 side by side
+        // So we get 9 values for front, 9 for back
+
+        if (parValues.length >= 18) {
+            // If we got 18 values, use them directly
             parValues.slice(0, 18).forEach((par, index) => {
-                if (index < 18) {
-                    courseData.holes[index].par = parseInt(par);
+                courseData.holes[index].par = par;
+            });
+        } else if (parValues.length >= 9) {
+            // If we got 9 values, might be front 9 only
+            // Duplicate for back 9 as fallback
+            parValues.forEach((par, index) => {
+                if (index < 9) {
+                    courseData.holes[index].par = par;
+                    courseData.holes[index + 9].par = par; // Duplicate to back 9
                 }
             });
         }
 
-        // Try to extract stroke index (usually 1-18)
-        const strokeIndices = numbers.filter(n => n >= 1 && n <= 18);
-        if (strokeIndices.length >= 18) {
-            const uniqueIndices = [...new Set(strokeIndices)];
-            if (uniqueIndices.length === 18) {
-                uniqueIndices.forEach((idx, i) => {
-                    if (i < 18) {
-                        courseData.holes[i].strokeIndex = parseInt(idx);
-                    }
-                });
-            }
+        if (handicapValues.length >= 18) {
+            handicapValues.slice(0, 18).forEach((idx, index) => {
+                courseData.holes[index].strokeIndex = idx;
+            });
+        } else if (handicapValues.length >= 9) {
+            handicapValues.forEach((idx, index) => {
+                if (index < 9) {
+                    courseData.holes[index].strokeIndex = idx;
+                }
+            });
         }
 
-        // Try to extract yardages (usually 100-600)
-        const yardages = numbers.filter(n => n >= 100 && n <= 600);
-        if (yardages.length >= 18) {
-            yardages.slice(0, 18).forEach((yards, index) => {
-                if (index < 18) {
-                    courseData.holes[index].yardage = parseInt(yards);
+        if (yardageValues.length >= 18) {
+            yardageValues.slice(0, 18).forEach((yards, index) => {
+                courseData.holes[index].yardage = yards;
+            });
+        } else if (yardageValues.length >= 9) {
+            yardageValues.forEach((yards, index) => {
+                if (index < 9) {
+                    courseData.holes[index].yardage = yards;
                 }
             });
         }

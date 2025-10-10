@@ -22250,13 +22250,15 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 mb-2">Course</label>
                             <div class="flex gap-2">
-                                <input type="text" id="scorecardCourseName" placeholder="Enter course name" class="flex-1 rounded-lg border px-3 py-2">
-                                <button onclick="LiveScorecardManager.openScorecardScanner()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
-                                    <span class="material-symbols-outlined text-sm">photo_camera</span>
-                                    Scan
+                                <select id="scorecardCourseSelect" class="flex-1 rounded-lg border px-3 py-2">
+                                    <option value="">Loading courses...</option>
+                                </select>
+                                <button onclick="LiveScorecardManager.openCourseLibrary()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-sm">library_books</span>
+                                    Manage
                                 </button>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Take a photo of the scorecard to auto-fill course data</p>
+                            <p class="text-xs text-gray-500 mt-1">Select from pre-loaded courses or manage course library</p>
                         </div>
 
                         <!-- Tee Markers -->
@@ -22563,6 +22565,33 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     <button onclick="LiveScorecardManager.closeCourseReview()" class="btn-secondary">
                         Cancel
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Course Library Modal -->
+    <div id="courseLibraryModal" class="fixed inset-0 bg-black bg-opacity-75 z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg max-w-4xl w-full mx-4 max-h-screen overflow-y-auto">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold text-gray-900">📚 Course Library</h2>
+                    <button onclick="LiveScorecardManager.closeCourseLibrary()" class="text-gray-500 hover:text-gray-700">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+
+                <p class="text-sm text-gray-600 mb-6">Manage your pre-scanned courses for instant loading during play</p>
+
+                <!-- Add New Course Button -->
+                <button onclick="LiveScorecardManager.openScorecardScanner()" class="btn-primary w-full mb-6">
+                    <span class="material-symbols-outlined">add</span>
+                    Scan New Course
+                </button>
+
+                <!-- Saved Courses List -->
+                <div id="savedCoursesList" class="space-y-3">
+                    <p class="text-center py-8 text-gray-500">Loading courses...</p>
                 </div>
             </div>
         </div>
@@ -30697,11 +30726,14 @@ class LiveScorecardSystem {
         this.currentScore = '';
         this.leaderboardView = 'group';
         this.subscriptions = [];
+        this.courseData = null; // Store loaded course data
+        this.availableCourses = []; // List of courses from database
     }
 
     async init() {
         console.log('[LiveScorecard] Initializing...');
         await this.loadEvents();
+        await this.loadAvailableCourses();
     }
 
     async loadEvents() {
@@ -30717,6 +30749,150 @@ class LiveScorecardSystem {
             option.textContent = `${event.name} - ${event.societyName}`;
             select.appendChild(option);
         });
+    }
+
+    async loadAvailableCourses() {
+        console.log('[LiveScorecard] Loading available courses...');
+
+        try {
+            // Get all unique courses from database
+            const { data: courses, error } = await window.SupabaseDB.client
+                .from('courses')
+                .select('*')
+                .order('name');
+
+            if (error) throw error;
+
+            this.availableCourses = courses || [];
+            console.log(`[LiveScorecard] Loaded ${this.availableCourses.length} courses`);
+
+            // Populate course selector
+            const select = document.getElementById('scorecardCourseSelect');
+            select.innerHTML = '<option value="">-- Select Course --</option>';
+
+            this.availableCourses.forEach(course => {
+                const option = document.createElement('option');
+                option.value = course.id;
+                option.textContent = `${course.name} (${course.tee_marker})`;
+                select.appendChild(option);
+            });
+
+        } catch (error) {
+            console.error('[LiveScorecard] Error loading courses:', error);
+            NotificationManager.show('Error loading courses', 'error');
+        }
+    }
+
+    async loadCourseData(courseId) {
+        console.log('[LiveScorecard] Loading course data for:', courseId);
+
+        try {
+            // Get course info
+            const { data: course, error: courseError } = await window.SupabaseDB.client
+                .from('courses')
+                .select('*')
+                .eq('id', courseId)
+                .single();
+
+            if (courseError) throw courseError;
+
+            // Get hole data
+            const { data: holes, error: holesError } = await window.SupabaseDB.client
+                .from('course_holes')
+                .select('*')
+                .eq('course_id', courseId)
+                .order('hole_number');
+
+            if (holesError) throw holesError;
+
+            this.courseData = {
+                id: course.id,
+                name: course.name,
+                teeMarker: course.tee_marker,
+                location: course.location,
+                holes: holes.map(h => ({
+                    number: h.hole_number,
+                    par: h.par,
+                    strokeIndex: h.stroke_index,
+                    yardage: h.yardage || 0
+                }))
+            };
+
+            console.log('[LiveScorecard] Course data loaded:', this.courseData);
+            return this.courseData;
+
+        } catch (error) {
+            console.error('[LiveScorecard] Error loading course data:', error);
+            NotificationManager.show('Error loading course data', 'error');
+            return null;
+        }
+    }
+
+    openCourseLibrary() {
+        document.getElementById('courseLibraryModal').classList.remove('hidden');
+        this.renderSavedCourses();
+    }
+
+    closeCourseLibrary() {
+        document.getElementById('courseLibraryModal').classList.add('hidden');
+    }
+
+    async renderSavedCourses() {
+        const container = document.getElementById('savedCoursesList');
+
+        if (this.availableCourses.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-12 text-gray-500">
+                    <span class="material-symbols-outlined text-5xl mb-3">golf_course</span>
+                    <p>No courses saved yet</p>
+                    <p class="text-sm mt-2">Click "Scan New Course" to add your first course</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = this.availableCourses.map(course => `
+            <div class="border rounded-lg p-4 hover:border-green-500 transition">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1">
+                        <h3 class="font-bold text-gray-900">${course.name}</h3>
+                        <p class="text-sm text-gray-600">
+                            ${course.tee_marker} Tees • ${course.location || 'Location not set'}
+                        </p>
+                        <p class="text-xs text-gray-500 mt-1">
+                            Added: ${new Date(course.created_at).toLocaleDateString()}
+                        </p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="LiveScorecardManager.deleteCourse('${course.id}')" class="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg">
+                            <span class="material-symbols-outlined text-sm">delete</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async deleteCourse(courseId) {
+        if (!confirm('Delete this course? This cannot be undone.')) return;
+
+        try {
+            // Delete course (will cascade to course_holes)
+            const { error } = await window.SupabaseDB.client
+                .from('courses')
+                .delete()
+                .eq('id', courseId);
+
+            if (error) throw error;
+
+            NotificationManager.show('Course deleted successfully', 'success');
+            await this.loadAvailableCourses();
+            this.renderSavedCourses();
+
+        } catch (error) {
+            console.error('[LiveScorecard] Error deleting course:', error);
+            NotificationManager.show('Error deleting course', 'error');
+        }
     }
 
     addPlayer() {
@@ -30769,9 +30945,17 @@ class LiveScorecardSystem {
             return;
         }
 
-        const courseName = document.getElementById('scorecardCourseName').value.trim();
-        if (!courseName) {
-            NotificationManager.show('Enter course name', 'error');
+        // Get selected course
+        const courseId = document.getElementById('scorecardCourseSelect').value;
+        if (!courseId) {
+            NotificationManager.show('Please select a course', 'error');
+            return;
+        }
+
+        // Load course data from database
+        await this.loadCourseData(courseId);
+        if (!this.courseData) {
+            NotificationManager.show('Error loading course data', 'error');
             return;
         }
 
@@ -30781,7 +30965,7 @@ class LiveScorecardSystem {
 
         this.groupId = `group_${Date.now()}`;
 
-        console.log(`[LiveScorecard] Starting round with ${this.scoringFormat} scoring`);
+        console.log(`[LiveScorecard] Starting round at ${this.courseData.name} with ${this.scoringFormat} scoring`);
 
         // Create scorecards for each player
         for (const player of this.players) {
@@ -30797,7 +30981,8 @@ class LiveScorecardSystem {
                     .from('scorecards')
                     .update({
                         group_id: this.groupId,
-                        course_name: courseName,
+                        course_id: courseId,
+                        course_name: this.courseData.name,
                         tee_marker: teeMarker,
                         player_name: player.name
                     })
@@ -30826,9 +31011,14 @@ class LiveScorecardSystem {
     }
 
     renderHole() {
+        // Get current hole data
+        const holeData = this.courseData?.holes?.[this.currentHole - 1];
+        const par = holeData?.par || 4;
+        const strokeIndex = holeData?.strokeIndex || this.currentHole;
+
         // Update hole header
         document.getElementById('currentHoleNumber').textContent = `Hole ${this.currentHole}`;
-        document.getElementById('currentHoleInfo').textContent = `Par 4 • Index ${this.currentHole}`;
+        document.getElementById('currentHoleInfo').textContent = `Par ${par} • Index ${strokeIndex}`;
 
         // Render player score boxes
         const grid = document.getElementById('groupScorecardGrid');
@@ -30967,12 +31157,17 @@ class LiveScorecardSystem {
             const scorecardId = this.scorecards[this.currentPlayerId];
             const player = this.players.find(p => p.id === this.currentPlayerId);
 
+            // Get hole data from courseData
+            const holeData = this.courseData?.holes?.[this.currentHole - 1];
+            const par = holeData?.par || 4;
+            const strokeIndex = holeData?.strokeIndex || this.currentHole;
+
             await window.SocietyGolfDB.saveScore(
                 scorecardId,
                 this.currentHole,
                 score,
-                4, // Default par
-                this.currentHole, // Default stroke index
+                par,
+                strokeIndex,
                 player.handicap
             );
 
@@ -31823,16 +32018,19 @@ layout: "text_based"
                 .from('course_holes')
                 .insert(holeRecords);
 
-            // Update form
-            document.getElementById('scorecardCourseName').value = courseName;
+            // Reload available courses to include the new one
+            await this.loadAvailableCourses();
+
+            // Auto-select the newly added course
+            document.getElementById('scorecardCourseSelect').value = courseId;
+
+            // Update tee marker
             const teeRadio = document.querySelector(`input[name="teeMarker"][value="${teeMarker}"]`);
             if (teeRadio) teeRadio.checked = true;
 
-            // Store course ID for later use
-            this.selectedCourseId = courseId;
-
-            NotificationManager.show('✅ Course data saved successfully!', 'success');
+            NotificationManager.show('✅ Course saved! Select it to start your round.', 'success');
             this.closeCourseReview();
+            this.closeCourseLibrary();
 
         } catch (error) {
             console.error('[Scanner] Save error:', error);

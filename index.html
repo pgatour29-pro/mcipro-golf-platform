@@ -28,6 +28,9 @@
     <!-- Tesseract.js for OCR Scorecard Scanning -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
+    <!-- js-yaml for YAML Profile Parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4/dist/js-yaml.min.js"></script>
+
     <style>
         /* CSS Variables for Premium Theme */
         :root {
@@ -22427,6 +22430,20 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </button>
                 </div>
 
+                <!-- Course Profile Selector -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        📋 Select Course Profile (for better accuracy)
+                    </label>
+                    <select id="scorecardProfileSelect" class="w-full rounded-lg border px-3 py-2 bg-white">
+                        <option value="burapha_east">Burapha Golf Club - East Course</option>
+                        <option value="generic" selected>Generic (Any Course)</option>
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Select your course for optimized OCR. Choose "Generic" if your course isn't listed.
+                    </p>
+                </div>
+
                 <!-- Camera View -->
                 <div id="cameraView" class="mb-4">
                     <div class="relative bg-gray-100 rounded-lg overflow-hidden" style="aspect-ratio: 4/3;">
@@ -31195,8 +31212,131 @@ class LiveScorecardSystem {
     }
 
     // ============================================
-    // SCORECARD SCANNER (OCR)
+    // SCORECARD SCANNER (OCR) - YAML TEMPLATE BASED
     // ============================================
+
+    // Built-in YAML profiles (embedded for easy deployment)
+    SCORECARD_PROFILES = {
+        'burapha_east': `
+course_name: "Burapha Golf Club - East Course"
+course_id: "burapha_east"
+layout: "front_back_side_by_side"
+regions:
+  par_front:
+    bbox: [0.05, 0.52, 0.48, 0.56]
+    type: "number_array"
+    count: 9
+    range: [3, 5]
+  par_back:
+    bbox: [0.52, 0.52, 0.95, 0.56]
+    type: "number_array"
+    count: 9
+    range: [3, 5]
+  handicap_front:
+    bbox: [0.05, 0.72, 0.48, 0.76]
+    type: "number_array"
+    count: 9
+    range: [1, 18]
+  handicap_back:
+    bbox: [0.52, 0.72, 0.95, 0.76]
+    type: "number_array"
+    count: 9
+    range: [1, 18]
+  yardage_men_front:
+    bbox: [0.05, 0.38, 0.48, 0.42]
+    type: "number_array"
+    count: 9
+    range: [100, 600]
+  yardage_men_back:
+    bbox: [0.52, 0.38, 0.95, 0.42]
+    type: "number_array"
+    count: 9
+    range: [100, 600]
+`,
+        'generic': `
+course_name: "Generic Course"
+course_id: "generic"
+layout: "text_based"
+`
+    };
+
+    async loadProfile(profileId) {
+        console.log('[Scanner] Loading profile:', profileId);
+
+        try {
+            const yamlText = this.SCORECARD_PROFILES[profileId];
+            if (!yamlText) {
+                console.warn('[Scanner] Profile not found, using generic');
+                return jsyaml.load(this.SCORECARD_PROFILES['generic']);
+            }
+
+            const profile = jsyaml.load(yamlText);
+            console.log('[Scanner] Profile loaded:', profile);
+            return profile;
+        } catch (error) {
+            console.error('[Scanner] Error loading profile:', error);
+            return jsyaml.load(this.SCORECARD_PROFILES['generic']);
+        }
+    }
+
+    cropImageRegion(imageData, bbox, imgWidth, imgHeight) {
+        // Convert normalized coordinates to pixels
+        const x = Math.floor(bbox[0] * imgWidth);
+        const y = Math.floor(bbox[1] * imgHeight);
+        const x2 = Math.floor(bbox[2] * imgWidth);
+        const y2 = Math.floor(bbox[3] * imgHeight);
+        const w = x2 - x;
+        const h = y2 - y;
+
+        console.log(`[Scanner] Cropping region: x=${x}, y=${y}, w=${w}, h=${h}`);
+
+        // Create canvas for cropping
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+
+        // Load source image
+        const img = new Image();
+        return new Promise((resolve) => {
+            img.onload = () => {
+                // Draw cropped region
+                ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
+                resolve(canvas.toDataURL());
+            };
+            img.src = imageData;
+        });
+    }
+
+    async extractRegionData(imageData, region, imgWidth, imgHeight) {
+        // Crop image to region
+        const croppedImage = await this.cropImageRegion(region.bbox, imageData, imgWidth, imgHeight);
+
+        // Run OCR on cropped region
+        const result = await Tesseract.recognize(croppedImage, 'eng', {
+            tessedit_char_whitelist: '0123456789',
+            logger: (m) => {
+                if (m.status === 'recognizing text') {
+                    console.log(`[OCR Region] ${Math.round(m.progress * 100)}%`);
+                }
+            }
+        });
+
+        console.log('[Scanner] Region OCR text:', result.data.text);
+
+        // Extract numbers from text
+        const numbers = result.data.text.match(/\d+/g) || [];
+        const parsedNumbers = numbers.map(n => parseInt(n));
+
+        // Filter by range if specified
+        let filtered = parsedNumbers;
+        if (region.range) {
+            filtered = parsedNumbers.filter(n => n >= region.range[0] && n <= region.range[1]);
+        }
+
+        console.log('[Scanner] Extracted numbers:', filtered);
+        return filtered;
+    }
 
     async openScorecardScanner() {
         const modal = document.getElementById('scorecardScannerModal');
@@ -31341,34 +31481,94 @@ class LiveScorecardSystem {
         document.getElementById('processingView').classList.remove('hidden');
 
         try {
-            console.log('[Scanner] Starting OCR processing...');
+            console.log('[Scanner] Starting YAML template-based OCR...');
             const progressEl = document.getElementById('ocrProgress');
 
-            // Preprocess image for better OCR
-            progressEl.textContent = 'Preprocessing image...';
-            const processedImage = await this.preprocessImage(this.capturedImage);
+            // Get selected profile
+            const profileId = document.getElementById('scorecardProfileSelect').value;
+            progressEl.textContent = `Loading ${profileId} profile...`;
 
-            // Run Tesseract OCR with optimized settings
-            const result = await Tesseract.recognize(
-                processedImage,
-                'eng',
-                {
-                    logger: (m) => {
-                        console.log('[OCR]', m);
-                        if (m.status === 'recognizing text') {
-                            progressEl.textContent = `Recognizing text... ${Math.round(m.progress * 100)}%`;
-                        }
-                    },
-                    tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT,
-                    tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz '
-                }
-            );
+            const profile = await this.loadProfile(profileId);
 
-            console.log('[Scanner] OCR complete:', result.data.text);
-            console.log('[Scanner] Full OCR data:', result.data);
+            // Get image dimensions
+            const img = new Image();
+            await new Promise((resolve) => {
+                img.onload = resolve;
+                img.src = this.capturedImage;
+            });
+            const imgWidth = img.width;
+            const imgHeight = img.height;
+            console.log('[Scanner] Image dimensions:', imgWidth, 'x', imgHeight);
 
-            // Parse scorecard data from OCR text
-            const courseData = this.parseScorecardText(result.data.text, result.data);
+            // Check if template-based or text-based
+            if (profile.layout === 'text_based') {
+                // Fallback to old text-based method
+                progressEl.textContent = 'Using text-based extraction...';
+                const processedImage = await this.preprocessImage(this.capturedImage);
+                const result = await Tesseract.recognize(processedImage, 'eng');
+                const courseData = this.parseScorecardText(result.data.text, result.data);
+                this.closeScorecardScanner();
+                this.showCourseReview(courseData);
+                return;
+            }
+
+            // Template-based extraction (Burapha, etc.)
+            progressEl.textContent = 'Extracting data from regions...';
+
+            // Extract par values
+            let parValues = [];
+            if (profile.regions.par_front) {
+                const parFront = await this.extractRegionData(this.capturedImage, profile.regions.par_front, imgWidth, imgHeight);
+                parValues.push(...parFront);
+            }
+            if (profile.regions.par_back) {
+                const parBack = await this.extractRegionData(this.capturedImage, profile.regions.par_back, imgWidth, imgHeight);
+                parValues.push(...parBack);
+            }
+
+            // Extract handicap values
+            let handicapValues = [];
+            if (profile.regions.handicap_front) {
+                const hcFront = await this.extractRegionData(this.capturedImage, profile.regions.handicap_front, imgWidth, imgHeight);
+                handicapValues.push(...hcFront);
+            }
+            if (profile.regions.handicap_back) {
+                const hcBack = await this.extractRegionData(this.capturedImage, profile.regions.handicap_back, imgWidth, imgHeight);
+                handicapValues.push(...hcBack);
+            }
+
+            // Extract yardage values
+            let yardageValues = [];
+            if (profile.regions.yardage_men_front) {
+                const yardFront = await this.extractRegionData(this.capturedImage, profile.regions.yardage_men_front, imgWidth, imgHeight);
+                yardageValues.push(...yardFront);
+            }
+            if (profile.regions.yardage_men_back) {
+                const yardBack = await this.extractRegionData(this.capturedImage, profile.regions.yardage_men_back, imgWidth, imgHeight);
+                yardageValues.push(...yardBack);
+            }
+
+            console.log('[Scanner] Extracted pars:', parValues);
+            console.log('[Scanner] Extracted handicaps:', handicapValues);
+            console.log('[Scanner] Extracted yardages:', yardageValues);
+
+            // Build course data
+            const courseData = {
+                name: profile.course_name,
+                teeMarker: 'white',
+                holes: []
+            };
+
+            for (let i = 0; i < 18; i++) {
+                courseData.holes.push({
+                    number: i + 1,
+                    par: parValues[i] || 4,
+                    strokeIndex: handicapValues[i] || (i + 1),
+                    yardage: yardageValues[i] || 0
+                });
+            }
+
+            console.log('[Scanner] Final course data:', courseData);
 
             // Close scanner, open review modal
             this.closeScorecardScanner();

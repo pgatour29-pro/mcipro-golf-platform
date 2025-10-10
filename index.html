@@ -22276,8 +22276,8 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 <label class="flex items-center p-3 border-2 border-green-500 bg-green-50 rounded-lg cursor-pointer">
                                     <input type="radio" name="scoringFormat" value="stableford" checked class="mr-3">
                                     <div>
-                                        <div class="font-semibold text-gray-900">Modified Stableford</div>
-                                        <div class="text-xs text-gray-600">Standard in Thailand • Points: Eagle +5, Birdie +2, Par 0, Bogey -1, Dbl Bogey -3</div>
+                                        <div class="font-semibold text-gray-900">Thailand Stableford</div>
+                                        <div class="text-xs text-gray-600">Standard in Thailand • Base: Eagle 4, Birdie 3, Par 2, Bogey 1 • +1 bonus on stroke holes</div>
                                     </div>
                                 </label>
                                 <label class="flex items-center p-3 border-2 border-gray-300 bg-white rounded-lg cursor-pointer hover:border-gray-400">
@@ -30701,28 +30701,58 @@ class LiveScorecardSystem {
         return this.scoresCache[playerId][holeNumber] || null;
     }
 
-    calculateStablefordPoints(grossScore, par) {
-        // Modified Stableford scoring (Thailand standard)
+    calculateThailandStableford(grossScore, par, getsHandicapStroke) {
+        // Thailand Stableford: Base points + bonus for stroke holes
         const diff = grossScore - par;
 
-        if (diff <= -3) return 8;  // Double eagle or better
-        if (diff === -2) return 5; // Eagle
-        if (diff === -1) return 2; // Birdie
-        if (diff === 0) return 0;  // Par
-        if (diff === 1) return -1; // Bogey
-        return -3;                  // Double bogey or worse
+        // Base points from gross score vs par
+        let basePoints = 0;
+        if (diff <= -2) basePoints = 4;      // Eagle or better
+        else if (diff === -1) basePoints = 3; // Birdie
+        else if (diff === 0) basePoints = 2;  // Par
+        else if (diff === 1) basePoints = 1;  // Bogey
+        else basePoints = 0;                  // Double bogey+ (block)
+
+        // Add +1 bonus if this is a handicap stroke hole
+        const bonusPoint = getsHandicapStroke ? 1 : 0;
+
+        return basePoints + bonusPoint;
+    }
+
+    getHandicapStrokesOnHole(handicap, strokeIndex) {
+        // Determine if player gets a stroke on this hole
+        // Example: handicap 10 gets strokes on index 1-10
+        // handicap 18 gets strokes on all holes (index 1-18)
+        // handicap 20 gets 1 stroke on all holes + extra stroke on index 1-2
+
+        const playingHandicap = Math.round(handicap);
+        const fullStrokes = Math.floor(playingHandicap / 18);
+        const remainingStrokes = playingHandicap % 18;
+
+        let strokes = fullStrokes;
+        if (strokeIndex <= remainingStrokes) {
+            strokes += 1;
+        }
+
+        return strokes;
     }
 
     getPlayerTotal(playerId) {
         // Calculate total based on scoring format
         let total = 0;
         const par = 4; // Default par (should be from course data)
+        const player = this.players.find(p => p.id === playerId);
 
         for (let hole = 1; hole <= this.currentHole; hole++) {
             const score = this.getPlayerScore(playerId, hole);
             if (score) {
                 if (this.scoringFormat === 'stableford') {
-                    total += this.calculateStablefordPoints(score, par);
+                    // Thailand Stableford: check if player gets stroke on this hole
+                    const strokeIndex = hole; // Using hole number as stroke index (should be from course data)
+                    const strokesOnHole = this.getHandicapStrokesOnHole(player.handicap, strokeIndex);
+                    const getsStroke = strokesOnHole > 0;
+
+                    total += this.calculateThailandStableford(score, par, getsStroke);
                 } else {
                     total += score; // Stroke play
                 }

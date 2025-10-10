@@ -1173,15 +1173,31 @@
 
         /* Live Scorecard Keypad Styles */
         .keypad-btn {
-            @apply px-6 py-4 bg-white border-2 border-gray-300 rounded-lg text-2xl font-bold text-gray-900 hover:bg-gray-50 hover:border-gray-400 active:bg-gray-100 transition-all;
-            min-height: 60px;
+            @apply px-6 py-4 bg-white border-2 border-gray-300 text-2xl font-bold text-gray-900 hover:bg-gray-50 hover:border-gray-400 active:bg-gray-100 transition-all shadow-md;
+            min-height: 70px;
+            min-width: 70px;
+            border-radius: 50%; /* Circular like phone keypad */
             display: flex;
             align-items: center;
-            justify-center;
+            justify-content: center;
         }
 
         .keypad-btn:active {
             transform: scale(0.95);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* Mobile optimization for scorecard */
+        @media (max-width: 640px) {
+            .keypad-btn {
+                min-height: 60px;
+                min-width: 60px;
+                font-size: 1.5rem;
+            }
+
+            #groupScorecardGrid {
+                grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)) !important;
+            }
         }
 
     </style>
@@ -30492,6 +30508,7 @@ class LiveScorecardSystem {
         this.groupId = null;
         this.eventId = null;
         this.scorecards = {};
+        this.scoresCache = {}; // Store scores locally: { playerId: { holeNumber: score } }
         this.currentPlayerId = null;
         this.currentScore = '';
         this.leaderboardView = 'group';
@@ -30535,6 +30552,9 @@ class LiveScorecardSystem {
             name: playerName,
             handicap: handicap
         });
+
+        // Initialize score cache for this player
+        this.scoresCache[playerId] = {};
 
         this.renderPlayersList();
     }
@@ -30646,9 +30666,11 @@ class LiveScorecardSystem {
     }
 
     getPlayerScore(playerId, holeNumber) {
-        // This would query from database in real implementation
-        // For now, return from local cache
-        return null;
+        // Return score from local cache
+        if (!this.scoresCache[playerId]) {
+            return null;
+        }
+        return this.scoresCache[playerId][holeNumber] || null;
     }
 
     selectPlayer(playerId) {
@@ -30702,6 +30724,12 @@ class LiveScorecardSystem {
                 this.currentHole, // Default stroke index
                 player.handicap
             );
+
+            // Store score in local cache for immediate rendering
+            if (!this.scoresCache[this.currentPlayerId]) {
+                this.scoresCache[this.currentPlayerId] = {};
+            }
+            this.scoresCache[this.currentPlayerId][this.currentHole] = score;
 
             NotificationManager.show(`Score saved: ${score}`, 'success', 1000);
             this.currentScore = '';
@@ -30761,6 +30789,7 @@ class LiveScorecardSystem {
         this.players = [];
         this.currentHole = 1;
         this.scorecards = {};
+        this.scoresCache = {}; // Clear score cache
         this.currentPlayerId = null;
 
         // Show start section

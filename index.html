@@ -25,6 +25,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
 
+    <!-- Tesseract.js for OCR Scorecard Scanning -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
     <style>
         /* CSS Variables for Premium Theme */
         :root {
@@ -22243,7 +22246,14 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <!-- Course Selection -->
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 mb-2">Course</label>
-                            <input type="text" id="scorecardCourseName" placeholder="Enter course name" class="w-full rounded-lg border px-3 py-2">
+                            <div class="flex gap-2">
+                                <input type="text" id="scorecardCourseName" placeholder="Enter course name" class="flex-1 rounded-lg border px-3 py-2">
+                                <button onclick="LiveScorecardManager.openScorecardScanner()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-sm">photo_camera</span>
+                                    Scan
+                                </button>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Take a photo of the scorecard to auto-fill course data</p>
                         </div>
 
                         <!-- Tee Markers -->
@@ -22404,6 +22414,133 @@ Total Rounds: ${ningCaddy.totalRounds}`;
             </div>
 
         </main>
+    </div>
+
+    <!-- Scorecard Scanner Modal -->
+    <div id="scorecardScannerModal" class="fixed inset-0 bg-black bg-opacity-75 z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-screen overflow-y-auto">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold text-gray-900">📸 Scan Scorecard</h2>
+                    <button onclick="LiveScorecardManager.closeScorecardScanner()" class="text-gray-500 hover:text-gray-700">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+
+                <!-- Camera View -->
+                <div id="cameraView" class="mb-4">
+                    <div class="relative bg-gray-100 rounded-lg overflow-hidden" style="aspect-ratio: 4/3;">
+                        <video id="scannerVideo" class="w-full h-full object-cover" autoplay playsinline></video>
+                        <canvas id="scannerCanvas" class="hidden"></canvas>
+                    </div>
+                    <div class="flex gap-2 mt-4">
+                        <button onclick="LiveScorecardManager.captureScorecard()" class="btn-primary flex-1">
+                            <span class="material-symbols-outlined">photo_camera</span>
+                            Capture Photo
+                        </button>
+                        <button onclick="LiveScorecardManager.uploadScorecard()" class="btn-secondary">
+                            <span class="material-symbols-outlined">upload_file</span>
+                            Upload Image
+                        </button>
+                    </div>
+                    <input type="file" id="scorecardFileInput" accept="image/*" class="hidden" onchange="LiveScorecardManager.handleFileUpload(event)">
+                </div>
+
+                <!-- Processing View -->
+                <div id="processingView" class="hidden">
+                    <div class="text-center py-12">
+                        <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mb-4"></div>
+                        <p class="text-lg font-medium text-gray-900">Processing scorecard...</p>
+                        <p class="text-sm text-gray-600" id="ocrProgress">Analyzing image with OCR...</p>
+                    </div>
+                </div>
+
+                <!-- Preview Image -->
+                <div id="capturedPreview" class="hidden mb-4">
+                    <img id="previewImage" class="w-full rounded-lg border-2 border-gray-300">
+                    <div class="flex gap-2 mt-2">
+                        <button onclick="LiveScorecardManager.processImage()" class="btn-primary flex-1">
+                            <span class="material-symbols-outlined">auto_awesome</span>
+                            Extract Data
+                        </button>
+                        <button onclick="LiveScorecardManager.retakePhoto()" class="btn-secondary">
+                            <span class="material-symbols-outlined">refresh</span>
+                            Retake
+                        </button>
+                    </div>
+                </div>
+
+                <div class="text-xs text-gray-500 mt-4">
+                    <p><strong>Tips for best results:</strong></p>
+                    <ul class="list-disc ml-5 mt-1">
+                        <li>Ensure good lighting - avoid shadows</li>
+                        <li>Place scorecard flat on a surface</li>
+                        <li>Capture the entire scorecard in the frame</li>
+                        <li>Hold camera steady and parallel to scorecard</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Course Data Review Modal -->
+    <div id="courseReviewModal" class="fixed inset-0 bg-black bg-opacity-75 z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg max-w-4xl w-full mx-4 max-h-screen overflow-y-auto">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold text-gray-900">✅ Review Extracted Data</h2>
+                    <button onclick="LiveScorecardManager.closeCourseReview()" class="text-gray-500 hover:text-gray-700">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+
+                <p class="text-sm text-gray-600 mb-4">Please review and edit the extracted data before saving:</p>
+
+                <!-- Course Info -->
+                <div class="mb-4 grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Course Name</label>
+                        <input type="text" id="reviewCourseName" class="w-full rounded-lg border px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Tee Marker</label>
+                        <select id="reviewTeeMarker" class="w-full rounded-lg border px-3 py-2">
+                            <option value="red">Red</option>
+                            <option value="white">White</option>
+                            <option value="blue">Blue</option>
+                            <option value="black">Black</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Holes Table -->
+                <div class="border rounded-lg overflow-hidden mb-4">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">Hole</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">Par</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">Stroke Index</th>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-gray-700">Yardage</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reviewHolesTable">
+                            <!-- Rows will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="flex gap-2">
+                    <button onclick="LiveScorecardManager.saveCourseData()" class="btn-primary flex-1">
+                        <span class="material-symbols-outlined">save</span>
+                        Save Course Data
+                    </button>
+                    <button onclick="LiveScorecardManager.closeCourseReview()" class="btn-secondary">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Caddy Dashboard -->
@@ -31047,6 +31184,315 @@ class LiveScorecardSystem {
             .subscribe();
 
         this.subscriptions.push(sub);
+    }
+
+    // ============================================
+    // SCORECARD SCANNER (OCR)
+    // ============================================
+
+    async openScorecardScanner() {
+        const modal = document.getElementById('scorecardScannerModal');
+        modal.classList.remove('hidden');
+
+        // Start camera
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: 'environment', // Use back camera on mobile
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                }
+            });
+            const video = document.getElementById('scannerVideo');
+            video.srcObject = stream;
+            this.cameraStream = stream;
+        } catch (error) {
+            console.error('[Scanner] Camera error:', error);
+            NotificationManager.show('Unable to access camera. Please try uploading an image instead.', 'error');
+        }
+    }
+
+    closeScorecardScanner() {
+        const modal = document.getElementById('scorecardScannerModal');
+        modal.classList.add('hidden');
+
+        // Stop camera
+        if (this.cameraStream) {
+            this.cameraStream.getTracks().forEach(track => track.stop());
+            this.cameraStream = null;
+        }
+
+        // Reset views
+        document.getElementById('cameraView').classList.remove('hidden');
+        document.getElementById('capturedPreview').classList.add('hidden');
+        document.getElementById('processingView').classList.add('hidden');
+    }
+
+    captureScorecard() {
+        const video = document.getElementById('scannerVideo');
+        const canvas = document.getElementById('scannerCanvas');
+        const preview = document.getElementById('previewImage');
+
+        // Set canvas size to video size
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        // Draw video frame to canvas
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0);
+
+        // Convert to image
+        const imageData = canvas.toDataURL('image/jpeg', 0.9);
+        preview.src = imageData;
+
+        // Show preview, hide camera
+        document.getElementById('cameraView').classList.add('hidden');
+        document.getElementById('capturedPreview').classList.remove('hidden');
+
+        this.capturedImage = imageData;
+    }
+
+    uploadScorecard() {
+        document.getElementById('scorecardFileInput').click();
+    }
+
+    handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const preview = document.getElementById('previewImage');
+            preview.src = e.target.result;
+            this.capturedImage = e.target.result;
+
+            // Show preview, hide camera
+            document.getElementById('cameraView').classList.add('hidden');
+            document.getElementById('capturedPreview').classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+    }
+
+    retakePhoto() {
+        document.getElementById('cameraView').classList.remove('hidden');
+        document.getElementById('capturedPreview').classList.add('hidden');
+        this.capturedImage = null;
+    }
+
+    async processImage() {
+        if (!this.capturedImage) {
+            NotificationManager.show('No image captured', 'error');
+            return;
+        }
+
+        // Show processing view
+        document.getElementById('capturedPreview').classList.add('hidden');
+        document.getElementById('processingView').classList.remove('hidden');
+
+        try {
+            console.log('[Scanner] Starting OCR processing...');
+            const progressEl = document.getElementById('ocrProgress');
+
+            // Run Tesseract OCR
+            const result = await Tesseract.recognize(
+                this.capturedImage,
+                'eng',
+                {
+                    logger: (m) => {
+                        console.log('[OCR]', m);
+                        if (m.status === 'recognizing text') {
+                            progressEl.textContent = `Recognizing text... ${Math.round(m.progress * 100)}%`;
+                        }
+                    }
+                }
+            );
+
+            console.log('[Scanner] OCR complete:', result.data.text);
+
+            // Parse scorecard data from OCR text
+            const courseData = this.parseScorecardText(result.data.text);
+
+            // Close scanner, open review modal
+            this.closeScorecardScanner();
+            this.showCourseReview(courseData);
+
+        } catch (error) {
+            console.error('[Scanner] OCR error:', error);
+            NotificationManager.show('Failed to process image. Please try again.', 'error');
+            document.getElementById('processingView').classList.add('hidden');
+            document.getElementById('capturedPreview').classList.remove('hidden');
+        }
+    }
+
+    parseScorecardText(text) {
+        console.log('[Scanner] Parsing OCR text...');
+
+        // Initialize default data
+        const courseData = {
+            name: '',
+            teeMarker: 'white',
+            holes: []
+        };
+
+        // Initialize 18 holes with defaults
+        for (let i = 1; i <= 18; i++) {
+            courseData.holes.push({
+                number: i,
+                par: 4,
+                strokeIndex: i,
+                yardage: 0
+            });
+        }
+
+        // Extract course name (usually first line or contains "Golf", "Club", "Course")
+        const lines = text.split('\n');
+        for (const line of lines) {
+            if (/golf|club|course|resort/i.test(line) && line.length > 5) {
+                courseData.name = line.trim();
+                break;
+            }
+        }
+
+        // Look for numbers in the text
+        const numbers = text.match(/\d+/g) || [];
+        console.log('[Scanner] Found numbers:', numbers);
+
+        // Try to extract par values (usually 3, 4, or 5)
+        const parValues = numbers.filter(n => n >= 3 && n <= 5);
+        if (parValues.length >= 9) {
+            parValues.slice(0, 18).forEach((par, index) => {
+                if (index < 18) {
+                    courseData.holes[index].par = parseInt(par);
+                }
+            });
+        }
+
+        // Try to extract stroke index (usually 1-18)
+        const strokeIndices = numbers.filter(n => n >= 1 && n <= 18);
+        if (strokeIndices.length >= 18) {
+            const uniqueIndices = [...new Set(strokeIndices)];
+            if (uniqueIndices.length === 18) {
+                uniqueIndices.forEach((idx, i) => {
+                    if (i < 18) {
+                        courseData.holes[i].strokeIndex = parseInt(idx);
+                    }
+                });
+            }
+        }
+
+        // Try to extract yardages (usually 100-600)
+        const yardages = numbers.filter(n => n >= 100 && n <= 600);
+        if (yardages.length >= 18) {
+            yardages.slice(0, 18).forEach((yards, index) => {
+                if (index < 18) {
+                    courseData.holes[index].yardage = parseInt(yards);
+                }
+            });
+        }
+
+        console.log('[Scanner] Parsed course data:', courseData);
+        return courseData;
+    }
+
+    showCourseReview(courseData) {
+        // Populate course info
+        document.getElementById('reviewCourseName').value = courseData.name;
+        document.getElementById('reviewTeeMarker').value = courseData.teeMarker;
+
+        // Populate holes table
+        const tbody = document.getElementById('reviewHolesTable');
+        tbody.innerHTML = courseData.holes.map((hole, index) => `
+            <tr class="${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}">
+                <td class="px-4 py-2 font-medium">${hole.number}</td>
+                <td class="px-4 py-2">
+                    <select id="reviewPar${hole.number}" class="w-20 rounded border px-2 py-1">
+                        <option value="3" ${hole.par === 3 ? 'selected' : ''}>3</option>
+                        <option value="4" ${hole.par === 4 ? 'selected' : ''}>4</option>
+                        <option value="5" ${hole.par === 5 ? 'selected' : ''}>5</option>
+                    </select>
+                </td>
+                <td class="px-4 py-2">
+                    <input type="number" id="reviewIndex${hole.number}" value="${hole.strokeIndex}" min="1" max="18" class="w-20 rounded border px-2 py-1">
+                </td>
+                <td class="px-4 py-2">
+                    <input type="number" id="reviewYardage${hole.number}" value="${hole.yardage}" min="0" max="700" class="w-24 rounded border px-2 py-1">
+                </td>
+            </tr>
+        `).join('');
+
+        // Show modal
+        document.getElementById('courseReviewModal').classList.remove('hidden');
+
+        this.reviewedCourseData = courseData;
+    }
+
+    closeCourseReview() {
+        document.getElementById('courseReviewModal').classList.add('hidden');
+        this.reviewedCourseData = null;
+    }
+
+    async saveCourseData() {
+        // Collect edited data
+        const courseName = document.getElementById('reviewCourseName').value.trim();
+        const teeMarker = document.getElementById('reviewTeeMarker').value;
+
+        if (!courseName) {
+            NotificationManager.show('Please enter course name', 'error');
+            return;
+        }
+
+        const holes = [];
+        for (let i = 1; i <= 18; i++) {
+            holes.push({
+                number: i,
+                par: parseInt(document.getElementById(`reviewPar${i}`).value),
+                strokeIndex: parseInt(document.getElementById(`reviewIndex${i}`).value),
+                yardage: parseInt(document.getElementById(`reviewYardage${i}`).value) || 0
+            });
+        }
+
+        try {
+            // Save to database
+            const courseId = `course_${Date.now()}`;
+
+            // Insert course
+            await window.SupabaseDB.client
+                .from('courses')
+                .insert([{
+                    id: courseId,
+                    name: courseName,
+                    tee_marker: teeMarker
+                }]);
+
+            // Insert holes
+            const holeRecords = holes.map(h => ({
+                course_id: courseId,
+                hole_number: h.number,
+                par: h.par,
+                stroke_index: h.strokeIndex,
+                yardage: h.yardage,
+                tee_marker: teeMarker
+            }));
+
+            await window.SupabaseDB.client
+                .from('course_holes')
+                .insert(holeRecords);
+
+            // Update form
+            document.getElementById('scorecardCourseName').value = courseName;
+            const teeRadio = document.querySelector(`input[name="teeMarker"][value="${teeMarker}"]`);
+            if (teeRadio) teeRadio.checked = true;
+
+            // Store course ID for later use
+            this.selectedCourseId = courseId;
+
+            NotificationManager.show('✅ Course data saved successfully!', 'success');
+            this.closeCourseReview();
+
+        } catch (error) {
+            console.error('[Scanner] Save error:', error);
+            NotificationManager.show('Failed to save course data', 'error');
+        }
     }
 }
 

@@ -30740,6 +30740,15 @@ class LiveScorecardSystem {
         console.log('[LiveScorecard] Initializing...');
         await this.loadEvents();
         // No longer load courses on init - dropdown is static!
+
+        // Auto-sync offline data when connection is restored
+        window.addEventListener('online', () => {
+            console.log('[LiveScorecard] 🌐 Connection restored - syncing offline data...');
+            setTimeout(() => this.syncOfflineData(), 1000); // Wait 1s for connection to stabilize
+        });
+
+        // Check for pending offline data on init
+        setTimeout(() => this.syncOfflineData(), 2000);
     }
 
     async loadEvents() {
@@ -30961,7 +30970,9 @@ class LiveScorecardSystem {
 
         console.log(`[LiveScorecard] Starting round at ${this.courseData.name} with ${this.scoringFormat} scoring`);
 
-        // Create scorecards for each player
+        // Try to create scorecards online, fall back to offline mode if needed
+        let isOfflineMode = false;
+
         for (const player of this.players) {
             try {
                 const scorecard = await window.SocietyGolfDB.createScorecard(
@@ -30984,9 +30995,39 @@ class LiveScorecardSystem {
 
                 this.scorecards[player.id] = scorecard.id;
             } catch (error) {
-                console.error('[LiveScorecard] Error creating scorecard:', error);
-                NotificationManager.show('Error starting round', 'error');
-                return;
+                console.warn('[LiveScorecard] Online scorecard creation failed, switching to OFFLINE mode:', error);
+
+                // OFFLINE MODE: Create local scorecards
+                isOfflineMode = true;
+                this.scorecards = {}; // Reset any partial online scorecards
+
+                for (const p of this.players) {
+                    // Generate temporary local scorecard ID
+                    const localId = `local_${this.groupId}_${p.id}`;
+                    this.scorecards[p.id] = localId;
+
+                    // Store scorecard metadata locally
+                    const localScorecard = {
+                        id: localId,
+                        event_id: this.eventId,
+                        player_id: p.id,
+                        player_name: p.name,
+                        handicap: p.handicap,
+                        playing_handicap: Math.round(p.handicap),
+                        group_id: this.groupId,
+                        course_id: courseId,
+                        course_name: this.courseData.name,
+                        tee_marker: teeMarker,
+                        status: 'in_progress',
+                        started_at: new Date().toISOString(),
+                        pending_sync: true // Mark for later sync to Supabase
+                    };
+
+                    localStorage.setItem(`scorecard_${localId}`, JSON.stringify(localScorecard));
+                }
+
+                NotificationManager.show('🔌 Starting round OFFLINE - will sync when online', 'warning');
+                break; // Exit the outer loop
             }
         }
 
@@ -31188,19 +31229,36 @@ class LiveScorecardSystem {
         }
 
         // ===== BACKGROUND DATABASE SAVE (Don't wait) =====
-        window.SocietyGolfDB.saveScore(
-            scorecardId,
-            this.currentHole,
-            score,
-            par,
-            strokeIndex,
-            player.handicap
-        ).then(() => {
-            console.log(`[LiveScorecard] Score saved to DB: ${player.name} - Hole ${this.currentHole} - ${score}`);
-        }).catch(error => {
-            console.error('[LiveScorecard] Background save failed:', error);
-            // Score still in cache, so UI works. Can retry later.
-        });
+        // Check if this is a local offline scorecard
+        if (scorecardId.startsWith('local_')) {
+            // OFFLINE MODE: Save score to localStorage
+            const localScores = JSON.parse(localStorage.getItem(`scores_${scorecardId}`) || '{}');
+            localScores[this.currentHole] = {
+                hole_number: this.currentHole,
+                gross_score: score,
+                par: par,
+                stroke_index: strokeIndex,
+                handicap: player.handicap,
+                recorded_at: new Date().toISOString()
+            };
+            localStorage.setItem(`scores_${scorecardId}`, JSON.stringify(localScores));
+            console.log(`[LiveScorecard] Score saved OFFLINE: ${player.name} - Hole ${this.currentHole} - ${score}`);
+        } else {
+            // ONLINE MODE: Save to Supabase
+            window.SocietyGolfDB.saveScore(
+                scorecardId,
+                this.currentHole,
+                score,
+                par,
+                strokeIndex,
+                player.handicap
+            ).then(() => {
+                console.log(`[LiveScorecard] Score saved to DB: ${player.name} - Hole ${this.currentHole} - ${score}`);
+            }).catch(error => {
+                console.error('[LiveScorecard] Background save failed:', error);
+                // Score still in cache, so UI works. Can retry later.
+            });
+        }
     }
 
     prevHole() {
@@ -31249,6 +31307,87 @@ class LiveScorecardSystem {
         // Unsubscribe from updates
         this.subscriptions.forEach(sub => sub.unsubscribe());
         this.subscriptions = [];
+    }
+
+    async syncOfflineData() {
+        console.log('[LiveScorecard] 🔄 Checking for offline data to sync...');
+
+        try {
+            // Find all pending offline scorecards
+            const pendingScorecards = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('scorecard_local_')) {
+                    const scorecardData = JSON.parse(localStorage.getItem(key));
+                    if (scorecardData.pending_sync) {
+                        pendingScorecards.push({ key, data: scorecardData });
+                    }
+                }
+            }
+
+            if (pendingScorecards.length === 0) {
+                console.log('[LiveScorecard] ✅ No offline data to sync');
+                return;
+            }
+
+            console.log(`[LiveScorecard] 📤 Syncing ${pendingScorecards.length} offline scorecards...`);
+
+            for (const { key, data } of pendingScorecards) {
+                try {
+                    // Create scorecard in Supabase
+                    const scorecard = await window.SocietyGolfDB.createScorecard(
+                        data.event_id,
+                        data.player_id,
+                        data.handicap
+                    );
+
+                    // Update with group and course info
+                    await window.SupabaseDB.client
+                        .from('scorecards')
+                        .update({
+                            group_id: data.group_id,
+                            course_id: data.course_id,
+                            course_name: data.course_name,
+                            tee_marker: data.tee_marker,
+                            player_name: data.player_name,
+                            started_at: data.started_at
+                        })
+                        .eq('id', scorecard.id);
+
+                    // Sync all scores for this scorecard
+                    const scoresKey = `scores_${data.id}`;
+                    const scoresData = localStorage.getItem(scoresKey);
+                    if (scoresData) {
+                        const scores = JSON.parse(scoresData);
+                        for (const holeNum in scores) {
+                            const holeScore = scores[holeNum];
+                            await window.SocietyGolfDB.saveScore(
+                                scorecard.id,
+                                parseInt(holeNum),
+                                holeScore.gross_score,
+                                holeScore.par,
+                                holeScore.stroke_index,
+                                holeScore.handicap
+                            );
+                        }
+                        localStorage.removeItem(scoresKey); // Clean up scores
+                    }
+
+                    // Clean up synced scorecard
+                    localStorage.removeItem(key);
+                    console.log(`[LiveScorecard] ✅ Synced offline scorecard: ${data.player_name}`);
+
+                } catch (error) {
+                    console.error(`[LiveScorecard] ❌ Failed to sync scorecard ${data.player_name}:`, error);
+                    // Leave in localStorage for retry later
+                }
+            }
+
+            NotificationManager.show('📤 Offline data synced to cloud!', 'success');
+
+        } catch (error) {
+            console.error('[LiveScorecard] Error during sync:', error);
+        }
     }
 
     async showLeaderboard(view) {

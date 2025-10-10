@@ -22433,14 +22433,20 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <video id="scannerVideo" class="w-full h-full object-cover" autoplay playsinline></video>
                         <canvas id="scannerCanvas" class="hidden"></canvas>
                     </div>
-                    <div class="flex gap-2 mt-4">
-                        <button onclick="LiveScorecardManager.captureScorecard()" class="btn-primary flex-1">
-                            <span class="material-symbols-outlined">photo_camera</span>
-                            Capture Photo
-                        </button>
-                        <button onclick="LiveScorecardManager.uploadScorecard()" class="btn-secondary">
-                            <span class="material-symbols-outlined">upload_file</span>
-                            Upload Image
+                    <div class="flex flex-col gap-2 mt-4">
+                        <div class="flex gap-2">
+                            <button onclick="LiveScorecardManager.captureScorecard()" class="btn-primary flex-1">
+                                <span class="material-symbols-outlined">photo_camera</span>
+                                Capture Photo
+                            </button>
+                            <button onclick="LiveScorecardManager.uploadScorecard()" class="btn-secondary">
+                                <span class="material-symbols-outlined">upload_file</span>
+                                Upload Image
+                            </button>
+                        </div>
+                        <button onclick="LiveScorecardManager.manualCourseEntry()" class="btn-secondary w-full border-2 border-gray-400">
+                            <span class="material-symbols-outlined">edit</span>
+                            Manual Entry (Skip OCR)
                         </button>
                     </div>
                     <input type="file" id="scorecardFileInput" accept="image/*" class="hidden" onchange="LiveScorecardManager.handleFileUpload(event)">
@@ -22471,13 +22477,15 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 </div>
 
                 <div class="text-xs text-gray-500 mt-4">
-                    <p><strong>Tips for best results:</strong></p>
+                    <p><strong>📌 OCR Tips for best results:</strong></p>
                     <ul class="list-disc ml-5 mt-1">
                         <li>Ensure good lighting - avoid shadows</li>
                         <li>Place scorecard flat on a surface</li>
                         <li>Capture the entire scorecard in the frame</li>
                         <li>Hold camera steady and parallel to scorecard</li>
                     </ul>
+                    <p class="mt-3"><strong>⚠️ OCR not working?</strong></p>
+                    <p class="mt-1">Click "Manual Entry" button above to skip OCR and enter data directly. It's faster and more reliable!</p>
                 </div>
             </div>
         </div>
@@ -31279,6 +31287,49 @@ class LiveScorecardSystem {
         this.capturedImage = null;
     }
 
+    preprocessImage(imageData) {
+        // Create canvas for preprocessing
+        const img = new Image();
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        return new Promise((resolve) => {
+            img.onload = () => {
+                canvas.width = img.width;
+                canvas.height = img.height;
+
+                // Draw original image
+                ctx.drawImage(img, 0, 0);
+
+                // Get image data
+                const imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageDataObj.data;
+
+                // Convert to grayscale and increase contrast
+                for (let i = 0; i < data.length; i += 4) {
+                    // Grayscale
+                    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+
+                    // Increase contrast (adjust threshold)
+                    const contrast = 1.5;
+                    const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+                    const adjusted = factor * (gray - 128) + 128;
+
+                    // Apply thresholding for better text recognition
+                    const threshold = adjusted > 128 ? 255 : 0;
+
+                    data[i] = threshold;
+                    data[i + 1] = threshold;
+                    data[i + 2] = threshold;
+                }
+
+                ctx.putImageData(imageDataObj, 0, 0);
+                resolve(canvas.toDataURL());
+            };
+            img.src = imageData;
+        });
+    }
+
     async processImage() {
         if (!this.capturedImage) {
             NotificationManager.show('No image captured', 'error');
@@ -31293,9 +31344,13 @@ class LiveScorecardSystem {
             console.log('[Scanner] Starting OCR processing...');
             const progressEl = document.getElementById('ocrProgress');
 
-            // Run Tesseract OCR
+            // Preprocess image for better OCR
+            progressEl.textContent = 'Preprocessing image...';
+            const processedImage = await this.preprocessImage(this.capturedImage);
+
+            // Run Tesseract OCR with optimized settings
             const result = await Tesseract.recognize(
-                this.capturedImage,
+                processedImage,
                 'eng',
                 {
                     logger: (m) => {
@@ -31303,14 +31358,17 @@ class LiveScorecardSystem {
                         if (m.status === 'recognizing text') {
                             progressEl.textContent = `Recognizing text... ${Math.round(m.progress * 100)}%`;
                         }
-                    }
+                    },
+                    tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT,
+                    tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz '
                 }
             );
 
             console.log('[Scanner] OCR complete:', result.data.text);
+            console.log('[Scanner] Full OCR data:', result.data);
 
             // Parse scorecard data from OCR text
-            const courseData = this.parseScorecardText(result.data.text);
+            const courseData = this.parseScorecardText(result.data.text, result.data);
 
             // Close scanner, open review modal
             this.closeScorecardScanner();
@@ -31318,7 +31376,7 @@ class LiveScorecardSystem {
 
         } catch (error) {
             console.error('[Scanner] OCR error:', error);
-            NotificationManager.show('Failed to process image. Please try again.', 'error');
+            NotificationManager.show('OCR failed. Try Manual Entry instead.', 'error');
             document.getElementById('processingView').classList.add('hidden');
             document.getElementById('capturedPreview').classList.remove('hidden');
         }
@@ -31493,6 +31551,31 @@ class LiveScorecardSystem {
             console.error('[Scanner] Save error:', error);
             NotificationManager.show('Failed to save course data', 'error');
         }
+    }
+
+    manualCourseEntry() {
+        // Close scanner modal
+        this.closeScorecardScanner();
+
+        // Create blank course data for manual entry
+        const courseData = {
+            name: '',
+            teeMarker: 'white',
+            holes: []
+        };
+
+        // Initialize 18 holes with defaults
+        for (let i = 1; i <= 18; i++) {
+            courseData.holes.push({
+                number: i,
+                par: 4,
+                strokeIndex: i,
+                yardage: 0
+            });
+        }
+
+        // Show review modal for manual entry
+        this.showCourseReview(courseData);
     }
 }
 

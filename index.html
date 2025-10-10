@@ -67,6 +67,11 @@
             box-sizing: border-box;
         }
 
+        /* Filled star icon for favorites */
+        .fill-icon {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background-color: var(--gray-50);
@@ -4175,10 +4180,10 @@
                     AppState.currentUser = {
                         role: userProfile.role || 'golfer',
                         name: userProfile.name || profile.displayName,
-                        username: userProfile.username || lineUserId,
+                        username: userProfile.username || userProfile.name || profile.displayName || 'User',
                         lineId: lineUserId,
                         lineUserId: lineUserId,
-                        userId: lineUserId, // UNIQUE ID - Use lineUserId as primary unique identifier
+                        userId: lineUserId, // UNIQUE ID - Use lineUserId as primary unique identifier (INTERNAL ONLY, NEVER DISPLAY TO USER)
                         avatar: profile.pictureUrl,
                         email: userProfile.email,
                         phone: userProfile.phone,
@@ -4196,7 +4201,7 @@
                         const fullProfile = {
                             userId: lineUserId,
                             lineUserId: lineUserId,
-                            username: userProfile.profile_data.username || lineUserId,
+                            username: userProfile.profile_data.username || userProfile.username || userProfile.name || profile.displayName || '',
                             linePictureUrl: userProfile.profile_data.linePictureUrl || profile.pictureUrl,
                             personalInfo: userProfile.profile_data.personalInfo || {},
                             golfInfo: userProfile.profile_data.golfInfo || {},
@@ -4212,36 +4217,31 @@
                         console.log('[LINE] Handicap from Supabase:', fullProfile.golfInfo?.handicap);
                         console.log('[LINE] Home Club from Supabase:', fullProfile.golfInfo?.homeClub);
 
-                        // MOBILE DEBUG: Show on-screen confirmation
-                        const debugDiv = document.createElement('div');
-                        debugDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.95);color:#0f0;padding:30px;border:3px solid #0f0;z-index:999999;font-size:18px;max-width:90%;border-radius:10px;';
-                        debugDiv.innerHTML = `
-                            <div style="text-align:center;">
-                                <div style="font-size:24px;margin-bottom:20px;">✅ PROFILE SYNCED!</div>
-                                <div style="margin:10px 0;">Handicap: ${fullProfile.golfInfo?.handicap || 'NOT SET'}</div>
-                                <div style="margin:10px 0;">Home Club: ${fullProfile.golfInfo?.homeClub || 'NOT SET'}</div>
-                                <div style="margin:20px 0;font-size:14px;color:#ff0;">Profile Key: ${profileKey}</div>
-                                <button onclick="this.parentElement.parentElement.remove()" style="background:#0f0;color:#000;border:none;padding:10px 20px;font-size:18px;border-radius:5px;margin-top:10px;">OK</button>
-                            </div>
-                        `;
-                        document.body.appendChild(debugDiv);
-                        setTimeout(() => debugDiv.remove(), 10000);
+                        // CRITICAL: Also update mcipro_user_profiles array for 100% consistency
+                        const profiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+                        const existingIndex = profiles.findIndex(p => p.lineUserId === lineUserId || p.userId === lineUserId);
+
+                        const profileSummary = {
+                            userId: lineUserId,
+                            lineUserId: lineUserId,
+                            role: userProfile.role,
+                            name: userProfile.name || profile.displayName,
+                            username: fullProfile.username,
+                            email: fullProfile.personalInfo?.email,
+                            phone: fullProfile.personalInfo?.phone,
+                            handicap: fullProfile.golfInfo?.handicap,
+                            homeClub: fullProfile.golfInfo?.homeClub
+                        };
+
+                        if (existingIndex >= 0) {
+                            profiles[existingIndex] = { ...profiles[existingIndex], ...profileSummary };
+                        } else {
+                            profiles.push(profileSummary);
+                        }
+                        localStorage.setItem('mcipro_user_profiles', JSON.stringify(profiles));
+                        console.log('[LINE] ✅ Profile array also updated for consistency');
                     } else {
                         console.warn('[LINE] ⚠️ No profile_data in Supabase - profile NOT synced');
-
-                        // MOBILE DEBUG: Show warning
-                        const debugDiv = document.createElement('div');
-                        debugDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.95);color:#f00;padding:30px;border:3px solid #f00;z-index:999999;font-size:18px;max-width:90%;border-radius:10px;';
-                        debugDiv.innerHTML = `
-                            <div style="text-align:center;">
-                                <div style="font-size:24px;margin-bottom:20px;">❌ NO PROFILE DATA</div>
-                                <div style="margin:10px 0;">Supabase returned null profile_data</div>
-                                <div style="margin:10px 0;font-size:14px;">Desktop must save profile first!</div>
-                                <button onclick="this.parentElement.parentElement.remove()" style="background:#f00;color:#fff;border:none;padding:10px 20px;font-size:18px;border-radius:5px;margin-top:10px;">OK</button>
-                            </div>
-                        `;
-                        document.body.appendChild(debugDiv);
-                        setTimeout(() => debugDiv.remove(), 10000);
                     }
 
                     console.log('[LINE] ✓ Unique ID set:', {
@@ -10406,34 +10406,90 @@ document.addEventListener('DOMContentLoaded', function() {
                     AppState.currentUser.name = profileData.organizationInfo.organizerName;
                 }
 
-                // ===== FIX: Push FULL profile to Supabase for cross-device sync =====
-                if (window.SupabaseDB && AppState.currentUser.lineUserId) {
-                    window.SupabaseDB.saveUserProfile({
-                        lineUserId: AppState.currentUser.lineUserId,
-                        name: AppState.currentUser.name,
-                        role: userType,
-                        phone: profileData.personalInfo?.phone || AppState.currentUser.phone,
-                        email: profileData.personalInfo?.email || AppState.currentUser.email,
-                        homeClub: profileData.golfInfo?.homeClub || '',
-                        language: profileData.preferences?.communicationLanguage || 'en',
-                        // Full profile data
-                        personalInfo: profileData.personalInfo,
-                        golfInfo: profileData.golfInfo,
-                        professionalInfo: profileData.professionalInfo,
-                        skills: profileData.skills,
-                        preferences: profileData.preferences,
-                        media: profileData.media,
-                        privacy: profileData.privacy,
-                        handicap: profileData.golfInfo?.handicap,
-                        username: profileData.personalInfo?.username,
-                        userId: uniqueId,
-                        linePictureUrl: profileData.linePictureUrl || AppState.currentUser.avatar
-                    }).then(() => {
-                        console.log('[ProfileSystem] ✅ Profile synced to Supabase');
-                    }).catch(err => {
-                        console.error('[ProfileSystem] ❌ Failed to sync profile to Supabase:', err);
-                    });
+                // ===== FIX: Push FULL profile to Supabase for cross-device sync - NOW WITH 100% GUARANTEE =====
+                // CRITICAL: Ensure lineUserId is set from uniqueId
+                if (!AppState.currentUser.lineUserId) {
+                    AppState.currentUser.lineUserId = uniqueId;
+                    console.log('[ProfileSystem] ⚠️ lineUserId was missing - set from uniqueId:', uniqueId.substring(0, 12) + '...');
                 }
+
+                // CRITICAL: Always attempt Supabase sync - don't silently skip
+                const attemptSupabaseSync = async () => {
+                    try {
+                        if (!window.SupabaseDB) {
+                            console.warn('[ProfileSystem] ⚠️ SupabaseDB not ready - waiting...');
+                            // Wait up to 5 seconds for SupabaseDB to initialize
+                            for (let i = 0; i < 10; i++) {
+                                await new Promise(resolve => setTimeout(resolve, 500));
+                                if (window.SupabaseDB) {
+                                    console.log('[ProfileSystem] ✓ SupabaseDB ready after wait');
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!window.SupabaseDB) {
+                            throw new Error('SupabaseDB failed to initialize after 5 seconds');
+                        }
+
+                        // Ensure SupabaseDB is fully initialized
+                        if (window.SupabaseDB.waitForReady) {
+                            await window.SupabaseDB.waitForReady();
+                        }
+
+                        console.log('[ProfileSystem] 🔄 Syncing to Supabase...', {
+                            lineUserId: AppState.currentUser.lineUserId.substring(0, 12) + '...',
+                            role: userType,
+                            homeClub: profileData.golfInfo?.homeClub,
+                            handicap: profileData.golfInfo?.handicap
+                        });
+
+                        await window.SupabaseDB.saveUserProfile({
+                            lineUserId: AppState.currentUser.lineUserId,
+                            name: AppState.currentUser.name,
+                            role: userType,
+                            phone: profileData.personalInfo?.phone || AppState.currentUser.phone,
+                            email: profileData.personalInfo?.email || AppState.currentUser.email,
+                            homeClub: profileData.golfInfo?.homeClub || '',
+                            language: profileData.preferences?.communicationLanguage || 'en',
+                            // Full profile data
+                            personalInfo: profileData.personalInfo,
+                            golfInfo: profileData.golfInfo,
+                            professionalInfo: profileData.professionalInfo,
+                            skills: profileData.skills,
+                            preferences: profileData.preferences,
+                            media: profileData.media,
+                            privacy: profileData.privacy,
+                            handicap: profileData.golfInfo?.handicap,
+                            username: profileData.personalInfo?.username,
+                            userId: uniqueId,
+                            linePictureUrl: profileData.linePictureUrl || AppState.currentUser.avatar
+                        });
+
+                        console.log('[ProfileSystem] ✅ 100% SYNCED TO SUPABASE - Profile available on all devices!');
+
+                        // Show success confirmation to user
+                        if (typeof NotificationManager !== 'undefined') {
+                            NotificationManager.show('✅ Profile synced to cloud!', 'success');
+                        }
+
+                    } catch (err) {
+                        console.error('[ProfileSystem] ❌ CRITICAL: Failed to sync profile to Supabase:', err);
+                        console.error('[ProfileSystem] Stack trace:', err.stack);
+
+                        // ALERT USER - this is critical!
+                        const userMessage = `⚠️ WARNING: Profile saved locally but cloud sync failed!\n\nError: ${err.message}\n\nYour profile may not appear on other devices.\n\nPlease try saving again or contact support if this persists.`;
+
+                        if (typeof NotificationManager !== 'undefined') {
+                            NotificationManager.show(userMessage, 'error', 10000);
+                        } else {
+                            alert(userMessage);
+                        }
+                    }
+                };
+
+                // Execute sync immediately (don't wait for it to complete before returning)
+                attemptSupabaseSync();
 
                 this.updateUIWithProfile();
                 console.log(`[SUCCESS] Profile saved with unique ID for ${userType}`, profileData.golfInfo?.homeClub ? `- homeClub: ${profileData.golfInfo.homeClub}` : '- no homeClub');
@@ -21955,17 +22011,63 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
             <!-- Society Events Tab -->
             <div id="golfer-societyevents" class="tab-content">
-                <div class="space-y-6">
-                    <!-- Header -->
-                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                        <div>
-                            <h2 class="text-2xl font-bold text-gray-900">Society Golf Events</h2>
-                            <p class="text-sm text-gray-600 mt-1">Browse and register for upcoming society golf events</p>
+                <div class="space-y-4">
+                    <!-- Sub-tabs with Refresh Button -->
+                    <div class="border-b border-gray-200">
+                        <nav class="flex items-center justify-between">
+                            <div class="flex space-x-4">
+                                <button onclick="GolferEventsSystem.showEventsView('browse')" id="eventsViewBrowse" class="events-subtab-btn active px-4 py-2 border-b-2 border-green-500 text-green-600 font-medium text-sm">
+                                    <span class="material-symbols-outlined text-sm mr-1">grid_view</span>
+                                    Browse Events
+                                </button>
+                                <button onclick="GolferEventsSystem.showEventsView('calendar')" id="eventsViewCalendar" class="events-subtab-btn px-4 py-2 border-b-2 border-transparent text-gray-600 hover:text-gray-900 font-medium text-sm">
+                                    <span class="material-symbols-outlined text-sm mr-1">calendar_month</span>
+                                    Calendar
+                                </button>
+                                <button onclick="GolferEventsSystem.showEventsView('myevents')" id="eventsViewMyEvents" class="events-subtab-btn px-4 py-2 border-b-2 border-transparent text-gray-600 hover:text-gray-900 font-medium text-sm">
+                                    <span class="material-symbols-outlined text-sm mr-1">confirmation_number</span>
+                                    My Registrations
+                                </button>
+                                <button onclick="GolferEventsSystem.showEventsView('history')" id="eventsViewHistory" class="events-subtab-btn px-4 py-2 border-b-2 border-transparent text-gray-600 hover:text-gray-900 font-medium text-sm">
+                                    <span class="material-symbols-outlined text-sm mr-1">history</span>
+                                    History
+                                </button>
+                            </div>
+                            <button onclick="GolferEventsSystem.refreshEvents()" class="p-2 hover:bg-gray-100 rounded-lg transition-colors" title="Refresh Events">
+                                <span class="material-symbols-outlined text-gray-600 text-xl">refresh</span>
+                            </button>
+                        </nav>
+                    </div>
+
+                    <!-- Browse Events View -->
+                    <div id="eventsViewBrowseContent" class="events-view-content">
+
+                    <!-- Society Subscriptions -->
+                    <div class="metric-card mb-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-sm font-semibold text-gray-900">My Society Subscriptions</h3>
+                            <button onclick="GolferEventsSystem.toggleSocietySelector()" class="text-sm text-green-600 hover:text-green-700 font-medium">
+                                <span class="material-symbols-outlined text-sm align-middle">tune</span>
+                                Manage
+                            </button>
                         </div>
-                        <button onclick="GolferEventsSystem.refreshEvents()" class="btn-secondary text-sm">
-                            <span class="material-symbols-outlined text-sm">refresh</span>
-                            Refresh
-                        </button>
+
+                        <!-- Selected Societies Display -->
+                        <div id="selectedSocietiesDisplay" class="flex flex-wrap gap-2 min-h-[32px]">
+                            <span class="text-sm text-gray-500">Select societies to see their events...</span>
+                        </div>
+
+                        <!-- Society Selector (Hidden by default) -->
+                        <div id="societySelectorPanel" class="mt-4 pt-4 border-t border-gray-200" style="display: none;">
+                            <p class="text-xs text-gray-600 mb-3">Select which societies you want to follow. Only events from selected societies will appear in your feed.</p>
+                            <div id="societyCheckboxList" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-64 overflow-y-auto">
+                                <!-- Checkboxes will be populated here -->
+                            </div>
+                            <div class="mt-4 flex gap-2">
+                                <button onclick="GolferEventsSystem.selectAllSocieties()" class="text-sm px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg">Select All</button>
+                                <button onclick="GolferEventsSystem.clearAllSocieties()" class="text-sm px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg">Clear All</button>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Search and Filters -->
@@ -22002,6 +22104,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
                                 <select id="societyEventStatusFilter" class="form-select w-full" onchange="GolferEventsSystem.filterEvents()">
                                     <option value="all">All Status</option>
+                                    <option value="favorites">⭐ My Favorites</option>
                                     <option value="open">Open for Registration</option>
                                     <option value="filling">Filling Fast</option>
                                     <option value="waitlist">Waitlist Available</option>
@@ -22018,6 +22121,73 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <p class="text-lg">Loading society events...</p>
                         </div>
                     </div>
+                    </div>
+                    <!-- End Browse Events View -->
+
+                    <!-- Calendar View -->
+                    <div id="eventsViewCalendarContent" class="events-view-content" style="display: none;">
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <!-- Calendar (2/3 width) -->
+                            <div class="lg:col-span-2">
+                                <div class="bg-white rounded-lg shadow-sm p-6">
+                                    <!-- Month Navigation -->
+                                    <div class="flex items-center justify-between mb-6">
+                                        <button onclick="GolferEventsSystem.calendarPrevMonth()" class="p-2 hover:bg-gray-100 rounded-lg">
+                                            <span class="material-symbols-outlined">chevron_left</span>
+                                        </button>
+                                        <h3 id="golferCalendarMonthYear" class="text-2xl font-bold text-gray-800"></h3>
+                                        <button onclick="GolferEventsSystem.calendarNextMonth()" class="p-2 hover:bg-gray-100 rounded-lg">
+                                            <span class="material-symbols-outlined">chevron_right</span>
+                                        </button>
+                                    </div>
+
+                                    <!-- Day Headers -->
+                                    <div class="grid grid-cols-7 gap-1 mb-2">
+                                        <div class="text-center text-xs font-semibold text-gray-600 py-2">Sun</div>
+                                        <div class="text-center text-xs font-semibold text-gray-600 py-2">Mon</div>
+                                        <div class="text-center text-xs font-semibold text-gray-600 py-2">Tue</div>
+                                        <div class="text-center text-xs font-semibold text-gray-600 py-2">Wed</div>
+                                        <div class="text-center text-xs font-semibold text-gray-600 py-2">Thu</div>
+                                        <div class="text-center text-xs font-semibold text-gray-600 py-2">Fri</div>
+                                        <div class="text-center text-xs font-semibold text-gray-600 py-2">Sat</div>
+                                    </div>
+
+                                    <!-- Calendar Grid -->
+                                    <div id="golferCalendarGrid" class="grid grid-cols-7 gap-1">
+                                        <!-- Calendar cells will be rendered here -->
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Selected Date Events (1/3 width) -->
+                            <div class="lg:col-span-1">
+                                <div id="golferCalendarSidebar" class="bg-white rounded-lg shadow-sm p-6 sticky top-4">
+                                    <div class="text-center text-gray-500 py-8">
+                                        <span class="material-symbols-outlined text-5xl mb-3">event</span>
+                                        <p class="text-sm">Click a date to view events</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- End Calendar View -->
+
+                    <!-- My Registrations View -->
+                    <div id="eventsViewMyEventsContent" class="events-view-content" style="display: none;">
+                        <div id="myRegistrationsList" class="space-y-4">
+                            <p class="text-center py-12 text-gray-500">Loading your registrations...</p>
+                        </div>
+                    </div>
+                    <!-- End My Registrations View -->
+
+                    <!-- History View -->
+                    <div id="eventsViewHistoryContent" class="events-view-content" style="display: none;">
+                        <div id="myHistoryList" class="space-y-4">
+                            <p class="text-center py-12 text-gray-500">Loading your history...</p>
+                        </div>
+                    </div>
+                    <!-- End History View -->
+
                 </div>
             </div>
         </main>
@@ -25557,9 +25727,12 @@ Total Rounds: ${ningCaddy.totalRounds}`;
             <div class="max-w-7xl mx-auto px-4 lg:px-8">
                 <div class="flex justify-between items-center py-3 md:py-5">
                     <div class="flex items-center space-x-2 md:space-x-4">
-                        <span class="material-symbols-outlined text-2xl text-sky-600">groups</span>
+                        <!-- Society Logo (dynamic) -->
+                        <div id="societyHeaderLogo">
+                            <span class="material-symbols-outlined text-2xl text-sky-600">groups</span>
+                        </div>
                         <div>
-                            <h1 class="text-base md:text-xl font-bold text-gray-900">Society Organizer</h1>
+                            <h1 id="societyHeaderName" class="text-base md:text-xl font-bold text-gray-900">Society Organizer</h1>
                             <p class="text-xs md:text-sm text-gray-600">Manage Events, Registrations & Pairings</p>
                         </div>
                     </div>
@@ -25607,11 +25780,18 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 <div class="flex justify-between items-center mb-6">
                     <div class="text-sm text-gray-600">
                         Create and manage your society golf events. Registrations and pairings are handled automatically.
+                        <span class="text-xs text-green-600">✅ Real-time sync active</span>
                     </div>
-                    <button onclick="SocietyOrganizerSystem.showEventForm(null)" class="btn-primary">
-                        <span class="material-symbols-outlined text-sm">add</span>
-                        New Event
-                    </button>
+                    <div class="flex gap-2">
+                        <button onclick="SocietyOrganizerSystem.refreshEvents()" class="btn-secondary">
+                            <span class="material-symbols-outlined text-sm">refresh</span>
+                            Refresh
+                        </button>
+                        <button onclick="SocietyOrganizerSystem.showEventForm(null)" class="btn-primary">
+                            <span class="material-symbols-outlined text-sm">add</span>
+                            New Event
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Event Form (Hidden by default) -->
@@ -25657,10 +25837,34 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 <input type="number" id="eventMaxPlayers" min="1" class="w-full rounded-lg border px-3 py-2" placeholder="e.g., 40">
                             </div>
 
-                            <!-- Course (optional) -->
+                            <!-- Course (required) -->
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Golf Course (Optional)</label>
-                                <input type="text" id="eventCourse" class="w-full rounded-lg border px-3 py-2" placeholder="e.g., Phuket Country Club">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Golf Course <span class="text-red-500">*</span></label>
+                                <select id="eventCourse" class="w-full rounded-lg border px-3 py-2" required>
+                                    <option value="">Select Golf Course...</option>
+                                    <option value="Pattana Golf">Pattana Golf</option>
+                                    <option value="Siam Waterside">Siam Waterside</option>
+                                    <option value="Siam Rolling Hills">Siam Rolling Hills</option>
+                                    <option value="Siam Plantation">Siam Plantation</option>
+                                    <option value="Siam Old Course">Siam Old Course</option>
+                                    <option value="Pattaya CC">Pattaya CC</option>
+                                    <option value="Hermes Golf">Hermes Golf</option>
+                                    <option value="Patana Golf Resort">Patana Golf Resort</option>
+                                    <option value="Burapha">Burapha</option>
+                                    <option value="Lamchabang">Lamchabang</option>
+                                    <option value="Pleasant Valley">Pleasant Valley</option>
+                                    <option value="Green Valley">Green Valley</option>
+                                    <option value="Silky Oaks">Silky Oaks</option>
+                                    <option value="St. Andrews 2000">St. Andrews 2000</option>
+                                    <option value="Pattavia">Pattavia</option>
+                                    <option value="Phoenix">Phoenix</option>
+                                    <option value="Bangkokong Riverside">Bangkokong Riverside</option>
+                                    <option value="Royal Lakeside">Royal Lakeside</option>
+                                    <option value="Pattaya Country Club">Pattaya Country Club</option>
+                                    <option value="Khao Kheow">Khao Kheow</option>
+                                    <option value="Treasure Hills">Treasure Hills</option>
+                                    <option value="Eastern Star">Eastern Star</option>
+                                </select>
                             </div>
 
                             <!-- Event Format -->
@@ -25672,6 +25876,11 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                     <option value="4man_scramble">4-Man Scramble</option>
                                     <option value="fourball">Four Ball</option>
                                     <option value="stableford">Stableford</option>
+                                    <option value="monthly_medal">Monthly Medal Tournament</option>
+                                    <option value="monthly_mug">Monthly Mug</option>
+                                    <option value="psc_monthly">PSC Monthly Tournament</option>
+                                    <option value="psc_annual">PSC Annual Tournament</option>
+                                    <option value="ryder_cup">Ryder Cup</option>
                                     <option value="private">Private Game</option>
                                     <option value="other">Other</option>
                                 </select>
@@ -26408,6 +26617,20 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     <p id="eventDetailNotes" class="text-sm text-gray-700"></p>
                 </div>
 
+                <!-- Registered Players List -->
+                <div id="registeredPlayersList" class="bg-gray-50 rounded-lg p-4 mb-6">
+                    <h3 class="font-bold text-gray-900 mb-3 flex items-center justify-between">
+                        <span class="flex items-center">
+                            <span class="material-symbols-outlined text-sm mr-2">groups</span>
+                            Registered Players
+                        </span>
+                        <span id="regPlayerCount" class="text-sm font-normal text-gray-600">Loading...</span>
+                    </h3>
+                    <div id="registeredPlayersContent" class="space-y-2 text-sm max-h-40 overflow-y-auto">
+                        <p class="text-gray-500 text-center py-2">Loading player list...</p>
+                    </div>
+                </div>
+
                 <!-- Registration Form (Only shown when registering) -->
                 <div id="registrationForm" class="border-t pt-6" style="display: none;">
                     <h3 class="text-lg font-bold text-gray-900 mb-4">Registration Details</h3>
@@ -26436,14 +26659,48 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
                         <div class="flex items-center space-x-6">
                             <label class="flex items-center cursor-pointer">
-                                <input type="checkbox" id="regWantTransport" class="mr-2 rounded">
+                                <input type="checkbox" id="regWantTransport" class="mr-2 rounded" onchange="GolferEventsSystem.updateRegistrationTotal()">
                                 <span class="text-sm text-gray-700">🚐 Request Transportation</span>
                             </label>
 
                             <label class="flex items-center cursor-pointer">
-                                <input type="checkbox" id="regWantCompetition" class="mr-2 rounded">
+                                <input type="checkbox" id="regWantCompetition" class="mr-2 rounded" onchange="GolferEventsSystem.updateRegistrationTotal()">
                                 <span class="text-sm text-gray-700">🏆 Join Competition</span>
                             </label>
+                        </div>
+
+                        <!-- Partner Preferences -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Partner Preferences (Optional)
+                                <span class="text-xs text-gray-500 font-normal ml-1">- Select players you'd like to play with</span>
+                            </label>
+                            <div id="partnerPrefsContainer" class="border border-gray-300 rounded-lg p-3 max-h-32 overflow-y-auto space-y-2">
+                                <p class="text-xs text-gray-500">Loading registered players...</p>
+                            </div>
+                        </div>
+
+                        <!-- Total Cost Calculator -->
+                        <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                            <h4 class="font-bold text-gray-900 mb-3">Total Cost</h4>
+                            <div class="space-y-2 text-sm mb-3">
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Base Fee (Green + Cart + Caddy):</span>
+                                    <span id="regBaseFeeDisplay" class="font-medium">฿0</span>
+                                </div>
+                                <div id="regTransportFeeRow" class="flex justify-between text-gray-400" style="display: none;">
+                                    <span>Transportation:</span>
+                                    <span id="regTransportFeeDisplay">฿0</span>
+                                </div>
+                                <div id="regCompetitionFeeRow" class="flex justify-between text-gray-400" style="display: none;">
+                                    <span>Competition Entry:</span>
+                                    <span id="regCompetitionFeeDisplay">฿0</span>
+                                </div>
+                            </div>
+                            <div class="pt-3 border-t border-green-300 flex justify-between items-center">
+                                <span class="font-bold text-lg text-gray-900">Total:</span>
+                                <span id="regTotalCost" class="font-bold text-2xl text-green-600">฿0</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -26461,6 +26718,72 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 <button id="eventSubmitBtn" onclick="GolferEventsSystem.submitRegistration()" class="btn-primary" style="display: none;">
                     <span class="material-symbols-outlined text-sm">send</span>
                     Submit Registration
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Share Event Modal -->
+    <div id="shareEventModal" class="modal-backdrop" style="display: none;">
+        <div class="modal-content max-w-2xl" onclick="event.stopPropagation()">
+            <!-- Modal Header -->
+            <div class="modal-header bg-blue-500">
+                <div>
+                    <h2 class="text-2xl font-bold text-white">Share Event</h2>
+                    <p class="text-blue-100 text-sm mt-1">Invite friends to join this event</p>
+                </div>
+                <button onclick="GolferEventsSystem.closeShareModal()" class="text-white hover:text-gray-200">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="modal-body">
+                <!-- Event Summary -->
+                <div id="shareEventSummary" class="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                    <!-- Event details will be populated here -->
+                </div>
+
+                <!-- Search Users -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Search for users on the platform:</label>
+                    <input
+                        type="text"
+                        id="shareUserSearch"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Search by name, username, or role..."
+                        oninput="GolferEventsSystem.filterShareUsers(this.value)"
+                    >
+                </div>
+
+                <!-- Selected Users -->
+                <div id="selectedUsersContainer" class="mb-4" style="display: none;">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Selected users:</label>
+                    <div id="selectedUsersList" class="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                        <!-- Selected users will appear here -->
+                    </div>
+                </div>
+
+                <!-- Users List -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Available users:</label>
+                    <div id="shareUsersList" class="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-96 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                        <div class="col-span-full text-center py-8 text-gray-500">
+                            <span class="material-symbols-outlined text-4xl mb-2 block">group</span>
+                            <p>Loading users...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="modal-footer">
+                <button onclick="GolferEventsSystem.closeShareModal()" class="btn-secondary">
+                    Cancel
+                </button>
+                <button id="sendInvitesBtn" onclick="GolferEventsSystem.sendEventInvitations()" class="btn-primary bg-blue-500 hover:bg-blue-600" disabled>
+                    <span class="material-symbols-outlined text-sm">send</span>
+                    Send Invitations (<span id="selectedUserCount">0</span>)
                 </button>
             </div>
         </div>
@@ -29092,40 +29415,113 @@ class SocietyGolfSupabase {
     async getAllPublicEvents() {
         await this.waitForSupabase();
 
-        // Get all open/upcoming events with registration count
-        const { data, error } = await window.SupabaseDB.client
+        console.log('[SocietyGolf] Fetching all public events...');
+        const startTime = Date.now();
+
+        // Get all events first
+        const { data: eventsData, error: eventsError } = await window.SupabaseDB.client
             .from('society_events')
-            .select(`
-                *,
-                event_registrations(count)
-            `)
+            .select('*')
             .order('date', { ascending: true });
 
-        if (error) {
-            console.error('[SocietyGolf] Error fetching public events:', error);
+        if (eventsError) {
+            console.error('[SocietyGolf] Error fetching events:', eventsError);
             return [];
         }
 
-        return (data || []).map(e => ({
-            id: e.id,
-            name: e.name,
-            date: e.date,
-            startTime: e.start_time,
-            cutoff: e.cutoff,
-            baseFee: e.base_fee || 0,
-            cartFee: e.cart_fee || 0,
-            caddyFee: e.caddy_fee || 0,
-            transportFee: e.transport_fee || 0,
-            competitionFee: e.competition_fee || 0,
-            maxPlayers: e.max_players,
-            organizerId: e.organizer_id,
-            organizerName: e.organizer_name,
-            status: e.status,
-            courseName: e.course_name,
-            notes: e.notes,
-            registeredCount: e.event_registrations?.[0]?.count || 0,
-            createdAt: e.created_at
-        }));
+        console.log('[SocietyGolf] Found events:', eventsData?.length || 0);
+
+        if (!eventsData || eventsData.length === 0) {
+            return [];
+        }
+
+        // PERFORMANCE OPTIMIZATION: Run all 3 queries in PARALLEL
+        const eventIds = eventsData.map(e => e.id);
+        const organizerIds = [...new Set(eventsData.map(e => e.organizer_id).filter(id => id))];
+        const playerId = AppState.currentUser?.lineUserId;
+
+        const [
+            regCountsResult,
+            societyProfilesResult,
+            userRegsResult
+        ] = await Promise.all([
+            // Query 1: Get registration counts
+            window.SupabaseDB.client
+                .from('event_registrations')
+                .select('event_id')
+                .in('event_id', eventIds),
+
+            // Query 2: Get society profiles
+            window.SupabaseDB.client
+                .from('society_profiles')
+                .select('organizer_id, society_name, society_logo')
+                .in('organizer_id', organizerIds),
+
+            // Query 3: Get user's registrations (if logged in)
+            playerId ? window.SupabaseDB.client
+                .from('event_registrations')
+                .select('event_id')
+                .eq('player_id', playerId)
+                .in('event_id', eventIds) : Promise.resolve({ data: [] })
+        ]);
+
+        // Count registrations per event
+        const regCountMap = {};
+        if (regCountsResult.data) {
+            regCountsResult.data.forEach(r => {
+                regCountMap[r.event_id] = (regCountMap[r.event_id] || 0) + 1;
+            });
+        }
+
+        // Create map of organizer_id to society profile
+        const societyMap = {};
+        if (societyProfilesResult.data) {
+            societyProfilesResult.data.forEach(s => {
+                societyMap[s.organizer_id] = s;
+            });
+        }
+
+        // Create set of user's registered event IDs
+        const registeredEventIds = new Set((userRegsResult.data || []).map(r => r.event_id));
+
+        // FIXED: Debug logging for registration status
+        if (playerId && registeredEventIds.size > 0) {
+            console.log(`[SocietyGolf] User ${playerId} is registered for ${registeredEventIds.size} events:`, Array.from(registeredEventIds));
+        } else if (playerId) {
+            console.log(`[SocietyGolf] User ${playerId} has no registrations`);
+        }
+
+        // Map events with all data
+        const mappedEvents = eventsData.map(e => {
+            const society = societyMap[e.organizer_id];
+            return {
+                id: e.id,
+                name: e.name,
+                date: e.date,
+                startTime: e.start_time,
+                cutoff: e.cutoff,
+                baseFee: e.base_fee || 0,
+                cartFee: e.cart_fee || 0,
+                caddyFee: e.caddy_fee || 0,
+                transportFee: e.transport_fee || 0,
+                competitionFee: e.competition_fee || 0,
+                maxPlayers: e.max_players,
+                organizerId: e.organizer_id,
+                organizerName: e.organizer_name,
+                societyName: society?.society_name || e.organizer_name,
+                societyLogo: society?.society_logo || '',
+                status: e.status,
+                courseName: e.course_name,
+                notes: e.notes,
+                registeredCount: regCountMap[e.id] || 0,
+                isUserRegistered: registeredEventIds.has(e.id),
+                createdAt: e.created_at
+            };
+        });
+
+        const endTime = Date.now();
+        console.log(`[SocietyGolf] ⚡ Loaded ${mappedEvents.length} events in ${endTime - startTime}ms (parallel queries)`);
+        return mappedEvents;
     }
 
     // =====================================================
@@ -29169,7 +29565,7 @@ class SocietyGolfSupabase {
                 player_name: playerData.name,
                 player_id: playerData.playerId,
                 handicap: playerData.handicap,
-                partner_prefs: [],
+                partner_prefs: playerData.partnerPrefs || [],
                 want_transport: playerData.wantTransport || false,
                 want_competition: playerData.wantCompetition || false
             }])
@@ -29189,6 +29585,7 @@ class SocietyGolfSupabase {
         return await this.registerPlayer(registration.eventId, {
             name: registration.playerName,
             playerId: registration.playerId,
+            partnerPrefs: registration.partnerPrefs || [],
             handicap: registration.handicap,
             wantTransport: registration.wantTransport,
             wantCompetition: registration.wantCompetition
@@ -29412,6 +29809,205 @@ class SocietyGolfSupabase {
     }
 
     // =====================================================
+    // ORGANIZER MANAGEMENT - ENHANCED STATS & REPORTING
+    // =====================================================
+
+    /**
+     * Get all events for organizer with comprehensive statistics
+     * Includes registration counts, revenue, payment status, etc.
+     */
+    async getOrganizerEventsWithStats(organizerId) {
+        await this.waitForSupabase();
+
+        // Get all events for this organizer
+        const { data: events, error: eventsError } = await window.SupabaseDB.client
+            .from('society_events')
+            .select('*')
+            .eq('organizer_id', organizerId)
+            .order('date', { ascending: true });
+
+        if (eventsError) {
+            console.error('[SocietyGolfDB] Error loading events:', eventsError);
+            return [];
+        }
+
+        if (!events || events.length === 0) return [];
+
+        const eventIds = events.map(e => e.id);
+        console.log('[SocietyGolfDB] Loading stats for event IDs:', eventIds);
+
+        // Parallel queries for all events' data with error handling
+        const [regsResult, waitlistResult] = await Promise.all([
+            window.SupabaseDB.client
+                .from('event_registrations')
+                .select('event_id, want_transport, want_competition')
+                .in('event_id', eventIds)
+                .then(result => {
+                    if (result.error) {
+                        console.error('[SocietyGolfDB] ❌ Error loading registrations:');
+                        console.error('  Error code:', result.error.code);
+                        console.error('  Error message:', result.error.message);
+                        console.error('  Error details:', result.error.details);
+                        console.error('  Error hint:', result.error.hint);
+                        console.error('  Full error:', result.error);
+                        return { data: [], error: result.error };
+                    }
+                    return result;
+                }),
+            window.SupabaseDB.client
+                .from('event_waitlist')
+                .select('event_id')
+                .in('event_id', eventIds)
+                .then(result => {
+                    if (result.error) {
+                        console.error('[SocietyGolfDB] Error loading waitlist:', result.error);
+                        return { data: [], error: result.error };
+                    }
+                    return result;
+                })
+        ]);
+
+        console.log('[SocietyGolfDB] Registrations loaded:', regsResult.data?.length || 0);
+        console.log('[SocietyGolfDB] Waitlist loaded:', waitlistResult.data?.length || 0);
+
+        // Calculate stats per event
+        const eventsWithStats = events.map(event => {
+            const eventRegs = regsResult.data?.filter(r => r.event_id === event.id) || [];
+            const eventWaitlist = waitlistResult.data?.filter(w => w.event_id === event.id) || [];
+
+            console.log(`[SocietyGolfDB] Event ${event.id}: ${eventRegs.length} registrations, ${eventWaitlist.length} waitlist`);
+
+            // Convert snake_case to camelCase
+            const camelEvent = {
+                id: event.id,
+                name: event.name,
+                date: event.date,
+                startTime: event.start_time,
+                cutoff: event.cutoff,
+                maxPlayers: event.max_players,
+                courseName: event.course_name,
+                eventFormat: event.event_format,
+                baseFee: event.base_fee || 0,
+                cartFee: event.cart_fee || 0,
+                caddyFee: event.caddy_fee || 0,
+                transportFee: event.transport_fee || 0,
+                competitionFee: event.competition_fee || 0,
+                autoWaitlist: event.auto_waitlist,
+                notes: event.notes,
+                organizerId: event.organizer_id,
+                organizerName: event.organizer_name,
+                recurring: event.recurring,
+                recurFrequency: event.recur_frequency,
+                recurDayOfWeek: event.recur_day_of_week,
+                recurMonthlyPattern: event.recur_monthly_pattern,
+                recurEndType: event.recur_end_type,
+                recurUntil: event.recur_until,
+                recurCount: event.recur_count,
+                createdAt: event.created_at,
+                updatedAt: event.updated_at
+            };
+
+            return {
+                ...camelEvent,
+                stats: {
+                    registered: eventRegs.length,
+                    waitlist: eventWaitlist.length,
+                    transportCount: eventRegs.filter(r => r.want_transport).length,
+                    competitionCount: eventRegs.filter(r => r.want_competition).length,
+                    paidCount: 0, // TODO: Add is_paid column to Supabase table
+                    revenue: this.calculateEventRevenue(camelEvent, eventRegs)
+                }
+            };
+        });
+
+        return eventsWithStats;
+    }
+
+    /**
+     * Get registrations for an event with player profile details
+     */
+    async getEventRegistrationsWithPlayers(eventId) {
+        await this.waitForSupabase();
+
+        const { data, error } = await window.SupabaseDB.client
+            .from('event_registrations')
+            .select('*')
+            .eq('event_id', eventId)
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error('[SocietyGolfDB] Error loading registrations:', error);
+            throw error;
+        }
+
+        // Convert snake_case to camelCase
+        return (data || []).map(reg => ({
+            id: reg.id,
+            eventId: reg.event_id,
+            playerId: reg.player_id,
+            playerName: reg.player_name,
+            handicap: reg.handicap,
+            wantTransport: reg.want_transport,
+            wantCompetition: reg.want_competition,
+            partnerPrefs: reg.partner_prefs,
+            isPaid: reg.is_paid || false,
+            paymentDate: reg.payment_date,
+            createdAt: reg.created_at,
+            updatedAt: reg.updated_at
+        }));
+    }
+
+    /**
+     * Calculate total revenue for an event based on registrations
+     */
+    calculateEventRevenue(event, registrations) {
+        if (!registrations || registrations.length === 0) return 0;
+
+        const baseFee = parseFloat(event.baseFee) || 0;
+        const cartFee = parseFloat(event.cartFee) || 0;
+        const caddyFee = parseFloat(event.caddyFee) || 0;
+        const transportFee = parseFloat(event.transportFee) || 0;
+        const competitionFee = parseFloat(event.competitionFee) || 0;
+
+        let totalRevenue = 0;
+
+        registrations.forEach(reg => {
+            // Base cost for all players
+            totalRevenue += baseFee + cartFee + caddyFee;
+
+            // Optional add-ons
+            if (reg.want_transport) totalRevenue += transportFee;
+            if (reg.want_competition) totalRevenue += competitionFee;
+        });
+
+        return totalRevenue;
+    }
+
+    /**
+     * Update payment status for a registration
+     */
+    async updatePaymentStatus(registrationId, isPaid) {
+        await this.waitForSupabase();
+
+        const { data, error } = await window.SupabaseDB.client
+            .from('event_registrations')
+            .update({
+                is_paid: isPaid,
+                payment_date: isPaid ? new Date().toISOString() : null,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', registrationId)
+            .select();
+
+        if (error) {
+            console.error('[SocietyGolfDB] Error updating payment status:', error);
+            throw error;
+        }
+
+        return data;
+    }
+
+    // =====================================================
     // SOCIETY PROFILE MANAGEMENT
     // =====================================================
 
@@ -29540,7 +30136,21 @@ class SocietyOrganizerManager {
 
     async loadEvents() {
         try {
-            this.events = await SocietyGolfDB.getEvents();
+            const organizerId = AppState.currentUser?.lineUserId;
+            if (!organizerId) {
+                console.error('[SocietyOrganizer] No organizer ID');
+                return;
+            }
+
+            console.log('[SocietyOrganizer] Loading events with stats...');
+            const startTime = Date.now();
+
+            // Use enhanced method that includes registration statistics
+            this.events = await SocietyGolfDB.getOrganizerEventsWithStats(organizerId);
+
+            const endTime = Date.now();
+            console.log(`[SocietyOrganizer] ⚡ Loaded ${this.events.length} events with stats in ${endTime - startTime}ms`);
+
             this.renderEventsList();
         } catch (error) {
             console.error('[SocietyOrganizer] Error loading events:', error);
@@ -29549,16 +30159,119 @@ class SocietyOrganizerManager {
     }
 
     async refreshEvents() {
-        NotificationManager.show('Refreshing events...', 'info');
+        console.log('[SocietyOrganizer] 🔄 Manual refresh triggered');
+        NotificationManager.show('Refreshing events...', 'info', 2000);
         await this.loadEvents();
-        NotificationManager.show('Events refreshed', 'success');
+        NotificationManager.show('✅ Events updated!', 'success', 2000);
+    }
+
+    generateRecurringEvents(baseEventData) {
+        const recurringEvents = [];
+        const startDate = new Date(baseEventData.date);
+
+        // Determine how many instances to generate
+        let maxInstances = 52; // Default: 1 year of weekly events
+        if (baseEventData.recurEndType === 'count' && baseEventData.recurCount) {
+            maxInstances = baseEventData.recurCount - 1; // -1 because original event is already created
+        } else if (baseEventData.recurEndType === 'until' && baseEventData.recurUntil) {
+            const untilDate = new Date(baseEventData.recurUntil);
+            const daysDiff = Math.ceil((untilDate - startDate) / (1000 * 60 * 60 * 24));
+            if (baseEventData.recurFrequency === 'weekly') {
+                maxInstances = Math.ceil(daysDiff / 7);
+            } else if (baseEventData.recurFrequency === 'biweekly') {
+                maxInstances = Math.ceil(daysDiff / 14);
+            } else if (baseEventData.recurFrequency === 'monthly') {
+                maxInstances = Math.ceil(daysDiff / 30);
+            }
+        }
+
+        for (let i = 0; i < maxInstances; i++) {
+            let currentDate = new Date(startDate);
+
+            // Calculate next occurrence based on frequency
+            if (baseEventData.recurFrequency === 'weekly') {
+                currentDate.setDate(startDate.getDate() + (7 * (i + 1)));
+            } else if (baseEventData.recurFrequency === 'biweekly') {
+                currentDate.setDate(startDate.getDate() + (14 * (i + 1)));
+            } else if (baseEventData.recurFrequency === 'monthly') {
+                currentDate.setMonth(startDate.getMonth() + (i + 1));
+            }
+
+            // Check if we've passed the end date
+            if (baseEventData.recurEndType === 'until' && baseEventData.recurUntil) {
+                const untilDate = new Date(baseEventData.recurUntil);
+                if (currentDate > untilDate) break;
+            }
+
+            // Create date string in YYYY-MM-DD format
+            const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+
+            // Calculate cutoff datetime for this instance (same time, different date)
+            let cutoffISO = null;
+            if (baseEventData.cutoff) {
+                const originalCutoff = new Date(baseEventData.cutoff);
+                const newCutoff = new Date(currentDate);
+                newCutoff.setHours(originalCutoff.getHours(), originalCutoff.getMinutes(), 0, 0);
+                cutoffISO = newCutoff.toISOString().slice(0, 16) + ':00';
+            }
+
+            // Create a new event data object for this recurrence
+            const recurEvent = {
+                ...baseEventData,
+                id: undefined, // Let DB generate new ID
+                date: dateStr,
+                cutoff: cutoffISO,
+                recurring: false, // Each instance is NOT recurring itself
+                recurFrequency: null,
+                recurDayOfWeek: null,
+                recurMonthlyPattern: null,
+                recurEndType: null,
+                recurUntil: null,
+                recurCount: null
+            };
+
+            recurringEvents.push(recurEvent);
+        }
+
+        return recurringEvents;
     }
 
     subscribeToChanges() {
+        // Subscribe to society_events table changes
         SocietyGolfDB.subscribeToEvents((payload) => {
             console.log('[SocietyOrganizer] Event change:', payload);
             this.loadEvents(); // Reload events when changes occur
         });
+
+        // Subscribe to ALL registration changes for real-time stats updates
+        const registrationSubscription = window.SupabaseDB.client
+            .channel('all_registrations_changes')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'event_registrations'
+            }, (payload) => {
+                console.log('[SocietyOrganizer] 🔄 Registration change detected:', payload.eventType);
+                // Reload events to update statistics on cards
+                this.loadEvents();
+            })
+            .subscribe();
+
+        // Subscribe to ALL waitlist changes for real-time stats updates
+        const waitlistSubscription = window.SupabaseDB.client
+            .channel('all_waitlist_changes')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'event_waitlist'
+            }, (payload) => {
+                console.log('[SocietyOrganizer] 🔄 Waitlist change detected:', payload.eventType);
+                // Reload events to update statistics on cards
+                this.loadEvents();
+            })
+            .subscribe();
+
+        console.log('[SocietyOrganizer] ✅ Real-time subscriptions active (events, registrations, waitlist)');
     }
 
     // =====================================================
@@ -29703,7 +30416,20 @@ class SocietyOrganizerManager {
             } else {
                 // Create new event
                 await SocietyGolfDB.createEvent(eventData);
-                NotificationManager.show('Event created successfully', 'success');
+
+                // If recurring, create additional events in the database
+                if (isRecurring) {
+                    const recurringEvents = this.generateRecurringEvents(eventData);
+                    console.log(`[SocietyOrganizer] Creating ${recurringEvents.length} recurring events...`);
+
+                    for (const recurEvent of recurringEvents) {
+                        await SocietyGolfDB.createEvent(recurEvent);
+                    }
+
+                    NotificationManager.show(`Event created with ${recurringEvents.length} recurring instances`, 'success', 3000);
+                } else {
+                    NotificationManager.show('Event created successfully', 'success');
+                }
             }
 
             this.hideEventForm();
@@ -29772,7 +30498,7 @@ class SocietyOrganizerManager {
         };
         const formatDisplay = formatLabels[event.eventFormat] || 'Stroke Play';
 
-        // Format cutoff date/time for display (no timezone conversion, no seconds)
+        // Format cutoff date/time for display
         let cutoffDate = '-';
         let cutoffTime = '';
         if (event.cutoff) {
@@ -29794,18 +30520,41 @@ class SocietyOrganizerManager {
             }
         }
 
-        const maxDisplay = event.maxPlayers ? event.maxPlayers : '∞';
+        // ENHANCED: Registration statistics
+        const stats = event.stats || { registered: 0, waitlist: 0, transportCount: 0, competitionCount: 0, paidCount: 0, revenue: 0 };
+        const maxPlayers = event.maxPlayers || 0;
+        const registered = stats.registered;
+        const percentage = maxPlayers > 0 ? Math.round((registered / maxPlayers) * 100) : 0;
+        const spotsRemaining = maxPlayers > 0 ? maxPlayers - registered : '∞';
 
-        // Status badge
+        // Status badge with more states
         const now = new Date();
         let isPastCutoff = false;
+        let isFull = false;
         if (event.cutoff) {
             const cutoffLocal = new Date(event.cutoff.substring(0, 16));
             isPastCutoff = now > cutoffLocal;
         }
-        const statusBadge = isPastCutoff
-            ? '<span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">Closed</span>'
-            : '<span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">Open</span>';
+        if (maxPlayers > 0 && registered >= maxPlayers) {
+            isFull = true;
+        }
+
+        let statusBadge = '';
+        if (isFull) {
+            statusBadge = '<span class="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full font-semibold">Full</span>';
+        } else if (isPastCutoff) {
+            statusBadge = '<span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full font-semibold">Closed</span>';
+        } else {
+            statusBadge = '<span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-semibold">Open</span>';
+        }
+
+        // Progress bar color based on fill percentage
+        let progressBarColor = 'bg-green-500';
+        if (percentage >= 90) {
+            progressBarColor = 'bg-orange-500';
+        } else if (percentage >= 100) {
+            progressBarColor = 'bg-red-500';
+        }
 
         // Society branding
         const societyLogo = this.societyProfile?.societyLogo
@@ -29834,7 +30583,7 @@ class SocietyOrganizerManager {
                             <div class="text-sm text-sky-100 space-y-0.5">
                                 ${startTimeDisplay ? `<div>🚐 Departure: ${startTimeDisplay}</div>` : ''}
                                 <div>📅 ${eventDate}</div>
-                                <div>👥 Max: ${maxDisplay} players</div>
+                                ${event.courseName ? `<div>⛳ ${event.courseName}</div>` : ''}
                             </div>
                         </div>
                         ${statusBadge}
@@ -29842,56 +30591,79 @@ class SocietyOrganizerManager {
                 </div>
 
                 <div class="p-4">
+                    <!-- ENHANCED: Registration Statistics -->
+                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 mb-3 border border-blue-100">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-sm font-semibold text-gray-700">📊 Registrations:</span>
+                            <span class="text-lg font-bold text-gray-900">${registered}/${maxPlayers || '∞'} <span class="text-sm font-normal text-gray-600">(${percentage}%)</span></span>
+                        </div>
+
+                        <!-- Progress Bar -->
+                        <div class="bg-gray-200 h-2 rounded-full mb-3 overflow-hidden">
+                            <div class="${progressBarColor} h-2 rounded-full transition-all" style="width: ${Math.min(percentage, 100)}%"></div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">💰 Revenue:</span>
+                                <span class="font-bold text-green-700">฿${stats.revenue.toLocaleString()}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">⏳ Waitlist:</span>
+                                <span class="font-semibold text-gray-900">${stats.waitlist}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">🚐 Transport:</span>
+                                <span class="font-semibold text-gray-900">${stats.transportCount}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">🏆 Competition:</span>
+                                <span class="font-semibold text-gray-900">${stats.competitionCount}</span>
+                            </div>
+                            <div class="flex justify-between col-span-2">
+                                <span class="text-gray-600">💳 Paid:</span>
+                                <span class="font-semibold ${stats.paidCount === registered && registered > 0 ? 'text-green-600' : 'text-orange-600'}">${stats.paidCount}/${registered}</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Event Details -->
-                    <div class="bg-gray-50 rounded-lg p-3 mb-3 text-sm">
+                    <div class="bg-gray-50 rounded-lg p-3 mb-3 text-xs">
                         <div class="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                            <div class="text-gray-600">Cutoff Date:</div>
-                            <div class="font-medium text-gray-900">${cutoffDate}</div>
-                            <div class="text-gray-600">Cutoff Time:</div>
-                            <div class="font-medium text-gray-900">${cutoffTime}</div>
-                            ${event.courseName ? `
-                                <div class="text-gray-600">Course:</div>
-                                <div class="font-medium text-gray-900">${event.courseName}</div>
-                            ` : ''}
+                            <div class="text-gray-600">Registration Closes:</div>
+                            <div class="font-medium text-gray-900">${cutoffDate} ${cutoffTime}</div>
+                            <div class="text-gray-600">Spots Remaining:</div>
+                            <div class="font-medium ${spotsRemaining === 0 ? 'text-red-600' : 'text-gray-900'}">${spotsRemaining}</div>
                         </div>
                     </div>
 
-                    <!-- Fees -->
-                    <div class="bg-gray-50 rounded-lg p-3 text-xs">
-                        <div class="grid grid-cols-2 gap-1">
-                            <div>Green: ฿${event.baseFee.toLocaleString()}</div>
-                            <div>Cart: ฿${event.cartFee.toLocaleString()}</div>
-                            <div>Caddy: ฿${event.caddyFee.toLocaleString()}</div>
-                            <div>Transport: ฿${event.transportFee.toLocaleString()}</div>
-                            <div class="col-span-2">Competition: ฿${event.competitionFee.toLocaleString()}</div>
-                        </div>
-                    </div>
-
-                    <!-- Actions -->
-                    <div class="grid grid-cols-2 gap-2 mt-3">
-                        <button onclick="SocietyOrganizerSystem.openRoster('${event.id}')" class="btn-secondary text-xs py-2">
-                            <span class="material-symbols-outlined text-sm">groups</span>
-                            <span class="ml-1">Roster</span>
+                    <!-- ENHANCED: Quick Actions -->
+                    <div class="grid grid-cols-3 gap-2 mb-2">
+                        <button onclick="SocietyOrganizerSystem.openRegistrationManager('${event.id}')" class="btn-primary text-xs py-2 flex items-center justify-center gap-1">
+                            <span class="material-symbols-outlined text-sm">list_alt</span>
+                            <span>Registrations</span>
                         </button>
-                        <button onclick="SocietyOrganizerSystem.openPairingsModal('${event.id}')" class="btn-secondary text-xs py-2">
-                            <span class="material-symbols-outlined text-sm">grid_view</span>
-                            <span class="ml-1">Pairings</span>
-                        </button>
-                        <button onclick="SocietyOrganizerSystem.showEventForm('${event.id}')" class="btn-secondary text-xs py-2">
+                        <button onclick="SocietyOrganizerSystem.showEventForm('${event.id}')" class="btn-secondary text-xs py-2 flex items-center justify-center gap-1">
                             <span class="material-symbols-outlined text-sm">edit</span>
-                            <span class="ml-1">Edit</span>
+                            <span>Edit</span>
                         </button>
-                        <button onclick="SocietyOrganizerSystem.deleteEvent('${event.id}')" class="bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs py-2 font-medium">
-                            <span class="material-symbols-outlined text-sm">delete</span>
-                            <span class="ml-1">Delete</span>
+                        <button onclick="SocietyOrganizerSystem.exportEventCSV('${event.id}')" class="btn-secondary text-xs py-2 flex items-center justify-center gap-1">
+                            <span class="material-symbols-outlined text-sm">download</span>
+                            <span>Export</span>
                         </button>
                     </div>
 
-                    <!-- Copy Registration Link -->
-                    <button onclick="SocietyOrganizerSystem.copyRegistrationLink('${event.id}')" class="w-full btn-primary text-xs py-2 mt-2">
-                        <span class="material-symbols-outlined text-sm">link</span>
-                        Copy Registration Link
-                    </button>
+                    <!-- Additional Actions -->
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="SocietyOrganizerSystem.openPairingsModal('${event.id}')" class="btn-secondary text-xs py-2 flex items-center justify-center gap-1">
+                            <span class="material-symbols-outlined text-sm">grid_view</span>
+                            <span>Pairings</span>
+                        </button>
+                        <button onclick="SocietyOrganizerSystem.copyRegistrationLink('${event.id}')" class="btn-secondary text-xs py-2 flex items-center justify-center gap-1">
+                            <span class="material-symbols-outlined text-sm">link</span>
+                            <span>Share Link</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         `;
@@ -30017,6 +30789,155 @@ class SocietyOrganizerManager {
     closeRosterModal() {
         document.getElementById('rosterModal').style.display = 'none';
         this.currentRosterEvent = null;
+    }
+
+    // =====================================================
+    // ENHANCED REGISTRATION MANAGEMENT
+    // =====================================================
+
+    /**
+     * Open the enhanced registration management modal
+     * Shows detailed table with search, export, and payment tracking
+     */
+    async openRegistrationManager(eventId) {
+        try {
+            // Find the event
+            const event = this.events.find(e => e.id === eventId);
+            if (!event) {
+                NotificationManager.show('Event not found', 'error');
+                return;
+            }
+
+            this.currentRosterEvent = event;
+
+            // Load registrations with full details
+            const registrations = await SocietyGolfDB.getEventRegistrationsWithPlayers(eventId);
+
+            // Store in manager
+            this.currentRegistrations = registrations;
+
+            // Render the registration table
+            this.renderRegistrationManager();
+
+            NotificationManager.show(`Loaded ${registrations.length} registrations`, 'info', 2000);
+
+        } catch (error) {
+            console.error('[SocietyOrganizer] Error opening registration manager:', error);
+            NotificationManager.show('Failed to load registrations', 'error');
+        }
+    }
+
+    /**
+     * Render the registration management interface (simplified for now)
+     * Will be enhanced with modal in next step
+     */
+    renderRegistrationManager() {
+        if (!this.currentRosterEvent || !this.currentRegistrations) {
+            NotificationManager.show('No event data loaded', 'error');
+            return;
+        }
+
+        console.log('[SocietyOrganizer] Registration Manager:', {
+            event: this.currentRosterEvent.name,
+            registrations: this.currentRegistrations.length,
+            stats: this.currentRosterEvent.stats
+        });
+
+        // For now, open the existing roster modal
+        // This will be replaced with enhanced modal in next step
+        this.openRoster(this.currentRosterEvent.id);
+    }
+
+    /**
+     * Export event registrations to CSV
+     */
+    async exportEventCSV(eventId) {
+        try {
+            // Find the event
+            const event = this.events.find(e => e.id === eventId);
+            if (!event) {
+                NotificationManager.show('Event not found', 'error');
+                return;
+            }
+
+            // Load registrations
+            const registrations = await SocietyGolfDB.getEventRegistrationsWithPlayers(eventId);
+
+            if (!registrations || registrations.length === 0) {
+                NotificationManager.show('No registrations to export', 'info');
+                return;
+            }
+
+            // Generate CSV
+            const csv = this.generateEnhancedRosterCSV(event, registrations);
+
+            // Download
+            const filename = `${event.name.replace(/[^a-z0-9]/gi, '_')}_Registrations_${new Date().toISOString().split('T')[0]}.csv`;
+            this.downloadCSV(csv, filename);
+
+            NotificationManager.show('Registration list exported successfully', 'success');
+
+        } catch (error) {
+            console.error('[SocietyOrganizer] Error exporting CSV:', error);
+            NotificationManager.show('Failed to export registrations', 'error');
+        }
+    }
+
+    /**
+     * Generate enhanced CSV with all registration details
+     */
+    generateEnhancedRosterCSV(event, registrations) {
+        const headers = [
+            'Name',
+            'Handicap',
+            'Transport',
+            'Competition',
+            'Paid',
+            'Payment Date',
+            'Registered Date',
+            'Partner Preferences Count'
+        ];
+
+        const rows = registrations.map(reg => [
+            reg.playerName,
+            Math.round(reg.handicap),
+            reg.wantTransport ? 'Yes' : 'No',
+            reg.wantCompetition ? 'Yes' : 'No',
+            reg.isPaid ? 'Yes' : 'No',
+            reg.paymentDate ? new Date(reg.paymentDate).toLocaleDateString() : '-',
+            new Date(reg.createdAt).toLocaleDateString(),
+            (reg.partnerPrefs || []).length
+        ]);
+
+        // Add summary row
+        const stats = event.stats || {};
+        const summaryRow = [
+            '',
+            '',
+            `Total: ${stats.transportCount || 0}`,
+            `Total: ${stats.competitionCount || 0}`,
+            `${stats.paidCount || 0}/${registrations.length}`,
+            '',
+            '',
+            ''
+        ];
+
+        // Add event info header
+        const eventInfo = [
+            [`Event: ${event.name}`],
+            [`Date: ${event.date}`],
+            [`Course: ${event.courseName || '-'}`],
+            [`Total Registered: ${registrations.length}/${event.maxPlayers || '∞'}`],
+            [`Total Revenue: ฿${stats.revenue?.toLocaleString() || 0}`],
+            [''],  // Empty row
+            headers,
+            ...rows,
+            [''],  // Empty row
+            ['Summary'],
+            summaryRow
+        ];
+
+        return eventInfo.map(row => row.join(',')).join('\n');
     }
 
     // Wrapper methods for Calendar compatibility
@@ -30279,6 +31200,9 @@ class SocietyOrganizerManager {
             const profile = await SocietyGolfDB.getSocietyProfile(organizerId);
             this.societyProfile = profile;
 
+            // Update header with society branding
+            this.updateHeader();
+
             // Populate form if profile exists
             if (profile) {
                 document.getElementById('societyName').value = profile.societyName || '';
@@ -30291,6 +31215,30 @@ class SocietyOrganizerManager {
             }
         } catch (error) {
             console.error('[SocietyOrganizer] Error loading profile:', error);
+        }
+    }
+
+    updateHeader() {
+        const logoContainer = document.getElementById('societyHeaderLogo');
+        const nameElement = document.getElementById('societyHeaderName');
+
+        if (!logoContainer || !nameElement) return;
+
+        const profile = this.societyProfile;
+
+        // Update logo
+        if (profile?.societyLogo) {
+            logoContainer.innerHTML = `<img src="${profile.societyLogo}" class="w-10 h-10 md:w-12 md:h-12 rounded-full object-cover border-2 border-sky-200" alt="${profile.societyName || 'Society'} Logo">`;
+        } else {
+            // Fallback to icon
+            logoContainer.innerHTML = '<span class="material-symbols-outlined text-2xl text-sky-600">groups</span>';
+        }
+
+        // Update name
+        if (profile?.societyName) {
+            nameElement.textContent = profile.societyName;
+        } else {
+            nameElement.textContent = 'Society Organizer';
         }
     }
 
@@ -30554,25 +31502,133 @@ class GolferEventsManager {
         this.allEvents = [];
         this.filteredEvents = [];
         this.currentEvent = null;
+        this.currentView = 'browse';
+        this.calendarDate = new Date();
+        this.myRegistrations = [];
+
+        // Cache system for instant loading
+        this.eventsCache = null;
+        this.cacheTimestamp = null;
+        this.cachedUserId = null; // FIXED: Track which user the cache belongs to
+        this.CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
+
+        // Society subscriptions
+        this.subscribedSocieties = this.loadSubscribedSocieties();
+        this.allSocieties = [];
     }
 
     async init() {
         console.log('[GolferEventsSystem] Initializing...');
-        await this.loadEvents();
-        this.renderEvents();
+
+        // Try to show cached data immediately if available
+        if (this.isCacheValid()) {
+            console.log('[GolferEventsSystem] ⚡ Using cached events (instant load)');
+            this.allEvents = this.eventsCache;
+            this.filteredEvents = this.allEvents;
+            this.renderEvents();
+
+            // Refresh in background
+            this.loadEvents(false).then(() => {
+                this.filterEvents();
+            });
+        } else {
+            this.showLoadingState();
+            await this.loadEvents();
+            this.renderEvents();
+        }
     }
 
-    async loadEvents() {
-        try {
-            console.log('[GolferEventsSystem] Loading all society events...');
+    isCacheValid() {
+        if (!this.eventsCache || !this.cacheTimestamp) return false;
 
-            // Load ALL society events (not just for one organizer)
+        // FIXED: Validate cache belongs to current user to prevent showing wrong registration status
+        const currentUserId = AppState.currentUser?.lineUserId;
+        if (this.cachedUserId !== currentUserId) {
+            console.log('[GolferEventsSystem] ❌ Cache invalid: user changed from', this.cachedUserId, 'to', currentUserId);
+            // Clear invalid cache
+            this.eventsCache = null;
+            this.cacheTimestamp = null;
+            this.cachedUserId = null;
+            return false;
+        }
+
+        const age = Date.now() - this.cacheTimestamp;
+        const isValid = age < this.CACHE_DURATION;
+
+        if (!isValid) {
+            console.log('[GolferEventsSystem] ❌ Cache expired (age:', age, 'ms)');
+        }
+
+        return isValid;
+    }
+
+    showEventsView(view) {
+        // Hide all views
+        document.getElementById('eventsViewBrowseContent').style.display = 'none';
+        document.getElementById('eventsViewCalendarContent').style.display = 'none';
+        document.getElementById('eventsViewMyEventsContent').style.display = 'none';
+        document.getElementById('eventsViewHistoryContent').style.display = 'none';
+
+        // Remove active class from all buttons
+        document.querySelectorAll('.events-subtab-btn').forEach(btn => {
+            btn.classList.remove('active', 'border-green-500', 'text-green-600');
+            btn.classList.add('border-transparent', 'text-gray-600');
+        });
+
+        // Show selected view
+        this.currentView = view;
+        if (view === 'browse') {
+            document.getElementById('eventsViewBrowseContent').style.display = 'block';
+            document.getElementById('eventsViewBrowse').classList.add('active', 'border-green-500', 'text-green-600');
+            document.getElementById('eventsViewBrowse').classList.remove('border-transparent', 'text-gray-600');
+        } else if (view === 'calendar') {
+            document.getElementById('eventsViewCalendarContent').style.display = 'block';
+            document.getElementById('eventsViewCalendar').classList.add('active', 'border-green-500', 'text-green-600');
+            document.getElementById('eventsViewCalendar').classList.remove('border-transparent', 'text-gray-600');
+            this.renderCalendar();
+        } else if (view === 'myevents') {
+            document.getElementById('eventsViewMyEventsContent').style.display = 'block';
+            document.getElementById('eventsViewMyEvents').classList.add('active', 'border-green-500', 'text-green-600');
+            document.getElementById('eventsViewMyEvents').classList.remove('border-transparent', 'text-gray-600');
+            this.loadMyRegistrations();
+        } else if (view === 'history') {
+            document.getElementById('eventsViewHistoryContent').style.display = 'block';
+            document.getElementById('eventsViewHistory').classList.add('active', 'border-green-500', 'text-green-600');
+            document.getElementById('eventsViewHistory').classList.remove('border-transparent', 'text-gray-600');
+            this.loadMyHistory();
+        }
+    }
+
+    async loadEvents(showLoading = true) {
+        try {
+            if (showLoading) {
+                console.log('[GolferEventsSystem] Loading all society events...');
+            } else {
+                console.log('[GolferEventsSystem] Background refresh...');
+            }
+
+            // Load ALL society events (now includes user registration status in one call)
             const events = await window.SocietyGolfDB.getAllPublicEvents();
 
             this.allEvents = events || [];
+
+            // Load favorites from localStorage and mark events
+            const favorites = JSON.parse(localStorage.getItem('mcipro_favorite_events') || '[]');
+            this.allEvents.forEach(event => {
+                event.isFavorited = favorites.includes(event.id);
+            });
+
             this.filteredEvents = this.allEvents;
 
-            console.log(`[GolferEventsSystem] Loaded ${this.allEvents.length} events`);
+            // Update cache with current user ID
+            this.eventsCache = this.allEvents;
+            this.cacheTimestamp = Date.now();
+            this.cachedUserId = AppState.currentUser?.lineUserId; // FIXED: Store user ID with cache
+
+            // Update society subscriptions display
+            this.updateSelectedSocietiesDisplay();
+
+            console.log(`[GolferEventsSystem] ✅ Loaded ${this.allEvents.length} events${!showLoading ? ' (background)' : ''}`);
         } catch (error) {
             console.error('[GolferEventsSystem] Error loading events:', error);
             this.allEvents = [];
@@ -30581,8 +31637,29 @@ class GolferEventsManager {
     }
 
     async refreshEvents() {
-        await this.loadEvents();
+        // Force refresh - bypass cache
+        this.showLoadingState();
+
+        // Clear cache to force fresh data
+        this.eventsCache = null;
+        this.cacheTimestamp = null;
+
+        await this.loadEvents(true);
         this.filterEvents();
+
+        NotificationManager.show('Events refreshed', 'success', 2000);
+    }
+
+    showLoadingState() {
+        const grid = document.getElementById('societyEventsGrid');
+        if (!grid) return;
+
+        grid.innerHTML = `
+            <div class="col-span-full text-center py-12">
+                <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-green-500 border-t-transparent mb-4"></div>
+                <p class="text-gray-600 font-medium">Loading events...</p>
+            </div>
+        `;
     }
 
     filterEvents() {
@@ -30590,10 +31667,23 @@ class GolferEventsManager {
         const dateFilter = document.getElementById('societyEventDateFilter')?.value || 'all';
         const statusFilter = document.getElementById('societyEventStatusFilter')?.value || 'all';
 
+        // Determine if user is actively searching/filtering
+        const isActivelySearching = searchTerm || dateFilter !== 'all' || statusFilter !== 'all';
+
         this.filteredEvents = this.allEvents.filter(event => {
+            // Get society name (use societyName or fallback to organizerName)
+            const eventSocietyName = event.societyName || event.organizerName;
+
+            // SOCIETY SUBSCRIPTION FILTER (only when NOT actively searching)
+            if (!isActivelySearching && this.subscribedSocieties.length > 0) {
+                if (!this.subscribedSocieties.includes(eventSocietyName)) {
+                    return false;
+                }
+            }
+
             // Text search
             if (searchTerm) {
-                const searchableText = `${event.name} ${event.courseName} ${event.organizerName}`.toLowerCase();
+                const searchableText = `${event.name} ${event.courseName} ${event.organizerName} ${eventSocietyName}`.toLowerCase();
                 if (!searchableText.includes(searchTerm)) return false;
             }
 
@@ -30618,13 +31708,19 @@ class GolferEventsManager {
 
             // Status filter
             if (statusFilter !== 'all') {
-                const registered = event.registeredCount || 0;
-                const max = event.maxPlayers || 999;
-                const availability = max - registered;
+                // Favorites filter
+                if (statusFilter === 'favorites') {
+                    if (!event.isFavorited) return false;
+                } else {
+                    // Other status filters
+                    const registered = event.registeredCount || 0;
+                    const max = event.maxPlayers || 999;
+                    const availability = max - registered;
 
-                if (statusFilter === 'open' && availability <= 0) return false;
-                if (statusFilter === 'filling' && (availability > max * 0.3 || availability <= 0)) return false;
-                if (statusFilter === 'waitlist' && availability > 0) return false;
+                    if (statusFilter === 'open' && availability <= 0) return false;
+                    if (statusFilter === 'filling' && (availability > max * 0.3 || availability <= 0)) return false;
+                    if (statusFilter === 'waitlist' && availability > 0) return false;
+                }
             }
 
             return true;
@@ -30663,9 +31759,24 @@ class GolferEventsManager {
         const isFull = max > 0 && availability <= 0;
         const isFillingFast = max > 0 && availability > 0 && availability <= max * 0.3;
 
+        // Check if registration is closed (past cutoff)
+        let isPastCutoff = false;
+        if (event.cutoff) {
+            const cutoffDate = new Date(event.cutoff);
+            const now = new Date();
+            isPastCutoff = now > cutoffDate;
+        }
+
+        // Check if current user is registered for this event
+        const isUserRegistered = event.isUserRegistered || false;
+
         let statusBadge = '';
-        if (isPast) {
+        if (isUserRegistered) {
+            statusBadge = '<span class="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-600 rounded-full">✓ Registered</span>';
+        } else if (isPast) {
             statusBadge = '<span class="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">Past Event</span>';
+        } else if (isPastCutoff) {
+            statusBadge = '<span class="px-2 py-1 text-xs font-medium bg-red-100 text-red-700 rounded-full">Closed</span>';
         } else if (isFull) {
             statusBadge = '<span class="px-2 py-1 text-xs font-medium bg-red-100 text-red-600 rounded-full">Full - Waitlist</span>';
         } else if (isFillingFast) {
@@ -30676,27 +31787,47 @@ class GolferEventsManager {
 
         const totalFee = (event.baseFee || 0) + (event.cartFee || 0) + (event.caddyFee || 0);
 
+        // Check if event is favorited
+        const isFavorited = event.isFavorited || false;
+        const starIcon = isFavorited ? 'star' : 'star_outline';
+
         return `
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
                  onclick="GolferEventsSystem.openEventDetail('${event.id}')">
-                <!-- Header -->
-                <div class="bg-gradient-to-r from-green-500 to-green-400 px-4 py-3 text-white">
-                    <div class="flex items-start justify-between mb-2">
-                        <h3 class="font-bold text-lg flex-1 pr-2">${event.name}</h3>
+                <!-- Header with Society Branding -->
+                <div class="bg-gradient-to-r from-green-500 to-green-400 px-4 py-3 text-white relative">
+                    <!-- Favorite Star (absolute positioned top-right) -->
+                    <button onclick="event.stopPropagation(); GolferEventsSystem.toggleFavorite('${event.id}')"
+                            class="absolute top-2 right-2 p-1 hover:bg-white/20 rounded-full transition-colors"
+                            title="${isFavorited ? 'Remove from favorites' : 'Add to favorites'}">
+                        <span class="material-symbols-outlined text-yellow-300 ${isFavorited ? 'fill-icon' : ''}">${starIcon}</span>
+                    </button>
+
+                    <div class="flex items-start justify-between mb-2 pr-8">
+                        <div class="flex items-center flex-1 pr-2">
+                            ${event.societyLogo ? `
+                                <img src="${event.societyLogo}" alt="${event.societyName}" class="w-10 h-10 rounded-full border-2 border-white mr-3 object-cover bg-white">
+                            ` : ''}
+                            <div class="flex-1">
+                                <h3 class="font-bold text-lg">${event.name}</h3>
+                                <div class="text-xs text-green-50 mt-1">
+                                    ${event.societyName || event.organizerName || 'Society Golf'}
+                                </div>
+                            </div>
+                        </div>
                         ${statusBadge}
-                    </div>
-                    <div class="flex items-center text-sm text-green-50">
-                        <span class="material-symbols-outlined text-sm mr-1">person</span>
-                        ${event.organizerName || 'Organizer'}
                     </div>
                 </div>
 
                 <!-- Body -->
                 <div class="p-4 space-y-3">
-                    <!-- Date -->
+                    <!-- Date & Time -->
                     <div class="flex items-center text-sm">
                         <span class="material-symbols-outlined text-gray-400 text-base mr-2">event</span>
-                        <span class="font-medium text-gray-900">${this.formatDate(event.date)}</span>
+                        <div>
+                            <div class="font-medium text-gray-900">${this.formatDate(event.date)}</div>
+                            ${event.startTime ? `<div class="text-xs text-gray-600 mt-0.5">⏰ Departure: ${event.startTime}</div>` : ''}
+                        </div>
                     </div>
 
                     <!-- Course -->
@@ -30727,10 +31858,18 @@ class GolferEventsManager {
 
                 <!-- Footer -->
                 <div class="px-4 py-3 bg-gray-50 border-t">
-                    <button class="w-full btn-primary text-sm py-2" onclick="event.stopPropagation(); GolferEventsSystem.openEventDetail('${event.id}')">
-                        <span class="material-symbols-outlined text-sm">info</span>
-                        View Details & Register
-                    </button>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button class="col-span-2 btn-primary text-sm py-2" onclick="event.stopPropagation(); GolferEventsSystem.openEventDetail('${event.id}')">
+                            <span class="material-symbols-outlined text-sm">info</span>
+                            View Details
+                        </button>
+                        <button class="bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-1"
+                                onclick="event.stopPropagation(); GolferEventsSystem.openShareModal('${event.id}')"
+                                title="Share with friends">
+                            <span class="material-symbols-outlined text-sm">share</span>
+                            Share
+                        </button>
+                    </div>
                 </div>
             </div>
         `;
@@ -30752,7 +31891,11 @@ class GolferEventsManager {
 
         // Populate modal
         document.getElementById('eventDetailName').textContent = this.currentEvent.name;
-        document.getElementById('eventDetailOrganizer').textContent = `Organized by ${this.currentEvent.organizerName || 'Society Organizer'}`;
+        const organizerText = this.currentEvent.societyName || this.currentEvent.organizerName || 'Society Organizer';
+        document.getElementById('eventDetailOrganizer').innerHTML = `
+            ${this.currentEvent.societyLogo ? `<img src="${this.currentEvent.societyLogo}" alt="${organizerText}" class="inline-block w-6 h-6 rounded-full border border-green-200 mr-2 object-cover bg-white">` : ''}
+            Organized by ${organizerText}
+        `;
         document.getElementById('eventDetailDate').textContent = this.formatDate(this.currentEvent.date);
         document.getElementById('eventDetailCourse').textContent = this.currentEvent.courseName || 'TBD';
 
@@ -30801,21 +31944,84 @@ class GolferEventsManager {
             document.getElementById('eventDetailNotesSection').style.display = 'none';
         }
 
-        // Pre-fill player name if available
+        // Load and display registered players
+        await this.loadRegisteredPlayers(eventId);
+
+        // Pre-fill player name and handicap from profile
         if (AppState.currentUser?.name) {
             document.getElementById('regPlayerName').value = AppState.currentUser.name;
         }
-        if (AppState.currentUser?.handicap) {
-            document.getElementById('regHandicap').value = AppState.currentUser.handicap;
+
+        // Get handicap from profile golfInfo
+        const profileKey = UserIDSystem.getProfileKey(AppState.currentUser.role, AppState.currentUser.lineUserId || AppState.currentUser.userId);
+        const profile = JSON.parse(localStorage.getItem(profileKey) || '{}');
+        const handicap = profile.golfInfo?.handicap || AppState.currentUser?.handicap;
+
+        if (handicap) {
+            document.getElementById('regHandicap').value = handicap;
         }
 
-        // Reset registration form
-        document.getElementById('registrationForm').style.display = 'none';
-        document.getElementById('eventRegisterBtn').style.display = 'inline-flex';
-        document.getElementById('eventSubmitBtn').style.display = 'none';
+        // Reset registration form (only if not in edit mode)
+        if (!this.editingRegistrationId) {
+            document.getElementById('registrationForm').style.display = 'none';
+            document.getElementById('eventRegisterBtn').style.display = 'inline-flex';
+            document.getElementById('eventSubmitBtn').style.display = 'none';
+
+            // Reset checkboxes for new registration
+            document.getElementById('regWantTransport').checked = false;
+            document.getElementById('regWantCompetition').checked = false;
+        }
 
         // Show modal
         document.getElementById('eventDetailModal').style.display = 'flex';
+    }
+
+    async loadRegisteredPlayers(eventId) {
+        try {
+            const registrations = await window.SocietyGolfDB.getRegistrations(eventId);
+            const playerCount = document.getElementById('regPlayerCount');
+            const playerContent = document.getElementById('registeredPlayersContent');
+
+            if (registrations.length === 0) {
+                playerCount.textContent = 'No players yet';
+                playerContent.innerHTML = `
+                    <p class="text-gray-500 text-center py-4">
+                        <span class="material-symbols-outlined text-3xl mb-2 block">person_off</span>
+                        Be the first to register!
+                    </p>
+                `;
+                return;
+            }
+
+            playerCount.textContent = `${registrations.length} player${registrations.length !== 1 ? 's' : ''}`;
+
+            playerContent.innerHTML = registrations.map((reg, index) => `
+                <div class="flex items-center justify-between py-2 px-3 bg-white rounded-lg">
+                    <div class="flex items-center">
+                        <span class="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xs font-medium mr-3">
+                            ${index + 1}
+                        </span>
+                        <div>
+                            <div class="font-medium text-gray-900">${reg.playerName}</div>
+                            ${reg.handicap !== null && reg.handicap !== undefined ? `<div class="text-xs text-gray-500">HCP: ${Math.round(reg.handicap)}</div>` : ''}
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs">
+                        ${reg.wantTransport ? '<span class="text-blue-600" title="Transport">🚐</span>' : ''}
+                        ${reg.wantCompetition ? '<span class="text-amber-600" title="Competition">🏆</span>' : ''}
+                    </div>
+                </div>
+            `).join('');
+
+            // Store registrations for partner preferences
+            this.currentEventRegistrations = registrations;
+        } catch (error) {
+            console.error('[GolferEventsSystem] Error loading registered players:', error);
+            document.getElementById('regPlayerCount').textContent = 'Error loading';
+            document.getElementById('registeredPlayersContent').innerHTML = `
+                <p class="text-red-500 text-center py-2 text-xs">Failed to load player list</p>
+            `;
+        }
     }
 
     showRegistrationForm() {
@@ -30823,8 +32029,92 @@ class GolferEventsManager {
         document.getElementById('eventRegisterBtn').style.display = 'none';
         document.getElementById('eventSubmitBtn').style.display = 'inline-flex';
 
+        // Populate partner preferences
+        this.populatePartnerPreferences();
+
+        // Initialize cost calculator
+        this.updateRegistrationTotal();
+
         // Scroll to form
         document.getElementById('registrationForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    updateRegistrationTotal() {
+        if (!this.currentEvent) return;
+
+        const baseFee = (this.currentEvent.baseFee || 0) + (this.currentEvent.cartFee || 0) + (this.currentEvent.caddyFee || 0);
+        const transportFee = this.currentEvent.transportFee || 0;
+        const competitionFee = this.currentEvent.competitionFee || 0;
+
+        const wantTransport = document.getElementById('regWantTransport')?.checked || false;
+        const wantCompetition = document.getElementById('regWantCompetition')?.checked || false;
+
+        // Update base fee
+        document.getElementById('regBaseFeeDisplay').textContent = `฿${baseFee.toLocaleString()}`;
+
+        // Show/hide and update transport fee
+        const transportRow = document.getElementById('regTransportFeeRow');
+        if (transportFee > 0) {
+            document.getElementById('regTransportFeeDisplay').textContent = `฿${transportFee.toLocaleString()}`;
+            if (wantTransport) {
+                transportRow.style.display = 'flex';
+                transportRow.classList.remove('text-gray-400');
+                transportRow.classList.add('text-gray-700');
+            } else {
+                transportRow.style.display = 'flex';
+                transportRow.classList.remove('text-gray-700');
+                transportRow.classList.add('text-gray-400');
+            }
+        } else {
+            transportRow.style.display = 'none';
+        }
+
+        // Show/hide and update competition fee
+        const competitionRow = document.getElementById('regCompetitionFeeRow');
+        if (competitionFee > 0) {
+            document.getElementById('regCompetitionFeeDisplay').textContent = `฿${competitionFee.toLocaleString()}`;
+            if (wantCompetition) {
+                competitionRow.style.display = 'flex';
+                competitionRow.classList.remove('text-gray-400');
+                competitionRow.classList.add('text-gray-700');
+            } else {
+                competitionRow.style.display = 'flex';
+                competitionRow.classList.remove('text-gray-700');
+                competitionRow.classList.add('text-gray-400');
+            }
+        } else {
+            competitionRow.style.display = 'none';
+        }
+
+        // Calculate and display total
+        let total = baseFee;
+        if (wantTransport) total += transportFee;
+        if (wantCompetition) total += competitionFee;
+
+        document.getElementById('regTotalCost').textContent = `฿${total.toLocaleString()}`;
+    }
+
+    populatePartnerPreferences() {
+        const container = document.getElementById('partnerPrefsContainer');
+        const registrations = this.currentEventRegistrations || [];
+
+        if (registrations.length === 0) {
+            container.innerHTML = '<p class="text-xs text-gray-500">No other players registered yet. Register first and others can select you as a partner!</p>';
+            return;
+        }
+
+        container.innerHTML = registrations.map(reg => `
+            <label class="flex items-center cursor-pointer hover:bg-gray-50 p-2 rounded">
+                <input type="checkbox"
+                       class="partner-pref-checkbox mr-3 rounded"
+                       value="${reg.id}"
+                       data-name="${reg.playerName}">
+                <div class="flex-1">
+                    <span class="text-sm font-medium text-gray-700">${reg.playerName}</span>
+                    ${reg.handicap !== null && reg.handicap !== undefined ? `<span class="text-xs text-gray-500 ml-2">(HCP: ${Math.round(reg.handicap)})</span>` : ''}
+                </div>
+            </label>
+        `).join('');
     }
 
     async submitRegistration() {
@@ -30833,41 +32123,1013 @@ class GolferEventsManager {
         const wantTransport = document.getElementById('regWantTransport').checked;
         const wantCompetition = document.getElementById('regWantCompetition').checked;
 
+        // Collect partner preferences
+        const partnerPrefs = [];
+        document.querySelectorAll('.partner-pref-checkbox:checked').forEach(checkbox => {
+            partnerPrefs.push({
+                playerId: checkbox.value,
+                playerName: checkbox.getAttribute('data-name')
+            });
+        });
+
         // Validation
         if (!playerName) {
-            alert('Please enter your name');
+            NotificationManager.show('Please enter your name', 'error');
             return;
         }
         if (isNaN(handicap) || handicap < 0 || handicap > 54) {
-            alert('Please enter a valid handicap (0-54)');
+            NotificationManager.show('Please enter a valid handicap (0-54)', 'error');
             return;
         }
 
         try {
-            const registration = {
-                eventId: this.currentEvent.id,
-                playerName: playerName,
-                playerId: AppState.currentUser?.lineUserId || null,
-                handicap: handicap,
-                wantTransport: wantTransport,
-                wantCompetition: wantCompetition
-            };
+            // Check if we're in edit mode
+            if (this.editingRegistrationId) {
+                // UPDATE existing registration
+                const { error: updateError } = await window.SupabaseDB.client
+                    .from('event_registrations')
+                    .update({
+                        player_name: playerName,
+                        handicap: handicap,
+                        want_transport: wantTransport,
+                        want_competition: wantCompetition,
+                        partner_prefs: partnerPrefs
+                    })
+                    .eq('id', this.editingRegistrationId);
 
-            await window.SocietyGolfDB.registerForEvent(registration);
+                if (updateError) throw updateError;
 
-            alert(`✅ Successfully registered for ${this.currentEvent.name}!\n\nYou will receive confirmation from the event organizer.`);
+                NotificationManager.show(`Registration updated successfully! Changes saved for ${this.currentEvent.name}`, 'success', 3000);
 
-            this.closeEventDetail();
-            await this.refreshEvents();
+                // Clear edit mode
+                this.editingRegistrationId = null;
+
+                // Reload data (invalidate cache since data changed)
+                this.closeEventDetail();
+                await this.loadMyRegistrations();
+
+                // Clear cache and reload
+                this.eventsCache = null;
+                this.cacheTimestamp = null;
+                await this.loadEvents();
+                this.filterEvents();
+
+            } else {
+                // CREATE new registration
+                const registration = {
+                    eventId: this.currentEvent.id,
+                    playerName: playerName,
+                    playerId: AppState.currentUser?.lineUserId || null,
+                    handicap: handicap,
+                    wantTransport: wantTransport,
+                    wantCompetition: wantCompetition,
+                    partnerPrefs: partnerPrefs
+                };
+
+                await window.SocietyGolfDB.registerForEvent(registration);
+
+                let confirmMsg = `Successfully registered for ${this.currentEvent.name}! You will receive confirmation from the event organizer.`;
+                if (partnerPrefs.length > 0) {
+                    confirmMsg += ` Partner preferences: ${partnerPrefs.map(p => p.playerName).join(', ')}`;
+                }
+
+                NotificationManager.show(confirmMsg, 'success', 4000);
+
+                this.closeEventDetail();
+                await this.refreshEvents();
+            }
+
         } catch (error) {
             console.error('[GolferEventsSystem] Registration error:', error);
-            alert(`❌ Registration failed: ${error.message}`);
+            NotificationManager.show(`${this.editingRegistrationId ? 'Update' : 'Registration'} failed: ${error.message}`, 'error', 4000);
         }
     }
 
     closeEventDetail() {
         document.getElementById('eventDetailModal').style.display = 'none';
         this.currentEvent = null;
+        this.editingRegistrationId = null; // Clear edit mode
+
+        // Reset button text back to normal
+        document.getElementById('eventSubmitBtn').innerHTML = `
+            <span class="material-symbols-outlined text-sm">send</span>
+            Submit Registration
+        `;
+    }
+
+    async editRegistration(registrationId, eventId) {
+        try {
+            // Load registration details
+            const { data: regData, error: regError } = await window.SupabaseDB.client
+                .from('event_registrations')
+                .select('*')
+                .eq('id', registrationId)
+                .single();
+
+            if (regError) throw regError;
+
+            console.log('[GolferEventsSystem] Editing registration:', regData);
+
+            // Store registration ID for edit mode
+            this.editingRegistrationId = registrationId;
+
+            // Open the event detail modal with the event
+            await this.openEventDetail(eventId);
+
+            // Pre-fill the form with existing registration data
+            document.getElementById('regPlayerName').value = regData.player_name || '';
+            document.getElementById('regHandicap').value = regData.handicap || '';
+            document.getElementById('regWantTransport').checked = regData.want_transport || false;
+            document.getElementById('regWantCompetition').checked = regData.want_competition || false;
+
+            // Show the registration form immediately (in edit mode)
+            document.getElementById('registrationForm').style.display = 'block';
+            document.getElementById('eventRegisterBtn').style.display = 'none';
+            document.getElementById('eventSubmitBtn').style.display = 'inline-flex';
+
+            // Change button text to "Update Registration"
+            document.getElementById('eventSubmitBtn').innerHTML = `
+                <span class="material-symbols-outlined text-sm">check_circle</span>
+                Update Registration
+            `;
+
+            // Update the cost calculator to reflect current selections
+            this.updateRegistrationTotal();
+
+        } catch (error) {
+            console.error('[GolferEventsSystem] Error editing registration:', error);
+            NotificationManager.show(`Failed to load registration: ${error.message}`, 'error', 3000);
+        }
+    }
+
+    async deleteRegistration(registrationId, eventName) {
+        const confirmed = confirm(`⚠️ Unregister from "${eventName}"?\n\nThis action cannot be undone.\n\nClick OK to unregister.`);
+
+        if (!confirmed) return;
+
+        try {
+            const { error } = await window.SupabaseDB.client
+                .from('event_registrations')
+                .delete()
+                .eq('id', registrationId);
+
+            if (error) throw error;
+
+            NotificationManager.show(`Successfully unregistered from "${eventName}"`, 'success', 3000);
+
+            // Reload registrations and events to update counts (invalidate cache)
+            await this.loadMyRegistrations();
+
+            // Clear cache and reload
+            this.eventsCache = null;
+            this.cacheTimestamp = null;
+            await this.loadEvents();
+            this.filterEvents();
+
+        } catch (error) {
+            console.error('[GolferEventsSystem] Error deleting registration:', error);
+            NotificationManager.show(`Failed to unregister: ${error.message}`, 'error', 3000);
+        }
+    }
+
+    // ======================
+    // CALENDAR VIEW
+    // ======================
+
+    calendarPrevMonth() {
+        this.calendarDate.setMonth(this.calendarDate.getMonth() - 1);
+        this.renderCalendar();
+    }
+
+    calendarNextMonth() {
+        this.calendarDate.setMonth(this.calendarDate.getMonth() + 1);
+        this.renderCalendar();
+    }
+
+    renderCalendar() {
+        const year = this.calendarDate.getFullYear();
+        const month = this.calendarDate.getMonth();
+
+        // Update month/year header
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                           'July', 'August', 'September', 'October', 'November', 'December'];
+        document.getElementById('golferCalendarMonthYear').textContent = `${monthNames[month]} ${year}`;
+
+        // Get calendar data
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const startDate = new Date(firstDay);
+        startDate.setDate(startDate.getDate() - firstDay.getDay()); // Start on Sunday
+
+        const grid = document.getElementById('golferCalendarGrid');
+        const cells = [];
+
+        // Generate 42 cells (6 weeks)
+        for (let i = 0; i < 42; i++) {
+            const date = new Date(startDate);
+            date.setDate(startDate.getDate() + i);
+
+            const isCurrentMonth = date.getMonth() === month;
+            const isToday = date.toDateString() === new Date().toDateString();
+
+            // FIXED: Create date string using local date values (no timezone conversion)
+            // This prevents date shifting when toISOString() converts to UTC
+            const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+            // Find events on this date (filtered by subscribed societies)
+            const eventsOnDate = this.allEvents.filter(e => {
+                if (e.date !== dateStr) return false;
+                // Only show events from subscribed societies
+                const eventSocietyName = e.societyName || e.organizerName;
+                if (this.subscribedSocieties.length > 0 && !this.subscribedSocieties.includes(eventSocietyName)) {
+                    return false;
+                }
+                return true;
+            });
+
+            cells.push(`
+                <div class="calendar-cell min-h-20 border border-gray-200 p-2 rounded-lg cursor-pointer hover:bg-gray-50 ${isCurrentMonth ? 'bg-white' : 'bg-gray-50'} ${isToday ? 'ring-2 ring-green-500' : ''}"
+                     onclick="GolferEventsSystem.showCalendarDate('${dateStr}')">
+                    <div class="text-sm font-medium ${isCurrentMonth ? 'text-gray-900' : 'text-gray-400'} mb-1">
+                        ${date.getDate()}
+                    </div>
+                    ${eventsOnDate.length > 0 ? `
+                        <div class="space-y-1">
+                            ${eventsOnDate.slice(0, 2).map(event => {
+                                const registered = event.registeredCount || 0;
+                                const max = event.maxPlayers || 0;
+                                const isFull = max > 0 && registered >= max;
+                                const color = isFull ? 'bg-red-500' : 'bg-green-500';
+                                return `<div class="${color} text-white text-xs px-2 py-1 rounded truncate" title="${event.name} - ${event.societyName}">${event.societyName || event.name}</div>`;
+                            }).join('')}
+                            ${eventsOnDate.length > 2 ? `<div class="text-xs text-gray-600">+${eventsOnDate.length - 2} more</div>` : ''}
+                        </div>
+                    ` : ''}
+                </div>
+            `);
+        }
+
+        grid.innerHTML = cells.join('');
+    }
+
+    showCalendarDate(dateStr) {
+        // Filter events by date AND subscribed societies
+        const eventsOnDate = this.allEvents.filter(e => {
+            if (e.date !== dateStr) return false;
+            // Only show events from subscribed societies
+            const eventSocietyName = e.societyName || e.organizerName;
+            if (this.subscribedSocieties.length > 0 && !this.subscribedSocieties.includes(eventSocietyName)) {
+                return false;
+            }
+            return true;
+        });
+        const sidebar = document.getElementById('golferCalendarSidebar');
+
+        if (eventsOnDate.length === 0) {
+            // FIXED: Parse date string as local date (add time to prevent UTC conversion)
+            const localDate = new Date(dateStr + 'T00:00:00');
+            sidebar.innerHTML = `
+                <div class="text-center text-gray-500 py-8">
+                    <span class="material-symbols-outlined text-5xl mb-3">event_busy</span>
+                    <h3 class="font-bold text-gray-700 mb-2">${localDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</h3>
+                    <p class="text-sm">No events on this date</p>
+                </div>
+            `;
+            return;
+        }
+
+        // FIXED: Parse date string as local date (add time to prevent UTC conversion)
+        const localDate = new Date(dateStr + 'T00:00:00');
+        sidebar.innerHTML = `
+            <div>
+                <h3 class="font-bold text-gray-900 mb-4 flex items-center">
+                    <span class="material-symbols-outlined text-sm mr-2">event</span>
+                    ${localDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                </h3>
+                <div class="space-y-3">
+                    ${eventsOnDate.map(event => {
+                        const registered = event.registeredCount || 0;
+                        const max = event.maxPlayers || 0;
+                        const isFull = max > 0 && registered >= max;
+                        return `
+                            <div class="border border-gray-200 rounded-lg p-3 hover:shadow-md transition-shadow cursor-pointer" onclick="GolferEventsSystem.openEventDetail('${event.id}')">
+                                <div class="flex items-center mb-2">
+                                    ${event.societyLogo ? `<img src="${event.societyLogo}" class="w-6 h-6 rounded-full mr-2 object-cover">` : ''}
+                                    <div class="flex-1">
+                                        <div class="font-bold text-sm text-gray-900 truncate">${event.name}</div>
+                                        <div class="text-xs text-gray-600">${event.societyName || event.organizerName}</div>
+                                    </div>
+                                </div>
+                                <div class="text-xs text-gray-600 space-y-1">
+                                    ${event.startTime ? `<div>⏰ ${event.startTime}</div>` : ''}
+                                    <div>📍 ${event.courseName || 'TBD'}</div>
+                                    ${max > 0 ? `<div class="${isFull ? 'text-red-600' : 'text-green-600'}">${registered}/${max} registered</div>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // ======================
+    // MY REGISTRATIONS
+    // ======================
+
+    async loadMyRegistrations() {
+        const container = document.getElementById('myRegistrationsList');
+        const playerId = AppState.currentUser?.lineUserId;
+
+        if (!playerId) {
+            container.innerHTML = `
+                <div class="text-center py-12">
+                    <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">person_off</span>
+                    <p class="text-gray-600">Please log in to view your registrations</p>
+                </div>
+            `;
+            return;
+        }
+
+        try {
+            container.innerHTML = '<p class="text-center py-12 text-gray-500">Loading your registrations...</p>';
+
+            // Query all registrations for this player
+            const { data: regData, error: regError } = await window.SupabaseDB.client
+                .from('event_registrations')
+                .select('*')
+                .eq('player_id', playerId)
+                .order('created_at', { ascending: false });
+
+            if (regError) throw regError;
+
+            if (!regData || regData.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-12">
+                        <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">confirmation_number</span>
+                        <h3 class="text-lg font-bold text-gray-900 mb-2">No Registrations Yet</h3>
+                        <p class="text-gray-600 mb-4">You haven't registered for any events</p>
+                        <button onclick="GolferEventsSystem.showEventsView('browse')" class="btn-primary">
+                            Browse Events
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            // Get unique event IDs
+            const eventIds = [...new Set(regData.map(r => r.event_id))];
+
+            // Get events data
+            const { data: eventsData, error: eventsError } = await window.SupabaseDB.client
+                .from('society_events')
+                .select('*')
+                .in('id', eventIds);
+
+            if (eventsError) throw eventsError;
+
+            // Get society profiles for organizers
+            const organizerIds = [...new Set(eventsData.map(e => e.organizer_id).filter(id => id))];
+            const { data: societyProfiles } = await window.SupabaseDB.client
+                .from('society_profiles')
+                .select('organizer_id, society_name, society_logo')
+                .in('organizer_id', organizerIds);
+
+            // Create maps
+            const eventsMap = {};
+            eventsData.forEach(e => {
+                eventsMap[e.id] = e;
+            });
+
+            const societyMap = {};
+            if (societyProfiles) {
+                societyProfiles.forEach(s => {
+                    societyMap[s.organizer_id] = s;
+                });
+            }
+
+            // Combine data
+            const data = regData.map(reg => {
+                const event = eventsMap[reg.event_id];
+                if (!event) return null;
+
+                const society = societyMap[event.organizer_id];
+                return {
+                    ...reg,
+                    society_events: {
+                        ...event,
+                        society_profiles: society || null
+                    }
+                };
+            }).filter(r => r !== null);
+
+
+            // Filter to ONLY upcoming events (past events go to History tab)
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+            const upcoming = data.filter(r => new Date(r.society_events.date) >= now);
+
+            if (upcoming.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-12">
+                        <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">confirmation_number</span>
+                        <h3 class="text-lg font-bold text-gray-900 mb-2">No Upcoming Registrations</h3>
+                        <p class="text-gray-600 mb-4">You haven't registered for any upcoming events</p>
+                        <button onclick="GolferEventsSystem.showEventsView('browse')" class="btn-primary">
+                            Browse Events
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = `
+                <div class="space-y-3">
+                    ${upcoming.map(reg => this.renderMyRegistrationCard(reg)).join('')}
+                </div>
+            `;
+
+            container.innerHTML = html;
+        } catch (error) {
+            console.error('[GolferEventsSystem] Error loading registrations:', error);
+            container.innerHTML = `
+                <div class="text-center py-12 text-red-500">
+                    <span class="material-symbols-outlined text-5xl mb-3">error</span>
+                    <p>Failed to load registrations</p>
+                </div>
+            `;
+        }
+    }
+
+    async loadMyHistory() {
+        const container = document.getElementById('myHistoryList');
+        const playerId = AppState.currentUser?.lineUserId;
+
+        if (!playerId) {
+            container.innerHTML = `
+                <div class="text-center py-12">
+                    <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">person_off</span>
+                    <p class="text-gray-600">Please log in to view your history</p>
+                </div>
+            `;
+            return;
+        }
+
+        try {
+            container.innerHTML = '<p class="text-center py-12 text-gray-500">Loading your history...</p>';
+
+            // Query all registrations for this player
+            const { data: regData, error: regError } = await window.SupabaseDB.client
+                .from('event_registrations')
+                .select('*')
+                .eq('player_id', playerId)
+                .order('created_at', { ascending: false });
+
+            if (regError) throw regError;
+
+            if (!regData || regData.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-12">
+                        <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">history</span>
+                        <h3 class="text-lg font-bold text-gray-900 mb-2">No History Yet</h3>
+                        <p class="text-gray-600">You haven't played any events yet</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Get unique event IDs
+            const eventIds = [...new Set(regData.map(r => r.event_id))];
+
+            // Get events data
+            const { data: eventsData, error: eventsError } = await window.SupabaseDB.client
+                .from('society_events')
+                .select('*')
+                .in('id', eventIds);
+
+            if (eventsError) throw eventsError;
+
+            // Get society profiles for organizers
+            const organizerIds = [...new Set(eventsData.map(e => e.organizer_id).filter(id => id))];
+            const { data: societyProfiles } = await window.SupabaseDB.client
+                .from('society_profiles')
+                .select('organizer_id, society_name, society_logo')
+                .in('organizer_id', organizerIds);
+
+            // Create maps
+            const eventsMap = {};
+            eventsData.forEach(e => {
+                eventsMap[e.id] = e;
+            });
+
+            const societyMap = {};
+            if (societyProfiles) {
+                societyProfiles.forEach(s => {
+                    societyMap[s.organizer_id] = s;
+                });
+            }
+
+            // Combine data
+            const data = regData.map(reg => {
+                const event = eventsMap[reg.event_id];
+                if (!event) return null;
+
+                const society = societyMap[event.organizer_id];
+                return {
+                    ...reg,
+                    society_events: {
+                        ...event,
+                        society_profiles: society || null
+                    }
+                };
+            }).filter(r => r !== null);
+
+            // Filter to ONLY past events
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+            const past = data.filter(r => new Date(r.society_events.date) < now);
+
+            if (past.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-12">
+                        <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">history</span>
+                        <h3 class="text-lg font-bold text-gray-900 mb-2">No Past Events</h3>
+                        <p class="text-gray-600">You haven't played any events yet</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = `
+                <div class="space-y-3">
+                    ${past.map(reg => this.renderMyRegistrationCard(reg, true)).join('')}
+                </div>
+            `;
+
+            container.innerHTML = html;
+        } catch (error) {
+            console.error('[GolferEventsSystem] Error loading history:', error);
+            container.innerHTML = `
+                <div class="text-center py-12 text-red-500">
+                    <span class="material-symbols-outlined text-5xl mb-3">error</span>
+                    <p>Failed to load history</p>
+                </div>
+            `;
+        }
+    }
+
+    renderMyRegistrationCard(reg, isPast = false) {
+        const event = reg.society_events;
+        if (!event) return '';
+
+        const date = new Date(event.date);
+        const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+
+        // Get society name from profile or fallback to organizer_name
+        const societyName = event.society_profiles?.society_name || event.organizer_name || 'Society Golf';
+        const societyLogo = event.society_profiles?.society_logo || '';
+
+        // Check if before cutoff time for editing
+        const now = new Date();
+        const cutoffDate = event.cutoff ? new Date(event.cutoff) : null;
+        const canEdit = !isPast && (!cutoffDate || now < cutoffDate);
+
+        return `
+            <div class="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow ${isPast ? 'opacity-75' : ''}">
+                <div class="flex items-start justify-between mb-3">
+                    <div class="flex items-center flex-1">
+                        ${societyLogo ? `<img src="${societyLogo}" class="w-10 h-10 rounded-full mr-3 object-cover border-2 border-gray-200">` : ''}
+                        <div class="flex-1">
+                            <h4 class="font-bold text-gray-900">${event.name}</h4>
+                            <p class="text-sm text-gray-600">${societyName}</p>
+                        </div>
+                    </div>
+                    <span class="px-2 py-1 text-xs font-medium rounded-full ${isPast ? 'bg-gray-100 text-gray-600' : 'bg-green-100 text-green-600'}">
+                        ${isPast ? 'Completed' : 'Registered'}
+                    </span>
+                </div>
+
+                <div class="space-y-2 text-sm mb-4">
+                    <div class="flex items-center text-gray-700">
+                        <span class="material-symbols-outlined text-sm mr-2">event</span>
+                        <div>
+                            <div>${dateStr}</div>
+                            ${event.start_time ? `<div class="text-xs text-gray-500 mt-0.5">⏰ Departure: ${event.start_time}</div>` : ''}
+                        </div>
+                    </div>
+                    <div class="flex items-center text-gray-700">
+                        <span class="material-symbols-outlined text-sm mr-2">golf_course</span>
+                        ${event.course_name || 'TBD'}
+                    </div>
+                    <div class="flex items-center text-gray-700">
+                        <span class="material-symbols-outlined text-sm mr-2">person</span>
+                        HCP: ${Math.round(reg.handicap)}
+                        ${reg.want_transport ? ' • 🚐 Transport' : ''}
+                        ${reg.want_competition ? ' • 🏆 Competition' : ''}
+                    </div>
+                    ${reg.partner_prefs && reg.partner_prefs.length > 0 ? `
+                        <div class="flex items-center text-gray-700">
+                            <span class="material-symbols-outlined text-sm mr-2">groups</span>
+                            Partner prefs: ${reg.partner_prefs.map(p => p.playerName).join(', ')}
+                        </div>
+                    ` : ''}
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="GolferEventsSystem.openEventDetail('${event.id}')" class="btn-secondary text-xs py-2">
+                        <span class="material-symbols-outlined text-sm">info</span>
+                        Details
+                    </button>
+                    ${canEdit ? `
+                        <button onclick="GolferEventsSystem.editRegistration('${reg.id}', '${event.id}')" class="btn-secondary text-xs py-2">
+                            <span class="material-symbols-outlined text-sm">edit</span>
+                            Edit
+                        </button>
+                        <button onclick="GolferEventsSystem.deleteRegistration('${reg.id}', '${event.name}')" class="bg-red-500 hover:bg-red-600 text-white text-xs py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-1">
+                            <span class="material-symbols-outlined text-sm">delete</span>
+                            Unregister
+                        </button>
+                    ` : `
+                        <div class="col-span-2 flex items-center justify-center text-xs text-gray-500">
+                            ${cutoffDate && now >= cutoffDate ? 'Registration closed' : ''}
+                        </div>
+                    `}
+                </div>
+            </div>
+        `;
+    }
+
+    // ======================
+    // SHARE EVENT FUNCTIONS
+    // ======================
+
+    toggleFavorite(eventId) {
+        // Get favorites from localStorage
+        let favorites = JSON.parse(localStorage.getItem('mcipro_favorite_events') || '[]');
+
+        const index = favorites.indexOf(eventId);
+        if (index > -1) {
+            // Remove from favorites
+            favorites.splice(index, 1);
+            NotificationManager.show('Removed from favorites', 'success', 2000);
+        } else {
+            // Add to favorites
+            favorites.push(eventId);
+            NotificationManager.show('Added to favorites ⭐', 'success', 2000);
+        }
+
+        // Save to localStorage
+        localStorage.setItem('mcipro_favorite_events', JSON.stringify(favorites));
+
+        // Update the isFavorited property on events
+        this.allEvents.forEach(event => {
+            event.isFavorited = favorites.includes(event.id);
+        });
+
+        // Re-render to update star icons
+        this.filterEvents();
+    }
+
+    // ======================
+    // SOCIETY SUBSCRIPTIONS
+    // ======================
+
+    loadSubscribedSocieties() {
+        const stored = localStorage.getItem('mcipro_subscribed_societies');
+        return stored ? JSON.parse(stored) : [];
+    }
+
+    saveSubscribedSocieties() {
+        localStorage.setItem('mcipro_subscribed_societies', JSON.stringify(this.subscribedSocieties));
+    }
+
+    extractUniqueSocieties() {
+        const societiesSet = new Set();
+        this.allEvents.forEach(event => {
+            // Use societyName if available, fallback to organizerName
+            const societyName = event.societyName || event.organizerName;
+            if (societyName) {
+                societiesSet.add(societyName);
+            }
+        });
+        this.allSocieties = Array.from(societiesSet).sort();
+        console.log('[GolferEventsSystem] Found societies:', this.allSocieties);
+    }
+
+    renderSocietyCheckboxes() {
+        const container = document.getElementById('societyCheckboxList');
+        if (!container) return;
+
+        this.extractUniqueSocieties();
+
+        container.innerHTML = this.allSocieties.map(society => {
+            const isChecked = this.subscribedSocieties.includes(society);
+            return `
+                <label class="flex items-center gap-2 p-2 hover:bg-gray-50 rounded-lg cursor-pointer">
+                    <input
+                        type="checkbox"
+                        value="${society}"
+                        ${isChecked ? 'checked' : ''}
+                        onchange="GolferEventsSystem.toggleSocietySubscription('${society}')"
+                        class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                    >
+                    <span class="text-sm text-gray-700">${society}</span>
+                </label>
+            `;
+        }).join('');
+
+        this.updateSelectedSocietiesDisplay();
+    }
+
+    toggleSocietySubscription(society) {
+        const index = this.subscribedSocieties.indexOf(society);
+        if (index > -1) {
+            this.subscribedSocieties.splice(index, 1);
+        } else {
+            this.subscribedSocieties.push(society);
+        }
+        this.saveSubscribedSocieties();
+        this.updateSelectedSocietiesDisplay();
+        this.filterEvents();
+    }
+
+    updateSelectedSocietiesDisplay() {
+        const display = document.getElementById('selectedSocietiesDisplay');
+        if (!display) return;
+
+        if (this.subscribedSocieties.length === 0) {
+            display.innerHTML = '<span class="text-sm text-gray-500">Select societies to see their events...</span>';
+        } else {
+            display.innerHTML = this.subscribedSocieties.map(society => `
+                <span class="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">
+                    ${society}
+                    <button onclick="event.stopPropagation(); GolferEventsSystem.toggleSocietySubscription('${society}')" class="hover:text-green-900">
+                        <span class="material-symbols-outlined text-xs">close</span>
+                    </button>
+                </span>
+            `).join('');
+        }
+    }
+
+    toggleSocietySelector() {
+        const panel = document.getElementById('societySelectorPanel');
+        if (!panel) return;
+
+        if (panel.style.display === 'none') {
+            this.renderSocietyCheckboxes();
+            panel.style.display = 'block';
+        } else {
+            panel.style.display = 'none';
+        }
+    }
+
+    selectAllSocieties() {
+        this.subscribedSocieties = [...this.allSocieties];
+        this.saveSubscribedSocieties();
+        this.renderSocietyCheckboxes();
+        this.filterEvents();
+    }
+
+    clearAllSocieties() {
+        this.subscribedSocieties = [];
+        this.saveSubscribedSocieties();
+        this.renderSocietyCheckboxes();
+        this.filterEvents();
+    }
+
+    async openShareModal(eventId) {
+        this.shareEvent = this.allEvents.find(e => e.id === eventId);
+        if (!this.shareEvent) {
+            NotificationManager.show('Event not found', 'error');
+            return;
+        }
+
+        this.selectedShareUsers = [];
+
+        // Populate event summary
+        const summary = document.getElementById('shareEventSummary');
+        const eventDate = new Date(this.shareEvent.date);
+        const dateStr = eventDate.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+
+        summary.innerHTML = `
+            <div class="flex items-start gap-3">
+                ${this.shareEvent.societyLogo ? `<img src="${this.shareEvent.societyLogo}" class="w-12 h-12 rounded-full border-2 border-green-300">` : ''}
+                <div class="flex-1">
+                    <h3 class="font-bold text-lg text-gray-900">${this.shareEvent.name}</h3>
+                    <div class="text-sm text-gray-600 space-y-1 mt-2">
+                        <div>📅 ${dateStr} ${this.shareEvent.startTime ? `at ${this.shareEvent.startTime}` : ''}</div>
+                        <div>⛳ ${this.shareEvent.courseName || 'TBD'}</div>
+                        <div>🏢 ${this.shareEvent.societyName || this.shareEvent.organizerName}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Load platform users
+        await this.loadPlatformUsers();
+
+        // Show modal
+        document.getElementById('shareEventModal').style.display = 'flex';
+    }
+
+    async loadPlatformUsers() {
+        try {
+            // Get all user profiles from localStorage
+            const allProfiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+
+            // Filter out current user
+            const currentUserId = AppState.currentUser?.lineUserId || AppState.currentUser?.userId;
+            this.allShareUsers = allProfiles.filter(p => {
+                const userId = p.lineUserId || p.userId;
+                return userId && userId !== currentUserId;
+            });
+
+            console.log('[ShareEvent] Loaded users:', this.allShareUsers.length);
+
+            this.filterShareUsers('');
+        } catch (error) {
+            console.error('[ShareEvent] Error loading users:', error);
+            document.getElementById('shareUsersList').innerHTML = `
+                <div class="col-span-full text-center py-8 text-red-500">
+                    <span class="material-symbols-outlined text-4xl mb-2 block">error</span>
+                    <p>Failed to load users</p>
+                </div>
+            `;
+        }
+    }
+
+    filterShareUsers(searchTerm) {
+        if (!this.allShareUsers) return;
+
+        const term = searchTerm.toLowerCase();
+        const filtered = term ? this.allShareUsers.filter(user => {
+            const name = (user.name || '').toLowerCase();
+            const username = (user.username || '').toLowerCase();
+            const role = (user.role || '').toLowerCase();
+            const email = (user.email || '').toLowerCase();
+
+            return name.includes(term) || username.includes(term) || role.includes(term) || email.includes(term);
+        }) : this.allShareUsers;
+
+        this.renderShareUsersList(filtered);
+    }
+
+    renderShareUsersList(users) {
+        const container = document.getElementById('shareUsersList');
+
+        if (users.length === 0) {
+            container.innerHTML = `
+                <div class="col-span-full text-center py-8 text-gray-500">
+                    <span class="material-symbols-outlined text-4xl mb-2 block">search_off</span>
+                    <p>No users found</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = users.map(user => {
+            const userId = user.lineUserId || user.userId;
+            const isSelected = this.selectedShareUsers.some(u => u.userId === userId);
+
+            return `
+                <div class="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors ${isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : ''}"
+                     onclick="GolferEventsSystem.toggleUserSelection('${userId}', '${(user.name || user.username || 'User').replace(/'/g, "\\'")}')">
+                    <input type="checkbox" ${isSelected ? 'checked' : ''} class="rounded text-blue-500" onclick="event.stopPropagation();">
+                    <div class="flex-1">
+                        <div class="font-medium text-gray-900">${user.name || user.username || 'User'}</div>
+                        <div class="text-xs text-gray-500">${user.role || 'Member'} ${user.email ? `• ${user.email}` : ''}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    toggleUserSelection(userId, userName) {
+        const index = this.selectedShareUsers.findIndex(u => u.userId === userId);
+
+        if (index >= 0) {
+            // Remove from selection
+            this.selectedShareUsers.splice(index, 1);
+        } else {
+            // Add to selection
+            this.selectedShareUsers.push({ userId, userName });
+        }
+
+        // Update UI
+        this.updateSelectedUsersDisplay();
+        this.filterShareUsers(document.getElementById('shareUserSearch').value);
+    }
+
+    updateSelectedUsersDisplay() {
+        const container = document.getElementById('selectedUsersContainer');
+        const list = document.getElementById('selectedUsersList');
+        const countSpan = document.getElementById('selectedUserCount');
+        const sendBtn = document.getElementById('sendInvitesBtn');
+
+        countSpan.textContent = this.selectedShareUsers.length;
+
+        if (this.selectedShareUsers.length === 0) {
+            container.style.display = 'none';
+            sendBtn.disabled = true;
+        } else {
+            container.style.display = 'block';
+            sendBtn.disabled = false;
+
+            list.innerHTML = this.selectedShareUsers.map(user => `
+                <div class="inline-flex items-center gap-2 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm">
+                    <span>${user.userName}</span>
+                    <button onclick="event.stopPropagation(); GolferEventsSystem.toggleUserSelection('${user.userId}', '${user.userName.replace(/'/g, "\\'")}');"
+                            class="hover:text-blue-900">
+                        <span class="material-symbols-outlined text-sm">close</span>
+                    </button>
+                </div>
+            `).join('');
+        }
+    }
+
+    async sendEventInvitations() {
+        if (!this.selectedShareUsers || this.selectedShareUsers.length === 0) {
+            NotificationManager.show('Please select at least one user to share with', 'error');
+            return;
+        }
+
+        if (!this.shareEvent) {
+            NotificationManager.show('Event not found', 'error');
+            return;
+        }
+
+        try {
+            const eventDate = new Date(this.shareEvent.date);
+            const dateStr = eventDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+            // Create invitation message
+            const invitationMessage = `🏌️ Event Invitation!\n\n` +
+                `${AppState.currentUser.name || 'Someone'} invites you to join:\n\n` +
+                `📌 ${this.shareEvent.name}\n` +
+                `📅 ${dateStr}${this.shareEvent.startTime ? ` at ${this.shareEvent.startTime}` : ''}\n` +
+                `⛳ ${this.shareEvent.courseName || 'TBD'}\n` +
+                `🏢 ${this.shareEvent.societyName || this.shareEvent.organizerName}\n\n` +
+                `💰 Total Fee: ฿${((this.shareEvent.baseFee || 0) + (this.shareEvent.cartFee || 0) + (this.shareEvent.caddyFee || 0)).toLocaleString()}\n\n` +
+                `👉 Check "Society Events" tab in Golfer Dashboard to register!`;
+
+            // Send via chat system to each selected user
+            let successCount = 0;
+            for (const user of this.selectedShareUsers) {
+                try {
+                    // Create or get direct chat room
+                    const roomId = this.getOrCreateDirectChatRoom(user.userId);
+
+                    // Send message
+                    await ChatSystem.sendMessage(roomId, invitationMessage);
+                    successCount++;
+                } catch (error) {
+                    console.error(`[ShareEvent] Failed to send to ${user.userName}:`, error);
+                }
+            }
+
+            if (successCount > 0) {
+                NotificationManager.show(`Event invitation sent to ${successCount} user${successCount !== 1 ? 's' : ''}! They can check their chat messages to see the details.`, 'success', 4000);
+                this.closeShareModal();
+            } else {
+                NotificationManager.show('Failed to send invitations. Please try again.', 'error', 3000);
+            }
+
+        } catch (error) {
+            console.error('[ShareEvent] Error sending invitations:', error);
+            NotificationManager.show('Failed to send invitations: ' + error.message, 'error', 3000);
+        }
+    }
+
+    getOrCreateDirectChatRoom(recipientUserId) {
+        // Create a consistent room ID based on both user IDs (sorted to ensure consistency)
+        const currentUserId = AppState.currentUser?.lineUserId || AppState.currentUser?.userId || 'user';
+        const ids = [currentUserId, recipientUserId].sort();
+        const roomId = `dm_${ids[0]}_${ids[1]}`;
+
+        // Check if room exists in chat system
+        if (!ChatSystem.chatRooms[roomId]) {
+            // Create new direct message room
+            const recipientUser = this.allShareUsers.find(u => (u.lineUserId || u.userId) === recipientUserId);
+
+            ChatSystem.chatRooms[roomId] = {
+                id: roomId,
+                name: recipientUser?.name || recipientUser?.username || 'User',
+                type: 'direct',
+                members: [currentUserId, recipientUserId],
+                messages: [],
+                unreadCount: 0
+            };
+        }
+
+        return roomId;
+    }
+
+    closeShareModal() {
+        document.getElementById('shareEventModal').style.display = 'none';
+        this.shareEvent = null;
+        this.selectedShareUsers = [];
+        this.allShareUsers = [];
+        document.getElementById('shareUserSearch').value = '';
     }
 }
 
@@ -31117,10 +33379,15 @@ class SocietyCalendar {
 
     async loadEvents() {
         try {
-            // Use the same SocietyGolfDB method as Events tab for consistency
-            const events = await window.SocietyGolfDB.getEvents();
-            this.events = events || [];
-            console.log(`[Calendar] Loaded ${this.events.length} events`);
+            // FIXED: Load events with stats to match Events tab and show accurate registration counts
+            const organizerId = AppState.currentUser?.lineUserId;
+            if (!organizerId) {
+                console.error('[Calendar] No organizer ID');
+                return;
+            }
+
+            this.events = await window.SocietyGolfDB.getOrganizerEventsWithStats(organizerId);
+            console.log(`[Calendar] Loaded ${this.events.length} events with stats`);
         } catch (error) {
             console.error('[Calendar] Exception loading events:', error);
             NotificationManager.show('Failed to load events', 'error');
@@ -31190,8 +33457,9 @@ class SocietyCalendar {
             }
 
             const todayClass = isToday ? 'ring-2 ring-sky-500 bg-sky-50' : 'hover:bg-gray-50';
-            const hasEventsClass = dayEvents.length > 0 ? 'cursor-pointer' : '';
-            const onclickAttr = dayEvents.length > 0 ? `onclick="window.SocietyCalendar.showDateEvents('${dateStr}')"` : '';
+            // FIXED: Make ALL dates clickable, not just dates with events
+            const hasEventsClass = 'cursor-pointer';
+            const onclickAttr = `onclick="window.SocietyCalendar.showDateEvents('${dateStr}')"`;
 
             html += `
                 <div class="aspect-square bg-white border rounded-lg p-2 ${todayClass} ${hasEventsClass} transition" ${onclickAttr}>
@@ -31225,7 +33493,8 @@ class SocietyCalendar {
         }
 
         // Check if closed/full
-        const registered = event.registeredCount || 0;
+        // FIXED: Read from event.stats.registered
+        const registered = event.stats?.registered || 0;
         const max = event.maxPlayers || 0;
         if (event.status === 'closed' || (max > 0 && registered >= max)) {
             return '<span class="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-700">Full</span>';
@@ -31267,7 +33536,8 @@ class SocietyCalendar {
             day: 'numeric'
         });
 
-        const registered = event.registeredCount || 0;
+        // FIXED: Read from event.stats.registered
+        const registered = event.stats?.registered || 0;
         const max = event.maxPlayers || 0;
         const percentFull = max > 0 ? Math.round((registered / max) * 100) : 0;
 
@@ -31379,8 +33649,9 @@ class SocietyCalendar {
         if (daysUntil < 0) return 'bg-gray-400';
 
         // Check if closed
+        // FIXED: Read from event.stats.registered
         if (event.status === 'closed' ||
-            (event.maxPlayers && event.registeredCount >= event.maxPlayers)) {
+            (event.maxPlayers && (event.stats?.registered || 0) >= event.maxPlayers)) {
             return 'bg-red-500';
         }
 
@@ -31400,7 +33671,8 @@ class SocietyCalendar {
         this.selectedDate = dateStr;
         const sidebar = document.getElementById('calendarSidebar');
 
-        const date = new Date(dateStr);
+        // FIXED: Parse date string as local date (add time to prevent UTC conversion)
+        const date = new Date(dateStr + 'T00:00:00');
         const dateDisplay = date.toLocaleDateString('en-US', {
             weekday: 'long',
             year: 'numeric',
@@ -31418,7 +33690,8 @@ class SocietyCalendar {
 
         events.forEach(event => {
             const statusColor = this.getEventColor(event).replace('bg-', '');
-            const registered = event.registeredCount || 0;
+            // FIXED: Read from event.stats.registered (populated by getOrganizerEventsWithStats)
+            const registered = event.stats?.registered || 0;
             const max = event.maxPlayers || 0;
 
             html += `
@@ -31475,7 +33748,8 @@ class SocietyCalendar {
         document.getElementById('calendarStatThisMonth').textContent = eventsThisMonth.length;
 
         // Total players
-        const totalPlayers = eventsThisMonth.reduce((sum, e) => sum + (e.registeredCount || 0), 0);
+        // FIXED: Read from event.stats.registered
+        const totalPlayers = eventsThisMonth.reduce((sum, e) => sum + (e.stats?.registered || 0), 0);
         document.getElementById('calendarStatPlayers').textContent = totalPlayers;
 
         // Upcoming in next 7 days
@@ -31493,7 +33767,8 @@ class SocietyCalendar {
 
         // Events needing attention (near capacity or near cutoff)
         const needAttention = eventsThisMonth.filter(e => {
-            const registered = e.registeredCount || 0;
+            // FIXED: Read from event.stats.registered
+            const registered = e.stats?.registered || 0;
             const max = e.maxPlayers || 0;
             const percentFull = max > 0 ? (registered / max) * 100 : 0;
 

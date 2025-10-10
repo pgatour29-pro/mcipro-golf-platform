@@ -2,6 +2,22 @@
 -- Courses: Bangpakong, Burapha East, Burapha West, Khao Kheow (A+B, A+C, B+C)
 
 -- ==============================================
+-- CLEAN UP: Delete any existing courses first
+-- ==============================================
+
+DELETE FROM course_holes WHERE course_id IN (
+    'bangpakong', 'burapha_east', 'burapha_west',
+    'khao_kheow', 'khao_kheow_ab', 'khao_kheow_ac', 'khao_kheow_bc',
+    'laem_chabang'
+);
+
+DELETE FROM courses WHERE id IN (
+    'bangpakong', 'burapha_east', 'burapha_west',
+    'khao_kheow', 'khao_kheow_ab', 'khao_kheow_ac', 'khao_kheow_bc',
+    'laem_chabang'
+);
+
+-- ==============================================
 -- BURAPHA GOLF CLUB - EAST COURSE (from scorecard image)
 -- ==============================================
 

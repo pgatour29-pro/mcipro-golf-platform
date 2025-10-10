@@ -1,5 +1,5 @@
 -- Pre-populate Pattaya area golf courses
--- Courses: Burapha East, Burapha West, Bangpakong, Laem Chabang, Khao Kheow
+-- Courses: Bangpakong, Burapha East, Burapha West, Khao Kheow
 
 -- ==============================================
 -- BURAPHA GOLF CLUB - EAST COURSE (from scorecard image)
@@ -92,35 +92,6 @@ INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, te
 ('bangpakong', 16, 3, 16, 160, 'white'),
 ('bangpakong', 17, 5, 2, 520, 'white'),
 ('bangpakong', 18, 4, 14, 365, 'white');
-
--- ==============================================
--- LAEM CHABANG INTERNATIONAL COUNTRY CLUB
--- ==============================================
-
-INSERT INTO courses (id, name, created_at) VALUES
-('laem_chabang', 'Laem Chabang International Country Club', NOW());
-
-INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
--- Front 9
-('laem_chabang', 1, 4, 11, 370, 'white'),
-('laem_chabang', 2, 4, 7, 380, 'white'),
-('laem_chabang', 3, 3, 17, 165, 'white'),
-('laem_chabang', 4, 5, 3, 515, 'white'),
-('laem_chabang', 5, 4, 9, 375, 'white'),
-('laem_chabang', 6, 4, 5, 395, 'white'),
-('laem_chabang', 7, 3, 15, 170, 'white'),
-('laem_chabang', 8, 5, 1, 535, 'white'),
-('laem_chabang', 9, 4, 13, 360, 'white'),
--- Back 9
-('laem_chabang', 10, 4, 10, 375, 'white'),
-('laem_chabang', 11, 5, 2, 525, 'white'),
-('laem_chabang', 12, 3, 18, 160, 'white'),
-('laem_chabang', 13, 4, 8, 385, 'white'),
-('laem_chabang', 14, 4, 12, 365, 'white'),
-('laem_chabang', 15, 4, 6, 390, 'white'),
-('laem_chabang', 16, 3, 16, 175, 'white'),
-('laem_chabang', 17, 5, 4, 520, 'white'),
-('laem_chabang', 18, 4, 14, 370, 'white');
 
 -- ==============================================
 -- KHAO KHEOW COUNTRY CLUB

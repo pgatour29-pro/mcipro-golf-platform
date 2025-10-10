@@ -31132,23 +31132,30 @@ class LiveScorecardSystem {
     }
 
     getPlayerTotal(playerId) {
-        // Calculate total based on scoring format
+        // Calculate total based on scoring format using ACTUAL course data
         let total = 0;
-        const par = 4; // Default par (should be from course data)
         const player = this.players.find(p => p.id === playerId);
+        const playerScores = this.scoresCache[playerId] || {};
 
         for (let hole = 1; hole <= this.currentHole; hole++) {
-            const score = this.getPlayerScore(playerId, hole);
+            const score = playerScores[hole];
             if (score) {
                 if (this.scoringFormat === 'stableford') {
-                    // Thailand Stableford: check if player gets stroke on this hole
-                    const strokeIndex = hole; // Using hole number as stroke index (should be from course data)
-                    const strokesOnHole = this.getHandicapStrokesOnHole(player.handicap, strokeIndex);
-                    const getsStroke = strokesOnHole > 0;
+                    // Get REAL course data for this hole
+                    const holeData = this.courseData?.holes?.[hole - 1];
+                    const par = holeData?.par || 4;
+                    const strokeIndex = holeData?.strokeIndex || hole;
 
-                    total += this.calculateThailandStableford(score, par, getsStroke);
+                    // Thailand Stableford: calculate points with handicap strokes
+                    const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
+                    const netScore = score - shotsReceived;
+                    const diff = par - netScore;
+                    let points = diff + 2;
+                    if (points < 0) points = 0;
+
+                    total += points;
                 } else {
-                    total += score; // Stroke play
+                    total += score; // Stroke play: just sum gross scores
                 }
             }
         }

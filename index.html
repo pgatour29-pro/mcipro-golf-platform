@@ -31154,52 +31154,53 @@ class LiveScorecardSystem {
             return;
         }
 
-        try {
-            const scorecardId = this.scorecards[this.currentPlayerId];
-            const player = this.players.find(p => p.id === this.currentPlayerId);
+        const scorecardId = this.scorecards[this.currentPlayerId];
+        const player = this.players.find(p => p.id === this.currentPlayerId);
 
-            // Get hole data from courseData
-            const holeData = this.courseData?.holes?.[this.currentHole - 1];
-            const par = holeData?.par || 4;
-            const strokeIndex = holeData?.strokeIndex || this.currentHole;
+        // Get hole data from courseData
+        const holeData = this.courseData?.holes?.[this.currentHole - 1];
+        const par = holeData?.par || 4;
+        const strokeIndex = holeData?.strokeIndex || this.currentHole;
 
-            await window.SocietyGolfDB.saveScore(
-                scorecardId,
-                this.currentHole,
-                score,
-                par,
-                strokeIndex,
-                player.handicap
-            );
-
-            // Store score in local cache for immediate rendering
-            if (!this.scoresCache[this.currentPlayerId]) {
-                this.scoresCache[this.currentPlayerId] = {};
-            }
-            this.scoresCache[this.currentPlayerId][this.currentHole] = score;
-
-            NotificationManager.show(`Score saved: ${score}`, 'success', 1000);
-            this.currentScore = '';
-            this.renderHole();
-            this.refreshLeaderboard();
-
-            // Auto-advance to next player
-            const currentIndex = this.players.findIndex(p => p.id === this.currentPlayerId);
-            if (currentIndex < this.players.length - 1) {
-                this.selectPlayer(this.players[currentIndex + 1].id);
-            } else {
-                // All players done, check if should advance hole
-                const allDone = this.players.every(p => this.getPlayerScore(p.id, this.currentHole));
-                if (allDone && this.currentHole < 18) {
-                    setTimeout(() => {
-                        this.nextHole();
-                    }, 1000);
-                }
-            }
-        } catch (error) {
-            console.error('[LiveScorecard] Error saving score:', error);
-            NotificationManager.show('Error saving score', 'error');
+        // ===== INSTANT UI UPDATE (Optimistic) =====
+        // Store score in local cache immediately
+        if (!this.scoresCache[this.currentPlayerId]) {
+            this.scoresCache[this.currentPlayerId] = {};
         }
+        this.scoresCache[this.currentPlayerId][this.currentHole] = score;
+
+        // Clear input and update UI instantly
+        this.currentScore = '';
+        this.renderHole();
+
+        // Auto-advance to next player IMMEDIATELY
+        const currentIndex = this.players.findIndex(p => p.id === this.currentPlayerId);
+        if (currentIndex < this.players.length - 1) {
+            this.selectPlayer(this.players[currentIndex + 1].id);
+        } else {
+            // All players done, check if should advance hole
+            const allDone = this.players.every(p => this.getPlayerScore(p.id, this.currentHole));
+            if (allDone && this.currentHole < 18) {
+                setTimeout(() => {
+                    this.nextHole();
+                }, 500);
+            }
+        }
+
+        // ===== BACKGROUND DATABASE SAVE (Don't wait) =====
+        window.SocietyGolfDB.saveScore(
+            scorecardId,
+            this.currentHole,
+            score,
+            par,
+            strokeIndex,
+            player.handicap
+        ).then(() => {
+            console.log(`[LiveScorecard] Score saved to DB: ${player.name} - Hole ${this.currentHole} - ${score}`);
+        }).catch(error => {
+            console.error('[LiveScorecard] Background save failed:', error);
+            // Score still in cache, so UI works. Can retry later.
+        });
     }
 
     prevHole() {

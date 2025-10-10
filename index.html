@@ -31530,6 +31530,7 @@ layout: "text_based"
             progressEl.textContent = 'Extracting data from regions in parallel...';
 
             // Run ALL region extractions in parallel (much faster!)
+            // Only extract PAR and HANDICAP (skip yardage for speed)
             const extractionPromises = [];
 
             if (profile.regions.par_front) {
@@ -31556,18 +31557,6 @@ layout: "text_based"
                         .then(data => ({ type: 'handicap_back', data }))
                 );
             }
-            if (profile.regions.yardage_men_front) {
-                extractionPromises.push(
-                    this.extractRegionData(this.capturedImage, profile.regions.yardage_men_front, imgWidth, imgHeight)
-                        .then(data => ({ type: 'yardage_front', data }))
-                );
-            }
-            if (profile.regions.yardage_men_back) {
-                extractionPromises.push(
-                    this.extractRegionData(this.capturedImage, profile.regions.yardage_men_back, imgWidth, imgHeight)
-                        .then(data => ({ type: 'yardage_back', data }))
-                );
-            }
 
             // Wait for ALL extractions to complete simultaneously
             const results = await Promise.all(extractionPromises);
@@ -31575,22 +31564,18 @@ layout: "text_based"
             // Organize results
             let parValues = [];
             let handicapValues = [];
-            let yardageValues = [];
 
             results.forEach(result => {
                 if (result.type === 'par_front') parValues.push(...result.data);
                 else if (result.type === 'par_back') parValues.push(...result.data);
                 else if (result.type === 'handicap_front') handicapValues.push(...result.data);
                 else if (result.type === 'handicap_back') handicapValues.push(...result.data);
-                else if (result.type === 'yardage_front') yardageValues.push(...result.data);
-                else if (result.type === 'yardage_back') yardageValues.push(...result.data);
             });
 
             console.log('[Scanner] Extracted pars:', parValues);
             console.log('[Scanner] Extracted handicaps:', handicapValues);
-            console.log('[Scanner] Extracted yardages:', yardageValues);
 
-            // Build course data
+            // Build course data (yardage skipped for speed)
             const courseData = {
                 name: profile.course_name,
                 teeMarker: 'white',
@@ -31602,7 +31587,7 @@ layout: "text_based"
                     number: i + 1,
                     par: parValues[i] || 4,
                     strokeIndex: handicapValues[i] || (i + 1),
-                    yardage: yardageValues[i] || 0
+                    yardage: 0  // Can be filled manually in review screen
                 });
             }
 

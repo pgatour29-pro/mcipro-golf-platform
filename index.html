@@ -30754,33 +30754,70 @@ class LiveScorecardSystem {
     async loadAvailableCourses() {
         console.log('[LiveScorecard] Loading available courses...');
 
+        // Check cache first (5 minute cache)
+        const cacheKey = 'mcipro_courses_cache';
+        const cacheTime = 5 * 60 * 1000; // 5 minutes
+
         try {
-            // Get all unique courses from database
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                const { courses, timestamp } = JSON.parse(cached);
+                const age = Date.now() - timestamp;
+
+                if (age < cacheTime) {
+                    console.log('[LiveScorecard] Using cached courses');
+                    this.availableCourses = courses;
+                    this.populateCourseSelector();
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn('[LiveScorecard] Cache read failed:', e);
+        }
+
+        try {
+            // Get all courses from database
             const { data: courses, error } = await window.SupabaseDB.client
                 .from('courses')
-                .select('*')
+                .select('id, name, created_at')
                 .order('name');
 
             if (error) throw error;
 
             this.availableCourses = courses || [];
-            console.log(`[LiveScorecard] Loaded ${this.availableCourses.length} courses`);
+            console.log(`[LiveScorecard] Loaded ${this.availableCourses.length} courses from database`);
+
+            // Cache for next time
+            try {
+                localStorage.setItem(cacheKey, JSON.stringify({
+                    courses: this.availableCourses,
+                    timestamp: Date.now()
+                }));
+            } catch (e) {
+                console.warn('[LiveScorecard] Cache write failed:', e);
+            }
 
             // Populate course selector
-            const select = document.getElementById('scorecardCourseSelect');
-            select.innerHTML = '<option value="">-- Select Course --</option>';
-
-            this.availableCourses.forEach(course => {
-                const option = document.createElement('option');
-                option.value = course.id;
-                option.textContent = course.name;
-                select.appendChild(option);
-            });
+            this.populateCourseSelector();
 
         } catch (error) {
             console.error('[LiveScorecard] Error loading courses:', error);
             NotificationManager.show('Error loading courses', 'error');
         }
+    }
+
+    populateCourseSelector() {
+        const select = document.getElementById('scorecardCourseSelect');
+        if (!select) return;
+
+        select.innerHTML = '<option value="">-- Select Course --</option>';
+
+        this.availableCourses.forEach(course => {
+            const option = document.createElement('option');
+            option.value = course.id;
+            option.textContent = course.name;
+            select.appendChild(option);
+        });
     }
 
     async loadCourseData(courseId) {
@@ -32014,7 +32051,8 @@ layout: "text_based"
                 .from('course_holes')
                 .insert(holeRecords);
 
-            // Reload available courses to include the new one
+            // Clear cache and reload available courses to include the new one
+            localStorage.removeItem('mcipro_courses_cache');
             await this.loadAvailableCourses();
 
             // Auto-select the newly added course

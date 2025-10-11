@@ -22409,6 +22409,40 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <p class="text-xs text-gray-500 mt-1">💰 Points awarded per hole (e.g., 100 points/hole = 1,800 total)</p>
                         </div>
 
+                        <!-- Public Game Toggle -->
+                        <div class="mb-4 p-4 bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-lg">
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-purple-600">public</span>
+                                    <label class="text-sm font-semibold text-gray-900">Make Game Public</label>
+                                </div>
+                                <label class="relative inline-block w-12 h-6">
+                                    <input type="checkbox" id="publicGameToggle" class="sr-only peer" onchange="LiveScorecardManager.togglePublicGame(this.checked)">
+                                    <div class="w-full h-full bg-gray-300 rounded-full peer peer-checked:bg-purple-600 transition-colors"></div>
+                                    <div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-6"></div>
+                                </label>
+                            </div>
+                            <div id="publicGameOptions" style="display: none;">
+                                <p class="text-xs text-gray-700 mb-3">
+                                    <strong>Let other groups compete!</strong> Groups on this course can join your side games in real-time.
+                                </p>
+                                <div class="space-y-2">
+                                    <label class="flex items-center text-sm">
+                                        <input type="checkbox" id="publicSkins" class="mr-2" checked>
+                                        <span>Open Skins pool</span>
+                                    </label>
+                                    <label class="flex items-center text-sm">
+                                        <input type="checkbox" id="publicMatchPlay" class="mr-2">
+                                        <span>Open Match Play pool</span>
+                                    </label>
+                                    <label class="flex items-center text-sm">
+                                        <input type="checkbox" id="publicNassau" class="mr-2">
+                                        <span>Open Nassau pool</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Add Players (1-7) -->
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 mb-2">Add Players (1-7)</label>
@@ -32114,6 +32148,9 @@ class LiveScorecardSystem {
         // Render first hole and leaderboard
         this.refreshLeaderboard();
 
+        // Create public pools if enabled
+        await this.createPublicPools();
+
         NotificationManager.show('Round started!', 'success');
     }
 
@@ -32451,6 +32488,133 @@ class LiveScorecardSystem {
             }
         } catch (error) {
             console.error('[LiveScorecard] Error saving round to history:', error);
+        }
+    }
+
+    // =====================================================
+    // PUBLIC GAMES / MULTI-GROUP COMPETITION
+    // =====================================================
+
+    togglePublicGame(isPublic) {
+        const optionsDiv = document.getElementById('publicGameOptions');
+        if (isPublic) {
+            optionsDiv.style.display = 'block';
+        } else {
+            optionsDiv.style.display = 'none';
+        }
+        console.log('[LiveScorecard] Public game mode:', isPublic);
+    }
+
+    async createPublicPools() {
+        const isPublic = document.getElementById('publicGameToggle').checked;
+        if (!isPublic) return;
+
+        const courseId = document.getElementById('scorecardCourseSelect').value;
+        const today = new Date().toISOString().split('T')[0];
+        const userId = AppState.currentUser?.lineUserId;
+
+        if (!userId || !courseId) {
+            console.warn('[LiveScorecard] Cannot create public pools - missing user or course');
+            return;
+        }
+
+        // Check which pools to create
+        const createSkins = document.getElementById('publicSkins')?.checked;
+        const createMatchPlay = document.getElementById('publicMatchPlay')?.checked;
+        const createNassau = document.getElementById('publicNassau')?.checked;
+
+        this.publicPoolIds = [];
+
+        try {
+            // Create Skins pool
+            if (createSkins) {
+                const pointsPerHole = parseInt(document.getElementById('skinsValueInput')?.value) || 100;
+                const result = await window.LiveGamesSystem.createPool({
+                    courseId: courseId,
+                    eventId: this.eventId,
+                    dateISO: today,
+                    type: 'skins',
+                    name: `Skins Game - ${pointsPerHole}pts/hole`,
+                    isPublic: true,
+                    config: {
+                        useNet: true,
+                        pointsPerHole: pointsPerHole,
+                        carryOver: true
+                    },
+                    createdBy: userId
+                });
+
+                if (result.success) {
+                    this.publicPoolIds.push({ type: 'skins', poolId: result.pool.id });
+                    // Auto-join creator
+                    await window.LiveGamesSystem.joinPool(result.pool.id, userId);
+                    console.log('[LiveScorecard] Created and joined Skins pool:', result.pool.id);
+                }
+            }
+
+            // Create Match Play pool
+            if (createMatchPlay) {
+                const result = await window.LiveGamesSystem.createPool({
+                    courseId: courseId,
+                    eventId: this.eventId,
+                    dateISO: today,
+                    type: 'matchplay',
+                    name: `Match Play - Open`,
+                    isPublic: true,
+                    config: {
+                        useNet: true
+                    },
+                    createdBy: userId
+                });
+
+                if (result.success) {
+                    this.publicPoolIds.push({ type: 'matchplay', poolId: result.pool.id });
+                    await window.LiveGamesSystem.joinPool(result.pool.id, userId);
+                    console.log('[LiveScorecard] Created and joined Match Play pool:', result.pool.id);
+                }
+            }
+
+            // Create Nassau pool
+            if (createNassau) {
+                const result = await window.LiveGamesSystem.createPool({
+                    courseId: courseId,
+                    eventId: this.eventId,
+                    dateISO: today,
+                    type: 'nassau',
+                    name: `Nassau - Open`,
+                    isPublic: true,
+                    config: {
+                        useNet: true
+                    },
+                    createdBy: userId
+                });
+
+                if (result.success) {
+                    this.publicPoolIds.push({ type: 'nassau', poolId: result.pool.id });
+                    await window.LiveGamesSystem.joinPool(result.pool.id, userId);
+                    console.log('[LiveScorecard] Created and joined Nassau pool:', result.pool.id);
+                }
+            }
+
+            if (this.publicPoolIds.length > 0) {
+                NotificationManager.show(`✅ Created ${this.publicPoolIds.length} public game${this.publicPoolIds.length > 1 ? 's' : ''} - others can now join!`, 'success');
+            }
+
+        } catch (error) {
+            console.error('[LiveScorecard] Error creating public pools:', error);
+            NotificationManager.show('Error creating public games', 'error');
+        }
+    }
+
+    async updatePublicPoolProgress(hole) {
+        // Update progress for all pools this round is participating in
+        if (!this.publicPoolIds || this.publicPoolIds.length === 0) return;
+
+        const userId = AppState.currentUser?.lineUserId;
+        if (!userId) return;
+
+        for (const { poolId } of this.publicPoolIds) {
+            await window.LiveGamesSystem.updateProgress(poolId, userId, hole);
         }
     }
 
@@ -36089,6 +36253,380 @@ function updateRecurEndOptions() {
         countContainer.style.display = 'block';
     }
 }
+
+// ==================================================================
+// LIVE GAMES SYSTEM - Multi-Group Side Game Competition
+// ==================================================================
+// Allows multiple groups to compete in Skins, Match Play, Nassau
+// across different tee times on the same course/day
+// ==================================================================
+
+const LiveGamesSystem = {
+    // =====================================================
+    // CORE HELPERS - Progress & Fairness Cutoff
+    // =====================================================
+
+    /**
+     * Compute holes completed from scores cache
+     * Returns { playerId: maxHole }
+     */
+    computeHolesCompleted(scoresCache) {
+        const completed = {};
+        for (const [playerId, holes] of Object.entries(scoresCache)) {
+            const maxHole = Math.max(0, ...Object.keys(holes).map(h => parseInt(h)).filter(h => !isNaN(h)));
+            completed[playerId] = maxHole || 0;
+        }
+        return completed;
+    },
+
+    /**
+     * Get fairness cutoff: minimum hole completed across entrants
+     */
+    commonCutoffHole(entrantIds, holesCompleted) {
+        if (!entrantIds || entrantIds.length === 0) return 0;
+        let min = Infinity;
+        for (const id of entrantIds) {
+            const h = holesCompleted[id] || 0;
+            if (h < min) min = h;
+        }
+        return Number.isFinite(min) ? min : 0;
+    },
+
+    /**
+     * Filter scores to only include up to cutoff hole
+     */
+    filterScoresToCutoff(scoresCache, playerId, cutoffHole) {
+        const playerScores = scoresCache[playerId] || {};
+        const filtered = {};
+        for (const [hole, score] of Object.entries(playerScores)) {
+            const holeNum = parseInt(hole);
+            if (holeNum <= cutoffHole) {
+                filtered[hole] = score;
+            }
+        }
+        return filtered;
+    },
+
+    // =====================================================
+    // POOL MANAGEMENT
+    // =====================================================
+
+    /**
+     * Create a new side game pool
+     */
+    async createPool(poolData) {
+        try {
+            const { data, error } = await window.SupabaseDB.client
+                .from('side_game_pools')
+                .insert({
+                    course_id: poolData.courseId,
+                    event_id: poolData.eventId || null,
+                    date_iso: poolData.dateISO,
+                    type: poolData.type,
+                    name: poolData.name,
+                    is_public: poolData.isPublic !== false,
+                    config: poolData.config || {},
+                    created_by: poolData.createdBy
+                })
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            console.log('[LiveGames] Pool created:', data);
+            return { success: true, pool: data };
+        } catch (error) {
+            console.error('[LiveGames] Error creating pool:', error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    /**
+     * Join a pool
+     */
+    async joinPool(poolId, playerId) {
+        try {
+            const { data, error } = await window.SupabaseDB.client
+                .from('pool_entrants')
+                .insert({
+                    pool_id: poolId,
+                    player_id: playerId
+                })
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            console.log('[LiveGames] Joined pool:', poolId);
+            return { success: true };
+        } catch (error) {
+            console.error('[LiveGames] Error joining pool:', error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    /**
+     * Leave a pool
+     */
+    async leavePool(poolId, playerId) {
+        try {
+            const { error } = await window.SupabaseDB.client
+                .from('pool_entrants')
+                .delete()
+                .eq('pool_id', poolId)
+                .eq('player_id', playerId);
+
+            if (error) throw error;
+
+            console.log('[LiveGames] Left pool:', poolId);
+            return { success: true };
+        } catch (error) {
+            console.error('[LiveGames] Error leaving pool:', error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    /**
+     * Get available pools for current scope
+     */
+    async getAvailablePools(courseId, dateISO, eventId = null) {
+        try {
+            let query = window.SupabaseDB.client
+                .from('side_game_pools')
+                .select(`
+                    *,
+                    pool_entrants (
+                        player_id,
+                        joined_at
+                    )
+                `)
+                .eq('course_id', courseId)
+                .eq('date_iso', dateISO)
+                .eq('status', 'active')
+                .eq('is_public', true);
+
+            if (eventId) {
+                query = query.eq('event_id', eventId);
+            }
+
+            const { data, error } = await query;
+
+            if (error) throw error;
+
+            console.log(`[LiveGames] Found ${data?.length || 0} available pools`);
+            return { success: true, pools: data || [] };
+        } catch (error) {
+            console.error('[LiveGames] Error getting pools:', error);
+            return { success: false, error: error.message, pools: [] };
+        }
+    },
+
+    /**
+     * Update live progress for a player
+     */
+    async updateProgress(poolId, playerId, hole) {
+        try {
+            const { error } = await window.SupabaseDB.client
+                .rpc('update_live_progress', {
+                    p_pool_id: poolId,
+                    p_player_id: playerId,
+                    p_hole: hole
+                });
+
+            if (error) throw error;
+
+            return { success: true };
+        } catch (error) {
+            console.error('[LiveGames] Error updating progress:', error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    // =====================================================
+    // LEADERBOARD CALCULATIONS
+    // =====================================================
+
+    /**
+     * Calculate Skins leaderboard with fairness cutoff
+     */
+    async calculateSkinsLeaderboard(pool, allPlayerData, courseData) {
+        // Get holes completed for all entrants
+        const holesCompleted = {};
+        for (const player of allPlayerData) {
+            const maxHole = Math.max(0, ...Object.keys(player.scores).map(h => parseInt(h)));
+            holesCompleted[player.playerId] = maxHole || 0;
+        }
+
+        // Get fairness cutoff
+        const entrantIds = pool.pool_entrants.map(e => e.player_id);
+        const cutoff = this.commonCutoffHole(entrantIds, holesCompleted);
+
+        if (cutoff < 1) {
+            return {
+                cutoffHole: 0,
+                leaderboard: [],
+                message: 'Waiting for all players to complete at least one hole...'
+            };
+        }
+
+        // Filter player data to cutoff
+        const filteredPlayers = allPlayerData.map(player => ({
+            ...player,
+            scores: Object.fromEntries(
+                Object.entries(player.scores).filter(([hole]) => parseInt(hole) <= cutoff)
+            )
+        }));
+
+        // Calculate skins using existing engine
+        const pointsPerHole = pool.config.pointsPerHole || 100;
+        const skinsResults = window.golfScoringEngine.calculateSkins(
+            filteredPlayers.map(p => ({
+                playerId: p.playerId,
+                playerName: p.playerName,
+                scores: Object.entries(p.scores).map(([hole, strokes]) => ({
+                    hole_number: parseInt(hole),
+                    gross_score: strokes
+                })),
+                handicap: p.handicap
+            })),
+            courseData.holes,
+            pool.config.useNet !== false,
+            pointsPerHole
+        );
+
+        // Build leaderboard
+        const leaderboard = entrantIds.map(playerId => {
+            const player = allPlayerData.find(p => p.playerId === playerId);
+            return {
+                playerId: playerId,
+                playerName: player?.playerName || 'Unknown',
+                totalPoints: skinsResults.skinsWon[playerId] || 0,
+                frontNine: skinsResults.frontNine[playerId] || 0,
+                backNine: skinsResults.backNine[playerId] || 0,
+                holesCompleted: holesCompleted[playerId] || 0
+            };
+        });
+
+        // Sort by total points
+        leaderboard.sort((a, b) => b.totalPoints - a.totalPoints);
+
+        return {
+            cutoffHole: cutoff,
+            leaderboard: leaderboard,
+            holeResults: skinsResults.holeResults
+        };
+    },
+
+    /**
+     * Calculate Match Play leaderboard with fairness cutoff
+     */
+    async calculateMatchPlayLeaderboard(pool, allPlayerData, courseData) {
+        const holesCompleted = {};
+        for (const player of allPlayerData) {
+            const maxHole = Math.max(0, ...Object.keys(player.scores).map(h => parseInt(h)));
+            holesCompleted[player.playerId] = maxHole || 0;
+        }
+
+        const entrantIds = pool.pool_entrants.map(e => e.player_id);
+        const cutoff = this.commonCutoffHole(entrantIds, holesCompleted);
+
+        if (cutoff < 1) {
+            return {
+                cutoffHole: 0,
+                leaderboard: [],
+                message: 'Waiting for players to complete holes...'
+            };
+        }
+
+        // Filter to cutoff
+        const filteredPlayers = allPlayerData.map(player => ({
+            ...player,
+            scores: Object.fromEntries(
+                Object.entries(player.scores).filter(([hole]) => parseInt(hole) <= cutoff)
+            )
+        }));
+
+        // Calculate match play using existing engine
+        const matchResults = window.golfScoringEngine.calculateMatchPlay(
+            filteredPlayers.map(p => ({
+                playerId: p.playerId,
+                playerName: p.playerName,
+                scores: Object.entries(p.scores).map(([hole, strokes]) => ({
+                    hole_number: parseInt(hole),
+                    gross_score: strokes
+                })),
+                handicap: p.handicap
+            })),
+            courseData.holes,
+            pool.config.useNet !== false
+        );
+
+        // Build leaderboard
+        const leaderboard = entrantIds.map(playerId => {
+            const player = allPlayerData.find(p => p.playerId === playerId);
+            const matchData = matchResults[playerId] || {};
+            return {
+                playerId: playerId,
+                playerName: player?.playerName || 'Unknown',
+                holesUp: matchData.holesUp || 0,
+                holesDown: matchData.holesDown || 0,
+                holesHalved: matchData.holesHalved || 0,
+                netHoles: matchData.netHoles || 0,
+                status: matchData.status || 'All Square',
+                matchFinished: matchData.matchFinished || false,
+                holesCompleted: holesCompleted[playerId] || 0
+            };
+        });
+
+        // Sort by net holes (most up first)
+        leaderboard.sort((a, b) => b.netHoles - a.netHoles);
+
+        return {
+            cutoffHole: cutoff,
+            leaderboard: leaderboard
+        };
+    },
+
+    /**
+     * Get pool leaderboard
+     */
+    async getPoolLeaderboard(poolId) {
+        try {
+            // Get pool with entrants
+            const { data: pool, error: poolError } = await window.SupabaseDB.client
+                .from('side_game_pools')
+                .select(`
+                    *,
+                    pool_entrants (
+                        player_id,
+                        joined_at
+                    )
+                `)
+                .eq('id', poolId)
+                .single();
+
+            if (poolError) throw poolError;
+
+            // Get all players' scores for this pool
+            // TODO: Fetch actual scorecard data based on pool scope
+            // For now, return structure
+            return {
+                success: true,
+                pool: pool,
+                leaderboard: null,
+                message: 'Leaderboard calculation in progress...'
+            };
+
+        } catch (error) {
+            console.error('[LiveGames] Error getting leaderboard:', error);
+            return { success: false, error: error.message };
+        }
+    }
+};
+
+// Make available globally
+window.LiveGamesSystem = LiveGamesSystem;
+console.log('[LiveGames] ✅ Multi-group competition system loaded');
 
 // Initialize global instance
 window.SocietyOrganizerSystem = new SocietyOrganizerManager();

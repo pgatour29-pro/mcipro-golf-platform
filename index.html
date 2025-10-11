@@ -6095,8 +6095,7 @@
                 ProfileSystem.updateUIWithProfile();
                 UserInterface.updateUserDisplays();
 
-                // Initialize ChatSystem for the logged-in user
-                ChatSystem.initialize();
+                // ChatSystem will initialize when user opens chat (loads real users from Supabase)
 
                 LineAuthentication.redirectToDashboard();
             }, 1000);
@@ -15358,10 +15357,10 @@ document.addEventListener('DOMContentLoaded', function() {
             },
 
             async showChatInterface() {
-                // Initialize chat system first - load real users from Supabase
-                if (!this.currentUser) {
-                    await this.initialize();
-                }
+                // ALWAYS load real users from Supabase - ensure fresh data
+                console.log('[ChatSystem] Opening chat interface...');
+                await this.initialize();
+                console.log('[ChatSystem] Initialization complete, chat rooms:', Object.keys(this.chatRooms));
 
                 const modal = document.createElement('div');
                 modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
@@ -15975,114 +15974,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 return translated;
             },
 
-            // Initialize chat system with sample data
-            initializeChatSystem() {
-                // Set current user based on the logged-in user
-                this.currentUser = {
-                    id: AppState.currentUser.role || 'guest',
-                    name: AppState.currentUser.name || 'Guest User',
-                    avatar: AppState.currentUser.role === 'golfer' ? '🏌️‍♂️' :
-                           AppState.currentUser.role === 'caddie' ? '👨‍💼' :
-                           AppState.currentUser.role === 'manager' ? '👔' : '👤',
-                    language: currentLanguage || 'en'
-                };
-
-                // Initialize sample chat rooms with messages for testing
-                this.chatRooms = {
-                    'golf_general': {
-                        id: 'golf_general',
-                        name: 'Golf General',
-                        type: 'group',
-                        category: 'course',
-                        avatar: '🏌️‍♂️', photo: 'images/caddies/caddy11.jpg',
-                        members: ['golfer', 'caddie', 'manager'],
-                        messages: [
-                            {
-                                id: 'msg_1',
-                                text: 'Good morning everyone!',
-                                userId: 'manager',
-                                userName: 'Course Manager',
-                                timestamp: Date.now() - 3600000
-                            },
-                            {
-                                id: 'msg_2',
-                                text: 'Hello! Ready for today\'s round.',
-                                userId: 'golfer',
-                                userName: 'John Mitchell',
-                                timestamp: Date.now() - 1800000
-                            },
-                            {
-                                id: 'msg_3',
-                                text: 'Yes, I am ready. On the way to first tee.',
-                                userId: 'caddie',
-                                userName: 'Ning',
-                                timestamp: Date.now() - 900000
-                            }
-                        ],
-                        unreadCount: 0,
-                        lastActivity: Date.now() - 900000,
-                        lastMessage: {
-                            text: 'Yes, I am ready. On the way to first tee.',
-                            timestamp: Date.now() - 900000
-                        }
-                    },
-                    'caddie_support': {
-                        id: 'caddie_support',
-                        name: 'Caddy Support',
-                        type: 'group',
-                        category: 'caddies',
-                        avatar: '👨‍💼', photo: 'images/caddies/caddy12.jpg',
-                        members: ['caddie', 'manager'],
-                        messages: [
-                            {
-                                id: 'msg_4',
-                                text: 'Thank you for the excellent service today!',
-                                userId: 'manager',
-                                userName: 'Pro Shop Manager',
-                                timestamp: Date.now() - 7200000
-                            },
-                            {
-                                id: 'msg_5',
-                                text: 'Thanks! Great game with the golfers.',
-                                userId: 'caddie',
-                                userName: 'Ning',
-                                timestamp: Date.now() - 3600000
-                            }
-                        ],
-                        unreadCount: 1,
-                        lastActivity: Date.now() - 3600000,
-                        lastMessage: {
-                            text: 'Thanks! Great game with the golfers.',
-                            timestamp: Date.now() - 3600000
-                        }
-                    },
-                    'direct_manager': {
-                        id: 'direct_manager',
-                        name: 'Course Manager',
-                        type: 'direct',
-                        category: 'direct',
-                        avatar: '👔', photo: 'images/caddies/caddy13.jpg',
-                        members: [this.currentUser.id, 'manager'],
-                        messages: [
-                            {
-                                id: 'msg_6',
-                                text: 'Nice shot on hole 7! Well done.',
-                                userId: 'manager',
-                                userName: 'Course Manager',
-                                timestamp: Date.now() - 1800000
-                            }
-                        ],
-                        unreadCount: 0,
-                        lastActivity: Date.now() - 1800000,
-                        lastMessage: {
-                            text: 'Nice shot on hole 7! Well done.',
-                            timestamp: Date.now() - 1800000
-                        }
-                    }
-                };
-
-                console.log('Chat system initialized with current user:', this.currentUser);
-            },
 
             // Mobile-specific methods
             generateMobileChatSidebar() {

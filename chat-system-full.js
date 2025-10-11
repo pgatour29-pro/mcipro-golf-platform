@@ -1,6 +1,6 @@
 // Full chat UI glue (vanilla JS) wired to Supabase helpers
 import { ensureDirectConversation, listConversations, fetchMessages, sendMessage, subscribeToConversation, markRead, typing, subscribeTyping, uploadMediaAndSend, getSignedMediaUrl } from './chat-database-functions.js';
-import { supabase } from './supabaseClient.js';
+import { getSupabaseClient } from './supabaseClient.js';
 
 const state = {
   currentConversationId: null,
@@ -57,6 +57,7 @@ async function renderMessage(m) {
 }
 
 async function openConversation(conversationId) {
+  const supabase = await getSupabaseClient();
   state.currentConversationId = conversationId;
   const listEl = document.querySelector('#messages');
   listEl.innerHTML = '';
@@ -64,8 +65,8 @@ async function openConversation(conversationId) {
   for (const m of initial) listEl.appendChild(await renderMessage(m));
   listEl.scrollTop = listEl.scrollHeight;
 
-  if (state.channels[conversationId]) {
-    supabase.removeChannel(state.channels[conversationId]);
+  if (state.channels[conversationId]?.channel) {
+    supabase.removeChannel(state.channels[conversationId].channel);
   }
   state.channels[conversationId] = subscribeToConversation(conversationId, async (m) => {
     if (state.currentConversationId === conversationId) {
@@ -77,7 +78,7 @@ async function openConversation(conversationId) {
   });
 
   markRead(conversationId);
-  if (state.typingChannel) supabase.removeChannel(state.typingChannel);
+  if (state.typingChannel?.channel) supabase.removeChannel(state.typingChannel.channel);
   state.typingChannel = subscribeTyping(conversationId, (rows)=>{
     const el = document.querySelector('#typing');
     el.textContent = rows.length ? 'typing…' : '';
@@ -100,6 +101,7 @@ async function sendMedia(files) {
 }
 
 export async function initChat() {
+  const supabase = await getSupabaseClient();
   const sidebar = document.querySelector('#conversations');
   sidebar.innerHTML = '';
 

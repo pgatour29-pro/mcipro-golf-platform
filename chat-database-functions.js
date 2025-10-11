@@ -1,7 +1,8 @@
 // Database helpers (Supabase JS v2)
-import { supabase } from './supabaseClient.js';
+import { getSupabaseClient } from './supabaseClient.js';
 
 export async function ensureDirectConversation(otherUserId) {
+  const supabase = await getSupabaseClient();
   const { data: user } = await supabase.auth.getUser();
   if (!user?.user) throw new Error('Not authenticated');
   const { data, error } = await supabase.rpc('ensure_direct_conversation', { a: user.user.id, b: otherUserId });
@@ -10,6 +11,7 @@ export async function ensureDirectConversation(otherUserId) {
 }
 
 export async function listConversations() {
+  const supabase = await getSupabaseClient();
   const { data, error } = await supabase
     .from('conversations')
     .select('id, is_group, title, avatar_url, last_message_at, updated_at')
@@ -20,6 +22,7 @@ export async function listConversations() {
 }
 
 export async function fetchMessages(conversationId, limit = 50, before) {
+  const supabase = await getSupabaseClient();
   let q = supabase
     .from('messages')
     .select('*')
@@ -50,6 +53,7 @@ export function normalizeMessage(m) {
 }
 
 export async function sendMessage(conversationId, body, type = 'text', metadata = {}) {
+  const supabase = await getSupabaseClient();
   const { data: user } = await supabase.auth.getUser();
   if (!user?.user) throw new Error('Not authenticated');
   const profileId = user.user.id;
@@ -67,7 +71,9 @@ export async function sendMessage(conversationId, body, type = 'text', metadata 
 }
 
 export function subscribeToConversation(conversationId, onInsert, onUpdate) {
-  const channel = supabase.channel(`msg:${conversationId}`)
+  let channelRef = null;
+  getSupabaseClient().then((supabase) => {
+    const channel = supabase.channel(`msg:${conversationId}`)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
       onInsert && onInsert(normalizeMessage(payload.new));
     })
@@ -75,10 +81,13 @@ export function subscribeToConversation(conversationId, onInsert, onUpdate) {
       onUpdate && onUpdate(normalizeMessage(payload.new));
     })
     .subscribe();
-  return channel;
+    channelRef = channel;
+  });
+  return { get channel() { return channelRef; } };
 }
 
 export async function markRead(conversationId) {
+  const supabase = await getSupabaseClient();
   const { data: user } = await supabase.auth.getUser();
   if (!user?.user) return;
   const now = new Date().toISOString();
@@ -91,19 +100,24 @@ export async function markRead(conversationId) {
 }
 
 export async function typing(conversationId) {
+  const supabase = await getSupabaseClient();
   const { data: user } = await supabase.auth.getUser();
   if (!user?.user) return;
   await supabase.from('typing_events').insert({ conversation_id: conversationId, user_id: user.user.id, expires_at: new Date(Date.now()+8000).toISOString() });
 }
 
 export function subscribeTyping(conversationId, cb) {
-  const channel = supabase.channel(`typing:${conversationId}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'typing_events', filter: `conversation_id=eq.${conversationId}` }, async () => {
-      const { data } = await supabase.from('typing_events').select('user_id, started_at').eq('conversation_id', conversationId).gt('expires_at', new Date().toISOString());
-      cb && cb(data || []);
-    })
-    .subscribe();
-  return channel;
+  let channelRef = null;
+  getSupabaseClient().then((supabase) => {
+    const channel = supabase.channel(`typing:${conversationId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'typing_events', filter: `conversation_id=eq.${conversationId}` }, async () => {
+        const { data } = await supabase.from('typing_events').select('user_id, started_at').eq('conversation_id', conversationId).gt('expires_at', new Date().toISOString());
+        cb && cb(data || []);
+      })
+      .subscribe();
+    channelRef = channel;
+  });
+  return { get channel() { return channelRef; } };
 }
 
 /** ================== MEDIA (private) ==================
@@ -111,6 +125,7 @@ export function subscribeTyping(conversationId, cb) {
  * Access is via short-lived signed URLs from the edge function.
  */
 export async function uploadMediaAndSend(conversationId, file) {
+  const supabase = await getSupabaseClient();
   const { data: user } = await supabase.auth.getUser();
   if (!user?.user) throw new Error('Not authenticated');
   const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
@@ -142,6 +157,7 @@ export function inferTypeFromMime(mime) {
  * Uses the edge function to validate conversation membership.
  */
 export async function getSignedMediaUrl(conversationId, bucket, object_path) {
+  const supabase = await getSupabaseClient();
   const session = (await supabase.auth.getSession()).data.session;
   const token = session?.access_token;
   // Get Supabase URL from the client

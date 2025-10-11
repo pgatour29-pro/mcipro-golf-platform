@@ -14982,7 +14982,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 };
 
                 this.initializeChatRooms();
-                this.loadSampleMessages();
+                // Load real users from Supabase instead of fake demo data
+                this.loadRealUsersFromSupabase();
 
                 // Load messages from cloud
                 this.loadMessagesFromCloud();
@@ -15158,215 +15159,65 @@ document.addEventListener('DOMContentLoaded', function() {
             },
 
             initializeChatRooms() {
-                this.chatRooms = {
-                    // Course-specific groups
-                    'pattaya_golf_general': {
-                        id: 'pattaya_golf_general',
-                        name: 'Pattaya Golf - General',
-                        category: 'course',
-                        type: 'group',
-                        avatar: '🏌️‍♂️', photo: 'images/caddies/caddy2.jpg',
-                        description: 'General discussion for Pattaya Golf Club',
-                        members: ['golfer_john_mitchell', 'caddie_ning', 'manager_sarah', 'golfer_mike_chen', 'caddie_somchai'],
-                        admins: ['manager_sarah'],
-                        moderators: ['caddie_ning'],
-                        language: 'mixed',
-                        accessLevel: 'public', // public, members-only, staff-only, admin-only
-                        allowedRoles: ['golfer', 'caddy', 'staff', 'manager', 'admin'], // all roles allowed
-                        messages: []
-                    },
-                    'thai_country_club': {
-                        id: 'thai_country_club',
-                        name: 'Thai Country Club VIP',
-                        category: 'course',
-                        type: 'group',
-                        avatar: '⛳', photo: 'images/caddies/caddy3.jpg',
-                        description: 'VIP members and premium services',
-                        members: ['golfer_john_mitchell', 'caddie_somchai', 'manager_sarah', 'proshop_robert'],
-                        admins: ['manager_sarah'],
-                        moderators: ['proshop_robert'],
-                        language: 'mixed',
-                        accessLevel: 'members-only',
-                        allowedRoles: ['golfer', 'caddy', 'staff', 'manager', 'admin'],
-                        messages: []
-                    },
+                // Start with empty chat rooms - will be populated from Supabase
+                this.chatRooms = {};
+            },
 
-                    // Role-based groups
-                    'golfers_lounge': {
-                        id: 'golfers_lounge',
-                        name: 'Golfers Lounge',
-                        category: 'golfers',
-                        type: 'group',
-                        avatar: '🏆', photo: 'images/caddies/caddy4.jpg',
-                        description: 'Chat for golfers to share tips and experiences',
-                        members: ['golfer_john_mitchell', 'golfer_mike_chen', 'golfer_sarah_kim', 'golfer_david_wong'],
-                        admins: ['golfer_mike_chen'],
-                        moderators: [],
-                        language: 'mixed',
-                        accessLevel: 'public',
-                        allowedRoles: ['golfer', 'staff', 'manager', 'admin'],
-                        messages: []
-                    },
-                    'caddie_network': {
-                        id: 'caddie_network',
-                        name: 'Caddy Professional Network',
-                        category: 'caddies',
-                        type: 'group',
-                        avatar: '👨‍💼', photo: 'images/caddies/caddy5.jpg',
-                        description: 'Professional network for caddies to share knowledge',
-                        members: ['caddie_ning', 'caddie_somchai', 'caddie_apinya', 'caddie_chaiwat', 'caddie_malee'],
-                        admins: ['caddie_somchai'],
-                        moderators: ['caddie_ning'],
-                        language: 'mixed',
-                        accessLevel: 'members-only',
-                        allowedRoles: ['caddy', 'manager', 'admin'],
-                        messages: []
-                    },
-                    'staff_coordination': {
-                        id: 'staff_coordination',
-                        name: 'Staff Coordination',
-                        category: 'staff',
-                        type: 'group',
-                        avatar: '👥', photo: 'images/caddies/caddy6.jpg',
-                        description: 'Internal staff communication and coordination',
-                        members: ['manager_sarah', 'proshop_robert', 'caddie_ning', 'staff_maintenance', 'staff_security'],
-                        admins: ['manager_sarah'],
-                        moderators: ['proshop_robert'],
-                        language: 'mixed',
-                        accessLevel: 'staff-only', // Only staff can see this
-                        allowedRoles: ['staff', 'manager', 'admin'],
-                        messages: []
-                    },
+            async loadRealUsersFromSupabase() {
+                try {
+                    // Load all users from Supabase user_profiles table
+                    const { data: users, error } = await window.SupabaseDB.client
+                        .from('user_profiles')
+                        .select('line_user_id, name, username, role')
+                        .order('created_at', { ascending: false });
 
-                    // Society and tournament groups
-                    'bangkok_golf_society': {
-                        id: 'bangkok_golf_society',
-                        name: 'Bangkok Golf Society',
-                        category: 'societies',
-                        type: 'group',
-                        avatar: '🏅', photo: 'images/caddies/caddy7.jpg',
-                        description: 'Bangkok Golf Society members and events',
-                        members: ['society_alex', 'golfer_john_mitchell', 'golfer_mike_chen', 'society_organizer_bangkok'],
-                        admins: ['society_alex'],
-                        moderators: ['society_organizer_bangkok'],
-                        language: 'mixed',
-                        accessLevel: 'members-only',
-                        allowedRoles: ['golfer', 'staff', 'manager', 'admin'],
-                        messages: []
-                    },
-                    'monthly_tournaments': {
-                        id: 'monthly_tournaments',
-                        name: 'Monthly Tournaments',
-                        category: 'tournaments',
-                        type: 'group',
-                        avatar: '🏆', photo: 'images/caddies/caddy8.jpg',
-                        description: 'Updates and discussions about monthly tournaments',
-                        members: ['golfer_john_mitchell', 'manager_sarah', 'tournament_director', 'golfer_mike_chen'],
-                        admins: ['tournament_director'],
-                        moderators: ['manager_sarah'],
-                        language: 'mixed',
-                        accessLevel: 'public',
-                        allowedRoles: ['golfer', 'staff', 'manager', 'admin'],
-                        messages: []
-                    },
-
-                    // Support and services
-                    'customer_support': {
-                        id: 'customer_support',
-                        name: 'Customer Support',
-                        category: 'support',
-                        type: 'group',
-                        avatar: '🆘', photo: 'images/caddies/caddy9.jpg',
-                        description: '24/7 customer support and assistance',
-                        members: ['golfer_john_mitchell', 'support_team', 'manager_sarah', 'support_thai', 'support_english'],
-                        admins: ['support_team'],
-                        moderators: ['manager_sarah'],
-                        language: 'mixed',
-                        accessLevel: 'public',
-                        allowedRoles: ['golfer', 'caddy', 'staff', 'manager', 'admin'],
-                        messages: []
-                    },
-
-                    // Direct messages (samples)
-                    'dm_ning_prasert': {
-                        id: 'dm_ning_prasert',
-                        name: 'Ning Prasert',
-                        category: 'direct',
-                        type: 'direct',
-                        avatar: '👨‍🦲', photo: 'images/caddies/caddy10.jpg',
-                        description: 'Direct message with Ning Prasert',
-                        members: ['golfer_john_mitchell', 'caddie_ning'],
-                        admins: [],
-                        moderators: [],
-                        language: 'mixed',
-                        accessLevel: 'members-only',
-                        allowedRoles: ['golfer', 'caddy', 'staff', 'manager', 'admin'],
-                        messages: []
+                    if (error) {
+                        console.error('[ChatSystem] Error loading users:', error);
+                        return;
                     }
-                };
+
+                    if (!users || users.length === 0) {
+                        console.log('[ChatSystem] No users found in database');
+                        return;
+                    }
+
+                    console.log(`[ChatSystem] Loaded ${users.length} real users from Supabase`);
+
+                    // Create direct message rooms for each user (except current user)
+                    users.forEach(user => {
+                        if (user.line_user_id === this.currentUser.id) return; // Skip self
+
+                        const roomId = `dm_${user.line_user_id}`;
+                        const displayName = user.username || user.name || 'User';
+
+                        this.chatRooms[roomId] = {
+                            id: roomId,
+                            name: displayName,
+                            category: 'direct',
+                            type: 'direct',
+                            avatar: '👤',
+                            description: `Direct message with ${displayName}`,
+                            members: [this.currentUser.id, user.line_user_id],
+                            admins: [],
+                            moderators: [],
+                            language: 'mixed',
+                            accessLevel: 'members-only',
+                            allowedRoles: ['golfer', 'caddy', 'staff', 'manager', 'admin'],
+                            messages: [],
+                            userData: user // Store full user data
+                        };
+                    });
+
+                    console.log(`[ChatSystem] Created ${Object.keys(this.chatRooms).length} direct message rooms`);
+
+                } catch (error) {
+                    console.error('[ChatSystem] Exception loading users:', error);
+                }
             },
 
             loadSampleMessages() {
-                // Add sample messages to demonstrate the system
-                this.addMessage('pattaya_golf_general', {
-                    senderId: 'manager_sarah',
-                    senderName: 'Sarah Wilson',
-                    senderRole: 'manager',
-                    text: 'Good morning everyone! Weather looks perfect for golf today. Course conditions are excellent.',
-                    language: 'en',
-                    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
-                });
-
-                this.addMessage('pattaya_golf_general', {
-                    senderId: 'caddie_ning',
-                    senderName: 'Ning Prasert',
-                    senderRole: 'caddie',
-                    text: 'สภาพสนามดีมากครับ พร้อมให้บริการทุกท่าน',
-                    language: 'th',
-                    timestamp: new Date(Date.now() - 1.5 * 60 * 60 * 1000).toISOString(),
-                    translation: {
-                        en: 'Course conditions are excellent. Ready to serve everyone.',
-                        ko: '코스 상태가 매우 좋습니다. 모든 분들께 서비스할 준비가 되어 있습니다.',
-                        ja: 'コースのコンディションは最高です。皆様にサービスする準備ができています。'
-                    }
-                });
-
-                this.addMessage('golfers_lounge', {
-                    senderId: 'golfer_mike_chen',
-                    senderName: 'Mike Chen',
-                    senderRole: 'golfer',
-                    text: '오늘 아침 라운드 어떠셨나요? 저는 7번 홀에서 이글 했어요! 🦅',
-                    language: 'ko',
-                    timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-                    translation: {
-                        en: 'How was your morning round? I got an eagle on hole 7! 🦅',
-                        th: 'รอบเช้าเป็นอย่างไรบ้างครับ? ผมได้อีเกิลที่หลุม 7! 🦅',
-                        ja: '今朝のラウンドはいかがでしたか？7番ホールでイーグルを取りました！🦅'
-                    }
-                });
-
-                this.addMessage('caddie_network', {
-                    senderId: 'caddie_somchai',
-                    senderName: 'Somchai Jaidee',
-                    senderRole: 'caddie',
-                    text: '新しいクラブ選択のテクニックを学びました。風の読み方が重要ですね。',
-                    language: 'ja',
-                    timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-                    translation: {
-                        en: 'I learned new club selection techniques. Reading the wind is crucial.',
-                        th: 'ผมเรียนรู้เทคนิคการเลือกไม้ใหม่ การอ่านลมเป็นสิ่งสำคัญมาก',
-                        ko: '새로운 클럽 선택 기술을 배웠습니다. 바람을 읽는 것이 중요하네요.'
-                    }
-                });
-
-                this.addMessage('dm_ning_prasert', {
-                    senderId: 'caddie_ning',
-                    senderName: 'Ning Prasert',
-                    senderRole: 'caddie',
-                    text: 'Hello John! Ready for our round tomorrow at 8 AM? I have some tips for the back nine.',
-                    language: 'en',
-                    timestamp: new Date(Date.now() - 5 * 60 * 1000).toISOString()
-                });
+                // No more fake demo messages - using real data from Supabase
+                console.log('[ChatSystem] Skipping fake demo messages');
             },
 
             async addMessage(roomId, messageData) {

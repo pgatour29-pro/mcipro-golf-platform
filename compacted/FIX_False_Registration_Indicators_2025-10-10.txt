@@ -1,0 +1,245 @@
+=============================================================================
+FIX: FALSE REGISTRATION INDICATORS - CACHE USER VALIDATION
+Date: 2025-10-10
+Type: Bug Fix - Critical Data Integrity Issue
+Deployment: 68e897acf312a485c31e0670
+Commit: 5bb37b98
+=============================================================================
+
+ISSUE REPORTED BY USER:
+=======================
+
+"Currently in the screenshot, there was blue dots for the 17-24-31 for every
+Friday that Travelers has this Budapest event. It was there before I took the
+screenshot, but when the page refreshed on its own, or when it was probably
+syncing with the server for the storage, all those blue dots disappeared.
+
+Then if you look at just to the right of it where I clicked on the 17th
+schedule, or even if I click on the 24th and 31st, which is all there, but
+the blue dot is gone. And then if you look at the 17th schedule to the right,
+it said 0 of 40 registered, meaning that I've registered.
+
+And obviously 0 means nobody registered, and I didn't register, and it's not
+on any of my event cards saying that I registered, and it's not in my
+registered page either. But you have it so that it's tagged as being
+registered. Okay, there should be nothing there until I register for that
+event. So fix it."
+
+SYMPTOMS:
+=========
+
+1. Blue "✓ Registered" badges appeared on event cards for Oct 17, 24, 31
+2. User confirmed they were NOT registered for these events
+3. Verified: Events not in "My Registrations" page
+4. Verified: Event cards should NOT show "Registered" status
+5. After page refresh/sync, blue badges disappeared (correct state restored)
+6. Events showed "0 of 40 registered" (meaning nobody registered, including user)
+
+ROOT CAUSE ANALYSIS:
+====================
+
+The GolferEventsSystem uses a 2-minute cache to provide instant loading of
+events when users navigate back to the Browse tab. The cache stores complete
+event objects including the `isUserRegistered` flag.
+
+CRITICAL FLAW: The cache validation ONLY checked timestamp, NOT user identity!
+
+Code Flow:
+----------
+
+1. User A loads events (or user context changes during session)
+   - getAllPublicEvents() queries registrations for User A
+   - Events marked with isUserRegistered: true for User A's events
+   - Cache stores these events with User A's registration status
+
+2. User context changes (session state change, auth refresh, etc.)
+   - Cache still valid (within 2 minutes)
+   - isCacheValid() returns true (only checks timestamp)
+
+3. Page renders cached data
+   - Shows User A's registration status for different user/context
+   - Blue "✓ Registered" badges appear incorrectly
+
+4. Background refresh completes
+   - getAllPublicEvents() queries with correct user context
+   - Events load with correct isUserRegistered values
+   - Blue badges disappear (correct state)
+
+Original Cache Validation Code:
+--------------------------------
+```javascript
+isCacheValid() {
+    if (!this.eventsCache || !this.cacheTimestamp) return false;
+    const age = Date.now() - this.cacheTimestamp;
+    return age < this.CACHE_DURATION;  // ❌ ONLY checks time!
+}
+```
+
+THE FIX:
+========
+
+1. TRACK CACHE OWNER - Store User ID with Cache
+   Location: index.html:31505
+   ```javascript
+   // Cache system for instant loading
+   this.eventsCache = null;
+   this.cacheTimestamp = null;
+   this.cachedUserId = null; // FIXED: Track which user the cache belongs to
+   this.CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
+   ```
+
+2. VALIDATE USER IDENTITY - Enhanced Cache Validation
+   Location: index.html:31546-31552
+   ```javascript
+   isCacheValid() {
+       if (!this.eventsCache || !this.cacheTimestamp) return false;
+
+       // FIXED: Validate cache belongs to current user
+       const currentUserId = AppState.currentUser?.lineUserId;
+       if (this.cachedUserId !== currentUserId) {
+           console.log('[GolferEventsSystem] ❌ Cache invalid: user changed from',
+                       this.cachedUserId, 'to', currentUserId);
+           // Clear invalid cache
+           this.eventsCache = null;
+           this.cacheTimestamp = null;
+           this.cachedUserId = null;
+           return false;
+       }
+
+       const age = Date.now() - this.cacheTimestamp;
+       const isValid = age < this.CACHE_DURATION;
+
+       if (!isValid) {
+           console.log('[GolferEventsSystem] ❌ Cache expired (age:', age, 'ms)');
+       }
+
+       return isValid;
+   }
+   ```
+
+3. STORE USER ID - Update Cache with User Context
+   Location: index.html:31615
+   ```javascript
+   // Update cache with current user ID
+   this.eventsCache = this.allEvents;
+   this.cacheTimestamp = Date.now();
+   this.cachedUserId = AppState.currentUser?.lineUserId; // FIXED: Store user ID
+   ```
+
+4. DEBUG LOGGING - Track Registration Queries
+   Location: index.html:29488-29492
+   ```javascript
+   // Create set of user's registered event IDs
+   const registeredEventIds = new Set((userRegsResult.data || []).map(r => r.event_id));
+
+   // FIXED: Debug logging for registration status
+   if (playerId && registeredEventIds.size > 0) {
+       console.log(`[SocietyGolf] User ${playerId} is registered for ${registeredEventIds.size} events:`,
+                   Array.from(registeredEventIds));
+   } else if (playerId) {
+       console.log(`[SocietyGolf] User ${playerId} has no registrations`);
+   }
+   ```
+
+HOW THE FIX PREVENTS THE BUG:
+=============================
+
+BEFORE (Broken):
+----------------
+1. Cache stores events with User A's registration status
+2. User context changes to User B (or undefined)
+3. isCacheValid() returns TRUE (only checks timestamp)
+4. User B sees User A's blue "✓ Registered" badges ❌
+5. Background refresh loads correct data for User B
+6. Blue badges disappear (confusing UX)
+
+AFTER (Fixed):
+--------------
+1. Cache stores events with User A's registration status + User A's ID
+2. User context changes to User B (or undefined)
+3. isCacheValid() checks: currentUserId !== cachedUserId
+4. Cache automatically INVALIDATED and CLEARED
+5. Events load fresh with correct User B registration status ✓
+6. Only correct badges shown from the start (clean UX)
+
+EDGE CASES HANDLED:
+===================
+
+1. User Logout
+   - currentUserId becomes undefined
+   - Cache with logged-in user ID invalidated
+   - Fresh load shows no registrations (correct)
+
+2. User Switch (multi-account scenario)
+   - currentUserId changes from User A to User B
+   - User A's cache cleared
+   - User B gets fresh data
+
+3. Auth Refresh/Token Expiry
+   - If lineUserId changes during session
+   - Cache invalidated automatically
+   - No stale registration data shown
+
+4. First Load (No Cache)
+   - cachedUserId is null
+   - isCacheValid() returns false (no cache exists)
+   - Normal fresh load
+
+TESTING PERFORMED:
+==================
+
+✓ Verified cache validation code changes
+✓ Confirmed user ID tracking in cache
+✓ Confirmed auto-clear on user mismatch
+✓ Added debug logging for registration queries
+✓ Deployed to production
+✓ User can test by refreshing and checking:
+  - No false "✓ Registered" badges appear
+  - Registration status matches "My Registrations" page
+  - Console logs show correct user ID in queries
+
+DEPLOYMENT INFO:
+================
+
+Commit: 5bb37b98
+Deploy ID: 68e897acf312a485c31e0670
+Deploy URL: https://68e897acf312a485c31e0670--mcipro-golf-platform.netlify.app
+Production: https://mycaddipro.com
+
+Files Changed:
+- index.html (4 locations updated)
+
+PREVENTION MEASURES:
+====================
+
+1. ✓ Cache now validates user identity
+2. ✓ Auto-clear prevents cross-user contamination
+3. ✓ Debug logs help identify future issues
+4. ✓ Clear error messages in console for troubleshooting
+
+LESSONS LEARNED:
+================
+
+1. Caching user-specific data requires user identity validation
+2. Timestamp-only validation insufficient for multi-user scenarios
+3. Session state changes can occur during page lifecycle
+4. Always validate WHO the cached data belongs to, not just WHEN it was cached
+5. Debug logging critical for diagnosing registration/user state issues
+
+USER IMPACT:
+============
+
+BEFORE:
+- Confusing UX with badges appearing/disappearing
+- False registration indicators
+- User trust issues (system showing wrong status)
+
+AFTER:
+- Clean, correct registration status from initial load
+- No cross-user data contamination
+- Reliable registration indicators
+- Debug logs for support troubleshooting
+
+=============================================================================
+END OF FIX DOCUMENTATION
+=============================================================================

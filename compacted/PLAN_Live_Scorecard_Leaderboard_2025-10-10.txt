@@ -1,0 +1,566 @@
+=============================================================================
+FEATURE PLAN: LIVE SCORECARD SCORING & LIVE LEADERBOARD
+Date: 2025-10-10
+Type: New Feature - Real-time Competition Scoring
+Status: PLANNING
+=============================================================================
+
+FEATURE OVERVIEW:
+=================
+
+Enable golfers to enter scores in real-time during society events, with live
+leaderboard updates visible to all participants and spectators.
+
+USER STORIES:
+=============
+
+AS A GOLFER:
+- I want to enter my scores hole-by-hole during my round
+- I want to see my running total and position
+- I want to see how I compare to other players in real-time
+- I want my playing partners to verify my scores
+- I want to see the leaderboard update as scores come in
+
+AS AN ORGANIZER:
+- I want to monitor all scores in real-time
+- I want to see who's finished and who's still playing
+- I want to override/edit scores if needed
+- I want to see different scoring formats (stroke play, stableford, match play)
+- I want to export final results
+
+AS A SPECTATOR:
+- I want to follow the leaderboard live
+- I want to see position changes as they happen
+- I want to filter by flight/division
+- I want to see hole-by-hole details for any player
+
+TECHNICAL ARCHITECTURE:
+=======================
+
+DATABASE SCHEMA:
+----------------
+
+1. scorecards TABLE
+   ```sql
+   CREATE TABLE scorecards (
+       id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+       event_id UUID REFERENCES society_events(id),
+       player_id TEXT REFERENCES profiles(line_user_id),
+       round_date DATE NOT NULL,
+       course_name TEXT,
+       tee_time TIMESTAMP,
+       started_at TIMESTAMP,
+       completed_at TIMESTAMP,
+       total_gross INT,
+       total_net INT,
+       total_stableford INT,
+       handicap DECIMAL(4,1),
+       playing_handicap INT,
+       status TEXT DEFAULT 'in_progress', -- in_progress, completed, verified
+       marker_id TEXT REFERENCES profiles(line_user_id),
+       marker_verified_at TIMESTAMP,
+       created_at TIMESTAMP DEFAULT NOW(),
+       updated_at TIMESTAMP DEFAULT NOW()
+   );
+   ```
+
+2. scores TABLE (hole-by-hole)
+   ```sql
+   CREATE TABLE scores (
+       id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+       scorecard_id UUID REFERENCES scorecards(id) ON DELETE CASCADE,
+       hole_number INT NOT NULL CHECK (hole_number BETWEEN 1 AND 18),
+       par INT NOT NULL,
+       stroke_index INT,
+       gross_score INT,
+       net_score INT,
+       stableford_points INT,
+       handicap_strokes INT DEFAULT 0,
+       created_at TIMESTAMP DEFAULT NOW(),
+       updated_at TIMESTAMP DEFAULT NOW(),
+       UNIQUE(scorecard_id, hole_number)
+   );
+   ```
+
+3. leaderboards TABLE (calculated positions)
+   ```sql
+   CREATE TABLE leaderboards (
+       id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+       event_id UUID REFERENCES society_events(id),
+       player_id TEXT REFERENCES profiles(line_user_id),
+       scorecard_id UUID REFERENCES scorecards(id),
+       division TEXT, -- overall, flight_a, flight_b, etc.
+       gross_position INT,
+       net_position INT,
+       stableford_position INT,
+       gross_total INT,
+       net_total INT,
+       stableford_total INT,
+       holes_completed INT,
+       thru TEXT, -- "F" for finished, "12" for through 12 holes
+       to_par INT, -- +5, -2, E
+       updated_at TIMESTAMP DEFAULT NOW(),
+       UNIQUE(event_id, player_id, division)
+   );
+   ```
+
+4. RLS POLICIES:
+   ```sql
+   -- Scorecards: Players can read all, edit own
+   ALTER TABLE scorecards ENABLE ROW LEVEL SECURITY;
+
+   CREATE POLICY "Scorecards viewable by all"
+       ON scorecards FOR SELECT
+       USING (true);
+
+   CREATE POLICY "Players can create own scorecards"
+       ON scorecards FOR INSERT
+       WITH CHECK (auth.uid() = player_id);
+
+   CREATE POLICY "Players and organizers can update scorecards"
+       ON scorecards FOR UPDATE
+       USING (
+           auth.uid() = player_id OR
+           auth.uid() IN (SELECT organizer_id FROM society_events WHERE id = event_id)
+       );
+
+   -- Scores: Follow scorecard permissions
+   ALTER TABLE scores ENABLE ROW LEVEL SECURITY;
+
+   CREATE POLICY "Scores viewable by all"
+       ON scores FOR SELECT
+       USING (true);
+
+   CREATE POLICY "Scores editable via scorecard permissions"
+       ON scores FOR ALL
+       USING (
+           scorecard_id IN (
+               SELECT id FROM scorecards
+               WHERE player_id = auth.uid() OR
+                     event_id IN (SELECT id FROM society_events WHERE organizer_id = auth.uid())
+           )
+       );
+   ```
+
+REAL-TIME SUBSCRIPTIONS:
+------------------------
+
+```javascript
+// Subscribe to scorecard changes for an event
+const scorecardSubscription = window.SupabaseDB.client
+    .channel('event_scorecards')
+    .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'scorecards',
+        filter: `event_id=eq.${eventId}`
+    }, (payload) => {
+        console.log('[Leaderboard] Scorecard update:', payload);
+        this.refreshLeaderboard();
+    })
+    .subscribe();
+
+// Subscribe to individual score changes
+const scoresSubscription = window.SupabaseDB.client
+    .channel('event_scores')
+    .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'scores'
+    }, (payload) => {
+        console.log('[Scorecard] Score update:', payload);
+        this.recalculateTotals();
+        this.updateLeaderboard();
+    })
+    .subscribe();
+```
+
+UI COMPONENTS:
+==============
+
+1. SCORECARD ENTRY FORM
+   Location: New tab in Golfer Dashboard
+
+   Features:
+   - Event selection dropdown
+   - "Start Round" button creates scorecard
+   - Hole navigator (1-18 with prev/next buttons)
+   - Current hole number display (large, prominent)
+   - Par display for current hole
+   - Stroke index display
+   - Score entry buttons (quick tap: 2, 3, 4, 5, 6, 7, 8, 9, 10+)
+   - Manual score input field
+   - Running totals:
+     * Gross score
+     * Net score (with handicap)
+     * Stableford points
+     * To par (+2, -1, E)
+   - "Previous Hole" / "Next Hole" navigation
+   - "Submit Score" for verification
+   - Auto-save on each hole
+
+   Mobile-Optimized:
+   - Large touch targets (min 44px)
+   - Swipe gestures for hole navigation
+   - Haptic feedback on score entry
+   - Offline support (cache scores, sync when online)
+
+2. LIVE LEADERBOARD VIEW
+   Location: New tab in Golfer Dashboard + Organizer Dashboard
+
+   Features:
+   - Real-time position updates
+   - Multiple views:
+     * Gross scores
+     * Net scores
+     * Stableford points
+   - Columns:
+     * Position (#1, #2, T3, etc.)
+     * Player name
+     * Thru (holes completed: "F", "14", "9")
+     * Today's score / To Par
+     * Total score
+     * Last updated time
+   - Sorting options (position, name, thru)
+   - Filter by division/flight
+   - Color coding:
+     * Green: Under par
+     * Red: Over par
+     * Black: Even par
+     * Gray: Not started
+   - Position change indicators (↑↓)
+   - Click player to see detailed scorecard
+   - Auto-refresh every 30 seconds
+   - Manual refresh button
+
+3. PLAYER SCORECARD DETAIL MODAL
+   Features:
+   - Full 18-hole scorecard grid
+   - Front 9 / Back 9 / Total
+   - Hole-by-hole:
+     * Hole number
+     * Par
+     * Stroke index
+     * Gross score
+     * Net score
+     * Stableford points
+   - Running totals after each 9
+   - Started time, completed time
+   - Marker name (if verified)
+
+SCORING CALCULATIONS:
+=====================
+
+1. STROKE PLAY (Gross & Net)
+   ```javascript
+   calculateStrokePlay(scores, handicap) {
+       let grossTotal = 0;
+       let netTotal = 0;
+
+       scores.forEach(hole => {
+           grossTotal += hole.gross_score;
+
+           // Calculate handicap strokes for this hole
+           const strokesReceived = Math.floor(handicap / 18) +
+                                   (hole.stroke_index <= (handicap % 18) ? 1 : 0);
+
+           const netScore = hole.gross_score - strokesReceived;
+           netTotal += netScore;
+       });
+
+       return { grossTotal, netTotal };
+   }
+   ```
+
+2. STABLEFORD POINTS
+   ```javascript
+   calculateStableford(hole, handicap) {
+       const strokesReceived = Math.floor(handicap / 18) +
+                               (hole.stroke_index <= (handicap % 18) ? 1 : 0);
+
+       const netScore = hole.gross_score - strokesReceived;
+       const diff = hole.par - netScore;
+
+       // Stableford points based on difference to par
+       const points = {
+           '-2': 0,  // Double bogey or worse
+           '-1': 1,  // Bogey
+           '0': 2,   // Par
+           '1': 3,   // Birdie
+           '2': 4,   // Eagle
+           '3': 5,   // Albatross
+       };
+
+       return points[diff] || 0;
+   }
+   ```
+
+3. LEADERBOARD RANKING
+   ```javascript
+   async updateLeaderboard(eventId) {
+       // Get all scorecards for event
+       const { data: scorecards } = await window.SupabaseDB.client
+           .from('scorecards')
+           .select(`
+               id,
+               player_id,
+               total_gross,
+               total_net,
+               total_stableford,
+               scores (hole_number, gross_score)
+           `)
+           .eq('event_id', eventId)
+           .order('total_net', { ascending: true });
+
+       // Calculate positions
+       scorecards.forEach((card, index) => {
+           const holesCompleted = card.scores.filter(s => s.gross_score).length;
+           const thru = holesCompleted === 18 ? 'F' : holesCompleted.toString();
+
+           // Handle ties (T3 = Tied 3rd)
+           const position = index + 1;
+
+           // Update leaderboard table
+           this.upsertLeaderboard({
+               event_id: eventId,
+               player_id: card.player_id,
+               scorecard_id: card.id,
+               net_position: position,
+               net_total: card.total_net,
+               holes_completed: holesCompleted,
+               thru: thru
+           });
+       });
+   }
+   ```
+
+WORKFLOW:
+=========
+
+1. START ROUND
+   Golfer Action:
+   - Navigate to "Scorecard" tab
+   - Select event from dropdown
+   - Click "Start Round"
+
+   System Action:
+   - Create scorecard record
+   - Set started_at timestamp
+   - Set status = 'in_progress'
+   - Load hole 1 entry form
+   - Pre-fill par and stroke index from course data
+
+2. ENTER SCORES (Per Hole)
+   Golfer Action:
+   - Tap score button or enter manually
+   - Click "Next Hole"
+
+   System Action:
+   - Save score to database
+   - Calculate net score (with handicap)
+   - Calculate stableford points
+   - Update running totals
+   - Trigger leaderboard recalculation
+   - Broadcast update via WebSocket
+
+3. COMPLETE ROUND
+   Golfer Action:
+   - Enter score for hole 18
+   - Click "Finish Round"
+
+   System Action:
+   - Set completed_at timestamp
+   - Set status = 'completed'
+   - Calculate final totals
+   - Prompt for marker verification
+   - Update leaderboard with final position
+
+4. MARKER VERIFICATION
+   Marker Action:
+   - Receive notification to verify
+   - Review scorecard
+   - Click "Verify Scores"
+
+   System Action:
+   - Set marker_id
+   - Set marker_verified_at timestamp
+   - Set status = 'verified'
+   - Lock scorecard from further edits
+   - Notify player of verification
+
+5. VIEW LEADERBOARD
+   Any User Action:
+   - Navigate to "Leaderboard" tab
+   - Select event
+
+   System Action:
+   - Load current leaderboard
+   - Subscribe to real-time updates
+   - Auto-refresh every 30s
+   - Show position changes with animations
+
+EDGE CASES:
+===========
+
+1. OFFLINE SCORING
+   - Cache scores locally
+   - Sync when connection restored
+   - Handle conflicts (last write wins)
+   - Show "Syncing..." indicator
+
+2. CONCURRENT EDITS
+   - Optimistic UI updates
+   - Server timestamp as source of truth
+   - Show conflict notification if needed
+
+3. INCOMPLETE ROUNDS
+   - Mark as DNF (Did Not Finish)
+   - Show on leaderboard as "WD" (Withdrawn)
+   - Don't include in final standings
+
+4. LATE SCORES
+   - Allow score entry after event completion
+   - Mark as "Late" on leaderboard
+   - Organizer can approve/reject
+
+5. SCORE DISPUTES
+   - Organizer can override any score
+   - Log all changes (audit trail)
+   - Notify player of changes
+
+PERFORMANCE OPTIMIZATIONS:
+==========================
+
+1. Database Indexing
+   ```sql
+   CREATE INDEX idx_scorecards_event ON scorecards(event_id);
+   CREATE INDEX idx_scorecards_player ON scorecards(player_id);
+   CREATE INDEX idx_scores_scorecard ON scores(scorecard_id);
+   CREATE INDEX idx_leaderboards_event ON leaderboards(event_id);
+   ```
+
+2. Cached Calculations
+   - Cache leaderboard in memory
+   - Only recalculate when scores change
+   - Use Redis/Cloudflare KV for distributed cache
+
+3. Debounced Updates
+   - Batch score updates (wait 2s before recalc)
+   - Reduce database writes
+   - Improve UI responsiveness
+
+IMPLEMENTATION PHASES:
+======================
+
+PHASE 1 - BASIC SCORECARD (Week 1)
+-----------------------------------
+✓ Create database schema
+✓ Build scorecard entry form
+✓ Implement score saving
+✓ Calculate running totals
+✓ Test on mobile
+
+PHASE 2 - BASIC LEADERBOARD (Week 2)
+-------------------------------------
+✓ Build leaderboard view
+✓ Implement ranking algorithm
+✓ Add real-time subscriptions
+✓ Test multi-player scenarios
+
+PHASE 3 - ADVANCED FEATURES (Week 3)
+-------------------------------------
+✓ Marker verification workflow
+✓ Organizer score override
+✓ Multiple scoring formats
+✓ Offline support
+✓ Position change animations
+
+PHASE 4 - POLISH & TESTING (Week 4)
+------------------------------------
+✓ Mobile UX refinement
+✓ Performance optimization
+✓ Load testing (100+ concurrent users)
+✓ Bug fixes
+✓ Documentation
+
+SUCCESS METRICS:
+================
+
+1. Adoption Rate
+   - 80%+ of event participants use live scoring
+   - <5% revert to manual scorecards
+
+2. Performance
+   - Score entry < 2s response time
+   - Leaderboard update < 5s lag
+   - Support 200+ concurrent users
+
+3. Accuracy
+   - <1% score entry errors
+   - 100% marker verification rate
+   - Zero data loss incidents
+
+4. User Satisfaction
+   - 4.5+ star rating
+   - <10% support tickets related to scoring
+   - Positive feedback from organizers
+
+RISKS & MITIGATION:
+===================
+
+RISK: Poor mobile UX leads to low adoption
+MITIGATION: Extensive mobile testing, large touch targets, simple UI
+
+RISK: Real-time updates lag during peak usage
+MITIGATION: Load testing, caching, CDN optimization
+
+RISK: Score disputes and conflicts
+MITIGATION: Clear verification workflow, audit trail, organizer override
+
+RISK: Network issues cause lost scores
+MITIGATION: Offline support, local caching, sync queue
+
+RISK: Users confused by multiple scoring formats
+MITIGATION: Default to stroke play, clear format selection, tooltips
+
+DEPENDENCIES:
+=============
+
+✓ Supabase real-time subscriptions (already implemented)
+✓ User profiles with handicaps (already implemented)
+✓ Society events system (already implemented)
+✓ Toast notifications (already implemented)
+
+NEW DEPENDENCIES:
+- Course data (par, stroke index per hole)
+- WebSocket infrastructure (Supabase provides)
+- Background job for leaderboard recalc (optional)
+
+NEXT STEPS:
+===========
+
+1. Review and approve this plan
+2. Create database schema in Supabase
+3. Set up RLS policies
+4. Build scorecard entry form (mobile-first)
+5. Implement basic leaderboard view
+6. Test with small group
+7. Iterate based on feedback
+8. Roll out to all events
+
+ESTIMATED TIMELINE:
+===================
+
+Planning & Design: 2 days (CURRENT)
+Phase 1 - Basic Scorecard: 5 days
+Phase 2 - Basic Leaderboard: 5 days
+Phase 3 - Advanced Features: 7 days
+Phase 4 - Polish & Testing: 5 days
+
+TOTAL: ~24 days (4-5 weeks)
+
+Ready to begin implementation when approved!
+
+=============================================================================
+END OF PLAN
+=============================================================================

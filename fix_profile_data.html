@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fix Profile Data</title>
+</head>
+<body>
+    <h1>Fixing Profile Data in Supabase</h1>
+    <div id="status">Running...</div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <script>
+        async function fixProfile() {
+            const statusDiv = document.getElementById('status');
+
+            try {
+                const lineUserId = 'U2b6d976f19bca4b2f4374ae0e10ed873';
+
+                statusDiv.innerHTML += '<br>Connecting to Supabase...';
+
+                // Get current profile
+                const { data: currentProfile, error: fetchError } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('*')
+                    .eq('line_user_id', lineUserId)
+                    .single();
+
+                if (fetchError) {
+                    statusDiv.innerHTML += '<br>ERROR fetching: ' + fetchError.message;
+                    return;
+                }
+
+                statusDiv.innerHTML += '<br>Current profile_data: ' + JSON.stringify(currentProfile.profile_data, null, 2);
+
+                // Update profile with correct data
+                const updatedProfileData = {
+                    ...(currentProfile.profile_data || {}),
+                    personalInfo: {
+                        ...(currentProfile.profile_data?.personalInfo || {}),
+                        username: "007",
+                        firstName: "Pete",
+                        lastName: "Park"
+                    },
+                    golfInfo: {
+                        ...(currentProfile.profile_data?.golfInfo || {}),
+                        handicap: "1",
+                        homeClub: "Pattana Golf Resort & Spa",
+                        clubAffiliation: "Travellers Rest Group"
+                    },
+                    professionalInfo: currentProfile.profile_data?.professionalInfo || {},
+                    skills: currentProfile.profile_data?.skills || {},
+                    preferences: currentProfile.profile_data?.preferences || {},
+                    media: currentProfile.profile_data?.media || {},
+                    privacy: currentProfile.profile_data?.privacy || {}
+                };
+
+                statusDiv.innerHTML += '<br><br>Updating with: ' + JSON.stringify(updatedProfileData, null, 2);
+
+                const { data, error } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .update({
+                        profile_data: updatedProfileData,
+                        username: '007',
+                        home_club: 'Pattana Golf Resort & Spa',
+                        handicap: 1
+                    })
+                    .eq('line_user_id', lineUserId)
+                    .select();
+
+                if (error) {
+                    statusDiv.innerHTML += '<br>ERROR updating: ' + error.message;
+                } else {
+                    statusDiv.innerHTML += '<br><br>✅ SUCCESS! Profile updated.';
+                    statusDiv.innerHTML += '<br>Updated data: ' + JSON.stringify(data, null, 2);
+                }
+
+            } catch (err) {
+                statusDiv.innerHTML += '<br>EXCEPTION: ' + err.message;
+            }
+        }
+
+        // Wait for Supabase to load
+        setTimeout(() => {
+            if (window.SupabaseDB) {
+                fixProfile();
+            } else {
+                document.getElementById('status').innerHTML = 'ERROR: Supabase not loaded';
+            }
+        }, 2000);
+    </script>
+</body>
+</html>

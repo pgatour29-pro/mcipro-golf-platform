@@ -1,0 +1,640 @@
+═══════════════════════════════════════════════════════════════
+SESSION CONTINUATION - ORGANIZER EVENTS SYSTEM IMPLEMENTATION
+═══════════════════════════════════════════════════════════════
+Date: 2025-10-10 (Continued Session)
+Status: 🚀 READY TO IMPLEMENT PHASE 1
+Previous Session: Golfer Events System (COMPLETE)
+
+═══════════════════════════════════════════════════════════════
+📋 SESSION CONTEXT
+═══════════════════════════════════════════════════════════════
+
+PREVIOUS SESSION SUMMARY:
+✅ Golfer Society Events System - COMPLETE
+   - Edit registration with full modal (no popups!)
+   - Performance optimization (3x faster with parallel queries)
+   - Intelligent caching (instant loads after first visit)
+   - Share events via chat system
+   - Toast notifications (removed all alert() popups)
+   - Deployed: 68e7fc308cc99e32f048bb4f
+   - Documentation: SESSION_Society_Events_Complete_2025-10-10.txt
+
+USER REQUEST:
+"now that you have everything that was done in the golfers society events
+page, lets duplicate it for the organizers page but with the organizers
+needs in mind"
+
+SPECIFICATION CREATED:
+✅ ORGANIZER_EVENTS_SYSTEM_TODO.txt (526 lines)
+   - Complete feature breakdown
+   - 5 main tabs: Events, Registrations, Waitlist, Pairings, Communications
+   - UI mockups with ASCII diagrams
+   - Complete code structure
+   - Database queries
+   - Implementation phases
+   - User stories
+
+═══════════════════════════════════════════════════════════════
+🎯 WHAT WE'RE BUILDING NOW
+═══════════════════════════════════════════════════════════════
+
+PHASE 1: ENHANCED EVENT CARDS & REGISTRATION MANAGEMENT
+Estimated Time: 2-3 hours
+
+Features to Implement:
+1. Enhanced event cards showing:
+   - Registration stats (28/40 registered, 70%)
+   - Revenue tracking (฿98,000)
+   - Registration status (Open/Closed/Full/Past)
+   - Quick action buttons
+
+2. Registration management table:
+   - Full player roster with details
+   - Search/filter functionality
+   - Export to CSV/PDF
+   - Bulk actions (mark paid, send message)
+   - Per-player actions
+
+3. Event statistics dashboard:
+   - Total registered
+   - Spots remaining
+   - Total revenue
+   - Transport count
+   - Competition count
+
+═══════════════════════════════════════════════════════════════
+🗂️ FILE STRUCTURE & REFERENCES
+═══════════════════════════════════════════════════════════════
+
+Main Files:
+  C:\Users\pete\Documents\MciPro\index.html
+    - Current organizer code: lines 25700-25975
+    - Golfer events system: lines 30857-32103 (REFERENCE)
+    - SocietyGolfDB: lines 29181-29725
+    - SocietyOrganizerManager: lines 29726-30810
+
+Documentation:
+  C:\Users\pete\Documents\MciPro\screenshots\compacted\
+    - SESSION_Society_Events_Complete_2025-10-10.txt (Previous work)
+    - ORGANIZER_EVENTS_SYSTEM_TODO.txt (THIS SPEC)
+    - SESSION_CONTINUATION_Organizer_System_2025-10-10.txt (THIS DOC)
+    - QUICK_REFERENCE_Current_State.txt (Platform status)
+    - PROFILE_SYNC_FIX_2025-10-09.txt (Profile sync details)
+
+Database Schema:
+  C:\Users\pete\Documents\MciPro\society-golf-schema.sql
+    - society_events table ✅
+    - event_registrations table ✅
+    - event_waitlist table ✅ (schema exists!)
+    - event_pairings table ✅ (schema exists!)
+    - society_profiles table ✅
+
+═══════════════════════════════════════════════════════════════
+💻 IMPLEMENTATION PLAN - PHASE 1
+═══════════════════════════════════════════════════════════════
+
+STEP 1: Enhanced Event Cards
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Location: index.html lines 29726-30810 (SocietyOrganizerManager)
+
+Tasks:
+1. Modify loadOrganizerEvents() to fetch registration stats
+   - Add parallel queries (like golfer system)
+   - Get registration counts per event
+   - Calculate revenue per event
+   - Get transport/competition counts
+
+2. Update renderOrganizerEvents() to show enhanced cards
+   - Add registration progress bar
+   - Add revenue display
+   - Add status badges (Open/Closed/Full/Past)
+   - Add quick action buttons:
+     * View Roster
+     * Edit Event
+     * Close Registration
+     * Export dropdown (CSV, PDF, Print)
+
+3. Add event statistics calculation
+   - registeredCount / maxPlayers
+   - totalRevenue = baseFee + (transport × transportCount) + (caddy × ...)
+   - Status logic (Open, Closed, Full, Past)
+
+Reference: Golfer system (lines 30857-32103) for card structure
+
+STEP 2: Registration Management Table
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Location: New modal HTML + JavaScript methods
+
+Tasks:
+1. Create HTML modal for registration table
+   - Event selector dropdown
+   - Summary stats header
+   - Search/filter input
+   - Export buttons (CSV, PDF, Print)
+   - Data table with columns:
+     * Player Name
+     * Handicap
+     * Transport (✓/✗)
+     * Competition (✓/✗)
+     * Payment Status (Paid/Unpaid)
+     * Registration Date
+     * Actions (⋮ menu)
+
+2. Add JavaScript methods to SocietyOrganizerManager:
+   - openRegistrationManager(eventId)
+   - loadEventRegistrations(eventId)
+   - renderRegistrationTable(registrations)
+   - filterRegistrations(searchTerm)
+   - exportRegistrationsCSV(eventId)
+   - exportRegistrationsPDF(eventId)
+   - markPlayerPaid(registrationId)
+   - markPlayerUnpaid(registrationId)
+   - sendMessageToPlayer(playerId)
+   - removePlayerRegistration(registrationId)
+
+3. Add to SocietyGolfDB class:
+   - getEventRegistrationsWithPlayers(eventId)
+   - getEventStatistics(eventId)
+   - updatePaymentStatus(registrationId, isPaid)
+
+Reference: Golfer registration form (lines 26549-26638) for modal structure
+
+STEP 3: Export Functionality
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Location: New export methods in SocietyOrganizerManager
+
+Tasks:
+1. CSV Export:
+   - Generate CSV with all registration data
+   - Include: Name, HCP, Email, Phone, Transport, Competition, Paid
+   - Trigger browser download
+   - Filename: EventName_Roster_YYYY-MM-DD.csv
+
+2. PDF Export (optional - can be Phase 2):
+   - Use browser print CSS
+   - Print-friendly table layout
+   - Event header with logo
+   - Summary stats at top
+
+3. Print-Friendly View:
+   - Create printable HTML view
+   - Hide action buttons
+   - Add event header
+   - Auto-trigger print dialog
+
+═══════════════════════════════════════════════════════════════
+🎨 UI COMPONENTS TO BUILD
+═══════════════════════════════════════════════════════════════
+
+1. ENHANCED EVENT CARD (Update existing card)
+   ```html
+   <div class="event-card bg-white rounded-lg shadow-md p-6 mb-4">
+     <!-- Society logo and event name -->
+     <div class="flex items-center gap-3 mb-3">
+       <img src="${event.society_logo}" class="w-12 h-12 rounded-full">
+       <h3 class="text-xl font-bold">${event.name}</h3>
+     </div>
+
+     <!-- Event details -->
+     <div class="event-details mb-4">
+       <p>📅 ${dateStr}</p>
+       <p>⛳ ${event.course_name}</p>
+     </div>
+
+     <!-- ORGANIZER STATS (NEW!) -->
+     <div class="organizer-stats bg-gray-50 p-4 rounded-lg mb-4">
+       <div class="stat-row flex justify-between mb-2">
+         <span>📊 Registered:</span>
+         <span class="font-bold">${registered}/${maxPlayers} (${percent}%)</span>
+       </div>
+       <div class="progress-bar bg-gray-200 h-2 rounded-full mb-2">
+         <div class="bg-green-500 h-2 rounded-full" style="width: ${percent}%"></div>
+       </div>
+       <div class="stat-row flex justify-between mb-2">
+         <span>💰 Revenue:</span>
+         <span class="font-bold">฿${revenue.toLocaleString()}</span>
+       </div>
+       <div class="stat-row flex justify-between">
+         <span>⏰ Registration ${isOpen ? 'Closes' : 'Closed'}:</span>
+         <span>${cutoffStr}</span>
+       </div>
+     </div>
+
+     <!-- QUICK ACTIONS (NEW!) -->
+     <div class="actions grid grid-cols-3 gap-2">
+       <button class="btn-primary" onclick="OrganizerSystem.viewRoster('${event.id}')">
+         <span class="material-symbols-outlined">group</span>
+         View Roster
+       </button>
+       <button class="btn-secondary" onclick="OrganizerSystem.editEvent('${event.id}')">
+         <span class="material-symbols-outlined">edit</span>
+         Edit
+       </button>
+       <button class="btn-secondary" onclick="OrganizerSystem.closeRegistration('${event.id}')">
+         <span class="material-symbols-outlined">lock</span>
+         Close
+       </button>
+     </div>
+
+     <!-- DROPDOWN MENU (NEW!) -->
+     <div class="dropdown-actions mt-2">
+       <button class="btn-text w-full" onclick="OrganizerSystem.toggleActions('${event.id}')">
+         More Actions ▼
+       </button>
+       <div id="actions-${event.id}" class="hidden mt-2 space-y-1">
+         <button onclick="OrganizerSystem.exportCSV('${event.id}')">Export CSV</button>
+         <button onclick="OrganizerSystem.exportPDF('${event.id}')">Export PDF</button>
+         <button onclick="OrganizerSystem.sendMessage('${event.id}')">Send Message</button>
+         <button onclick="OrganizerSystem.manageWaitlist('${event.id}')">Manage Waitlist</button>
+         <button onclick="OrganizerSystem.viewPairings('${event.id}')">View Pairings</button>
+         <button class="text-red-500" onclick="OrganizerSystem.cancelEvent('${event.id}')">Cancel Event</button>
+       </div>
+     </div>
+   </div>
+   ```
+
+2. REGISTRATION TABLE MODAL (New component)
+   ```html
+   <div id="registrationManagerModal" class="modal-backdrop" style="display: none;">
+     <div class="modal-content max-w-6xl">
+       <div class="modal-header bg-green-500">
+         <h2>Registration Management</h2>
+         <p>View and manage event registrations</p>
+       </div>
+
+       <div class="modal-body">
+         <!-- Event Selector -->
+         <div class="mb-4">
+           <label>Event:</label>
+           <select id="regMgrEventSelect" onchange="OrganizerSystem.loadEventRegistrations(this.value)">
+             <!-- Events will be populated -->
+           </select>
+         </div>
+
+         <!-- Summary Stats -->
+         <div id="regMgrSummary" class="summary-stats grid grid-cols-5 gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
+           <div>
+             <p class="text-sm text-gray-500">Total Registered</p>
+             <p class="text-2xl font-bold" id="summaryTotal">0</p>
+           </div>
+           <div>
+             <p class="text-sm text-gray-500">Total Revenue</p>
+             <p class="text-2xl font-bold" id="summaryRevenue">฿0</p>
+           </div>
+           <div>
+             <p class="text-sm text-gray-500">Transport</p>
+             <p class="text-2xl font-bold" id="summaryTransport">0</p>
+           </div>
+           <div>
+             <p class="text-sm text-gray-500">Competition</p>
+             <p class="text-2xl font-bold" id="summaryCompetition">0</p>
+           </div>
+           <div>
+             <p class="text-sm text-gray-500">Paid</p>
+             <p class="text-2xl font-bold" id="summaryPaid">0/0</p>
+           </div>
+         </div>
+
+         <!-- Actions Bar -->
+         <div class="actions-bar flex gap-2 mb-4">
+           <input type="text" id="regMgrSearch" placeholder="Search by name..."
+                  class="flex-1 px-4 py-2 border rounded-lg">
+           <button class="btn-primary" onclick="OrganizerSystem.exportRegistrationsCSV()">
+             <span class="material-symbols-outlined">download</span>
+             Export CSV
+           </button>
+           <button class="btn-secondary" onclick="OrganizerSystem.exportRegistrationsPDF()">
+             <span class="material-symbols-outlined">print</span>
+             Export PDF
+           </button>
+           <button class="btn-secondary" onclick="window.print()">
+             <span class="material-symbols-outlined">print</span>
+             Print
+           </button>
+         </div>
+
+         <!-- Registration Table -->
+         <div class="overflow-x-auto">
+           <table id="registrationTable" class="w-full">
+             <thead class="bg-gray-100">
+               <tr>
+                 <th class="px-4 py-2 text-left">Name</th>
+                 <th class="px-4 py-2 text-left">HCP</th>
+                 <th class="px-4 py-2 text-center">Transport</th>
+                 <th class="px-4 py-2 text-center">Competition</th>
+                 <th class="px-4 py-2 text-center">Payment</th>
+                 <th class="px-4 py-2 text-left">Registered</th>
+                 <th class="px-4 py-2 text-center">Actions</th>
+               </tr>
+             </thead>
+             <tbody id="registrationTableBody">
+               <!-- Rows will be populated -->
+             </tbody>
+           </table>
+         </div>
+       </div>
+
+       <div class="modal-footer">
+         <button class="btn-secondary" onclick="OrganizerSystem.closeRegistrationManager()">
+           Close
+         </button>
+       </div>
+     </div>
+   </div>
+   ```
+
+3. PLAYER ACTIONS MENU (Dropdown per row)
+   ```html
+   <div class="dropdown-menu">
+     <button class="dropdown-trigger">⋮</button>
+     <div class="dropdown-content">
+       <button onclick="OrganizerSystem.viewPlayerProfile('${playerId}')">
+         <span class="material-symbols-outlined">person</span>
+         View Profile
+       </button>
+       <button onclick="OrganizerSystem.sendMessageToPlayer('${playerId}')">
+         <span class="material-symbols-outlined">message</span>
+         Send Message
+       </button>
+       <button onclick="OrganizerSystem.togglePaymentStatus('${regId}')">
+         <span class="material-symbols-outlined">payments</span>
+         Mark as ${isPaid ? 'Unpaid' : 'Paid'}
+       </button>
+       <button onclick="OrganizerSystem.editPlayerRegistration('${regId}')">
+         <span class="material-symbols-outlined">edit</span>
+         Edit Registration
+       </button>
+       <button onclick="OrganizerSystem.moveToWaitlist('${regId}')">
+         <span class="material-symbols-outlined">hourglass</span>
+         Move to Waitlist
+       </button>
+       <button class="text-red-500" onclick="OrganizerSystem.removePlayer('${regId}')">
+         <span class="material-symbols-outlined">delete</span>
+         Remove from Event
+       </button>
+     </div>
+   </div>
+   ```
+
+═══════════════════════════════════════════════════════════════
+💾 DATABASE QUERIES TO IMPLEMENT
+═══════════════════════════════════════════════════════════════
+
+Add to SocietyGolfDB class (lines 29181-29725):
+
+```javascript
+// Get event with registration statistics
+async getEventWithStats(eventId) {
+  const [event, registrations, waitlist] = await Promise.all([
+    this.client.from('society_events').select('*').eq('id', eventId).single(),
+    this.client.from('event_registrations').select('*').eq('event_id', eventId),
+    this.client.from('event_waitlist').select('id').eq('event_id', eventId)
+  ]);
+
+  const stats = {
+    registered: registrations.data?.length || 0,
+    waitlist: waitlist.data?.length || 0,
+    transportCount: registrations.data?.filter(r => r.want_transport).length || 0,
+    competitionCount: registrations.data?.filter(r => r.want_competition).length || 0,
+    revenue: this.calculateEventRevenue(event.data, registrations.data)
+  };
+
+  return { ...event.data, stats };
+}
+
+// Get registrations with player profile details
+async getEventRegistrationsWithPlayers(eventId) {
+  const { data, error } = await this.client
+    .from('event_registrations')
+    .select(`
+      *,
+      player:user_profiles!player_id(
+        name,
+        username,
+        email,
+        phone,
+        handicap
+      )
+    `)
+    .eq('event_id', eventId)
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+  return data;
+}
+
+// Calculate event revenue
+calculateEventRevenue(event, registrations) {
+  if (!registrations || registrations.length === 0) return 0;
+
+  const baseFee = parseFloat(event.base_fee) || 0;
+  const cartFee = parseFloat(event.cart_fee) || 0;
+  const caddyFee = parseFloat(event.caddy_fee) || 0;
+  const transportFee = parseFloat(event.transport_fee) || 0;
+  const competitionFee = parseFloat(event.competition_fee) || 0;
+
+  let totalRevenue = 0;
+
+  registrations.forEach(reg => {
+    totalRevenue += baseFee + cartFee + caddyFee;
+    if (reg.want_transport) totalRevenue += transportFee;
+    if (reg.want_competition) totalRevenue += competitionFee;
+  });
+
+  return totalRevenue;
+}
+
+// Update payment status
+async updatePaymentStatus(registrationId, isPaid) {
+  const { data, error } = await this.client
+    .from('event_registrations')
+    .update({
+      is_paid: isPaid,
+      payment_date: isPaid ? new Date().toISOString() : null
+    })
+    .eq('id', registrationId)
+    .select();
+
+  if (error) throw error;
+  return data;
+}
+
+// Get all events for organizer with stats
+async getOrganizerEventsWithStats(organizerId) {
+  // Get all events for this organizer
+  const { data: events } = await this.client
+    .from('society_events')
+    .select('*')
+    .eq('organizer_id', organizerId)
+    .order('date', { ascending: true });
+
+  if (!events || events.length === 0) return [];
+
+  const eventIds = events.map(e => e.id);
+
+  // Parallel queries for all events
+  const [regsResult, waitlistResult] = await Promise.all([
+    this.client
+      .from('event_registrations')
+      .select('event_id, want_transport, want_competition, is_paid')
+      .in('event_id', eventIds),
+    this.client
+      .from('event_waitlist')
+      .select('event_id')
+      .in('event_id', eventIds)
+  ]);
+
+  // Calculate stats per event
+  return events.map(event => {
+    const eventRegs = regsResult.data?.filter(r => r.event_id === event.id) || [];
+    const eventWaitlist = waitlistResult.data?.filter(w => w.event_id === event.id) || [];
+
+    return {
+      ...event,
+      stats: {
+        registered: eventRegs.length,
+        waitlist: eventWaitlist.length,
+        transportCount: eventRegs.filter(r => r.want_transport).length,
+        competitionCount: eventRegs.filter(r => r.want_competition).length,
+        paidCount: eventRegs.filter(r => r.is_paid).length,
+        revenue: this.calculateEventRevenue(event, eventRegs)
+      }
+    };
+  });
+}
+```
+
+═══════════════════════════════════════════════════════════════
+📝 CODE IMPLEMENTATION CHECKLIST
+═══════════════════════════════════════════════════════════════
+
+PHASE 1 - Enhanced Events & Registration Management:
+
+Database Layer (SocietyGolfDB):
+[ ] Add getOrganizerEventsWithStats()
+[ ] Add getEventRegistrationsWithPlayers()
+[ ] Add calculateEventRevenue()
+[ ] Add updatePaymentStatus()
+[ ] Test all queries
+
+HTML Components:
+[ ] Add registration manager modal HTML
+[ ] Add enhanced event card template
+[ ] Add player actions dropdown template
+[ ] Add summary stats components
+
+JavaScript (SocietyOrganizerManager):
+[ ] Update loadOrganizerEvents() with parallel queries
+[ ] Update renderOrganizerEvents() with enhanced cards
+[ ] Add openRegistrationManager()
+[ ] Add loadEventRegistrations()
+[ ] Add renderRegistrationTable()
+[ ] Add filterRegistrations()
+[ ] Add exportRegistrationsCSV()
+[ ] Add markPlayerPaid()
+[ ] Add markPlayerUnpaid()
+[ ] Add removePlayer()
+[ ] Add sendMessageToPlayer()
+
+UI/UX:
+[ ] Add loading states
+[ ] Add toast notifications for actions
+[ ] Add confirmation dialogs where needed
+[ ] Add responsive design for mobile
+[ ] Add print CSS for roster
+
+Testing:
+[ ] Create test event
+[ ] Add test registrations
+[ ] Test export CSV
+[ ] Test payment status toggle
+[ ] Test search/filter
+[ ] Test on mobile
+[ ] Test on desktop
+
+═══════════════════════════════════════════════════════════════
+🎓 LEARNING FROM GOLFER SYSTEM
+═══════════════════════════════════════════════════════════════
+
+Patterns to Replicate:
+
+1. Performance (lines 29287-29366):
+   ✅ Use Promise.all() for parallel queries
+   ✅ Cache results with 2-minute expiry
+   ✅ Show cached data immediately on reload
+
+2. Notifications (throughout):
+   ✅ NO alert() popups - use NotificationManager
+   ✅ Success: green, 3-4s
+   ✅ Error: red, 3-5s
+   ✅ Info: blue, 2-3s
+
+3. Modal Experience (lines 31454-31536):
+   ✅ Full detail modals (not confirm() dialogs)
+   ✅ Pre-fill forms with existing data
+   ✅ Show context while editing
+   ✅ Change button text for edit mode
+
+4. Code Organization:
+   ✅ Group related methods together
+   ✅ Clear comments for complex logic
+   ✅ Consistent naming conventions
+   ✅ Error handling in all async functions
+
+═══════════════════════════════════════════════════════════════
+🚀 DEPLOYMENT PLAN
+═══════════════════════════════════════════════════════════════
+
+Phase 1 Deployment:
+1. Complete all checkboxes above
+2. Test locally with npx serve
+3. Test enhanced event cards
+4. Test registration table
+5. Test export functionality
+6. Check console for errors
+7. Deploy to staging: netlify deploy
+8. Test on staging URL
+9. Deploy to production: netlify deploy --prod
+10. Verify on https://mycaddipro.com
+11. Update documentation
+
+═══════════════════════════════════════════════════════════════
+📚 RELATED DOCUMENTATION
+═══════════════════════════════════════════════════════════════
+
+Read Before Starting:
+1. ORGANIZER_EVENTS_SYSTEM_TODO.txt - Full specification
+2. SESSION_Society_Events_Complete_2025-10-10.txt - Golfer system reference
+3. QUICK_REFERENCE_Current_State.txt - Platform overview
+
+Reference During Implementation:
+- Golfer Events Code: index.html lines 30857-32103
+- Database Functions: index.html lines 29181-29725
+- Current Organizer Code: index.html lines 29726-30810
+- Registration Form HTML: index.html lines 26549-26638
+- Event Cards HTML: index.html lines 31000-31080
+
+═══════════════════════════════════════════════════════════════
+✅ READY TO START IMPLEMENTATION
+═══════════════════════════════════════════════════════════════
+
+Current Status:
+✅ Specification complete
+✅ Database schemas exist
+✅ Golfer system reference code available
+✅ UI mockups defined
+✅ Implementation plan ready
+✅ Catalog documentation created
+
+Next Action:
+→ Begin Phase 1 implementation
+→ Start with database queries
+→ Then HTML components
+→ Then JavaScript methods
+→ Test and deploy
+
+Estimated Time: 2-3 hours for Phase 1
+
+═══════════════════════════════════════════════════════════════
+END OF SESSION CONTINUATION CATALOG
+═══════════════════════════════════════════════════════════════

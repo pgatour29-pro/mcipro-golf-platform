@@ -31163,16 +31163,22 @@ class LiveScorecardSystem {
                 );
 
                 // Update with group and course info
-                await window.SupabaseDB.client
+                const { error: updateError } = await window.SupabaseDB.client
                     .from('scorecards')
                     .update({
                         group_id: this.groupId,
                         course_id: courseId,
                         course_name: this.courseData.name,
                         tee_marker: teeMarker,
-                        player_name: player.name
+                        player_name: player.name,
+                        scoring_format: this.scoringFormat
                     })
                     .eq('id', scorecard.id);
+
+                if (updateError) {
+                    console.error('[LiveScorecard] Error updating scorecard:', updateError);
+                    throw updateError;
+                }
 
                 this.scorecards[player.id] = scorecard.id;
             } catch (error) {
@@ -31199,6 +31205,7 @@ class LiveScorecardSystem {
                         course_id: courseId,
                         course_name: this.courseData.name,
                         tee_marker: teeMarker,
+                        scoring_format: this.scoringFormat,
                         status: 'in_progress',
                         started_at: new Date().toISOString(),
                         pending_sync: true // Mark for later sync to Supabase

@@ -31947,8 +31947,10 @@ class LiveScorecardSystem {
         tableHTML += `<tr class="bg-white"><td class="border border-gray-300 px-2 py-2 font-semibold">Score</td>`;
         let frontNineGross = 0, backNineGross = 0;
         for (let i = 1; i <= 18; i++) {
-            const scoreData = this.scoresCache[player.id]?.[i];
-            const score = scoreData?.gross_score || '-';
+            // scoresCache stores scores as plain numbers: scoresCache[playerId][hole] = 5
+            const scoreValue = this.scoresCache[player.id]?.[i];
+            const score = (typeof scoreValue === 'number') ? scoreValue : '-';
+
             if (score !== '-') {
                 if (i <= 9) frontNineGross += score;
                 else backNineGross += score;
@@ -31970,16 +31972,33 @@ class LiveScorecardSystem {
         tableHTML += `<td class="border border-gray-300 px-2 py-2 text-center font-bold text-lg bg-yellow-100">${totalGross || '-'}</td></tr>`;
 
         // Stableford Points row (if stableford format)
-        if (this.scoringFormat === 'stableford') {
+        if (this.scoringFormat === 'stableford' || this.scoringFormat === 'modifiedstableford') {
             tableHTML += `<tr class="bg-green-50"><td class="border border-gray-300 px-2 py-2 font-semibold">Points</td>`;
             let frontNinePoints = 0, backNinePoints = 0;
+
+            const engine = LiveScorecardSystem.GolfScoringEngine;
+            const pointsMap = this.scoringFormat === 'modifiedstableford'
+                ? engine.modifiedStablefordPoints
+                : engine.defaultStableford;
+
             for (let i = 1; i <= 18; i++) {
-                const scoreData = this.scoresCache[player.id]?.[i];
-                const points = scoreData?.stableford || '-';
-                if (points !== '-') {
+                const scoreValue = this.scoresCache[player.id]?.[i];
+                let points = '-';
+
+                if (typeof scoreValue === 'number') {
+                    const hole = this.courseData?.holes?.find(h => h.number === i);
+                    const par = hole?.par || 4;
+                    const strokeIndex = hole?.strokeIndex || i;
+
+                    // Calculate stableford points using the engine
+                    const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
+                    const netScore = scoreValue - shotsReceived;
+                    points = engine.stablefordPointsForHole(netScore, par, pointsMap);
+
                     if (i <= 9) frontNinePoints += points;
                     else backNinePoints += points;
                 }
+
                 tableHTML += `<td class="border border-gray-300 px-1 py-2 text-center font-bold">${points}</td>`;
             }
             const totalPoints = frontNinePoints + backNinePoints;

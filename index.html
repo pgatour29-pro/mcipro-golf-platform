@@ -22399,6 +22399,16 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             </div>
                         </div>
 
+                        <!-- Skins Value -->
+                        <div class="mb-4" id="skinsValueSection" style="display: none;">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                <span class="material-symbols-outlined text-sm align-middle text-orange-600">monetization_on</span>
+                                Skins Value Per Hole (Points)
+                            </label>
+                            <input type="number" id="skinsValueInput" min="1" max="100000" value="100" placeholder="Enter points per hole (1-100,000)" class="w-full rounded-lg border px-3 py-2">
+                            <p class="text-xs text-gray-500 mt-1">💰 Points awarded per hole (e.g., 100 points/hole = 1,800 total)</p>
+                        </div>
+
                         <!-- Add Players (1-7) -->
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 mb-2">Add Players (1-7)</label>
@@ -22479,9 +22489,13 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 <span class="material-symbols-outlined">arrow_back</span>
                                 Previous Hole
                             </button>
-                            <button onclick="LiveScorecardManager.nextHole()" class="flex-1 btn-primary py-3">
+                            <button id="nextHoleButton" onclick="LiveScorecardManager.nextHole()" class="flex-1 btn-primary py-3">
                                 Next Hole
                                 <span class="material-symbols-outlined">arrow_forward</span>
+                            </button>
+                            <button id="finishRoundButton" onclick="LiveScorecardManager.completeRound()" class="flex-1 bg-gradient-to-r from-green-600 to-green-500 text-white py-3 rounded-lg font-semibold hover:from-green-700 hover:to-green-600 flex items-center justify-center gap-2" style="display: none;">
+                                <span class="material-symbols-outlined">flag</span>
+                                Finish Round & Post Score
                             </button>
                         </div>
 
@@ -31403,10 +31417,12 @@ class LiveScorecardSystem {
         },
 
         // Calculate skins (hole-by-hole winner) - returns detailed hole-by-hole results
-        calculateSkins(allPlayerScores, courseHoles, useNet = true) {
-            const skinsWon = {};
+        calculateSkins(allPlayerScores, courseHoles, useNet = true, pointsPerHole = 100) {
+            const skinsWon = {}; // Total points won by each player
+            const frontNine = {}; // Front 9 points (holes 1-9)
+            const backNine = {}; // Back 9 points (holes 10-18)
             const holeResults = {}; // Track which player won each hole
-            let carryOverValue = 0; // Number of skins being carried
+            let carryOverValue = 0; // Number of skins being carried (multiplies points)
 
             for (let hole = 1; hole <= 18; hole++) {
                 const holeScores = [];
@@ -31425,7 +31441,7 @@ class LiveScorecardSystem {
                 }
 
                 if (holeScores.length === 0) {
-                    holeResults[hole] = { winner: null, tied: false, skinsValue: 0 };
+                    holeResults[hole] = { winner: null, tied: false, pointsValue: 0 };
                     continue;
                 }
 
@@ -31434,17 +31450,25 @@ class LiveScorecardSystem {
                 const winners = holeScores.filter(s => s.strokes === best);
 
                 if (winners.length === 1) {
-                    // Single winner - gets this hole plus any carry-over
+                    // Single winner - gets points for this hole plus carry-over multiplier
                     const winnerId = winners[0].playerId;
                     const winnerName = winners[0].playerName;
-                    const skinsValue = 1 + carryOverValue;
+                    const pointsValue = pointsPerHole * (1 + carryOverValue);
 
-                    skinsWon[winnerId] = (skinsWon[winnerId] || 0) + skinsValue;
+                    skinsWon[winnerId] = (skinsWon[winnerId] || 0) + pointsValue;
+
+                    // Track front nine vs back nine
+                    if (hole <= 9) {
+                        frontNine[winnerId] = (frontNine[winnerId] || 0) + pointsValue;
+                    } else {
+                        backNine[winnerId] = (backNine[winnerId] || 0) + pointsValue;
+                    }
+
                     holeResults[hole] = {
                         winner: winnerId,
                         winnerName: winnerName,
                         tied: false,
-                        skinsValue: skinsValue,
+                        pointsValue: pointsValue,
                         carriedOver: carryOverValue
                     };
                     carryOverValue = 0;
@@ -31454,7 +31478,7 @@ class LiveScorecardSystem {
                     holeResults[hole] = {
                         winner: null,
                         tied: true,
-                        skinsValue: 0,
+                        pointsValue: 0,
                         carriedOver: carryOverValue
                     };
                 }
@@ -31462,9 +31486,103 @@ class LiveScorecardSystem {
 
             return {
                 skinsWon,
+                frontNine,
+                backNine,
                 holeResults,
                 carryOverRemaining: carryOverValue
             };
+        },
+
+        // Calculate match play (hole-by-hole comparison)
+        calculateMatchPlay(playerScores, courseHoles, useNet = true) {
+            // Match play is typically head-to-head, we'll calculate vs the field for simplicity
+            const matchResults = {};
+
+            for (const player of playerScores) {
+                let holesUp = 0; // Holes won
+                let holesDown = 0; // Holes lost
+                let holesHalved = 0; // Tied holes
+                let holesPlayed = 0;
+                const holeByHole = [];
+
+                for (let hole = 1; hole <= 18; hole++) {
+                    const playerScore = player.scores.find(s => (s.hole_number || s.hole) === hole);
+                    if (!playerScore) continue;
+
+                    let playerStrokes = playerScore.gross_score || playerScore.strokes;
+                    if (useNet && player.handicap) {
+                        const shots = this.allocHandicapShots(courseHoles, player.handicap);
+                        playerStrokes = this.netStrokesForHole(playerStrokes, shots[hole] || 0);
+                    }
+
+                    // Find best opponent score on this hole
+                    let bestOpponentStrokes = 999;
+                    for (const opponent of playerScores) {
+                        if (opponent.playerId === player.playerId) continue;
+                        const oppScore = opponent.scores.find(s => (s.hole_number || s.hole) === hole);
+                        if (!oppScore) continue;
+
+                        let oppStrokes = oppScore.gross_score || oppScore.strokes;
+                        if (useNet && opponent.handicap) {
+                            const shots = this.allocHandicapShots(courseHoles, opponent.handicap);
+                            oppStrokes = this.netStrokesForHole(oppStrokes, shots[hole] || 0);
+                        }
+
+                        bestOpponentStrokes = Math.min(bestOpponentStrokes, oppStrokes);
+                    }
+
+                    if (bestOpponentStrokes === 999) continue; // No opponent scores
+
+                    holesPlayed++;
+                    if (playerStrokes < bestOpponentStrokes) {
+                        holesUp++;
+                        holeByHole.push({ hole, result: 'won' });
+                    } else if (playerStrokes > bestOpponentStrokes) {
+                        holesDown++;
+                        holeByHole.push({ hole, result: 'lost' });
+                    } else {
+                        holesHalved++;
+                        holeByHole.push({ hole, result: 'halved' });
+                    }
+                }
+
+                // Calculate match status
+                const netHoles = holesUp - holesDown;
+                const holesRemaining = 18 - holesPlayed;
+
+                let status = 'All Square';
+                let matchFinished = false;
+
+                if (netHoles > 0) {
+                    if (netHoles > holesRemaining) {
+                        // Match is won (e.g., "4 & 3" means 4 up with 3 to play)
+                        status = `${netHoles} & ${holesRemaining}`;
+                        matchFinished = true;
+                    } else {
+                        status = `${netHoles} UP`;
+                    }
+                } else if (netHoles < 0) {
+                    if (Math.abs(netHoles) > holesRemaining) {
+                        status = `${Math.abs(netHoles)} & ${holesRemaining} (Down)`;
+                        matchFinished = true;
+                    } else {
+                        status = `${Math.abs(netHoles)} DOWN`;
+                    }
+                }
+
+                matchResults[player.playerId] = {
+                    holesUp,
+                    holesDown,
+                    holesHalved,
+                    holesPlayed,
+                    netHoles,
+                    status,
+                    matchFinished,
+                    holeByHole
+                };
+            }
+
+            return matchResults;
         },
 
         // Calculate better ball / best ball (team format)
@@ -32032,6 +32150,17 @@ class LiveScorecardSystem {
         // Update progress
         const entered = this.players.filter(p => this.getPlayerScore(p.id, this.currentHole)).length;
         document.getElementById('holeProgress').textContent = `${entered}/${this.players.length} players entered`;
+
+        // Show/hide Finish Round button on hole 18
+        const nextHoleBtn = document.getElementById('nextHoleButton');
+        const finishRoundBtn = document.getElementById('finishRoundButton');
+        if (this.currentHole === 18) {
+            if (nextHoleBtn) nextHoleBtn.style.display = 'none';
+            if (finishRoundBtn) finishRoundBtn.style.display = 'flex';
+        } else {
+            if (nextHoleBtn) nextHoleBtn.style.display = 'flex';
+            if (finishRoundBtn) finishRoundBtn.style.display = 'none';
+        }
     }
 
     getPlayerScore(playerId, holeNumber) {
@@ -32939,13 +33068,50 @@ class LiveScorecardSystem {
                 };
             });
 
-            const skinsResults = engine.calculateSkins(allPlayerData, this.courseData.holes, true);
+            // Get skins value from input (default 100 if not set)
+            const pointsPerHole = parseInt(document.getElementById('skinsValueInput')?.value) || 100;
+            const skinsResults = engine.calculateSkins(allPlayerData, this.courseData.holes, true, pointsPerHole);
 
             // Add skins data to each player's leaderboard entry
             leaderboard.forEach(entry => {
                 entry.skins = {
                     skinsWon: skinsResults.skinsWon[entry.player_id] || 0,
-                    holeResults: skinsResults.holeResults
+                    frontNine: skinsResults.frontNine[entry.player_id] || 0,
+                    backNine: skinsResults.backNine[entry.player_id] || 0,
+                    holeResults: skinsResults.holeResults,
+                    pointsPerHole: pointsPerHole
+                };
+            });
+        }
+
+        // Calculate Match Play across all players
+        if (this.scoringFormats.includes('matchplay') && this.courseData && this.courseData.holes) {
+            const allPlayerData = this.players.map(player => {
+                const playerScores = this.scoresCache[player.id] || {};
+                const scoresArray = Object.entries(playerScores).map(([hole, score]) => ({
+                    hole_number: parseInt(hole),
+                    gross_score: score
+                }));
+
+                return {
+                    playerId: player.id,
+                    playerName: player.name,
+                    scores: scoresArray,
+                    handicap: player.handicap
+                };
+            });
+
+            const matchResults = engine.calculateMatchPlay(allPlayerData, this.courseData.holes, true);
+
+            // Add match play data to each player's leaderboard entry
+            leaderboard.forEach(entry => {
+                entry.matchplay = matchResults[entry.player_id] || {
+                    status: 'All Square',
+                    holesUp: 0,
+                    holesDown: 0,
+                    holesHalved: 0,
+                    netHoles: 0,
+                    matchFinished: false
                 };
             });
         }
@@ -33061,18 +33227,37 @@ class LiveScorecardSystem {
 
             // Special rendering for Skins format
             if (format === 'skins') {
-                // Sort by skins won
+                // Sort by skins points
                 sortedLeaderboard.sort((a, b) => (b.skins?.skinsWon || 0) - (a.skins?.skinsWon || 0));
 
                 const holeResults = sortedLeaderboard[0]?.skins?.holeResults || {};
+                const pointsPerHole = sortedLeaderboard[0]?.skins?.pointsPerHole || 100;
+
+                // Define player colors (7 distinct colors for up to 7 players)
+                const playerColors = [
+                    { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-400', badge: 'bg-blue-500' },
+                    { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-400', badge: 'bg-green-500' },
+                    { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-400', badge: 'bg-red-500' },
+                    { bg: 'bg-purple-100', text: 'text-purple-800', border: 'border-purple-400', badge: 'bg-purple-500' },
+                    { bg: 'bg-pink-100', text: 'text-pink-800', border: 'border-pink-400', badge: 'bg-pink-500' },
+                    { bg: 'bg-indigo-100', text: 'text-indigo-800', border: 'border-indigo-400', badge: 'bg-indigo-500' },
+                    { bg: 'bg-teal-100', text: 'text-teal-800', border: 'border-teal-400', badge: 'bg-teal-500' }
+                ];
+
+                // Assign colors to players
+                const playerColorMap = {};
+                sortedLeaderboard.forEach((entry, index) => {
+                    playerColorMap[entry.player_id] = playerColors[index % playerColors.length];
+                });
 
                 return `
                     <div class="mb-6 ${formatIndex > 0 ? 'mt-6 pt-6 border-t-4 border-gray-300' : ''}">
                         <h3 class="text-lg font-bold text-gray-900 mb-3 bg-gradient-to-r from-orange-100 to-orange-50 px-4 py-2 rounded-lg border-l-4 border-orange-500">
                             ${formatName} Leaderboard
+                            <span class="text-sm font-normal text-gray-600 ml-2">(${pointsPerHole} points/hole)</span>
                         </h3>
 
-                        <!-- Summary Table -->
+                        <!-- Summary Table with Front/Back/Total -->
                         <div class="overflow-x-auto mb-4">
                             <table class="w-full text-sm">
                                 <thead class="border-b-2 border-gray-300">
@@ -33080,21 +33265,31 @@ class LiveScorecardSystem {
                                         <th class="py-2 px-2">Pos</th>
                                         <th class="py-2 px-2">Player</th>
                                         <th class="py-2 px-2">Thru</th>
-                                        <th class="py-2 px-2 text-center bg-orange-50 font-bold">Skins Won</th>
+                                        <th class="py-2 px-2 text-center bg-blue-50">Front 9</th>
+                                        <th class="py-2 px-2 text-center bg-green-50">Back 9</th>
+                                        <th class="py-2 px-2 text-center bg-orange-50 font-bold">Total</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     ${sortedLeaderboard.map((entry, index) => {
                                         const holesPlayed = entry.holes_played || 0;
                                         const thru = holesPlayed === 18 ? 'F' : holesPlayed === 0 ? '-' : holesPlayed.toString();
-                                        const skinsWon = entry.skins?.skinsWon || 0;
+                                        const totalPoints = entry.skins?.skinsWon || 0;
+                                        const frontPoints = entry.skins?.frontNine || 0;
+                                        const backPoints = entry.skins?.backNine || 0;
+                                        const color = playerColorMap[entry.player_id];
 
                                         return `
                                             <tr class="border-b border-gray-200 ${index === 0 ? 'bg-orange-50' : ''}">
                                                 <td class="py-2 px-2 font-bold">${index + 1}</td>
-                                                <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
+                                                <td class="py-2 px-2 flex items-center gap-2">
+                                                    <span class="inline-block w-3 h-3 rounded-full ${color.badge}"></span>
+                                                    ${entry.player_name || 'Unknown'}
+                                                </td>
                                                 <td class="py-2 px-2">${thru}</td>
-                                                <td class="py-2 px-2 text-center font-bold text-xl text-orange-700">${skinsWon}</td>
+                                                <td class="py-2 px-2 text-center font-semibold">${frontPoints.toLocaleString()}</td>
+                                                <td class="py-2 px-2 text-center font-semibold">${backPoints.toLocaleString()}</td>
+                                                <td class="py-2 px-2 text-center font-bold text-xl text-orange-700">${totalPoints.toLocaleString()}</td>
                                             </tr>
                                         `;
                                     }).join('')}
@@ -33102,48 +33297,129 @@ class LiveScorecardSystem {
                             </table>
                         </div>
 
-                        <!-- Hole-by-Hole Breakdown -->
+                        <!-- Hole-by-Hole Breakdown with Colors -->
                         <div class="mt-4 p-3 bg-orange-50 rounded-lg">
                             <div class="font-semibold text-gray-900 mb-3 text-sm">Hole-by-Hole Breakdown:</div>
                             <div class="grid grid-cols-6 gap-2 text-xs">
                                 ${Object.entries(holeResults).slice(0, 18).map(([hole, result]) => {
                                     const holeNum = parseInt(hole);
                                     const winner = result.winnerName;
+                                    const winnerId = result.winner;
                                     const tied = result.tied;
-                                    const skinsValue = result.skinsValue || 0;
+                                    const pointsValue = result.pointsValue || 0;
                                     const carriedOver = result.carriedOver || 0;
 
                                     let bgColor = 'bg-white';
                                     let textColor = 'text-gray-600';
+                                    let borderColor = 'border-gray-300';
                                     let displayText = '-';
 
                                     if (tied) {
                                         bgColor = 'bg-yellow-100';
                                         textColor = 'text-yellow-800';
-                                        displayText = `Tie (${carriedOver})`;
-                                    } else if (winner) {
-                                        bgColor = 'bg-green-100';
-                                        textColor = 'text-green-800';
+                                        borderColor = 'border-yellow-400';
+                                        displayText = `Tie (${carriedOver}x)`;
+                                    } else if (winner && winnerId) {
+                                        const color = playerColorMap[winnerId];
+                                        bgColor = color.bg;
+                                        textColor = color.text;
+                                        borderColor = color.border;
                                         displayText = winner;
-                                        if (skinsValue > 1) {
-                                            displayText += ` (${skinsValue})`;
+                                        if (pointsValue) {
+                                            displayText += `<br><strong>${pointsValue.toLocaleString()}pts</strong>`;
                                         }
                                     }
 
                                     return `
-                                        <div class="p-2 ${bgColor} ${textColor} rounded border border-gray-300 text-center">
-                                            <div class="font-bold">H${holeNum}</div>
-                                            <div class="text-xs mt-1">${displayText}</div>
+                                        <div class="p-2 ${bgColor} ${textColor} rounded border-2 ${borderColor} text-center">
+                                            <div class="font-bold mb-1">H${holeNum}</div>
+                                            <div class="text-xs">${displayText}</div>
                                         </div>
                                     `;
                                 }).join('')}
                             </div>
                             <div class="mt-3 text-xs text-gray-600">
                                 <strong>Legend:</strong>
-                                <span class="inline-block px-2 py-1 bg-green-100 text-green-800 rounded ml-2">Winner</span>
-                                <span class="inline-block px-2 py-1 bg-yellow-100 text-yellow-800 rounded ml-2">Tie (carry-over)</span>
-                                <span class="ml-2">(#) = skins value including carry-overs</span>
+                                <span class="inline-block px-2 py-1 bg-yellow-100 text-yellow-800 rounded ml-2">Tie (carry-over multiplier)</span>
+                                <span class="ml-2">Colors match player badges above</span>
                             </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Special rendering for Match Play format
+            if (format === 'matchplay') {
+                // Sort by net holes (holes up)
+                sortedLeaderboard.sort((a, b) => (b.matchplay?.netHoles || 0) - (a.matchplay?.netHoles || 0));
+
+                return `
+                    <div class="mb-6 ${formatIndex > 0 ? 'mt-6 pt-6 border-t-4 border-gray-300' : ''}">
+                        <h3 class="text-lg font-bold text-gray-900 mb-3 bg-gradient-to-r from-purple-100 to-purple-50 px-4 py-2 rounded-lg border-l-4 border-purple-500">
+                            ${formatName} Leaderboard
+                        </h3>
+
+                        <!-- Match Play Table -->
+                        <div class="overflow-x-auto mb-4">
+                            <table class="w-full text-sm">
+                                <thead class="border-b-2 border-gray-300">
+                                    <tr class="text-left">
+                                        <th class="py-2 px-2">Pos</th>
+                                        <th class="py-2 px-2">Player</th>
+                                        <th class="py-2 px-2">Thru</th>
+                                        <th class="py-2 px-2 text-center bg-green-50">Won</th>
+                                        <th class="py-2 px-2 text-center bg-gray-50">Halved</th>
+                                        <th class="py-2 px-2 text-center bg-red-50">Lost</th>
+                                        <th class="py-2 px-2 text-center bg-purple-50 font-bold">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${sortedLeaderboard.map((entry, index) => {
+                                        const holesPlayed = entry.holes_played || 0;
+                                        const thru = holesPlayed === 18 ? 'F' : holesPlayed === 0 ? '-' : holesPlayed.toString();
+                                        const matchData = entry.matchplay || {};
+                                        const status = matchData.status || 'All Square';
+                                        const isUp = matchData.netHoles > 0;
+                                        const isDown = matchData.netHoles < 0;
+                                        const isSquare = matchData.netHoles === 0;
+                                        const isFinished = matchData.matchFinished;
+
+                                        let statusColor = 'text-gray-700';
+                                        let statusBg = '';
+                                        if (isUp) {
+                                            statusColor = 'text-green-700 font-bold';
+                                            statusBg = index === 0 ? 'bg-green-50' : '';
+                                        } else if (isDown) {
+                                            statusColor = 'text-red-700 font-bold';
+                                        } else {
+                                            statusColor = 'text-gray-600';
+                                        }
+
+                                        return `
+                                            <tr class="border-b border-gray-200 ${statusBg}">
+                                                <td class="py-2 px-2 font-bold">${index + 1}</td>
+                                                <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
+                                                <td class="py-2 px-2">${thru}</td>
+                                                <td class="py-2 px-2 text-center text-green-700 font-semibold">${matchData.holesUp || 0}</td>
+                                                <td class="py-2 px-2 text-center text-gray-600">${matchData.holesHalved || 0}</td>
+                                                <td class="py-2 px-2 text-center text-red-700 font-semibold">${matchData.holesDown || 0}</td>
+                                                <td class="py-2 px-2 text-center ${statusColor}">
+                                                    ${status}
+                                                    ${isFinished ? '<br><span class="text-xs text-gray-600">(Finished)</span>' : ''}
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="text-xs text-gray-600 p-3 bg-purple-50 rounded-lg">
+                            <strong>Match Play Legend:</strong>
+                            <span class="ml-2">UP = Leading by holes</span>
+                            <span class="ml-2">• DOWN = Trailing by holes</span>
+                            <span class="ml-2">• All Square = Tied</span>
+                            <span class="ml-2">• "4 & 3" = 4 holes up with 3 to play (match finished)</span>
                         </div>
                     </div>
                 `;
@@ -34004,6 +34280,16 @@ window.toggleFormatCheckbox = function(label, event) {
         document.querySelectorAll('.scoring-format-checkbox:checked')
     ).map(cb => cb.value);
     console.log(`[LiveScorecard] Selected formats (${selectedFormats.length}):`, selectedFormats);
+
+    // Show/hide skins value input
+    const skinsSection = document.getElementById('skinsValueSection');
+    if (skinsSection) {
+        if (selectedFormats.includes('skins')) {
+            skinsSection.style.display = 'block';
+        } else {
+            skinsSection.style.display = 'none';
+        }
+    }
 };
 
 // Toggle all scoring formats on/off

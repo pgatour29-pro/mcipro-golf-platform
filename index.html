@@ -20760,7 +20760,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
         <nav class="bg-white border-b border-gray-200">
             <div class="max-w-7xl mx-auto px-4 lg:px-8">
-                <div class="flex space-x-1 md:space-x-3 lg:space-x-4">
+                <div class="flex overflow-x-auto flex-nowrap space-x-1 md:space-x-3 lg:space-x-4">
                     <button onclick="showGolferTab('overview', event)" class="tab-button active px-2 md:px-4">
                         <span class="material-symbols-outlined text-sm">dashboard</span>
                         <span class="hidden sm:inline ml-1">Overview</span>
@@ -31501,15 +31501,8 @@ class LiveScorecardSystem {
             // Update the profile in Supabase
             const profile = await window.SupabaseDB.getUserProfile(player.lineUserId);
             if (profile) {
-                const updatedProfileData = {
-                    ...profile.profile_data,
-                    handicap: roundedHandicap,
-                    golfInfo: {
-                        ...(profile.profile_data?.golfInfo || {}),
-                        handicap: roundedHandicap
-                    }
-                };
-
+                // CRITICAL: Must pass ALL profile sections to prevent data loss
+                // Follow the pattern from force-save-correct-profile.txt
                 await window.SupabaseDB.saveUserProfile({
                     line_user_id: player.lineUserId,
                     name: profile.name,
@@ -31517,9 +31510,26 @@ class LiveScorecardSystem {
                     caddy_number: profile.caddy_number,
                     phone: profile.phone,
                     email: profile.email,
-                    home_club: profile.home_club,
+                    homeClub: profile.profile_data?.golfInfo?.homeClub || profile.home_club,
                     language: profile.language,
-                    profile_data: updatedProfileData
+
+                    // Pass ALL profile sections (prevents data loss)
+                    personalInfo: profile.profile_data?.personalInfo || {},
+                    golfInfo: {
+                        ...(profile.profile_data?.golfInfo || {}),
+                        handicap: roundedHandicap  // Only update handicap, preserve homeClub & other fields
+                    },
+                    professionalInfo: profile.profile_data?.professionalInfo || {},
+                    skills: profile.profile_data?.skills || {},
+                    preferences: profile.profile_data?.preferences || {},
+                    media: profile.profile_data?.media || {},
+                    privacy: profile.profile_data?.privacy || {},
+
+                    // Top-level overrides
+                    handicap: roundedHandicap,
+                    userId: profile.profile_data?.userId || player.lineUserId,
+                    username: profile.profile_data?.username || null,
+                    linePictureUrl: profile.profile_data?.linePictureUrl || null
                 });
 
                 console.log(`[LiveScorecard] ✅ Handicap updated for ${player.name}: ${player.handicap} → ${roundedHandicap}`);

@@ -5,8 +5,11 @@
 -- Date: 2025-10-11
 -- =====================================================================
 
+-- Drop table if it exists (clean start)
+DROP TABLE IF EXISTS public.chat_messages CASCADE;
+
 -- Create chat_messages table
-CREATE TABLE IF NOT EXISTS public.chat_messages (
+CREATE TABLE public.chat_messages (
     id TEXT PRIMARY KEY,
     room_id TEXT NOT NULL,
     sender_id TEXT NOT NULL,
@@ -18,10 +21,10 @@ CREATE TABLE IF NOT EXISTS public.chat_messages (
 );
 
 -- Add indexes for performance
-CREATE INDEX IF NOT EXISTS idx_chat_messages_room_id ON public.chat_messages(room_id);
-CREATE INDEX IF NOT EXISTS idx_chat_messages_sender_id ON public.chat_messages(sender_id);
-CREATE INDEX IF NOT EXISTS idx_chat_messages_timestamp ON public.chat_messages(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_chat_messages_room_timestamp ON public.chat_messages(room_id, timestamp DESC);
+CREATE INDEX idx_chat_messages_room_id ON public.chat_messages(room_id);
+CREATE INDEX idx_chat_messages_sender_id ON public.chat_messages(sender_id);
+CREATE INDEX idx_chat_messages_timestamp ON public.chat_messages(timestamp DESC);
+CREATE INDEX idx_chat_messages_room_timestamp ON public.chat_messages(room_id, timestamp DESC);
 
 -- Add comments
 COMMENT ON TABLE public.chat_messages IS 'Real-time chat messages between users';

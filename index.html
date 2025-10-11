@@ -17441,9 +17441,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         <button onclick="ChatSystem.showMobileChatList()" class="text-white hover:text-gray-200">
                             <span class="material-symbols-outlined">arrow_back</span>
                         </button>
-                        <div class="w-10 h-10 bg-green-400 rounded-full flex items-center justify-center">
-                            <span class="text-xl">${room.avatar}</span>
-                        </div>
+                        ${room.photo ? `
+                            <img src="${room.photo}" alt="${room.name}" class="w-10 h-10 rounded-full object-cover">
+                        ` : `
+                            <div class="w-10 h-10 bg-green-400 rounded-full flex items-center justify-center">
+                                <span class="text-xl">${room.avatar}</span>
+                            </div>
+                        `}
                         <div class="flex-1">
                             <h3 class="font-bold">${room.name}</h3>
                             <p class="text-sm text-green-100">${room.members ? room.members.length + ' members' : 'Direct message'}</p>
@@ -17488,9 +17492,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     <!-- Desktop Chat Header -->
                     <div class="p-4 border-b border-gray-200 bg-white">
                         <div class="flex items-center space-x-3">
-                            <div class="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center">
-                                <span class="text-xl">${room.avatar}</span>
-                            </div>
+                            ${room.photo ? `
+                                <img src="${room.photo}" alt="${room.name}" class="w-12 h-12 rounded-full object-cover">
+                            ` : `
+                                <div class="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center">
+                                    <span class="text-xl">${room.avatar}</span>
+                                </div>
+                            `}
                             <div class="flex-1">
                                 <h3 class="font-bold text-gray-900">${room.name}</h3>
                                 <p class="text-sm text-gray-600">${room.members ? room.members.length + ' members' : 'Direct message'}</p>
@@ -17563,24 +17571,49 @@ document.addEventListener('DOMContentLoaded', function() {
             },
 
             // Send message
-            sendMessage(content, roomId, windowNumber = null) {
+            async sendMessage(content, roomId, windowNumber = null) {
                 if (!content || !content.trim()) return;
 
                 const room = this.chatRooms[roomId];
                 if (!room) return;
 
                 const message = {
-                    id: Date.now(),
+                    id: `msg_${Date.now()}`,
                     content: content.trim(),
                     senderId: this.currentUser.id,
                     senderName: this.currentUser.name,
                     timestamp: new Date().toISOString(),
-                    type: 'text'
+                    type: 'text',
+                    roomId: roomId
                 };
 
                 room.messages = room.messages || [];
                 room.messages.push(message);
                 room.lastActivity = new Date().toISOString();
+
+                // Save message to Supabase
+                try {
+                    console.log('[Chat] Saving message to Supabase:', message);
+                    const { error } = await window.SupabaseDB.client
+                        .from('chat_messages')
+                        .insert({
+                            id: message.id,
+                            room_id: roomId,
+                            sender_id: message.senderId,
+                            sender_name: message.senderName,
+                            content: message.content,
+                            message_type: message.type,
+                            timestamp: message.timestamp
+                        });
+
+                    if (error) {
+                        console.error('[Chat] Failed to save message:', error);
+                    } else {
+                        console.log('[Chat] ✅ Message saved to Supabase');
+                    }
+                } catch (err) {
+                    console.error('[Chat] Exception saving message:', err);
+                }
 
                 // Refresh sidebar to show latest message
                 this.refreshChatSidebar();

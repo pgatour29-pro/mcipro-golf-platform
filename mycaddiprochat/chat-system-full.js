@@ -103,12 +103,15 @@ export async function initChat() {
   const sidebar = document.querySelector('#conversations');
   sidebar.innerHTML = '';
 
-  // Get current user
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    console.error('[Chat] No authenticated user');
+  // Get current LINE user ID from window.currentUser (LINE auth system)
+  const currentUser = window.currentUser;
+  if (!currentUser || !currentUser.userId) {
+    console.error('[Chat] No authenticated LINE user');
     return;
   }
+
+  const currentUserId = currentUser.userId;
+  console.log('[Chat] Current user:', currentUserId);
 
   // Load existing conversations
   const convos = await listConversations();
@@ -117,7 +120,7 @@ export async function initChat() {
   const { data: allUsers } = await supabase
     .from('profiles')
     .select('id, display_name, username, avatar_url')
-    .neq('id', user.id);
+    .neq('id', currentUserId);
 
   // Create a map of user IDs that already have conversations
   const existingUserIds = new Set();

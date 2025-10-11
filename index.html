@@ -32338,7 +32338,55 @@ class LiveScorecardSystem {
             return '<p class="text-center py-8 text-gray-500">No scores yet</p>';
         }
 
-        // Determine column header and score based on format
+        // Special rendering for Nassau format
+        if (this.scoringFormat === 'nassau') {
+            return `
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="border-b-2 border-gray-300">
+                            <tr class="text-left">
+                                <th class="py-2 px-2">Pos</th>
+                                <th class="py-2 px-2">Player</th>
+                                <th class="py-2 px-2">Thru</th>
+                                <th class="py-2 px-2 text-center bg-blue-50">Front 9</th>
+                                <th class="py-2 px-2 text-center bg-green-50">Back 9</th>
+                                <th class="py-2 px-2 text-center bg-yellow-50 font-bold">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${leaderboard.map((entry, index) => {
+                                const holesPlayed = entry.holes_played || 0;
+                                const thru = holesPlayed === 18 ? 'F' : holesPlayed === 0 ? '-' : holesPlayed.toString();
+                                const front9 = entry.nassau?.front9 || '-';
+                                const back9 = entry.nassau?.back9 || '-';
+                                const total = entry.nassau?.total || entry.total_gross || 0;
+
+                                return `
+                                    <tr class="border-b border-gray-200">
+                                        <td class="py-2 px-2 font-bold">${index + 1}</td>
+                                        <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
+                                        <td class="py-2 px-2">${thru}</td>
+                                        <td class="py-2 px-2 text-center font-semibold text-blue-700">${front9}</td>
+                                        <td class="py-2 px-2 text-center font-semibold text-green-700">${back9}</td>
+                                        <td class="py-2 px-2 text-center font-bold text-lg">${total}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                    <div class="mt-4 p-3 bg-blue-50 rounded-lg text-sm">
+                        <div class="font-semibold text-gray-900 mb-2">Nassau Scoring:</div>
+                        <div class="text-gray-700">
+                            • <span class="font-medium">Front 9 Winner:</span> ${this.getNassauWinner(leaderboard, 'front9')}<br>
+                            • <span class="font-medium">Back 9 Winner:</span> ${this.getNassauWinner(leaderboard, 'back9')}<br>
+                            • <span class="font-medium">Overall Winner:</span> ${this.getNassauWinner(leaderboard, 'total')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Standard rendering for other formats
         let scoreHeader = 'Score';
         let getDisplayScore = (entry) => entry.total_gross;
 
@@ -32350,10 +32398,6 @@ class LiveScorecardSystem {
             case 'modifiedstableford':
                 scoreHeader = 'Points';
                 getDisplayScore = (entry) => entry.total_modified_stableford;
-                break;
-            case 'nassau':
-                scoreHeader = 'Total';
-                getDisplayScore = (entry) => entry.nassau ? `${entry.nassau.front9}+${entry.nassau.back9}=${entry.nassau.total}` : entry.total_gross;
                 break;
             case 'strokeplay':
             case 'matchplay':
@@ -32395,6 +32439,37 @@ class LiveScorecardSystem {
                 </table>
             </div>
         `;
+    }
+
+    getNassauWinner(leaderboard, segment) {
+        if (leaderboard.length === 0) return 'No scores yet';
+
+        let best = Infinity;
+        let winners = [];
+
+        for (const entry of leaderboard) {
+            let score;
+            if (segment === 'front9') {
+                score = entry.nassau?.front9;
+            } else if (segment === 'back9') {
+                score = entry.nassau?.back9;
+            } else {
+                score = entry.nassau?.total || entry.total_gross;
+            }
+
+            if (!score || score === '-') continue;
+
+            if (score < best) {
+                best = score;
+                winners = [entry.player_name];
+            } else if (score === best) {
+                winners.push(entry.player_name);
+            }
+        }
+
+        if (winners.length === 0) return 'No scores yet';
+        if (winners.length === 1) return `${winners[0]} (${best})`;
+        return `Tied: ${winners.join(', ')} (${best})`;
     }
 
     renderEventLeaderboard(leaderboard) {

@@ -7157,6 +7157,15 @@
                 }, 100);
             }
 
+            // Initialize Round History filters when showing rounds tab
+            if (tabName === 'rounds' && typeof GolfScoreSystem !== 'undefined') {
+                setTimeout(() => {
+                    GolfScoreSystem.initializeYearFilter();
+                    GolfScoreSystem.loadRoundHistoryTable();
+                    console.log('[Round History] Tab initialized');
+                }, 100);
+            }
+
             // Initialize Society Events when that tab is shown
             if (tabName === 'societyevents' && typeof GolferEventsSystem !== 'undefined') {
                 setTimeout(() => {
@@ -21991,28 +22000,31 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <div class="flex flex-wrap items-center gap-4">
                             <div class="flex items-center space-x-2">
                                 <label class="text-sm font-medium text-gray-700">Course:</label>
-                                <select class="form-select text-sm">
-                                    <option>All Courses</option>
-                                    <option>Phuket Country Club</option>
-                                    <option>Blue Canyon Country Club</option>
-                                    <option>Laguna Golf Phuket</option>
+                                <select id="roundHistoryCourseFilter" class="form-select text-sm" onchange="GolfScoreSystem.filterRoundHistory()">
+                                    <option value="">All Courses</option>
+                                    <option value="bangpakong">Bangpakong Riverside Country Club</option>
+                                    <option value="burapha_east">Burapha Golf Club - East Course</option>
+                                    <option value="burapha_west">Burapha Golf Club - West Course</option>
+                                    <option value="khao_kheow_ab">Khao Kheow A+B</option>
+                                    <option value="khao_kheow_ac">Khao Kheow A+C</option>
+                                    <option value="khao_kheow_bc">Khao Kheow B+C</option>
                                 </select>
                             </div>
                             <div class="flex items-center space-x-2">
                                 <label class="text-sm font-medium text-gray-700">Year:</label>
-                                <select class="form-select text-sm">
-                                    <option>2024</option>
-                                    <option>2023</option>
-                                    <option>2022</option>
+                                <select id="roundHistoryYearFilter" class="form-select text-sm" onchange="GolfScoreSystem.filterRoundHistory()">
+                                    <!-- Populated dynamically -->
                                 </select>
                             </div>
                             <div class="flex items-center space-x-2">
                                 <label class="text-sm font-medium text-gray-700">Tees:</label>
-                                <select class="form-select text-sm">
-                                    <option>All Tees</option>
-                                    <option>Championship</option>
-                                    <option>Regular</option>
-                                    <option>Forward</option>
+                                <select id="roundHistoryTeeFilter" class="form-select text-sm" onchange="GolfScoreSystem.filterRoundHistory()">
+                                    <option value="">All Tees</option>
+                                    <option value="red">Red</option>
+                                    <option value="white">White</option>
+                                    <option value="yellow">Yellow</option>
+                                    <option value="blue">Blue</option>
+                                    <option value="black">Black</option>
                                 </select>
                             </div>
                         </div>
@@ -27677,6 +27689,93 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
                 // Show modal
                 showAddScoreModal();
+            },
+
+            // Initialize year filter
+            initializeYearFilter() {
+                const yearFilter = document.getElementById('roundHistoryYearFilter');
+                if (!yearFilter) return;
+
+                const currentYear = new Date().getFullYear();
+                const startYear = 2022; // Earliest year to show
+                const years = [];
+
+                // Add "All Years" option
+                years.push('<option value="">All Years</option>');
+
+                // Add years from current year back to start year
+                for (let year = currentYear; year >= startYear; year--) {
+                    years.push(`<option value="${year}"${year === currentYear ? ' selected' : ''}>${year}</option>`);
+                }
+
+                yearFilter.innerHTML = years.join('');
+                console.log(`[Round History] Year filter populated: ${startYear}-${currentYear}`);
+            },
+
+            // Filter round history
+            filterRoundHistory() {
+                const courseFilter = document.getElementById('roundHistoryCourseFilter')?.value || '';
+                const yearFilter = document.getElementById('roundHistoryYearFilter')?.value || '';
+                const teeFilter = document.getElementById('roundHistoryTeeFilter')?.value || '';
+
+                console.log(`[Round History] Filtering - Course: ${courseFilter}, Year: ${yearFilter}, Tee: ${teeFilter}`);
+
+                // Filter scores based on selected criteria
+                let filteredScores = [...this.scores];
+
+                if (courseFilter) {
+                    filteredScores = filteredScores.filter(score => score.courseId === courseFilter || score.course.includes(courseFilter));
+                }
+
+                if (yearFilter) {
+                    filteredScores = filteredScores.filter(score => {
+                        const scoreYear = new Date(score.date).getFullYear();
+                        return scoreYear === parseInt(yearFilter);
+                    });
+                }
+
+                if (teeFilter) {
+                    filteredScores = filteredScores.filter(score => score.tee === teeFilter);
+                }
+
+                // Render filtered results
+                const tbody = document.getElementById('round-history-table');
+                if (!tbody) return;
+
+                if (filteredScores.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-500">No rounds found matching filters</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = filteredScores.map(score => {
+                    const par = score.holes === 18 ? 72 : 36;
+                    const diff = score.score - par;
+                    const diffDisplay = diff === 0 ? 'E' : (diff > 0 ? `+${diff}` : diff);
+                    const scoreColor = diff <= 0 ? 'text-green-600' : (diff <= 5 ? 'text-orange-600' : 'text-red-600');
+                    const formattedDate = new Date(score.date).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                    });
+
+                    return `
+                        <tr class="border-b border-gray-100 hover:bg-gray-50">
+                            <td class="py-3 px-4">${formattedDate}</td>
+                            <td class="py-3 px-4 font-medium">${score.course}</td>
+                            <td class="py-3 px-4 text-center">${score.holes}</td>
+                            <td class="py-3 px-4 text-center font-bold ${scoreColor}">${score.score}</td>
+                            <td class="py-3 px-4 text-center">${par}</td>
+                            <td class="py-3 px-4 text-center">${diffDisplay}</td>
+                            <td class="py-3 px-4 text-center">${score.differential !== null ? score.differential.toFixed(1) : '-'}</td>
+                            <td class="py-3 px-4 text-right">
+                                <button onclick="GolfScoreSystem.editRound(${score.id})" class="text-primary-600 hover:text-primary-800 text-sm mr-2">Edit</button>
+                                <button onclick="GolfScoreSystem.deleteRound(${score.id})" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+                console.log(`[Round History] Filtered ${filteredScores.length} rounds`);
             }
         };
 
@@ -31768,12 +31867,76 @@ class LiveScorecardSystem {
             if (player.lineUserId) {
                 await this.updatePlayerHandicap(player);
             }
+
+            // Save round to Round History
+            this.saveRoundToHistory(player);
         }
 
-        NotificationManager.show('Round completed! Handicaps updated.', 'success');
+        NotificationManager.show('Round completed! Handicaps updated. Round saved to history.', 'success');
 
         // Show finalized scorecard BEFORE resetting
         this.showFinalizedScorecard();
+    }
+
+    saveRoundToHistory(player) {
+        try {
+            // Calculate total gross score
+            let totalGross = 0;
+            let holesPlayed = 0;
+
+            for (let hole = 1; hole <= 18; hole++) {
+                const scoreData = this.scoresCache[player.id]?.[hole];
+                if (scoreData) {
+                    totalGross += scoreData;
+                    holesPlayed++;
+                }
+            }
+
+            if (holesPlayed === 0) {
+                console.log(`[LiveScorecard] Skipping history save for ${player.name} - no scores recorded`);
+                return;
+            }
+
+            // Get course and tee info
+            const courseName = this.courseData?.name || 'Unknown Course';
+            const courseId = document.getElementById('scorecardCourseSelect')?.value || '';
+            const teeMarker = document.querySelector('input[name="teeMarker"]:checked')?.value || 'white';
+            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+
+            // Calculate course rating and slope (defaults if not available)
+            let courseRating = 72.0;
+            let slopeRating = 113;
+
+            if (this.courseData?.holes) {
+                // Calculate par as course rating approximation
+                courseRating = this.courseData.holes.reduce((sum, hole) => sum + (hole.par || 4), 0);
+            }
+
+            // Only save for current logged-in user
+            const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+            if (currentUser.userId === player.lineUserId || player.id === currentUser.userId) {
+                // Save to GolfScoreSystem
+                if (typeof GolfScoreSystem !== 'undefined') {
+                    GolfScoreSystem.saveScore({
+                        course: courseName,
+                        courseId: courseId,
+                        score: totalGross,
+                        holes: holesPlayed,
+                        courseRating: courseRating,
+                        slopeRating: slopeRating,
+                        date: today,
+                        tee: teeMarker,
+                        notes: `Completed via Live Scorecard. Format: ${this.scoringFormats.join(', ')}`
+                    });
+
+                    console.log(`[LiveScorecard] ✅ Saved round to history for ${player.name}: ${totalGross} (${holesPlayed} holes)`);
+                } else {
+                    console.warn('[LiveScorecard] GolfScoreSystem not available - round not saved to history');
+                }
+            }
+        } catch (error) {
+            console.error('[LiveScorecard] Error saving round to history:', error);
+        }
     }
 
     async updatePlayerHandicap(player) {

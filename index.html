@@ -39504,20 +39504,36 @@ showOrganizerTab = function(tabName) {
             }
         };
 
-        // Wire to existing ChatSystem references
-        // Find any buttons that currently open the old chat system
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log('[Chat] Setting up professional chat system hooks...');
-
-            // Replace ChatSystem.showChatInterface with new system
-            if (window.ChatSystem) {
-                const oldShowChat = window.ChatSystem.showChatInterface;
+        // Wire to existing ChatSystem references - be aggressive about replacement
+        function replaceChatSystem() {
+            if (window.ChatSystem && window.ChatSystem.showChatInterface) {
+                console.log('[Chat] Replacing ChatSystem.showChatInterface with professional system');
+                const original = window.ChatSystem.showChatInterface;
                 window.ChatSystem.showChatInterface = function() {
-                    console.log('[Chat] Redirecting old ChatSystem.showChatInterface to new system');
+                    console.log('[Chat] Redirecting to professional chat system');
                     window.openProfessionalChat();
                 };
+                return true;
             }
+            return false;
+        }
+
+        // Try immediately
+        replaceChatSystem();
+
+        // Try on DOMContentLoaded
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('[Chat] Setting up professional chat system hooks...');
+            replaceChatSystem();
         });
+
+        // Also poll for a few seconds in case ChatSystem loads late
+        let attempts = 0;
+        const pollInterval = setInterval(() => {
+            if (replaceChatSystem() || attempts++ > 20) {
+                clearInterval(pollInterval);
+            }
+        }, 500);
 
         // Expose for testing and external access
         window.__professionalChat = {

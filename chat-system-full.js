@@ -105,16 +105,15 @@ export async function initChat() {
   const sidebar = document.querySelector('#conversations');
   sidebar.innerHTML = '';
 
-  // Get current LINE user ID from LIFF context
-  const liffContext = window.liff?.getContext();
-  const currentUserId = liffContext?.userId;
+  // Get current authenticated Supabase user
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (!currentUserId) {
-    console.error('[Chat] No authenticated LINE user');
+  if (!user) {
+    console.error('[Chat] No authenticated user');
     return;
   }
 
-  console.log('[Chat] Current user:', currentUserId);
+  console.log('[Chat] Current user:', user.id);
 
   // Load existing conversations
   const convos = await listConversations();
@@ -123,7 +122,7 @@ export async function initChat() {
   const { data: allUsers } = await supabase
     .from('profiles')
     .select('id, display_name, username, avatar_url')
-    .neq('id', currentUserId);
+    .neq('id', user.id);
 
   // Create a map of user IDs that already have conversations
   const existingUserIds = new Set();

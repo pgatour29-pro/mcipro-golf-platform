@@ -30856,6 +30856,225 @@ class LiveScorecardSystem {
         this.availableCourses = []; // List of courses from database
     }
 
+    // ============================================
+    // GOLF SCORING ENGINE
+    // Professional scoring engine supporting multiple formats
+    // Converted from golfScoring.ts
+    // ============================================
+
+    static GolfScoringEngine = {
+        // Default stableford points
+        defaultStableford: {
+            doubleBogeyOrWorse: 0,
+            bogey: 1,
+            par: 2,
+            birdie: 3,
+            eagle: 4,
+            albatross: 5,
+            condor: 6
+        },
+
+        // Allocate handicap shots across holes by stroke index
+        allocHandicapShots(courseHoles, handicap) {
+            const shots = {};
+            if (!handicap || handicap <= 0) return shots;
+
+            // Sort by stroke index
+            const holesSorted = [...courseHoles].sort((a, b) =>
+                (a.strokeIndex || a.hole) - (b.strokeIndex || b.hole)
+            );
+
+            let remaining = Math.round(handicap);
+            while (remaining > 0) {
+                for (const h of holesSorted) {
+                    if (remaining <= 0) break;
+                    const holeNum = h.hole || h.hole_number || h.number;
+                    shots[holeNum] = (shots[holeNum] || 0) + 1;
+                    remaining--;
+                }
+            }
+            return shots;
+        },
+
+        // Calculate net strokes for a hole
+        netStrokesForHole(grossStrokes, bonusShots) {
+            return Math.max(1, grossStrokes - bonusShots);
+        },
+
+        // Calculate stableford points for a hole
+        stablefordPointsForHole(strokes, par, pointsMap) {
+            const diff = strokes - par;
+            if (diff <= -4) return pointsMap.condor || 6;
+            if (diff === -3) return pointsMap.albatross || 5;
+            if (diff === -2) return pointsMap.eagle || 4;
+            if (diff === -1) return pointsMap.birdie || 3;
+            if (diff === 0) return pointsMap.par || 2;
+            if (diff === 1) return pointsMap.bogey || 1;
+            return pointsMap.doubleBogeyOrWorse || 0;
+        },
+
+        // Calculate total stableford points for a player
+        calculateStablefordTotal(scores, courseHoles, handicap, useNet = true, customPoints = null) {
+            const pointsMap = customPoints || this.defaultStableford;
+            const shots = useNet ? this.allocHandicapShots(courseHoles, handicap) : {};
+
+            let total = 0;
+            for (const scoreEntry of scores) {
+                const hole = scoreEntry.hole_number || scoreEntry.hole;
+                const grossStrokes = scoreEntry.gross_score || scoreEntry.strokes;
+                const holeData = courseHoles.find(h => (h.hole || h.hole_number || h.number) === hole);
+
+                if (!holeData || !grossStrokes) continue;
+
+                const par = holeData.par;
+                const bonusShots = shots[hole] || 0;
+                const netStrokes = useNet ? this.netStrokesForHole(grossStrokes, bonusShots) : grossStrokes;
+
+                total += this.stablefordPointsForHole(netStrokes, par, pointsMap);
+            }
+            return total;
+        },
+
+        // Calculate modified stableford (different point system)
+        modifiedStablefordPoints: {
+            doubleBogeyOrWorse: -3,
+            bogey: -1,
+            par: 0,
+            birdie: 2,
+            eagle: 5,
+            albatross: 8,
+            condor: 10
+        },
+
+        // Calculate Nassau scoring (front 9, back 9, overall)
+        calculateNassau(playerScores, courseHoles) {
+            let front9 = 0, back9 = 0;
+
+            for (const scoreEntry of playerScores) {
+                const hole = scoreEntry.hole_number || scoreEntry.hole;
+                const strokes = scoreEntry.gross_score || scoreEntry.strokes;
+
+                if (hole <= 9) {
+                    front9 += strokes;
+                } else if (hole <= 18) {
+                    back9 += strokes;
+                }
+            }
+
+            return {
+                front9,
+                back9,
+                total: front9 + back9
+            };
+        },
+
+        // Calculate match play result hole by hole
+        calculateMatchPlay(player1Scores, player2Scores, courseHoles, useNet = true, handicap1 = 0, handicap2 = 0) {
+            const shots1 = useNet ? this.allocHandicapShots(courseHoles, handicap1) : {};
+            const shots2 = useNet ? this.allocHandicapShots(courseHoles, handicap2) : {};
+
+            let player1Up = 0;
+            let holesPlayed = 0;
+
+            for (let hole = 1; hole <= 18; hole++) {
+                const score1 = player1Scores.find(s => (s.hole_number || s.hole) === hole);
+                const score2 = player2Scores.find(s => (s.hole_number || s.hole) === hole);
+
+                if (!score1 || !score2) continue;
+
+                const gross1 = score1.gross_score || score1.strokes;
+                const gross2 = score2.gross_score || score2.strokes;
+
+                const net1 = useNet ? this.netStrokesForHole(gross1, shots1[hole] || 0) : gross1;
+                const net2 = useNet ? this.netStrokesForHole(gross2, shots2[hole] || 0) : gross2;
+
+                if (net1 < net2) player1Up++;
+                else if (net2 < net1) player1Up--;
+
+                holesPlayed++;
+            }
+
+            return {
+                player1Up,
+                holesPlayed,
+                status: player1Up > 0 ? `${player1Up} UP` : player1Up < 0 ? `${Math.abs(player1Up)} DOWN` : 'ALL SQUARE'
+            };
+        },
+
+        // Calculate skins (hole-by-hole winner)
+        calculateSkins(allPlayerScores, courseHoles, useNet = true) {
+            const skinsWon = {};
+            const carryOver = [];
+
+            for (let hole = 1; hole <= 18; hole++) {
+                const holeScores = [];
+
+                for (const {playerId, scores, handicap} of allPlayerScores) {
+                    const score = scores.find(s => (s.hole_number || s.hole) === hole);
+                    if (!score) continue;
+
+                    let strokes = score.gross_score || score.strokes;
+                    if (useNet && handicap) {
+                        const shots = this.allocHandicapShots(courseHoles, handicap);
+                        strokes = this.netStrokesForHole(strokes, shots[hole] || 0);
+                    }
+
+                    holeScores.push({playerId, strokes});
+                }
+
+                if (holeScores.length === 0) continue;
+
+                // Find best score
+                const best = Math.min(...holeScores.map(s => s.strokes));
+                const winners = holeScores.filter(s => s.strokes === best);
+
+                if (winners.length === 1) {
+                    // Single winner - gets this hole plus any carry-over
+                    const winnerId = winners[0].playerId;
+                    skinsWon[winnerId] = (skinsWon[winnerId] || 0) + 1 + carryOver.length;
+                    carryOver.length = 0;
+                } else {
+                    // Tie - carry over to next hole
+                    carryOver.push(hole);
+                }
+            }
+
+            return skinsWon;
+        },
+
+        // Calculate better ball / best ball (team format)
+        calculateBetterBall(teamScores, courseHoles, scoresToCount = 1) {
+            let teamTotal = 0;
+
+            for (let hole = 1; hole <= 18; hole++) {
+                const holeScores = teamScores
+                    .map(player => {
+                        const score = player.scores.find(s => (s.hole_number || s.hole) === hole);
+                        return score ? (score.gross_score || score.strokes) : null;
+                    })
+                    .filter(s => s !== null)
+                    .sort((a, b) => a - b);
+
+                // Take best N scores
+                const bestScores = holeScores.slice(0, scoresToCount);
+                teamTotal += bestScores.reduce((sum, s) => sum + s, 0);
+            }
+
+            return teamTotal;
+        },
+
+        // Calculate scramble (team plays best ball position - typically one team score)
+        calculateScramble(teamScore) {
+            // In scramble, team submits one score per hole
+            // This is typically the first player's score in the team
+            let total = 0;
+            for (const score of teamScore) {
+                total += (score.gross_score || score.strokes);
+            }
+            return total;
+        }
+    };
+
     async init() {
         console.log('[LiveScorecard] Initializing...');
         await this.loadEvents();
@@ -31999,30 +32218,75 @@ class LiveScorecardSystem {
         if (!this.groupId) return [];
 
         // Build leaderboard from LOCAL cache (instant, works offline)
+        const engine = LiveScorecardSystem.GolfScoringEngine;
+
         const leaderboard = this.players.map(player => {
             const playerScores = this.scoresCache[player.id] || {};
+
+            // Convert scores cache to array format for engine
+            const scoresArray = Object.entries(playerScores).map(([hole, score]) => ({
+                hole_number: parseInt(hole),
+                gross_score: score
+            }));
+
             let totalGross = 0;
             let totalStableford = 0;
-            let holesPlayed = 0;
+            let totalModifiedStableford = 0;
+            let totalNassau = null;
+            let holesPlayed = scoresArray.length;
 
-            // Calculate totals from cache
-            for (let hole = 1; hole <= 18; hole++) {
-                if (playerScores[hole]) {
-                    const gross = playerScores[hole];
-                    const holeData = this.courseData?.holes?.[hole - 1];
-                    const par = holeData?.par || 4;
-                    const strokeIndex = holeData?.strokeIndex || hole;
+            // Calculate gross total
+            for (const s of scoresArray) {
+                totalGross += s.gross_score;
+            }
 
-                    // Calculate stableford points
-                    const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
-                    const netScore = gross - shotsReceived;
-                    const diff = par - netScore;
-                    let points = diff + 2;
-                    if (points < 0) points = 0;
+            // Use scoring engine for format-specific calculations
+            if (this.courseData && this.courseData.holes) {
+                switch (this.scoringFormat) {
+                    case 'stableford':
+                        // Thailand Stableford with net (default)
+                        totalStableford = engine.calculateStablefordTotal(
+                            scoresArray,
+                            this.courseData.holes,
+                            player.handicap,
+                            true // useNet
+                        );
+                        break;
 
-                    totalGross += gross;
-                    totalStableford += points;
-                    holesPlayed++;
+                    case 'modifiedstableford':
+                        // Modified Stableford (different point system)
+                        totalModifiedStableford = engine.calculateStablefordTotal(
+                            scoresArray,
+                            this.courseData.holes,
+                            player.handicap,
+                            true,
+                            engine.modifiedStablefordPoints
+                        );
+                        break;
+
+                    case 'nassau':
+                        // Nassau: front 9, back 9, total
+                        totalNassau = engine.calculateNassau(scoresArray, this.courseData.holes);
+                        break;
+
+                    case 'strokeplay':
+                    case 'matchplay':
+                    case 'bestball':
+                    case 'scramble':
+                    case 'skins':
+                        // For these formats, gross total is primary
+                        // Match play, skins, best ball require comparison with other players
+                        // and will be handled separately if needed
+                        break;
+
+                    default:
+                        // Fallback to stableford
+                        totalStableford = engine.calculateStablefordTotal(
+                            scoresArray,
+                            this.courseData.holes,
+                            player.handicap,
+                            true
+                        );
                 }
             }
 
@@ -32033,18 +32297,30 @@ class LiveScorecardSystem {
                 holes_played: holesPlayed,
                 total_gross: totalGross,
                 total_stableford: totalStableford,
-                scores: Object.entries(playerScores).map(([hole, score]) => ({
-                    hole_number: parseInt(hole),
-                    gross_score: score
-                }))
+                total_modified_stableford: totalModifiedStableford,
+                nassau: totalNassau,
+                scores: scoresArray
             };
         });
 
-        // Sort by stableford points (descending) or gross (ascending) depending on format
-        if (this.scoringFormat === 'stableford') {
-            leaderboard.sort((a, b) => b.total_stableford - a.total_stableford);
-        } else {
-            leaderboard.sort((a, b) => a.total_gross - b.total_gross);
+        // Sort based on format
+        switch (this.scoringFormat) {
+            case 'stableford':
+                leaderboard.sort((a, b) => b.total_stableford - a.total_stableford);
+                break;
+            case 'modifiedstableford':
+                leaderboard.sort((a, b) => b.total_modified_stableford - a.total_modified_stableford);
+                break;
+            case 'nassau':
+                leaderboard.sort((a, b) => (a.nassau?.total || 999) - (b.nassau?.total || 999));
+                break;
+            case 'strokeplay':
+            case 'matchplay':
+            case 'bestball':
+            case 'scramble':
+            case 'skins':
+            default:
+                leaderboard.sort((a, b) => a.total_gross - b.total_gross);
         }
 
         return leaderboard;
@@ -32062,7 +32338,32 @@ class LiveScorecardSystem {
             return '<p class="text-center py-8 text-gray-500">No scores yet</p>';
         }
 
-        const isStableford = this.scoringFormat === 'stableford';
+        // Determine column header and score based on format
+        let scoreHeader = 'Score';
+        let getDisplayScore = (entry) => entry.total_gross;
+
+        switch (this.scoringFormat) {
+            case 'stableford':
+                scoreHeader = 'Points';
+                getDisplayScore = (entry) => entry.total_stableford;
+                break;
+            case 'modifiedstableford':
+                scoreHeader = 'Points';
+                getDisplayScore = (entry) => entry.total_modified_stableford;
+                break;
+            case 'nassau':
+                scoreHeader = 'Total';
+                getDisplayScore = (entry) => entry.nassau ? `${entry.nassau.front9}+${entry.nassau.back9}=${entry.nassau.total}` : entry.total_gross;
+                break;
+            case 'strokeplay':
+            case 'matchplay':
+            case 'bestball':
+            case 'scramble':
+            case 'skins':
+            default:
+                scoreHeader = 'Gross';
+                getDisplayScore = (entry) => entry.total_gross;
+        }
 
         return `
             <div class="overflow-x-auto">
@@ -32072,21 +32373,21 @@ class LiveScorecardSystem {
                             <th class="py-2 px-2">Pos</th>
                             <th class="py-2 px-2">Player</th>
                             <th class="py-2 px-2">Thru</th>
-                            <th class="py-2 px-2">${isStableford ? 'Points' : 'Gross'}</th>
+                            <th class="py-2 px-2">${scoreHeader}</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${leaderboard.map((entry, index) => {
                             const holesPlayed = entry.holes_played || 0;
                             const thru = holesPlayed === 18 ? 'F' : holesPlayed === 0 ? '-' : holesPlayed.toString();
-                            const displayScore = isStableford ? entry.total_stableford : entry.total_gross;
+                            const displayScore = getDisplayScore(entry) || 0;
 
                             return `
                                 <tr class="border-b border-gray-200">
                                     <td class="py-2 px-2 font-bold">${index + 1}</td>
                                     <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
                                     <td class="py-2 px-2">${thru}</td>
-                                    <td class="py-2 px-2 font-bold text-lg">${displayScore || 0}</td>
+                                    <td class="py-2 px-2 font-bold text-lg">${displayScore}</td>
                                 </tr>
                             `;
                         }).join('')}

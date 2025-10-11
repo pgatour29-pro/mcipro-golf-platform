@@ -14973,7 +14973,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             async initialize() {
                 this.currentUser = {
-                    id: AppState.currentUser.role + '_' + AppState.currentUser.name.replace(/\s+/g, '_').toLowerCase(),
+                    id: AppState.currentUser.lineUserId || AppState.currentUser.userId, // Use actual LINE user ID
                     name: AppState.currentUser.name,
                     role: AppState.currentUser.role,
                     avatar: '👤', photo: 'images/caddies/caddy1.jpg',
@@ -15168,6 +15168,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
             async loadRealUsersFromSupabase() {
                 try {
+                    console.log('[ChatSystem] Loading users from Supabase...');
+                    console.log('[ChatSystem] Current user ID:', this.currentUser.id);
+
                     // Load all users from Supabase user_profiles table
                     const { data: users, error } = await window.SupabaseDB.client
                         .from('user_profiles')
@@ -15184,11 +15187,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         return;
                     }
 
-                    console.log(`[ChatSystem] Loaded ${users.length} real users from Supabase`);
+                    console.log(`[ChatSystem] Loaded ${users.length} real users from Supabase:`, users);
 
                     // Create direct message rooms for each user (except current user)
                     users.forEach(user => {
-                        if (user.line_user_id === this.currentUser.id) return; // Skip self
+                        console.log(`[ChatSystem] Processing user: ${user.name} (${user.line_user_id})`);
+
+                        if (user.line_user_id === this.currentUser.id) {
+                            console.log(`[ChatSystem] Skipping self: ${user.name}`);
+                            return; // Skip self
+                        }
 
                         const roomId = `dm_${user.line_user_id}`;
                         const displayName = user.username || user.name || 'User';
@@ -15209,9 +15217,12 @@ document.addEventListener('DOMContentLoaded', function() {
                             messages: [],
                             userData: user // Store full user data
                         };
+
+                        console.log(`[ChatSystem] Created room for: ${displayName}`);
                     });
 
-                    console.log(`[ChatSystem] Created ${Object.keys(this.chatRooms).length} direct message rooms`);
+                    console.log(`[ChatSystem] Total chat rooms created: ${Object.keys(this.chatRooms).length}`);
+                    console.log('[ChatSystem] Chat rooms:', Object.keys(this.chatRooms));
 
                 } catch (error) {
                     console.error('[ChatSystem] Exception loading users:', error);

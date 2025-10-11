@@ -22240,9 +22240,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
                         <!-- Event Selection -->
                         <div class="mb-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Select Event (Optional)</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Select Event Type</label>
                             <select id="scorecardEventSelect" class="w-full rounded-lg border px-3 py-2">
                                 <option value="">Practice Round (No Event)</option>
+                                <option value="private">Private Round (with friends)</option>
                             </select>
                         </div>
 
@@ -22560,6 +22561,11 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     <button onclick="LiveScorecardManager.downloadScorecardPDF()" class="btn-secondary flex items-center justify-center gap-2">
                         <span class="material-symbols-outlined">download</span>
                         Download PDF
+                    </button>
+                    <!-- Delete button (only for private rounds) -->
+                    <button id="deleteScorecardBtn" onclick="LiveScorecardManager.deletePrivateRound()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2" style="display: none;">
+                        <span class="material-symbols-outlined">delete</span>
+                        Delete Round
                     </button>
                     <button onclick="LiveScorecardManager.closeFinalizedScorecard()" class="btn-secondary">
                         Close
@@ -30778,6 +30784,7 @@ class LiveScorecardSystem {
         this.currentHole = 1;
         this.groupId = null;
         this.eventId = null;
+        this.isPrivateRound = false; // Track if this is a private round (deletable)
         this.scorecards = {};
         this.scoresCache = {}; // Store scores locally: { playerId: { holeNumber: score } }
         this.scoringFormat = 'stableford'; // 'stableford' or 'strokeplay'
@@ -31074,11 +31081,15 @@ class LiveScorecardSystem {
 
         const teeMarker = document.querySelector('input[name="teeMarker"]:checked').value;
         this.scoringFormat = document.querySelector('input[name="scoringFormat"]:checked').value;
-        this.eventId = document.getElementById('scorecardEventSelect').value || null;
+        const eventSelectValue = document.getElementById('scorecardEventSelect').value;
+
+        // Determine round type
+        this.isPrivateRound = (eventSelectValue === 'private');
+        this.eventId = (eventSelectValue === '' || eventSelectValue === 'private') ? null : eventSelectValue;
 
         this.groupId = `group_${Date.now()}`;
 
-        console.log(`[LiveScorecard] Starting round at ${this.courseData.name} with ${this.scoringFormat} scoring`);
+        console.log(`[LiveScorecard] Starting round at ${this.courseData.name} with ${this.scoringFormat} scoring (${this.isPrivateRound ? 'Private' : 'Society'})`);
 
         // Try to create scorecards online, fall back to offline mode if needed
         let isOfflineMode = false;
@@ -31568,6 +31579,14 @@ class LiveScorecardSystem {
             playersContainer.appendChild(playerCard);
         });
 
+        // Show/hide delete button based on round type
+        const deleteBtn = document.getElementById('deleteScorecardBtn');
+        if (this.isPrivateRound) {
+            deleteBtn.style.display = 'flex'; // Show delete for private rounds
+        } else {
+            deleteBtn.style.display = 'none'; // Hide delete for society/tournament rounds
+        }
+
         // Show modal
         document.getElementById('finalizedScorecardModal').classList.remove('hidden');
     }
@@ -31730,6 +31749,57 @@ class LiveScorecardSystem {
     downloadScorecardPDF() {
         // TODO: Implement PDF download using html2pdf or similar
         NotificationManager.show('PDF download coming soon!', 'info');
+    }
+
+    async deletePrivateRound() {
+        if (!this.isPrivateRound) {
+            NotificationManager.show('Only private rounds can be deleted', 'error');
+            return;
+        }
+
+        const confirmed = confirm('⚠️ Delete this private round?\n\nThis will permanently remove all scorecards and scores for all players in this round.\n\nThis action CANNOT be undone!');
+        if (!confirmed) return;
+
+        try {
+            console.log('[LiveScorecard] Deleting private round for all players...');
+
+            // Delete all scorecards and their associated scores
+            for (const player of this.players) {
+                const scorecardId = this.scorecards[player.id];
+
+                if (scorecardId && !scorecardId.startsWith('local_')) {
+                    // Delete from database
+                    // First delete all scores (cascade should handle this, but being explicit)
+                    await window.SupabaseDB.client
+                        .from('scores')
+                        .delete()
+                        .eq('scorecard_id', scorecardId);
+
+                    // Then delete the scorecard
+                    await window.SupabaseDB.client
+                        .from('scorecards')
+                        .delete()
+                        .eq('id', scorecardId);
+
+                    console.log(`[LiveScorecard] Deleted scorecard for ${player.name}: ${scorecardId}`);
+                } else if (scorecardId && scorecardId.startsWith('local_')) {
+                    // Delete from localStorage
+                    localStorage.removeItem(`scorecard_${scorecardId}`);
+                    localStorage.removeItem(`scores_${scorecardId}`);
+                    console.log(`[LiveScorecard] Deleted local scorecard for ${player.name}`);
+                }
+            }
+
+            NotificationManager.show('Private round deleted successfully', 'success');
+
+            // Close modal and reset
+            document.getElementById('finalizedScorecardModal').classList.add('hidden');
+            this.actuallyEndRound();
+
+        } catch (error) {
+            console.error('[LiveScorecard] Error deleting private round:', error);
+            NotificationManager.show('Error deleting round. Please try again.', 'error');
+        }
     }
 
     async syncOfflineData() {

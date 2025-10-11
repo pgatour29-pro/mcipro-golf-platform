@@ -22520,6 +22520,54 @@ Total Rounds: ${ningCaddy.totalRounds}`;
         </div>
     </div>
 
+    <!-- Finalized Scorecard Modal -->
+    <div id="finalizedScorecardModal" class="fixed inset-0 bg-black bg-opacity-75 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg max-w-6xl w-full max-h-screen overflow-y-auto">
+            <div class="p-4 md:p-6" id="scorecardPrintArea">
+                <!-- Header -->
+                <div class="flex justify-between items-start mb-6 print:mb-4">
+                    <div class="flex-1">
+                        <h2 class="text-2xl md:text-3xl font-bold text-gray-900 mb-2">⛳ Official Scorecard</h2>
+                        <div class="space-y-1 text-sm md:text-base text-gray-700">
+                            <div class="flex gap-2"><span class="font-semibold min-w-24">Event:</span><span id="finalScorecard_eventName">-</span></div>
+                            <div class="flex gap-2"><span class="font-semibold min-w-24">Competition:</span><span id="finalScorecard_format">-</span></div>
+                            <div class="flex gap-2"><span class="font-semibold min-w-24">Course:</span><span id="finalScorecard_course">-</span></div>
+                            <div class="flex gap-2"><span class="font-semibold min-w-24">Tee Marker:</span><span id="finalScorecard_teeMarker">-</span></div>
+                            <div class="flex gap-2"><span class="font-semibold min-w-24">Date:</span><span id="finalScorecard_date">-</span></div>
+                        </div>
+                    </div>
+                    <button onclick="LiveScorecardManager.closeFinalizedScorecard()" class="text-gray-500 hover:text-gray-700 print:hidden">
+                        <span class="material-symbols-outlined text-3xl">close</span>
+                    </button>
+                </div>
+
+                <!-- Players Section -->
+                <div id="finalScorecard_playersContainer" class="mb-6">
+                    <!-- Will be populated with player scorecards -->
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex flex-col sm:flex-row gap-3 mt-6 print:hidden border-t pt-4">
+                    <button onclick="LiveScorecardManager.printScorecard()" class="btn-primary flex items-center justify-center gap-2">
+                        <span class="material-symbols-outlined">print</span>
+                        Print Scorecard
+                    </button>
+                    <button onclick="LiveScorecardManager.shareScorecard()" class="btn-secondary flex items-center justify-center gap-2">
+                        <span class="material-symbols-outlined">share</span>
+                        Share
+                    </button>
+                    <button onclick="LiveScorecardManager.downloadScorecardPDF()" class="btn-secondary flex items-center justify-center gap-2">
+                        <span class="material-symbols-outlined">download</span>
+                        Download PDF
+                    </button>
+                    <button onclick="LiveScorecardManager.closeFinalizedScorecard()" class="btn-secondary">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Course Data Review Modal -->
     <div id="courseReviewModal" class="fixed inset-0 bg-black bg-opacity-75 z-50 hidden flex items-center justify-center">
         <div class="bg-white rounded-lg max-w-4xl w-full mx-4 max-h-screen overflow-y-auto">
@@ -31299,16 +31347,26 @@ class LiveScorecardSystem {
     async completeRound() {
         if (!confirm('Complete round for all players?')) return;
 
+        // Mark scorecards as completed in database
         for (const player of this.players) {
             const scorecardId = this.scorecards[player.id];
-            await window.SocietyGolfDB.completeScorecard(scorecardId);
+            if (scorecardId && !scorecardId.startsWith('local_')) {
+                await window.SocietyGolfDB.completeScorecard(scorecardId);
+            }
         }
 
         NotificationManager.show('Round completed!', 'success');
-        this.endRound();
+
+        // Show finalized scorecard BEFORE resetting
+        this.showFinalizedScorecard();
     }
 
     endRound() {
+        // Show finalized scorecard before resetting
+        this.showFinalizedScorecard();
+    }
+
+    actuallyEndRound() {
         // Reset state
         this.players = [];
         this.currentHole = 1;
@@ -31325,6 +31383,195 @@ class LiveScorecardSystem {
         // Unsubscribe from updates
         this.subscriptions.forEach(sub => sub.unsubscribe());
         this.subscriptions = [];
+    }
+
+    showFinalizedScorecard() {
+        console.log('[LiveScorecard] Showing finalized scorecard');
+
+        // Populate header information
+        const eventName = document.getElementById('scorecardEventSelect')?.selectedOptions[0]?.textContent || 'Practice Round';
+        const courseName = this.courseData?.name || 'Unknown Course';
+        const teeMarker = document.getElementById('scorecardTeeMarkerSelect')?.value || 'White';
+        const format = this.scoringFormat === 'stableford' ? 'Stableford' : 'Stroke Play';
+        const date = new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+        document.getElementById('finalScorecard_eventName').textContent = eventName;
+        document.getElementById('finalScorecard_course').textContent = courseName;
+        document.getElementById('finalScorecard_teeMarker').textContent = teeMarker.toUpperCase();
+        document.getElementById('finalScorecard_format').textContent = format;
+        document.getElementById('finalScorecard_date').textContent = date;
+
+        // Render each player's scorecard
+        const playersContainer = document.getElementById('finalScorecard_playersContainer');
+        playersContainer.innerHTML = '';
+
+        this.players.forEach(player => {
+            const playerCard = this.renderPlayerFinalizedScorecard(player);
+            playersContainer.appendChild(playerCard);
+        });
+
+        // Show modal
+        document.getElementById('finalizedScorecardModal').classList.remove('hidden');
+    }
+
+    renderPlayerFinalizedScorecard(player) {
+        const container = document.createElement('div');
+        container.className = 'border rounded-lg p-4 mb-4 bg-white shadow-sm print:break-inside-avoid print:shadow-none';
+
+        // Player header
+        const header = document.createElement('div');
+        header.className = 'mb-4 pb-3 border-b-2 border-gray-300';
+        header.innerHTML = `
+            <div class="flex justify-between items-center">
+                <div>
+                    <h3 class="text-xl font-bold text-gray-900">${player.name}</h3>
+                    <p class="text-sm text-gray-600">Handicap: ${player.handicap}</p>
+                </div>
+                <div class="text-right" id="playerTotal_${player.id}"></div>
+            </div>
+        `;
+        container.appendChild(header);
+
+        // Scorecard table
+        const table = document.createElement('div');
+        table.className = 'overflow-x-auto';
+
+        let tableHTML = `
+            <table class="w-full text-xs md:text-sm border-collapse">
+                <thead>
+                    <tr class="bg-gray-100">
+                        <th class="border border-gray-300 px-2 py-2 text-center font-bold">Hole</th>
+        `;
+
+        // Hole numbers
+        for (let i = 1; i <= 18; i++) {
+            tableHTML += `<th class="border border-gray-300 px-1 py-2 text-center font-bold">${i}</th>`;
+        }
+        tableHTML += `<th class="border border-gray-300 px-2 py-2 text-center font-bold bg-yellow-100">Total</th></tr>`;
+
+        // Par row
+        tableHTML += `<tr class="bg-blue-50"><td class="border border-gray-300 px-2 py-2 font-semibold">Par</td>`;
+        let frontNinePar = 0, backNinePar = 0;
+        for (let i = 1; i <= 18; i++) {
+            const hole = this.courseData?.holes?.find(h => h.number === i);
+            const par = hole?.par || 4;
+            if (i <= 9) frontNinePar += par;
+            else backNinePar += par;
+            tableHTML += `<td class="border border-gray-300 px-1 py-2 text-center">${par}</td>`;
+        }
+        tableHTML += `<td class="border border-gray-300 px-2 py-2 text-center font-bold bg-yellow-100">${frontNinePar + backNinePar}</td></tr>`;
+
+        // Stroke Index row
+        tableHTML += `<tr class="bg-gray-50"><td class="border border-gray-300 px-2 py-2 font-semibold text-xs">Index</td>`;
+        for (let i = 1; i <= 18; i++) {
+            const hole = this.courseData?.holes?.find(h => h.number === i);
+            const index = hole?.strokeIndex || i;
+            tableHTML += `<td class="border border-gray-300 px-1 py-2 text-center text-xs">${index}</td>`;
+        }
+        tableHTML += `<td class="border border-gray-300 px-2 py-2"></td></tr>`;
+
+        // Gross Score row
+        tableHTML += `<tr class="bg-white"><td class="border border-gray-300 px-2 py-2 font-semibold">Score</td>`;
+        let frontNineGross = 0, backNineGross = 0;
+        for (let i = 1; i <= 18; i++) {
+            const scoreData = this.scoresCache[player.id]?.[i];
+            const score = scoreData?.gross_score || '-';
+            if (score !== '-') {
+                if (i <= 9) frontNineGross += score;
+                else backNineGross += score;
+            }
+
+            // Color code based on par
+            const hole = this.courseData?.holes?.find(h => h.number === i);
+            const par = hole?.par || 4;
+            let cellClass = 'border border-gray-300 px-1 py-2 text-center font-bold';
+            if (score !== '-') {
+                if (score < par) cellClass += ' bg-green-100 text-green-800'; // Under par (birdie/eagle)
+                else if (score === par) cellClass += ' bg-blue-50'; // Par
+                else if (score === par + 1) cellClass += ' bg-yellow-50'; // Bogey
+                else if (score > par + 1) cellClass += ' bg-red-100 text-red-800'; // Double bogey+
+            }
+            tableHTML += `<td class="${cellClass}">${score}</td>`;
+        }
+        const totalGross = frontNineGross + backNineGross;
+        tableHTML += `<td class="border border-gray-300 px-2 py-2 text-center font-bold text-lg bg-yellow-100">${totalGross || '-'}</td></tr>`;
+
+        // Stableford Points row (if stableford format)
+        if (this.scoringFormat === 'stableford') {
+            tableHTML += `<tr class="bg-green-50"><td class="border border-gray-300 px-2 py-2 font-semibold">Points</td>`;
+            let frontNinePoints = 0, backNinePoints = 0;
+            for (let i = 1; i <= 18; i++) {
+                const scoreData = this.scoresCache[player.id]?.[i];
+                const points = scoreData?.stableford || '-';
+                if (points !== '-') {
+                    if (i <= 9) frontNinePoints += points;
+                    else backNinePoints += points;
+                }
+                tableHTML += `<td class="border border-gray-300 px-1 py-2 text-center font-bold">${points}</td>`;
+            }
+            const totalPoints = frontNinePoints + backNinePoints;
+            tableHTML += `<td class="border border-gray-300 px-2 py-2 text-center font-bold text-lg bg-green-200">${totalPoints || '-'}</td></tr>`;
+        }
+
+        tableHTML += `</thead></table>`;
+        table.innerHTML = tableHTML;
+        container.appendChild(table);
+
+        // Summary
+        const summary = document.createElement('div');
+        summary.className = 'mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm';
+        const totalPoints = this.getPlayerTotal(player.id);
+        summary.innerHTML = `
+            <div class="bg-blue-50 p-2 rounded">
+                <div class="text-xs text-gray-600">Front 9</div>
+                <div class="font-bold">${frontNineGross || '-'}</div>
+            </div>
+            <div class="bg-blue-50 p-2 rounded">
+                <div class="text-xs text-gray-600">Back 9</div>
+                <div class="font-bold">${backNineGross || '-'}</div>
+            </div>
+            <div class="bg-green-100 p-2 rounded">
+                <div class="text-xs text-gray-600">Total Gross</div>
+                <div class="font-bold text-lg">${totalGross || '-'}</div>
+            </div>
+            ${this.scoringFormat === 'stableford' ? `
+                <div class="bg-green-200 p-2 rounded">
+                    <div class="text-xs text-gray-600">Total Points</div>
+                    <div class="font-bold text-lg">${totalPoints}</div>
+                </div>
+            ` : ''}
+        `;
+        container.appendChild(summary);
+
+        return container;
+    }
+
+    closeFinalizedScorecard() {
+        document.getElementById('finalizedScorecardModal').classList.add('hidden');
+        this.actuallyEndRound();
+    }
+
+    printScorecard() {
+        window.print();
+    }
+
+    shareScorecard() {
+        // TODO: Implement LINE sharing
+        const text = `⛳ Golf Scorecard\n${document.getElementById('finalScorecard_eventName').textContent}\n${document.getElementById('finalScorecard_course').textContent}`;
+
+        if (navigator.share) {
+            navigator.share({
+                title: 'Golf Scorecard',
+                text: text
+            }).catch(err => console.log('Share failed:', err));
+        } else {
+            NotificationManager.show('Sharing not supported on this device', 'info');
+        }
+    }
+
+    downloadScorecardPDF() {
+        // TODO: Implement PDF download using html2pdf or similar
+        NotificationManager.show('PDF download coming soon!', 'info');
     }
 
     async syncOfflineData() {

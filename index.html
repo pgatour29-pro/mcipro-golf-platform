@@ -30951,26 +30951,83 @@ class LiveScorecardSystem {
         }
     }
 
-    addPlayer() {
+    async addPlayer() {
         if (this.players.length >= 7) {
             NotificationManager.show('Maximum 7 players per group', 'warning');
             return;
         }
 
-        const playerName = prompt('Enter player name:');
-        const handicap = parseFloat(prompt('Enter handicap:') || '0');
+        // Load all user profiles from Supabase
+        const profiles = await window.SupabaseDB.getAllProfiles();
 
-        if (!playerName) return;
+        if (!profiles || profiles.length === 0) {
+            // Fallback to manual entry if no profiles found
+            const playerName = prompt('Enter player name:');
+            const handicap = parseFloat(prompt('Enter handicap:') || '0');
 
-        const playerId = `player_${Date.now()}`;
-        this.players.push({
-            id: playerId,
-            name: playerName,
-            handicap: handicap
+            if (!playerName) return;
+
+            const playerId = `player_${Date.now()}`;
+            this.players.push({
+                id: playerId,
+                lineUserId: null, // No linked profile
+                name: playerName,
+                handicap: handicap
+            });
+
+            this.scoresCache[playerId] = {};
+            this.renderPlayersList();
+            return;
+        }
+
+        // Create simple selection from profiles
+        let options = 'Select a player:\n\n';
+        profiles.forEach((profile, index) => {
+            const name = profile.name || 'Unknown';
+            const handicap = profile.profile_data?.handicap || profile.profile_data?.golfInfo?.handicap || 0;
+            options += `${index + 1}. ${name} (HCP: ${handicap})\n`;
         });
+        options += `\n0. Add new player (not in system)`;
 
-        // Initialize score cache for this player
-        this.scoresCache[playerId] = {};
+        const selection = prompt(options);
+        const selectedIndex = parseInt(selection) - 1;
+
+        if (selection === null) return; // Cancelled
+
+        if (selection === '0') {
+            // Manual entry for new player
+            const playerName = prompt('Enter player name:');
+            const handicap = parseFloat(prompt('Enter handicap:') || '0');
+
+            if (!playerName) return;
+
+            const playerId = `player_${Date.now()}`;
+            this.players.push({
+                id: playerId,
+                lineUserId: null,
+                name: playerName,
+                handicap: handicap
+            });
+
+            this.scoresCache[playerId] = {};
+        } else if (selectedIndex >= 0 && selectedIndex < profiles.length) {
+            // Selected existing profile
+            const selectedProfile = profiles[selectedIndex];
+            const handicap = selectedProfile.profile_data?.handicap || selectedProfile.profile_data?.golfInfo?.handicap || 0;
+
+            this.players.push({
+                id: selectedProfile.line_user_id, // Use their actual LINE user ID
+                lineUserId: selectedProfile.line_user_id,
+                name: selectedProfile.name,
+                handicap: handicap,
+                profileData: selectedProfile.profile_data // Store full profile for later updates
+            });
+
+            this.scoresCache[selectedProfile.line_user_id] = {};
+        } else {
+            NotificationManager.show('Invalid selection', 'error');
+            return;
+        }
 
         this.renderPlayersList();
     }
@@ -31354,12 +31411,100 @@ class LiveScorecardSystem {
             if (scorecardId && !scorecardId.startsWith('local_')) {
                 await window.SocietyGolfDB.completeScorecard(scorecardId);
             }
+
+            // Calculate and update handicap for each player with a linked profile
+            if (player.lineUserId) {
+                await this.updatePlayerHandicap(player);
+            }
         }
 
-        NotificationManager.show('Round completed!', 'success');
+        NotificationManager.show('Round completed! Handicaps updated.', 'success');
 
         // Show finalized scorecard BEFORE resetting
         this.showFinalizedScorecard();
+    }
+
+    async updatePlayerHandicap(player) {
+        try {
+            // Calculate total gross score
+            let totalGross = 0;
+            let holesPlayed = 0;
+
+            for (let hole = 1; hole <= 18; hole++) {
+                const scoreData = this.scoresCache[player.id]?.[hole];
+                if (scoreData && scoreData.gross_score) {
+                    totalGross += scoreData.gross_score;
+                    holesPlayed++;
+                }
+            }
+
+            if (holesPlayed < 18) {
+                console.log(`[LiveScorecard] Skipping handicap update for ${player.name} - incomplete round (${holesPlayed}/18)`);
+                return; // Don't update handicap for incomplete rounds
+            }
+
+            // Calculate course par
+            let coursePar = 0;
+            for (let i = 1; i <= 18; i++) {
+                const hole = this.courseData?.holes?.find(h => h.number === i);
+                coursePar += hole?.par || 4;
+            }
+
+            // Calculate expected score (par + handicap)
+            const expectedScore = coursePar + player.handicap;
+            const scoreDiff = totalGross - expectedScore;
+
+            // Calculate new handicap (simple system):
+            // - For every stroke better than expected: reduce handicap by 0.1
+            // - For every stroke worse than expected: increase handicap by 0.1
+            // - Maximum change: +/- 2.0 per round
+            let handicapChange = scoreDiff * 0.1;
+
+            // Cap the change at +/- 2.0
+            if (handicapChange > 2.0) handicapChange = 2.0;
+            if (handicapChange < -2.0) handicapChange = -2.0;
+
+            const newHandicap = Math.max(0, Math.min(54, player.handicap + handicapChange)); // Keep between 0 and 54
+            const roundedHandicap = Math.round(newHandicap * 10) / 10; // Round to 1 decimal place
+
+            console.log(`[LiveScorecard] Handicap update for ${player.name}:`, {
+                oldHandicap: player.handicap,
+                grossScore: totalGross,
+                expectedScore,
+                scoreDiff,
+                newHandicap: roundedHandicap
+            });
+
+            // Update the profile in Supabase
+            const profile = await window.SupabaseDB.getUserProfile(player.lineUserId);
+            if (profile) {
+                const updatedProfileData = {
+                    ...profile.profile_data,
+                    handicap: roundedHandicap,
+                    golfInfo: {
+                        ...(profile.profile_data?.golfInfo || {}),
+                        handicap: roundedHandicap
+                    }
+                };
+
+                await window.SupabaseDB.saveUserProfile({
+                    line_user_id: player.lineUserId,
+                    name: profile.name,
+                    role: profile.role,
+                    caddy_number: profile.caddy_number,
+                    phone: profile.phone,
+                    email: profile.email,
+                    home_club: profile.home_club,
+                    language: profile.language,
+                    profile_data: updatedProfileData
+                });
+
+                console.log(`[LiveScorecard] ✅ Handicap updated for ${player.name}: ${player.handicap} → ${roundedHandicap}`);
+            }
+        } catch (error) {
+            console.error(`[LiveScorecard] Error updating handicap for ${player.name}:`, error);
+            // Don't throw - continue with other players
+        }
     }
 
     endRound() {

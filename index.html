@@ -34560,6 +34560,22 @@ class GolferEventsManager {
 
                 <!-- Footer -->
                 <div class="px-4 py-3 bg-gray-50 border-t">
+                    ${isUserRegistered && !isPast ? `
+                    <div class="grid grid-cols-2 gap-2 mb-2">
+                        <button class="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white text-sm py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1 shadow-md"
+                                onclick="event.stopPropagation(); GolferEventsSystem.quickBookFromEvent('${event.id}')"
+                                title="Book tee time">
+                            <span class="material-symbols-outlined text-sm">golf_course</span>
+                            Book Tee Time
+                        </button>
+                        <button class="bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white text-sm py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1 shadow-md"
+                                onclick="event.stopPropagation(); GolferEventsSystem.quickBookFromEvent('${event.id}')"
+                                title="Request caddy">
+                            <span class="material-symbols-outlined text-sm">person</span>
+                            Request Caddy
+                        </button>
+                    </div>
+                    ` : ''}
                     <div class="grid grid-cols-3 gap-2">
                         <button class="col-span-2 btn-primary text-sm py-2" onclick="event.stopPropagation(); GolferEventsSystem.openEventDetail('${event.id}')">
                             <span class="material-symbols-outlined text-sm">info</span>
@@ -34892,10 +34908,15 @@ class GolferEventsManager {
 
                 let confirmMsg = `Successfully registered for ${this.currentEvent.name}! You will receive confirmation from the event organizer.`;
                 if (partnerPrefs.length > 0) {
-                    confirmMsg += ` Partner preferences: ${partnerPrefs.map(p => p.playerName).join(', ')}`;
+                    confirmMsg += ` Partner preferences: ${partnerPrefs.map(p => p.playerName).join(',')}`;
                 }
 
                 NotificationManager.show(confirmMsg, 'success', 4000);
+
+                // Offer to book tee time and caddy
+                setTimeout(() => {
+                    this.showBookingOffer(this.currentEvent);
+                }, 500);
 
                 this.closeEventDetail();
                 await this.refreshEvents();
@@ -34917,6 +34938,58 @@ class GolferEventsManager {
             <span class="material-symbols-outlined text-sm">send</span>
             Submit Registration
         `;
+    }
+
+    showBookingOffer(event) {
+        if (!event || !event.courseName || !event.date) return;
+
+        const bookingConfirm = confirm(
+            `🏌️ Book Your Tee Time & Caddy?\n\n` +
+            `Event: ${event.name}\n` +
+            `Course: ${event.courseName}\n` +
+            `Date: ${this.formatDate(event.date)}\n` +
+            `${event.startTime ? 'Time: ' + event.startTime + '\n' : ''}\n` +
+            `Would you like to book your tee time now?\n\n` +
+            `You can also request a caddy during booking.`
+        );
+
+        if (bookingConfirm) {
+            // Store event context for booking
+            localStorage.setItem('pendingEventBooking', JSON.stringify({
+                eventId: event.id,
+                eventName: event.name,
+                courseId: event.courseId,
+                courseName: event.courseName,
+                date: event.date,
+                time: event.startTime || '08:00'
+            }));
+
+            // Switch to booking tab
+            showGolferTab('booking');
+            NotificationManager.show('Opening booking form with event details...', 'info', 2000);
+        }
+    }
+
+    quickBookFromEvent(eventId) {
+        const event = this.allEvents.find(e => e.id === eventId);
+        if (!event) {
+            NotificationManager.show('Event not found', 'error', 2000);
+            return;
+        }
+
+        // Store event context for booking
+        localStorage.setItem('pendingEventBooking', JSON.stringify({
+            eventId: event.id,
+            eventName: event.name,
+            courseId: event.courseId,
+            courseName: event.courseName,
+            date: event.date,
+            time: event.startTime || '08:00'
+        }));
+
+        // Switch to booking tab
+        showGolferTab('booking');
+        NotificationManager.show(`Booking tee time for ${event.name}...`, 'info', 2000);
     }
 
     async editRegistration(registrationId, eventId) {

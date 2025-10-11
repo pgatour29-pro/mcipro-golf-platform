@@ -4299,6 +4299,27 @@
                         }
                         localStorage.setItem('mcipro_user_profiles', JSON.stringify(profiles));
                         console.log('[LINE] ✅ Profile array also updated for consistency');
+
+                        // Update Supabase if LINE picture URL is missing
+                        if (!userProfile.profile_data.linePictureUrl && profile.pictureUrl) {
+                            console.log('[LINE] Updating Supabase with LINE picture URL:', profile.pictureUrl);
+                            const updatedProfileData = {
+                                ...userProfile.profile_data,
+                                linePictureUrl: profile.pictureUrl
+                            };
+
+                            window.SupabaseDB.client
+                                .from('user_profiles')
+                                .update({ profile_data: updatedProfileData })
+                                .eq('line_user_id', lineUserId)
+                                .then(({ error }) => {
+                                    if (error) {
+                                        console.error('[LINE] Failed to update picture URL:', error);
+                                    } else {
+                                        console.log('[LINE] ✅ LINE picture URL saved to Supabase');
+                                    }
+                                });
+                        }
                     } else {
                         console.warn('[LINE] ⚠️ No profile_data in Supabase - profile NOT synced');
                     }

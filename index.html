@@ -10764,19 +10764,9 @@ document.addEventListener('DOMContentLoaded', function() {
             },
 
             async showProfileModal() {
-                // SECURITY: Check authorization
-                const canEdit = await this.canEditProfile();
-                if (!canEdit) {
-                    alert('❌ You do not have permission to edit this profile.');
-                    return;
-                }
-
                 const userType = AppState.currentUser.role;
-                console.log('[ProfileSystem] Opening profile modal for role:', userType);
-                console.log('[ProfileSystem] AppState.currentUser:', AppState.currentUser);
-                const profile = this.getCurrentProfile(userType);
-                console.log('[ProfileSystem] Profile data:', profile);
 
+                // Show modal immediately with loading state
                 const modal = document.createElement('div');
                 modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
                 modal.id = 'profileModal';
@@ -10794,8 +10784,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
 
                         <div class="overflow-y-auto" style="max-height: calc(100vh - 200px);">
-                            <div class="p-6">
-                                ${this.generateProfileForm(userType, profile)}
+                            <div class="p-6 text-center">
+                                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mb-2"></div>
+                                <p class="text-gray-600">Loading profile...</p>
                             </div>
                         </div>
 
@@ -10826,27 +10817,49 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.body.appendChild(modal);
                 window.currentProfileModal = modal;
 
-                // Scroll the modal content to the top
-                setTimeout(() => {
-                    const scrollContainer = modal.querySelector('.overflow-y-auto');
-                    if (scrollContainer) {
-                        scrollContainer.scrollTop = 0;
-                    }
-                }, 100);
-
-                // Wait for home course options to load, then apply current selection
+                // Load profile data in background and update modal
                 setTimeout(async () => {
                     try {
-                        await this.waitForOptions('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]', 2);
-                        const currentProfile = this.getCurrentProfile(userType);
-                        if (currentProfile.golfInfo?.homeClub) {
-                            this.applyHomeClubToForm(currentProfile.golfInfo.homeClub);
-                            console.log('[ProfileSystem] Applied existing homeClub after options loaded:', currentProfile.golfInfo.homeClub);
+                        // Check authorization in background
+                        const canEdit = await this.canEditProfile();
+                        if (!canEdit) {
+                            this.closeProfileModal();
+                            alert('❌ You do not have permission to edit this profile.');
+                            return;
                         }
+
+                        // Load profile data
+                        const profile = this.getCurrentProfile(userType);
+
+                        // Update modal content with actual form
+                        const contentDiv = modal.querySelector('.overflow-y-auto > div');
+                        if (contentDiv) {
+                            contentDiv.innerHTML = this.generateProfileForm(userType, profile);
+                        }
+
+                        // Scroll to top
+                        const scrollContainer = modal.querySelector('.overflow-y-auto');
+                        if (scrollContainer) {
+                            scrollContainer.scrollTop = 0;
+                        }
+
+                        // Wait for home course options to load
+                        setTimeout(async () => {
+                            try {
+                                await this.waitForOptions('#homeClub, #homeCourse, [name="homeClub"], [name="homeCourse"]', 2);
+                                if (profile.golfInfo?.homeClub) {
+                                    this.applyHomeClubToForm(profile.golfInfo.homeClub);
+                                }
+                            } catch (error) {
+                                console.log('[ProfileSystem] Options loading timeout');
+                            }
+                        }, 100);
                     } catch (error) {
-                        console.log('[ProfileSystem] Options loading timeout or error:', error);
+                        console.error('[ProfileSystem] Error loading profile:', error);
+                        this.closeProfileModal();
+                        alert('Error loading profile. Please try again.');
                     }
-                }, 100);
+                }, 10);
             },
 
             closeProfileModal() {
@@ -10863,8 +10876,6 @@ document.addEventListener('DOMContentLoaded', function() {
             },
 
             generateProfileForm(userType, profile) {
-                console.log('[ProfileSystem.generateProfileForm] userType:', userType);
-                console.log('[ProfileSystem.generateProfileForm] profile:', profile);
                 switch(userType) {
                     case 'golfer':
                     case 'guest':

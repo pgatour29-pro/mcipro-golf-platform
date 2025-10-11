@@ -15173,7 +15173,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Load all users from Supabase user_profiles table
                     const { data: users, error } = await window.SupabaseDB.client
                         .from('user_profiles')
-                        .select('line_user_id, name, username, role')
+                        .select('line_user_id, name, username, role, profile_data')
                         .order('created_at', { ascending: false });
 
                     if (error) {
@@ -15200,12 +15200,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         const roomId = `dm_${user.line_user_id}`;
                         const displayName = user.username || user.name || 'User';
 
+                        // Get profile picture URL from profile_data
+                        const profilePicture = user.profile_data?.linePictureUrl || null;
+
                         this.chatRooms[roomId] = {
                             id: roomId,
                             name: displayName,
                             category: 'direct',
                             type: 'direct',
                             avatar: '👤',
+                            photo: profilePicture, // LINE profile picture URL
                             description: `Direct message with ${displayName}`,
                             members: [this.currentUser.id, user.line_user_id],
                             admins: [],
@@ -15609,9 +15613,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <div onclick="ChatSystem.selectChatRoomSmart('${room.id}')"
                                          oncontextmenu="ChatSystem.showChatWindowMenu(event, '${room.id}'); return false;"
                                          class="flex items-center space-x-3 p-3 rounded-lg hover:bg-white cursor-pointer transition-colors ${room.unreadCount ? 'bg-blue-50' : ''}">
-                                        <div class="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
-                                            <span class="text-primary-600">${room.avatar}</span>
-                                        </div>
+                                        ${room.photo ? `
+                                            <img src="${room.photo}" alt="${room.name}" class="w-10 h-10 rounded-full object-cover">
+                                        ` : `
+                                            <div class="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
+                                                <span class="text-primary-600">${room.avatar}</span>
+                                            </div>
+                                        `}
                                         <div class="flex-1 min-w-0">
                                             <p class="font-medium text-gray-900 truncate">${room.name}</p>
                                             <p class="text-sm text-gray-500 truncate">${messagePreview}</p>
@@ -16031,9 +16039,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                     return `
                                     <div onclick="ChatSystem.selectChatRoomSmart('${room.id}')"
                                          class="flex items-center space-x-3 p-4 border-b border-gray-100 hover:bg-gray-50 cursor-pointer active:bg-gray-100 ${room.unreadCount ? 'bg-blue-50' : ''}">
-                                        <div class="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
-                                            <span class="text-lg">${room.avatar}</span>
-                                        </div>
+                                        ${room.photo ? `
+                                            <img src="${room.photo}" alt="${room.name}" class="w-12 h-12 rounded-full object-cover">
+                                        ` : `
+                                            <div class="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
+                                                <span class="text-lg">${room.avatar}</span>
+                                            </div>
+                                        `}
                                         <div class="flex-1 min-w-0">
                                             <div class="flex items-center justify-between">
                                                 <p class="font-medium text-gray-900 truncate">${room.name}</p>

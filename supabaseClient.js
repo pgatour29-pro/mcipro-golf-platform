@@ -1,39 +1,53 @@
-// Supabase client module for chat system
-// Reuses existing MyCaddyPro Supabase configuration
+// supabaseClient.js — robust client getter for the chat system
+let _client = null;
+let _ready = null;
 
-// Wait for the existing SupabaseDB to be ready
-function waitForSupabaseDB() {
-    return new Promise((resolve) => {
-        if (window.SupabaseDB && window.SupabaseDB.ready) {
-            resolve(window.SupabaseDB.client);
-        } else if (window.SupabaseDB && window.SupabaseDB.readyPromise) {
-            window.SupabaseDB.readyPromise.then(() => {
-                resolve(window.SupabaseDB.client);
-            });
-        } else {
-            // Poll until ready
-            const checkInterval = setInterval(() => {
-                if (window.SupabaseDB && window.SupabaseDB.ready) {
-                    clearInterval(checkInterval);
-                    resolve(window.SupabaseDB.client);
-                }
-            }, 100);
-        }
-    });
+function waitForSupabaseDB(timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    function check() {
+      if (window.SupabaseDB?.client) return resolve(window.SupabaseDB.client);
+      if (Date.now() - start > timeoutMs) return reject(new Error('SupabaseDB not found on window within timeout'));
+      setTimeout(check, 100);
+    }
+    check();
+  });
 }
 
-// Export the Supabase client (will be set when available)
-export let supabase = null;
+async function createLocalClientIfPossible() {
+  const url = window.SUPABASE_URL || (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SUPABASE_URL);
+  const key = window.SUPABASE_ANON_KEY || (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  if (!url || !key) return null;
+  const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+  return createClient(url, key);
+}
 
-// Initialize and export
-(async () => {
-    supabase = await waitForSupabaseDB();
-    console.log('[Chat] Supabase client ready');
-})();
-
-// Also export a function to get the client
 export async function getSupabaseClient() {
-    if (supabase) return supabase;
-    supabase = await waitForSupabaseDB();
-    return supabase;
+  if (_client) return _client;
+  if (!_ready) {
+    _ready = (async () => {
+      try {
+        _client = await waitForSupabaseDB();
+        console.log('[Chat] Using window.SupabaseDB.client');
+        return _client;
+      } catch {
+        const fallback = await createLocalClientIfPossible();
+        if (!fallback) throw new Error('[Chat] Supabase client not found. Provide window.SupabaseDB.client OR set SUPABASE_URL/ANON_KEY.');
+        _client = fallback;
+        console.log('[Chat] Using local Supabase client (env-based)');
+        return _client;
+      }
+    })();
+  }
+  return _ready;
 }
+
+export const supabase = new Proxy({}, {
+  get(_t, prop) {
+    return async (...args) => {
+      const c = await getSupabaseClient();
+      const v = c[prop];
+      return typeof v === 'function' ? v.apply(c, args) : v;
+    };
+  },
+});

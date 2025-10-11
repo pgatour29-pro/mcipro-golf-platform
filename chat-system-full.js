@@ -103,14 +103,15 @@ export async function initChat() {
   const sidebar = document.querySelector('#conversations');
   sidebar.innerHTML = '';
 
-  // Get current LINE user ID from window.currentUser (LINE auth system)
-  const currentUser = window.currentUser;
-  if (!currentUser || !currentUser.userId) {
+  // Get current LINE user ID from LIFF context
+  const liffContext = window.liff?.getContext();
+  const currentUserId = liffContext?.userId;
+
+  if (!currentUserId) {
     console.error('[Chat] No authenticated LINE user');
     return;
   }
 
-  const currentUserId = currentUser.userId;
   console.log('[Chat] Current user:', currentUserId);
 
   // Load existing conversations

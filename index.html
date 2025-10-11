@@ -22338,16 +22338,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                     Select All / Deselect All
                                 </button>
                             </div>
-                            <p class="text-xs text-gray-500 mb-2">✨ Click any box to select - multiple selections enabled</p>
-                            <div class="mb-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs">
-                                <strong>Test:</strong>
-                                <button type="button" onclick="alert('Functions loaded! toggleFormatCheckbox=' + (typeof window.toggleFormatCheckbox))" class="ml-2 px-2 py-1 bg-blue-500 text-white rounded text-xs">
-                                    Test Click Handler
-                                </button>
-                                <button type="button" onclick="document.querySelectorAll('.scoring-format-label').forEach(l => l.style.border='3px solid red')" class="ml-2 px-2 py-1 bg-red-500 text-white rounded text-xs">
-                                    Highlight All Boxes
-                                </button>
-                            </div>
+                            <p class="text-xs text-gray-500 mb-3">✨ Click any box to select - multiple selections enabled</p>
                             <div id="scoringFormatContainer" class="flex flex-col gap-2">
                                 <label class="scoring-format-label flex items-center p-3 border-2 border-green-500 bg-green-50 rounded-lg cursor-pointer" onclick="toggleFormatCheckbox(this, event)">
                                     <input type="checkbox" name="scoringFormat" value="stableford" checked class="scoring-format-checkbox mr-3 w-5 h-5 cursor-pointer" onclick="event.stopPropagation()">
@@ -22608,6 +22599,89 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </ul>
                     <p class="mt-3"><strong>⚠️ OCR not working?</strong></p>
                     <p class="mt-1">Click "Manual Entry" button above to skip OCR and enter data directly. It's faster and more reliable!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Player Modal -->
+    <div id="addPlayerModal" class="fixed inset-0 bg-black bg-opacity-75 z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg max-w-3xl w-full mx-4 max-h-screen overflow-y-auto">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold text-gray-900">👥 Add Player to Group</h2>
+                    <button onclick="LiveScorecardManager.closeAddPlayerModal()" class="text-gray-500 hover:text-gray-700">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+
+                <!-- Tab Navigation -->
+                <div class="flex border-b mb-4">
+                    <button id="selectExistingTab" onclick="LiveScorecardManager.switchAddPlayerTab('existing')" class="px-4 py-2 font-medium text-green-600 border-b-2 border-green-600">
+                        Select Existing Player
+                    </button>
+                    <button id="addNewTab" onclick="LiveScorecardManager.switchAddPlayerTab('new')" class="px-4 py-2 font-medium text-gray-500">
+                        Add New Player
+                    </button>
+                </div>
+
+                <!-- Select Existing Player Tab -->
+                <div id="existingPlayerTab">
+                    <!-- Search Bar -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            🔍 Search Players
+                        </label>
+                        <input type="text" id="playerSearchInput" oninput="LiveScorecardManager.filterPlayerProfiles()" placeholder="Search by name..." class="w-full rounded-lg border px-3 py-2">
+                    </div>
+
+                    <!-- Player List -->
+                    <div id="playerProfilesList" class="max-h-96 overflow-y-auto">
+                        <div class="text-center py-8 text-gray-500">
+                            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div>
+                            <p>Loading players...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Add New Player Tab -->
+                <div id="newPlayerTab" class="hidden">
+                    <form id="addNewPlayerForm" onsubmit="LiveScorecardManager.submitNewPlayer(event)">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Player Name <span class="text-red-500">*</span>
+                                </label>
+                                <input type="text" id="newPlayerName" required placeholder="Enter player name" class="w-full rounded-lg border px-3 py-2">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Handicap <span class="text-red-500">*</span>
+                                </label>
+                                <input type="number" id="newPlayerHandicap" step="0.1" value="0" required placeholder="0.0" class="w-full rounded-lg border px-3 py-2">
+                                <p class="text-xs text-gray-500 mt-1">Enter handicap index (e.g., 12.5)</p>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    Email (Optional)
+                                </label>
+                                <input type="email" id="newPlayerEmail" placeholder="player@example.com" class="w-full rounded-lg border px-3 py-2">
+                                <p class="text-xs text-gray-500 mt-1">Optional: For sending scorecard after round</p>
+                            </div>
+
+                            <div class="flex gap-2 pt-4">
+                                <button type="submit" class="btn-primary flex-1">
+                                    <span class="material-symbols-outlined">person_add</span>
+                                    Add Player
+                                </button>
+                                <button type="button" onclick="LiveScorecardManager.closeAddPlayerModal()" class="btn-secondary">
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
@@ -31386,79 +31460,183 @@ class LiveScorecardSystem {
             return;
         }
 
-        // Load all user profiles from Supabase
-        const profiles = await window.SupabaseDB.getAllProfiles();
+        // Open the unified Add Player modal
+        await this.openAddPlayerModal();
+    }
+
+    async openAddPlayerModal() {
+        const modal = document.getElementById('addPlayerModal');
+        modal.classList.remove('hidden');
+
+        // Reset to "Select Existing" tab
+        this.switchAddPlayerTab('existing');
+
+        // Load all profiles
+        this.allPlayerProfiles = await window.SupabaseDB.getAllProfiles();
+
+        // Render profiles list
+        this.renderPlayerProfiles(this.allPlayerProfiles);
+
+        console.log('[LiveScorecard] Add Player modal opened');
+    }
+
+    closeAddPlayerModal() {
+        const modal = document.getElementById('addPlayerModal');
+        modal.classList.add('hidden');
+
+        // Clear search and form
+        document.getElementById('playerSearchInput').value = '';
+        document.getElementById('addNewPlayerForm').reset();
+
+        console.log('[LiveScorecard] Add Player modal closed');
+    }
+
+    switchAddPlayerTab(tab) {
+        const existingTab = document.getElementById('existingPlayerTab');
+        const newTab = document.getElementById('newPlayerTab');
+        const existingBtn = document.getElementById('selectExistingTab');
+        const newBtn = document.getElementById('addNewTab');
+
+        if (tab === 'existing') {
+            existingTab.classList.remove('hidden');
+            newTab.classList.add('hidden');
+            existingBtn.classList.add('text-green-600', 'border-b-2', 'border-green-600');
+            existingBtn.classList.remove('text-gray-500');
+            newBtn.classList.remove('text-green-600', 'border-b-2', 'border-green-600');
+            newBtn.classList.add('text-gray-500');
+        } else {
+            existingTab.classList.add('hidden');
+            newTab.classList.remove('hidden');
+            newBtn.classList.add('text-green-600', 'border-b-2', 'border-green-600');
+            newBtn.classList.remove('text-gray-500');
+            existingBtn.classList.remove('text-green-600', 'border-b-2', 'border-green-600');
+            existingBtn.classList.add('text-gray-500');
+        }
+
+        console.log(`[LiveScorecard] Switched to ${tab} tab`);
+    }
+
+    renderPlayerProfiles(profiles) {
+        const container = document.getElementById('playerProfilesList');
 
         if (!profiles || profiles.length === 0) {
-            // Fallback to manual entry if no profiles found
-            const playerName = prompt('Enter player name:');
-            const handicap = parseFloat(prompt('Enter handicap:') || '0');
-
-            if (!playerName) return;
-
-            const playerId = `player_${Date.now()}`;
-            this.players.push({
-                id: playerId,
-                lineUserId: null, // No linked profile
-                name: playerName,
-                handicap: handicap
-            });
-
-            this.scoresCache[playerId] = {};
-            this.renderPlayersList();
+            container.innerHTML = `
+                <div class="text-center py-8 text-gray-500">
+                    <span class="material-symbols-outlined text-4xl mb-2">person_off</span>
+                    <p>No players found</p>
+                    <p class="text-xs mt-2">Try the "Add New Player" tab to create one</p>
+                </div>
+            `;
             return;
         }
 
-        // Create simple selection from profiles
-        let options = 'Select a player:\n\n';
-        profiles.forEach((profile, index) => {
+        // Filter out already added players
+        const alreadyAddedIds = this.players.map(p => p.lineUserId || p.id);
+        const availableProfiles = profiles.filter(profile => !alreadyAddedIds.includes(profile.line_user_id));
+
+        if (availableProfiles.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-8 text-gray-500">
+                    <span class="material-symbols-outlined text-4xl mb-2">check_circle</span>
+                    <p>All available players already added</p>
+                    <p class="text-xs mt-2">Use "Add New Player" tab to add more</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = availableProfiles.map(profile => {
             const name = profile.name || 'Unknown';
             const handicap = profile.profile_data?.handicap || profile.profile_data?.golfInfo?.handicap || 0;
-            options += `${index + 1}. ${name} (HCP: ${handicap})\n`;
-        });
-        options += `\n0. Add new player (not in system)`;
+            const email = profile.profile_data?.personalInfo?.email || profile.email || 'No email';
 
-        const selection = prompt(options);
-        const selectedIndex = parseInt(selection) - 1;
+            return `
+                <div class="flex items-center justify-between p-4 border-b hover:bg-gray-50 cursor-pointer" onclick="LiveScorecardManager.selectExistingPlayer('${profile.line_user_id}')">
+                    <div class="flex-1">
+                        <div class="font-medium text-gray-900">${name}</div>
+                        <div class="text-sm text-gray-600">HCP: ${handicap} • ${email}</div>
+                    </div>
+                    <button class="btn-primary text-sm px-4 py-2">
+                        Select
+                    </button>
+                </div>
+            `;
+        }).join('');
 
-        if (selection === null) return; // Cancelled
+        console.log(`[LiveScorecard] Rendered ${availableProfiles.length} player profiles`);
+    }
 
-        if (selection === '0') {
-            // Manual entry for new player
-            const playerName = prompt('Enter player name:');
-            const handicap = parseFloat(prompt('Enter handicap:') || '0');
+    filterPlayerProfiles() {
+        const searchInput = document.getElementById('playerSearchInput');
+        const searchTerm = searchInput.value.toLowerCase().trim();
 
-            if (!playerName) return;
-
-            const playerId = `player_${Date.now()}`;
-            this.players.push({
-                id: playerId,
-                lineUserId: null,
-                name: playerName,
-                handicap: handicap
-            });
-
-            this.scoresCache[playerId] = {};
-        } else if (selectedIndex >= 0 && selectedIndex < profiles.length) {
-            // Selected existing profile
-            const selectedProfile = profiles[selectedIndex];
-            const handicap = selectedProfile.profile_data?.handicap || selectedProfile.profile_data?.golfInfo?.handicap || 0;
-
-            this.players.push({
-                id: selectedProfile.line_user_id, // Use their actual LINE user ID
-                lineUserId: selectedProfile.line_user_id,
-                name: selectedProfile.name,
-                handicap: handicap,
-                profileData: selectedProfile.profile_data // Store full profile for later updates
-            });
-
-            this.scoresCache[selectedProfile.line_user_id] = {};
-        } else {
-            NotificationManager.show('Invalid selection', 'error');
+        if (!searchTerm) {
+            this.renderPlayerProfiles(this.allPlayerProfiles);
             return;
         }
 
+        const filteredProfiles = this.allPlayerProfiles.filter(profile => {
+            const name = (profile.name || '').toLowerCase();
+            const email = (profile.profile_data?.personalInfo?.email || profile.email || '').toLowerCase();
+            return name.includes(searchTerm) || email.includes(searchTerm);
+        });
+
+        this.renderPlayerProfiles(filteredProfiles);
+        console.log(`[LiveScorecard] Filtered to ${filteredProfiles.length} profiles`);
+    }
+
+    selectExistingPlayer(lineUserId) {
+        const profile = this.allPlayerProfiles.find(p => p.line_user_id === lineUserId);
+        if (!profile) {
+            NotificationManager.show('Player not found', 'error');
+            return;
+        }
+
+        const handicap = profile.profile_data?.handicap || profile.profile_data?.golfInfo?.handicap || 0;
+
+        this.players.push({
+            id: profile.line_user_id,
+            lineUserId: profile.line_user_id,
+            name: profile.name,
+            handicap: handicap,
+            profileData: profile.profile_data
+        });
+
+        this.scoresCache[profile.line_user_id] = {};
         this.renderPlayersList();
+        this.closeAddPlayerModal();
+
+        NotificationManager.show(`✅ ${profile.name} added to group`, 'success');
+        console.log(`[LiveScorecard] Added existing player: ${profile.name}`);
+    }
+
+    submitNewPlayer(event) {
+        event.preventDefault();
+
+        const name = document.getElementById('newPlayerName').value.trim();
+        const handicap = parseFloat(document.getElementById('newPlayerHandicap').value);
+        const email = document.getElementById('newPlayerEmail').value.trim();
+
+        if (!name) {
+            NotificationManager.show('Player name is required', 'error');
+            return;
+        }
+
+        const playerId = `player_${Date.now()}`;
+        this.players.push({
+            id: playerId,
+            lineUserId: null,
+            name: name,
+            handicap: handicap,
+            email: email || null
+        });
+
+        this.scoresCache[playerId] = {};
+        this.renderPlayersList();
+        this.closeAddPlayerModal();
+
+        NotificationManager.show(`✅ ${name} added to group`, 'success');
+        console.log(`[LiveScorecard] Added new player: ${name}`);
     }
 
     renderPlayersList() {

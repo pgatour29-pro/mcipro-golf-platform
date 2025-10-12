@@ -71,12 +71,6 @@ async function openConversation(conversationId) {
     const el = document.querySelector('#typing');
     el.textContent = rows.length ? 'typing…' : '';
   });
-
-  // Mobile: Show chat view (hide contacts)
-  const chatContainer = document.querySelector('#professionalChatContainer');
-  if (chatContainer) {
-    chatContainer.classList.add('chat-open');
-  }
 }
 
 async function sendCurrent() {

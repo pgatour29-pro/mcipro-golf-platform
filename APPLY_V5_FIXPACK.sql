@@ -141,35 +141,23 @@ begin
     )$p$, mtable, mcol);
 end $$;
 
--- 7) Optional: keep rooms readable only to members (only if you want).
--- This will not override your existing policies if they already exist.
+-- 7) Optional: rooms policy using detected membership table
 do $$
 declare
   has_policy boolean;
+  mtable text; mcol text;
 begin
   select exists (select 1 from pg_policies where schemaname='public' and tablename='rooms' and policyname='rooms_select_members') into has_policy;
   if not has_policy then
-    -- try to respect existing membership mapping
-    begin
-      create or replace view public._room_memberships as
-      select room_id, user_id from public.room_members
-      union all select room_id, user_id from public.conversation_participants where false; -- will be ignored if table missing
-      exception when undefined_table then
-        -- ignore
-      end;
-      -- enable RLS if it isn't already
-      begin
-        alter table public.rooms enable row level security;
-      exception when others then
-        -- ignore
-      end;
+    select t.tbl_name, t.user_col into mtable, mcol from public._mcipro_detect_membership() t limit 1;
 
+    execute format($p$
       create policy rooms_select_members on public.rooms
       for select using (
         exists (
-          select 1 from public._room_memberships rm
-          where rm.room_id = rooms.id and rm.user_id = auth.uid()
+          select 1 from public.%I m
+          where m.room_id = rooms.id and m.%I = auth.uid()
         )
-      );
-    end if;
+      )$p$, mtable, mcol);
+  end if;
 end $$;

@@ -77,8 +77,14 @@ async function sendCurrent() {
   const input = document.querySelector('#composer');
   const body = input.value.trim();
   if (!body || !state.currentConversationId) return;
-  await sendMessage(state.currentConversationId, body, 'text');
-  input.value = '';
+
+  try {
+    await sendMessage(state.currentConversationId, body, 'text');
+    input.value = '';
+  } catch (error) {
+    console.error('[Chat] Send failed:', error);
+    alert('❌ Message failed to send: ' + (error.message || 'Unknown error'));
+  }
 }
 
 export async function initChat() {
@@ -110,10 +116,17 @@ export async function initChat() {
   const convos = await listConversations();
 
   // Also load all users to show as potential conversations
-  const { data: allUsers } = await supabase
+  const { data: allUsers, error: usersError } = await supabase
     .from('profiles')
     .select('id, display_name, username, avatar_url')
     .neq('id', user.id);
+
+  if (usersError) {
+    console.error('[Chat] Failed to load users:', usersError);
+    alert('⚠️ Failed to load contacts: ' + usersError.message);
+  }
+
+  console.log('[Chat] Loaded', allUsers?.length || 0, 'users');
 
   // Create a map of user IDs that already have conversations
   const existingUserIds = new Set();
@@ -146,10 +159,15 @@ export async function initChat() {
       li.onmouseover = () => li.style.background = '#f3f4f6';
       li.onmouseout = () => li.style.background = 'transparent';
       li.onclick = async () => {
-        // Ensure conversation exists, then open it
-        console.log('[Chat] Creating/opening conversation with', u.id);
-        const convId = await ensureDirectConversation(u.id);
-        openConversation(convId);
+        try {
+          console.log('[Chat] Creating/opening conversation with', u.id);
+          const convId = await ensureDirectConversation(u.id);
+          console.log('[Chat] Conversation ID:', convId);
+          openConversation(convId);
+        } catch (error) {
+          console.error('[Chat] Failed to create conversation:', error);
+          alert('❌ Failed to open chat: ' + (error.message || 'Unknown error'));
+        }
       };
       sidebar.appendChild(li);
     });

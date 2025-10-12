@@ -1,6 +1,7 @@
 // Full chat UI glue (vanilla JS) wired to Supabase helpers
 import { ensureDirectConversation, listConversations, fetchMessages, sendMessage, subscribeToConversation, markRead, typing, subscribeTyping, uploadMediaAndSend, getSignedMediaUrl } from './chat-database-functions.js';
 import { getSupabaseClient } from './supabaseClient.js';
+import { ensureSupabaseSessionWithLIFF } from './auth-bridge.js';
 
 const state = {
   currentConversationId: null,
@@ -105,15 +106,25 @@ export async function initChat() {
   const sidebar = document.querySelector('#conversations');
   sidebar.innerHTML = '';
 
+  // Ensure Supabase session exists for LINE user (creates anonymous session if needed)
+  const authResult = await ensureSupabaseSessionWithLIFF();
+
+  if (!authResult) {
+    console.error('[Chat] Failed to create Supabase session. Please log in via LINE.');
+    alert('Please log in via LINE to use chat.');
+    return;
+  }
+
   // Get current authenticated Supabase user
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    console.error('[Chat] No authenticated user');
+    console.error('[Chat] No authenticated user after auth bridge');
+    alert('Authentication failed. Please try again.');
     return;
   }
 
-  console.log('[Chat] Current user:', user.id);
+  console.log('[Chat] ✅ Authenticated:', user.id, '(LINE:', authResult.lineUserId, ')');
 
   // Load existing conversations
   const convos = await listConversations();

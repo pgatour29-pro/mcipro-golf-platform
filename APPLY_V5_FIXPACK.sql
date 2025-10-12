@@ -107,7 +107,7 @@ end $$;
 
 -- 5) Permissions
 revoke all on function public.ensure_direct_conversation(uuid) from public;
-grant execute on function public.ensure_direct_conversation(uuid) to authenticated;
+grant execute on function public.ensure_direct_conversation(uuid) to authenticated, anon;
 
 -- 6) RLS for chat_messages: allow room members to read/write.
 do $$

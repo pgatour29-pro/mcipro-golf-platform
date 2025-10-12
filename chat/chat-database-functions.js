@@ -1,15 +1,17 @@
-// MciPro Chat Database Functions - Fix Pack Version (uses RPC)
+// MciPro Chat Database Functions - V3 Fix Pack
 import { getSupabaseClient } from './supabaseClient.js';
 
 export async function openOrCreateDM(targetUserId) {
   const supabase = await getSupabaseClient();
 
   const { data, error } = await supabase.rpc('ensure_direct_conversation', {
-    other_user: targetUserId
+    partner: targetUserId
   });
 
   if (error) throw error;
-  return data; // room_id (uuid)
+  if (!data || !data[0]) throw new Error("RPC returned no data");
+
+  return data[0].room_id; // Return just the room_id for compatibility
 }
 
 export async function listRooms() {
@@ -38,8 +40,8 @@ export function normalizeMessage(m) {
   return {
     id: m.id,
     room_id: m.room_id,
-    sender_id: m.sender_id,
-    content: m.body, // Map body to content for compatibility
+    sender_id: m.author_id, // Map author_id to sender_id
+    content: m.content,
     created_at: m.created_at
   };
 }
@@ -54,7 +56,7 @@ export async function sendMessage(roomId, text) {
 
   const { error } = await supabase
     .from('chat_messages')
-    .insert({ room_id: roomId, sender_id: user.id, body: content });
+    .insert({ room_id: roomId, author_id: user.id, content: content });
 
   if (error) {
     console.error('[Chat] send failed:', error);
@@ -66,7 +68,7 @@ export async function sendMessage(roomId, text) {
 export function subscribeToConversation(conversationId, onInsert, onUpdate) {
   let channelRef = null;
   getSupabaseClient().then((supabase) => {
-    const channel = supabase.channel(`msg:${conversationId}`)
+    const channel = supabase.channel(`room:${conversationId}`)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `room_id=eq.${conversationId}` }, (payload) => {
       onInsert && onInsert(normalizeMessage(payload.new));
     })

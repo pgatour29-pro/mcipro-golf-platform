@@ -15,11 +15,27 @@ function escapeHTML(str) {
 }
 
 async function renderMessage(m) {
+  const supabase = await getSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const isSelf = m.sender_id === user.id;
+
   const wrapper = document.createElement('div');
   wrapper.className = 'msg';
   wrapper.dataset.mid = m.id;
+  wrapper.style.cssText = `display: flex; justify-content: ${isSelf ? 'flex-end' : 'flex-start'}; margin: 0.5rem 0;`;
+
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
+  bubble.style.cssText = `
+    max-width: 70%;
+    padding: 0.5rem 0.875rem;
+    border-radius: 1rem;
+    background: ${isSelf ? '#10b981' : '#f3f4f6'};
+    color: ${isSelf ? 'white' : '#111827'};
+    font-size: 14px;
+    line-height: 1.4;
+    word-wrap: break-word;
+  `;
 
   if (m.type === 'text' || (m.type === 'system' && m.body)) {
     bubble.innerHTML = escapeHTML(m.body || '');
@@ -31,11 +47,11 @@ async function renderMessage(m) {
         const img = document.createElement('img');
         img.src = url;
         img.alt = m.metadata?.name || 'image';
-        img.style.maxWidth = '320px';
+        img.style.cssText = 'max-width: 250px; border-radius: 0.5rem; display: block;';
         bubble.appendChild(img);
       } else if (m.type === 'video') {
         const vid = document.createElement('video');
-        vid.src = url; vid.controls = true; vid.style.maxWidth = '360px';
+        vid.src = url; vid.controls = true; vid.style.cssText = 'max-width: 300px; border-radius: 0.5rem;';
         bubble.appendChild(vid);
       } else if (m.type === 'audio') {
         const aud = document.createElement('audio');
@@ -44,6 +60,7 @@ async function renderMessage(m) {
       } else {
         const a = document.createElement('a');
         a.href = url; a.textContent = m.metadata?.name || 'download'; a.download = '';
+        a.style.color = isSelf ? 'white' : '#10b981';
         bubble.appendChild(a);
       }
     } catch (e) {
@@ -151,8 +168,20 @@ export async function initChat() {
   if (allUsers && allUsers.length > 0) {
     allUsers.forEach(u => {
       const li = document.createElement('li');
-      li.textContent = u.display_name || u.username || 'User';
-      li.style.cursor = 'pointer';
+      li.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.15s;">
+          <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #10b981, #059669); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; flex-shrink: 0;">
+            ${(u.display_name || u.username || 'U')[0].toUpperCase()}
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-weight: 500; color: #111827; font-size: 14px;">${escapeHTML(u.display_name || u.username || 'User')}</div>
+            <div style="font-size: 12px; color: #9ca3af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Click to chat</div>
+          </div>
+        </div>
+      `;
+      li.style.cssText = 'list-style: none; margin: 0; border-radius: 8px; margin: 2px 8px;';
+      li.onmouseover = () => li.style.background = '#f3f4f6';
+      li.onmouseout = () => li.style.background = 'transparent';
       li.onclick = async () => {
         // Ensure conversation exists, then open it
         console.log('[Chat] Creating/opening conversation with', u.id);
@@ -163,8 +192,7 @@ export async function initChat() {
     });
   } else {
     const li = document.createElement('li');
-    li.textContent = 'No users available';
-    li.style.fontStyle = 'italic';
+    li.innerHTML = '<div style="text-align: center; padding: 2rem; color: #9ca3af; font-size: 14px;">No users available</div>';
     sidebar.appendChild(li);
   }
 

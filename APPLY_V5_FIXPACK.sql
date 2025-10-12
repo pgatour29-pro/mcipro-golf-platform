@@ -74,7 +74,7 @@ as $$
 declare
   me uuid := auth.uid();
   a uuid; b uuid;
-  slug text;
+  dm_slug text;
   rid uuid;
   mtable text; mcol text;
 begin
@@ -86,12 +86,12 @@ begin
   end if;
 
   if me < partner then a := me; b := partner; else a := partner; b := me; end if;
-  slug := 'dm:' || a::text || ':' || b::text;
+  dm_slug := 'dm:' || a::text || ':' || b::text;
 
-  select r.id into rid from public.rooms r where r.slug = slug and r.kind = 'dm' limit 1;
+  select r.id into rid from public.rooms r where r.slug = dm_slug and r.kind = 'dm' limit 1;
 
   if rid is null then
-    insert into public.rooms(kind, slug) values ('dm', slug) returning id into rid;
+    insert into public.rooms(kind, slug) values ('dm', dm_slug) returning id into rid;
 
     -- detect or create membership table+column
     select t.tbl_name, t.user_col into mtable, mcol from public._mcipro_detect_membership() t limit 1;
@@ -101,7 +101,7 @@ begin
     execute format('insert into public.%I (room_id,%I) values ($1,$2) on conflict do nothing', mtable, mcol) using rid, partner;
   end if;
 
-  room_id := rid; room_slug := slug;
+  room_id := rid; room_slug := dm_slug;
   return;
 end $$;
 

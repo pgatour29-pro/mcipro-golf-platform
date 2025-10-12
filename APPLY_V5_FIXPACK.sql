@@ -31,7 +31,7 @@ end $$;
 
 -- 3) Helper function to find the membership table/column dynamically.
 create or replace function public._mcipro_detect_membership()
-returns table(table_name text, user_col text) language plpgsql as $$
+returns table(tbl_name text, user_col text) language plpgsql as $$
 declare
   t text;
   c text;
@@ -45,22 +45,22 @@ begin
       for c in select unnest(ARRAY['user_id','profile_id','member_id','account_id','uid']) loop
         if exists (
           select 1
-          from information_schema.columns
-          where table_schema='public' and table_name=t and column_name=c
+          from information_schema.columns isc
+          where isc.table_schema='public' and isc.table_name=t and isc.column_name=c
         ) then
-          table_name := t; user_col := c; return next;
+          tbl_name := t; user_col := c; return next;
           return;
         end if;
       end loop;
       -- If table exists but no known user column, add user_id
       execute format('alter table public.%I add column if not exists user_id uuid', t);
-      table_name := t; user_col := 'user_id'; return next; return;
+      tbl_name := t; user_col := 'user_id'; return next; return;
     end if;
   end loop;
 
   -- If none of the tables exists, create a minimal one.
   execute 'create table if not exists public.room_members (room_id uuid references public.rooms(id) on delete cascade, user_id uuid not null, primary key(room_id, user_id))';
-  table_name := 'room_members'; user_col := 'user_id'; return next;
+  tbl_name := 'room_members'; user_col := 'user_id'; return next;
 end $$;
 
 -- 4) Security definer RPC to open/create a DM without any ambiguous column refs.
@@ -94,7 +94,7 @@ begin
     insert into public.rooms(kind, slug) values ('dm', slug) returning id into rid;
 
     -- detect or create membership table+column
-    select t.table_name, t.user_col into mtable, mcol from public._mcipro_detect_membership() t limit 1;
+    select t.tbl_name, t.user_col into mtable, mcol from public._mcipro_detect_membership() t limit 1;
 
     -- add two members (me & partner), ignore if conflicts
     execute format('insert into public.%I (room_id,%I) values ($1,$2) on conflict do nothing', mtable, mcol) using rid, me;
@@ -114,7 +114,7 @@ do $$
 declare
   mtable text; mcol text;
 begin
-  select t.table_name, t.user_col into mtable, mcol from public._mcipro_detect_membership() t limit 1;
+  select t.tbl_name, t.user_col into mtable, mcol from public._mcipro_detect_membership() t limit 1;
 
   -- policies are recreated idempotently
   execute 'drop policy if exists chat_messages_select on public.chat_messages';

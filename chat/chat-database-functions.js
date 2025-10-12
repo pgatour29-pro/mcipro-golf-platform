@@ -1,4 +1,4 @@
-// MciPro Chat Database Functions - V3 Fix Pack
+// MciPro Chat Database Functions - V4 Fix Pack
 import { getSupabaseClient } from './supabaseClient.js';
 
 export async function openOrCreateDM(targetUserId) {
@@ -9,9 +9,11 @@ export async function openOrCreateDM(targetUserId) {
   });
 
   if (error) throw error;
-  if (!data || !data[0]) throw new Error("RPC returned no data");
+  if (!data) throw new Error("RPC returned no data");
 
-  return data[0].room_id; // Return just the room_id for compatibility
+  // V4 returns either array or object with room_id and room_slug
+  const row = Array.isArray(data) ? data[0] : data;
+  return row.room_id; // Return just the room_id for compatibility
 }
 
 export async function listRooms() {

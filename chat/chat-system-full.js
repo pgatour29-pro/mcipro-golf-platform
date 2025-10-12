@@ -1,5 +1,5 @@
 // Full chat UI glue (vanilla JS) wired to Supabase helpers
-import { ensureDirectConversation, listConversations, fetchMessages, sendMessage, subscribeToConversation, markRead, typing, subscribeTyping, uploadMediaAndSend, getSignedMediaUrl } from './chat-database-functions.js';
+import { ensureDirectConversation, listConversations, fetchMessages, sendMessage, subscribeToConversation, markRead, typing, subscribeTyping } from './chat-database-functions.js';
 import { getSupabaseClient } from './supabaseClient.js';
 import { ensureSupabaseSessionWithLIFF } from './auth-bridge.js';
 
@@ -37,38 +37,8 @@ async function renderMessage(m) {
     word-wrap: break-word;
   `;
 
-  if (m.type === 'text' || (m.type === 'system' && m.body)) {
-    bubble.innerHTML = escapeHTML(m.body || '');
-  } else if (m.metadata?.bucket && m.metadata?.object_path) {
-    // request signed URL for private media
-    try {
-      const url = await getSignedMediaUrl(m.conversationId, m.metadata.bucket, m.metadata.object_path);
-      if (m.type === 'image') {
-        const img = document.createElement('img');
-        img.src = url;
-        img.alt = m.metadata?.name || 'image';
-        img.style.cssText = 'max-width: 250px; border-radius: 0.5rem; display: block;';
-        bubble.appendChild(img);
-      } else if (m.type === 'video') {
-        const vid = document.createElement('video');
-        vid.src = url; vid.controls = true; vid.style.cssText = 'max-width: 300px; border-radius: 0.5rem;';
-        bubble.appendChild(vid);
-      } else if (m.type === 'audio') {
-        const aud = document.createElement('audio');
-        aud.src = url; aud.controls = true;
-        bubble.appendChild(aud);
-      } else {
-        const a = document.createElement('a');
-        a.href = url; a.textContent = m.metadata?.name || 'download'; a.download = '';
-        a.style.color = isSelf ? 'white' : '#10b981';
-        bubble.appendChild(a);
-      }
-    } catch (e) {
-      bubble.textContent = '[media unavailable]';
-    }
-  } else {
-    bubble.textContent = `[${m.type}]`;
-  }
+  // Production schema: text-only messages
+  bubble.innerHTML = escapeHTML(m.body || '');
 
   wrapper.appendChild(bubble);
   return wrapper;
@@ -115,13 +85,6 @@ async function sendCurrent() {
   if (!body || !state.currentConversationId) return;
   await sendMessage(state.currentConversationId, body, 'text');
   input.value = '';
-}
-
-async function sendMedia(files) {
-  if (!files || !files.length || !state.currentConversationId) return;
-  for (const f of files) {
-    await uploadMediaAndSend(state.currentConversationId, f);
-  }
 }
 
 export async function initChat() {
@@ -208,10 +171,13 @@ export async function initChat() {
     if (state.currentConversationId) typing(state.currentConversationId);
   });
 
-  const fileInput = document.querySelector('#fileInput');
-  if (fileInput) {
-    fileInput.addEventListener('change', (e)=> sendMedia(e.target.files));
-  }
+  // Enter key to send
+  composer.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendCurrent();
+    }
+  });
 }
 
 // Expose for manual testing

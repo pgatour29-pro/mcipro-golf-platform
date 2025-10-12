@@ -1,7 +1,7 @@
 // SERVICE WORKER - Offline-First Caching for MciPro Golf Platform
 // Provides instant loading and offline support
 
-const CACHE_VERSION = 'mcipro-v2.8';
+const CACHE_VERSION = 'mcipro-v2025-10-12';
 const CACHE_NAME = `${CACHE_VERSION}-${Date.now()}`;
 
 // Cache strategies
@@ -98,6 +98,12 @@ self.addEventListener('fetch', (event) => {
 
     // Skip non-GET requests
     if (request.method !== 'GET') {
+        return;
+    }
+
+    // Chat system files: Always network-first with MIME validation
+    if (url.pathname.startsWith('/chat/')) {
+        event.respondWith(handleChatFetch(request));
         return;
     }
 
@@ -211,6 +217,46 @@ async function cacheOnly(request) {
     }
 
     throw new Error('Resource not in cache');
+}
+
+// Chat system: Network-first with MIME validation
+async function handleChatFetch(request) {
+    const cache = await caches.open(CACHE_NAME);
+
+    try {
+        // Always fetch from network with no-store
+        const response = await fetch(request, { cache: 'no-store' });
+
+        // Validate MIME type before caching
+        const contentType = response.headers.get('content-type') || '';
+        const url = new URL(request.url);
+        let validType = true;
+
+        if (url.pathname.endsWith('.js')) {
+            validType = contentType.includes('javascript');
+        } else if (url.pathname.endsWith('.css')) {
+            validType = contentType.includes('css');
+        }
+
+        // Only cache if status is OK and MIME type is correct
+        if (response.status === 200 && validType) {
+            cache.put(request, response.clone());
+        } else if (!validType) {
+            console.warn('[ServiceWorker] Invalid MIME type for', url.pathname, '- got', contentType);
+        }
+
+        return response;
+    } catch (error) {
+        console.log('[ServiceWorker] Network failed for chat file, checking cache:', request.url);
+
+        // Fallback to cache only if network fails
+        const cachedResponse = await cache.match(request);
+        if (cachedResponse) {
+            return cachedResponse;
+        }
+
+        throw error;
+    }
 }
 
 // =====================================================

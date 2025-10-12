@@ -4,15 +4,29 @@ import { getSupabaseClient } from './supabaseClient.js';
 export async function openOrCreateDM(targetUserId) {
   const supabase = await getSupabaseClient();
 
+  // Get current user ID
+  const { data: { user }, error: userErr } = await supabase.auth.getUser();
+  if (userErr || !user) {
+    console.error('[Chat] Not authenticated:', userErr);
+    throw userErr || new Error('Not authenticated');
+  }
+
+  console.log('[Chat] Opening DM:', user.id, '→', targetUserId);
+
+  // Call RPC with explicit user IDs
   const { data, error } = await supabase.rpc('ensure_direct_conversation', {
+    me: user.id,
     partner: targetUserId
   });
 
   if (error) {
     console.error('[Chat] RPC error:', error);
+    console.error('[Chat] Error details:', JSON.stringify(error, null, 2));
     throw error;
   }
   if (!data) throw new Error("RPC returned no data");
+
+  console.log('[Chat] RPC success:', data);
 
   // V5 returns either array or object with room_id and room_slug
   const row = Array.isArray(data) ? data[0] : data;

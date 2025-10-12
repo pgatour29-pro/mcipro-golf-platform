@@ -15,8 +15,19 @@ function escapeHTML(str) {
 }
 
 async function renderMessage(m) {
+  console.log('[Chat] 🎨 Rendering message:', {
+    id: m.id,
+    sender_id: m.sender_id,
+    content: m.content?.substring(0, 50)
+  });
+
   const supabase = await getSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  console.log('[Chat] 🎨 Current user:', user?.id);
+  console.log('[Chat] 🎨 Message sender:', m.sender_id);
+  console.log('[Chat] 🎨 Is self message?', m.sender_id === user?.id);
+
   const isSelf = m.sender_id === user.id;
 
   const wrapper = document.createElement('div');
@@ -41,25 +52,60 @@ async function renderMessage(m) {
   bubble.innerHTML = escapeHTML(m.content || '');
 
   wrapper.appendChild(bubble);
+
+  console.log('[Chat] 🎨 Message wrapper created:', wrapper);
   return wrapper;
 }
 
 async function openConversation(conversationId) {
+  console.log('[Chat] 📂 Opening conversation:', conversationId);
+
   const supabase = await getSupabaseClient();
   state.currentConversationId = conversationId;
+
   const listEl = document.querySelector('#messages');
+  console.log('[Chat] 📂 Messages container element:', listEl);
+  console.log('[Chat] 📂 Messages container exists?', !!listEl);
+
+  if (!listEl) {
+    console.error('[Chat] ❌ #messages element not found in DOM!');
+    alert('Error: Messages container not found. Check your HTML.');
+    return;
+  }
+
   listEl.innerHTML = '';
+  console.log('[Chat] 📂 Cleared messages container');
+
   const initial = await fetchMessages(conversationId, 100);
-  for (const m of initial) listEl.appendChild(await renderMessage(m));
+  console.log('[Chat] 📂 Fetched messages count:', initial.length);
+  console.log('[Chat] 📂 Fetched messages:', initial);
+
+  if (initial.length === 0) {
+    console.log('[Chat] 📂 No messages to render');
+  } else {
+    for (let i = 0; i < initial.length; i++) {
+      const m = initial[i];
+      console.log(`[Chat] 📂 Rendering message ${i + 1}/${initial.length}:`, m);
+      const wrapper = await renderMessage(m);
+      console.log(`[Chat] 📂 Appending wrapper to DOM:`, wrapper);
+      listEl.appendChild(wrapper);
+      console.log(`[Chat] 📂 Appended successfully. Container child count:`, listEl.children.length);
+    }
+  }
+
   listEl.scrollTop = listEl.scrollHeight;
+  console.log('[Chat] 📂 Scrolled to bottom. Height:', listEl.scrollHeight);
 
   if (state.channels[conversationId]?.channel) {
     supabase.removeChannel(state.channels[conversationId].channel);
   }
   state.channels[conversationId] = subscribeToConversation(conversationId, async (m) => {
+    console.log('[Chat] 📂 Real-time message received:', m);
     if (state.currentConversationId === conversationId) {
-      listEl.appendChild(await renderMessage(m));
+      const wrapper = await renderMessage(m);
+      listEl.appendChild(wrapper);
       listEl.scrollTop = listEl.scrollHeight;
+      console.log('[Chat] 📂 Real-time message appended. Container child count:', listEl.children.length);
     }
   }, (m) => {
     // handle edits/deletes
@@ -71,6 +117,8 @@ async function openConversation(conversationId) {
     const el = document.querySelector('#typing');
     el.textContent = rows.length ? 'typing…' : '';
   });
+
+  console.log('[Chat] 📂 Conversation fully opened and subscribed');
 }
 
 async function sendCurrent() {
@@ -88,9 +136,12 @@ async function sendCurrent() {
 }
 
 export async function initChat() {
+  // Show version indicator (visible on mobile)
+  console.log('[Chat] 🚀 VERSION: 2025-10-13-DEBUG-RENDER');
+
   const supabase = await getSupabaseClient();
   const sidebar = document.querySelector('#conversations');
-  sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...</div>';
+  sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...<br><small style="color: #6b7280; font-size: 10px;">v2025-10-13-DEBUG</small></div>';
 
   // Fast path: Just get the user ID, skip heavy auth bridge
   let { data: { user } } = await supabase.auth.getUser();

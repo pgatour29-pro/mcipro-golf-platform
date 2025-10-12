@@ -93,7 +93,7 @@ export async function initChat() {
   sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...</div>';
 
   // Fast path: Just get the user ID, skip heavy auth bridge
-  const { data: { user } } = await supabase.auth.getUser();
+  let { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
     // Only run auth bridge if no session
@@ -102,6 +102,13 @@ export async function initChat() {
       alert('Please log in via LINE to use chat.');
       return;
     }
+    // Re-fetch user after auth bridge
+    ({ data: { user } } = await supabase.auth.getUser());
+  }
+
+  if (!user) {
+    alert('Authentication failed');
+    return;
   }
 
   console.log('[Chat] ✅ Authenticated:', user.id);

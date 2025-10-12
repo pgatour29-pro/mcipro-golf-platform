@@ -28,9 +28,9 @@ export async function openOrCreateDM(targetUserId) {
 
   console.log('[Chat] RPC success:', data);
 
-  // V5 returns either array or object with room_id and room_slug
+  // V5 returns either array or object with output_room_id and output_room_slug
   const row = Array.isArray(data) ? data[0] : data;
-  return row.room_id; // Return just the room_id for compatibility
+  return row.output_room_id || row.room_id; // Handle both old and new parameter names
 }
 
 export async function listRooms() {

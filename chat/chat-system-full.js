@@ -90,74 +90,43 @@ async function sendCurrent() {
 export async function initChat() {
   const supabase = await getSupabaseClient();
   const sidebar = document.querySelector('#conversations');
-  sidebar.innerHTML = '';
+  sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...</div>';
 
-  // Ensure Supabase session exists for LINE user (creates anonymous session if needed)
-  const authResult = await ensureSupabaseSessionWithLIFF();
-
-  if (!authResult) {
-    console.error('[Chat] Failed to create Supabase session. Please log in via LINE.');
-    alert('Please log in via LINE to use chat.');
-    return;
-  }
-
-  // Get current authenticated Supabase user
+  // Fast path: Just get the user ID, skip heavy auth bridge
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    console.error('[Chat] No authenticated user after auth bridge');
-    alert('Authentication failed. Please try again.');
+    // Only run auth bridge if no session
+    const authResult = await ensureSupabaseSessionWithLIFF();
+    if (!authResult) {
+      alert('Please log in via LINE to use chat.');
+      return;
+    }
+  }
+
+  console.log('[Chat] ✅ Authenticated:', user.id);
+
+  // Load users only (skip conversations for now - they're empty anyway)
+  const { data: allUsers, error: usersError } = await supabase
+    .from('profiles')
+    .select('id, display_name, username')
+    .neq('id', user.id)
+    .limit(50); // Limit results for speed
+
+  if (usersError) {
+    alert('⚠️ Failed to load contacts: ' + usersError.message);
     return;
   }
 
-  console.log('[Chat] ✅ Authenticated:', user.id, '(LINE:', authResult.lineUserId, ')');
-
-  // Load existing conversations
-  const convos = await listConversations();
-
-  // Also load all users to show as potential conversations
-  const { data: allUsers, error: usersError } = await supabase
-    .from('profiles')
-    .select('id, display_name, username, avatar_url')
-    .neq('id', user.id);
-
-  if (usersError) {
-    console.error('[Chat] Failed to load users:', usersError);
-    alert('⚠️ Failed to load contacts: ' + usersError.message);
-  }
-
+  sidebar.innerHTML = '';
   console.log('[Chat] Loaded', allUsers?.length || 0, 'users');
 
-  // Create a map of user IDs that already have conversations
-  const existingUserIds = new Set();
-  convos.forEach(c => {
-    if (c.is_group) return;
-    // For direct chats, we need to get the other user's ID
-    // For now, just add the conversation
-    const li = document.createElement('li');
-    li.textContent = c.title || 'Direct chat';
-    li.onclick = () => openConversation(c.id);
-    sidebar.appendChild(li);
-  });
-
-  // Add all users as potential conversations (like old ChatSystem)
+  // Render user list immediately (simplified for speed)
   if (allUsers && allUsers.length > 0) {
     allUsers.forEach(u => {
       const li = document.createElement('li');
-      li.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; cursor: pointer; transition: background 0.15s;">
-          <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #10b981, #059669); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; flex-shrink: 0;">
-            ${(u.display_name || u.username || 'U')[0].toUpperCase()}
-          </div>
-          <div style="flex: 1; min-width: 0;">
-            <div style="font-weight: 500; color: #111827; font-size: 14px;">${escapeHTML(u.display_name || u.username || 'User')}</div>
-            <div style="font-size: 12px; color: #9ca3af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Click to chat</div>
-          </div>
-        </div>
-      `;
-      li.style.cssText = 'list-style: none; margin: 0; border-radius: 8px; margin: 2px 8px;';
-      li.onmouseover = () => li.style.background = '#f3f4f6';
-      li.onmouseout = () => li.style.background = 'transparent';
+      li.textContent = u.display_name || u.username || 'User';
+      li.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb;';
       li.onclick = async () => {
         try {
           console.log('[Chat] Creating/opening conversation with', u.id);

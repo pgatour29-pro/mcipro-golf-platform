@@ -134,6 +134,9 @@ GRANT ALL ON public.messages TO authenticated;
 GRANT ALL ON public.conversations TO authenticated;
 GRANT ALL ON public.conversation_participants TO authenticated;
 
+-- Grant EXECUTE on RPC functions
+GRANT EXECUTE ON FUNCTION public.ensure_direct_conversation(uuid, uuid) TO authenticated;
+
 -- =====================================================================
 -- END OF MIGRATION
 -- =====================================================================

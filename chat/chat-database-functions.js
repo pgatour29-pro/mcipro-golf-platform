@@ -1,39 +1,68 @@
-// Database helpers (Supabase JS v2)
+// Database helpers (Chat Fix Kit - Direct inserts, no RPCs)
 import { getSupabaseClient } from './supabaseClient.js';
 
-export async function ensureDirectConversation(otherUserId) {
+export async function openOrCreateDM(targetUserId) {
   const supabase = await getSupabaseClient();
-  const { data: user } = await supabase.auth.getUser();
-  if (!user?.user) throw new Error('Not authenticated');
-  const { data, error } = await supabase.rpc('ensure_direct_conversation', { partner: otherUserId });
-  if (error) throw error;
-  return data; // conversation_id
+  const { data: { user }, error: userErr } = await supabase.auth.getUser();
+  if (userErr || !user) throw userErr || new Error('Not authenticated');
+
+  const ids = [user.id, targetUserId].sort();
+  const slug = `dm:${ids[0]}:${ids[1]}`;
+
+  // Find or create room
+  let { data: room, error: roomErr } = await supabase
+    .from('rooms')
+    .select('id, kind, slug')
+    .eq('slug', slug)
+    .single();
+
+  if (roomErr && roomErr.code === 'PGRST116') {
+    // Room doesn't exist, create it
+    const { data: newRoom, error: insertErr } = await supabase
+      .from('rooms')
+      .insert({ kind: 'dm', slug })
+      .select('id, kind, slug')
+      .single();
+    if (insertErr) throw insertErr;
+    room = newRoom;
+  } else if (roomErr) {
+    throw roomErr;
+  }
+
+  // Ensure both participants
+  await supabase
+    .from('conversation_participants')
+    .insert({ room_id: room.id, participant_id: user.id })
+    .onConflict('room_id,participant_id')
+    .ignore();
+
+  await supabase
+    .from('conversation_participants')
+    .insert({ room_id: room.id, participant_id: targetUserId })
+    .onConflict('room_id,participant_id')
+    .ignore();
+
+  return room.id;
 }
 
-export async function listConversations() {
+export async function listRooms() {
   const supabase = await getSupabaseClient();
-  const { data: user } = await supabase.auth.getUser();
-  if (!user?.user) throw new Error('Not authenticated');
-
-  // Production schema: simple conversations table
   const { data, error } = await supabase
-    .from('conversations')
-    .select('id, created_by, created_at')
+    .from('rooms')
+    .select('id, kind, slug, title, created_at')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data || [];
 }
 
-export async function fetchMessages(conversationId, limit = 50, before) {
+export async function fetchMessages(roomId, limit = 50) {
   const supabase = await getSupabaseClient();
-  let q = supabase
-    .from('messages')
+  const { data, error } = await supabase
+    .from('chat_messages')
     .select('*')
-    .eq('conversation_id', conversationId)
+    .eq('room_id', roomId)
     .order('created_at', { ascending: true })
     .limit(limit);
-  if (before) q = q.lt('created_at', before);
-  const { data, error } = await q;
   if (error) throw error;
   return (data || []).map(m => normalizeMessage(m));
 }
@@ -41,44 +70,40 @@ export async function fetchMessages(conversationId, limit = 50, before) {
 export function normalizeMessage(m) {
   return {
     id: m.id,
-    conversation_id: m.conversation_id,
+    room_id: m.room_id,
     sender_id: m.sender_id,
-    body: m.body,
-    created_at: m.created_at,
-    type: 'text' // Production schema is text-only
+    content: m.content,
+    created_at: m.created_at
   };
 }
 
-export async function sendMessage(conversationId, body, type = 'text', metadata = {}) {
+export async function sendMessage(roomId, text) {
   const supabase = await getSupabaseClient();
-  const { data: user } = await supabase.auth.getUser();
-  if (!user?.user) throw new Error('Not authenticated');
+  const { data: { user }, error: userErr } = await supabase.auth.getUser();
+  if (userErr || !user) throw userErr || new Error('Not authenticated');
 
-  // Use RPC instead of direct insert (RLS blocks direct inserts)
-  const { data: msgId, error } = await supabase.rpc('send_message', {
-    p_conversation_id: conversationId,
-    p_body: body
-  });
-  if (error) throw error;
+  const content = (text || '').trim();
+  if (!content) return false;
 
-  // Return normalized message structure (fetch the message we just created)
-  const { data: msg } = await supabase
-    .from('messages')
-    .select('*')
-    .eq('id', msgId)
-    .single();
+  const { error } = await supabase
+    .from('chat_messages')
+    .insert({ room_id: roomId, sender_id: user.id, content });
 
-  return msg ? normalizeMessage(msg) : { id: msgId };
+  if (error) {
+    console.error('[Chat] send failed:', error);
+    throw error;
+  }
+  return true;
 }
 
 export function subscribeToConversation(conversationId, onInsert, onUpdate) {
   let channelRef = null;
   getSupabaseClient().then((supabase) => {
     const channel = supabase.channel(`msg:${conversationId}`)
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `room_id=eq.${conversationId}` }, (payload) => {
       onInsert && onInsert(normalizeMessage(payload.new));
     })
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_messages', filter: `room_id=eq.${conversationId}` }, (payload) => {
       onUpdate && onUpdate(normalizeMessage(payload.new));
     })
     .subscribe();

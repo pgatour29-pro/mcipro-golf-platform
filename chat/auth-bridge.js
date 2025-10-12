@@ -47,27 +47,57 @@ export async function ensureSupabaseSessionWithLIFF() {
 
   const supaUser = userResp.user;
 
-  // 4) Upsert profile linking Supabase UUID → LINE user ID
+  // 4) Upsert profile linking Supabase UUID → LINE user ID (improved error handling)
+  const safeUserName = (lineProfile.displayName || 'golfer')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || `golfer-${lineUserId.slice(-6)}`;
+
   const profilePayload = {
     id: supaUser.id,
     line_user_id: lineUserId,
-    display_name: lineProfile.displayName ?? 'Golfer',
-    username: lineProfile.displayName ?? lineUserId.slice(0, 8),
-    avatar_url: lineProfile.pictureUrl ?? null
+    display_name: lineProfile.displayName || safeUserName,
+    username: safeUserName,
+    avatar_url: lineProfile.pictureUrl || null
   };
 
   console.log('[Auth Bridge] Upserting profile:', profilePayload);
 
-  const { error: upsertErr } = await supabase
+  // Try update by line_user_id first (stable key)
+  const { data: byLine, error: byLineErr } = await supabase
     .from('profiles')
-    .upsert(profilePayload, { onConflict: 'id' });
+    .update(profilePayload)
+    .eq('line_user_id', lineUserId)
+    .select('id')
+    .maybeSingle();
 
-  if (upsertErr) {
-    console.error('[Auth Bridge] Profile upsert failed:', upsertErr);
-    // Not fatal - chat can still work for reading
-  } else {
-    console.log('[Auth Bridge] ✅ Profile linked: Supabase UUID', supaUser.id, '→ LINE', lineUserId);
+  if (!byLine && byLineErr) console.warn('[Auth Bridge] update-by-line failed', byLineErr);
+
+  if (!byLine) {
+    // Insert or merge on conflict(line_user_id)
+    const { error: insertErr } = await supabase
+      .from('profiles')
+      .insert(profilePayload)
+      .onConflict('line_user_id')
+      .merge();
+
+    if (insertErr) {
+      if (insertErr.code === '23505') {
+        // Duplicate key error - retry with random suffix on username
+        const rescue = { ...profilePayload, username: `${safeUserName}-${Math.random().toString(36).slice(2,7)}` };
+        const { error: second } = await supabase
+          .from('profiles')
+          .insert(rescue)
+          .onConflict('line_user_id')
+          .merge();
+        if (second) console.error('[Auth Bridge] profile upsert failed twice:', second);
+      } else {
+        console.error('[Auth Bridge] profile upsert failed:', insertErr);
+      }
+    }
   }
+
+  console.log('[Auth Bridge] ✅ Profile linked: Supabase UUID', supaUser.id, '→ LINE', lineUserId);
 
   return { supaUser, lineUserId, lineProfile };
 }

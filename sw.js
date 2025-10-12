@@ -1,7 +1,7 @@
 // SERVICE WORKER - Offline-First Caching for MciPro Golf Platform
 // Provides instant loading and offline support
 
-const CACHE_VERSION = 'mcipro-v2025-10-12-auth-fix';
+const CACHE_VERSION = 'mcipro-v2025-10-12-chat-fix-kit';
 const CACHE_NAME = `${CACHE_VERSION}-${Date.now()}`;
 
 // Cache strategies

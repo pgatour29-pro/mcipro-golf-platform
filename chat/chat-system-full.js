@@ -1,5 +1,5 @@
 // Full chat UI glue (vanilla JS) wired to Supabase helpers
-import { ensureDirectConversation, listConversations, fetchMessages, sendMessage, subscribeToConversation, markRead, typing, subscribeTyping } from './chat-database-functions.js';
+import { openOrCreateDM, listRooms, fetchMessages, sendMessage, subscribeToConversation, markRead, typing, subscribeTyping } from './chat-database-functions.js';
 import { getSupabaseClient } from './supabaseClient.js';
 import { ensureSupabaseSessionWithLIFF } from './auth-bridge.js';
 
@@ -38,7 +38,7 @@ async function renderMessage(m) {
   `;
 
   // Production schema: text-only messages
-  bubble.innerHTML = escapeHTML(m.body || '');
+  bubble.innerHTML = escapeHTML(m.content || '');
 
   wrapper.appendChild(bubble);
   return wrapper;
@@ -79,7 +79,7 @@ async function sendCurrent() {
   if (!body || !state.currentConversationId) return;
 
   try {
-    await sendMessage(state.currentConversationId, body, 'text');
+    await sendMessage(state.currentConversationId, body);
     input.value = '';
   } catch (error) {
     console.error('[Chat] Send failed:', error);
@@ -137,7 +137,7 @@ export async function initChat() {
       li.onclick = async () => {
         try {
           console.log('[Chat] Creating/opening conversation with', u.id);
-          const convId = await ensureDirectConversation(u.id);
+          const convId = await openOrCreateDM(u.id);
           console.log('[Chat] Conversation ID:', convId);
           openConversation(convId);
         } catch (error) {
@@ -169,4 +169,4 @@ export async function initChat() {
 }
 
 // Expose for manual testing
-window.__chat = { openConversation, sendCurrent, initChat, ensureDirectConversation };
+window.__chat = { openConversation, sendCurrent, initChat, openOrCreateDM };

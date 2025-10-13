@@ -36684,8 +36684,8 @@ showOrganizerTab = function(tabName) {
     <!-- Professional Chat System Initialization -->
     <script type="module">
         // Import new chat system modules
-        import { initChat } from '/chat/chat-system-full.js?v=2025-10-13-DEBUG-RENDER&t=1760296800';
-        import { openOrCreateDM } from '/chat/chat-database-functions.js?v=2025-10-13-DEBUG-RENDER&t=1760296800';
+        import { initChat, subscribeGlobalMessages } from '/chat/chat-system-full.js?v=2025-10-13-BADGE-SYSTEM&t=' + Date.now();
+        import { openOrCreateDM, updateUnreadBadge } from '/chat/chat-database-functions.js?v=2025-10-13-BADGE-SYSTEM&t=' + Date.now();
 
         // Initialize chat when chat button is clicked
         window.openProfessionalChat = async function() {
@@ -36722,11 +36722,44 @@ showOrganizerTab = function(tabName) {
 
         // ChatSystem has been removed - all buttons now call window.openProfessionalChat() directly
 
+        // Initialize badge system on page load
+        (async function initChatBadgeSystem() {
+            try {
+                // Wait for Supabase to be ready
+                await new Promise(resolve => {
+                    if (window.SupabaseDB?.ready) {
+                        resolve();
+                    } else {
+                        const checkInterval = setInterval(() => {
+                            if (window.SupabaseDB?.ready) {
+                                clearInterval(checkInterval);
+                                resolve();
+                            }
+                        }, 100);
+                    }
+                });
+
+                console.log('[Chat] Initializing badge system...');
+
+                // Update badge with initial count
+                await updateUnreadBadge();
+
+                // Subscribe to global messages for real-time badge updates
+                await subscribeGlobalMessages();
+
+                console.log('[Chat] ✅ Badge system initialized');
+            } catch (error) {
+                console.error('[Chat] ❌ Failed to initialize badge system:', error);
+            }
+        })();
+
         // Expose for testing and external access
         window.__professionalChat = {
             initChat,
             openOrCreateDM,
-            openProfessionalChat: window.openProfessionalChat
+            openProfessionalChat: window.openProfessionalChat,
+            updateUnreadBadge,
+            subscribeGlobalMessages
         };
 
         console.log('[Chat] Professional chat module loaded');

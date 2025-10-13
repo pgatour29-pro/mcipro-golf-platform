@@ -157,7 +157,21 @@ export async function subscribeToConversation(conversationId, onInsert, onUpdate
 }
 
 export async function markRead(conversationId) {
-  return Promise.resolve();
+  const supabase = await getSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  // Update all messages in this room as read by storing the timestamp
+  const now = new Date().toISOString();
+
+  // Store last read time in localStorage for this user/room combination
+  const readKey = `chat_read_${user.id}_${conversationId}`;
+  localStorage.setItem(readKey, now);
+
+  console.log('[Chat] Marked room as read:', conversationId);
+
+  // Update global unread counter
+  updateUnreadBadge();
 }
 
 export async function typing(conversationId) {
@@ -182,4 +196,91 @@ export function inferTypeFromMime(mime) {
 
 export async function getSignedMediaUrl(conversationId, bucket, object_path) {
   throw new Error('Media not supported');
+}
+
+/**
+ * Get unread message count for a specific room
+ */
+export async function getUnreadCount(roomId) {
+  const supabase = await getSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return 0;
+
+  const readKey = `chat_read_${user.id}_${roomId}`;
+  const lastRead = localStorage.getItem(readKey);
+
+  // If never read, get all messages
+  let query = supabase
+    .from('chat_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('room_id', roomId)
+    .neq('sender', user.id); // Don't count own messages
+
+  // If we have a last read timestamp, only count messages after that
+  if (lastRead) {
+    query = query.gt('created_at', lastRead);
+  }
+
+  const { count, error } = await query;
+
+  if (error) {
+    console.error('[Chat] Error getting unread count:', error);
+    return 0;
+  }
+
+  return count || 0;
+}
+
+/**
+ * Get total unread message count across all rooms
+ */
+export async function getTotalUnreadCount() {
+  const supabase = await getSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return 0;
+
+  // Get all rooms for this user
+  const { data: rooms, error: roomsError } = await supabase
+    .from('chat_messages')
+    .select('room_id')
+    .neq('sender', user.id)
+    .order('created_at', { ascending: false })
+    .limit(100);
+
+  if (roomsError) {
+    console.error('[Chat] Error getting rooms:', roomsError);
+    return 0;
+  }
+
+  // Get unique room IDs
+  const uniqueRooms = [...new Set(rooms?.map(r => r.room_id) || [])];
+
+  // Count unread for each room
+  let totalUnread = 0;
+  for (const roomId of uniqueRooms) {
+    const count = await getUnreadCount(roomId);
+    totalUnread += count;
+  }
+
+  return totalUnread;
+}
+
+/**
+ * Update the global chat badge in the navigation
+ */
+export async function updateUnreadBadge() {
+  const totalUnread = await getTotalUnreadCount();
+  const badge = document.querySelector('#chatBadge');
+
+  if (badge) {
+    if (totalUnread > 0) {
+      badge.textContent = totalUnread > 99 ? '99+' : totalUnread.toString();
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  console.log('[Chat] Updated badge: total unread =', totalUnread);
+  return totalUnread;
 }

@@ -1,11 +1,12 @@
 // Full chat UI glue (vanilla JS) wired to Supabase helpers
-import { openOrCreateDM, listRooms, fetchMessages, sendMessage, subscribeToConversation, markRead, typing, subscribeTyping } from './chat-database-functions.js';
+import { openOrCreateDM, listRooms, fetchMessages, sendMessage, subscribeToConversation, markRead, typing, subscribeTyping, getUnreadCount, updateUnreadBadge } from './chat-database-functions.js';
 import { getSupabaseClient } from './supabaseClient.js';
 import { ensureSupabaseSessionWithLIFF } from './auth-bridge.js';
 
 const state = {
   currentConversationId: null,
   channels: {},
+  userRoomMap: {}, // Maps user IDs to room IDs for badge updates
 };
 
 function escapeHTML(str) {
@@ -97,12 +98,36 @@ async function openConversation(conversationId) {
       const wrapper = renderMessage(m, cachedUserId);
       listEl.appendChild(wrapper);
       listEl.scrollTop = listEl.scrollHeight;
+
+      // Mark as read immediately if we're viewing this conversation
+      if (m.sender_id !== cachedUserId) {
+        markRead(conversationId);
+      }
+    } else {
+      // Message arrived in a different room - update that room's badge
+      const contactBadge = document.querySelector(`#contact-badge-${conversationId}`);
+      if (contactBadge) {
+        const currentCount = parseInt(contactBadge.textContent) || 0;
+        const newCount = currentCount + 1;
+        contactBadge.textContent = newCount > 99 ? '99+' : newCount.toString();
+        contactBadge.style.display = 'inline-block';
+      }
+
+      // Update global badge
+      updateUnreadBadge();
     }
   }, (m) => {
     // handle edits/deletes
   });
 
-  markRead(conversationId);
+  // Mark as read and update badge
+  await markRead(conversationId);
+
+  // Update the badge on the contact in the sidebar
+  const contactBadge = document.querySelector(`#contact-badge-${conversationId}`);
+  if (contactBadge) {
+    contactBadge.style.display = 'none';
+  }
 
   // Clean up old typing channel
   if (state.typingChannel) {
@@ -176,23 +201,70 @@ export async function initChat() {
   sidebar.innerHTML = '';
   console.log('[Chat] Loaded', allUsers?.length || 0, 'users');
 
-  // Render user list immediately (simplified for speed)
+  // Render user list with unread badges
   if (allUsers && allUsers.length > 0) {
-    allUsers.forEach(u => {
+    // Pre-fetch room IDs and unread counts for all users (for performance)
+    const userRoomPromises = allUsers.map(async u => {
+      try {
+        const roomId = await openOrCreateDM(u.id);
+        state.userRoomMap[u.id] = roomId;
+        const unreadCount = await getUnreadCount(roomId);
+        return { user: u, roomId, unreadCount };
+      } catch (error) {
+        console.error('[Chat] Error getting room for user:', u.id, error);
+        return { user: u, roomId: null, unreadCount: 0 };
+      }
+    });
+
+    const userRoomData = await Promise.all(userRoomPromises);
+
+    userRoomData.forEach(({ user: u, roomId, unreadCount }) => {
       const li = document.createElement('li');
-      li.textContent = u.display_name || u.username || 'User';
-      li.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb;';
+      li.id = `contact-${roomId}`;
+      li.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; position: relative;';
+
+      // Contact name
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = u.display_name || u.username || 'User';
+      nameSpan.style.cssText = 'flex: 1;';
+
+      // Unread badge for this contact
+      const badge = document.createElement('span');
+      badge.id = `contact-badge-${roomId}`;
+      badge.className = 'unread-badge';
+      badge.textContent = unreadCount > 99 ? '99+' : unreadCount.toString();
+      badge.style.cssText = `
+        background: #ef4444;
+        color: white;
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 10px;
+        font-weight: 600;
+        min-width: 20px;
+        text-align: center;
+        display: ${unreadCount > 0 ? 'inline-block' : 'none'};
+      `;
+
+      li.appendChild(nameSpan);
+      li.appendChild(badge);
+
       li.onclick = async () => {
         try {
-          console.log('[Chat] Creating/opening conversation with', u.id);
-          const convId = await openOrCreateDM(u.id);
-          console.log('[Chat] Conversation ID:', convId);
-          openConversation(convId);
+          if (roomId) {
+            console.log('[Chat] Opening conversation:', roomId);
+            openConversation(roomId);
+          } else {
+            console.log('[Chat] Creating/opening conversation with', u.id);
+            const convId = await openOrCreateDM(u.id);
+            console.log('[Chat] Conversation ID:', convId);
+            openConversation(convId);
+          }
         } catch (error) {
-          console.error('[Chat] Failed to create conversation:', error);
+          console.error('[Chat] Failed to open conversation:', error);
           alert('❌ Failed to open chat: ' + (error.message || 'Unknown error'));
         }
       };
+
       sidebar.appendChild(li);
     });
   } else {
@@ -200,6 +272,9 @@ export async function initChat() {
     li.innerHTML = '<div style="text-align: center; padding: 2rem; color: #9ca3af; font-size: 14px;">No users available</div>';
     sidebar.appendChild(li);
   }
+
+  // Update global badge after loading all contacts
+  updateUnreadBadge();
 
   document.querySelector('#sendBtn').onclick = sendCurrent;
   const composer = document.querySelector('#composer');
@@ -216,5 +291,54 @@ export async function initChat() {
   });
 }
 
+/**
+ * Subscribe to all messages globally to update badges in real-time
+ * even when chat is closed
+ */
+export async function subscribeGlobalMessages() {
+  const supabase = await getSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  if (!cachedUserId) {
+    cachedUserId = user.id;
+  }
+
+  console.log('[Chat] Setting up global message subscription for badge updates');
+
+  const globalChannel = supabase.channel('global-messages')
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'chat_messages'
+    }, (payload) => {
+      const message = payload.new;
+
+      // Only count messages from others
+      if (message.sender !== cachedUserId) {
+        console.log('[Chat] Global message received, updating badges');
+
+        // Update contact badge if chat is open
+        const contactBadge = document.querySelector(`#contact-badge-${message.room_id}`);
+        if (contactBadge && state.currentConversationId !== message.room_id) {
+          const currentCount = parseInt(contactBadge.textContent) || 0;
+          const newCount = currentCount + 1;
+          contactBadge.textContent = newCount > 99 ? '99+' : newCount.toString();
+          contactBadge.style.display = 'inline-block';
+        }
+
+        // Always update global badge
+        updateUnreadBadge();
+      }
+    })
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        console.log('[Chat] ✅ Global message subscription active');
+      }
+    });
+
+  return globalChannel;
+}
+
 // Expose for manual testing
-window.__chat = { openConversation, sendCurrent, initChat, openOrCreateDM };
+window.__chat = { openConversation, sendCurrent, initChat, openOrCreateDM, updateUnreadBadge, subscribeGlobalMessages };

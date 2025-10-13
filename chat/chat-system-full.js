@@ -534,6 +534,56 @@ async function createGroup() {
       content: `created the group "${groupState.title}".`
     });
 
+    // Add the new group to the sidebar contacts list
+    const sidebar = document.querySelector('#conversations');
+    if (sidebar) {
+      const li = document.createElement('li');
+      li.id = `contact-${roomId}`;
+      li.dataset.roomId = roomId;
+      li.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; background: #f0fdf4;';
+
+      // Group icon and name
+      const nameSpan = document.createElement('span');
+      nameSpan.innerHTML = `<span style="margin-right: 0.5rem;">👥</span>${escapeHTML(groupState.title)}`;
+      nameSpan.style.cssText = 'flex: 1; font-weight: 500;';
+
+      // Unread badge
+      const badge = document.createElement('span');
+      badge.id = `contact-badge-${roomId}`;
+      badge.className = 'unread-badge';
+      badge.style.cssText = `
+        background: #ef4444;
+        color: white;
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 10px;
+        font-weight: 600;
+        min-width: 20px;
+        text-align: center;
+        display: none;
+      `;
+
+      li.appendChild(nameSpan);
+      li.appendChild(badge);
+
+      li.onclick = () => {
+        // Mobile navigation: Show group name
+        if (typeof window.chatShowConversation === 'function') {
+          window.chatShowConversation(groupState.title);
+        }
+        openConversation(roomId);
+      };
+
+      // Insert at the top of the sidebar (most recent first)
+      if (sidebar.firstChild) {
+        sidebar.insertBefore(li, sidebar.firstChild);
+      } else {
+        sidebar.appendChild(li);
+      }
+
+      console.log('[Chat] ✅ Group added to sidebar:', groupState.title);
+    }
+
     // Close modal and open conversation
     document.getElementById('groupBuilderModal')?.remove();
     openConversation(roomId);

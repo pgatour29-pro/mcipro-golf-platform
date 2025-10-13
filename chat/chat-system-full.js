@@ -515,32 +515,30 @@ async function createGroup() {
   try {
     const supabase = await getSupabaseClient();
 
-    // 1) Create room
-    const { data: room, error: e1 } = await supabase
-      .from('chat_rooms')
-      .insert({ type: 'group', title: groupState.title, created_by: creatorId })
-      .select('id')
-      .single();
-    if (e1) throw e1;
-
-    // 2) Creator + invites
-    const rows = [
-      { room_id: room.id, user_id: creatorId, role: 'admin', status: 'approved', invited_by: creatorId },
-      ...memberIds.map(uid => ({ room_id: room.id, user_id: uid, role: 'member', status: 'pending', invited_by: creatorId }))
-    ];
-    const { error: e2 } = await supabase.from('chat_room_members').insert(rows);
-    if (e2) throw e2;
-
-    // 3) Seed system message
-    await supabase.from('chat_messages').insert({
-      room_id: room.id, sender: creatorId, content: `created the group "${groupState.title}".`
+    // Use RPC function to create group (bypasses RLS, handles everything atomically)
+    const { data: roomId, error } = await supabase.rpc('create_group_room', {
+      p_title: groupState.title,
+      p_creator: creatorId,
+      p_members: memberIds
     });
 
+    if (error) throw error;
+    if (!roomId) throw new Error('No room ID returned from RPC');
+
+    console.log('[Chat] ✅ Group created via RPC:', roomId);
+
+    // Seed system message
+    await supabase.from('chat_messages').insert({
+      room_id: roomId,
+      sender: creatorId,
+      content: `created the group "${groupState.title}".`
+    });
+
+    // Close modal and open conversation
     document.getElementById('groupBuilderModal')?.remove();
-    openConversation(room.id);
+    openConversation(roomId);
     showThreadTab();
     syncAllTabUIs();
-    console.log('[Chat] ✅ Group created:', room.id);
   } catch (err) {
     console.error('[Chat] Group creation failed:', err);
     alert('❌ Failed to create group: ' + (err.message || 'Unknown error'));

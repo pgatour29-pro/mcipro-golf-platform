@@ -60,28 +60,46 @@ async function openConversation(conversationId) {
   state.currentConversationId = conversationId;
   const listEl = document.querySelector('#messages');
   listEl.innerHTML = '';
+
+  console.log('[Chat] Opening conversation:', conversationId);
+
   const initial = await fetchMessages(conversationId, 100);
   for (const m of initial) listEl.appendChild(await renderMessage(m));
   listEl.scrollTop = listEl.scrollHeight;
 
+  // Clean up old channel
   if (state.channels[conversationId]) {
+    console.log('[Chat] Removing old channel for:', conversationId);
     supabase.removeChannel(state.channels[conversationId]);
   }
-  state.channels[conversationId] = subscribeToConversation(conversationId, async (m) => {
+
+  // Subscribe to new messages - AWAIT to ensure subscription is ready
+  console.log('[Chat] Setting up real-time subscription...');
+  state.channels[conversationId] = await subscribeToConversation(conversationId, async (m) => {
+    console.log('[Chat] New message callback triggered:', m.id);
     if (state.currentConversationId === conversationId) {
       listEl.appendChild(await renderMessage(m));
       listEl.scrollTop = listEl.scrollHeight;
     }
   }, (m) => {
     // handle edits/deletes
+    console.log('[Chat] Message updated:', m.id);
   });
 
   markRead(conversationId);
-  if (state.typingChannel) supabase.removeChannel(state.typingChannel);
-  state.typingChannel = subscribeTyping(conversationId, (rows)=>{
+
+  // Clean up old typing channel
+  if (state.typingChannel) {
+    supabase.removeChannel(state.typingChannel);
+  }
+
+  // Subscribe to typing events - AWAIT to ensure subscription is ready
+  state.typingChannel = await subscribeTyping(conversationId, (rows)=>{
     const el = document.querySelector('#typing');
     el.textContent = rows.length ? 'typing…' : '';
   });
+
+  console.log('[Chat] ✅ Conversation opened and subscribed:', conversationId);
 }
 
 async function sendCurrent() {

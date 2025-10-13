@@ -70,20 +70,54 @@ export async function sendMessage(conversationId, body, type = 'text', metadata 
   return normalizeMessage(data);
 }
 
-export function subscribeToConversation(conversationId, onInsert, onUpdate) {
-  let channelRef = null;
-  getSupabaseClient().then((supabase) => {
-    const channel = supabase.channel(`msg:${conversationId}`)
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
+export async function subscribeToConversation(conversationId, onInsert, onUpdate) {
+  // Always wait for Supabase client to be ready
+  const supabase = await getSupabaseClient();
+
+  console.log('[Chat] Setting up subscription for conversation:', conversationId);
+
+  const channel = supabase.channel(`msg:${conversationId}`, {
+    config: {
+      broadcast: { self: false },
+      presence: { key: '' }
+    }
+  })
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'messages',
+      filter: `conversation_id=eq.${conversationId}`
+    }, (payload) => {
+      console.log('[Chat] Real-time INSERT received:', payload.new.id);
       onInsert && onInsert(normalizeMessage(payload.new));
     })
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` }, (payload) => {
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'messages',
+      filter: `conversation_id=eq.${conversationId}`
+    }, (payload) => {
+      console.log('[Chat] Real-time UPDATE received:', payload.new.id);
       onUpdate && onUpdate(normalizeMessage(payload.new));
-    })
-    .subscribe();
-    channelRef = channel;
+    });
+
+  // Subscribe and wait for ready state with callback
+  channel.subscribe((status, err) => {
+    if (status === 'SUBSCRIBED') {
+      console.log('[Chat] ✅ Successfully subscribed to conversation:', conversationId);
+    }
+    if (status === 'CHANNEL_ERROR') {
+      console.error('[Chat] ❌ Subscription error:', err);
+    }
+    if (status === 'TIMED_OUT') {
+      console.error('[Chat] ❌ Subscription timed out for conversation:', conversationId);
+    }
+    if (status === 'CLOSED') {
+      console.log('[Chat] Subscription closed for conversation:', conversationId);
+    }
   });
-  return { get channel() { return channelRef; } };
+
+  return channel;
 }
 
 export async function markRead(conversationId) {
@@ -106,18 +140,32 @@ export async function typing(conversationId) {
   await supabase.from('typing_events').insert({ conversation_id: conversationId, user_id: user.user.id, expires_at: new Date(Date.now()+8000).toISOString() });
 }
 
-export function subscribeTyping(conversationId, cb) {
-  let channelRef = null;
-  getSupabaseClient().then((supabase) => {
-    const channel = supabase.channel(`typing:${conversationId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'typing_events', filter: `conversation_id=eq.${conversationId}` }, async () => {
-        const { data } = await supabase.from('typing_events').select('user_id, started_at').eq('conversation_id', conversationId).gt('expires_at', new Date().toISOString());
-        cb && cb(data || []);
-      })
-      .subscribe();
-    channelRef = channel;
+export async function subscribeTyping(conversationId, cb) {
+  // Always wait for Supabase client to be ready
+  const supabase = await getSupabaseClient();
+
+  const channel = supabase.channel(`typing:${conversationId}`)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'typing_events',
+      filter: `conversation_id=eq.${conversationId}`
+    }, async () => {
+      const { data } = await supabase.from('typing_events')
+        .select('user_id, started_at')
+        .eq('conversation_id', conversationId)
+        .gt('expires_at', new Date().toISOString());
+      cb && cb(data || []);
+    });
+
+  // Subscribe and wait for ready state
+  channel.subscribe((status) => {
+    if (status === 'SUBSCRIBED') {
+      console.log('[Chat] ✅ Subscribed to typing events:', conversationId);
+    }
   });
-  return { get channel() { return channelRef; } };
+
+  return channel;
 }
 
 /** ================== MEDIA (private) ==================

@@ -793,6 +793,7 @@ async function backfillIfAllowed(reason = 'auto') {
 async function backfillMissedMessages(reason = 'auto') {
   console.log('[Chat] Backfilling messages, reason:', reason);
 
+  const startTime = Date.now();
   const now = Date.now();
 
   try {
@@ -815,7 +816,7 @@ async function backfillMissedMessages(reason = 'auto') {
     }
 
     if (data && data.length > 0) {
-      console.log(`[Chat] Backfilled ${data.length} missed messages`);
+      console.log(`[Chat] ⚡ Backfill: ${data.length} msgs in ${Date.now() - startTime}ms (reason: ${reason})`);
       data.forEach(msg => {
         const normalizedMsg = {
           id: msg.id,
@@ -826,6 +827,8 @@ async function backfillMissedMessages(reason = 'auto') {
         };
         processIncomingMessage(normalizedMsg); // Incremental append only if not present
       });
+    } else {
+      console.log(`[Chat] ⚡ Backfill: 0 msgs in ${Date.now() - startTime}ms (reason: ${reason})`);
     }
   } catch (error) {
     console.error('[Chat] Backfill failed:', error);
@@ -836,6 +839,8 @@ async function backfillMissedMessages(reason = 'auto') {
  * Subscribe to all messages globally with reconnect + backfill hardening (SINGLETON)
  */
 export async function subscribeGlobalMessages() {
+  console.time('[Chat] ⚡ Realtime join');
+
   const supabase = await getSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
@@ -847,6 +852,7 @@ export async function subscribeGlobalMessages() {
   // SINGLETON GUARD: If already joined, keep existing subscription
   if (state.globalSub && state.globalSub.state === 'joined') {
     console.log('[Chat] Global subscription already active — skip');
+    console.timeEnd('[Chat] ⚡ Realtime join');
     return state.globalSub;
   }
 
@@ -888,6 +894,7 @@ export async function subscribeGlobalMessages() {
       console.log('[Chat] Global status:', status);
       if (status === 'SUBSCRIBED') {
         console.log('[Chat] ✅ Global subscription active - backfilling missed messages');
+        console.timeEnd('[Chat] ⚡ Realtime join');
         backfillIfAllowed('subscribed');
       }
       if (status === 'CHANNEL_ERROR') {
@@ -1004,7 +1011,7 @@ function initMobileLifecycleHandlers() {
 
 /**
  * WebSocket keepalive for mobile (prevents socket sleep)
- * Uses harmless SELECT + HEAD to Realtime origin to keep radio on
+ * Uses harmless SELECT + HEAD to Realtime path to keep socket hot
  */
 function initWebSocketKeepalive() {
   setInterval(async () => {
@@ -1026,8 +1033,8 @@ function initWebSocketKeepalive() {
         cache: 'no-store'
       }).catch(() => {});
 
-      // HEAD to Realtime origin (keeps WebSocket radio active on mobile)
-      fetch(supabaseUrl, {
+      // HEAD to Realtime path (tracks socket health more closely)
+      fetch(`${supabaseUrl}/realtime/v1/`, {
         method: 'HEAD',
         cache: 'no-store',
         keepalive: true
@@ -1058,14 +1065,21 @@ if (typeof window !== 'undefined') {
   initMobileLifecycleHandlers();
   initWebSocketKeepalive();
 
-  // Stale-link detector: restart realtime if no inserts for >5s while visible
+  // Stale-link detector with jittered backoff (prevents rapid restarts on flappy networks)
+  let staleFailures = 0;
   setInterval(() => {
     if (document.visibilityState !== 'visible') return;
     const staleMs = Date.now() - (state.lastRealtimeAt || 0);
     if (staleMs > 5000 && state.lastRealtimeAt > 0) {
-      console.warn('[Chat] ⚠️ Realtime appears stale on mobile, restarting…', staleMs + 'ms');
-      restartRealtime();
-      backfillIfAllowed('stale-restart');
+      // Exponential backoff with jitter: 1s, 2s, 4s, 8s, max 15s
+      const backoff = Math.min(15000, 1000 * (2 ** staleFailures)) + Math.random() * 400;
+      console.warn('[Chat] ⚠️ Realtime stale, restarting in', Math.round(backoff) + 'ms');
+      staleFailures++;
+      setTimeout(async () => {
+        await restartRealtime();
+        await backfillIfAllowed('stale-restart');
+        staleFailures = 0; // Reset on success
+      }, backoff);
     }
   }, 3000);
 }

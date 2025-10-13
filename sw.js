@@ -1,7 +1,7 @@
 // SERVICE WORKER - Offline-First Caching for MciPro Golf Platform
 // Provides instant loading and offline support
 
-const CACHE_VERSION = 'mcipro-v2025-10-13-no-bottom-bar';
+const CACHE_VERSION = 'mcipro-v2025-10-13-mobile-final';
 const CACHE_NAME = `${CACHE_VERSION}-${Date.now()}`;
 
 // Cache strategies
@@ -98,11 +98,16 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(request.url);
 
     // CRITICAL: Never intercept Supabase REST or Realtime (NETWORK ONLY)
-    // Prevents stale/pending responses on mobile and ensures fresh data
-    if (
+    // Also bypass WebSocket and Server-Sent Events (SSE) requests
+    const isSupabase =
         url.hostname.endsWith('.supabase.co') ||
-        url.hostname.includes('realtime.supabase')
-    ) {
+        url.hostname.includes('realtime.supabase');
+
+    const isLiveTransport =
+        request.headers.get('upgrade') === 'websocket' ||
+        request.headers.get('accept') === 'text/event-stream';
+
+    if (isSupabase || isLiveTransport) {
         // Pure network-only, no cache, no SW interference
         event.respondWith(fetch(request));
         return;

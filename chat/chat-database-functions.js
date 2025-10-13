@@ -233,32 +233,36 @@ export async function getUnreadCount(roomId) {
 
 /**
  * Get total unread message count across all rooms
+ * FIXED: Only count rooms where user is actually a member
  */
 export async function getTotalUnreadCount() {
   const supabase = await getSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return 0;
 
-  // Get all rooms for this user
-  const { data: rooms, error: roomsError } = await supabase
-    .from('chat_messages')
+  // ✅ FIX: Get only rooms where user is a member (not all rooms with messages)
+  const { data: memberRooms, error: roomsError } = await supabase
+    .from('chat_room_members')
     .select('room_id')
-    .neq('sender', user.id)
-    .order('created_at', { ascending: false })
-    .limit(100);
+    .eq('user_id', user.id)
+    .eq('status', 'approved'); // Only count approved memberships
 
   if (roomsError) {
-    console.error('[Chat] Error getting rooms:', roomsError);
+    console.error('[Chat] Error getting user rooms:', roomsError);
     return 0;
   }
 
-  // Get unique room IDs
-  const uniqueRooms = [...new Set(rooms?.map(r => r.room_id) || [])];
+  // Get unique room IDs where user is a member
+  const uniqueRooms = memberRooms?.map(r => r.room_id) || [];
+  console.log('[Chat] Counting unread for', uniqueRooms.length, 'rooms');
 
   // Count unread for each room
   let totalUnread = 0;
   for (const roomId of uniqueRooms) {
     const count = await getUnreadCount(roomId);
+    if (count > 0) {
+      console.log('[Chat] Room', roomId, 'has', count, 'unread');
+    }
     totalUnread += count;
   }
 

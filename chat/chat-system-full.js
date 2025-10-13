@@ -490,11 +490,12 @@ async function createGroup() {
   try {
     const supabase = await getSupabaseClient();
 
-    // Use RPC function to create group (bypasses RLS, handles everything atomically)
+    // Use RPC function to create group (atomic transaction, bypasses RLS)
     const { data: roomId, error } = await supabase.rpc('create_group_room', {
-      p_title: groupState.title,
       p_creator: creatorId,
-      p_members: memberIds
+      p_name: groupState.title,
+      p_member_ids: memberIds,
+      p_is_private: false
     });
 
     if (error) throw error;
@@ -1037,7 +1038,11 @@ function initWebSocketKeepalive() {
       fetch(`${supabaseUrl}/realtime/v1/`, {
         method: 'HEAD',
         cache: 'no-store',
-        keepalive: true
+        keepalive: true,
+        headers: {
+          'apikey': anonKey,
+          'Authorization': `Bearer ${anonKey}`
+        }
       }).catch(() => {});
     } catch (err) {
       // Ignore errors - this is just a keepalive ping

@@ -95,13 +95,19 @@ async function openConversation(conversationId) {
   state.channels[conversationId] = await subscribeToConversation(conversationId, async (m) => {
     console.log('[Chat] Real-time message received:', m.id);
     if (state.currentConversationId === conversationId) {
-      const wrapper = renderMessage(m, cachedUserId);
-      listEl.appendChild(wrapper);
-      listEl.scrollTop = listEl.scrollHeight;
+      // Check for duplicates before adding (global subscription might have already added it)
+      const existingMsg = listEl.querySelector(`[data-mid="${m.id}"]`);
+      if (!existingMsg) {
+        const wrapper = renderMessage(m, cachedUserId);
+        listEl.appendChild(wrapper);
+        listEl.scrollTop = listEl.scrollHeight;
 
-      // Mark as read immediately if we're viewing this conversation
-      if (m.sender_id !== cachedUserId) {
-        markRead(conversationId);
+        // Mark as read immediately if we're viewing this conversation
+        if (m.sender_id !== cachedUserId) {
+          markRead(conversationId);
+        }
+      } else {
+        console.log('[Chat] Message already displayed by global subscription');
       }
     } else {
       // Message arrived in a different room - update that room's badge
@@ -201,26 +207,13 @@ export async function initChat() {
   sidebar.innerHTML = '';
   console.log('[Chat] Loaded', allUsers?.length || 0, 'users');
 
-  // Render user list with unread badges
+  // PERFORMANCE FIX: Render contact list immediately without waiting for room IDs or unread counts
+  // Room IDs and badges will load in the background
   if (allUsers && allUsers.length > 0) {
-    // Pre-fetch room IDs and unread counts for all users (for performance)
-    const userRoomPromises = allUsers.map(async u => {
-      try {
-        const roomId = await openOrCreateDM(u.id);
-        state.userRoomMap[u.id] = roomId;
-        const unreadCount = await getUnreadCount(roomId);
-        return { user: u, roomId, unreadCount };
-      } catch (error) {
-        console.error('[Chat] Error getting room for user:', u.id, error);
-        return { user: u, roomId: null, unreadCount: 0 };
-      }
-    });
-
-    const userRoomData = await Promise.all(userRoomPromises);
-
-    userRoomData.forEach(({ user: u, roomId, unreadCount }) => {
+    allUsers.forEach(u => {
       const li = document.createElement('li');
-      li.id = `contact-${roomId}`;
+      li.id = `contact-${u.id}`;
+      li.dataset.userId = u.id;
       li.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; position: relative;';
 
       // Contact name
@@ -228,11 +221,10 @@ export async function initChat() {
       nameSpan.textContent = u.display_name || u.username || 'User';
       nameSpan.style.cssText = 'flex: 1;';
 
-      // Unread badge for this contact
+      // Unread badge placeholder (will be updated asynchronously)
       const badge = document.createElement('span');
-      badge.id = `contact-badge-${roomId}`;
+      badge.id = `contact-badge-user-${u.id}`;
       badge.className = 'unread-badge';
-      badge.textContent = unreadCount > 99 ? '99+' : unreadCount.toString();
       badge.style.cssText = `
         background: #ef4444;
         color: white;
@@ -242,7 +234,7 @@ export async function initChat() {
         font-weight: 600;
         min-width: 20px;
         text-align: center;
-        display: ${unreadCount > 0 ? 'inline-block' : 'none'};
+        display: none;
       `;
 
       li.appendChild(nameSpan);
@@ -250,15 +242,17 @@ export async function initChat() {
 
       li.onclick = async () => {
         try {
-          if (roomId) {
-            console.log('[Chat] Opening conversation:', roomId);
-            openConversation(roomId);
-          } else {
-            console.log('[Chat] Creating/opening conversation with', u.id);
-            const convId = await openOrCreateDM(u.id);
-            console.log('[Chat] Conversation ID:', convId);
-            openConversation(convId);
-          }
+          console.log('[Chat] Opening conversation with', u.id);
+          // Get or create room on-demand (much faster!)
+          const roomId = await openOrCreateDM(u.id);
+          state.userRoomMap[u.id] = roomId;
+          console.log('[Chat] Room ID:', roomId);
+
+          // Update the li and badge IDs now that we have the room ID
+          li.id = `contact-${roomId}`;
+          badge.id = `contact-badge-${roomId}`;
+
+          openConversation(roomId);
         } catch (error) {
           console.error('[Chat] Failed to open conversation:', error);
           alert('❌ Failed to open chat: ' + (error.message || 'Unknown error'));
@@ -267,14 +261,44 @@ export async function initChat() {
 
       sidebar.appendChild(li);
     });
+
+    // Load unread counts in background (non-blocking)
+    console.log('[Chat] Loading unread counts in background...');
+    (async () => {
+      for (const u of allUsers) {
+        try {
+          const roomId = await openOrCreateDM(u.id);
+          state.userRoomMap[u.id] = roomId;
+          const unreadCount = await getUnreadCount(roomId);
+
+          // Update badge now that we have the count
+          const badge = document.querySelector(`#contact-badge-user-${u.id}`);
+          if (badge && unreadCount > 0) {
+            badge.textContent = unreadCount > 99 ? '99+' : unreadCount.toString();
+            badge.style.display = 'inline-block';
+            // Update ID to use room ID instead of user ID
+            badge.id = `contact-badge-${roomId}`;
+          }
+
+          // Also update contact li ID
+          const li = document.querySelector(`#contact-${u.id}`);
+          if (li) {
+            li.id = `contact-${roomId}`;
+          }
+        } catch (error) {
+          console.error('[Chat] Error loading unread count for:', u.id, error);
+        }
+      }
+
+      // Update global badge after all counts loaded
+      updateUnreadBadge();
+      console.log('[Chat] ✅ Unread counts loaded');
+    })();
   } else {
     const li = document.createElement('li');
     li.innerHTML = '<div style="text-align: center; padding: 2rem; color: #9ca3af; font-size: 14px;">No users available</div>';
     sidebar.appendChild(li);
   }
-
-  // Update global badge after loading all contacts
-  updateUnreadBadge();
 
   document.querySelector('#sendBtn').onclick = sendCurrent;
   const composer = document.querySelector('#composer');
@@ -292,8 +316,8 @@ export async function initChat() {
 }
 
 /**
- * Subscribe to all messages globally to update badges in real-time
- * even when chat is closed
+ * Subscribe to all messages globally to update badges AND show messages in real-time
+ * even when specific room subscription isn't active yet
  */
 export async function subscribeGlobalMessages() {
   const supabase = await getSupabaseClient();
@@ -304,7 +328,7 @@ export async function subscribeGlobalMessages() {
     cachedUserId = user.id;
   }
 
-  console.log('[Chat] Setting up global message subscription for badge updates');
+  console.log('[Chat] Setting up global message subscription');
 
   const globalChannel = supabase.channel('global-messages')
     .on('postgres_changes', {
@@ -314,26 +338,53 @@ export async function subscribeGlobalMessages() {
     }, (payload) => {
       const message = payload.new;
 
-      // Only count messages from others
+      // Only process messages from others
       if (message.sender !== cachedUserId) {
-        console.log('[Chat] Global message received, updating badges');
+        console.log('[Chat] Global message received:', message.room_id, message.id);
 
-        // Update contact badge if chat is open
-        const contactBadge = document.querySelector(`#contact-badge-${message.room_id}`);
-        if (contactBadge && state.currentConversationId !== message.room_id) {
-          const currentCount = parseInt(contactBadge.textContent) || 0;
-          const newCount = currentCount + 1;
-          contactBadge.textContent = newCount > 99 ? '99+' : newCount.toString();
-          contactBadge.style.display = 'inline-block';
+        // CRITICAL FIX: If this message is for the currently open conversation, display it immediately!
+        if (state.currentConversationId === message.room_id) {
+          const listEl = document.querySelector('#messages');
+          if (listEl) {
+            // Check if message already exists (prevent duplicates from multiple subscriptions)
+            const existingMsg = listEl.querySelector(`[data-mid="${message.id}"]`);
+            if (!existingMsg) {
+              console.log('[Chat] Message is for open conversation, displaying immediately');
+              const normalizedMsg = {
+                id: message.id,
+                room_id: message.room_id,
+                sender_id: message.sender,
+                content: message.content,
+                created_at: message.created_at
+              };
+              const wrapper = renderMessage(normalizedMsg, cachedUserId);
+              listEl.appendChild(wrapper);
+              listEl.scrollTop = listEl.scrollHeight;
+
+              // Mark as read since we're viewing it
+              markRead(message.room_id);
+            } else {
+              console.log('[Chat] Message already displayed, skipping duplicate');
+            }
+          }
+        } else {
+          // Message for a different room - update badge
+          const contactBadge = document.querySelector(`#contact-badge-${message.room_id}`);
+          if (contactBadge) {
+            const currentCount = parseInt(contactBadge.textContent) || 0;
+            const newCount = currentCount + 1;
+            contactBadge.textContent = newCount > 99 ? '99+' : newCount.toString();
+            contactBadge.style.display = 'inline-block';
+          }
+
+          // Always update global badge
+          updateUnreadBadge();
         }
-
-        // Always update global badge
-        updateUnreadBadge();
       }
     })
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') {
-        console.log('[Chat] ✅ Global message subscription active');
+        console.log('[Chat] ✅ Global message subscription active for real-time messages');
       }
     });
 

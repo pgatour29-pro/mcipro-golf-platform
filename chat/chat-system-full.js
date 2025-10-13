@@ -20,19 +20,13 @@ const state = {
 // UI element references (cached for performance)
 const ui = {
   contactsSearch: null,
-  openGroupBtn: null,
-  tabsBottom: {
-    contacts: null,
-    thread: null,
-  }
+  openGroupBtn: null
 };
 
 // Initialize UI refs when DOM is ready
 function initUIRefs() {
   ui.contactsSearch = document.getElementById('contactsSearch');
   ui.openGroupBtn = document.getElementById('openGroupBuilder');
-  ui.tabsBottom.contacts = document.getElementById('tabContactsBottom');
-  ui.tabsBottom.thread = document.getElementById('tabThreadBottom');
 }
 
 function escapeHTML(str) {
@@ -281,25 +275,6 @@ async function sendCurrent() {
 // =====================================================
 // MOBILE TAB NAVIGATION
 // =====================================================
-
-function setBottomSelected(btn, selected) {
-  if (!btn) return;
-  btn.setAttribute('aria-selected', selected ? 'true' : 'false');
-  if (selected) {
-    btn.style.color = '#000';
-    btn.style.borderBottomColor = '#000';
-  } else {
-    btn.style.color = '#6b7280';
-    btn.style.borderBottomColor = 'transparent';
-  }
-}
-
-function syncAllTabUIs() {
-  const chatContainer = document.querySelector('#professionalChatContainer');
-  const onContacts = !chatContainer?.classList.contains('chat-active');
-  setBottomSelected(ui.tabsBottom.contacts, onContacts);
-  setBottomSelected(ui.tabsBottom.thread, !onContacts);
-}
 
 function showContactsTab() {
   const chatContainer = document.querySelector('#professionalChatContainer');
@@ -588,7 +563,6 @@ async function createGroup() {
     document.getElementById('groupBuilderModal')?.remove();
     openConversation(roomId);
     showThreadTab();
-    syncAllTabUIs();
   } catch (err) {
     console.error('[Chat] Group creation failed:', err);
     alert('❌ Failed to create group: ' + (err.message || 'Unknown error'));
@@ -778,19 +752,6 @@ export async function initChat() {
 
   // Wire up group builder button
   ui.openGroupBtn?.addEventListener('click', openGroupBuilderModal);
-
-  // Wire up bottom tab buttons
-  ui.tabsBottom.contacts?.addEventListener('click', () => {
-    showContactsTab();
-    syncAllTabUIs();
-  });
-  ui.tabsBottom.thread?.addEventListener('click', () => {
-    showThreadTab();
-    syncAllTabUIs();
-  });
-
-  // Initialize tab UI state
-  syncAllTabUIs();
 
   console.log('[Chat] ✅ All event listeners initialized');
 }

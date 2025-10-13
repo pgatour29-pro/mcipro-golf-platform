@@ -447,7 +447,7 @@ function openGroupBuilderModal() {
   const m = document.createElement('div');
   m.id = 'groupBuilderModal';
   m.className = 'fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center';
-  m.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 50; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;';
+  m.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 20000; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;';
   m.innerHTML = `
     <div style="background: white; width: 100%; max-width: 500px; border-radius: 1rem; padding: 1.5rem; margin: 1rem;">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
@@ -485,7 +485,6 @@ function openGroupBuilderModal() {
       <input type="checkbox" data-user="${u.id}" style="width: 1.25rem; height: 1.25rem; cursor: pointer;">
       <div style="flex: 1;">
         <div style="font-weight: 500;">${u.display_name || u.username || '(no name)'}</div>
-        <div style="font-size: 0.75rem; color: #6b7280;">${u.id}</div>
       </div>`;
     ul.appendChild(li);
   });

@@ -1048,15 +1048,11 @@ function initWebSocketKeepalive() {
         cache: 'no-store'
       }).catch(() => {});
 
-      // HEAD to Realtime path (tracks socket health more closely)
-      fetch(`${supabaseUrl}/realtime/v1/`, {
+      // HEAD to REST endpoint (Realtime HEAD causes CORS issues)
+      fetch(`${supabaseUrl}/rest/v1/`, {
         method: 'HEAD',
         cache: 'no-store',
-        keepalive: true,
-        headers: {
-          'apikey': anonKey,
-          'Authorization': `Bearer ${anonKey}`
-        }
+        keepalive: true
       }).catch(() => {});
     } catch (err) {
       // Ignore errors - this is just a keepalive ping

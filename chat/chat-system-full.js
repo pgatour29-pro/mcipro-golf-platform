@@ -12,6 +12,7 @@ const state = {
   lastRealtimeAt: 0, // Timestamp of last realtime message
   backfillInFlight: false, // Prevent concurrent backfills
   lastBackfillAt: 0, // Timestamp of last backfill
+  pageHiddenAt: 0, // iOS Safari pagehide timestamp
 };
 
 function escapeHTML(str) {
@@ -25,6 +26,17 @@ let cachedUserId = null;
 
 // Message deduplication using Set (faster than DOM queries)
 const seenMessageIds = new Set();
+const MAX_SEEN_IDS = 1000; // Cap memory usage
+
+// Helper to remember message ID with memory cap
+function rememberId(id) {
+  seenMessageIds.add(id);
+  if (seenMessageIds.size > MAX_SEEN_IDS) {
+    // Delete oldest: convert to iterator
+    const first = seenMessageIds.values().next().value;
+    seenMessageIds.delete(first);
+  }
+}
 
 // Track last seen message timestamp for backfill on reconnect
 let lastSeenTimestamp = new Date().toISOString();
@@ -56,7 +68,7 @@ function processIncomingMessage(message) {
     return false; // Already seen
   }
 
-  seenMessageIds.add(message.id);
+  rememberId(message.id); // Add with memory cap
 
   // If this message is for the currently open conversation, display it
   if (state.currentConversationId === message.room_id) {
@@ -160,7 +172,7 @@ async function openConversation(conversationId) {
   if (initial.length > 0) {
     const fragment = document.createDocumentFragment();
     initial.forEach(m => {
-      seenMessageIds.add(m.id); // Track in Set
+      rememberId(m.id); // Track with memory cap
       fragment.appendChild(renderMessage(m, cachedUserId));
     });
     listEl.appendChild(fragment);
@@ -183,7 +195,7 @@ async function openConversation(conversationId) {
         return;
       }
 
-      seenMessageIds.add(m.id);
+      rememberId(m.id); // Track with memory cap
       const wrapper = renderMessage(m, cachedUserId);
       listEl.appendChild(wrapper);
       smartScrollToBottom(listEl); // Only scroll if user is near bottom
@@ -535,7 +547,47 @@ export async function subscribeGlobalMessages() {
 }
 
 /**
- * Mobile lifecycle event handlers (visibility, focus, online)
+ * Teardown chat subscriptions (cleanup on logout/account switch)
+ */
+export async function teardownChat() {
+  console.log('[Chat] Tearing down all subscriptions');
+
+  // Unsubscribe global
+  if (state.globalSub) {
+    try {
+      await state.globalSub.unsubscribe();
+    } catch (err) {
+      console.warn('[Chat] Error unsubscribing global:', err);
+    }
+    state.globalSub = null;
+  }
+
+  // Unsubscribe all room channels
+  for (const [roomId, chan] of state.roomSubs) {
+    try {
+      await chan.unsubscribe();
+    } catch (err) {
+      console.warn('[Chat] Error unsubscribing room:', roomId, err);
+    }
+  }
+  state.roomSubs.clear();
+
+  // Clear old channels map
+  const supabase = await getSupabaseClient();
+  for (const [conversationId, channel] of Object.entries(state.channels)) {
+    try {
+      supabase.removeChannel(channel);
+    } catch (err) {
+      console.warn('[Chat] Error removing channel:', conversationId, err);
+    }
+  }
+  state.channels = {};
+
+  console.log('[Chat] ✅ All subscriptions torn down');
+}
+
+/**
+ * Mobile lifecycle event handlers (visibility, focus, online, iOS pagehide/pageshow)
  * These trigger gentle backfill without re-rendering the UI
  */
 function initMobileLifecycleHandlers() {
@@ -563,11 +615,28 @@ function initMobileLifecycleHandlers() {
     }
     backfillMissedMessages();
   });
+
+  // iOS Safari edge case: pagehide/pageshow (Safari kills timers on background)
+  window.addEventListener('pagehide', () => {
+    // Don't tear down channels, just mark timestamp
+    state.pageHiddenAt = Date.now();
+    console.log('[Chat] Page hidden (iOS Safari)');
+  });
+
+  window.addEventListener('pageshow', async (event) => {
+    console.log('[Chat] Page shown (iOS Safari) - persisted:', event.persisted);
+    // Resubscribe and backfill
+    await subscribeGlobalMessages();
+    if (state.currentConversationId && state.channels[state.currentConversationId]) {
+      console.log('[Chat] Room subscription check');
+    }
+    backfillMissedMessages();
+  });
 }
 
 /**
  * WebSocket keepalive for mobile (prevents socket sleep)
- * Pings Supabase every 25 seconds when page is visible
+ * Uses harmless SELECT query with Prefer: count=none for tiniest payload
  */
 function initWebSocketKeepalive() {
   setInterval(async () => {
@@ -576,10 +645,16 @@ function initWebSocketKeepalive() {
     try {
       const supabase = await getSupabaseClient();
       const supabaseUrl = supabase.supabaseUrl;
+      const anonKey = supabase.supabaseKey;
 
-      // Tiny HEAD request to keep connection alive (bypasses SW/cache)
-      fetch(`${supabaseUrl}/rest/v1/`, {
-        method: 'HEAD',
+      // Tiny SELECT query with count=none (tiniest payload, proxy-friendly)
+      fetch(`${supabaseUrl}/rest/v1/chat_messages?select=id&limit=1`, {
+        method: 'GET',
+        headers: {
+          'apikey': anonKey,
+          'Authorization': `Bearer ${anonKey}`,
+          'Prefer': 'count=none'
+        },
         cache: 'no-store'
       }).catch(() => {
         // Ignore errors - this is just a keepalive ping
@@ -590,6 +665,21 @@ function initWebSocketKeepalive() {
   }, 25000); // Every 25 seconds
 }
 
+// Production log stripping (silence noisy debug logs)
+const DEBUG = typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+if (!DEBUG && typeof console !== 'undefined') {
+  ['log', 'debug'].forEach(fn => {
+    const original = console[fn];
+    console[fn] = (...args) => {
+      // Only log errors and warnings in production
+      if (fn === 'error' || fn === 'warn') {
+        original.apply(console, args);
+      }
+    };
+  });
+  console.log('[Chat] Production mode - debug logs suppressed');
+}
+
 // Initialize mobile lifecycle handlers and keepalive once
 if (typeof window !== 'undefined') {
   initMobileLifecycleHandlers();
@@ -597,4 +687,12 @@ if (typeof window !== 'undefined') {
 }
 
 // Expose for manual testing
-window.__chat = { openConversation, sendCurrent, initChat, openOrCreateDM, updateUnreadBadge, subscribeGlobalMessages };
+window.__chat = {
+  openConversation,
+  sendCurrent,
+  initChat,
+  openOrCreateDM,
+  updateUnreadBadge,
+  subscribeGlobalMessages,
+  teardownChat // Expose teardown for logout cleanup
+};

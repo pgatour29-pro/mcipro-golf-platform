@@ -169,7 +169,7 @@ async function openConversation(conversationId) {
       }
 
       seenMessageIds.add(m.id);
-      const wrapper = renderMessage(m, cachedUserId);
+      const wrapper = await renderMessage(m, cachedUserId);
       listEl.appendChild(wrapper);
       listEl.scrollTop = listEl.scrollHeight;
 

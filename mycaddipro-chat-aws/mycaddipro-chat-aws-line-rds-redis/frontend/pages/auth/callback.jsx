@@ -1,0 +1,1 @@
+export default () => <main style={{margin:'40px auto',maxWidth:600}}><h1>Auth Callback</h1><p>Implement code→token exchange on backend.</p></main>

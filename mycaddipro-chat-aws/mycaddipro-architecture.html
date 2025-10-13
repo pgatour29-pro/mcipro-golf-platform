@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>MyCaddiPro Chat — Architecture Visual</title>
+<style>
+  :root { --bg:#0b1220; --card:#121a2b; --ink:#e5ecff; --muted:#9fb0d9; --accent:#7aa2ff; --green:#58e6a9; --orange:#ffb86c; --red:#ff7b7b; }
+  html,body { height:100%; background:linear-gradient(180deg,#0b1220,#0d1526); margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, "Helvetica Neue", Arial; color:var(--ink); }
+  .wrap { display:grid; place-items:center; padding:32px; }
+  .frame { width:min(1200px,95vw); background:var(--card); border:1px solid #1e2a44; border-radius:18px; box-shadow:0 10px 40px rgba(0,0,0,.35); padding:24px 24px 16px; }
+  h1 { margin:0 0 6px 0; font-size:24px; letter-spacing:.2px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:20px }
+  svg { width:100%; height:auto; background:radial-gradient(1200px 600px at 50% 0%, rgba(122,162,255,.08), transparent); border-radius:12px; }
+  .node { fill:#16243d; stroke:#2a3c62; stroke-width:1.2; rx:10; }
+  .label { fill:var(--ink); font-size:12px; font-weight:600; }
+  .small { fill:var(--muted); font-size:11px; font-weight:500; }
+  .edge { stroke:#8ca7de; stroke-width:1.6; marker-end:url(#arrow); }
+  .edge-hot { stroke:var(--green); stroke-width:2.1; marker-end:url(#arrow); }
+  .group { fill:none; stroke:#41598d88; stroke-width:1.2; stroke-dasharray:6 6; rx:14; }
+  .legend rect { rx:8; }
+  .footer { margin-top:12px; color:var(--muted); font-size:12px; text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="frame">
+    <h1>MyCaddiPro — Resilient Chat Architecture</h1>
+    <div class="sub">Hot path stays green (durable &amp; isolated). Optional pieces are dashed.</div>
+
+<svg viewBox="0 0 1200 780" role="img" aria-label="Architecture diagram">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L9,3 L0,6 Z" fill="#8ca7de"></path>
+    </marker>
+  </defs>
+
+  <!-- Groups -->
+  <rect class="group" x="40" y="80" width="1120" height="270"></rect>
+  <text class="small" x="50" y="98">Edge &amp; Clients</text>
+
+  <rect class="group" x="40" y="370" width="760" height="370"></rect>
+  <text class="small" x="50" y="388">Chat Services (Isolated Stack)</text>
+
+  <rect class="group" x="820" y="370" width="340" height="370"></rect>
+  <text class="small" x="830" y="388">Managed Storage &amp; Queues</text>
+
+  <!-- Edge & Clients -->
+  <rect class="node" x="80" y="120" width="200" height="70"></rect>
+  <text class="label" x="100" y="150">Browser / Mobile</text>
+  <text class="small" x="100" y="170">chat.mycaddipro.com</text>
+
+  <rect class="node" x="320" y="120" width="240" height="70"></rect>
+  <text class="label" x="340" y="150">Route 53 + ACM</text>
+  <text class="small" x="340" y="170">DNS &amp; TLS for ALB</text>
+
+  <rect class="node" x="600" y="120" width="240" height="70"></rect>
+  <text class="label" x="620" y="150">CloudFront / ALB</text>
+  <text class="small" x="620" y="170">CDN / Load Balancer</text>
+
+  <rect class="node" x="880" y="120" width="240" height="70"></rect>
+  <text class="label" x="900" y="150">Frontend (Next.js)</text>
+  <text class="small" x="900" y="170">Static UI + Token Exchange</text>
+
+  <!-- Edges (Edge & Clients) -->
+  <line class="edge" x1="280" y1="155" x2="320" y2="155"></line>
+  <line class="edge" x1="560" y1="155" x2="600" y2="155"></line>
+  <line class="edge" x1="840" y1="155" x2="880" y2="155"></line>
+
+  <!-- Chat Services -->
+  <rect class="node" x="80" y="420" width="240" height="80"></rect>
+  <text class="label" x="100" y="455">chat-api (Fargate)</text>
+  <text class="small" x="100" y="475">/v1/messages, receipts</text>
+
+  <rect class="node" x="360" y="420" width="240" height="80"></rect>
+  <text class="label" x="380" y="455">chat-realtime (WS)</text>
+  <text class="small" x="380" y="475">WebSocket / SSE fanout</text>
+
+  <rect class="node" x="640" y="420" width="140" height="80"></rect>
+  <text class="label" x="655" y="455">Worker</text>
+  <text class="small" x="655" y="475">SQS → Redis fanout</text>
+
+  <rect class="node" x="80" y="540" width="240" height="70"></rect>
+  <text class="label" x="100" y="570">Auth (OIDC/JWKS)</text>
+  <text class="small" x="100" y="590">LINE Login compatible</text>
+
+  <rect class="node" x="360" y="540" width="240" height="70"></rect>
+  <text class="label" x="380" y="570">Rate limiting</text>
+  <text class="small" x="380" y="590">Token bucket</text>
+
+  <rect class="node" x="80" y="630" width="240" height="70"></rect>
+  <text class="label" x="100" y="660">Admin & Webhooks</text>
+  <text class="small" x="100" y="680">Replay & Integrations</text>
+
+  <rect class="node" x="360" y="630" width="240" height="70"></rect>
+  <text class="label" x="380" y="660">Attachments Presign</text>
+  <text class="small" x="380" y="680">S3 pre-signed URLs</text>
+
+  <!-- Managed Storage & Queues -->
+  <rect class="node" x="860" y="420" width="280" height="80"></rect>
+  <text class="label" x="880" y="455">Aurora Postgres (RDS)</text>
+  <text class="small" x="880" y="475">chat-db (append-only)</text>
+
+  <rect class="node" x="860" y="520" width="280" height="70"></rect>
+  <text class="label" x="880" y="550">ElastiCache (Redis)</text>
+  <text class="small" x="880" y="570">presence + typing</text>
+
+  <rect class="node" x="860" y="610" width="280" height="70"></rect>
+  <text class="label" x="880" y="640">SQS (messages)</text>
+  <text class="small" x="880" y="660">fanout queue</text>
+
+  <rect class="node" x="860" y="700" width="280" height="60"></rect>
+  <text class="label" x="880" y="730">S3 (uploads)</text>
+
+  <!-- Hot path edges -->
+  <path class="edge-hot" d="M 980 200 C 980 260, 980 300, 980 420"></path> <!-- FE -> chat-api -->
+  <path class="edge-hot" d="M 200 500 C 200 500, 460 500, 460 500"></path> <!-- chat-api -> realtime -->
+  <path class="edge-hot" d="M 460 500 C 460 585, 920 585, 920 585"></path> <!-- realtime -> Redis -->
+  <path class="edge-hot" d="M 200 500 C 200 650, 920 650, 920 650"></path> <!-- chat-api -> SQS -->
+
+  <!-- Legend -->
+  <g class="legend" transform="translate(60, 720)">
+    <rect width="360" height="42" fill="#0e172a" stroke="#213257" />
+    <circle cx="18" cy="21" r="6" fill="var(--green)"></circle>
+    <text class="small" x="32" y="24">Hot path: Frontend → chat-api → DB → SQS/Redis → chat-realtime</text>
+  </g>
+</svg>
+
+<div class="footer">
+  This is the AWS/ECS/ALB layout. Swap LocalStack+Docker locally for $0 testing.
+</div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,10 @@
+- Channels & metadata ✅
+- Messaging (durable, idempotent) ✅
+- Presence ✅ (Redis)
+- Typing ✅ (Redis pub/sub)
+- Read receipts ✅
+- Attachments ✅ (pre-sign stub)
+- Webhooks ✅ (replay stub)
+- Moderation hooks 🔶 (add async processors)
+- Rate limits 🔶 (token bucket per user/channel)
+- Search 🔶 (later: OpenSearch/Meilisearch)

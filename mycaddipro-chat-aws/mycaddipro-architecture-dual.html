@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>MyCaddiPro Chat — Local vs AWS Architecture</title>
+<style>
+  :root { --bg:#0b1220; --card:#101829; --ink:#e6ecff; --muted:#a7b6dc; --accent:#7aa2ff; --green:#58e6a9; --edge:#8ca7de; }
+  html,body { height:100%; margin:0; background:linear-gradient(180deg,#0b1220,#0c1528); color:var(--ink); font-family: ui-sans-serif, system-ui, Inter, Segoe UI, Roboto, Arial; }
+  .wrap { padding:24px; }
+  h1 { margin:0 0 6px 0; font-size:24px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:18px; }
+  .grid { display:grid; grid-template-columns: 1fr; gap:18px; }
+  @media (min-width:1000px) { .grid { grid-template-columns: 1fr 1fr; } }
+  .panel { background:var(--card); border:1px solid #1e2a44; border-radius:16px; box-shadow:0 10px 36px rgba(0,0,0,.35); padding:16px;}
+  h2 { margin:0 0 8px 0; font-size:18px; letter-spacing:.2px; }
+  .note { color:var(--muted); font-size:12px; margin-bottom:8px; }
+  svg { width:100%; height:auto; background:radial-gradient(900px 500px at 50% 0%, rgba(122,162,255,.08), transparent); border-radius:10px; }
+  .group { fill:none; stroke:#3a528d88; stroke-dasharray:6 6; stroke-width:1.2; rx:12; }
+  .node { fill:#16243d; stroke:#2a3c62; stroke-width:1.2; rx:10; }
+  .label { fill:var(--ink); font-size:12px; font-weight:600; }
+  .small { fill:var(--muted); font-size:11px; font-weight:500; }
+  .edge { stroke:var(--edge); stroke-width:1.6; marker-end:url(#arrow); }
+  .hot { stroke:var(--green); stroke-width:2.1; marker-end:url(#arrow); }
+  .legend rect { rx:8; }
+  .footer { margin-top:14px; color:var(--muted); font-size:12px; text-align:center; }
+  code { background:#0e1527; padding:1px 6px; border-radius:6px; border:1px solid #213257; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>MyCaddiPro — Local Dev vs AWS Architecture</h1>
+  <div class="sub">Left: zero-$ local stack (Docker + LocalStack). Right: production AWS (ECS/ALB/RDS/Redis/S3/SQS). Green arrows = hot path.</div>
+
+  <div class="grid">
+    <!-- Local Dev Panel -->
+    <div class="panel">
+      <h2>Local Dev (Docker + LocalStack)</h2>
+      <div class="note">Run with <code>docker compose -f docker-compose.dev.yml up --build -d</code> → <code>scripts/localstack_bootstrap.sh</code></div>
+      <svg viewBox="0 0 1000 700" aria-label="Local Dev Diagram">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L9,3 L0,6 Z" fill="#8ca7de"></path>
+          </marker>
+        </defs>
+
+        <!-- Groups -->
+        <rect class="group" x="30" y="60" width="940" height="250"></rect>
+        <text class="small" x="40" y="78">Client & Dev Frontend</text>
+
+        <rect class="group" x="30" y="330" width="600" height="330"></rect>
+        <text class="small" x="40" y="348">App Services (Docker)</text>
+
+        <rect class="group" x="650" y="330" width="320" height="330"></rect>
+        <text class="small" x="660" y="348">Local Infra (Containers)</text>
+
+        <!-- Client -->
+        <rect class="node" x="60" y="100" width="240" height="70"></rect>
+        <text class="label" x="80" y="130">Browser @ localhost:3000</text>
+        <text class="small" x="80" y="150">Next.js (dev server)</text>
+
+        <rect class="node" x="340" y="100" width="260" height="70"></rect>
+        <text class="label" x="360" y="130">No DNS/TLS</text>
+        <text class="small" x="360" y="150">direct localhost ports</text>
+
+        <rect class="node" x="640" y="100" width="260" height="70"></rect>
+        <text class="label" x="660" y="130">Dev Auth Bypass</text>
+        <text class="small" x="660" y="150">DEV_BYPASS_AUTH=1</text>
+
+        <!-- Services -->
+        <rect class="node" x="60" y="380" width="240" height="80"></rect>
+        <text class="label" x="80" y="415">chat-api (node)</text>
+        <text class="small" x="80" y="435">http://localhost:4000</text>
+
+        <rect class="node" x="330" y="380" width="240" height="80"></rect>
+        <text class="label" x="350" y="415">chat-realtime (ws)</text>
+        <text class="small" x="350" y="435">ws://localhost:4100</text>
+
+        <rect class="node" x="60" y="490" width="240" height="80"></rect>
+        <text class="label" x="80" y="525">fanout-worker</text>
+        <text class="small" x="80" y="545">SQS → Redis pub</text>
+
+        <rect class="node" x="330" y="490" width="240" height="80"></rect>
+        <text class="label" x="350" y="525">Attachments Presign</text>
+        <text class="small" x="350" y="545">LocalStack S3</text>
+
+        <!-- Local Infra -->
+        <rect class="node" x="680" y="380" width="260" height="80"></rect>
+        <text class="label" x="700" y="415">Postgres (container)</text>
+        <text class="small" x="700" y="435">chatdb schema</text>
+
+        <rect class="node" x="680" y="480" width="260" height="80"></rect>
+        <text class="label" x="700" y="515">Redis (container)</text>
+        <text class="small" x="700" y="535">presence/typing</text>
+
+        <rect class="node" x="680" y="580" width="260" height="80"></rect>
+        <text class="label" x="700" y="615">LocalStack</text>
+        <text class="small" x="700" y="635">SQS + S3 emulation</text>
+
+        <!-- Edges (hot path) -->
+        <path class="hot" d="M 300 135 C 320 180, 280 360, 180 420"></path> <!-- FE -> API -->
+        <path class="hot" d="M 300 135 C 360 200, 420 360, 450 420"></path> <!-- FE -> Realtime -->
+        <path class="hot" d="M 180 420 C 220 520, 660 520, 680 520"></path> <!-- API -> Redis -->
+        <path class="hot" d="M 180 420 C 300 600, 680 620, 680 620"></path> <!-- API -> SQS -->
+
+        <!-- Others -->
+        <line class="edge" x1="180" y1="460" x2="680" y2="420"></line>  <!-- API -> PG -->
+        <line class="edge" x1="450" y1="460" x2="680" y2="520"></line>  <!-- Realtime -> Redis -->
+        <line class="edge" x1="190" y1="530" x2="680" y2="620"></line>  <!-- Worker -> SQS -->
+      </svg>
+    </div>
+
+    <!-- AWS Panel -->
+    <div class="panel">
+      <h2>Production AWS (ECS + ALB)</h2>
+      <div class="note">DNS/TLS via Route 53 + ACM or manual DNS. Deployed with Terraform.</div>
+      <svg viewBox="0 0 1000 700" aria-label="AWS Production Diagram">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L9,3 L0,6 Z" fill="#8ca7de"></path>
+          </marker>
+        </defs>
+
+        <!-- Groups -->
+        <rect class="group" x="30" y="60" width="940" height="250"></rect>
+        <text class="small" x="40" y="78">Edge & Frontend</text>
+
+        <rect class="group" x="30" y="330" width="600" height="330"></rect>
+        <text class="small" x="40" y="348">App Services (ECS Fargate)</text>
+
+        <rect class="group" x="650" y="330" width="320" height="330"></rect>
+        <text class="small" x="660" y="348">Managed Storage & Queues</text>
+
+        <!-- Edge -->
+        <rect class="node" x="60" y="100" width="260" height="70"></rect>
+        <text class="label" x="80" y="130">Route 53 + ACM</text>
+        <text class="small" x="80" y="150">DNS & TLS</text>
+
+        <rect class="node" x="360" y="100" width="260" height="70"></rect>
+        <text class="label" x="380" y="130">CloudFront / ALB</text>
+        <text class="small" x="380" y="150">Load balancing</text>
+
+        <rect class="node" x="660" y="100" width="260" height="70"></rect>
+        <text class="label" x="680" y="130">Next.js Frontend</text>
+        <text class="small" x="680" y="150">Static hosting</text>
+
+        <!-- Services -->
+        <rect class="node" x="60" y="380" width="240" height="80"></rect>
+        <text class="label" x="80" y="415">chat-api (Fargate)</text>
+        <text class="small" x="80" y="435">/v1/messages</text>
+
+        <rect class="node" x="330" y="380" width="240" height="80"></rect>
+        <text class="label" x="350" y="415">chat-realtime (WS)</text>
+        <text class="small" x="350" y="435">WebSocket</text>
+
+        <rect class="node" x="60" y="490" width="240" height="80"></rect>
+        <text class="label" x="80" y="525">fanout-worker</text>
+        <text class="small" x="80" y="545">SQS → Redis pub</text>
+
+        <rect class="node" x="330" y="490" width="240" height="80"></rect>
+        <text class="label" x="350" y="525">Attachments Presign</text>
+        <text class="small" x="350" y="545">S3 signed URLs</text>
+
+        <!-- Managed -->
+        <rect class="node" x="680" y="380" width="260" height="80"></rect>
+        <text class="label" x="700" y="415">Aurora Postgres</text>
+        <text class="small" x="700" y="435">chat-db</text>
+
+        <rect class="node" x="680" y="480" width="260" height="80"></rect>
+        <text class="label" x="700" y="515">ElastiCache (Redis)</text>
+        <text class="small" x="700" y="535">presence/typing</text>
+
+        <rect class="node" x="680" y="580" width="260" height="80"></rect>
+        <text class="label" x="700" y="615">SQS + S3</text>
+        <text class="small" x="700" y="635">queue + uploads</text>
+
+        <!-- Hot path -->
+        <path class="hot" d="M 520 135 C 520 220, 180 340, 180 380"></path> <!-- Edge→API -->
+        <path class="hot" d="M 520 135 C 560 220, 450 340, 450 380"></path> <!-- Edge→Realtime -->
+        <path class="hot" d="M 180 420 C 220 520, 680 520, 680 520"></path> <!-- API→Redis -->
+        <path class="hot" d="M 180 420 C 280 640, 680 640, 680 640"></path> <!-- API→SQS -->
+
+        <!-- Other edges -->
+        <line class="edge" x1="180" y1="420" x2="680" y2="420"></line> <!-- API→DB -->
+        <line class="edge" x1="450" y1="420" x2="680" y2="520"></line> <!-- Realtime→Redis -->
+        <line class="edge" x1="190" y1="530" x2="680" y2="640"></line> <!-- Worker→SQS -->
+      </svg>
+    </div>
+  </div>
+
+  <div class="footer">
+    The logic is identical in both views; only the hosts/resources change. Move from left → right by swapping env vars and deploying via Terraform.
+  </div>
+</div>
+</body>
+</html>

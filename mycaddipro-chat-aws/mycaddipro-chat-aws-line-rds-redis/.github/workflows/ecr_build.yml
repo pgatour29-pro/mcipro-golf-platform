@@ -1,0 +1,38 @@
+name: Build and Push to ECR
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/ecr_build.yml'
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build & push chat-api
+        run: |
+          REPO=${{ secrets.ECR_CHAT_API }}
+          docker build -t $REPO:latest backend/chat-api
+          docker push $REPO:latest
+      - name: Build & push chat-realtime
+        run: |
+          REPO=${{ secrets.ECR_REALTIME }}
+          docker build -t $REPO:latest backend/chat-realtime
+          docker push $REPO:latest
+      - name: Build & push fanout-worker
+        run: |
+          REPO=${{ secrets.ECR_WORKER }}
+          docker build -t $REPO:latest backend/fanout-worker
+          docker push $REPO:latest

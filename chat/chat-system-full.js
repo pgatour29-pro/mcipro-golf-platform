@@ -165,11 +165,11 @@ async function sendCurrent() {
 
 export async function initChat() {
   // Show version indicator (visible on mobile)
-  console.log('[Chat] 🚀 VERSION: 2025-10-13-DEBUG-RENDER');
+  console.log('[Chat] 🚀 VERSION: 2025-10-13-PERF-100');
 
   const supabase = await getSupabaseClient();
   const sidebar = document.querySelector('#conversations');
-  sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...<br><small style="color: #6b7280; font-size: 10px;">v2025-10-13-DEBUG</small></div>';
+  sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...<br><small style="color: #6b7280; font-size: 10px;">v2025-10-13-PERF-100</small></div>';
 
   // Fast path: Just get the user ID, skip heavy auth bridge
   let { data: { user } } = await supabase.auth.getUser();
@@ -262,10 +262,13 @@ export async function initChat() {
       sidebar.appendChild(li);
     });
 
-    // Load unread counts in background (non-blocking)
-    console.log('[Chat] Loading unread counts in background...');
+    // 🚀 PERFORMANCE 100%: Parallelize ALL API calls with Promise.allSettled
+    console.log('[Chat] Loading unread counts in parallel...');
     (async () => {
-      for (const u of allUsers) {
+      const startTime = performance.now();
+
+      // Create all promises at once (parallel execution!)
+      const badgePromises = allUsers.map(async (u) => {
         try {
           const roomId = await openOrCreateDM(u.id);
           state.userRoomMap[u.id] = roomId;
@@ -276,7 +279,6 @@ export async function initChat() {
           if (badge && unreadCount > 0) {
             badge.textContent = unreadCount > 99 ? '99+' : unreadCount.toString();
             badge.style.display = 'inline-block';
-            // Update ID to use room ID instead of user ID
             badge.id = `contact-badge-${roomId}`;
           }
 
@@ -285,14 +287,24 @@ export async function initChat() {
           if (li) {
             li.id = `contact-${roomId}`;
           }
+
+          return { success: true, userId: u.id };
         } catch (error) {
           console.error('[Chat] Error loading unread count for:', u.id, error);
+          return { success: false, userId: u.id, error };
         }
-      }
+      });
+
+      // Wait for ALL promises to complete (in parallel, not sequential!)
+      const results = await Promise.allSettled(badgePromises);
+
+      const elapsed = performance.now() - startTime;
+      const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+
+      console.log(`[Chat] ✅ Loaded ${successCount}/${allUsers.length} badges in ${Math.round(elapsed)}ms (100% parallel)`);
 
       // Update global badge after all counts loaded
       updateUnreadBadge();
-      console.log('[Chat] ✅ Unread counts loaded');
     })();
   } else {
     const li = document.createElement('li');

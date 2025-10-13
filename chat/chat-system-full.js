@@ -24,6 +24,10 @@ const seenMessageIds = new Set();
 // Track last seen message timestamp for backfill on reconnect
 let lastSeenTimestamp = new Date().toISOString();
 
+// Throttle backfill to prevent mobile focus spam
+let lastBackfillTime = 0;
+const BACKFILL_THROTTLE_MS = 10000; // Only backfill once per 10 seconds
+
 // Helper to process incoming messages (used by both realtime and backfill)
 function processIncomingMessage(message) {
   // Update lastSeen timestamp
@@ -392,6 +396,14 @@ export async function initChat() {
  * Backfill missed messages (covers tab sleep, CHANNEL_ERROR, etc.)
  */
 async function backfillMissedMessages() {
+  // Throttle: Only backfill once per 10 seconds to prevent mobile focus spam
+  const now = Date.now();
+  if (now - lastBackfillTime < BACKFILL_THROTTLE_MS) {
+    console.log('[Chat] Backfill throttled (too soon since last backfill)');
+    return;
+  }
+  lastBackfillTime = now;
+
   const supabase = await getSupabaseClient();
   try {
     console.log('[Chat] Backfilling messages since', lastSeenTimestamp);
@@ -472,10 +484,11 @@ export async function subscribeGlobalMessages() {
       }
     });
 
-  // Backfill on window focus (handles mobile tab wake-up)
-  window.addEventListener('focus', () => {
-    if (globalChannel.state === 'joined') {
-      console.log('[Chat] Window focused - backfilling');
+  // Use Page Visibility API instead of focus (more reliable on mobile)
+  // Only backfill when page becomes visible after being hidden (not on every focus change)
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && globalChannel.state === 'joined') {
+      console.log('[Chat] Page became visible - backfilling (throttled)');
       backfillMissedMessages();
     }
   });

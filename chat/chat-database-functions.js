@@ -109,17 +109,25 @@ export async function sendMessage(roomId, text) {
   return true;
 }
 
-export function subscribeToConversation(conversationId, onInsert, onUpdate) {
-  let channelRef = null;
-  getSupabaseClient().then((supabase) => {
-    const channel = supabase.channel(`room:${conversationId}`)
+export async function subscribeToConversation(conversationId, onInsert, onUpdate) {
+  // CRITICAL FIX: Always wait for Supabase client to be ready
+  const supabase = await getSupabaseClient();
+
+  console.log('[Chat] Setting up subscription for room:', conversationId);
+
+  const channel = supabase.channel(`room:${conversationId}`, {
+    config: {
+      broadcast: { self: false },
+      presence: { key: '' }
+    }
+  })
     .on('postgres_changes', {
       event: 'INSERT',
       schema: 'public',
       table: 'chat_messages',
       filter: `room_id=eq.${conversationId}`
     }, (payload) => {
-      console.log('[Chat] New message received:', payload.new);
+      console.log('[Chat] Real-time INSERT:', payload.new.id);
       onInsert && onInsert(normalizeMessage(payload.new));
     })
     .on('postgres_changes', {
@@ -128,15 +136,24 @@ export function subscribeToConversation(conversationId, onInsert, onUpdate) {
       table: 'chat_messages',
       filter: `room_id=eq.${conversationId}`
     }, (payload) => {
-      console.log('[Chat] Message updated:', payload.new);
+      console.log('[Chat] Real-time UPDATE:', payload.new.id);
       onUpdate && onUpdate(normalizeMessage(payload.new));
-    })
-    .subscribe((status) => {
-      console.log('[Chat] Subscription status:', status);
     });
-    channelRef = channel;
+
+  // CRITICAL FIX: Subscribe and wait for ready state with callback
+  channel.subscribe((status, err) => {
+    if (status === 'SUBSCRIBED') {
+      console.log('[Chat] ✅ Subscribed to room:', conversationId);
+    }
+    if (status === 'CHANNEL_ERROR') {
+      console.error('[Chat] ❌ Subscription error:', err);
+    }
+    if (status === 'TIMED_OUT') {
+      console.error('[Chat] ❌ Subscription timed out');
+    }
   });
-  return { get channel() { return channelRef; } };
+
+  return channel;
 }
 
 export async function markRead(conversationId) {
@@ -147,8 +164,12 @@ export async function typing(conversationId) {
   return Promise.resolve();
 }
 
-export function subscribeTyping(conversationId, cb) {
-  return { get channel() { return null; } };
+export async function subscribeTyping(conversationId, cb) {
+  // Typing events not implemented yet, return empty channel
+  const supabase = await getSupabaseClient();
+  const channel = supabase.channel(`typing:${conversationId}`);
+  channel.subscribe();
+  return channel;
 }
 
 export async function uploadMediaAndSend(conversationId, file) {

@@ -5,6 +5,7 @@ import { ensureSupabaseSessionWithLIFF } from './auth-bridge.js';
 
 const state = {
   currentConversationId: null,
+  currentUserId: null, // Store current user ID
   channels: {},
   userRoomMap: {}, // Maps user IDs to room IDs for badge updates
   globalSub: null, // Singleton global subscription
@@ -13,7 +14,26 @@ const state = {
   backfillInFlight: false, // Prevent concurrent backfills
   lastBackfillAt: 0, // Timestamp of last backfill
   pageHiddenAt: 0, // iOS Safari pagehide timestamp
+  users: [], // All loaded users for search
 };
+
+// UI element references (cached for performance)
+const ui = {
+  contactsSearch: null,
+  openGroupBtn: null,
+  tabsBottom: {
+    contacts: null,
+    thread: null,
+  }
+};
+
+// Initialize UI refs when DOM is ready
+function initUIRefs() {
+  ui.contactsSearch = document.getElementById('contactsSearch');
+  ui.openGroupBtn = document.getElementById('openGroupBuilder');
+  ui.tabsBottom.contacts = document.getElementById('tabContactsBottom');
+  ui.tabsBottom.thread = document.getElementById('tabThreadBottom');
+}
 
 function escapeHTML(str) {
   const div = document.createElement('div');
@@ -258,13 +278,328 @@ async function sendCurrent() {
   }
 }
 
+// =====================================================
+// MOBILE TAB NAVIGATION
+// =====================================================
+
+function setBottomSelected(btn, selected) {
+  if (!btn) return;
+  btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+  if (selected) {
+    btn.style.color = '#000';
+    btn.style.borderBottomColor = '#000';
+  } else {
+    btn.style.color = '#6b7280';
+    btn.style.borderBottomColor = 'transparent';
+  }
+}
+
+function syncAllTabUIs() {
+  const chatContainer = document.querySelector('#professionalChatContainer');
+  const onContacts = !chatContainer?.classList.contains('chat-active');
+  setBottomSelected(ui.tabsBottom.contacts, onContacts);
+  setBottomSelected(ui.tabsBottom.thread, !onContacts);
+}
+
+function showContactsTab() {
+  const chatContainer = document.querySelector('#professionalChatContainer');
+  if (chatContainer) {
+    chatContainer.classList.remove('chat-active');
+  }
+}
+
+function showThreadTab() {
+  const chatContainer = document.querySelector('#professionalChatContainer');
+  if (chatContainer) {
+    chatContainer.classList.add('chat-active');
+  }
+}
+
+// =====================================================
+// CONTACTS SEARCH
+// =====================================================
+
+function normalize(s) {
+  return (s || '').toString().trim().toLowerCase();
+}
+
+function filterContactsLocal(q) {
+  const qn = normalize(q);
+  const items = state.users || [];
+  if (!qn) return items;
+  return items.filter(u => {
+    const name = normalize(u.display_name || u.username || '');
+    const uid = (u.id || '').toString().toLowerCase();
+    return name.includes(qn) || uid.startsWith(qn);
+  });
+}
+
+let searchAbortCtrl = null;
+async function queryContactsServer(q) {
+  if (!q || q.length < 2) return null;
+  try {
+    searchAbortCtrl?.abort();
+    searchAbortCtrl = new AbortController();
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, display_name, username')
+      .or(`display_name.ilike.%${q}%,username.ilike.%${q}%`)
+      .limit(25)
+      .abortSignal(searchAbortCtrl.signal);
+    if (error) throw error;
+    return data || [];
+  } catch {
+    return null;
+  }
+}
+
+function renderContactList(list) {
+  const sidebar = document.querySelector('#conversations');
+  if (!sidebar) return;
+
+  sidebar.innerHTML = '';
+
+  if (list.length === 0) {
+    const li = document.createElement('li');
+    li.innerHTML = '<div style="text-align: center; padding: 2rem; color: #9ca3af; font-size: 14px;">No contacts found</div>';
+    sidebar.appendChild(li);
+    return;
+  }
+
+  list.forEach(u => {
+    const li = document.createElement('li');
+    li.id = `contact-${u.id}`;
+    li.dataset.userId = u.id;
+    li.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;';
+
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = u.display_name || u.username || 'User';
+    nameSpan.style.cssText = 'flex: 1;';
+
+    const badge = document.createElement('span');
+    badge.id = `contact-badge-user-${u.id}`;
+    badge.className = 'unread-badge';
+    badge.style.cssText = `
+      background: #ef4444;
+      color: white;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-weight: 600;
+      min-width: 20px;
+      text-align: center;
+      display: none;
+    `;
+
+    li.appendChild(nameSpan);
+    li.appendChild(badge);
+
+    li.onclick = async () => {
+      try {
+        const roomId = await openOrCreateDM(u.id);
+        state.userRoomMap[u.id] = roomId;
+        li.id = `contact-${roomId}`;
+        badge.id = `contact-badge-${roomId}`;
+
+        const contactName = u.display_name || u.username || 'User';
+        if (typeof window.chatShowConversation === 'function') {
+          window.chatShowConversation(contactName);
+        }
+
+        openConversation(roomId);
+      } catch (error) {
+        console.error('[Chat] Failed to open conversation:', error);
+        alert('❌ Failed to open chat: ' + (error.message || 'Unknown error'));
+      }
+    };
+
+    sidebar.appendChild(li);
+  });
+}
+
+function debounce(fn, ms) {
+  let t;
+  return (...a) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...a), ms);
+  };
+}
+
+const doSearch = debounce(async (q) => {
+  const local = filterContactsLocal(q);
+  renderContactList(local);
+  const remote = await queryContactsServer(q);
+  if (remote && remote.length) {
+    const map = new Map(local.map(x => [x.id, x]));
+    remote.forEach(x => map.set(x.id, x));
+    renderContactList([...map.values()]);
+  }
+}, 220);
+
+// =====================================================
+// GROUP CHAT BUILDER
+// =====================================================
+
+const groupState = { selected: new Set(), title: '' };
+
+function openGroupBuilderModal() {
+  const m = document.createElement('div');
+  m.id = 'groupBuilderModal';
+  m.className = 'fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center';
+  m.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 50; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;';
+  m.innerHTML = `
+    <div style="background: white; width: 100%; max-width: 500px; border-radius: 1rem; padding: 1.5rem; margin: 1rem;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+        <h3 style="font-size: 1.125rem; font-weight: 600; margin: 0;">Create Group</h3>
+        <button data-close style="padding: 0.25rem 0.5rem; border-radius: 0.5rem; border: none; background: #f3f4f6; cursor: pointer; font-size: 1.25rem;">✕</button>
+      </div>
+      <label style="display: block; margin-bottom: 1rem;">
+        <span style="font-size: 0.875rem; color: #6b7280; display: block; margin-bottom: 0.25rem;">Group name</span>
+        <input id="groupTitle" style="width: 100%; border-radius: 0.75rem; border: 1px solid #d1d5db; padding: 0.5rem 0.75rem;" placeholder="e.g. Sunday Foursome"/>
+      </label>
+      <div style="max-height: 16rem; overflow: auto; border: 1px solid #e5e7eb; border-radius: 0.75rem; margin-bottom: 1rem;">
+        <ul id="groupPickList" style="list-style: none; padding: 0; margin: 0;"></ul>
+      </div>
+      <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+        <button data-close style="border-radius: 0.75rem; border: 1px solid #d1d5db; padding: 0.5rem 1rem; background: white; cursor: pointer;">Cancel</button>
+        <button id="createGroupBtn" style="border-radius: 0.75rem; padding: 0.5rem 1rem; background: #000; color: white; border: none; cursor: pointer;" disabled>Create</button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+
+  m.addEventListener('click', (e) => {
+    if (e.target.dataset.close !== undefined || e.target === m) m.remove();
+  });
+
+  m.querySelector('#groupTitle')?.addEventListener('input', (e) => {
+    groupState.title = e.target.value.trim();
+    updateCreateButton();
+  });
+
+  const ul = m.querySelector('#groupPickList');
+  (state.users || []).forEach(u => {
+    const li = document.createElement('li');
+    li.style.cssText = 'display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border-bottom: 1px solid #e5e7eb;';
+    li.innerHTML = `
+      <input type="checkbox" data-user="${u.id}" style="width: 1.25rem; height: 1.25rem; cursor: pointer;">
+      <div style="flex: 1;">
+        <div style="font-weight: 500;">${u.display_name || u.username || '(no name)'}</div>
+        <div style="font-size: 0.75rem; color: #6b7280;">${u.id}</div>
+      </div>`;
+    ul.appendChild(li);
+  });
+
+  ul.addEventListener('change', (e) => {
+    if (e.target?.dataset?.user) {
+      const uid = e.target.dataset.user;
+      e.target.checked ? groupState.selected.add(uid) : groupState.selected.delete(uid);
+      updateCreateButton();
+    }
+  });
+
+  m.querySelector('#createGroupBtn')?.addEventListener('click', createGroup);
+}
+
+function updateCreateButton() {
+  const btn = document.getElementById('createGroupBtn');
+  if (!btn) return;
+  const ok = groupState.title.length >= 2 && groupState.selected.size >= 1;
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '1' : '0.4';
+}
+
+async function createGroup() {
+  const creatorId = state.currentUserId || cachedUserId;
+  const memberIds = [...groupState.selected];
+
+  try {
+    const supabase = await getSupabaseClient();
+
+    // 1) Create room
+    const { data: room, error: e1 } = await supabase
+      .from('chat_rooms')
+      .insert({ type: 'group', title: groupState.title, created_by: creatorId })
+      .select('id')
+      .single();
+    if (e1) throw e1;
+
+    // 2) Creator + invites
+    const rows = [
+      { room_id: room.id, user_id: creatorId, role: 'admin', status: 'approved', invited_by: creatorId },
+      ...memberIds.map(uid => ({ room_id: room.id, user_id: uid, role: 'member', status: 'pending', invited_by: creatorId }))
+    ];
+    const { error: e2 } = await supabase.from('chat_room_members').insert(rows);
+    if (e2) throw e2;
+
+    // 3) Seed system message
+    await supabase.from('chat_messages').insert({
+      room_id: room.id, sender: creatorId, content: `created the group "${groupState.title}".`
+    });
+
+    document.getElementById('groupBuilderModal')?.remove();
+    openConversation(room.id);
+    showThreadTab();
+    syncAllTabUIs();
+    console.log('[Chat] ✅ Group created:', room.id);
+  } catch (err) {
+    console.error('[Chat] Group creation failed:', err);
+    alert('❌ Failed to create group: ' + (err.message || 'Unknown error'));
+  }
+}
+
+// =====================================================
+// JOIN REQUEST + APPROVAL
+// =====================================================
+
+async function requestJoin(roomId) {
+  try {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase
+      .from('chat_room_members')
+      .upsert(
+        { room_id: roomId, user_id: state.currentUserId, status: 'pending', role: 'member' },
+        { onConflict: 'room_id,user_id' }
+      );
+    if (error) throw error;
+    console.log('[Chat] ✅ Join request sent');
+  } catch (err) {
+    console.error('[Chat] Join request failed:', err);
+    alert('❌ Failed to request join: ' + (err.message || 'Unknown error'));
+  }
+}
+
+async function approveMember(roomId, userId) {
+  try {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase
+      .from('chat_room_members')
+      .update({ status: 'approved' })
+      .eq('room_id', roomId)
+      .eq('user_id', userId);
+    if (error) throw error;
+
+    await supabase.from('chat_messages').insert({
+      room_id: roomId, sender: state.currentUserId, content: `approved a new member.`
+    });
+
+    console.log('[Chat] ✅ Member approved');
+  } catch (err) {
+    console.error('[Chat] Approval failed:', err);
+    alert('❌ Failed to approve member: ' + (err.message || 'Unknown error'));
+  }
+}
+
 export async function initChat() {
   // Show version indicator (visible on mobile)
-  console.log('[Chat] 🚀 VERSION: 2025-10-13-PRODUCTION-HARDENED');
+  console.log('[Chat] 🚀 VERSION: 2025-10-13-GROUP-CHAT-ENABLED');
+
+  // Initialize UI element references
+  initUIRefs();
 
   const supabase = await getSupabaseClient();
   const sidebar = document.querySelector('#conversations');
-  sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...<br><small style="color: #6b7280; font-size: 10px;">v2025-10-13-HARDENED</small></div>';
+  sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...<br><small style="color: #6b7280; font-size: 10px;">v2025-10-13-GROUP</small></div>';
 
   // Fast path: Just get the user ID, skip heavy auth bridge
   let { data: { user } } = await supabase.auth.getUser();
@@ -286,6 +621,7 @@ export async function initChat() {
   }
 
   console.log('[Chat] ✅ Authenticated:', user.id);
+  state.currentUserId = user.id; // Store in state for group operations
 
   // Load users only (skip conversations for now - they're empty anyway)
   const { data: allUsers, error: usersError } = await supabase
@@ -301,6 +637,9 @@ export async function initChat() {
 
   sidebar.innerHTML = '';
   console.log('[Chat] Loaded', allUsers?.length || 0, 'users');
+
+  // Store users in state for search functionality
+  state.users = allUsers || [];
 
   // PERFORMANCE FIX: Render contact list immediately without waiting for room IDs or unread counts
   // Room IDs and badges will load in the background
@@ -424,6 +763,27 @@ export async function initChat() {
       sendCurrent();
     }
   });
+
+  // Wire up contacts search
+  ui.contactsSearch?.addEventListener('input', (e) => doSearch(e.target.value));
+
+  // Wire up group builder button
+  ui.openGroupBtn?.addEventListener('click', openGroupBuilderModal);
+
+  // Wire up bottom tab buttons
+  ui.tabsBottom.contacts?.addEventListener('click', () => {
+    showContactsTab();
+    syncAllTabUIs();
+  });
+  ui.tabsBottom.thread?.addEventListener('click', () => {
+    showThreadTab();
+    syncAllTabUIs();
+  });
+
+  // Initialize tab UI state
+  syncAllTabUIs();
+
+  console.log('[Chat] ✅ All event listeners initialized');
 }
 
 /**
@@ -700,5 +1060,8 @@ window.__chat = {
   openOrCreateDM,
   updateUnreadBadge,
   subscribeGlobalMessages,
-  teardownChat // Expose teardown for logout cleanup
+  teardownChat, // Expose teardown for logout cleanup
+  requestJoin, // Group join request
+  approveMember, // Approve pending member
+  openGroupBuilderModal // Open group creation modal
 };

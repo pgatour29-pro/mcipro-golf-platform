@@ -61,9 +61,9 @@ function rememberId(id) {
 // Track last seen message timestamp for backfill on reconnect
 let lastSeenTimestamp = new Date().toISOString();
 
-// Throttle backfill to prevent mobile focus spam
-let lastBackfillTime = 0;
-const BACKFILL_THROTTLE_MS = 2000; // Only backfill once per 2 seconds (faster for mobile)
+// Adaptive backfill throttle: 0ms when visible, 8s when background
+const BACKFILL_MIN_MS_ACTIVE = 0;     // No throttle when visible (instant updates)
+const BACKFILL_MIN_MS_BG = 8000;      // Safe throttle when backgrounded
 
 // Smart scroll helpers (only scroll if user is near bottom)
 function isNearBottom(el, px = 80) {
@@ -796,23 +796,43 @@ export async function initChat() {
 }
 
 /**
- * Backfill missed messages (covers tab sleep, CHANNEL_ERROR, etc.)
+ * Adaptive backfill wrapper: 0ms throttle when visible, 8s when background
  */
-async function backfillMissedMessages() {
+async function backfillIfAllowed(reason = 'auto') {
   // Guard: Prevent concurrent backfills
   if (state.backfillInFlight) {
     console.log('[Chat] Backfill skipped — already running');
     return;
   }
 
-  // Throttle: Backfill with short delay for faster mobile updates
+  // Adaptive throttle based on visibility
   const now = Date.now();
-  if (now - state.lastBackfillAt < BACKFILL_THROTTLE_MS) {
+  const minGap = (document.visibilityState === 'visible')
+    ? BACKFILL_MIN_MS_ACTIVE
+    : BACKFILL_MIN_MS_BG;
+
+  if (now - state.lastBackfillAt < minGap) {
     console.log('[Chat] Backfill throttled (too soon since last backfill)');
     return;
   }
 
   state.backfillInFlight = true;
+
+  try {
+    await backfillMissedMessages(reason);
+  } finally {
+    state.lastBackfillAt = Date.now();
+    state.backfillInFlight = false;
+  }
+}
+
+/**
+ * Backfill missed messages (covers tab sleep, CHANNEL_ERROR, etc.)
+ */
+async function backfillMissedMessages(reason = 'auto') {
+  console.log('[Chat] Backfilling messages, reason:', reason);
+
+  const now = Date.now();
 
   try {
     // Backfill from last realtime message OR last 60 seconds (whichever is more recent)
@@ -848,9 +868,6 @@ async function backfillMissedMessages() {
     }
   } catch (error) {
     console.error('[Chat] Backfill failed:', error);
-  } finally {
-    state.lastBackfillAt = Date.now();
-    state.backfillInFlight = false;
   }
 }
 
@@ -910,7 +927,7 @@ export async function subscribeGlobalMessages() {
       console.log('[Chat] Global status:', status);
       if (status === 'SUBSCRIBED') {
         console.log('[Chat] ✅ Global subscription active - backfilling missed messages');
-        backfillMissedMessages();
+        backfillIfAllowed('subscribed');
       }
       if (status === 'CHANNEL_ERROR') {
         console.warn('[Chat] ⚠️ Channel error - scheduling resubscribe');
@@ -919,6 +936,21 @@ export async function subscribeGlobalMessages() {
     });
 
   return state.globalSub;
+}
+
+/**
+ * Restart realtime connection (for stale socket detection)
+ */
+async function restartRealtime() {
+  console.log('[Chat] Restarting realtime connection...');
+  try {
+    await state.globalSub?.unsubscribe?.();
+  } catch (err) {
+    console.warn('[Chat] Error unsubscribing during restart:', err);
+  }
+  state.globalSub = null;
+  await subscribeGlobalMessages(); // Singleton guard prevents duplicates
+  console.log('[Chat] ✅ Realtime connection restarted');
 }
 
 /**
@@ -969,15 +1001,15 @@ function initMobileLifecycleHandlers() {
   // Use Page Visibility API (more reliable on mobile than focus)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      console.log('[Chat] Page became visible - backfilling (throttled)');
-      backfillMissedMessages();
+      console.log('[Chat] Page became visible - backfilling (adaptive, instant)');
+      backfillIfAllowed('visibility');
     }
   });
 
   // Focus event (fallback for older browsers)
   window.addEventListener('focus', () => {
-    console.log('[Chat] Window focused - backfilling (throttled)');
-    backfillMissedMessages();
+    console.log('[Chat] Window focused - backfilling (adaptive)');
+    backfillIfAllowed('focus');
   });
 
   // Network reconnection - resubscribe and backfill
@@ -988,7 +1020,7 @@ function initMobileLifecycleHandlers() {
       // Room subscription is already managed by openConversation
       console.log('[Chat] Room subscription already active');
     }
-    backfillMissedMessages();
+    backfillIfAllowed('online');
   });
 
   // iOS Safari edge case: pagehide/pageshow (Safari kills timers on background)
@@ -1005,13 +1037,13 @@ function initMobileLifecycleHandlers() {
     if (state.currentConversationId && state.channels[state.currentConversationId]) {
       console.log('[Chat] Room subscription check');
     }
-    backfillMissedMessages();
+    backfillIfAllowed('pageshow');
   });
 }
 
 /**
  * WebSocket keepalive for mobile (prevents socket sleep)
- * Uses harmless SELECT query with Prefer: count=none for tiniest payload
+ * Uses harmless SELECT + HEAD to Realtime origin to keep radio on
  */
 function initWebSocketKeepalive() {
   setInterval(async () => {
@@ -1022,7 +1054,7 @@ function initWebSocketKeepalive() {
       const supabaseUrl = supabase.supabaseUrl;
       const anonKey = supabase.supabaseKey;
 
-      // Tiny SELECT query with count=none (tiniest payload, proxy-friendly)
+      // Tiny REST query (keeps API connection alive)
       fetch(`${supabaseUrl}/rest/v1/chat_messages?select=id&limit=1`, {
         method: 'GET',
         headers: {
@@ -1031,11 +1063,16 @@ function initWebSocketKeepalive() {
           'Prefer': 'count=none'
         },
         cache: 'no-store'
-      }).catch(() => {
-        // Ignore errors - this is just a keepalive ping
-      });
+      }).catch(() => {});
+
+      // HEAD to Realtime origin (keeps WebSocket radio active on mobile)
+      fetch(supabaseUrl, {
+        method: 'HEAD',
+        cache: 'no-store',
+        keepalive: true
+      }).catch(() => {});
     } catch (err) {
-      // Ignore errors
+      // Ignore errors - this is just a keepalive ping
     }
   }, 25000); // Every 25 seconds
 }
@@ -1059,6 +1096,17 @@ if (!DEBUG && typeof console !== 'undefined') {
 if (typeof window !== 'undefined') {
   initMobileLifecycleHandlers();
   initWebSocketKeepalive();
+
+  // Stale-link detector: restart realtime if no inserts for >5s while visible
+  setInterval(() => {
+    if (document.visibilityState !== 'visible') return;
+    const staleMs = Date.now() - (state.lastRealtimeAt || 0);
+    if (staleMs > 5000 && state.lastRealtimeAt > 0) {
+      console.warn('[Chat] ⚠️ Realtime appears stale on mobile, restarting…', staleMs + 'ms');
+      restartRealtime();
+      backfillIfAllowed('stale-restart');
+    }
+  }, 3000);
 }
 
 // Expose for manual testing

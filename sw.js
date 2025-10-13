@@ -1,7 +1,7 @@
 // SERVICE WORKER - Offline-First Caching for MciPro Golf Platform
 // Provides instant loading and offline support
 
-const CACHE_VERSION = 'mcipro-v2025-10-13-hardened';
+const CACHE_VERSION = 'mcipro-v2025-10-13-perf-101';
 const CACHE_NAME = `${CACHE_VERSION}-${Date.now()}`;
 
 // Cache strategies
@@ -96,6 +96,15 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     const { request } = event;
     const url = new URL(request.url);
+
+    // Never cache Supabase REST or Realtime traffic (NETWORK ONLY)
+    if (
+        url.hostname.endsWith('.supabase.co') ||
+        url.hostname === 'realtime.supabase.co'
+    ) {
+        event.respondWith(fetch(request)); // NETWORK ONLY - no caching
+        return;
+    }
 
     // Skip non-GET requests
     if (request.method !== 'GET') {

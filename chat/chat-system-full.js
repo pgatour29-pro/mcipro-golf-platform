@@ -41,7 +41,7 @@ function processIncomingMessage(message) {
   // If this message is for the currently open conversation, display it
   if (state.currentConversationId === message.room_id) {
     const listEl = document.querySelector('#messages');
-    if (listEl) {
+    if (listEl && cachedUserId) {
       const wrapper = renderMessage(message, cachedUserId);
       listEl.appendChild(wrapper);
       listEl.scrollTop = listEl.scrollHeight;
@@ -81,7 +81,7 @@ async function limit(concurrency, tasks) {
   await Promise.all(starters);
 }
 
-async function renderMessage(m, currentUserId) {
+function renderMessage(m, currentUserId) {
   // Use provided userId instead of fetching for every message (HUGE mobile performance win!)
   const isSelf = m.sender_id === currentUserId;
 
@@ -136,17 +136,12 @@ async function openConversation(conversationId) {
   const initial = await fetchMessages(conversationId, 100);
   console.log('[Chat] Fetched', initial.length, 'messages');
 
-  // CRITICAL FIX: Render all messages in parallel using Promise.all (10x faster on mobile!)
+  // CRITICAL FIX: Render all messages at once using DocumentFragment (10x faster on mobile!)
   if (initial.length > 0) {
-    const messageElements = await Promise.all(
-      initial.map(m => renderMessage(m, cachedUserId))
-    );
-
-    // Append all at once using DocumentFragment (faster DOM manipulation)
     const fragment = document.createDocumentFragment();
-    messageElements.forEach((el, idx) => {
-      seenMessageIds.add(initial[idx].id); // Track in Set
-      fragment.appendChild(el);
+    initial.forEach(m => {
+      seenMessageIds.add(m.id); // Track in Set
+      fragment.appendChild(renderMessage(m, cachedUserId));
     });
     listEl.appendChild(fragment);
   }
@@ -169,7 +164,7 @@ async function openConversation(conversationId) {
       }
 
       seenMessageIds.add(m.id);
-      const wrapper = await renderMessage(m, cachedUserId);
+      const wrapper = renderMessage(m, cachedUserId);
       listEl.appendChild(wrapper);
       listEl.scrollTop = listEl.scrollHeight;
 

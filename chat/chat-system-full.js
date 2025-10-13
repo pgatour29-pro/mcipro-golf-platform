@@ -63,7 +63,7 @@ let lastSeenTimestamp = new Date().toISOString();
 
 // Throttle backfill to prevent mobile focus spam
 let lastBackfillTime = 0;
-const BACKFILL_THROTTLE_MS = 10000; // Only backfill once per 10 seconds
+const BACKFILL_THROTTLE_MS = 2000; // Only backfill once per 2 seconds (faster for mobile)
 
 // Smart scroll helpers (only scroll if user is near bottom)
 function isNearBottom(el, px = 80) {
@@ -639,14 +639,14 @@ async function approveMember(roomId, userId) {
 
 export async function initChat() {
   // Show version indicator (visible on mobile)
-  console.log('[Chat] 🚀 VERSION: 2025-10-13-GROUP-CHAT-ENABLED');
+  console.log('[Chat] ⚡ VERSION: 2025-10-13-MOBILE-PERFORMANCE-OPTIMIZED');
 
   // Initialize UI element references
   initUIRefs();
 
   const supabase = await getSupabaseClient();
   const sidebar = document.querySelector('#conversations');
-  sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...<br><small style="color: #6b7280; font-size: 10px;">v2025-10-13-GROUP</small></div>';
+  sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...<br><small style="color: #6b7280; font-size: 10px;">⚡ v2025-10-13-PERF</small></div>';
 
   // Fast path: Just get the user ID, skip heavy auth bridge
   let { data: { user } } = await supabase.auth.getUser();
@@ -749,48 +749,10 @@ export async function initChat() {
       sidebar.appendChild(li);
     });
 
-    // 🚀 PRODUCTION HARDENED: Parallel with concurrency limit (6 at a time)
-    console.log('[Chat] Loading unread counts with controlled concurrency...');
-    (async () => {
-      const startTime = performance.now();
-      let successCount = 0;
-
-      // Create task functions (not promises yet!)
-      const badgeTasks = allUsers.map(u => async () => {
-        try {
-          const roomId = await openOrCreateDM(u.id);
-          state.userRoomMap[u.id] = roomId;
-          const unreadCount = await getUnreadCount(roomId);
-
-          // Update badge now that we have the count
-          const badge = document.querySelector(`#contact-badge-user-${u.id}`);
-          if (badge && unreadCount > 0) {
-            badge.textContent = unreadCount > 99 ? '99+' : unreadCount.toString();
-            badge.style.display = 'inline-block';
-            badge.id = `contact-badge-${roomId}`;
-          }
-
-          // Also update contact li ID
-          const li = document.querySelector(`#contact-${u.id}`);
-          if (li) {
-            li.id = `contact-${roomId}`;
-          }
-
-          successCount++;
-        } catch (error) {
-          console.error('[Chat] Error loading unread count for:', u.id, error);
-        }
-      });
-
-      // Run with max 6 concurrent API calls (prevents overwhelming Supabase/network)
-      await limit(6, badgeTasks);
-
-      const elapsed = performance.now() - startTime;
-      console.log(`[Chat] ✅ Loaded ${successCount}/${allUsers.length} badges in ${Math.round(elapsed)}ms (6 concurrent)`);
-
-      // Update global badge after all counts loaded
-      updateUnreadBadge();
-    })();
+    // ⚡ MOBILE PERFORMANCE FIX: Don't load unread counts on init
+    // The global realtime subscription will update badges as messages arrive
+    // This eliminates 100+ API calls on mobile, making chat load instantly
+    console.log('[Chat] ⚡ Contact list loaded instantly (unread counts will update via realtime)');
   } else {
     const li = document.createElement('li');
     li.innerHTML = '<div style="text-align: center; padding: 2rem; color: #9ca3af; font-size: 14px;">No users available</div>';
@@ -843,9 +805,9 @@ async function backfillMissedMessages() {
     return;
   }
 
-  // Throttle: Only backfill once per 8 seconds to prevent mobile focus spam
+  // Throttle: Backfill with short delay for faster mobile updates
   const now = Date.now();
-  if (now - state.lastBackfillAt < 8000) {
+  if (now - state.lastBackfillAt < BACKFILL_THROTTLE_MS) {
     console.log('[Chat] Backfill throttled (too soon since last backfill)');
     return;
   }

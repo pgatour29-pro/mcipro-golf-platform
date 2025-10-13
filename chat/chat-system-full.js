@@ -347,6 +347,12 @@ export async function initChat() {
           li.id = `contact-${roomId}`;
           badge.id = `contact-badge-${roomId}`;
 
+          // Mobile navigation: Switch to chat view and show contact name
+          const contactName = u.display_name || u.username || 'User';
+          if (typeof window.chatShowConversation === 'function') {
+            window.chatShowConversation(contactName);
+          }
+
           openConversation(roomId);
         } catch (error) {
           console.error('[Chat] Failed to open conversation:', error);

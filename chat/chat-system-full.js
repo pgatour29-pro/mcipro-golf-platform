@@ -7,6 +7,11 @@ const state = {
   currentConversationId: null,
   channels: {},
   userRoomMap: {}, // Maps user IDs to room IDs for badge updates
+  globalSub: null, // Singleton global subscription
+  roomSubs: new Map(), // roomId -> channel (singleton per room)
+  lastRealtimeAt: 0, // Timestamp of last realtime message
+  backfillInFlight: false, // Prevent concurrent backfills
+  lastBackfillAt: 0, // Timestamp of last backfill
 };
 
 function escapeHTML(str) {
@@ -28,6 +33,17 @@ let lastSeenTimestamp = new Date().toISOString();
 let lastBackfillTime = 0;
 const BACKFILL_THROTTLE_MS = 10000; // Only backfill once per 10 seconds
 
+// Smart scroll helpers (only scroll if user is near bottom)
+function isNearBottom(el, px = 80) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight < px;
+}
+
+function smartScrollToBottom(container) {
+  if (isNearBottom(container)) {
+    container.scrollTop = container.scrollHeight;
+  }
+}
+
 // Helper to process incoming messages (used by both realtime and backfill)
 function processIncomingMessage(message) {
   // Update lastSeen timestamp
@@ -48,7 +64,7 @@ function processIncomingMessage(message) {
     if (listEl && cachedUserId) {
       const wrapper = renderMessage(message, cachedUserId);
       listEl.appendChild(wrapper);
-      listEl.scrollTop = listEl.scrollHeight;
+      smartScrollToBottom(listEl); // Only scroll if user is near bottom
 
       // Mark as read since we're viewing it
       if (message.sender_id !== cachedUserId) {
@@ -170,7 +186,7 @@ async function openConversation(conversationId) {
       seenMessageIds.add(m.id);
       const wrapper = renderMessage(m, cachedUserId);
       listEl.appendChild(wrapper);
-      listEl.scrollTop = listEl.scrollHeight;
+      smartScrollToBottom(listEl); // Only scroll if user is near bottom
 
       // Mark as read immediately if we're viewing this conversation
       if (m.sender_id !== cachedUserId) {
@@ -396,22 +412,31 @@ export async function initChat() {
  * Backfill missed messages (covers tab sleep, CHANNEL_ERROR, etc.)
  */
 async function backfillMissedMessages() {
-  // Throttle: Only backfill once per 10 seconds to prevent mobile focus spam
+  // Guard: Prevent concurrent backfills
+  if (state.backfillInFlight) {
+    console.log('[Chat] Backfill skipped — already running');
+    return;
+  }
+
+  // Throttle: Only backfill once per 8 seconds to prevent mobile focus spam
   const now = Date.now();
-  if (now - lastBackfillTime < BACKFILL_THROTTLE_MS) {
+  if (now - state.lastBackfillAt < 8000) {
     console.log('[Chat] Backfill throttled (too soon since last backfill)');
     return;
   }
-  lastBackfillTime = now;
 
-  const supabase = await getSupabaseClient();
+  state.backfillInFlight = true;
+
   try {
-    console.log('[Chat] Backfilling messages since', lastSeenTimestamp);
+    // Backfill from last realtime message OR last 60 seconds (whichever is more recent)
+    const since = new Date(Math.max(state.lastRealtimeAt || 0, now - 60000)).toISOString();
+    console.log('[Chat] Backfilling messages since', since);
 
+    const supabase = await getSupabaseClient();
     const { data, error } = await supabase
       .from('chat_messages')
       .select('*')
-      .gt('created_at', lastSeenTimestamp)
+      .gt('created_at', since)
       .neq('sender', cachedUserId)
       .order('created_at', { ascending: true })
       .limit(200);
@@ -431,16 +456,19 @@ async function backfillMissedMessages() {
           content: msg.content,
           created_at: msg.created_at
         };
-        processIncomingMessage(normalizedMsg);
+        processIncomingMessage(normalizedMsg); // Incremental append only if not present
       });
     }
   } catch (error) {
     console.error('[Chat] Backfill failed:', error);
+  } finally {
+    state.lastBackfillAt = Date.now();
+    state.backfillInFlight = false;
   }
 }
 
 /**
- * Subscribe to all messages globally with reconnect + backfill hardening
+ * Subscribe to all messages globally with reconnect + backfill hardening (SINGLETON)
  */
 export async function subscribeGlobalMessages() {
   const supabase = await getSupabaseClient();
@@ -451,49 +479,121 @@ export async function subscribeGlobalMessages() {
     cachedUserId = user.id;
   }
 
+  // SINGLETON GUARD: If already joined, keep existing subscription
+  if (state.globalSub && state.globalSub.state === 'joined') {
+    console.log('[Chat] Global subscription already active — skip');
+    return state.globalSub;
+  }
+
+  // If exists but not joined, tear down cleanly
+  if (state.globalSub) {
+    try {
+      await state.globalSub.unsubscribe();
+    } catch (err) {
+      console.warn('[Chat] Error unsubscribing old global channel:', err);
+    }
+  }
+
   console.log('[Chat] Setting up global message subscription with backfill');
 
-  const globalChannel = supabase.channel('global-messages')
+  const onRealtimeInsert = (payload) => {
+    const message = payload.new;
+
+    // Only process messages from others
+    if (message.sender !== cachedUserId) {
+      const normalizedMsg = {
+        id: message.id,
+        room_id: message.room_id,
+        sender_id: message.sender,
+        content: message.content,
+        created_at: message.created_at
+      };
+      const added = processIncomingMessage(normalizedMsg);
+      if (added) state.lastRealtimeAt = Date.now(); // Track freshness
+    }
+  };
+
+  state.globalSub = supabase.channel('realtime:chat_messages')
     .on('postgres_changes', {
       event: 'INSERT',
       schema: 'public',
       table: 'chat_messages'
-    }, (payload) => {
-      const message = payload.new;
-
-      // Only process messages from others
-      if (message.sender !== cachedUserId) {
-        const normalizedMsg = {
-          id: message.id,
-          room_id: message.room_id,
-          sender_id: message.sender,
-          content: message.content,
-          created_at: message.created_at
-        };
-        processIncomingMessage(normalizedMsg);
-      }
-    })
+    }, onRealtimeInsert)
     .subscribe((status, err) => {
+      console.log('[Chat] Global status:', status);
       if (status === 'SUBSCRIBED') {
         console.log('[Chat] ✅ Global subscription active - backfilling missed messages');
         backfillMissedMessages();
       }
       if (status === 'CHANNEL_ERROR') {
         console.warn('[Chat] ⚠️ Channel error - scheduling resubscribe');
-        setTimeout(() => globalChannel.subscribe(), 1000);
+        setTimeout(() => state.globalSub?.subscribe(), 1000);
       }
     });
 
-  // Use Page Visibility API instead of focus (more reliable on mobile)
-  // Only backfill when page becomes visible after being hidden (not on every focus change)
+  return state.globalSub;
+}
+
+/**
+ * Mobile lifecycle event handlers (visibility, focus, online)
+ * These trigger gentle backfill without re-rendering the UI
+ */
+function initMobileLifecycleHandlers() {
+  // Use Page Visibility API (more reliable on mobile than focus)
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && globalChannel.state === 'joined') {
+    if (document.visibilityState === 'visible') {
       console.log('[Chat] Page became visible - backfilling (throttled)');
       backfillMissedMessages();
     }
   });
 
-  return globalChannel;
+  // Focus event (fallback for older browsers)
+  window.addEventListener('focus', () => {
+    console.log('[Chat] Window focused - backfilling (throttled)');
+    backfillMissedMessages();
+  });
+
+  // Network reconnection - resubscribe and backfill
+  window.addEventListener('online', async () => {
+    console.log('[Chat] Network reconnected - resubscribing');
+    await subscribeGlobalMessages();
+    if (state.currentConversationId && state.channels[state.currentConversationId]) {
+      // Room subscription is already managed by openConversation
+      console.log('[Chat] Room subscription already active');
+    }
+    backfillMissedMessages();
+  });
+}
+
+/**
+ * WebSocket keepalive for mobile (prevents socket sleep)
+ * Pings Supabase every 25 seconds when page is visible
+ */
+function initWebSocketKeepalive() {
+  setInterval(async () => {
+    if (document.visibilityState !== 'visible') return;
+
+    try {
+      const supabase = await getSupabaseClient();
+      const supabaseUrl = supabase.supabaseUrl;
+
+      // Tiny HEAD request to keep connection alive (bypasses SW/cache)
+      fetch(`${supabaseUrl}/rest/v1/`, {
+        method: 'HEAD',
+        cache: 'no-store'
+      }).catch(() => {
+        // Ignore errors - this is just a keepalive ping
+      });
+    } catch (err) {
+      // Ignore errors
+    }
+  }, 25000); // Every 25 seconds
+}
+
+// Initialize mobile lifecycle handlers and keepalive once
+if (typeof window !== 'undefined') {
+  initMobileLifecycleHandlers();
+  initWebSocketKeepalive();
 }
 
 // Expose for manual testing

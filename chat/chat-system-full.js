@@ -18,6 +18,69 @@ function escapeHTML(str) {
 // Cache current user ID to avoid repeated auth calls
 let cachedUserId = null;
 
+// Message deduplication using Set (faster than DOM queries)
+const seenMessageIds = new Set();
+
+// Track last seen message timestamp for backfill on reconnect
+let lastSeenTimestamp = new Date().toISOString();
+
+// Helper to process incoming messages (used by both realtime and backfill)
+function processIncomingMessage(message) {
+  // Update lastSeen timestamp
+  if (message.created_at) {
+    lastSeenTimestamp = message.created_at;
+  }
+
+  // Set-based deduplication
+  if (seenMessageIds.has(message.id)) {
+    return false; // Already seen
+  }
+
+  seenMessageIds.add(message.id);
+
+  // If this message is for the currently open conversation, display it
+  if (state.currentConversationId === message.room_id) {
+    const listEl = document.querySelector('#messages');
+    if (listEl) {
+      const wrapper = renderMessage(message, cachedUserId);
+      listEl.appendChild(wrapper);
+      listEl.scrollTop = listEl.scrollHeight;
+
+      // Mark as read since we're viewing it
+      if (message.sender_id !== cachedUserId) {
+        markRead(message.room_id);
+      }
+    }
+  } else {
+    // Message for a different room - update badge
+    const contactBadge = document.querySelector(`#contact-badge-${message.room_id}`);
+    if (contactBadge) {
+      const currentCount = parseInt(contactBadge.textContent) || 0;
+      const newCount = currentCount + 1;
+      contactBadge.textContent = newCount > 99 ? '99+' : newCount.toString();
+      contactBadge.style.display = 'inline-block';
+    }
+    updateUnreadBadge();
+  }
+
+  return true; // Message processed
+}
+
+// Simple concurrency limiter to avoid overwhelming Supabase
+async function limit(concurrency, tasks) {
+  const q = [...tasks];
+  const running = new Set();
+  const run = async (t) => {
+    const p = t().finally(() => running.delete(p));
+    running.add(p);
+    await p;
+  };
+  const starters = Array(Math.min(concurrency, q.length)).fill(0).map(async function loop() {
+    while (q.length) await run(q.shift());
+  });
+  await Promise.all(starters);
+}
+
 async function renderMessage(m, currentUserId) {
   // Use provided userId instead of fetching for every message (HUGE mobile performance win!)
   const isSelf = m.sender_id === currentUserId;
@@ -61,6 +124,7 @@ async function openConversation(conversationId) {
   }
 
   listEl.innerHTML = '';
+  seenMessageIds.clear(); // Reset dedup set for new conversation
 
   // Get user ID once (not for every message!)
   if (!cachedUserId) {
@@ -80,7 +144,10 @@ async function openConversation(conversationId) {
 
     // Append all at once using DocumentFragment (faster DOM manipulation)
     const fragment = document.createDocumentFragment();
-    messageElements.forEach(el => fragment.appendChild(el));
+    messageElements.forEach((el, idx) => {
+      seenMessageIds.add(initial[idx].id); // Track in Set
+      fragment.appendChild(el);
+    });
     listEl.appendChild(fragment);
   }
 
@@ -95,19 +162,20 @@ async function openConversation(conversationId) {
   state.channels[conversationId] = await subscribeToConversation(conversationId, async (m) => {
     console.log('[Chat] Real-time message received:', m.id);
     if (state.currentConversationId === conversationId) {
-      // Check for duplicates before adding (global subscription might have already added it)
-      const existingMsg = listEl.querySelector(`[data-mid="${m.id}"]`);
-      if (!existingMsg) {
-        const wrapper = renderMessage(m, cachedUserId);
-        listEl.appendChild(wrapper);
-        listEl.scrollTop = listEl.scrollHeight;
+      // Set-based deduplication (faster than DOM queries)
+      if (seenMessageIds.has(m.id)) {
+        console.log('[Chat] Message already displayed (Set dedup)');
+        return;
+      }
 
-        // Mark as read immediately if we're viewing this conversation
-        if (m.sender_id !== cachedUserId) {
-          markRead(conversationId);
-        }
-      } else {
-        console.log('[Chat] Message already displayed by global subscription');
+      seenMessageIds.add(m.id);
+      const wrapper = renderMessage(m, cachedUserId);
+      listEl.appendChild(wrapper);
+      listEl.scrollTop = listEl.scrollHeight;
+
+      // Mark as read immediately if we're viewing this conversation
+      if (m.sender_id !== cachedUserId) {
+        markRead(conversationId);
       }
     } else {
       // Message arrived in a different room - update that room's badge
@@ -165,11 +233,11 @@ async function sendCurrent() {
 
 export async function initChat() {
   // Show version indicator (visible on mobile)
-  console.log('[Chat] 🚀 VERSION: 2025-10-13-PERF-100');
+  console.log('[Chat] 🚀 VERSION: 2025-10-13-PRODUCTION-HARDENED');
 
   const supabase = await getSupabaseClient();
   const sidebar = document.querySelector('#conversations');
-  sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...<br><small style="color: #6b7280; font-size: 10px;">v2025-10-13-PERF-100</small></div>';
+  sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...<br><small style="color: #6b7280; font-size: 10px;">v2025-10-13-HARDENED</small></div>';
 
   // Fast path: Just get the user ID, skip heavy auth bridge
   let { data: { user } } = await supabase.auth.getUser();
@@ -262,13 +330,14 @@ export async function initChat() {
       sidebar.appendChild(li);
     });
 
-    // 🚀 PERFORMANCE 100%: Parallelize ALL API calls with Promise.allSettled
-    console.log('[Chat] Loading unread counts in parallel...');
+    // 🚀 PRODUCTION HARDENED: Parallel with concurrency limit (6 at a time)
+    console.log('[Chat] Loading unread counts with controlled concurrency...');
     (async () => {
       const startTime = performance.now();
+      let successCount = 0;
 
-      // Create all promises at once (parallel execution!)
-      const badgePromises = allUsers.map(async (u) => {
+      // Create task functions (not promises yet!)
+      const badgeTasks = allUsers.map(u => async () => {
         try {
           const roomId = await openOrCreateDM(u.id);
           state.userRoomMap[u.id] = roomId;
@@ -288,20 +357,17 @@ export async function initChat() {
             li.id = `contact-${roomId}`;
           }
 
-          return { success: true, userId: u.id };
+          successCount++;
         } catch (error) {
           console.error('[Chat] Error loading unread count for:', u.id, error);
-          return { success: false, userId: u.id, error };
         }
       });
 
-      // Wait for ALL promises to complete (in parallel, not sequential!)
-      const results = await Promise.allSettled(badgePromises);
+      // Run with max 6 concurrent API calls (prevents overwhelming Supabase/network)
+      await limit(6, badgeTasks);
 
       const elapsed = performance.now() - startTime;
-      const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
-
-      console.log(`[Chat] ✅ Loaded ${successCount}/${allUsers.length} badges in ${Math.round(elapsed)}ms (100% parallel)`);
+      console.log(`[Chat] ✅ Loaded ${successCount}/${allUsers.length} badges in ${Math.round(elapsed)}ms (6 concurrent)`);
 
       // Update global badge after all counts loaded
       updateUnreadBadge();
@@ -328,8 +394,46 @@ export async function initChat() {
 }
 
 /**
- * Subscribe to all messages globally to update badges AND show messages in real-time
- * even when specific room subscription isn't active yet
+ * Backfill missed messages (covers tab sleep, CHANNEL_ERROR, etc.)
+ */
+async function backfillMissedMessages() {
+  const supabase = await getSupabaseClient();
+  try {
+    console.log('[Chat] Backfilling messages since', lastSeenTimestamp);
+
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .select('*')
+      .gt('created_at', lastSeenTimestamp)
+      .neq('sender', cachedUserId)
+      .order('created_at', { ascending: true })
+      .limit(200);
+
+    if (error) {
+      console.error('[Chat] Backfill error:', error);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      console.log(`[Chat] Backfilled ${data.length} missed messages`);
+      data.forEach(msg => {
+        const normalizedMsg = {
+          id: msg.id,
+          room_id: msg.room_id,
+          sender_id: msg.sender,
+          content: msg.content,
+          created_at: msg.created_at
+        };
+        processIncomingMessage(normalizedMsg);
+      });
+    }
+  } catch (error) {
+    console.error('[Chat] Backfill failed:', error);
+  }
+}
+
+/**
+ * Subscribe to all messages globally with reconnect + backfill hardening
  */
 export async function subscribeGlobalMessages() {
   const supabase = await getSupabaseClient();
@@ -340,7 +444,7 @@ export async function subscribeGlobalMessages() {
     cachedUserId = user.id;
   }
 
-  console.log('[Chat] Setting up global message subscription');
+  console.log('[Chat] Setting up global message subscription with backfill');
 
   const globalChannel = supabase.channel('global-messages')
     .on('postgres_changes', {
@@ -352,53 +456,34 @@ export async function subscribeGlobalMessages() {
 
       // Only process messages from others
       if (message.sender !== cachedUserId) {
-        console.log('[Chat] Global message received:', message.room_id, message.id);
-
-        // CRITICAL FIX: If this message is for the currently open conversation, display it immediately!
-        if (state.currentConversationId === message.room_id) {
-          const listEl = document.querySelector('#messages');
-          if (listEl) {
-            // Check if message already exists (prevent duplicates from multiple subscriptions)
-            const existingMsg = listEl.querySelector(`[data-mid="${message.id}"]`);
-            if (!existingMsg) {
-              console.log('[Chat] Message is for open conversation, displaying immediately');
-              const normalizedMsg = {
-                id: message.id,
-                room_id: message.room_id,
-                sender_id: message.sender,
-                content: message.content,
-                created_at: message.created_at
-              };
-              const wrapper = renderMessage(normalizedMsg, cachedUserId);
-              listEl.appendChild(wrapper);
-              listEl.scrollTop = listEl.scrollHeight;
-
-              // Mark as read since we're viewing it
-              markRead(message.room_id);
-            } else {
-              console.log('[Chat] Message already displayed, skipping duplicate');
-            }
-          }
-        } else {
-          // Message for a different room - update badge
-          const contactBadge = document.querySelector(`#contact-badge-${message.room_id}`);
-          if (contactBadge) {
-            const currentCount = parseInt(contactBadge.textContent) || 0;
-            const newCount = currentCount + 1;
-            contactBadge.textContent = newCount > 99 ? '99+' : newCount.toString();
-            contactBadge.style.display = 'inline-block';
-          }
-
-          // Always update global badge
-          updateUnreadBadge();
-        }
+        const normalizedMsg = {
+          id: message.id,
+          room_id: message.room_id,
+          sender_id: message.sender,
+          content: message.content,
+          created_at: message.created_at
+        };
+        processIncomingMessage(normalizedMsg);
       }
     })
-    .subscribe((status) => {
+    .subscribe((status, err) => {
       if (status === 'SUBSCRIBED') {
-        console.log('[Chat] ✅ Global message subscription active for real-time messages');
+        console.log('[Chat] ✅ Global subscription active - backfilling missed messages');
+        backfillMissedMessages();
+      }
+      if (status === 'CHANNEL_ERROR') {
+        console.warn('[Chat] ⚠️ Channel error - scheduling resubscribe');
+        setTimeout(() => globalChannel.subscribe(), 1000);
       }
     });
+
+  // Backfill on window focus (handles mobile tab wake-up)
+  window.addEventListener('focus', () => {
+    if (globalChannel.state === 'joined') {
+      console.log('[Chat] Window focused - backfilling');
+      backfillMissedMessages();
+    }
+  });
 
   return globalChannel;
 }

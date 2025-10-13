@@ -503,6 +503,20 @@ async function createGroup() {
 
     console.log('[Chat] ✅ Group created via RPC:', roomId);
 
+    // Verify room exists before sending system message (belt & suspenders)
+    const { data: roomCheck, error: checkError } = await supabase
+      .from('chat_rooms')
+      .select('id')
+      .eq('id', roomId)
+      .single();
+
+    if (checkError || !roomCheck) {
+      console.error('[Chat] Room verification failed:', checkError);
+      throw new Error('Group created but not yet available. Please refresh and try again.');
+    }
+
+    console.log('[Chat] ✅ Room verified in chat_rooms');
+
     // Seed system message
     await supabase.from('chat_messages').insert({
       room_id: roomId,

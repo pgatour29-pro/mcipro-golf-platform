@@ -664,7 +664,10 @@ function renderContactList(list) {
 
   if (filteredList.length === 0) {
     const li = document.createElement('li');
-    li.innerHTML = '<div style="text-align: center; padding: 2rem; color: #9ca3af; font-size: 14px;">No contacts found</div>';
+    li.innerHTML = `<div style="text-align: center; padding: 2rem; color: #9ca3af; font-size: 14px;">
+      <p style="margin: 0 0 0.5rem 0;">No contacts found</p>
+      <p style="margin: 0; font-size: 12px; color: #6b7280;">${state.users?.length || 0} users available - try a different search</p>
+    </div>`;
     sidebar.appendChild(li);
     return;
   }
@@ -740,13 +743,23 @@ const doSearch = debounce(async (q) => {
     return;
   }
 
+  // DEBUG: Log search activity (always show, even in production)
+  console.warn('[Chat] 🔍 Searching for:', q, '| Local users available:', state.users?.length || 0);
+
   const local = filterContactsLocal(q);
+  console.warn('[Chat] 🔍 Local results:', local.length);
+
   renderContactList(local);
+
   const remote = await queryContactsServer(q);
+  console.warn('[Chat] 🔍 Remote results:', remote?.length || 0);
+
   if (remote && remote.length) {
     const map = new Map(local.map(x => [x.id, x]));
     remote.forEach(x => map.set(x.id, x));
-    renderContactList([...map.values()]);
+    const combined = [...map.values()];
+    console.warn('[Chat] 🔍 Combined total:', combined.length);
+    renderContactList(combined);
   }
 }, 220);
 

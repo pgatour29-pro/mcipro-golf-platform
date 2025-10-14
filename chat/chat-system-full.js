@@ -1,5 +1,5 @@
 // Full chat UI glue (vanilla JS) wired to Supabase helpers
-import { openOrCreateDM, listRooms, fetchMessages, sendMessage, subscribeToConversation, markRead, typing, subscribeTyping, getUnreadCount, updateUnreadBadge } from './chat-database-functions.js';
+import { openOrCreateDM, listRooms, fetchMessages, sendMessage, subscribeToConversation, markRead, typing, subscribeTyping, getUnreadCount, updateUnreadBadge, deleteRoom, archiveRoom, unarchiveRoom, isRoomArchived } from './chat-database-functions.js';
 import { getSupabaseClient } from './supabaseClient.js';
 import { ensureSupabaseSessionWithLIFF } from './auth-bridge.js';
 
@@ -15,6 +15,7 @@ const state = {
   lastBackfillAt: 0, // Timestamp of last backfill
   pageHiddenAt: 0, // iOS Safari pagehide timestamp
   users: [], // All loaded users for search
+  privateExpanded: false, // Track if Private folder is expanded
 };
 
 // UI element references (cached for performance)
@@ -345,6 +346,251 @@ async function queryContactsServer(q) {
 }
 
 /**
+ * Create room list item with archive/delete buttons
+ */
+function createRoomListItem(room, userId) {
+  const isArchived = isRoomArchived(room.id, userId);
+
+  const li = document.createElement('li');
+  li.id = `contact-${room.id}`;
+  li.dataset.roomId = room.id;
+  li.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; position: relative;';
+
+  // Green background for groups
+  if (room.type === 'group') {
+    li.style.background = '#f0fdf4';
+  }
+
+  // Room name with icon
+  const nameSpan = document.createElement('span');
+  if (room.type === 'group') {
+    nameSpan.innerHTML = `<span style="margin-right: 0.5rem;">👥</span>${escapeHTML(room.title)}`;
+    nameSpan.style.cssText = 'flex: 1; font-weight: 500;';
+  } else {
+    nameSpan.textContent = room.title || 'Direct Message';
+    nameSpan.style.cssText = 'flex: 1;';
+  }
+
+  // Container for badges and buttons
+  const rightContainer = document.createElement('div');
+  rightContainer.style.cssText = 'display: flex; align-items: center; gap: 0.5rem;';
+
+  // Unread badge
+  const badge = document.createElement('span');
+  badge.id = `contact-badge-${room.id}`;
+  badge.className = 'unread-badge';
+  badge.style.cssText = `
+    background: #ef4444;
+    color: white;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 600;
+    min-width: 20px;
+    text-align: center;
+    display: none;
+  `;
+
+  // Archive button
+  const archiveBtn = document.createElement('button');
+  archiveBtn.textContent = isArchived ? '📂' : '🗂';
+  archiveBtn.title = isArchived ? 'Unarchive' : 'Archive';
+  archiveBtn.style.cssText = 'background: transparent; border: none; cursor: pointer; padding: 0.25rem; font-size: 16px; opacity: 0.6; transition: opacity 0.2s;';
+  archiveBtn.onmouseover = () => archiveBtn.style.opacity = '1';
+  archiveBtn.onmouseout = () => archiveBtn.style.opacity = '0.6';
+  archiveBtn.onclick = async (e) => {
+    e.stopPropagation();
+    try {
+      if (isArchived) {
+        await unarchiveRoom(room.id);
+      } else {
+        await archiveRoom(room.id);
+      }
+      // Refresh sidebar
+      refreshSidebar();
+    } catch (error) {
+      console.error('[Chat] Archive/unarchive failed:', error);
+      alert('Failed to ' + (isArchived ? 'unarchive' : 'archive') + ' chat');
+    }
+  };
+
+  // Delete button
+  const deleteBtn = document.createElement('button');
+  deleteBtn.textContent = '🗑';
+  deleteBtn.title = 'Delete/Leave';
+  deleteBtn.style.cssText = 'background: transparent; border: none; cursor: pointer; padding: 0.25rem; font-size: 16px; opacity: 0.6; transition: opacity 0.2s;';
+  deleteBtn.onmouseover = () => deleteBtn.style.opacity = '1';
+  deleteBtn.onmouseout = () => deleteBtn.style.opacity = '0.6';
+  deleteBtn.onclick = async (e) => {
+    e.stopPropagation();
+    const roomName = room.title || 'this chat';
+    if (confirm(`Delete/leave ${roomName}?`)) {
+      try {
+        await deleteRoom(room.id);
+        // Remove from DOM
+        li.remove();
+        // If currently viewing this room, clear it
+        if (state.currentConversationId === room.id) {
+          state.currentConversationId = null;
+          document.querySelector('#messages').innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Select a chat to start messaging</div>';
+        }
+      } catch (error) {
+        console.error('[Chat] Delete failed:', error);
+        alert('Failed to delete/leave chat: ' + error.message);
+      }
+    }
+  };
+
+  rightContainer.appendChild(badge);
+  rightContainer.appendChild(archiveBtn);
+  rightContainer.appendChild(deleteBtn);
+
+  li.appendChild(nameSpan);
+  li.appendChild(rightContainer);
+
+  li.onclick = () => {
+    // Mobile navigation: Show room name
+    if (typeof window.chatShowConversation === 'function') {
+      window.chatShowConversation(room.title);
+    }
+    openConversation(room.id);
+  };
+
+  return li;
+}
+
+/**
+ * Refresh sidebar with current rooms (respecting archive filter)
+ */
+async function refreshSidebar() {
+  const supabase = await getSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const sidebar = document.querySelector('#conversations');
+  if (!sidebar) return;
+
+  // Get all rooms where user is a member
+  const { data: userRooms, error: roomsError } = await supabase
+    .from('chat_room_members')
+    .select('room_id, chat_rooms!inner(id, type, title, created_by)')
+    .eq('user_id', user.id)
+    .eq('status', 'approved');
+
+  if (roomsError) {
+    console.error('[Chat] Error loading rooms:', roomsError);
+    return;
+  }
+
+  // Clear sidebar
+  sidebar.innerHTML = '';
+
+  // Separate archived and non-archived rooms
+  const nonArchivedRooms = [];
+  const archivedRooms = [];
+
+  userRooms?.forEach(membership => {
+    const room = membership.chat_rooms;
+    if (!room) return;
+    if (isRoomArchived(room.id, user.id)) {
+      archivedRooms.push(room);
+    } else {
+      nonArchivedRooms.push(room);
+    }
+  });
+
+  // Render non-archived rooms
+  nonArchivedRooms.forEach(room => {
+    const li = createRoomListItem(room, user.id);
+    sidebar.appendChild(li);
+  });
+
+  // Add Private folder section if there are archived rooms
+  if (archivedRooms.length > 0) {
+    const privateFolderHeader = document.createElement('li');
+    privateFolderHeader.id = 'private-folder-header';
+    privateFolderHeader.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb; background: #f9fafb; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;';
+
+    const arrow = document.createElement('span');
+    arrow.textContent = state.privateExpanded ? '▼' : '▶';
+    arrow.style.cssText = 'font-size: 10px;';
+
+    const label = document.createElement('span');
+    label.textContent = `🔒 Private (${archivedRooms.length})`;
+
+    privateFolderHeader.appendChild(arrow);
+    privateFolderHeader.appendChild(label);
+
+    privateFolderHeader.onclick = () => {
+      state.privateExpanded = !state.privateExpanded;
+      refreshSidebar(); // Re-render to show/hide archived rooms
+    };
+
+    sidebar.appendChild(privateFolderHeader);
+
+    // Show archived rooms if expanded
+    if (state.privateExpanded) {
+      archivedRooms.forEach(room => {
+        const li = createRoomListItem(room, user.id);
+        li.style.background = '#f9fafb'; // Slightly different background
+        sidebar.appendChild(li);
+      });
+    }
+  }
+
+  // Add users below rooms (for DM creation)
+  state.users?.forEach(u => {
+    const li = document.createElement('li');
+    li.id = `contact-${u.id}`;
+    li.dataset.userId = u.id;
+    li.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; position: relative;';
+
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = u.display_name || u.username || 'User';
+    nameSpan.style.cssText = 'flex: 1;';
+
+    const badge = document.createElement('span');
+    badge.id = `contact-badge-user-${u.id}`;
+    badge.className = 'unread-badge';
+    badge.style.cssText = `
+      background: #ef4444;
+      color: white;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-weight: 600;
+      min-width: 20px;
+      text-align: center;
+      display: none;
+    `;
+
+    li.appendChild(nameSpan);
+    li.appendChild(badge);
+
+    li.onclick = async () => {
+      try {
+        const roomId = await openOrCreateDM(u.id);
+        state.userRoomMap[u.id] = roomId;
+        li.id = `contact-${roomId}`;
+        badge.id = `contact-badge-${roomId}`;
+
+        const contactName = u.display_name || u.username || 'User';
+        if (typeof window.chatShowConversation === 'function') {
+          window.chatShowConversation(contactName);
+        }
+
+        openConversation(roomId);
+      } catch (error) {
+        console.error('[Chat] Failed to open conversation:', error);
+        alert('❌ Failed to open chat: ' + (error.message || 'Unknown error'));
+      }
+    };
+
+    sidebar.appendChild(li);
+  });
+}
+
+/**
  * Add a newly discovered room to the sidebar (when we receive a message for a room we don't have yet)
  */
 async function addRoomToSidebar(roomId) {
@@ -614,60 +860,11 @@ async function createGroup() {
 
     console.log('[Chat] ✅ Group created via RPC:', roomId);
 
-    // Skip system message - just add group to UI and open it
-
-    // Add the new group to the sidebar contacts list
-    const sidebar = document.querySelector('#conversations');
-    if (sidebar) {
-      const li = document.createElement('li');
-      li.id = `contact-${roomId}`;
-      li.dataset.roomId = roomId;
-      li.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; background: #f0fdf4;';
-
-      // Group icon and name
-      const nameSpan = document.createElement('span');
-      nameSpan.innerHTML = `<span style="margin-right: 0.5rem;">👥</span>${escapeHTML(groupState.title)}`;
-      nameSpan.style.cssText = 'flex: 1; font-weight: 500;';
-
-      // Unread badge
-      const badge = document.createElement('span');
-      badge.id = `contact-badge-${roomId}`;
-      badge.className = 'unread-badge';
-      badge.style.cssText = `
-        background: #ef4444;
-        color: white;
-        font-size: 11px;
-        padding: 2px 6px;
-        border-radius: 10px;
-        font-weight: 600;
-        min-width: 20px;
-        text-align: center;
-        display: none;
-      `;
-
-      li.appendChild(nameSpan);
-      li.appendChild(badge);
-
-      li.onclick = () => {
-        // Mobile navigation: Show group name
-        if (typeof window.chatShowConversation === 'function') {
-          window.chatShowConversation(groupState.title);
-        }
-        openConversation(roomId);
-      };
-
-      // Insert at the top of the sidebar (most recent first)
-      if (sidebar.firstChild) {
-        sidebar.insertBefore(li, sidebar.firstChild);
-      } else {
-        sidebar.appendChild(li);
-      }
-
-      console.log('[Chat] ✅ Group added to sidebar:', groupState.title);
-    }
-
-    // Close modal and open conversation
+    // Close modal and refresh sidebar to show new group
     document.getElementById('groupBuilderModal')?.remove();
+    await refreshSidebar();
+
+    // Open the new conversation
     openConversation(roomId);
     showThreadTab();
   } catch (err) {
@@ -770,148 +967,8 @@ export async function initChat() {
   // Store users in state for search functionality
   state.users = allUsers || [];
 
-  // CRITICAL FIX: Load existing groups/rooms where user is a member
-  const { data: userRooms, error: roomsError } = await supabase
-    .from('chat_room_members')
-    .select('room_id, chat_rooms!inner(id, type, title, created_by)')
-    .eq('user_id', user.id)
-    .eq('status', 'approved');
-
-  if (roomsError) {
-    console.error('[Chat] ❌ Error loading rooms:', roomsError);
-  } else {
-    console.log('[Chat] Loaded', userRooms?.length || 0, 'existing rooms');
-  }
-
-  if (!roomsError && userRooms && userRooms.length > 0) {
-    console.log('[Chat] Processing', userRooms.length, 'rooms for sidebar');
-
-    // Add groups to sidebar FIRST (above contacts)
-    userRooms.forEach(membership => {
-      const room = membership.chat_rooms;
-      if (!room) return;
-
-      const li = document.createElement('li');
-      li.id = `contact-${room.id}`;
-      li.dataset.roomId = room.id;
-      li.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;';
-
-      // Green background for groups
-      if (room.type === 'group') {
-        li.style.background = '#f0fdf4';
-      }
-
-      // Room name with icon
-      const nameSpan = document.createElement('span');
-      if (room.type === 'group') {
-        nameSpan.innerHTML = `<span style="margin-right: 0.5rem;">👥</span>${escapeHTML(room.title)}`;
-        nameSpan.style.cssText = 'flex: 1; font-weight: 500;';
-      } else {
-        nameSpan.textContent = room.title || 'Direct Message';
-        nameSpan.style.cssText = 'flex: 1;';
-      }
-
-      // Unread badge
-      const badge = document.createElement('span');
-      badge.id = `contact-badge-${room.id}`;
-      badge.className = 'unread-badge';
-      badge.style.cssText = `
-        background: #ef4444;
-        color: white;
-        font-size: 11px;
-        padding: 2px 6px;
-        border-radius: 10px;
-        font-weight: 600;
-        min-width: 20px;
-        text-align: center;
-        display: none;
-      `;
-
-      li.appendChild(nameSpan);
-      li.appendChild(badge);
-
-      li.onclick = () => {
-        // Mobile navigation
-        if (typeof window.chatShowConversation === 'function') {
-          window.chatShowConversation(room.title);
-        }
-        openConversation(room.id);
-      };
-
-      sidebar.appendChild(li);
-    });
-  }
-
-  // PERFORMANCE FIX: Render contact list immediately without waiting for room IDs or unread counts
-  // Room IDs and badges will load in the background
-  if (allUsers && allUsers.length > 0) {
-    allUsers.forEach(u => {
-      const li = document.createElement('li');
-      li.id = `contact-${u.id}`;
-      li.dataset.userId = u.id;
-      li.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; position: relative;';
-
-      // Contact name
-      const nameSpan = document.createElement('span');
-      nameSpan.textContent = u.display_name || u.username || 'User';
-      nameSpan.style.cssText = 'flex: 1;';
-
-      // Unread badge placeholder (will be updated asynchronously)
-      const badge = document.createElement('span');
-      badge.id = `contact-badge-user-${u.id}`;
-      badge.className = 'unread-badge';
-      badge.style.cssText = `
-        background: #ef4444;
-        color: white;
-        font-size: 11px;
-        padding: 2px 6px;
-        border-radius: 10px;
-        font-weight: 600;
-        min-width: 20px;
-        text-align: center;
-        display: none;
-      `;
-
-      li.appendChild(nameSpan);
-      li.appendChild(badge);
-
-      li.onclick = async () => {
-        try {
-          console.log('[Chat] Opening conversation with', u.id);
-          // Get or create room on-demand (much faster!)
-          const roomId = await openOrCreateDM(u.id);
-          state.userRoomMap[u.id] = roomId;
-          console.log('[Chat] Room ID:', roomId);
-
-          // Update the li and badge IDs now that we have the room ID
-          li.id = `contact-${roomId}`;
-          badge.id = `contact-badge-${roomId}`;
-
-          // Mobile navigation: Switch to chat view and show contact name
-          const contactName = u.display_name || u.username || 'User';
-          if (typeof window.chatShowConversation === 'function') {
-            window.chatShowConversation(contactName);
-          }
-
-          openConversation(roomId);
-        } catch (error) {
-          console.error('[Chat] Failed to open conversation:', error);
-          alert('❌ Failed to open chat: ' + (error.message || 'Unknown error'));
-        }
-      };
-
-      sidebar.appendChild(li);
-    });
-
-    // ⚡ MOBILE PERFORMANCE FIX: Don't load unread counts on init
-    // The global realtime subscription will update badges as messages arrive
-    // This eliminates 100+ API calls on mobile, making chat load instantly
-    console.log('[Chat] ⚡ Contact list loaded instantly (unread counts will update via realtime)');
-  } else {
-    const li = document.createElement('li');
-    li.innerHTML = '<div style="text-align: center; padding: 2rem; color: #9ca3af; font-size: 14px;">No users available</div>';
-    sidebar.appendChild(li);
-  }
+  // Use refreshSidebar to render all rooms and contacts with archive/delete buttons
+  await refreshSidebar();
 
   document.querySelector('#sendBtn').onclick = sendCurrent;
   const composer = document.querySelector('#composer');
@@ -1269,5 +1326,8 @@ window.__chat = {
   teardownChat, // Expose teardown for logout cleanup
   requestJoin, // Group join request
   approveMember, // Approve pending member
-  openGroupBuilderModal // Open group creation modal
+  openGroupBuilderModal, // Open group creation modal
+  refreshSidebar, // Refresh sidebar with archive/delete controls
+  archiveRoom, // Archive a chat
+  deleteRoom // Delete/leave a chat
 };

@@ -288,3 +288,91 @@ export async function updateUnreadBadge() {
   console.log('[Chat] Updated badge: total unread =', totalUnread);
   return totalUnread;
 }
+
+/**
+ * Delete/leave a chat room
+ * - For DMs: Removes user from room (soft delete)
+ * - For groups: If admin, deletes entire room. Otherwise, just leaves.
+ */
+export async function deleteRoom(roomId) {
+  const supabase = await getSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // Check if user is admin/creator
+  const { data: room } = await supabase
+    .from('chat_rooms')
+    .select('type, created_by')
+    .eq('id', roomId)
+    .single();
+
+  const isCreator = room?.created_by === user.id;
+
+  if (isCreator) {
+    // Creator can delete entire room (CASCADE will remove members and messages)
+    const { error } = await supabase
+      .from('chat_rooms')
+      .delete()
+      .eq('id', roomId);
+
+    if (error) throw error;
+    console.log('[Chat] Room deleted:', roomId);
+  } else {
+    // Non-creator just leaves the room
+    const { error } = await supabase
+      .from('chat_room_members')
+      .delete()
+      .eq('room_id', roomId)
+      .eq('user_id', user.id);
+
+    if (error) throw error;
+    console.log('[Chat] Left room:', roomId);
+  }
+
+  return true;
+}
+
+/**
+ * Archive/hide a chat room (stored in localStorage)
+ */
+export async function archiveRoom(roomId) {
+  const supabase = await getSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const archiveKey = `chat_archived_${user.id}`;
+  const archived = JSON.parse(localStorage.getItem(archiveKey) || '[]');
+
+  if (!archived.includes(roomId)) {
+    archived.push(roomId);
+    localStorage.setItem(archiveKey, JSON.stringify(archived));
+  }
+
+  console.log('[Chat] Room archived:', roomId);
+}
+
+/**
+ * Unarchive a chat room
+ */
+export async function unarchiveRoom(roomId) {
+  const supabase = await getSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const archiveKey = `chat_archived_${user.id}`;
+  const archived = JSON.parse(localStorage.getItem(archiveKey) || '[]');
+
+  const filtered = archived.filter(id => id !== roomId);
+  localStorage.setItem(archiveKey, JSON.stringify(filtered));
+
+  console.log('[Chat] Room unarchived:', roomId);
+}
+
+/**
+ * Check if a room is archived
+ */
+export function isRoomArchived(roomId, userId) {
+  const archiveKey = `chat_archived_${userId}`;
+  const archived = JSON.parse(localStorage.getItem(archiveKey) || '[]');
+  return archived.includes(roomId);
+}

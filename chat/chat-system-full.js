@@ -657,14 +657,18 @@ function renderContactList(list) {
 
   sidebar.innerHTML = '';
 
-  if (list.length === 0) {
+  // CRITICAL FIX: Filter out current user from search results
+  const currentUserId = state.currentUserId || cachedUserId;
+  const filteredList = list.filter(u => u.id !== currentUserId);
+
+  if (filteredList.length === 0) {
     const li = document.createElement('li');
     li.innerHTML = '<div style="text-align: center; padding: 2rem; color: #9ca3af; font-size: 14px;">No contacts found</div>';
     sidebar.appendChild(li);
     return;
   }
 
-  list.forEach(u => {
+  filteredList.forEach(u => {
     const li = document.createElement('li');
     li.id = `contact-${u.id}`;
     li.dataset.userId = u.id;

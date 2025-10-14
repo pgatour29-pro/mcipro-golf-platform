@@ -7,21 +7,54 @@
  * - Stores tokens in chat_devices table
  * - Deep links to chat rooms from notifications
  * - Handles both iOS (APNs) and Android (FCM)
+ *
+ * IMPORTANT: Uses dynamic imports to avoid breaking web version
  */
-
-import { PushNotifications } from '@capacitor/push-notifications';
-import { Capacitor } from '@capacitor/core';
 
 const NativePush = {
   isInitialized: false,
   currentUserId: null,
+  PushNotifications: null,
+  Capacitor: null,
+
+  /**
+   * Load Capacitor modules (only on native platforms)
+   */
+  async loadModules() {
+    if (this.Capacitor) return; // Already loaded
+
+    try {
+      // Dynamic import - only loads on native platforms
+      const [pushModule, coreModule] = await Promise.all([
+        import('@capacitor/push-notifications'),
+        import('@capacitor/core')
+      ]);
+
+      this.PushNotifications = pushModule.PushNotifications;
+      this.Capacitor = coreModule.Capacitor;
+
+      console.log('[NativePush] Capacitor modules loaded');
+    } catch (error) {
+      console.log('[NativePush] Not a native platform, skipping module load');
+      return false;
+    }
+
+    return true;
+  },
 
   /**
    * Initialize push notifications for current user
    * @param {string} userId - Supabase user ID
    */
   async init(userId) {
-    if (!Capacitor.isNativePlatform()) {
+    // Try to load modules first
+    const loaded = await this.loadModules();
+    if (!loaded) {
+      console.log('[NativePush] Web platform - push notifications not available');
+      return;
+    }
+
+    if (!this.Capacitor.isNativePlatform()) {
       console.log('[NativePush] Web platform - push notifications not available');
       return;
     }
@@ -35,10 +68,10 @@ const NativePush = {
 
     try {
       // Check permissions
-      let perms = await PushNotifications.checkPermissions();
+      let perms = await this.PushNotifications.checkPermissions();
 
       if (perms.receive === 'prompt') {
-        perms = await PushNotifications.requestPermissions();
+        perms = await this.PushNotifications.requestPermissions();
       }
 
       if (perms.receive !== 'granted') {
@@ -47,10 +80,10 @@ const NativePush = {
       }
 
       // Register for push
-      await PushNotifications.register();
+      await this.PushNotifications.register();
 
       // Handle registration success
-      await PushNotifications.addListener('registration', async (token) => {
+      await this.PushNotifications.addListener('registration', async (token) => {
         console.log('[NativePush] ✅ Token registered:', token.value);
 
         try {
@@ -60,7 +93,7 @@ const NativePush = {
             .upsert({
               user_id: userId,
               token: token.value,
-              platform: Capacitor.getPlatform(),
+              platform: this.Capacitor.getPlatform(),
               updated_at: new Date().toISOString()
             }, {
               onConflict: 'token'
@@ -73,7 +106,7 @@ const NativePush = {
 
             // Store locally for reference
             localStorage.setItem('push_token', token.value);
-            localStorage.setItem('push_platform', Capacitor.getPlatform());
+            localStorage.setItem('push_platform', this.Capacitor.getPlatform());
           }
         } catch (err) {
           console.error('[NativePush] Error storing token:', err);
@@ -81,12 +114,12 @@ const NativePush = {
       });
 
       // Handle registration errors
-      await PushNotifications.addListener('registrationError', (error) => {
+      await this.PushNotifications.addListener('registrationError', (error) => {
         console.error('[NativePush] Registration error:', error);
       });
 
       // Handle incoming notifications (app in foreground)
-      await PushNotifications.addListener('pushNotificationReceived', async (notification) => {
+      await this.PushNotifications.addListener('pushNotificationReceived', async (notification) => {
         console.log('[NativePush] Notification received:', notification);
 
         // Show notification details
@@ -117,7 +150,7 @@ const NativePush = {
       });
 
       // Handle notification tap (app in background)
-      await PushNotifications.addListener('pushNotificationActionPerformed', async (action) => {
+      await this.PushNotifications.addListener('pushNotificationActionPerformed', async (action) => {
         console.log('[NativePush] Notification action:', action);
 
         const data = action.notification?.data;
@@ -216,8 +249,13 @@ const NativePush = {
    * Get list of delivery channels for push notifications
    */
   async getDeliveryChannels() {
+    if (!this.PushNotifications) {
+      console.log('[NativePush] Not initialized');
+      return [];
+    }
+
     try {
-      const result = await PushNotifications.listChannels();
+      const result = await this.PushNotifications.listChannels();
       console.log('[NativePush] Delivery channels:', result.channels);
       return result.channels;
     } catch (error) {

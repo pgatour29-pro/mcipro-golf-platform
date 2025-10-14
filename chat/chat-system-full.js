@@ -319,6 +319,13 @@ function filterContactsLocal(q) {
   const items = state.users || [];
   // If no query, return empty array (search should restore sidebar, not show all users)
   if (!qn) return [];
+
+  // DEBUG: If query is just 1-2 chars, show ALL users (easier to find people)
+  if (qn.length <= 2) {
+    console.warn('[Chat] 🔍 Short query - showing all users');
+    return items;
+  }
+
   return items.filter(u => {
     const name = normalize(u.display_name || u.username || '');
     const uid = (u.id || '').toString().toLowerCase();
@@ -328,7 +335,7 @@ function filterContactsLocal(q) {
 
 let searchAbortCtrl = null;
 async function queryContactsServer(q) {
-  if (!q || q.length < 2) return null;
+  if (!q || q.length < 3) return null; // Only query server for 3+ chars (local handles 1-2)
   try {
     searchAbortCtrl?.abort();
     searchAbortCtrl = new AbortController();
@@ -746,8 +753,21 @@ const doSearch = debounce(async (q) => {
   // DEBUG: Log search activity (always show, even in production)
   console.warn('[Chat] 🔍 Searching for:', q, '| Local users available:', state.users?.length || 0);
 
+  // DEBUG: Show ALL available users with their names
+  if (state.users && state.users.length > 0) {
+    console.warn('[Chat] 🔍 Available users:', state.users.map(u => ({
+      id: u.id.substring(0, 8) + '...',
+      display_name: u.display_name,
+      username: u.username
+    })));
+  }
+
   const local = filterContactsLocal(q);
   console.warn('[Chat] 🔍 Local results:', local.length);
+
+  if (local.length > 0) {
+    console.warn('[Chat] 🔍 Matched users:', local.map(u => u.display_name || u.username));
+  }
 
   renderContactList(local);
 

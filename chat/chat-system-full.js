@@ -354,6 +354,34 @@ async function queryContactsServer(q) {
 }
 
 /**
+ * Get the display name for a DM room (the other person's name)
+ */
+async function getDMRoomDisplayName(roomId, currentUserId) {
+  try {
+    const supabase = await getSupabaseClient();
+
+    // Get the other member (not current user)
+    const { data: members, error } = await supabase
+      .from('room_members')
+      .select('user_id, profiles(display_name, username)')
+      .eq('room_id', roomId)
+      .neq('user_id', currentUserId)
+      .limit(1);
+
+    if (error || !members || members.length === 0) {
+      console.warn('[Chat] Could not find DM partner for room:', roomId);
+      return 'Direct Message';
+    }
+
+    const partner = members[0].profiles;
+    return partner?.display_name || partner?.username || 'User';
+  } catch (error) {
+    console.error('[Chat] Error getting DM display name:', error);
+    return 'Direct Message';
+  }
+}
+
+/**
  * Create room list item with archive/delete buttons
  */
 function createRoomListItem(room, userId) {
@@ -375,8 +403,14 @@ function createRoomListItem(room, userId) {
     nameSpan.innerHTML = `<span style="margin-right: 0.5rem;">👥</span>${escapeHTML(room.title)}`;
     nameSpan.style.cssText = 'flex: 1; font-weight: 500;';
   } else {
-    nameSpan.textContent = room.title || 'Direct Message';
+    // For DMs: Show loading, then fetch partner's name
+    nameSpan.textContent = 'Loading...';
     nameSpan.style.cssText = 'flex: 1;';
+
+    // Fetch partner's name asynchronously
+    getDMRoomDisplayName(room.id, userId).then(displayName => {
+      nameSpan.textContent = displayName;
+    });
   }
 
   // Container for badges and buttons
@@ -478,10 +512,13 @@ async function refreshSidebar() {
   const sidebar = document.querySelector('#conversations');
   if (!sidebar) return;
 
-  // Get all rooms where user is a member
+  // Get all rooms where user is a member, including other members for DM name lookup
   const { data: userRooms, error: roomsError } = await supabase
     .from('chat_room_members')
-    .select('room_id, chat_rooms!inner(id, type, title, created_by)')
+    .select(`
+      room_id,
+      chat_rooms!inner(id, type, title, created_by)
+    `)
     .eq('user_id', user.id)
     .eq('status', 'approved');
 
@@ -614,8 +651,18 @@ async function addRoomToSidebar(roomId) {
       nameSpan.innerHTML = `<span style="margin-right: 0.5rem;">👥</span>${escapeHTML(room.title)}`;
       nameSpan.style.cssText = 'flex: 1; font-weight: 500;';
     } else {
-      nameSpan.textContent = room.title || 'Direct Message';
+      // For DMs: Fetch partner's name
+      nameSpan.textContent = 'Loading...';
       nameSpan.style.cssText = 'flex: 1;';
+
+      // Get current user ID to exclude from search
+      supabase.auth.getUser().then(({ data }) => {
+        if (data?.user) {
+          getDMRoomDisplayName(roomId, data.user.id).then(displayName => {
+            nameSpan.textContent = displayName;
+          });
+        }
+      });
     }
 
     // Unread badge (show "1" since we just received a message)

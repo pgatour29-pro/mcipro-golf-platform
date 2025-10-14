@@ -227,6 +227,21 @@ class SupabaseClient {
         return data;
     }
 
+    async getUserProfileBySupabaseId(supabaseUserId) {
+        const { data, error } = await this.client
+            .from('user_profiles')
+            .select('*')
+            .eq('supabase_user_id', supabaseUserId)
+            .single();
+
+        if (error && error.code !== 'PGRST116') { // Not found is OK
+            console.error('[Supabase] Error fetching profile by Supabase ID:', error);
+            return null;
+        }
+
+        return data;
+    }
+
     async saveUserProfile(profile) {
         // Normalize profile fields (handle both lineUserId and line_user_id)
         const normalizedProfile = {

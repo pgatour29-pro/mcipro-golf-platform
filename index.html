@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- VERSION: 2025-10-11-MULTI-FORMAT-v3 - Multiple Format Selection with Inline Handlers -->
+<!-- VERSION: 2025-10-14-LOGIN-FIX - Fixed LIFF Permission Error Handling -->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -5940,14 +5940,51 @@
                                 console.log('[INIT] User IS logged in via LINE, loading profile...');
                                 LoadingManager.show('Loading your profile...');
 
+                                // Try to get profile, but if permission is missing, check Supabase session instead
                                 liff.getProfile().then(async (profile) => {
                                     console.log('[INIT] Got LINE profile:', profile.userId);
                                     await LineAuthentication.setUserFromLineProfile(profile);
                                     console.log('[INIT] Profile loaded, redirecting to dashboard...');
                                     LineAuthentication.redirectToDashboard();
                                     LoadingManager.hide();
-                                }).catch(err => {
+                                }).catch(async (err) => {
                                     console.error('[INIT] Failed to get LINE profile:', err);
+
+                                    // If profile permission is missing, check for existing Supabase session
+                                    try {
+                                        if (window.SupabaseDB) {
+                                            await window.SupabaseDB.waitForReady();
+                                            const { data: { session }, error } = await window.SupabaseDB.client.auth.getSession();
+
+                                            if (session && session.user) {
+                                                console.log('[INIT] Found existing Supabase session, using that instead');
+                                                // Use the Supabase user ID to load profile
+                                                const userProfile = await window.SupabaseDB.getUserProfileBySupabaseId(session.user.id);
+
+                                                if (userProfile) {
+                                                    console.log('[INIT] Profile found via Supabase:', userProfile.name);
+                                                    AppState.currentUser = {
+                                                        role: userProfile.role || 'golfer',
+                                                        name: userProfile.name,
+                                                        username: userProfile.username || userProfile.name,
+                                                        lineUserId: userProfile.line_user_id,
+                                                        userId: userProfile.line_user_id || session.user.id,
+                                                        email: userProfile.email,
+                                                        membershipLevel: userProfile.role === 'golfer' ? 'premium' : 'staff',
+                                                        permissions: LineAuthentication.getPermissions(userProfile.role || 'golfer'),
+                                                        profileData: userProfile
+                                                    };
+
+                                                    LineAuthentication.redirectToDashboard();
+                                                    LoadingManager.hide();
+                                                    return;
+                                                }
+                                            }
+                                        }
+                                    } catch (supabaseErr) {
+                                        console.error('[INIT] Supabase session check failed:', supabaseErr);
+                                    }
+
                                     LoadingManager.hide();
                                     ScreenManager.showScreen('loginScreen');
                                 });
@@ -17570,7 +17607,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
 <body>
     <script>
-    console.log('%c🚀 PAGE VERSION: 2025-10-11-MULTI-FORMAT-v3', 'background: #00ff00; color: #000; font-size: 16px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-10-14-LOGIN-FIX', 'background: #00ff00; color: #000; font-size: 16px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
     </script>
     <!-- Login Screen -->

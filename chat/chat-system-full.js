@@ -105,6 +105,14 @@ function processIncomingMessage(message) {
       const newCount = currentCount + 1;
       contactBadge.textContent = newCount > 99 ? '99+' : newCount.toString();
       contactBadge.style.display = 'inline-block';
+    } else {
+      // Badge not found - this might be a new group we haven't added to sidebar yet
+      // Check if this room exists in the DOM at all
+      const roomExists = document.querySelector(`#contact-${message.room_id}`);
+      if (!roomExists) {
+        console.log('[Chat] New room detected:', message.room_id, '- adding to sidebar');
+        addRoomToSidebar(message.room_id);
+      }
     }
     updateUnreadBadge();
   }
@@ -226,6 +234,13 @@ async function openConversation(conversationId) {
         const newCount = currentCount + 1;
         contactBadge.textContent = newCount > 99 ? '99+' : newCount.toString();
         contactBadge.style.display = 'inline-block';
+      } else {
+        // Badge not found - this might be a new room we haven't added to sidebar yet
+        const roomExists = document.querySelector(`#contact-${conversationId}`);
+        if (!roomExists) {
+          console.log('[Chat] New room detected in openConversation:', conversationId);
+          addRoomToSidebar(conversationId);
+        }
       }
 
       // Update global badge
@@ -326,6 +341,102 @@ async function queryContactsServer(q) {
     return data || [];
   } catch {
     return null;
+  }
+}
+
+/**
+ * Add a newly discovered room to the sidebar (when we receive a message for a room we don't have yet)
+ */
+async function addRoomToSidebar(roomId) {
+  try {
+    const supabase = await getSupabaseClient();
+
+    // Fetch room details
+    const { data: room, error } = await supabase
+      .from('chat_rooms')
+      .select('id, type, title, created_by')
+      .eq('id', roomId)
+      .single();
+
+    if (error) {
+      console.error('[Chat] Failed to fetch room:', error);
+      return;
+    }
+
+    if (!room) {
+      console.error('[Chat] Room not found:', roomId);
+      return;
+    }
+
+    const sidebar = document.querySelector('#conversations');
+    if (!sidebar) return;
+
+    // Check if already exists (race condition guard)
+    if (document.querySelector(`#contact-${roomId}`)) {
+      console.log('[Chat] Room already in sidebar:', roomId);
+      return;
+    }
+
+    console.log('[Chat] Adding room to sidebar:', room.title, room.type);
+
+    const li = document.createElement('li');
+    li.id = `contact-${roomId}`;
+    li.dataset.roomId = roomId;
+    li.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;';
+
+    // Add green background for groups
+    if (room.type === 'group') {
+      li.style.background = '#f0fdf4';
+    }
+
+    // Room name with icon
+    const nameSpan = document.createElement('span');
+    if (room.type === 'group') {
+      nameSpan.innerHTML = `<span style="margin-right: 0.5rem;">👥</span>${escapeHTML(room.title)}`;
+      nameSpan.style.cssText = 'flex: 1; font-weight: 500;';
+    } else {
+      nameSpan.textContent = room.title || 'Direct Message';
+      nameSpan.style.cssText = 'flex: 1;';
+    }
+
+    // Unread badge (show "1" since we just received a message)
+    const badge = document.createElement('span');
+    badge.id = `contact-badge-${roomId}`;
+    badge.className = 'unread-badge';
+    badge.textContent = '1';
+    badge.style.cssText = `
+      background: #ef4444;
+      color: white;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-weight: 600;
+      min-width: 20px;
+      text-align: center;
+      display: inline-block;
+    `;
+
+    li.appendChild(nameSpan);
+    li.appendChild(badge);
+
+    li.onclick = () => {
+      // Mobile navigation: Show room name
+      if (typeof window.chatShowConversation === 'function') {
+        window.chatShowConversation(room.title);
+      }
+      openConversation(roomId);
+    };
+
+    // Insert at the top of the sidebar (most recent first)
+    if (sidebar.firstChild) {
+      sidebar.insertBefore(li, sidebar.firstChild);
+    } else {
+      sidebar.appendChild(li);
+    }
+
+    console.log('[Chat] ✅ Room added to sidebar:', room.title);
+  } catch (error) {
+    console.error('[Chat] Error adding room to sidebar:', error);
   }
 }
 
@@ -609,14 +720,14 @@ async function approveMember(roomId, userId) {
 
 export async function initChat() {
   // Show version indicator (visible on mobile)
-  console.log('[Chat] ⚡ VERSION: 2025-10-13-MOBILE-PERFORMANCE-OPTIMIZED');
+  console.log('[Chat] ⚡ VERSION: 2025-10-14-MOBILE-GROUPS-FIX');
 
   // Initialize UI element references
   initUIRefs();
 
   const supabase = await getSupabaseClient();
   const sidebar = document.querySelector('#conversations');
-  sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...<br><small style="color: #6b7280; font-size: 10px;">⚡ v2025-10-13-PERF</small></div>';
+  sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...<br><small style="color: #6b7280; font-size: 10px;">⚡ v2025-10-14-GROUPS</small></div>';
 
   // Fast path: Just get the user ID, skip heavy auth bridge
   let { data: { user } } = await supabase.auth.getUser();

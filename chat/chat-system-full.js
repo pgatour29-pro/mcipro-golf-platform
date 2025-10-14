@@ -759,7 +759,8 @@ export async function initChat() {
     .limit(50); // Limit results for speed
 
   if (usersError) {
-    alert('⚠️ Failed to load contacts: ' + usersError.message);
+    console.error('[Chat] ❌ Failed to load contacts:', usersError);
+    sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #ef4444;">❌ Failed to load contacts</div>';
     return;
   }
 
@@ -776,8 +777,14 @@ export async function initChat() {
     .eq('user_id', user.id)
     .eq('status', 'approved');
 
+  if (roomsError) {
+    console.error('[Chat] ❌ Error loading rooms:', roomsError);
+  } else {
+    console.log('[Chat] Loaded', userRooms?.length || 0, 'existing rooms');
+  }
+
   if (!roomsError && userRooms && userRooms.length > 0) {
-    console.log('[Chat] Loaded', userRooms.length, 'existing rooms');
+    console.log('[Chat] Processing', userRooms.length, 'rooms for sidebar');
 
     // Add groups to sidebar FIRST (above contacts)
     userRooms.forEach(membership => {

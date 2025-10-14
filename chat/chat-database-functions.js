@@ -88,24 +88,12 @@ export async function sendMessage(roomId, text) {
   const content = (text || '').trim();
   if (!content) return false;
 
-  // ✅ SAFETY CHECK: Verify room exists in chat_rooms before sending
-  const { data: roomCheck, error: roomCheckError } = await supabase
-    .from('chat_rooms')
-    .select('id')
-    .eq('id', roomId)
-    .single();
-
-  if (roomCheckError || !roomCheck) {
-    console.error('[Chat] Room does not exist:', roomId, roomCheckError);
-    throw new Error('This conversation is no longer available. Please refresh and try again.');
-  }
-
-  // ✅ FIXED: Use "sender" to match V5 SQL schema
+  // Use .insert() not .upsert() to avoid 409 conflicts
   const { data, error } = await supabase
     .from('chat_messages')
     .insert({
       room_id: roomId,
-      sender: user.id,    // ✅ Changed from author_id to sender
+      sender: user.id,
       content: content
     })
     .select()

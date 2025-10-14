@@ -1018,22 +1018,16 @@ function initWebSocketKeepalive() {
       const supabaseUrl = supabase.supabaseUrl;
       const anonKey = supabase.supabaseKey;
 
-      // Tiny REST query (keeps API connection alive)
-      fetch(`${supabaseUrl}/rest/v1/chat_messages?select=id&limit=1`, {
+      // Keepalive ping to REST (prevents connection timeout)
+      fetch(`${supabaseUrl}/rest/v1/?select=1`, {
         method: 'GET',
+        cache: 'no-store',
+        keepalive: true,
         headers: {
           'apikey': anonKey,
           'Authorization': `Bearer ${anonKey}`,
           'Prefer': 'count=none'
-        },
-        cache: 'no-store'
-      }).catch(() => {});
-
-      // HEAD to REST endpoint (Realtime HEAD causes CORS issues)
-      fetch(`${supabaseUrl}/rest/v1/`, {
-        method: 'HEAD',
-        cache: 'no-store',
-        keepalive: true
+        }
       }).catch(() => {});
     } catch (err) {
       // Ignore errors - this is just a keepalive ping

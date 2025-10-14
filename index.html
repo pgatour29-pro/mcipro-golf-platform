@@ -5963,17 +5963,72 @@
 
                                                 if (userProfile) {
                                                     console.log('[INIT] Profile found via Supabase:', userProfile.name);
+
+                                                    // Restore FULL profile to AppState (same as LINE flow)
+                                                    const lineUserId = userProfile.line_user_id;
                                                     AppState.currentUser = {
                                                         role: userProfile.role || 'golfer',
                                                         name: userProfile.name,
                                                         username: userProfile.username || userProfile.name,
-                                                        lineUserId: userProfile.line_user_id,
-                                                        userId: userProfile.line_user_id || session.user.id,
+                                                        lineUserId: lineUserId,
+                                                        userId: lineUserId || session.user.id,
                                                         email: userProfile.email,
+                                                        phone: userProfile.phone,
+                                                        handicap: userProfile.profile_data?.golfInfo?.handicap || null,
                                                         membershipLevel: userProfile.role === 'golfer' ? 'premium' : 'staff',
+                                                        joinDate: userProfile.created_at || new Date().toISOString(),
+                                                        stats: {},
                                                         permissions: LineAuthentication.getPermissions(userProfile.role || 'golfer'),
                                                         profileData: userProfile
                                                     };
+
+                                                    // Restore FULL profile to localStorage (CRITICAL for home club/HCP display)
+                                                    if (userProfile.profile_data) {
+                                                        const profileKey = UserIDSystem.getProfileKey(userProfile.role, lineUserId);
+                                                        const fullProfile = {
+                                                            userId: lineUserId,
+                                                            lineUserId: lineUserId,
+                                                            username: userProfile.profile_data.username || userProfile.username || userProfile.name || '',
+                                                            linePictureUrl: userProfile.profile_data.linePictureUrl || '',
+                                                            personalInfo: userProfile.profile_data.personalInfo || {},
+                                                            golfInfo: userProfile.profile_data.golfInfo || {},
+                                                            professionalInfo: userProfile.profile_data.professionalInfo || {},
+                                                            skills: userProfile.profile_data.skills || {},
+                                                            preferences: userProfile.profile_data.preferences || {},
+                                                            media: userProfile.profile_data.media || {},
+                                                            privacy: userProfile.profile_data.privacy || {}
+                                                        };
+
+                                                        localStorage.setItem(profileKey, JSON.stringify(fullProfile));
+                                                        console.log('[INIT] ✅ Full profile restored to localStorage from Supabase');
+                                                        console.log('[INIT] golfInfo:', fullProfile.golfInfo);
+                                                        console.log('[INIT] Handicap:', fullProfile.golfInfo?.handicap);
+                                                        console.log('[INIT] Home Club:', fullProfile.golfInfo?.homeClub);
+
+                                                        // Update mcipro_user_profiles array
+                                                        const profiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+                                                        const existingIndex = profiles.findIndex(p => p.lineUserId === lineUserId || p.userId === lineUserId);
+
+                                                        const profileSummary = {
+                                                            userId: lineUserId,
+                                                            lineUserId: lineUserId,
+                                                            role: userProfile.role,
+                                                            name: userProfile.name,
+                                                            username: fullProfile.username,
+                                                            email: fullProfile.personalInfo?.email,
+                                                            phone: fullProfile.personalInfo?.phone,
+                                                            handicap: fullProfile.golfInfo?.handicap,
+                                                            homeClub: fullProfile.golfInfo?.homeClub
+                                                        };
+
+                                                        if (existingIndex >= 0) {
+                                                            profiles[existingIndex] = { ...profiles[existingIndex], ...profileSummary };
+                                                        } else {
+                                                            profiles.push(profileSummary);
+                                                        }
+                                                        localStorage.setItem('mcipro_user_profiles', JSON.stringify(profiles));
+                                                        console.log('[INIT] ✅ Profile array updated');
+                                                    }
 
                                                     LineAuthentication.redirectToDashboard();
                                                     LoadingManager.hide();

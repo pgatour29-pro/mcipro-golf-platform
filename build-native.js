@@ -16,7 +16,7 @@ const { execSync } = require('child_process');
 const WWW_DIR = './www';
 const FILES_TO_COPY = [
   'index.html',
-  'capacitor-init.js',
+  'native-push.js',
   'supabase-config.js',
   'professional-analytics.css',
   'sw.js'

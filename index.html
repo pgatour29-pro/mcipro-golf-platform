@@ -51,7 +51,7 @@
             };
         }
     </script>
-    <script type="module" src="capacitor-init.js"></script>
+    <script type="module" src="native-push.js"></script>
 
     <style>
         /* CSS Variables for Premium Theme */
@@ -5958,6 +5958,17 @@
                                     console.log('[INIT] Got LINE profile:', profile.userId);
                                     await LineAuthentication.setUserFromLineProfile(profile);
                                     console.log('[INIT] Profile loaded, redirecting to dashboard...');
+
+                                    // Initialize native push notifications
+                                    try {
+                                        const { data: { user } } = await window.SupabaseDB.client.auth.getUser();
+                                        if (window.NativePush && user?.id) {
+                                            await window.NativePush.init(user.id);
+                                        }
+                                    } catch (pushErr) {
+                                        console.error('[INIT] Push init failed:', pushErr);
+                                    }
+
                                     LineAuthentication.redirectToDashboard();
                                     LoadingManager.hide();
                                 }).catch(async (err) => {
@@ -6054,6 +6065,13 @@
                                                                 console.log('[INIT] ✅ Home club updated to:', homeClub);
                                                             }, 100);
                                                         }
+                                                    }
+
+                                                    // Initialize native push notifications
+                                                    if (window.NativePush && userProfile.id) {
+                                                        window.NativePush.init(userProfile.id).catch(err => {
+                                                            console.error('[INIT] Push notification init failed:', err);
+                                                        });
                                                     }
 
                                                     LineAuthentication.redirectToDashboard();

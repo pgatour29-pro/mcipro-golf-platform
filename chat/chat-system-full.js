@@ -769,6 +769,72 @@ export async function initChat() {
   // Store users in state for search functionality
   state.users = allUsers || [];
 
+  // CRITICAL FIX: Load existing groups/rooms where user is a member
+  const { data: userRooms, error: roomsError } = await supabase
+    .from('chat_room_members')
+    .select('room_id, chat_rooms!inner(id, type, title, created_by)')
+    .eq('user_id', user.id)
+    .eq('status', 'approved');
+
+  if (!roomsError && userRooms && userRooms.length > 0) {
+    console.log('[Chat] Loaded', userRooms.length, 'existing rooms');
+
+    // Add groups to sidebar FIRST (above contacts)
+    userRooms.forEach(membership => {
+      const room = membership.chat_rooms;
+      if (!room) return;
+
+      const li = document.createElement('li');
+      li.id = `contact-${room.id}`;
+      li.dataset.roomId = room.id;
+      li.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center;';
+
+      // Green background for groups
+      if (room.type === 'group') {
+        li.style.background = '#f0fdf4';
+      }
+
+      // Room name with icon
+      const nameSpan = document.createElement('span');
+      if (room.type === 'group') {
+        nameSpan.innerHTML = `<span style="margin-right: 0.5rem;">👥</span>${escapeHTML(room.title)}`;
+        nameSpan.style.cssText = 'flex: 1; font-weight: 500;';
+      } else {
+        nameSpan.textContent = room.title || 'Direct Message';
+        nameSpan.style.cssText = 'flex: 1;';
+      }
+
+      // Unread badge
+      const badge = document.createElement('span');
+      badge.id = `contact-badge-${room.id}`;
+      badge.className = 'unread-badge';
+      badge.style.cssText = `
+        background: #ef4444;
+        color: white;
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 10px;
+        font-weight: 600;
+        min-width: 20px;
+        text-align: center;
+        display: none;
+      `;
+
+      li.appendChild(nameSpan);
+      li.appendChild(badge);
+
+      li.onclick = () => {
+        // Mobile navigation
+        if (typeof window.chatShowConversation === 'function') {
+          window.chatShowConversation(room.title);
+        }
+        openConversation(room.id);
+      };
+
+      sidebar.appendChild(li);
+    });
+  }
+
   // PERFORMANCE FIX: Render contact list immediately without waiting for room IDs or unread counts
   // Room IDs and badges will load in the background
   if (allUsers && allUsers.length > 0) {

@@ -538,62 +538,21 @@ async function refreshSidebar() {
     }
   }
 
-  // Add users below rooms (for DM creation) - FILTER OUT CURRENT USER
-  state.users?.forEach(u => {
-    // CRITICAL FIX: Don't show current user in their own contact list
-    if (u.id === user.id) {
-      console.log('[Chat] Skipping current user from contact list');
-      return;
-    }
-
-    const li = document.createElement('li');
-    li.id = `contact-${u.id}`;
-    li.dataset.userId = u.id;
-    li.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; position: relative;';
-
-    const nameSpan = document.createElement('span');
-    nameSpan.textContent = u.display_name || u.username || 'User';
-    nameSpan.style.cssText = 'flex: 1;';
-
-    const badge = document.createElement('span');
-    badge.id = `contact-badge-user-${u.id}`;
-    badge.className = 'unread-badge';
-    badge.style.cssText = `
-      background: #ef4444;
-      color: white;
-      font-size: 11px;
-      padding: 2px 6px;
-      border-radius: 10px;
-      font-weight: 600;
-      min-width: 20px;
-      text-align: center;
-      display: none;
+  // REMOVED: Don't show all users by default
+  // Users should only appear in search results or as active conversations
+  // If no conversations exist, show helpful message
+  if (nonArchivedRooms.length === 0 && archivedRooms.length === 0) {
+    const emptyMessage = document.createElement('li');
+    emptyMessage.style.cssText = 'list-style: none; padding: 2rem; text-align: center; color: #9ca3af;';
+    emptyMessage.innerHTML = `
+      <div style="font-size: 14px;">
+        <p style="margin-bottom: 0.5rem;">No conversations yet</p>
+        <p style="font-size: 12px; color: #6b7280;">Use the search box above to find people</p>
+        <p style="font-size: 12px; color: #6b7280;">or create a group to start chatting</p>
+      </div>
     `;
-
-    li.appendChild(nameSpan);
-    li.appendChild(badge);
-
-    li.onclick = async () => {
-      try {
-        const roomId = await openOrCreateDM(u.id);
-        state.userRoomMap[u.id] = roomId;
-        li.id = `contact-${roomId}`;
-        badge.id = `contact-badge-${roomId}`;
-
-        const contactName = u.display_name || u.username || 'User';
-        if (typeof window.chatShowConversation === 'function') {
-          window.chatShowConversation(contactName);
-        }
-
-        openConversation(roomId);
-      } catch (error) {
-        console.error('[Chat] Failed to open conversation:', error);
-        alert('❌ Failed to open chat: ' + (error.message || 'Unknown error'));
-      }
-    };
-
-    sidebar.appendChild(li);
-  });
+    sidebar.appendChild(emptyMessage);
+  }
 }
 
 /**

@@ -538,8 +538,14 @@ async function refreshSidebar() {
     }
   }
 
-  // Add users below rooms (for DM creation)
+  // Add users below rooms (for DM creation) - FILTER OUT CURRENT USER
   state.users?.forEach(u => {
+    // CRITICAL FIX: Don't show current user in their own contact list
+    if (u.id === user.id) {
+      console.log('[Chat] Skipping current user from contact list');
+      return;
+    }
+
     const li = document.createElement('li');
     li.id = `contact-${u.id}`;
     li.dataset.userId = u.id;

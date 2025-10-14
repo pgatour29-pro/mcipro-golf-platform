@@ -386,6 +386,17 @@ export async function deleteRoom(roomId) {
     console.log('[Chat] Left room:', roomId);
   }
 
+  // CRITICAL FIX: Remove from archived list in localStorage
+  const archiveKey = `chat_archived_${user.id}`;
+  const archived = JSON.parse(localStorage.getItem(archiveKey) || '[]');
+  const filtered = archived.filter(id => id !== roomId);
+  localStorage.setItem(archiveKey, JSON.stringify(filtered));
+  console.log('[Chat] Removed from archive list:', roomId);
+
+  // Also remove read status for this room
+  const readKey = `chat_read_${user.id}_${roomId}`;
+  localStorage.removeItem(readKey);
+
   return true;
 }
 

@@ -360,21 +360,33 @@ async function getDMRoomDisplayName(roomId, currentUserId) {
   try {
     const supabase = await getSupabaseClient();
 
+    console.warn('[Chat] 🔍 Looking up DM partner for room:', roomId, 'excluding user:', currentUserId?.substring(0, 8));
+
     // Get the other member (not current user)
     const { data: members, error } = await supabase
-      .from('room_members')
-      .select('user_id, profiles(display_name, username)')
+      .from('chat_room_members')  // FIXED: Was 'room_members' - should be 'chat_room_members'
+      .select('user_id, profiles!chat_room_members_user_id_fkey(display_name, username)')
       .eq('room_id', roomId)
       .neq('user_id', currentUserId)
       .limit(1);
 
-    if (error || !members || members.length === 0) {
-      console.warn('[Chat] Could not find DM partner for room:', roomId);
+    console.warn('[Chat] 🔍 Query result:', { error, memberCount: members?.length });
+
+    if (error) {
+      console.error('[Chat] Error querying chat_room_members:', error);
+      return 'Direct Message';
+    }
+
+    if (!members || members.length === 0) {
+      console.warn('[Chat] No partner found for room:', roomId);
       return 'Direct Message';
     }
 
     const partner = members[0].profiles;
-    return partner?.display_name || partner?.username || 'User';
+    const displayName = partner?.display_name || partner?.username || 'User';
+    console.warn('[Chat] 🔍 Found partner:', displayName);
+
+    return displayName;
   } catch (error) {
     console.error('[Chat] Error getting DM display name:', error);
     return 'Direct Message';

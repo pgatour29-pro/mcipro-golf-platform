@@ -233,14 +233,14 @@ export async function getUnreadCount(roomId) {
 
 /**
  * Get total unread message count across all rooms
- * OPTIMIZED: Single query with batch processing instead of sequential loops
+ * FIXED: Only count rooms where user is actually a member
  */
 export async function getTotalUnreadCount() {
   const supabase = await getSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return 0;
 
-  // Get only rooms where user is a member
+  // ✅ FIX: Get only rooms where user is a member (not all rooms with messages)
   const { data: memberRooms, error: roomsError } = await supabase
     .from('chat_room_members')
     .select('room_id')
@@ -252,87 +252,30 @@ export async function getTotalUnreadCount() {
     return 0;
   }
 
+  // Get unique room IDs where user is a member
   const uniqueRooms = memberRooms?.map(r => r.room_id) || [];
-  if (uniqueRooms.length === 0) return 0;
-
   console.log('[Chat] Counting unread for', uniqueRooms.length, 'rooms');
 
-  // OPTIMIZATION: Batch fetch all unread messages in ONE query instead of N queries
-  // This reduces database round-trips from O(n) to O(1)
-  try {
-    const { data: allMessages, error: messagesError } = await supabase
-      .from('chat_messages')
-      .select('id, room_id, created_at')
-      .in('room_id', uniqueRooms)
-      .neq('sender', user.id)
-      .order('created_at', { ascending: false })
-      .limit(1000); // Cap at 1000 recent messages for performance
-
-    if (messagesError) {
-      console.error('[Chat] Error fetching messages:', messagesError);
-      return 0;
+  // Count unread for each room
+  let totalUnread = 0;
+  for (const roomId of uniqueRooms) {
+    const count = await getUnreadCount(roomId);
+    if (count > 0) {
+      console.log('[Chat] Room', roomId, 'has', count, 'unread');
     }
-
-    // Filter by last read timestamp per room (from localStorage)
-    let totalUnread = 0;
-    const unreadByRoom = {};
-
-    for (const msg of (allMessages || [])) {
-      const readKey = `chat_read_${user.id}_${msg.room_id}`;
-      const lastRead = localStorage.getItem(readKey);
-
-      // If never read OR message is newer than last read
-      if (!lastRead || msg.created_at > lastRead) {
-        unreadByRoom[msg.room_id] = (unreadByRoom[msg.room_id] || 0) + 1;
-        totalUnread++;
-      }
-    }
-
-    // Log per-room breakdown (only non-zero)
-    Object.entries(unreadByRoom).forEach(([roomId, count]) => {
-      if (count > 0) {
-        console.log('[Chat] Room', roomId, 'has', count, 'unread');
-      }
-    });
-
-    return totalUnread;
-  } catch (error) {
-    console.error('[Chat] Error calculating unread count:', error);
-    return 0;
+    totalUnread += count;
   }
-}
 
-// Badge update cache to prevent excessive recalculations
-let badgeCache = { count: 0, timestamp: 0 };
-const BADGE_CACHE_MS = 2000; // Cache for 2 seconds
+  return totalUnread;
+}
 
 /**
  * Update the global chat badge in the navigation
- * OPTIMIZED: Cached with 2-second TTL to prevent excessive queries
  */
-export async function updateUnreadBadge(forceRefresh = false) {
-  const now = Date.now();
-
-  // Use cache if fresh (unless forced refresh)
-  if (!forceRefresh && (now - badgeCache.timestamp) < BADGE_CACHE_MS) {
-    console.log('[Chat] Using cached badge count:', badgeCache.count);
-    const badge = document.querySelector('#chatBadge');
-    if (badge) {
-      if (badgeCache.count > 0) {
-        badge.textContent = badgeCache.count > 99 ? '99+' : badgeCache.count.toString();
-        badge.style.display = 'flex';
-      } else {
-        badge.style.display = 'none';
-      }
-    }
-    return badgeCache.count;
-  }
-
-  // Fetch fresh count
+export async function updateUnreadBadge() {
   const totalUnread = await getTotalUnreadCount();
-  badgeCache = { count: totalUnread, timestamp: now };
-
   const badge = document.querySelector('#chatBadge');
+
   if (badge) {
     if (totalUnread > 0) {
       badge.textContent = totalUnread > 99 ? '99+' : totalUnread.toString();

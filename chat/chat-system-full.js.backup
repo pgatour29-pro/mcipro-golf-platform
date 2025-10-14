@@ -41,9 +41,9 @@ let cachedUserId = null;
 
 // Message deduplication using Set (faster than DOM queries)
 const seenMessageIds = new Set();
-const MAX_SEEN_IDS = 2000; // Increased cap to reduce false negatives (2KB memory)
+const MAX_SEEN_IDS = 1000; // Cap memory usage
 
-// Helper to remember message ID with memory cap (FIFO eviction)
+// Helper to remember message ID with memory cap
 function rememberId(id) {
   seenMessageIds.add(id);
   if (seenMessageIds.size > MAX_SEEN_IDS) {
@@ -56,9 +56,9 @@ function rememberId(id) {
 // Track last seen message timestamp for backfill on reconnect
 let lastSeenTimestamp = new Date().toISOString();
 
-// Adaptive backfill throttle: Optimized to reduce excessive queries
-const BACKFILL_MIN_MS_ACTIVE = 1000;  // 1s throttle when visible (was 0ms - too aggressive)
-const BACKFILL_MIN_MS_BG = 15000;     // 15s throttle when backgrounded (was 8s)
+// Adaptive backfill throttle: 0ms when visible, 8s when background
+const BACKFILL_MIN_MS_ACTIVE = 0;     // No throttle when visible (instant updates)
+const BACKFILL_MIN_MS_BG = 8000;      // Safe throttle when backgrounded
 
 // Smart scroll helpers (only scroll if user is near bottom)
 function isNearBottom(el, px = 80) {
@@ -917,15 +917,14 @@ async function approveMember(roomId, userId) {
 
 export async function initChat() {
   // Show version indicator (visible on mobile)
-  console.log('[Chat] ⚡ VERSION: 2025-10-14-PERFORMANCE-OPTIMIZED');
-  console.log('[Chat] Optimizations: Batch unread queries, better reconnect logic, reduced stale detection');
+  console.log('[Chat] ⚡ VERSION: 2025-10-14-MOBILE-GROUPS-FIX');
 
   // Initialize UI element references
   initUIRefs();
 
   const supabase = await getSupabaseClient();
   const sidebar = document.querySelector('#conversations');
-  sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...<br><small style="color: #6b7280; font-size: 10px;">⚡ v2025-10-14-PERF</small></div>';
+  sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...<br><small style="color: #6b7280; font-size: 10px;">⚡ v2025-10-14-GROUPS</small></div>';
 
   // Fast path: Just get the user ID, skip heavy auth bridge
   let { data: { user } } = await supabase.auth.getUser();
@@ -1122,10 +1121,6 @@ export async function subscribeGlobalMessages() {
     }
   };
 
-  // Reconnection backoff state
-  let reconnectAttempts = 0;
-  const MAX_RECONNECT_DELAY = 30000; // Cap at 30 seconds
-
   state.globalSub = supabase.channel('realtime:chat_messages')
     .on('postgres_changes', {
       event: 'INSERT',
@@ -1137,17 +1132,11 @@ export async function subscribeGlobalMessages() {
       if (status === 'SUBSCRIBED') {
         console.log('[Chat] ✅ Global subscription active - backfilling missed messages');
         console.timeEnd('[Chat] ⚡ Realtime join');
-        reconnectAttempts = 0; // Reset on success
         backfillIfAllowed('subscribed');
       }
       if (status === 'CHANNEL_ERROR') {
-        // Exponential backoff with jitter: 2s, 4s, 8s, 16s, 30s (max)
-        reconnectAttempts++;
-        const baseDelay = Math.min(MAX_RECONNECT_DELAY, 1000 * (2 ** reconnectAttempts));
-        const jitter = Math.random() * 1000; // Add 0-1s jitter
-        const delay = baseDelay + jitter;
-        console.warn(`[Chat] ⚠️ Channel error - retrying in ${Math.round(delay)}ms (attempt ${reconnectAttempts})`);
-        setTimeout(() => state.globalSub?.subscribe(), delay);
+        console.warn('[Chat] ⚠️ Channel error - scheduling resubscribe');
+        setTimeout(() => state.globalSub?.subscribe(), 1000);
       }
     });
 
@@ -1248,17 +1237,8 @@ function initMobileLifecycleHandlers() {
 
   window.addEventListener('pageshow', async (event) => {
     console.log('[Chat] Page shown (iOS Safari) - persisted:', event.persisted);
-
-    // If page was hidden for >5s, WebSocket is likely dead - force reconnect
-    const hiddenDuration = Date.now() - state.pageHiddenAt;
-    if (hiddenDuration > 5000) {
-      console.log('[Chat] Page was hidden for', Math.round(hiddenDuration/1000) + 's - reconnecting');
-      await restartRealtime();
-    } else {
-      // Short background - just check subscription status
-      await subscribeGlobalMessages();
-    }
-
+    // Resubscribe and backfill
+    await subscribeGlobalMessages();
     if (state.currentConversationId && state.channels[state.currentConversationId]) {
       console.log('[Chat] Room subscription check');
     }
@@ -1316,57 +1296,23 @@ if (typeof window !== 'undefined') {
   initMobileLifecycleHandlers();
   initWebSocketKeepalive();
 
-  // Stale-link detector with more lenient timeout (prevents false positives on slow networks)
+  // Stale-link detector with jittered backoff (prevents rapid restarts on flappy networks)
   let staleFailures = 0;
-  let staleRestartPending = false;
   setInterval(() => {
     if (document.visibilityState !== 'visible') return;
-    if (staleRestartPending) return; // Prevent overlapping restarts
-
     const staleMs = Date.now() - (state.lastRealtimeAt || 0);
-    // Increased threshold: 30s idle before considering stale (was 5s - too aggressive!)
-    if (staleMs > 30000 && state.lastRealtimeAt > 0) {
-      // Exponential backoff with jitter: 2s, 4s, 8s, 16s, max 30s
-      const backoff = Math.min(30000, 2000 * (2 ** staleFailures)) + Math.random() * 1000;
-      console.warn('[Chat] ⚠️ Realtime stale (30s idle), restarting in', Math.round(backoff) + 'ms');
+    if (staleMs > 5000 && state.lastRealtimeAt > 0) {
+      // Exponential backoff with jitter: 1s, 2s, 4s, 8s, max 15s
+      const backoff = Math.min(15000, 1000 * (2 ** staleFailures)) + Math.random() * 400;
+      console.warn('[Chat] ⚠️ Realtime stale, restarting in', Math.round(backoff) + 'ms');
       staleFailures++;
-      staleRestartPending = true;
       setTimeout(async () => {
         await restartRealtime();
         await backfillIfAllowed('stale-restart');
         staleFailures = 0; // Reset on success
-        staleRestartPending = false;
       }, backoff);
     }
-  }, 10000); // Check every 10s (was 3s - reduced polling frequency)
-}
-
-/**
- * Performance monitoring utility for debugging
- */
-function getPerformanceStats() {
-  return {
-    version: '2025-10-14-PERFORMANCE-OPTIMIZED',
-    seenMessagesCount: seenMessageIds.size,
-    seenMessagesCapacity: MAX_SEEN_IDS,
-    lastRealtimeMessage: state.lastRealtimeAt ? new Date(state.lastRealtimeAt).toISOString() : 'never',
-    timeSinceLastRealtime: state.lastRealtimeAt ? Math.round((Date.now() - state.lastRealtimeAt) / 1000) + 's' : 'N/A',
-    lastBackfill: state.lastBackfillAt ? new Date(state.lastBackfillAt).toISOString() : 'never',
-    backfillInFlight: state.backfillInFlight,
-    globalSubStatus: state.globalSub?.state || 'none',
-    currentRoom: state.currentConversationId || 'none',
-    activeSubscriptions: Object.keys(state.channels).length,
-    pageVisibility: document.visibilityState,
-    backfillThrottle: {
-      active: BACKFILL_MIN_MS_ACTIVE + 'ms',
-      background: BACKFILL_MIN_MS_BG + 'ms'
-    },
-    recommendations: [
-      seenMessageIds.size > MAX_SEEN_IDS * 0.9 ? '⚠️ Message dedup cache near capacity' : '✅ Message dedup cache healthy',
-      state.lastRealtimeAt && (Date.now() - state.lastRealtimeAt) > 60000 ? '⚠️ No realtime messages for 60s+' : '✅ Realtime connection active',
-      state.globalSub?.state !== 'joined' ? '⚠️ Global subscription not joined' : '✅ Global subscription healthy'
-    ]
-  };
+  }, 3000);
 }
 
 // Expose for manual testing
@@ -1383,8 +1329,5 @@ window.__chat = {
   openGroupBuilderModal, // Open group creation modal
   refreshSidebar, // Refresh sidebar with archive/delete controls
   archiveRoom, // Archive a chat
-  deleteRoom, // Delete/leave a chat
-  getPerformanceStats, // Performance monitoring
-  restartRealtime, // Manual reconnect trigger
-  backfillIfAllowed // Manual backfill trigger
+  deleteRoom // Delete/leave a chat
 };

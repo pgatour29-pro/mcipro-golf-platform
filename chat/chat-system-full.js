@@ -317,7 +317,8 @@ function normalize(s) {
 function filterContactsLocal(q) {
   const qn = normalize(q);
   const items = state.users || [];
-  if (!qn) return items;
+  // If no query, return empty array (search should restore sidebar, not show all users)
+  if (!qn) return [];
   return items.filter(u => {
     const name = normalize(u.display_name || u.username || '');
     const uid = (u.id || '').toString().toLowerCase();
@@ -700,8 +701,6 @@ function renderContactList(list) {
       try {
         const roomId = await openOrCreateDM(u.id);
         state.userRoomMap[u.id] = roomId;
-        li.id = `contact-${roomId}`;
-        badge.id = `contact-badge-${roomId}`;
 
         const contactName = u.display_name || u.username || 'User';
         if (typeof window.chatShowConversation === 'function') {
@@ -709,6 +708,13 @@ function renderContactList(list) {
         }
 
         openConversation(roomId);
+
+        // CRITICAL FIX: Refresh sidebar to show the new/existing conversation
+        // This restores the normal view after searching
+        if (ui.contactsSearch) {
+          ui.contactsSearch.value = ''; // Clear search box
+        }
+        await refreshSidebar();
       } catch (error) {
         console.error('[Chat] Failed to open conversation:', error);
         alert('❌ Failed to open chat: ' + (error.message || 'Unknown error'));
@@ -728,6 +734,12 @@ function debounce(fn, ms) {
 }
 
 const doSearch = debounce(async (q) => {
+  // CRITICAL FIX: If search is empty, restore sidebar to show rooms instead of users
+  if (!q || q.trim().length === 0) {
+    await refreshSidebar();
+    return;
+  }
+
   const local = filterContactsLocal(q);
   renderContactList(local);
   const remote = await queryContactsServer(q);

@@ -15,6 +15,7 @@ const state = {
   lastBackfillAt: 0, // Timestamp of last backfill
   pageHiddenAt: 0, // iOS Safari pagehide timestamp
   users: [], // All loaded users for search
+  cachedRooms: null, // Cached room data (avoids redundant queries)
   privateExpanded: false, // Track if Private folder is expanded
   channelErrorRetries: 0, // Track CHANNEL_ERROR retries for exponential backoff
   maxChannelRetries: 5, // Max retries before falling back to polling
@@ -208,11 +209,19 @@ async function openConversation(conversationId) {
   const supabase = await getSupabaseClient();
   state.currentConversationId = conversationId;
 
-  const listEl = document.querySelector('#messages');
+  // CRITICAL FIX: Retry if DOM elements not ready yet
+  let listEl = document.querySelector('#messages');
   if (!listEl) {
-    console.error('[Chat] ❌ #messages element not found!');
-    alert('Error: Messages container not found.');
-    return;
+    console.warn('[Chat] ⚠️ #messages element not found, retrying in 500ms...');
+    await new Promise(resolve => setTimeout(resolve, 500));
+    listEl = document.querySelector('#messages');
+
+    if (!listEl) {
+      console.error('[Chat] ❌ #messages element still not found after retry!');
+      alert('Chat interface not ready. Please try again in a moment.');
+      return;
+    }
+    console.log('[Chat] ✅ #messages element found on retry');
   }
 
   listEl.innerHTML = '';
@@ -508,8 +517,9 @@ function createRoomListItem(room, userId) {
 
 /**
  * Refresh sidebar with current rooms (respecting archive filter)
+ * OPTIMIZED: Uses cached data if available, only fetches if needed
  */
-async function refreshSidebar() {
+async function refreshSidebar(forceFetch = false) {
   const supabase = await getSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
@@ -517,16 +527,28 @@ async function refreshSidebar() {
   const sidebar = document.querySelector('#conversations');
   if (!sidebar) return;
 
-  // Get all rooms where user is a member
-  const { data: userRooms, error: roomsError } = await supabase
-    .from('chat_room_members')
-    .select('room_id, chat_rooms!inner(id, type, title, created_by)')
-    .eq('user_id', user.id)
-    .eq('status', 'approved');
+  let userRooms;
 
-  if (roomsError) {
-    console.error('[Chat] Error loading rooms:', roomsError);
-    return;
+  // OPTIMIZATION: Only fetch rooms if forced or not in state cache
+  if (forceFetch || !state.cachedRooms) {
+    // Get all rooms where user is a member
+    const { data, error: roomsError } = await supabase
+      .from('chat_room_members')
+      .select('room_id, chat_rooms!inner(id, type, title, created_by)')
+      .eq('user_id', user.id)
+      .eq('status', 'approved');
+
+    if (roomsError) {
+      console.error('[Chat] Error loading rooms:', roomsError);
+      return;
+    }
+
+    userRooms = data;
+    state.cachedRooms = userRooms; // Cache for future refreshes
+  } else {
+    // Use cached rooms (no query needed)
+    userRooms = state.cachedRooms;
+    console.log('[Chat] Using cached rooms data (no query)');
   }
 
   // Clear sidebar
@@ -570,7 +592,7 @@ async function refreshSidebar() {
 
     privateFolderHeader.onclick = () => {
       state.privateExpanded = !state.privateExpanded;
-      refreshSidebar(); // Re-render to show/hide archived rooms
+      refreshSidebar(); // Re-render to show/hide archived rooms (uses cache)
     };
 
     sidebar.appendChild(privateFolderHeader);
@@ -946,7 +968,7 @@ async function createGroup() {
 
     // Close modal and refresh sidebar to show new group
     document.getElementById('groupBuilderModal')?.remove();
-    await refreshSidebar();
+    await refreshSidebar(true); // Force fetch to get newly created group
 
     // Open the new conversation
     openConversation(roomId);
@@ -1001,16 +1023,31 @@ async function approveMember(roomId, userId) {
 
 export async function initChat() {
   // Show version indicator (visible on mobile)
-  console.log('[Chat] ⚡ VERSION: 2025-10-14-MOBILE-GROUPS-FIX');
+  console.log('[Chat] ⚡ VERSION: 2025-10-15-INSTANT-LOAD-FIX');
+  const startTime = performance.now();
 
   // Initialize UI element references
   initUIRefs();
 
   const supabase = await getSupabaseClient();
   const sidebar = document.querySelector('#conversations');
-  sidebar.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Loading...<br><small style="color: #6b7280; font-size: 10px;">⚡ v2025-10-14-GROUPS</small></div>';
 
-  // Fast path: Just get the user ID, skip heavy auth bridge
+  // OPTIMIZATION 1: Show skeleton UI immediately (perceived performance)
+  sidebar.innerHTML = `
+    <div style="padding: 1rem;">
+      <div style="height: 60px; background: #f3f4f6; border-radius: 8px; margin-bottom: 0.5rem; animation: pulse 1.5s ease-in-out infinite;"></div>
+      <div style="height: 60px; background: #f3f4f6; border-radius: 8px; margin-bottom: 0.5rem; animation: pulse 1.5s ease-in-out infinite; animation-delay: 0.1s;"></div>
+      <div style="height: 60px; background: #f3f4f6; border-radius: 8px; margin-bottom: 0.5rem; animation: pulse 1.5s ease-in-out infinite; animation-delay: 0.2s;"></div>
+    </div>
+    <style>
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+      }
+    </style>
+  `;
+
+  // OPTIMIZATION 2: Fast path - Get user ID without auth bridge (only if needed)
   let { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
@@ -1031,13 +1068,32 @@ export async function initChat() {
 
   console.log('[Chat] ✅ Authenticated:', user.id);
   state.currentUserId = user.id; // Store in state for group operations
+  cachedUserId = user.id; // Cache for performance
 
-  // Load users only (skip conversations for now - they're empty anyway)
-  const { data: allUsers, error: usersError } = await supabase
-    .from('profiles')
-    .select('id, display_name, username')
-    .neq('id', user.id)
-    .limit(50); // Limit results for speed
+  // OPTIMIZATION 3: Parallel data loading (rooms + users at same time)
+  const [roomsResult, usersResult] = await Promise.all([
+    // Load user's rooms (most important - shows recent conversations)
+    supabase
+      .from('chat_room_members')
+      .select('room_id, chat_rooms!inner(id, type, title, created_by)')
+      .eq('user_id', user.id)
+      .eq('status', 'approved')
+      .limit(20), // Limit to 20 most recent rooms for speed
+
+    // Load ONLY 20 users for quick initial display (lazy load rest on search)
+    supabase
+      .from('profiles')
+      .select('id, display_name, username')
+      .neq('id', user.id)
+      .limit(20) // CRITICAL: Only load 20 users initially (vs 50 before)
+  ]);
+
+  const { data: userRooms, error: roomsError } = roomsResult;
+  const { data: allUsers, error: usersError } = usersResult;
+
+  if (roomsError) {
+    console.error('[Chat] ❌ Failed to load rooms:', roomsError);
+  }
 
   if (usersError) {
     console.error('[Chat] ❌ Failed to load contacts:', usersError);
@@ -1045,15 +1101,118 @@ export async function initChat() {
     return;
   }
 
-  sidebar.innerHTML = '';
-  console.log('[Chat] Loaded', allUsers?.length || 0, 'users');
-
-  // Store users in state for search functionality
+  // Store in state for search functionality and caching
   state.users = allUsers || [];
+  state.cachedRooms = userRooms; // Cache rooms for refreshSidebar
 
-  // Use refreshSidebar to render all rooms and contacts with archive/delete buttons
-  await refreshSidebar();
+  // OPTIMIZATION 4: Render UI immediately (don't wait for unread counts)
+  sidebar.innerHTML = '';
 
+  // Separate archived and non-archived rooms
+  const nonArchivedRooms = [];
+  const archivedRooms = [];
+
+  userRooms?.forEach(membership => {
+    const room = membership.chat_rooms;
+    if (!room) return;
+    if (isRoomArchived(room.id, user.id)) {
+      archivedRooms.push(room);
+    } else {
+      nonArchivedRooms.push(room);
+    }
+  });
+
+  // Render non-archived rooms
+  nonArchivedRooms.forEach(room => {
+    const li = createRoomListItem(room, user.id);
+    sidebar.appendChild(li);
+  });
+
+  // Add Private folder section if there are archived rooms
+  if (archivedRooms.length > 0) {
+    const privateFolderHeader = document.createElement('li');
+    privateFolderHeader.id = 'private-folder-header';
+    privateFolderHeader.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb; background: #f9fafb; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;';
+
+    const arrow = document.createElement('span');
+    arrow.textContent = state.privateExpanded ? '▼' : '▶';
+    arrow.style.cssText = 'font-size: 10px;';
+
+    const label = document.createElement('span');
+    label.textContent = `🔒 Private (${archivedRooms.length})`;
+
+    privateFolderHeader.appendChild(arrow);
+    privateFolderHeader.appendChild(label);
+
+    privateFolderHeader.onclick = () => {
+      state.privateExpanded = !state.privateExpanded;
+      refreshSidebar(); // Re-render to show/hide archived rooms
+    };
+
+    sidebar.appendChild(privateFolderHeader);
+
+    // Show archived rooms if expanded
+    if (state.privateExpanded) {
+      archivedRooms.forEach(room => {
+        const li = createRoomListItem(room, user.id);
+        li.style.background = '#f9fafb'; // Slightly different background
+        sidebar.appendChild(li);
+      });
+    }
+  }
+
+  // Add users below rooms (for DM creation)
+  state.users?.forEach(u => {
+    const li = document.createElement('li');
+    li.id = `contact-${u.id}`;
+    li.dataset.userId = u.id;
+    li.style.cssText = 'list-style: none; padding: 1rem; cursor: pointer; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; position: relative;';
+
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = u.display_name || u.username || 'User';
+    nameSpan.style.cssText = 'flex: 1;';
+
+    const badge = document.createElement('span');
+    badge.id = `contact-badge-user-${u.id}`;
+    badge.className = 'unread-badge';
+    badge.style.cssText = `
+      background: #ef4444;
+      color: white;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-weight: 600;
+      min-width: 20px;
+      text-align: center;
+      display: none;
+    `;
+
+    li.appendChild(nameSpan);
+    li.appendChild(badge);
+
+    li.onclick = async () => {
+      try {
+        const roomId = await openOrCreateDM(u.id);
+        state.userRoomMap[u.id] = roomId;
+        li.id = `contact-${roomId}`;
+        badge.id = `contact-badge-${roomId}`;
+
+        const contactName = u.display_name || u.username || 'User';
+        if (typeof window.chatShowConversation === 'function') {
+          window.chatShowConversation(contactName);
+        }
+
+        openConversation(roomId);
+      } catch (error) {
+        console.error('[Chat] Failed to open conversation:', error);
+        alert('❌ Failed to open chat: ' + (error.message || 'Unknown error'));
+      }
+    };
+
+    sidebar.appendChild(li);
+  });
+
+  // OPTIMIZATION 5: Wire up event listeners immediately (don't block on data)
   document.querySelector('#sendBtn').onclick = sendCurrent;
   const composer = document.querySelector('#composer');
 
@@ -1080,7 +1239,19 @@ export async function initChat() {
   eventListeners.groupBtn = openGroupBuilderModal;
   ui.openGroupBtn?.addEventListener('click', eventListeners.groupBtn);
 
-  console.log('[Chat] ✅ All event listeners initialized');
+  const loadTime = performance.now() - startTime;
+  console.log(`[Chat] ✅ Chat initialized in ${loadTime.toFixed(0)}ms`);
+
+  // OPTIMIZATION 6: Load unread badges in background (non-blocking)
+  // This happens AFTER UI is rendered, so user sees instant load
+  setTimeout(async () => {
+    try {
+      await updateUnreadBadge();
+      console.log('[Chat] ✅ Unread badges updated (background)');
+    } catch (error) {
+      console.error('[Chat] Failed to load unread badges:', error);
+    }
+  }, 0);
 }
 
 /**
@@ -1149,10 +1320,7 @@ async function backfillMissedMessages(reason = 'auto') {
       return;
     }
 
-    // LOCK: Temporarily pause real-time processing to prevent duplicates
-    const wasLocked = state.backfillInFlight;
-    state.backfillInFlight = true;
-
+    // Note: backfillInFlight lock is managed by backfillIfAllowed wrapper
     let totalMessages = 0;
     const PAGE_SIZE = 50;
 
@@ -1205,14 +1373,9 @@ async function backfillMissedMessages(reason = 'auto') {
     }
 
     console.log(`[Chat] ⚡ Backfill: ${totalMessages} msgs in ${Date.now() - startTime}ms (reason: ${reason})`);
-
-    // UNLOCK: Resume real-time processing
-    if (!wasLocked) {
-      state.backfillInFlight = false;
-    }
   } catch (error) {
     console.error('[Chat] Backfill failed:', error);
-    state.backfillInFlight = false;
+    throw error; // Re-throw so backfillIfAllowed can handle cleanup
   }
 }
 
@@ -1276,11 +1439,44 @@ export async function subscribeGlobalMessages() {
       if (status === 'SUBSCRIBED') {
         console.log('[Chat] ✅ Global subscription active - backfilling missed messages');
         console.timeEnd('[Chat] ⚡ Realtime join');
+        state.channelErrorRetries = 0; // Reset retry counter on success
+        if (state.channelErrorTimer) {
+          clearTimeout(state.channelErrorTimer);
+          state.channelErrorTimer = null;
+        }
         backfillIfAllowed('subscribed');
       }
       if (status === 'CHANNEL_ERROR') {
-        console.warn('[Chat] ⚠️ Channel error - scheduling resubscribe');
-        setTimeout(() => state.globalSub?.subscribe(), 1000);
+        console.error('[Chat] ❌ Channel error:', err);
+
+        // Exponential backoff: 2s, 4s, 8s, 16s, 30s (max)
+        if (state.channelErrorRetries < state.maxChannelRetries) {
+          const delay = Math.min(30000, 2000 * (2 ** state.channelErrorRetries));
+          state.channelErrorRetries++;
+
+          console.warn(`[Chat] ⚠️ Retrying in ${delay}ms (attempt ${state.channelErrorRetries}/${state.maxChannelRetries})`);
+
+          // Clear any pending retry
+          if (state.channelErrorTimer) {
+            clearTimeout(state.channelErrorTimer);
+          }
+
+          state.channelErrorTimer = setTimeout(async () => {
+            console.log('[Chat] Retry attempt:', state.channelErrorRetries);
+            // Tear down and restart completely
+            try {
+              await state.globalSub?.unsubscribe();
+              state.globalSub = null;
+              await subscribeGlobalMessages();
+            } catch (retryErr) {
+              console.error('[Chat] ❌ Retry failed:', retryErr);
+            }
+          }, delay);
+        } else {
+          console.error('[Chat] ❌ Max retries reached - falling back to polling mode');
+          // TODO: Implement polling fallback
+          alert('Chat connection failed. Please refresh the page.');
+        }
       }
     });
 
@@ -1511,19 +1707,26 @@ function initWebSocketKeepalive() {
   }, 25000); // Every 25 seconds
 }
 
-// Production log stripping (silence noisy debug logs)
-const DEBUG = typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+// Production log control with debug flag
+const DEBUG = typeof location !== 'undefined' &&
+  (location.hostname === 'localhost' ||
+   location.hostname === '127.0.0.1' ||
+   window.__chatDebug === true); // Allow enabling debug logs in production
+
 if (!DEBUG && typeof console !== 'undefined') {
-  ['log', 'debug'].forEach(fn => {
-    const original = console[fn];
-    console[fn] = (...args) => {
-      // Only log errors and warnings in production
-      if (fn === 'error' || fn === 'warn') {
-        original.apply(console, args);
-      }
-    };
-  });
-  console.log('[Chat] Production mode - debug logs suppressed');
+  const originalLog = console.log;
+  const originalDebug = console.debug;
+
+  console.log = (...args) => {
+    // In production, only log chat messages that are errors or critical
+    if (args[0]?.includes('[Chat] ❌') || args[0]?.includes('[Chat] ⚠️')) {
+      originalLog.apply(console, args);
+    }
+  };
+
+  console.debug = () => {}; // Silence debug completely
+
+  originalLog('[Chat] Production mode - use window.__chatDebug = true to enable logs');
 }
 
 // Initialize mobile lifecycle handlers and keepalive once

@@ -13,24 +13,38 @@ export async function openOrCreateDM(targetUserId) {
 
   console.log('[Chat] Opening DM:', user.id, '→', targetUserId);
 
-  // Call RPC with explicit user IDs
-  const { data, error } = await supabase.rpc('ensure_direct_conversation', {
-    me: user.id,
-    partner: targetUserId
-  });
+  // CRITICAL FIX: Retry logic for RPC with exponential backoff
+  let lastError = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const { data, error } = await supabase.rpc('ensure_direct_conversation', {
+        me: user.id,
+        partner: targetUserId
+      });
 
-  if (error) {
-    console.error('[Chat] RPC error:', error);
-    console.error('[Chat] Error details:', JSON.stringify(error, null, 2));
-    throw error;
+      if (error) throw error;
+      if (!data) throw new Error("RPC returned no data");
+
+      console.log('[Chat] RPC success:', data);
+
+      // V5 returns either array or object with output_room_id and output_room_slug
+      const row = Array.isArray(data) ? data[0] : data;
+      return row.output_room_id || row.room_id; // Handle both old and new parameter names
+    } catch (err) {
+      lastError = err;
+      console.error(`[Chat] ❌ RPC attempt ${attempt}/3 failed:`, err);
+
+      if (attempt < 3) {
+        const delay = 500 * attempt; // 500ms, 1000ms
+        console.log(`[Chat] Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
   }
-  if (!data) throw new Error("RPC returned no data");
 
-  console.log('[Chat] RPC success:', data);
-
-  // V5 returns either array or object with output_room_id and output_room_slug
-  const row = Array.isArray(data) ? data[0] : data;
-  return row.output_room_id || row.room_id; // Handle both old and new parameter names
+  // All attempts failed
+  console.error('[Chat] ❌ All RPC attempts failed:', lastError);
+  throw new Error(`Failed to open chat after 3 attempts: ${lastError.message || 'Unknown error'}`);
 }
 
 export async function listRooms() {
@@ -74,6 +88,13 @@ export function normalizeMessage(m) {
   };
 }
 
+// Rate limiting for sendMessage (prevents spam/duplicates)
+const sendRateLimiter = {
+  lastSend: 0,
+  minInterval: 300, // 300ms minimum between messages
+  pending: false
+};
+
 export async function sendMessage(roomId, text) {
   const supabase = await getSupabaseClient();
   const { data: { user }, error: userErr } = await supabase.auth.getUser();
@@ -88,25 +109,45 @@ export async function sendMessage(roomId, text) {
   const content = (text || '').trim();
   if (!content) return false;
 
-  // Use .insert() not .upsert() to avoid 409 conflicts
-  const { data, error } = await supabase
-    .from('chat_messages')
-    .insert({
-      room_id: roomId,
-      sender: user.id,
-      content: content
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error('[Chat] Send failed:', error);
-    console.error('[Chat] Error details:', JSON.stringify(error, null, 2));
-    throw error;
+  // CRITICAL FIX: Rate limiting to prevent duplicate sends
+  if (sendRateLimiter.pending) {
+    console.warn('[Chat] ⚠️ Message send already in progress, ignoring duplicate');
+    return false;
   }
 
-  console.log('[Chat] Message sent successfully:', data);
-  return true;
+  const now = Date.now();
+  const timeSinceLastSend = now - sendRateLimiter.lastSend;
+  if (timeSinceLastSend < sendRateLimiter.minInterval) {
+    console.warn(`[Chat] ⚠️ Rate limited - wait ${sendRateLimiter.minInterval - timeSinceLastSend}ms`);
+    throw new Error('Please wait before sending another message');
+  }
+
+  sendRateLimiter.pending = true;
+  sendRateLimiter.lastSend = now;
+
+  try {
+    // Use .insert() not .upsert() to avoid 409 conflicts
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .insert({
+        room_id: roomId,
+        sender: user.id,
+        content: content
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[Chat] Send failed:', error);
+      console.error('[Chat] Error details:', JSON.stringify(error, null, 2));
+      throw error;
+    }
+
+    console.log('[Chat] Message sent successfully:', data);
+    return true;
+  } finally {
+    sendRateLimiter.pending = false;
+  }
 }
 
 export async function subscribeToConversation(conversationId, onInsert, onUpdate) {

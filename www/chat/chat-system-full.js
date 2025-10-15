@@ -219,7 +219,7 @@ async function openConversation(conversationId) {
   seenMessageIds.clear(); // Reset dedup set for new conversation
 
   // Get user ID once (not for every message!)
-  if (!cachedUserId) {
+    if (!cachedUserId || cachedUserId === 'null') {
     const { data: { user } } = await supabase.auth.getUser();
     cachedUserId = user?.id;
   }
@@ -1124,7 +1124,7 @@ async function backfillMissedMessages(reason = 'auto') {
   const startTime = Date.now();
 
   try {
-    if (!cachedUserId) {
+    if (!cachedUserId || cachedUserId === 'null') {
       console.log('[Chat] No user ID cached, skipping backfill');
       return;
     }
@@ -1226,7 +1226,7 @@ export async function subscribeGlobalMessages() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
-  if (!cachedUserId) {
+    if (!cachedUserId || cachedUserId === 'null') {
     cachedUserId = user.id;
   }
 

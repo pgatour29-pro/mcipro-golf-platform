@@ -89,3 +89,13 @@ $DOLLAR$;
 
 REVOKE ALL ON FUNCTION public.list_chat_contacts() FROM public;
 GRANT EXECUTE ON FUNCTION public.list_chat_contacts() TO authenticated;
+
+-- 6) RLS policy to allow reading profiles (optional - RPC bypasses this anyway)
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "profiles_read_for_chat" ON public.profiles;
+CREATE POLICY "profiles_read_for_chat"
+ON public.profiles
+FOR SELECT
+TO authenticated
+USING (true);

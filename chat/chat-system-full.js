@@ -1018,12 +1018,9 @@ export async function initChat() {
   console.log('[Chat] ✅ Authenticated:', user.id);
   state.currentUserId = user.id; // Store in state for group operations
 
-  // Load users only - NO FILTERS, JUST LOAD EVERYONE
+  // Load contacts using RPC (bypasses RLS, excludes yourself automatically)
   const { data: allUsers, error: usersError } = await supabase
-    .from('profiles')
-    .select('id, display_name, username')
-    .neq('id', user.id)
-    .limit(100);
+    .rpc('list_chat_contacts');
 
   if (usersError) {
     console.error('[Chat] ❌ Failed to load contacts:', usersError);
@@ -1032,17 +1029,18 @@ export async function initChat() {
   }
 
   sidebar.innerHTML = '';
-  console.warn('[Chat] 📋 Loaded', allUsers?.length || 0, 'users from profiles table');
+  console.warn('[Chat] 📋 Loaded', allUsers?.length || 0, 'contacts via RPC');
 
-  // DEBUG: Show all loaded user IDs and names
+  // DEBUG: Show all loaded contacts
   if (allUsers && allUsers.length > 0) {
-    console.warn('[Chat] 📋 Available profiles:', allUsers.map(u => ({
+    console.warn('[Chat] 📋 Available contacts:', allUsers.map(u => ({
       id: u.id,
       display_name: u.display_name,
-      username: u.username
+      username: u.username,
+      user_code: u.user_code
     })));
   } else {
-    console.warn('[Chat] ⚠️ WARNING: No profiles found! This means only 1 user exists in profiles table (you)');
+    console.warn('[Chat] ⚠️ No contacts loaded (only you exist?)');
   }
 
   // Store users in state for search functionality

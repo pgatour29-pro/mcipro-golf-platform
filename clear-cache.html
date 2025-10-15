@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clearing Cache - MciPro</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px 30px;
+            max-width: 400px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+
+        .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .status {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 30px;
+            min-height: 24px;
+        }
+
+        .progress {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .steps {
+            text-align: left;
+            margin-top: 30px;
+        }
+
+        .step {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .step-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            font-size: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .step.active .step-icon {
+            background: #667eea;
+            color: white;
+        }
+
+        .step.complete .step-icon {
+            background: #10b981;
+            color: white;
+        }
+
+        .button {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 14px 32px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            margin-top: 20px;
+            transition: transform 0.2s ease;
+        }
+
+        .button:active {
+            transform: scale(0.95);
+        }
+
+        .countdown {
+            font-size: 48px;
+            font-weight: bold;
+            color: #667eea;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon" id="icon">🔄</div>
+        <h1 id="title">Clearing Cache...</h1>
+        <div class="status" id="status">Please wait while we refresh your app</div>
+
+        <div class="progress">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+
+        <div class="steps">
+            <div class="step" id="step1">
+                <div class="step-icon">1</div>
+                <span>Unregistering service workers</span>
+            </div>
+            <div class="step" id="step2">
+                <div class="step-icon">2</div>
+                <span>Clearing cached files</span>
+            </div>
+            <div class="step" id="step3">
+                <div class="step-icon">3</div>
+                <span>Clearing local storage</span>
+            </div>
+            <div class="step" id="step4">
+                <div class="step-icon">4</div>
+                <span>Reloading app</span>
+            </div>
+        </div>
+
+        <div id="countdown" class="countdown" style="display:none;"></div>
+        <a href="/" class="button" id="manualButton" style="display:none;">Open MciPro</a>
+    </div>
+
+    <script>
+        const steps = ['step1', 'step2', 'step3', 'step4'];
+        const icon = document.getElementById('icon');
+        const title = document.getElementById('title');
+        const status = document.getElementById('status');
+        const progressBar = document.getElementById('progressBar');
+        const countdown = document.getElementById('countdown');
+        const manualButton = document.getElementById('manualButton');
+
+        let currentStep = 0;
+
+        function updateProgress(step, message) {
+            if (currentStep > 0) {
+                document.getElementById(steps[currentStep - 1]).classList.remove('active');
+                document.getElementById(steps[currentStep - 1]).classList.add('complete');
+            }
+
+            if (step < steps.length) {
+                document.getElementById(steps[step]).classList.add('active');
+            }
+
+            currentStep = step + 1;
+            const progress = ((step + 1) / steps.length) * 100;
+            progressBar.style.width = progress + '%';
+            status.textContent = message;
+        }
+
+        async function clearEverything() {
+            try {
+                // Step 1: Unregister service workers
+                updateProgress(0, 'Removing service workers...');
+                if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for (let registration of registrations) {
+                        await registration.unregister();
+                        console.log('Unregistered SW:', registration.scope);
+                    }
+                }
+                await sleep(500);
+
+                // Step 2: Clear all caches
+                updateProgress(1, 'Deleting cached files...');
+                if ('caches' in window) {
+                    const cacheNames = await caches.keys();
+                    for (let cacheName of cacheNames) {
+                        await caches.delete(cacheName);
+                        console.log('Deleted cache:', cacheName);
+                    }
+                }
+                await sleep(500);
+
+                // Step 3: Clear localStorage
+                updateProgress(2, 'Clearing local storage...');
+                try {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                } catch (e) {
+                    console.warn('Could not clear storage:', e);
+                }
+                await sleep(500);
+
+                // Step 4: Success
+                updateProgress(3, 'All done! Redirecting...');
+                icon.textContent = '✅';
+                title.textContent = 'Cache Cleared!';
+
+                // Countdown and redirect
+                await sleep(500);
+                countdown.style.display = 'block';
+
+                for (let i = 3; i > 0; i--) {
+                    countdown.textContent = i;
+                    await sleep(1000);
+                }
+
+                // Redirect to homepage with cache-busting parameter
+                window.location.href = '/?t=' + Date.now();
+
+            } catch (error) {
+                console.error('Clear cache error:', error);
+                icon.textContent = '⚠️';
+                title.textContent = 'Almost Done';
+                status.textContent = 'Click the button below to continue';
+                manualButton.style.display = 'inline-block';
+            }
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // Start clearing immediately
+        clearEverything();
+    </script>
+</body>
+</html>

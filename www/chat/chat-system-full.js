@@ -389,13 +389,19 @@ async function queryContactsServer(q) {
     searchAbortCtrl = new AbortController();
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
-      .from('profiles')
-      .select('id, display_name, username')
-      .or(`display_name.ilike.%${q}%,username.ilike.%${q}%`)
+      .from('user_profiles')
+      .select('line_user_id, name, caddy_number')
+      .or(`name.ilike.%${q}%,caddy_number.ilike.%${q}%`)
       .limit(25)
       .abortSignal(searchAbortCtrl.signal);
     if (error) throw error;
-    return data || [];
+
+    // Transform to expected format
+    return (data || []).map(u => ({
+      id: u.line_user_id,
+      display_name: u.name || `Caddy ${u.caddy_number || 'User'}`,
+      username: u.caddy_number ? `${u.caddy_number}` : u.line_user_id
+    }));
   } catch {
     return null;
   }
@@ -1080,15 +1086,15 @@ export async function initChat() {
       .eq('status', 'approved')
       .limit(20), // Limit to 20 most recent rooms for speed
 
-    // Load ONLY 20 users for quick initial display (lazy load rest on search)
+    // Load ALL REAL users from user_profiles table
     supabase
-      .from('profiles')
-      .select('id, display_name, username')
-      .neq('id', user.id)
-      .limit(20) // CRITICAL: Only load 20 users initially (vs 50 before)
+      .from('user_profiles')
+      .select('line_user_id, name, caddy_number')
+      .neq('line_user_id', user.id)
+      .order('name')
   ]);
 
-  const { data: userRooms, error: roomsError } = roomsResult;
+  const { data: userRooms, error: roomsError} = roomsResult;
   const { data: allUsers, error: usersError } = usersResult;
 
   if (roomsError) {
@@ -1101,8 +1107,15 @@ export async function initChat() {
     return;
   }
 
+  // Transform user_profiles format to match expected format
+  const transformedUsers = (allUsers || []).map(u => ({
+    id: u.line_user_id,
+    display_name: u.name || `Caddy ${u.caddy_number || 'User'}`,
+    username: u.caddy_number ? `${u.caddy_number}` : u.line_user_id
+  }));
+
   // Store in state for search functionality and caching
-  state.users = allUsers || [];
+  state.users = transformedUsers;
   state.cachedRooms = userRooms; // Cache rooms for refreshSidebar
 
   // OPTIMIZATION 4: Render UI immediately (don't wait for unread counts)

@@ -335,15 +335,11 @@ async function queryContactsServer(q) {
     searchAbortCtrl = new AbortController();
     const supabase = await getSupabaseClient();
 
-    // CRITICAL: Filter out test users and NULL names from server search
+    // NO FILTERS - just search by name
     const { data, error } = await supabase
       .from('profiles')
       .select('id, display_name, username')
       .or(`display_name.ilike.%${q}%,username.ilike.%${q}%`)
-      .not('display_name', 'is', null)
-      .not('display_name', 'ilike', '%test%')
-      .not('display_name', 'ilike', '%tester%')
-      .not('username', 'ilike', '%test%')
       .limit(25)
       .abortSignal(searchAbortCtrl.signal);
     if (error) throw error;
@@ -1022,17 +1018,12 @@ export async function initChat() {
   console.log('[Chat] ✅ Authenticated:', user.id);
   state.currentUserId = user.id; // Store in state for group operations
 
-  // Load users only (skip conversations for now - they're empty anyway)
-  // CRITICAL: Filter out test users, NULL names, and invalid profiles
+  // Load users only - NO FILTERS, JUST LOAD EVERYONE
   const { data: allUsers, error: usersError } = await supabase
     .from('profiles')
     .select('id, display_name, username')
     .neq('id', user.id)
-    .not('display_name', 'is', null) // Exclude NULL names
-    .not('display_name', 'ilike', '%test%') // Exclude test users
-    .not('display_name', 'ilike', '%tester%') // Exclude testers
-    .not('username', 'ilike', '%test%') // Exclude test usernames
-    .limit(50); // Limit results for speed
+    .limit(100);
 
   if (usersError) {
     console.error('[Chat] ❌ Failed to load contacts:', usersError);

@@ -6026,15 +6026,28 @@
                 OTPAuthentication.setupOTPInputHandlers();
 
                 // PERFORMANCE: Register Service Worker for offline-first caching
+                // TEMPORARILY DISABLED - Force clear old service worker
                 if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.register('/sw.js')
-                        .then((registration) => {
-                            console.log('[ServiceWorker] Registered successfully:', registration.scope);
-                            console.log('[ServiceWorker] 🚀 Offline-first caching enabled');
-                        })
-                        .catch((error) => {
-                            console.error('[ServiceWorker] Registration failed:', error);
+                    // First, unregister ALL old service workers
+                    navigator.serviceWorker.getRegistrations().then((registrations) => {
+                        registrations.forEach((registration) => {
+                            console.log('[ServiceWorker] Unregistering old SW:', registration.scope);
+                            registration.unregister();
                         });
+                    });
+
+                    // Clear all caches
+                    if ('caches' in window) {
+                        caches.keys().then((cacheNames) => {
+                            cacheNames.forEach((cacheName) => {
+                                console.log('[ServiceWorker] Deleting old cache:', cacheName);
+                                caches.delete(cacheName);
+                            });
+                        });
+                    }
+
+                    // Don't register new SW yet - let mobile load first
+                    console.log('[ServiceWorker] ⚠️ Temporarily disabled - clearing old caches');
                 }
 
                 // Initialize production cloud synchronization system

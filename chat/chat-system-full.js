@@ -1036,7 +1036,18 @@ export async function initChat() {
   }
 
   sidebar.innerHTML = '';
-  console.log('[Chat] Loaded', allUsers?.length || 0, 'users');
+  console.warn('[Chat] 📋 Loaded', allUsers?.length || 0, 'users from profiles table');
+
+  // DEBUG: Show all loaded user IDs and names
+  if (allUsers && allUsers.length > 0) {
+    console.warn('[Chat] 📋 Available profiles:', allUsers.map(u => ({
+      id: u.id,
+      display_name: u.display_name,
+      username: u.username
+    })));
+  } else {
+    console.warn('[Chat] ⚠️ WARNING: No profiles found! This means only 1 user exists in profiles table (you)');
+  }
 
   // Store users in state for search functionality
   state.users = allUsers || [];

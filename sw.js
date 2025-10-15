@@ -1,7 +1,7 @@
 // SERVICE WORKER - Offline-First Caching for MciPro Golf Platform
 // Provides instant loading and offline support
 
-const CACHE_VERSION = 'mcipro-v2025-10-14-mobile-groups-fix';
+const CACHE_VERSION = 'mcipro-v2025-10-15-force-reload';
 const CACHE_NAME = `${CACHE_VERSION}-${Date.now()}`;
 
 // Cache strategies
@@ -16,7 +16,7 @@ const CACHE_STRATEGIES = {
 const APP_SHELL = [
     '/index.html',
     '/public/assets/tailwind.css',   // Built Tailwind CSS
-    '/supabase-config.js',
+    '/supabase-config.js?v=20251015',
     '/weather-integration.js',
     '/maintenance-management.js',
     // Add other critical resources

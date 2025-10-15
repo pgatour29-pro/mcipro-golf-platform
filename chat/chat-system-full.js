@@ -320,16 +320,10 @@ function filterContactsLocal(q) {
   // If no query, return empty array (search should restore sidebar, not show all users)
   if (!qn) return [];
 
-  // DEBUG: If query is just 1-2 chars, show ALL users (easier to find people)
-  if (qn.length <= 2) {
-    console.warn('[Chat] 🔍 Short query - showing all users');
-    return items;
-  }
-
+  // Filter users by name or username (no minimum length - search as you type)
   return items.filter(u => {
     const name = normalize(u.display_name || u.username || '');
-    const uid = (u.id || '').toString().toLowerCase();
-    return name.includes(qn) || uid.startsWith(qn);
+    return name.includes(qn);
   });
 }
 
@@ -340,10 +334,16 @@ async function queryContactsServer(q) {
     searchAbortCtrl?.abort();
     searchAbortCtrl = new AbortController();
     const supabase = await getSupabaseClient();
+
+    // CRITICAL: Filter out test users and NULL names from server search
     const { data, error } = await supabase
       .from('profiles')
       .select('id, display_name, username')
       .or(`display_name.ilike.%${q}%,username.ilike.%${q}%`)
+      .not('display_name', 'is', null)
+      .not('display_name', 'ilike', '%test%')
+      .not('display_name', 'ilike', '%tester%')
+      .not('username', 'ilike', '%test%')
       .limit(25)
       .abortSignal(searchAbortCtrl.signal);
     if (error) throw error;
@@ -1023,10 +1023,15 @@ export async function initChat() {
   state.currentUserId = user.id; // Store in state for group operations
 
   // Load users only (skip conversations for now - they're empty anyway)
+  // CRITICAL: Filter out test users, NULL names, and invalid profiles
   const { data: allUsers, error: usersError } = await supabase
     .from('profiles')
     .select('id, display_name, username')
     .neq('id', user.id)
+    .not('display_name', 'is', null) // Exclude NULL names
+    .not('display_name', 'ilike', '%test%') // Exclude test users
+    .not('display_name', 'ilike', '%tester%') // Exclude testers
+    .not('username', 'ilike', '%test%') // Exclude test usernames
     .limit(50); // Limit results for speed
 
   if (usersError) {

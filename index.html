@@ -4236,30 +4236,25 @@
                 try {
                     LoadingManager.show('Connecting to LINE...');
 
-                    // Use direct LINE OAuth instead of LIFF
-                    const LINE_CHANNEL_ID = '2008228481'; // Your LINE Login channel ID
-                    const redirectUri = window.location.href.split('#')[0].split('?')[0];
-                    const state = Math.random().toString(36).substring(7);
+                    // Initialize LIFF if not already initialized
+                    if (typeof liff === 'undefined' || !liff.isInClient()) {
+                        await liff.init({ liffId: LineConfig.liffId });
+                    }
 
-                    // Store state for verification
-                    localStorage.setItem('line_oauth_state', state);
-
-                    // Build LINE OAuth URL
-                    const authUrl = new URL('https://access.line.me/oauth2/v2.1/authorize');
-                    authUrl.searchParams.set('response_type', 'code');
-                    authUrl.searchParams.set('client_id', LINE_CHANNEL_ID);
-                    authUrl.searchParams.set('redirect_uri', redirectUri);
-                    authUrl.searchParams.set('state', state);
-                    authUrl.searchParams.set('scope', 'profile openid email');
-
-                    console.log('[LINE OAuth] Redirecting to:', authUrl.toString());
-
-                    // Redirect to LINE OAuth
-                    window.location.href = authUrl.toString();
+                    if (!liff.isLoggedIn()) {
+                        liff.login();
+                    } else {
+                        const profile = await liff.getProfile();
+                        await this.setUserFromLineProfile(profile);
+                        this.redirectToDashboard();
+                    }
                 } catch (error) {
                     console.error('LINE login failed:', error);
                     NotificationManager.show('LINE login failed. Please try again.', 'error');
+                } finally {
                     LoadingManager.hide();
+                }
+            }
                 }
             }
 

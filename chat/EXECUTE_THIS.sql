@@ -42,13 +42,13 @@ RETURNS TABLE (
 LANGUAGE sql
 SECURITY DEFINER
 SET search_path = public, auth
-AS $
+AS $$
   SELECT cu.id, cu.display_name, cu.username, cu.user_code, cu.avatar_url
   FROM public.chat_users cu
   WHERE cu.id <> auth.uid()
   ORDER BY cu.display_name ASC
   LIMIT 200;
-$;
+$$;
 
 -- 5) CREATE RPC: search contacts by name/username/code
 CREATE OR REPLACE FUNCTION public.search_chat_contacts(q text)
@@ -62,7 +62,7 @@ RETURNS TABLE (
 LANGUAGE sql
 SECURITY DEFINER
 SET search_path = public, auth
-AS $
+AS $$
   SELECT cu.id, cu.display_name, cu.username, cu.user_code, cu.avatar_url
   FROM public.chat_users cu
   WHERE cu.id <> auth.uid()
@@ -73,7 +73,7 @@ AS $
     )
   ORDER BY CASE WHEN cu.user_code = q THEN 0 ELSE 1 END, cu.display_name ASC
   LIMIT 100;
-$;
+$$;
 
 -- 6) SET PERMISSIONS
 REVOKE ALL ON FUNCTION public.list_chat_contacts()           FROM public;

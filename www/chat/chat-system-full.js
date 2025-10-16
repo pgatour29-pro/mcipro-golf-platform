@@ -15,11 +15,16 @@ const state = {
   lastBackfillAt: 0, // Timestamp of last backfill
   pageHiddenAt: 0, // iOS Safari pagehide timestamp
   users: [], // All loaded users for search
+  usersLoaded: false, // Track if contacts have finished loading
+  usersLoading: false, // Prevent duplicate contact fetches
+  usersLoadPromise: null, // Share pending contact load promise
   cachedRooms: null, // Cached room data (avoids redundant queries)
   privateExpanded: false, // Track if Private folder is expanded
   channelErrorRetries: 0, // Track CHANNEL_ERROR retries for exponential backoff
   maxChannelRetries: 5, // Max retries before falling back to polling
   channelErrorTimer: null, // Timer ID for pending retry (allows cancellation)
+  pollingTimer: null, // Polling fallback interval ID
+  pollingIntervalMs: 10000, // Poll every 10s in fallback
 };
 
 // UI element references (cached for performance)
@@ -396,12 +401,28 @@ async function queryContactsServer(q) {
       .abortSignal(searchAbortCtrl.signal);
     if (error) throw error;
 
-    // Transform to expected format
-    return (data || []).map(u => ({
-      id: u.line_user_id,
-      display_name: u.name || `Caddy ${u.caddy_number || 'User'}`,
-      username: u.caddy_number ? `${u.caddy_number}` : u.line_user_id
-    }));
+    // Resolve Supabase auth IDs from line_user_id in a single batch
+    const lineIds = (data || []).map(u => u.line_user_id).filter(Boolean);
+    let idMap = new Map();
+    if (lineIds.length) {
+      const { data: profs } = await supabase
+        .from('profiles')
+        .select('id, line_user_id')
+        .in('line_user_id', lineIds)
+        .abortSignal(searchAbortCtrl.signal);
+      if (Array.isArray(profs)) {
+        idMap = new Map(profs.map(p => [p.line_user_id, p.id]));
+      }
+    }
+
+    // Transform to expected format using Supabase UUIDs, filter unknowns
+    return (data || [])
+      .map(u => ({
+        id: idMap.get(u.line_user_id),
+        display_name: u.name || `Caddy ${u.caddy_number || 'User'}`,
+        username: u.caddy_number ? `${u.caddy_number}` : u.line_user_id
+      }))
+      .filter(u => !!u.id);
   } catch {
     return null;
   }
@@ -436,6 +457,16 @@ function createRoomListItem(room, userId) {
   // Container for badges and buttons
   const rightContainer = document.createElement('div');
   rightContainer.style.cssText = 'display: flex; align-items: center; gap: 0.5rem;';
+
+  // Normalize labels and button text (fix mojibake)
+  try {
+    if (room.type === 'group') {
+      nameSpan.textContent = `Group: ${room.title || 'Untitled'}`;
+      nameSpan.style.cssText = 'flex: 1; font-weight: 500;';
+    }
+    archiveBtn.textContent = isArchived ? 'Unarchive' : 'Archive';
+    deleteBtn.textContent = 'Delete';
+  } catch {}
 
   // Unread badge
   const badge = document.createElement('span');
@@ -595,6 +626,11 @@ async function refreshSidebar(forceFetch = false) {
 
     privateFolderHeader.appendChild(arrow);
     privateFolderHeader.appendChild(label);
+    // Normalize arrow and label glyphs
+    try {
+      arrow.textContent = state.privateExpanded ? '▾' : '▸';
+      label.textContent = `Private (${archivedRooms.length})`;
+    } catch {}
 
     privateFolderHeader.onclick = () => {
       state.privateExpanded = !state.privateExpanded;
@@ -912,6 +948,9 @@ function openGroupBuilderModal() {
     </div>`;
   document.body.appendChild(m);
 
+  // Ensure close button renders correctly
+  try { m.querySelector('[data-close]')?.textContent = '×'; } catch {}
+
   m.addEventListener('click', (e) => {
     if (e.target.dataset.close !== undefined || e.target === m) m.remove();
   });
@@ -1107,12 +1146,31 @@ export async function initChat() {
     return;
   }
 
-  // Transform user_profiles format to match expected format
-  const transformedUsers = (allUsers || []).map(u => ({
-    id: u.line_user_id,
-    display_name: u.name || `Caddy ${u.caddy_number || 'User'}`,
-    username: u.caddy_number ? `${u.caddy_number}` : u.line_user_id
-  }));
+  // Transform user_profiles format to expected format with Supabase auth UUIDs
+  let transformedUsers = [];
+  try {
+    const lineIds = (allUsers || []).map(u => u.line_user_id).filter(Boolean);
+    let idMap = new Map();
+    if (lineIds.length) {
+      const { data: profs } = await supabase
+        .from('profiles')
+        .select('id, line_user_id')
+        .in('line_user_id', lineIds);
+      if (Array.isArray(profs)) {
+        idMap = new Map(profs.map(p => [p.line_user_id, p.id]));
+      }
+    }
+    transformedUsers = (allUsers || [])
+      .map(u => ({
+        id: idMap.get(u.line_user_id),
+        display_name: u.name || `Caddy ${u.caddy_number || 'User'}`,
+        username: u.caddy_number ? `${u.caddy_number}` : u.line_user_id
+      }))
+      .filter(u => !!u.id);
+  } catch (e) {
+    console.warn('[Chat] Failed to map profiles to Supabase IDs:', e);
+    transformedUsers = [];
+  }
 
   // Store in state for search functionality and caching
   state.users = transformedUsers;
@@ -1487,8 +1545,7 @@ export async function subscribeGlobalMessages() {
           }, delay);
         } else {
           console.error('[Chat] ❌ Max retries reached - falling back to polling mode');
-          // TODO: Implement polling fallback
-          alert('Chat connection failed. Please refresh the page.');
+          try { startPollingFallback(); } catch {}
         }
       }
     });
@@ -1764,6 +1821,32 @@ if (typeof window !== 'undefined') {
       }, backoff);
     }
   }, 3000);
+}
+
+// Polling fallback when realtime is unavailable
+function startPollingFallback() {
+  if (state.pollingTimer) return; // already active
+  console.warn('[Chat] Polling fallback enabled (realtime unavailable)');
+  state.pollingTimer = setInterval(async () => {
+    try {
+      await backfillIfAllowed('polling');
+      await updateUnreadBadge();
+      // Occasionally try to restore realtime
+      if (!state.globalSub || state.globalSub.state !== 'joined') {
+        await subscribeGlobalMessages();
+      } else {
+        stopPollingFallback();
+      }
+    } catch {}
+  }, state.pollingIntervalMs || 10000);
+}
+
+function stopPollingFallback() {
+  if (state.pollingTimer) {
+    clearInterval(state.pollingTimer);
+    state.pollingTimer = null;
+    console.log('[Chat] Polling fallback stopped');
+  }
 }
 
 // Expose for manual testing

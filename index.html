@@ -85,7 +85,7 @@
 
     <!-- Supabase for Real-time Database and Chat (Replaces Pusher + Netlify Blobs) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="supabase-config.js?v=20251015"></script>
+    <script src="supabase-config.js"></script>
 
     <!-- Tesseract.js for OCR Scorecard Scanning -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -185,14 +185,7 @@
         /* Screen Management */
         .screen {
             display: none;
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            overflow-y: auto;
-            overflow-x: hidden;
-            -webkit-overflow-scrolling: touch;
+            width: 100%;
         }
 
         .screen.active {
@@ -4243,22 +4236,29 @@
                 try {
                     LoadingManager.show('Connecting to LINE...');
 
-                    // Initialize LIFF if not already initialized
-                    if (typeof liff === 'undefined' || !liff.isInClient()) {
-                        await liff.init({ liffId: LineConfig.liffId });
-                    }
+                    // Use direct LINE OAuth instead of LIFF
+                    const LINE_CHANNEL_ID = '2008228481'; // Your LINE Login channel ID
+                    const redirectUri = window.location.href.split('#')[0].split('?')[0];
+                    const state = Math.random().toString(36).substring(7);
 
-                    if (!liff.isLoggedIn()) {
-                        liff.login();
-                    } else {
-                        const profile = await liff.getProfile();
-                        await this.setUserFromLineProfile(profile);
-                        this.redirectToDashboard();
-                    }
+                    // Store state for verification
+                    localStorage.setItem('line_oauth_state', state);
+
+                    // Build LINE OAuth URL
+                    const authUrl = new URL('https://access.line.me/oauth2/v2.1/authorize');
+                    authUrl.searchParams.set('response_type', 'code');
+                    authUrl.searchParams.set('client_id', LINE_CHANNEL_ID);
+                    authUrl.searchParams.set('redirect_uri', redirectUri);
+                    authUrl.searchParams.set('state', state);
+                    authUrl.searchParams.set('scope', 'profile openid email');
+
+                    console.log('[LINE OAuth] Redirecting to:', authUrl.toString());
+
+                    // Redirect to LINE OAuth
+                    window.location.href = authUrl.toString();
                 } catch (error) {
                     console.error('LINE login failed:', error);
                     NotificationManager.show('LINE login failed. Please try again.', 'error');
-                } finally {
                     LoadingManager.hide();
                 }
             }
@@ -6026,28 +6026,15 @@
                 OTPAuthentication.setupOTPInputHandlers();
 
                 // PERFORMANCE: Register Service Worker for offline-first caching
-                // TEMPORARILY DISABLED - Force clear old service worker
                 if ('serviceWorker' in navigator) {
-                    // First, unregister ALL old service workers
-                    navigator.serviceWorker.getRegistrations().then((registrations) => {
-                        registrations.forEach((registration) => {
-                            console.log('[ServiceWorker] Unregistering old SW:', registration.scope);
-                            registration.unregister();
+                    navigator.serviceWorker.register('/sw.js')
+                        .then((registration) => {
+                            console.log('[ServiceWorker] Registered successfully:', registration.scope);
+                            console.log('[ServiceWorker] üöÄ Offline-first caching enabled');
+                        })
+                        .catch((error) => {
+                            console.error('[ServiceWorker] Registration failed:', error);
                         });
-                    });
-
-                    // Clear all caches
-                    if ('caches' in window) {
-                        caches.keys().then((cacheNames) => {
-                            cacheNames.forEach((cacheName) => {
-                                console.log('[ServiceWorker] Deleting old cache:', cacheName);
-                                caches.delete(cacheName);
-                            });
-                        });
-                    }
-
-                    // Don't register new SW yet - let mobile load first
-                    console.log('[ServiceWorker] ‚ö†Ô∏è Temporarily disabled - clearing old caches');
                 }
 
                 // Initialize production cloud synchronization system
@@ -9701,41 +9688,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         .total { border-top: 1px solid #000; padding-top: 10px; margin-top: 10px; font-weight: bold; }
                         .footer { text-align: center; margin-top: 20px; font-size: 12px; }
                     </style>
-                    <style>
-      #safe-fallback{position:fixed;left:0;right:0;top:0;z-index:99998;background:#0b0b0b;color:#fff;padding:10px;font:14px/1.4 system-ui,Segoe UI,Arial;}
-      @media (max-width: 768px){ body{position:static !important; overflow:auto !important;} }
-    </style>
-      <script>
-      (function(){
-        try {
-          var params = new URLSearchParams(location.search);
-          var lite = params.has('lite');
-          window.__lite__ = !!lite;
-          function addScript(src){ var s=document.createElement('script'); s.src=src; s.async=false; document.head.appendChild(s);} 
-          function addStyles(href){ var l=document.createElement('link'); l.rel='stylesheet'; l.href=href; document.head.appendChild(l);} 
-          if (!window.__lite__) {
-            addStyles('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
-            addScript('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js');
-            addScript('https://static.line-scdn.net/liff/edge/2.1/sdk.js');
-          } else {
-            // In lite mode: load LIFF, skip Leaflet\n            addScript('https://static.line-scdn.net/liff/edge/2.1/sdk.js');\n            console.warn('[Lite] Loaded LIFF, skipped Leaflet');
-          }
-        } catch(e) { console.warn('[Lite] loader error', e); }
-      })();
-    </script>    <script>
-      // canonical-redirect: force apex domain for LIFF endpoint consistency
-      (function(){
-        try {
-          var h = location.hostname.toLowerCase();
-          if (h === 'www.mycaddipro.com') {
-            var target = 'https://mycaddipro.com' + location.pathname + location.search + location.hash;
-            location.replace(target);
-          }
-        } catch(e){}
-      })();
-    </script></head>
-  <body>
-    <div id="safe-fallback">LoadingÖ If this persists, pull to refresh or revisit in a new tab.</div>
+                </head>
                 <body>
                     <div class="header">
                         <h2>MciPro Golf Course</h2>
@@ -17853,13 +17806,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
     <!-- Professional Chat System Styles -->
     <link rel="stylesheet" href="/chat/chat-system-styles.css?v=2025-10-12">
-    <style>
-      #safe-fallback{position:fixed;left:0;right:0;top:0;z-index:99998;background:#0b0b0b;color:#fff;padding:10px;font:14px/1.4 system-ui,Segoe UI,Arial;}
-      @media (max-width: 768px){ body{position:static !important; overflow:auto !important;} }
-    </style>
-  </head>
-  <body>
-    <div id="safe-fallback">LoadingÖ If this persists, pull to refresh or revisit in a new tab.</div>
+</head>
 
 <body>
     <script>
@@ -17891,7 +17838,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
                 <!-- LINE Login Section -->
                 <div id="lineLoginContainer" class="space-y-8" style="display: block;">
-                    <button onclick="LineAuthentication.loginWithLINE()" class="line-login-btn">
+                    <button onclick="loginWithLINE()" class="line-login-btn">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.628-.629.628M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
                         </svg>
@@ -37137,26 +37084,3 @@ showOrganizerTab = function(tabName) {
 
 </body>
 </html>
-
-    <script>
-      // Global LIFF bootstrap to keep app online
-      (function(){
-        var LIFF_ID='2008228481-xBBwXqp1';
-        function addScript(src, cb){ var s=document.createElement('script'); s.src=src; s.async=false; s.onload=cb||null; document.head.appendChild(s); }
-        async function initLiff(){
-          try{
-            if (!window.liff){ await new Promise(function(res){ addScript('https://static.line-scdn.net/liff/edge/2.1/sdk.js', res); }); }
-            if (!window.liff || !liff.init){ console.warn('[LIFF] SDK not available'); return; }
-            if (!initLiff._done){ await liff.init({ liffId: LIFF_ID }); initLiff._done=true; console.log('[LIFF] init OK'); }
-          }catch(e){ console.error('[LIFF] init failed', e); }
-        }
-        // Try to init early
-        document.addEventListener('DOMContentLoaded', function(){ initLiff(); });
-        // Force login handler used by buttons
-        window.login = async function(){
-          try{ await initLiff(); if (liff.isLoggedIn && !liff.isLoggedIn()){ liff.login({ redirectUri: location.href }); return; } }catch(e){ console.error('[LIFF] login failed', e); alert('LINE login failed: '+(e&&e.message||e)); }
-          if (window.LineAuthentication && window.LineAuthentication.login){ return window.LineAuthentication.login(); }
-          console.warn('[Auth] Using fallback login'); if (window.FallbackAuthentication&&window.FallbackAuthentication.login){ return window.FallbackAuthentication.login(); }
-        };
-      })();
-    </script>

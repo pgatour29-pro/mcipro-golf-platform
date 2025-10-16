@@ -6067,19 +6067,24 @@
                 // Initialize OTP input handlers
                 OTPAuthentication.setupOTPInputHandlers();
 
-                // PERFORMANCE: Register Service Worker for offline-first caching
-                if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.register('/sw.js')
-                        .then((registration) => {
-                            console.log('[ServiceWorker] Registered successfully:', registration.scope);
-                            console.log('[ServiceWorker] 🚀 Offline-first caching enabled');
-                        })
-                        .catch((error) => {
-                            console.error('[ServiceWorker] Registration failed:', error);
-                        });
-                }
-
-                // Initialize production cloud synchronization system
+                // PERFORMANCE: Register Service Worker for offline-first caching                // TEMP: Disable Service Worker on mobile to avoid stale caches causing blank screens
+                (function(){
+                  try {
+                    var ua = navigator.userAgent||'';
+                    var isMobile = /Android|iPhone|iPad|iPod/i.test(ua);
+                    if ('serviceWorker' in navigator) {
+                      if (isMobile) {
+                        navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ r.unregister().catch(function(){}); }); });
+                        if (window.caches && caches.keys) { caches.keys().then(function(keys){ keys.forEach(function(k){ caches.delete(k).catch(function(){}); }); }); }
+                        console.warn('[ServiceWorker] Disabled on mobile; unregistered existing SW and cleared caches');
+                      } else {
+                        navigator.serviceWorker.register('/sw.js')
+                          .then(function(reg){ console.log('[ServiceWorker] Registered:', reg.scope); })
+                          .catch(function(err){ console.error('[ServiceWorker] Registration failed:', err); });
+                      }
+                    }
+                  } catch(e) { console.warn('[ServiceWorker] Control error', e); }
+                })();                // Initialize production cloud synchronization system
                 SimpleCloudSync.initialize();
 
                 // Initialize booking system and load saved data

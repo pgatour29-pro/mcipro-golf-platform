@@ -41,7 +41,7 @@
   "appName": "MciPro Golf Platform",
   "webDir": "www",
   "server": {
-    "url": "https://mcipro-golf-platform.netlify.app"
+    "url": "https://mycaddipro.com"
   }
 }
 ```
@@ -265,7 +265,7 @@ cd android
 
 ## Current Mode: Server Mode
 
-The app currently loads from **https://mcipro-golf-platform.netlify.app**.
+The app currently loads from **https://mycaddipro.com**.
 
 **Pros:**
 - Instant updates (no app store approval)

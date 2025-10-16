@@ -4,21 +4,7 @@ const config: CapacitorConfig = {
   appId: 'com.mcipro.golfplatform',
   appName: 'MciPro Golf Platform',
   webDir: 'www',
-  server: {
-    // Use the production custom domain to avoid redirects in WebView
-    url: 'https://mycaddipro.com',
-    cleartext: false,
-    allowNavigation: [
-      'mycaddipro.com',
-      'mcipro-golf-platform.netlify.app',
-      '*.line.me',
-      '*.line-scdn.net',
-      '*.supabase.co',
-      'accounts.google.com',
-      'api.line.me',
-      'access.line.me'
-    ]
-  },
+  server: { androidScheme: 'https', cleartext: false, allowNavigation: ['mycaddipro.com','mcipro-golf-platform.netlify.app','*.line.me','*.line-scdn.net','*.supabase.co','accounts.google.com','api.line.me','access.line.me'] },
   android: {
     allowMixedContent: true,
     captureInput: true,

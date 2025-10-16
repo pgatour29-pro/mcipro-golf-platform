@@ -1154,7 +1154,7 @@ async function backfillMissedMessages(reason = 'auto') {
 /**
  * Subscribe to all messages globally with reconnect + backfill hardening (SINGLETON)
  */
-export async function subscribeGlobalMessages() {
+export async function subscribeGlobalMessages() {\n  if (window.__chatRealtimeSubscribed) {\n    return state?.globalSub;\n  }\n  window.__chatRealtimeSubscribed = true;\n  try { console.time('[Chat] ? Realtime join'); } catch(_) {}
   console.time('[Chat] ⚡ Realtime join');
 
   const supabase = await getSupabaseClient();
@@ -1168,7 +1168,7 @@ export async function subscribeGlobalMessages() {
   // SINGLETON GUARD: If already joined, keep existing subscription
   if (state.globalSub && state.globalSub.state === 'joined') {
     console.log('[Chat] Global subscription already active — skip');
-    console.timeEnd('[Chat] ⚡ Realtime join');
+    try { console.timeEnd('[Chat] ? Realtime join'); } catch(_) {}
     return state.globalSub;
   }
 
@@ -1214,7 +1214,7 @@ export async function subscribeGlobalMessages() {
       console.log('[Chat] Global status:', status);
       if (status === 'SUBSCRIBED') {
         console.log('[Chat] ✅ Global subscription active - backfilling missed messages');
-        console.timeEnd('[Chat] ⚡ Realtime join');
+        try { console.timeEnd('[Chat] ? Realtime join'); } catch(_) {}
         reconnectAttempts = 0; // Reset on success
         backfillIfAllowed('subscribed');
       }
@@ -1466,3 +1466,5 @@ window.__chat = {
   restartRealtime, // Manual reconnect trigger
   backfillIfAllowed // Manual backfill trigger
 };
+
+

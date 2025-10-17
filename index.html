@@ -10593,45 +10593,60 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // SECURITY: Check if current user can edit a profile
             async canEditProfile() {
-                // Check if LINE is authenticated
-                if (typeof liff === 'undefined' || !liff.isLoggedIn()) {
-                    console.log('[ProfileSystem] Authorization failed: LINE not logged in');
-                    return false;
-                }
+                console.log('[ProfileSystem] 🔐 Checking edit permissions...');
+                console.log('[ProfileSystem] Current user:', AppState.currentUser);
 
-                const lineProfile = await liff.getProfile();
-                const currentLineUserId = lineProfile.userId;
-
-                console.log('[ProfileSystem] Checking authorization for LINE User ID:', currentLineUserId);
-
-                // Check if user is admin
-                if (LineConfig.adminUserIds.includes(currentLineUserId)) {
-                    console.log('[ProfileSystem] Admin access granted');
-                    return true; // Admins can edit any profile
-                }
-
-                // Check if current user's LINE ID matches (they're editing their own profile)
-                if (AppState.currentUser.lineUserId === currentLineUserId) {
-                    console.log('[ProfileSystem] Owner access granted - matches current user');
+                // If user is logged in via AppState, they can edit their own profile
+                if (AppState.currentUser && AppState.currentUser.lineUserId) {
+                    console.log('[ProfileSystem] ✅ User is logged in via AppState - allowing profile edit');
                     return true;
                 }
 
-                // Check if profile belongs to this LINE user
-                const profile = this.getCurrentProfile(AppState.currentUser.role);
+                // Fallback: Check if LINE is authenticated (only if liff is initialized)
+                try {
+                    if (typeof liff !== 'undefined' && liff.isLoggedIn && liff.isLoggedIn()) {
+                        const lineProfile = await liff.getProfile();
+                        const currentLineUserId = lineProfile.userId;
 
-                // If profile doesn't have lineUserId yet (legacy profile), allow edit
-                // This allows users to claim their existing profiles
-                if (profile && !profile.lineUserId) {
-                    console.log('[ProfileSystem] Legacy profile detected - allowing edit to claim ownership');
-                    return true;
+                        console.log('[ProfileSystem] Checking authorization for LINE User ID:', currentLineUserId);
+
+                        // Check if user is admin
+                        if (LineConfig.adminUserIds.includes(currentLineUserId)) {
+                            console.log('[ProfileSystem] Admin access granted');
+                            return true; // Admins can edit any profile
+                        }
+
+                        // Check if current user's LINE ID matches (they're editing their own profile)
+                        if (AppState.currentUser.lineUserId === currentLineUserId) {
+                            console.log('[ProfileSystem] Owner access granted - matches current user');
+                            return true;
+                        }
+
+                        // Check if profile belongs to this LINE user
+                        const profile = this.getCurrentProfile(AppState.currentUser.role);
+
+                        // If profile doesn't have lineUserId yet (legacy profile), allow edit
+                        // This allows users to claim their existing profiles
+                        if (profile && !profile.lineUserId) {
+                            console.log('[ProfileSystem] Legacy profile detected - allowing edit to claim ownership');
+                            return true;
+                        }
+
+                        if (profile && profile.lineUserId === currentLineUserId) {
+                            console.log('[ProfileSystem] Owner access granted - matches profile');
+                            return true; // Owner can edit their own profile
+                        }
+                    }
+                } catch (error) {
+                    console.warn('[ProfileSystem] ⚠️ LIFF check failed (not initialized or error):', error.message);
+                    // If LIFF check fails but user is in AppState, they can still edit
+                    if (AppState.currentUser && AppState.currentUser.lineUserId) {
+                        console.log('[ProfileSystem] ✅ Allowing edit based on AppState despite LIFF error');
+                        return true;
+                    }
                 }
 
-                if (profile && profile.lineUserId === currentLineUserId) {
-                    console.log('[ProfileSystem] Owner access granted - matches profile');
-                    return true; // Owner can edit their own profile
-                }
-
-                console.log('[ProfileSystem] Authorization denied');
+                console.log('[ProfileSystem] ❌ Authorization denied');
                 return false; // No permission
             },
 

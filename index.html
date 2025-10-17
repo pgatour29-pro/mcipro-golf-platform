@@ -5979,10 +5979,16 @@
                     console.log('[exchange] status', res.status, raw);
                     const data = JSON.parse(raw || '{}');
                     if (data.profile) {
-                        await AuthManager.setUserFromLineProfile(data.profile);
+                        await LineAuthentication.setUserFromLineProfile(data.profile);
                         localStorage.removeItem('line_oauth_state');
-                        // Redirect to dashboard
-                        window.location.href = window.location.origin + window.location.pathname;
+
+                        // Clean URL without reloading (remove ?code= and ?state= params)
+                        const cleanUrl = window.location.origin + window.location.pathname;
+                        history.replaceState(null, '', cleanUrl);
+
+                        // Navigate to appropriate dashboard based on user role
+                        LineAuthentication.redirectToDashboard();
+                        LoadingManager.hide();
                         return;
                     }
                 } catch (error) {

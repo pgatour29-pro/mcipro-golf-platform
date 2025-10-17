@@ -19862,11 +19862,73 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                         <p class="text-xs text-gray-500 mt-1">💡 Each player must have at least this many drives used</p>
                                     </div>
                                 </div>
-                                <div>
+                                <div class="mb-3">
                                     <label class="flex items-center text-sm">
                                         <input type="checkbox" id="scrambleTrackPutts" class="mr-2" checked><span class="font-medium">Track Who Made Each Putt</span>
                                     </label>
                                     <p class="text-xs text-gray-500 mt-1">📊 Track statistics for each team member</p>
+                                </div>
+
+                                <!-- Handicap Calculator -->
+                                <div class="border-t-2 border-green-200 pt-3 mt-3">
+                                    <label class="block text-sm font-semibold text-gray-900 mb-2">Team Handicap Method</label>
+
+                                    <!-- Method Selector -->
+                                    <div class="flex gap-2 mb-3">
+                                        <label class="flex-1 flex items-center justify-center p-2 border-2 border-green-500 bg-green-50 rounded-lg cursor-pointer">
+                                            <input type="radio" name="scrambleHcpMethod" value="usga" checked class="mr-2" onchange="updateScrambleHcpMethod()">
+                                            <span class="text-xs font-medium">USGA</span>
+                                        </label>
+                                        <label class="flex-1 flex items-center justify-center p-2 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-green-400">
+                                            <input type="radio" name="scrambleHcpMethod" value="percentage" class="mr-2" onchange="updateScrambleHcpMethod()">
+                                            <span class="text-xs font-medium">Percentage</span>
+                                        </label>
+                                        <label class="flex-1 flex items-center justify-center p-2 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-green-400">
+                                            <input type="radio" name="scrambleHcpMethod" value="manual" class="mr-2" onchange="updateScrambleHcpMethod()">
+                                            <span class="text-xs font-medium">Manual</span>
+                                        </label>
+                                    </div>
+
+                                    <!-- USGA Method (default, always visible) -->
+                                    <div id="scrambleHcpUSGA" class="mb-2">
+                                        <p class="text-xs text-gray-600">
+                                            <strong>Standard USGA Formula:</strong><br>
+                                            2-Man: 35% + 15%<br>
+                                            3-Man: 30% + 20% + 10%<br>
+                                            4-Man: 25% + 20% + 15% + 10%
+                                        </p>
+                                    </div>
+
+                                    <!-- Percentage Method -->
+                                    <div id="scrambleHcpPercentage" style="display: none;">
+                                        <label class="block text-xs text-gray-700 mb-1">Combined Handicap Percentage</label>
+                                        <div class="flex gap-2 items-center mb-2">
+                                            <input type="number" id="scrambleHcpPercent" min="1" max="100" value="25" step="1" class="w-20 rounded border-2 border-green-300 px-2 py-1 text-sm" oninput="calculateScrambleHcp()">
+                                            <span class="text-sm text-gray-700">% of combined handicaps</span>
+                                        </div>
+                                        <p class="text-xs text-gray-500">
+                                            Example: 25% of (10 + 15) = 6.25 → 6 playing HCP
+                                        </p>
+                                    </div>
+
+                                    <!-- Manual Entry Method -->
+                                    <div id="scrambleHcpManual" style="display: none;">
+                                        <label class="block text-xs text-gray-700 mb-1">Enter Team Handicap</label>
+                                        <div class="flex gap-2 items-center mb-2">
+                                            <input type="number" id="scrambleHcpManualValue" min="0" max="54" value="6" step="0.1" class="w-24 rounded border-2 border-green-300 px-2 py-1 text-sm" oninput="calculateScrambleHcp()">
+                                            <span class="text-sm text-gray-700">Team HCP</span>
+                                        </div>
+                                        <p class="text-xs text-gray-500">
+                                            💡 Enter the handicap provided by your organizer
+                                        </p>
+                                    </div>
+
+                                    <!-- Live Preview -->
+                                    <div id="scrambleHcpPreview" class="mt-3 p-2 bg-green-100 border border-green-300 rounded text-center">
+                                        <div class="text-xs text-gray-600">Team Handicap Preview</div>
+                                        <div class="text-lg font-bold text-green-800" id="scrambleHcpPreviewValue">-</div>
+                                        <div class="text-xs text-gray-500" id="scrambleHcpPreviewDetails">Add players to calculate</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -29802,6 +29864,11 @@ class LiveScorecardSystem {
                 </button>
             </div>
         `).join('');
+
+        // Update scramble handicap preview
+        if (window.calculateScrambleHcp) {
+            window.calculateScrambleHcp();
+        }
     }
 
     removePlayer(index) {
@@ -31586,24 +31653,33 @@ class LiveScorecardSystem {
         const container = document.createElement('div');
         container.className = 'border-4 border-green-600 rounded-lg p-4 mb-6 bg-gradient-to-br from-green-50 to-green-100 shadow-lg print:break-inside-avoid print:shadow-none';
 
-        // Calculate team handicap based on scramble format
+        // Calculate team handicap based on selected method
+        const method = document.querySelector('input[name="scrambleHcpMethod"]:checked')?.value || 'usga';
         const teamSize = this.players.length;
-        const sortedHandicaps = this.players.map(p => p.handicap).sort((a, b) => a - b);
+        const handicaps = this.players.map(p => p.handicap || 0);
+        const sortedHandicaps = [...handicaps].sort((a, b) => a - b);
         let teamHandicap = 0;
 
-        if (teamSize === 2) {
-            // 2-Man Scramble: 35% of low HCP + 15% of high HCP
-            teamHandicap = (sortedHandicaps[0] * 0.35) + (sortedHandicaps[1] * 0.15);
-        } else if (teamSize === 3) {
-            // 3-Man Scramble: 30% + 20% + 10%
-            teamHandicap = (sortedHandicaps[0] * 0.30) + (sortedHandicaps[1] * 0.20) + (sortedHandicaps[2] * 0.10);
-        } else if (teamSize === 4) {
-            // 4-Man Scramble: 25% + 20% + 15% + 10%
-            teamHandicap = (sortedHandicaps[0] * 0.25) + (sortedHandicaps[1] * 0.20) + (sortedHandicaps[2] * 0.15) + (sortedHandicaps[3] * 0.10);
-        } else {
-            // 5+ players: Use average of all * 0.20
-            const avgHandicap = sortedHandicaps.reduce((sum, h) => sum + h, 0) / sortedHandicaps.length;
-            teamHandicap = avgHandicap * 0.20;
+        if (method === 'usga') {
+            // USGA Standard formulas
+            if (teamSize === 2) {
+                teamHandicap = (sortedHandicaps[0] * 0.35) + (sortedHandicaps[1] * 0.15);
+            } else if (teamSize === 3) {
+                teamHandicap = (sortedHandicaps[0] * 0.30) + (sortedHandicaps[1] * 0.20) + (sortedHandicaps[2] * 0.10);
+            } else if (teamSize === 4) {
+                teamHandicap = (sortedHandicaps[0] * 0.25) + (sortedHandicaps[1] * 0.20) + (sortedHandicaps[2] * 0.15) + (sortedHandicaps[3] * 0.10);
+            } else {
+                const avgHandicap = sortedHandicaps.reduce((sum, h) => sum + h, 0) / sortedHandicaps.length;
+                teamHandicap = avgHandicap * 0.20;
+            }
+        } else if (method === 'percentage') {
+            // Percentage of combined handicaps
+            const percent = parseFloat(document.getElementById('scrambleHcpPercent')?.value) || 25;
+            const combinedHcp = handicaps.reduce((sum, h) => sum + h, 0);
+            teamHandicap = (combinedHcp * percent) / 100;
+        } else if (method === 'manual') {
+            // Manual entry
+            teamHandicap = parseFloat(document.getElementById('scrambleHcpManualValue')?.value) || 0;
         }
 
         const teamPlayingHandicap = Math.round(teamHandicap);
@@ -33787,6 +33863,96 @@ window.toggleAllFormats = function() {
 
     const count = Array.from(checkboxes).filter(cb => cb.checked).length;
     console.log(`[LiveScorecard] ${allChecked ? 'Deselected all' : 'Selected all'} formats (${count} active)`);
+};
+
+// ============================================
+// SCRAMBLE HANDICAP CALCULATOR
+// ============================================
+
+window.updateScrambleHcpMethod = function() {
+    const selected = document.querySelector('input[name="scrambleHcpMethod"]:checked')?.value;
+
+    // Hide all method sections
+    document.getElementById('scrambleHcpUSGA').style.display = 'none';
+    document.getElementById('scrambleHcpPercentage').style.display = 'none';
+    document.getElementById('scrambleHcpManual').style.display = 'none';
+
+    // Show selected method
+    if (selected === 'usga') {
+        document.getElementById('scrambleHcpUSGA').style.display = 'block';
+    } else if (selected === 'percentage') {
+        document.getElementById('scrambleHcpPercentage').style.display = 'block';
+    } else if (selected === 'manual') {
+        document.getElementById('scrambleHcpManual').style.display = 'block';
+    }
+
+    // Update radio button styling
+    document.querySelectorAll('input[name="scrambleHcpMethod"]').forEach(radio => {
+        const label = radio.closest('label');
+        if (radio.checked) {
+            label.classList.remove('border-gray-300', 'bg-white');
+            label.classList.add('border-green-500', 'bg-green-50');
+        } else {
+            label.classList.remove('border-green-500', 'bg-green-50');
+            label.classList.add('border-gray-300', 'bg-white');
+        }
+    });
+
+    // Recalculate preview
+    calculateScrambleHcp();
+};
+
+window.calculateScrambleHcp = function() {
+    const players = window.LiveScorecardManager?.players || [];
+    const previewValue = document.getElementById('scrambleHcpPreviewValue');
+    const previewDetails = document.getElementById('scrambleHcpPreviewDetails');
+
+    if (!players || players.length === 0) {
+        previewValue.textContent = '-';
+        previewDetails.textContent = 'Add players to calculate';
+        return;
+    }
+
+    const method = document.querySelector('input[name="scrambleHcpMethod"]:checked')?.value;
+    const handicaps = players.map(p => p.handicap || 0);
+    const sortedHandicaps = [...handicaps].sort((a, b) => a - b);
+    let teamHcp = 0;
+    let details = '';
+
+    if (method === 'usga') {
+        // USGA Standard formulas
+        const teamSize = players.length;
+        if (teamSize === 2) {
+            teamHcp = (sortedHandicaps[0] * 0.35) + (sortedHandicaps[1] * 0.15);
+            details = `${sortedHandicaps[0]} × 35% + ${sortedHandicaps[1]} × 15%`;
+        } else if (teamSize === 3) {
+            teamHcp = (sortedHandicaps[0] * 0.30) + (sortedHandicaps[1] * 0.20) + (sortedHandicaps[2] * 0.10);
+            details = `${sortedHandicaps[0]} × 30% + ${sortedHandicaps[1]} × 20% + ${sortedHandicaps[2]} × 10%`;
+        } else if (teamSize === 4) {
+            teamHcp = (sortedHandicaps[0] * 0.25) + (sortedHandicaps[1] * 0.20) + (sortedHandicaps[2] * 0.15) + (sortedHandicaps[3] * 0.10);
+            details = `${sortedHandicaps[0]} × 25% + ${sortedHandicaps[1]} × 20% + ${sortedHandicaps[2]} × 15% + ${sortedHandicaps[3]} × 10%`;
+        } else {
+            const avgHandicap = sortedHandicaps.reduce((sum, h) => sum + h, 0) / sortedHandicaps.length;
+            teamHcp = avgHandicap * 0.20;
+            details = `Average (${avgHandicap.toFixed(1)}) × 20%`;
+        }
+    } else if (method === 'percentage') {
+        // Percentage of combined handicaps
+        const percent = parseFloat(document.getElementById('scrambleHcpPercent')?.value) || 25;
+        const combinedHcp = handicaps.reduce((sum, h) => sum + h, 0);
+        teamHcp = (combinedHcp * percent) / 100;
+        details = `(${handicaps.join(' + ')}) × ${percent}% = ${combinedHcp} × ${percent}%`;
+    } else if (method === 'manual') {
+        // Manual entry
+        teamHcp = parseFloat(document.getElementById('scrambleHcpManualValue')?.value) || 0;
+        details = `Manually entered by organizer`;
+    }
+
+    const playingHcp = Math.round(teamHcp);
+    previewValue.textContent = `${teamHcp.toFixed(1)} (Playing: ${playingHcp})`;
+    previewDetails.textContent = details;
+
+    console.log(`[Scramble HCP] Method: ${method}, Team HCP: ${teamHcp.toFixed(1)}, Playing: ${playingHcp}`);
 };
 
 console.log('[LiveScorecard] ✅ Format checkbox handlers loaded and ready');

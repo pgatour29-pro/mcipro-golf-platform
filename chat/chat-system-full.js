@@ -1122,7 +1122,6 @@ async function backfillMissedMessages(reason = 'auto') {
       .from('chat_messages')
       .select('*')
       .gt('created_at', since)
-      .neq('sender', cachedUserId)
       .order('created_at', { ascending: true })
       .limit(200);
 
@@ -1133,8 +1132,7 @@ async function backfillMissedMessages(reason = 'auto') {
 
     if (data && data.length > 0) {
       console.log(`[Chat] ⚡ Backfill: ${data.length} msgs in ${Date.now() - startTime}ms (reason: ${reason})`);
-      data.forEach(msg => {
-        const normalizedMsg = {
+      data.forEach(msg => { if (msg.sender === cachedUserId) return; const normalizedMsg = {
           id: msg.id,
           room_id: msg.room_id,
           sender_id: msg.sender,
@@ -1470,5 +1468,9 @@ window.__chat = {
   restartRealtime, // Manual reconnect trigger
   backfillIfAllowed // Manual backfill trigger
 };
+
+
+
+
 
 

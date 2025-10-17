@@ -29674,7 +29674,7 @@ class LiveScorecardSystem {
                         course_id: courseId,
                         course_name: this.courseData.name,
                         tee_marker: teeMarker,
-                        scoring_format: this.scoringFormat,
+                        scoring_format: this.scoringFormats,
                         status: 'in_progress',
                         started_at: new Date().toISOString(),
                         pending_sync: true // Mark for later sync to Supabase
@@ -29728,7 +29728,7 @@ class LiveScorecardSystem {
             const score = this.getPlayerScore(p.id, this.currentHole);
             const total = this.getPlayerTotal(p.id);
             const isActive = p.id === this.currentPlayerId;
-            const formatLabel = this.scoringFormat === 'stableford' ? 'pts' : 'strokes';
+            const formatLabel = (this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford')) ? 'pts' : 'strokes';
 
             return `
                 <div onclick="LiveScorecardManager.selectPlayer('${p.id}')"
@@ -29737,7 +29737,7 @@ class LiveScorecardSystem {
                     <div class="text-2xl font-bold ${score ? 'text-gray-900' : 'text-gray-400'}">
                         ${score || '_'}
                     </div>
-                    ${total !== 0 ? `<div class="text-xs text-gray-600 mt-1">Total: ${total > 0 && this.scoringFormat === 'stableford' ? '+' : ''}${total} ${formatLabel}</div>` : ''}
+                    ${total !== 0 ? `<div class="text-xs text-gray-600 mt-1">Total: ${total > 0 && (this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford')) ? '+' : ''}${total} ${formatLabel}</div>` : ''}
                 </div>
             `;
         }).join('');
@@ -29811,7 +29811,7 @@ class LiveScorecardSystem {
         for (let hole = 1; hole <= this.currentHole; hole++) {
             const score = playerScores[hole];
             if (score) {
-                if (this.scoringFormat === 'stableford') {
+                if (this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford')) {
                     // Get REAL course data for this hole
                     const holeData = this.courseData?.holes?.[hole - 1];
                     const par = holeData?.par || 4;
@@ -30688,7 +30688,7 @@ class LiveScorecardSystem {
         this.currentHole = 1;
         this.scorecards = {};
         this.scoresCache = {}; // Clear score cache
-        this.scoringFormat = 'stableford'; // Reset to default
+        this.scoringFormats = ['stableford']; // Reset to default
         this.currentPlayerId = null;
 
         // Show start section

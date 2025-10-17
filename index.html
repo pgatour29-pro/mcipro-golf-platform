@@ -24003,6 +24003,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <span class="material-symbols-outlined text-sm mr-1">calendar_month</span>
                         Calendar
                     </button>
+                    <button onclick="showOrganizerTab('scoring')" id="organizer-scoring-tab" class="organizer-tab-button px-4 md:px-6 py-3 text-sm font-medium text-gray-600 hover:text-gray-900">
+                        <span class="material-symbols-outlined text-sm mr-1">emoji_events</span>
+                        Scoring
+                    </button>
                     <button onclick="showOrganizerTab('profile')" id="organizer-profile-tab" class="organizer-tab-button px-4 md:px-6 py-3 text-sm font-medium text-gray-600 hover:text-gray-900">
                         <span class="material-symbols-outlined text-sm mr-1">badge</span>
                         Profile
@@ -24406,6 +24410,168 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Tab: Scoring -->
+            <div id="organizerTab-scoring" class="organizer-tab-content" style="display: none;">
+                <!-- Header -->
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-900 mb-2">Event Scoring & Rankings</h2>
+                        <p class="text-sm text-gray-600">Manage scores as they come in and assign championship points</p>
+                    </div>
+                    <button onclick="OrganizerScoringSystem.refreshScores()" class="btn-primary">
+                        <span class="material-symbols-outlined text-sm mr-1">refresh</span>
+                        Refresh
+                    </button>
+                </div>
+
+                <!-- Event Selector -->
+                <div class="metric-card mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Select Event</label>
+                    <select id="organizerScoringEventSelect" onchange="OrganizerScoringSystem.loadEventScores(this.value)" class="w-full rounded-lg border px-3 py-2">
+                        <option value="">-- Select an event --</option>
+                    </select>
+                </div>
+
+                <!-- Point Allocation Settings -->
+                <div class="metric-card mb-6" id="pointAllocationSettings" style="display: none;">
+                    <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <span class="material-symbols-outlined text-yellow-600">stars</span>
+                        Championship Point Allocation
+                    </h3>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Number of Scoring Places</label>
+                            <input type="number" id="scoringPlacesCount" min="1" max="20" value="5"
+                                onchange="OrganizerScoringSystem.updatePointsTable()"
+                                class="w-full rounded-lg border px-3 py-2">
+                            <p class="text-xs text-gray-500 mt-1">How many places receive points (e.g., Top 5)</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Point Distribution System</label>
+                            <select id="pointSystemSelect" onchange="OrganizerScoringSystem.applyPointSystem(this.value)" class="w-full rounded-lg border px-3 py-2">
+                                <option value="custom">Custom</option>
+                                <option value="f1">F1 Style (25-18-15-12-10...)</option>
+                                <option value="linear">Linear (10-9-8-7-6...)</option>
+                                <option value="winner-heavy">Winner Heavy (100-50-25-15-10...)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Points Table -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm" id="pointsAllocationTable">
+                            <thead class="border-b-2 border-gray-300">
+                                <tr class="text-left">
+                                    <th class="py-2 px-3">Position</th>
+                                    <th class="py-2 px-3">Points Awarded</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pointsAllocationBody">
+                                <!-- Will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="flex gap-3 mt-4">
+                        <button onclick="OrganizerScoringSystem.savePointAllocation()" class="btn-primary flex-1">
+                            <span class="material-symbols-outlined text-sm mr-1">save</span>
+                            Save Point System
+                        </button>
+                        <button onclick="OrganizerScoringSystem.publishResults()" class="btn-secondary flex-1">
+                            <span class="material-symbols-outlined text-sm mr-1">publish</span>
+                            Publish Results
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Live Leaderboard -->
+                <div class="metric-card" id="eventLeaderboardContainer" style="display: none;">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-green-600">leaderboard</span>
+                            Live Leaderboard
+                            <span id="leaderboardLiveIndicator" class="text-xs text-green-600 ml-2">● LIVE</span>
+                        </h3>
+                        <div class="flex gap-2">
+                            <button onclick="OrganizerScoringSystem.exportToCSV()" class="text-sm px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700">
+                                <span class="material-symbols-outlined text-sm mr-1">download</span>
+                                Export CSV
+                            </button>
+                            <button onclick="OrganizerScoringSystem.assignPoints()" class="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
+                                <span class="material-symbols-outlined text-sm mr-1">calculate</span>
+                                Assign Points
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Format Selector for Multi-Format Events -->
+                    <div class="mb-4" id="formatSelectorDiv">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Scoring Format</label>
+                        <select id="leaderboardFormatSelect" onchange="OrganizerScoringSystem.changeFormat(this.value)" class="rounded-lg border px-3 py-2">
+                            <option value="stableford">Stableford</option>
+                            <option value="strokeplay">Stroke Play</option>
+                            <option value="scramble">Scramble</option>
+                            <option value="nassau">Nassau</option>
+                            <option value="skins">Skins</option>
+                        </select>
+                    </div>
+
+                    <!-- Leaderboard Table -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="border-b-2 border-gray-300">
+                                <tr class="text-left">
+                                    <th class="py-2 px-3">Pos</th>
+                                    <th class="py-2 px-3">Player</th>
+                                    <th class="py-2 px-3">Handicap</th>
+                                    <th class="py-2 px-3">Gross</th>
+                                    <th class="py-2 px-3">Net</th>
+                                    <th class="py-2 px-3">Score</th>
+                                    <th class="py-2 px-3">Points</th>
+                                    <th class="py-2 px-3">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="eventLeaderboardBody">
+                                <tr>
+                                    <td colspan="8" class="py-8 text-center text-gray-500">
+                                        <span class="material-symbols-outlined text-5xl mb-2">emoji_events</span>
+                                        <p>Select an event to view scores</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Stats Summary -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 pt-6 border-t border-gray-200">
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-gray-900" id="statTotalPlayers">0</div>
+                            <div class="text-xs text-gray-600">Total Players</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-green-600" id="statCompleted">0</div>
+                            <div class="text-xs text-gray-600">Completed</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-blue-600" id="statInProgress">0</div>
+                            <div class="text-xs text-gray-600">In Progress</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-orange-600" id="statAvgScore">-</div>
+                            <div class="text-xs text-gray-600">Average Score</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- No Event Selected State -->
+                <div class="metric-card text-center py-12" id="noEventSelected">
+                    <span class="material-symbols-outlined text-6xl text-gray-300 mb-4">event_available</span>
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">No Event Selected</h3>
+                    <p class="text-sm text-gray-500">Select an event above to view and manage scores</p>
                 </div>
             </div>
 

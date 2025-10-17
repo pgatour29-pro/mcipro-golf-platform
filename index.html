@@ -37743,6 +37743,372 @@ class SocietyCalendar {
     }
 }
 
+// ===== ORGANIZER SCORING SYSTEM CLASS =====
+
+class OrganizerScoringSystem {
+    constructor() {
+        this.currentEventId = null;
+        this.currentFormat = 'stableford';
+        this.leaderboardData = [];
+        this.pointAllocation = {};
+        this.refreshInterval = null;
+    }
+
+    async init() {
+        console.log('[OrganizerScoring] Initializing scoring system...');
+        await this.loadEvents();
+        this.updatePointsTable();
+    }
+
+    async loadEvents() {
+        try {
+            const userId = AppState.currentUser?.lineUserId;
+            if (!userId) return;
+
+            // Load organizer's events
+            const { data: events, error } = await window.SupabaseDB.client
+                .from('society_events')
+                .select('*')
+                .eq('organizer_id', userId)
+                .order('date', { ascending: false })
+                .limit(50);
+
+            if (error) {
+                console.error('[OrganizerScoring] Error loading events:', error);
+                return;
+            }
+
+            const select = document.getElementById('organizerScoringEventSelect');
+            if (!select) return;
+
+            select.innerHTML = '<option value="">-- Select an event --</option>';
+            events.forEach(event => {
+                const option = document.createElement('option');
+                option.value = event.id;
+                const date = new Date(event.date).toLocaleDateString();
+                option.textContent = `${event.title} - ${date} (${event.course})`;
+                select.appendChild(option);
+            });
+
+            console.log(`[OrganizerScoring] Loaded ${events.length} events`);
+        } catch (error) {
+            console.error('[OrganizerScoring] Error in loadEvents:', error);
+        }
+    }
+
+    async loadEventScores(eventId) {
+        if (!eventId) {
+            document.getElementById('noEventSelected').style.display = 'block';
+            document.getElementById('pointAllocationSettings').style.display = 'none';
+            document.getElementById('eventLeaderboardContainer').style.display = 'none';
+            return;
+        }
+
+        this.currentEventId = eventId;
+        document.getElementById('noEventSelected').style.display = 'none';
+        document.getElementById('pointAllocationSettings').style.display = 'block';
+        document.getElementById('eventLeaderboardContainer').style.display = 'block';
+
+        await this.refreshScores();
+
+        // Auto-refresh every 30 seconds
+        if (this.refreshInterval) clearInterval(this.refreshInterval);
+        this.refreshInterval = setInterval(() => {
+            this.refreshScores();
+        }, 30000);
+    }
+
+    async refreshScores() {
+        if (!this.currentEventId) return;
+
+        try {
+            // Fetch all rounds for this event
+            const { data: rounds, error } = await window.SupabaseDB.client
+                .from('rounds')
+                .select('*')
+                .eq('society_event_id', this.currentEventId)
+                .order('total_stableford', { ascending: false });
+
+            if (error) {
+                console.error('[OrganizerScoring] Error loading scores:', error);
+                return;
+            }
+
+            this.leaderboardData = rounds || [];
+            this.renderLeaderboard();
+            this.updateStats();
+
+            console.log(`[OrganizerScoring] Loaded ${rounds.length} scores`);
+        } catch (error) {
+            console.error('[OrganizerScoring] Error in refreshScores:', error);
+        }
+    }
+
+    renderLeaderboard() {
+        const tbody = document.getElementById('eventLeaderboardBody');
+        if (!tbody || this.leaderboardData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="py-8 text-center text-gray-500">No scores yet</td></tr>';
+            return;
+        }
+
+        // Sort based on current format
+        const sorted = [...this.leaderboardData];
+        switch (this.currentFormat) {
+            case 'stableford':
+                sorted.sort((a, b) => (b.total_stableford || 0) - (a.total_stableford || 0));
+                break;
+            case 'strokeplay':
+            case 'scramble':
+                sorted.sort((a, b) => (a.total_gross || 999) - (b.total_gross || 999));
+                break;
+            case 'nassau':
+                sorted.sort((a, b) => {
+                    const aTotal = a.format_scores?.nassau?.total || 999;
+                    const bTotal = b.format_scores?.nassau?.total || 999;
+                    return aTotal - bTotal;
+                });
+                break;
+            case 'skins':
+                sorted.sort((a, b) => {
+                    const aHoles = a.format_scores?.skins?.holes_won || 0;
+                    const bHoles = b.format_scores?.skins?.holes_won || 0;
+                    return bHoles - aHoles;
+                });
+                break;
+        }
+
+        tbody.innerHTML = sorted.map((round, index) => {
+            const position = index + 1;
+            const points = this.pointAllocation[position] || 0;
+            const score = this.getScoreForFormat(round, this.currentFormat);
+            const status = round.status === 'completed' ? '<span class="text-green-600">✓ Complete</span>' : '<span class="text-blue-600">In Progress</span>';
+
+            // Net score calculation
+            const netScore = round.total_gross ? round.total_gross - Math.round(round.handicap_used || 0) : '-';
+
+            return `
+                <tr class="border-b border-gray-200 hover:bg-gray-50">
+                    <td class="py-2 px-3 font-bold">${position}</td>
+                    <td class="py-2 px-3">${this.getPlayerName(round.golfer_id)}</td>
+                    <td class="py-2 px-3">${Math.round(round.handicap_used || 0)}</td>
+                    <td class="py-2 px-3">${round.total_gross || '-'}</td>
+                    <td class="py-2 px-3">${netScore}</td>
+                    <td class="py-2 px-3 font-bold">${score}</td>
+                    <td class="py-2 px-3 text-yellow-600 font-bold">${points}</td>
+                    <td class="py-2 px-3">${status}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    getScoreForFormat(round, format) {
+        switch (format) {
+            case 'stableford':
+                return round.total_stableford || 0;
+            case 'strokeplay':
+            case 'scramble':
+                return round.total_gross || 0;
+            case 'nassau':
+                return round.format_scores?.nassau?.total || '-';
+            case 'skins':
+                return round.format_scores?.skins?.holes_won || 0;
+            default:
+                return round.total_stableford || 0;
+        }
+    }
+
+    getPlayerName(golferId) {
+        // Try to get player name from cache or return ID
+        // In a real implementation, you'd have a player name lookup
+        return golferId ? golferId.substring(0, 20) + '...' : 'Unknown';
+    }
+
+    updateStats() {
+        const total = this.leaderboardData.length;
+        const completed = this.leaderboardData.filter(r => r.status === 'completed').length;
+        const inProgress = total - completed;
+        const avgScore = total > 0
+            ? Math.round(this.leaderboardData.reduce((sum, r) => sum + (r.total_stableford || 0), 0) / total)
+            : '-';
+
+        document.getElementById('statTotalPlayers').textContent = total;
+        document.getElementById('statCompleted').textContent = completed;
+        document.getElementById('statInProgress').textContent = inProgress;
+        document.getElementById('statAvgScore').textContent = avgScore;
+    }
+
+    changeFormat(format) {
+        this.currentFormat = format;
+        this.renderLeaderboard();
+    }
+
+    updatePointsTable() {
+        const count = parseInt(document.getElementById('scoringPlacesCount')?.value) || 5;
+        const tbody = document.getElementById('pointsAllocationBody');
+        if (!tbody) return;
+
+        tbody.innerHTML = '';
+        for (let i = 1; i <= count; i++) {
+            const tr = document.createElement('tr');
+            tr.className = 'border-b border-gray-200';
+            tr.innerHTML = `
+                <td class="py-2 px-3 font-medium">${this.getPositionLabel(i)}</td>
+                <td class="py-2 px-3">
+                    <input type="number"
+                           id="points_${i}"
+                           value="${this.pointAllocation[i] || 0}"
+                           onchange="OrganizerScoringSystem.updatePointValue(${i}, this.value)"
+                           class="w-20 rounded border px-2 py-1 text-sm">
+                </td>
+            `;
+            tbody.appendChild(tr);
+        }
+    }
+
+    getPositionLabel(pos) {
+        const labels = {
+            1: '1st Place',
+            2: '2nd Place',
+            3: '3rd Place'
+        };
+        return labels[pos] || `${pos}th Place`;
+    }
+
+    applyPointSystem(system) {
+        const count = parseInt(document.getElementById('scoringPlacesCount')?.value) || 5;
+
+        switch (system) {
+            case 'f1':
+                // F1 style: 25, 18, 15, 12, 10, 8, 6, 4, 2, 1
+                const f1Points = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
+                for (let i = 1; i <= count; i++) {
+                    this.pointAllocation[i] = f1Points[i-1] || 0;
+                }
+                break;
+
+            case 'linear':
+                // Linear: 10, 9, 8, 7, 6...
+                for (let i = 1; i <= count; i++) {
+                    this.pointAllocation[i] = Math.max(0, 11 - i);
+                }
+                break;
+
+            case 'winner-heavy':
+                // Winner heavy: 100, 50, 25, 15, 10, 8, 6, 4, 2, 1
+                const whPoints = [100, 50, 25, 15, 10, 8, 6, 4, 2, 1];
+                for (let i = 1; i <= count; i++) {
+                    this.pointAllocation[i] = whPoints[i-1] || 0;
+                }
+                break;
+
+            default:
+                // Custom - keep existing values
+                break;
+        }
+
+        this.updatePointsTable();
+    }
+
+    updatePointValue(position, value) {
+        this.pointAllocation[position] = parseInt(value) || 0;
+        this.renderLeaderboard();
+    }
+
+    async savePointAllocation() {
+        // Save point allocation to event metadata
+        try {
+            const { error } = await window.SupabaseDB.client
+                .from('society_events')
+                .update({
+                    point_allocation: this.pointAllocation
+                })
+                .eq('id', this.currentEventId);
+
+            if (error) throw error;
+
+            NotificationManager.show('Point allocation saved!', 'success');
+        } catch (error) {
+            console.error('[OrganizerScoring] Error saving points:', error);
+            NotificationManager.show('Error saving point allocation', 'error');
+        }
+    }
+
+    assignPoints() {
+        this.renderLeaderboard();
+        NotificationManager.show('Points assigned to leaderboard!', 'success');
+    }
+
+    async publishResults() {
+        if (!confirm('Publish results and notify all players?')) return;
+
+        try {
+            // Mark event as results published
+            const { error } = await window.SupabaseDB.client
+                .from('society_events')
+                .update({
+                    results_published: true,
+                    results_published_at: new Date().toISOString()
+                })
+                .eq('id', this.currentEventId);
+
+            if (error) throw error;
+
+            NotificationManager.show('Results published successfully!', 'success');
+        } catch (error) {
+            console.error('[OrganizerScoring] Error publishing results:', error);
+            NotificationManager.show('Error publishing results', 'error');
+        }
+    }
+
+    exportToCSV() {
+        if (this.leaderboardData.length === 0) {
+            NotificationManager.show('No data to export', 'warning');
+            return;
+        }
+
+        // Create CSV content
+        const headers = ['Position', 'Player ID', 'Handicap', 'Gross', 'Net', 'Score', 'Points', 'Status'];
+        const rows = this.leaderboardData.map((round, index) => {
+            const position = index + 1;
+            const points = this.pointAllocation[position] || 0;
+            const score = this.getScoreForFormat(round, this.currentFormat);
+            const netScore = round.total_gross - Math.round(round.handicap_used || 0);
+            return [
+                position,
+                round.golfer_id,
+                Math.round(round.handicap_used || 0),
+                round.total_gross || 0,
+                netScore,
+                score,
+                points,
+                round.status
+            ].join(',');
+        });
+
+        const csv = [headers.join(','), ...rows].join('\n');
+
+        // Download CSV
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `event-${this.currentEventId}-results.csv`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+
+        NotificationManager.show('CSV exported successfully!', 'success');
+    }
+
+    destroy() {
+        if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+        }
+    }
+}
+
+// Create global instance
+window.OrganizerScoringSystem = new OrganizerScoringSystem();
+
 // Initialize calendar when Calendar tab is shown
 const originalShowOrganizerTab2 = showOrganizerTab;
 showOrganizerTab = function(tabName) {
@@ -37755,6 +38121,13 @@ showOrganizerTab = function(tabName) {
         }
         setTimeout(() => {
             window.SocietyCalendar.init();
+        }, 100);
+    }
+
+    // Initialize scoring system when Scoring tab is shown
+    if (tabName === 'scoring' && window.OrganizerScoringSystem) {
+        setTimeout(() => {
+            window.OrganizerScoringSystem.init();
         }, 100);
     }
 

@@ -28650,7 +28650,31 @@ class SocietyGolfSupabase {
             .single();
 
         if (error) {
-            console.error('[SocietyGolf] Error creating scorecard:', error);
+            console.error('[SocietyGolf] ❌ Error creating scorecard:', {
+                error: error,
+                errorMessage: error.message,
+                errorDetails: error.details,
+                errorHint: error.hint,
+                errorCode: error.code,
+                tableName: 'scorecards',
+                attemptedOperation: 'INSERT',
+                payloadSent: {
+                    id: scorecardId,
+                    event_id: eventId,
+                    player_id: playerId,
+                    handicap: handicap,
+                    playing_handicap: Math.round(handicap),
+                    status: 'in_progress',
+                    started_at: new Date().toISOString()
+                }
+            });
+
+            // Check if table exists
+            if (error.message && error.message.includes('relation') && error.message.includes('does not exist')) {
+                console.error('[SocietyGolf] 🚨 CRITICAL: "scorecards" table does not exist in database!');
+                console.error('[SocietyGolf] 💡 Solution: Run sql/04_create_scorecards_tables.sql in Supabase');
+            }
+
             throw error;
         }
 
@@ -28723,7 +28747,31 @@ class SocietyGolfSupabase {
             .single();
 
         if (error) {
-            console.error('[SocietyGolf] Error saving score:', error);
+            console.error('[SocietyGolf] ❌ Error saving score:', {
+                error: error,
+                errorMessage: error.message,
+                errorDetails: error.details,
+                errorHint: error.hint,
+                errorCode: error.code,
+                tableName: 'scores',
+                attemptedOperation: 'UPSERT',
+                payloadSent: {
+                    scorecard_id: scorecardId,
+                    hole_number: holeNumber,
+                    par: par,
+                    stroke_index: strokeIndex,
+                    gross_score: grossScore,
+                    net_score: netScore,
+                    handicap_strokes: strokesReceived
+                }
+            });
+
+            // Check if table exists
+            if (error.message && error.message.includes('relation') && error.message.includes('does not exist')) {
+                console.error('[SocietyGolf] 🚨 CRITICAL: "scores" table does not exist in database!');
+                console.error('[SocietyGolf] 💡 Solution: Run sql/04_create_scorecards_tables.sql in Supabase');
+            }
+
             throw error;
         }
 
@@ -29212,6 +29260,10 @@ class LiveScorecardSystem {
 
     async init() {
         console.log('[LiveScorecard] Initializing...');
+
+        // Clean up old/failed offline data first
+        this.cleanupOldOfflineData();
+
         await this.loadEvents();
         // No longer load courses on init - dropdown is static!
 
@@ -29677,7 +29729,9 @@ class LiveScorecardSystem {
                         scoring_format: this.scoringFormats,
                         status: 'in_progress',
                         started_at: new Date().toISOString(),
-                        pending_sync: true // Mark for later sync to Supabase
+                        pending_sync: true, // Mark for later sync to Supabase
+                        created_at: new Date().toISOString(), // Track when created for age-based cleanup
+                        sync_attempts: 0 // Initialize retry counter
                     };
 
                     localStorage.setItem(`scorecard_${localId}`, JSON.stringify(localScorecard));
@@ -30060,7 +30114,19 @@ class LiveScorecardSystem {
 
     async completeRound() {
         if (!confirm('Complete round for all players?')) return;
-    
+
+        // Check scramble drive requirements if scramble format is active
+        if (this.scoringFormats.includes('scramble') && this.scrambleConfig?.minDrivesPerPlayer > 0) {
+            for (const player of this.players) {
+                const used = this.scrambleDriveCount[player.id] || 0;
+                const required = this.scrambleConfig.minDrivesPerPlayer;
+                if (used < required) {
+                    alert(`${player.name} needs ${required - used} more drive(s) to meet the minimum requirement of ${required}.`);
+                    return; // Prevent completion
+                }
+            }
+        }
+
         // Mark scorecards as completed in database
         for (const player of this.players) {
             const scorecardId = this.scorecards[player.id];
@@ -30847,7 +30913,53 @@ class LiveScorecardSystem {
         // Stableford Points row (if stableford format)
         // Add rows for each selected format
         const engine = LiveScorecardSystem.GolfScoringEngine;
-        
+
+        // Pre-calculate Nassau net scores (for use in table and summary)
+        let frontNineNet = 0, backNineNet = 0, totalNet = 0;
+        if (this.scoringFormats.includes('nassau')) {
+            for (let i = 1; i <= 18; i++) {
+                const scoreValue = this.scoresCache[player.id]?.[i];
+                if (typeof scoreValue === 'number') {
+                    const hole = this.courseData?.holes?.find(h => h.number === i);
+                    const strokeIndex = hole?.strokeIndex || i;
+                    const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
+                    const netScore = scoreValue - shotsReceived;
+
+                    if (i <= 9) frontNineNet += netScore;
+                    else backNineNet += netScore;
+                }
+            }
+            totalNet = frontNineNet + backNineNet;
+        }
+
+        // Pre-calculate Skins results (for use in table and summary)
+        let holesWonCount = 0;
+        let skinsResults = null;
+        if (this.scoringFormats.includes('skins')) {
+            const allPlayerData = this.players.map(p => {
+                const playerScores = this.scoresCache[p.id] || {};
+                const scoresArray = Object.entries(playerScores).map(([hole, score]) => ({
+                    hole_number: parseInt(hole),
+                    gross_score: score
+                }));
+
+                return {
+                    playerId: p.id,
+                    playerName: p.name,
+                    scores: scoresArray,
+                    handicap: p.handicap
+                };
+            });
+
+            const pointsPerHole = parseInt(document.getElementById('skinsValueInput')?.value) || 100;
+            skinsResults = engine.calculateSkins(allPlayerData, this.courseData.holes, true, pointsPerHole);
+
+            for (let i = 1; i <= 18; i++) {
+                const holeResult = skinsResults.holeResults[i];
+                if (holeResult?.winner === player.id) holesWonCount++;
+            }
+        }
+
         // Stableford Points row (if selected)
         if (this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford')) {
             const isModified = this.scoringFormats.includes('modifiedstableford');
@@ -30880,6 +30992,52 @@ class LiveScorecardSystem {
             tableHTML += `<td class="border border-gray-300 px-2 py-2 text-center font-bold text-lg bg-green-200">${totalPoints || '-'}</td></tr>`;
         }
 
+        // Nassau row (if selected)
+        if (this.scoringFormats.includes('nassau')) {
+            tableHTML += `<tr class="bg-blue-50"><td class="border border-gray-300 px-2 py-2 font-semibold">Nassau Net</td>`;
+
+            for (let i = 1; i <= 18; i++) {
+                const scoreValue = this.scoresCache[player.id]?.[i];
+                let netScore = '-';
+
+                if (typeof scoreValue === 'number') {
+                    const hole = this.courseData?.holes?.find(h => h.number === i);
+                    const strokeIndex = hole?.strokeIndex || i;
+
+                    const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
+                    netScore = scoreValue - shotsReceived;
+                }
+
+                tableHTML += `<td class="border border-gray-300 px-1 py-2 text-center font-bold">${netScore}</td>`;
+            }
+            tableHTML += `<td class="border border-gray-300 px-2 py-2 text-center font-bold text-lg bg-blue-200">${totalNet || '-'}</td></tr>`;
+
+            // Nassau Summary Row
+            tableHTML += `<tr class="bg-blue-100"><td class="border border-gray-300 px-2 py-2 font-semibold text-sm">Nassau Score</td>`;
+            tableHTML += `<td colspan="9" class="border border-gray-300 px-2 py-2 text-center font-bold text-blue-800">Front 9: ${frontNineNet || '-'}</td>`;
+            tableHTML += `<td colspan="9" class="border border-gray-300 px-2 py-2 text-center font-bold text-blue-800">Back 9: ${backNineNet || '-'}</td>`;
+            tableHTML += `<td class="border border-gray-300 px-2 py-2 text-center font-bold text-lg bg-blue-200">Total: ${totalNet || '-'}</td></tr>`;
+        }
+
+        // Skins row (if selected)
+        if (this.scoringFormats.includes('skins') && skinsResults) {
+            tableHTML += `<tr class="bg-orange-50"><td class="border border-gray-300 px-2 py-2 font-semibold">Skins Won</td>`;
+
+            for (let i = 1; i <= 18; i++) {
+                const holeResult = skinsResults.holeResults[i];
+                const wonThisHole = holeResult?.winner === player.id;
+
+                const cellContent = wonThisHole ? '✓' : '-';
+                const cellClass = wonThisHole
+                    ? 'border border-gray-300 px-1 py-2 text-center font-bold bg-orange-200 text-orange-800'
+                    : 'border border-gray-300 px-1 py-2 text-center';
+
+                tableHTML += `<td class="${cellClass}">${cellContent}</td>`;
+            }
+
+            tableHTML += `<td class="border border-gray-300 px-2 py-2 text-center font-bold text-lg bg-orange-200">${holesWonCount} holes</td></tr>`;
+        }
+
         tableHTML += `</thead></table>`;
         table.innerHTML = tableHTML;
         container.appendChild(table);
@@ -30905,6 +31063,26 @@ class LiveScorecardSystem {
                 <div class="bg-green-200 p-2 rounded">
                     <div class="text-xs text-gray-600">Total Points</div>
                     <div class="font-bold text-lg">${totalPoints}</div>
+                </div>
+            ` : ''}
+            ${this.scoringFormats.includes('nassau') ? `
+                <div class="bg-blue-200 p-2 rounded">
+                    <div class="text-xs text-gray-600">Nassau Net Total</div>
+                    <div class="font-bold text-lg">${totalNet || '-'}</div>
+                </div>
+                <div class="bg-blue-100 p-2 rounded">
+                    <div class="text-xs text-gray-600">Nassau Front 9</div>
+                    <div class="font-bold">${frontNineNet || '-'}</div>
+                </div>
+                <div class="bg-blue-100 p-2 rounded">
+                    <div class="text-xs text-gray-600">Nassau Back 9</div>
+                    <div class="font-bold">${backNineNet || '-'}</div>
+                </div>
+            ` : ''}
+            ${this.scoringFormats.includes('skins') ? `
+                <div class="bg-orange-200 p-2 rounded">
+                    <div class="text-xs text-gray-600">Skins Won</div>
+                    <div class="font-bold text-lg">${holesWonCount} holes</div>
                 </div>
             ` : ''}
         `;
@@ -30998,10 +31176,26 @@ class LiveScorecardSystem {
         try {
             // Find all pending offline scorecards
             const pendingScorecards = [];
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
                 if (key && key.startsWith('scorecard_local_')) {
                     const scorecardData = JSON.parse(localStorage.getItem(key));
+
+                    // Check if scorecard is too old (>7 days) and remove it
+                    if (scorecardData.created_at) {
+                        const createdDate = new Date(scorecardData.created_at);
+                        if (createdDate < sevenDaysAgo) {
+                            console.warn(`[LiveScorecard] 🗑️ Removing stale scorecard (>7 days old): ${scorecardData.player_name || 'Unknown'}`);
+                            localStorage.removeItem(key);
+                            const scoresKey = `scores_${scorecardData.id}`;
+                            localStorage.removeItem(scoresKey);
+                            continue; // Skip this scorecard
+                        }
+                    }
+
                     if (scorecardData.pending_sync) {
                         pendingScorecards.push({ key, data: scorecardData });
                     }
@@ -31025,7 +31219,7 @@ class LiveScorecardSystem {
                     );
 
                     // Update with group and course info
-                    await window.SupabaseDB.client
+                    const { error: updateError } = await window.SupabaseDB.client
                         .from('scorecards')
                         .update({
                             group_id: data.group_id,
@@ -31036,6 +31230,34 @@ class LiveScorecardSystem {
                             started_at: data.started_at
                         })
                         .eq('id', scorecard.id);
+
+                    if (updateError) {
+                        console.error(`[LiveScorecard] ❌ Failed to update scorecard metadata for ${data.player_name}:`, {
+                            error: updateError,
+                            errorMessage: updateError.message,
+                            errorDetails: updateError.details,
+                            errorHint: updateError.hint,
+                            errorCode: updateError.code,
+                            tableName: 'scorecards',
+                            attemptedOperation: 'UPDATE',
+                            payloadSent: {
+                                group_id: data.group_id,
+                                course_id: data.course_id,
+                                course_name: data.course_name,
+                                tee_marker: data.tee_marker,
+                                player_name: data.player_name,
+                                started_at: data.started_at
+                            }
+                        });
+
+                        // Check if table exists
+                        if (updateError.message && updateError.message.includes('relation') && updateError.message.includes('does not exist')) {
+                            console.error('[LiveScorecard] 🚨 CRITICAL: "scorecards" table does not exist in database!');
+                            console.error('[LiveScorecard] 💡 Solution: Run sql/04_create_scorecards_tables.sql in Supabase');
+                        }
+
+                        throw updateError; // This will trigger the catch block and prevent cleanup
+                    }
 
                     // Sync all scores for this scorecard
                     const scoresKey = `scores_${data.id}`;
@@ -31053,16 +31275,38 @@ class LiveScorecardSystem {
                                 holeScore.handicap
                             );
                         }
-                        localStorage.removeItem(scoresKey); // Clean up scores
+                        console.log(`[LiveScorecard] ✅ Synced ${Object.keys(scores).length} scores for ${data.player_name}`);
+                        localStorage.removeItem(scoresKey); // Clean up scores after successful sync
                     }
 
-                    // Clean up synced scorecard
+                    // Clean up synced scorecard - ONLY if we reach this point (all operations succeeded)
                     localStorage.removeItem(key);
-                    console.log(`[LiveScorecard] ✅ Synced offline scorecard: ${data.player_name}`);
+                    console.log(`[LiveScorecard] ✅ Synced and removed local copy: ${data.player_name}`);
 
                 } catch (error) {
-                    console.error(`[LiveScorecard] ❌ Failed to sync scorecard ${data.player_name}:`, error);
-                    
+                    console.error(`[LiveScorecard] ❌ Failed to sync scorecard ${data.player_name}:`, {
+                        error: error,
+                        errorMessage: error.message,
+                        errorDetails: error.details,
+                        errorHint: error.hint,
+                        errorCode: error.code,
+                        offlineScorecardData: {
+                            event_id: data.event_id,
+                            player_id: data.player_id,
+                            player_name: data.player_name,
+                            course_name: data.course_name,
+                            started_at: data.started_at
+                        },
+                        attemptedOperation: 'OFFLINE_SYNC',
+                        syncAttempts: data.sync_attempts || 0
+                    });
+
+                    // Check if table exists
+                    if (error.message && error.message.includes('relation') && error.message.includes('does not exist')) {
+                        console.error('[LiveScorecard] 🚨 CRITICAL: Database table does not exist!');
+                        console.error('[LiveScorecard] 💡 Solution: Run sql/04_create_scorecards_tables.sql in Supabase');
+                    }
+
                     // Track retry attempts to prevent infinite loop
                     if (!data.sync_attempts) data.sync_attempts = 0;
                     data.sync_attempts++;
@@ -31085,6 +31329,70 @@ class LiveScorecardSystem {
 
         } catch (error) {
             console.error('[LiveScorecard] Error during sync:', error);
+        }
+    }
+
+    // Clean up old/failed offline data on app initialization
+    cleanupOldOfflineData() {
+        console.log('[LiveScorecard] 🧹 Running cleanup of old offline data...');
+
+        try {
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            let cleanedCount = 0;
+
+            // Create array of keys to avoid modifying localStorage during iteration
+            const keysToCheck = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && (key.startsWith('scorecard_local_') || key.startsWith('scores_local_'))) {
+                    keysToCheck.push(key);
+                }
+            }
+
+            for (const key of keysToCheck) {
+                try {
+                    if (key.startsWith('scorecard_local_')) {
+                        const scorecardData = JSON.parse(localStorage.getItem(key));
+
+                        // Remove if no created_at (legacy data) OR if older than 7 days OR if too many retry attempts
+                        const shouldRemove =
+                            !scorecardData.created_at || // Legacy data without timestamp
+                            (scorecardData.created_at && new Date(scorecardData.created_at) < sevenDaysAgo) || // Too old
+                            (scorecardData.sync_attempts && scorecardData.sync_attempts >= 3); // Too many failures
+
+                        if (shouldRemove) {
+                            console.log(`[LiveScorecard] 🗑️ Cleanup: Removing ${scorecardData.player_name || 'Unknown'} (${!scorecardData.created_at ? 'legacy' : 'stale/failed'})`);
+                            localStorage.removeItem(key);
+                            const scoresKey = `scores_${scorecardData.id}`;
+                            localStorage.removeItem(scoresKey);
+                            cleanedCount++;
+                        }
+                    } else if (key.startsWith('scores_local_')) {
+                        // Clean up orphaned scores (scores without matching scorecard)
+                        const scorecardId = key.replace('scores_', 'scorecard_');
+                        if (!localStorage.getItem(scorecardId)) {
+                            console.log(`[LiveScorecard] 🗑️ Cleanup: Removing orphaned scores ${key}`);
+                            localStorage.removeItem(key);
+                            cleanedCount++;
+                        }
+                    }
+                } catch (e) {
+                    // If we can't parse the data, it's corrupt - remove it
+                    console.warn(`[LiveScorecard] 🗑️ Cleanup: Removing corrupt data ${key}`);
+                    localStorage.removeItem(key);
+                    cleanedCount++;
+                }
+            }
+
+            if (cleanedCount > 0) {
+                console.log(`[LiveScorecard] ✅ Cleanup complete: Removed ${cleanedCount} stale/failed items`);
+            } else {
+                console.log('[LiveScorecard] ✅ Cleanup complete: No stale data found');
+            }
+
+        } catch (error) {
+            console.error('[LiveScorecard] Error during cleanup:', error);
         }
     }
 
@@ -32681,6 +32989,16 @@ window.toggleFormatCheckbox = function(label, event) {
             skinsSection.style.display = 'block';
         } else {
             skinsSection.style.display = 'none';
+        }
+    }
+
+    // Show/hide scramble configuration
+    const scrambleSection = document.getElementById('scrambleConfigSection');
+    if (scrambleSection) {
+        if (selectedFormats.includes('scramble')) {
+            scrambleSection.style.display = 'block';
+        } else {
+            scrambleSection.style.display = 'none';
         }
     }
 };

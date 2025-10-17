@@ -29135,6 +29135,40 @@ class SocietyGolfSupabase {
     }
 
     // =====================================================
+    // PLAYER SEARCH
+    // =====================================================
+
+    async searchPlayers(searchTerm) {
+        await this.waitForSupabase();
+        if (!searchTerm || searchTerm.length < 2) {
+            return [];
+        }
+
+        const { data, error } = await window.SupabaseDB.client
+            .from('profiles')
+            .select('id, display_name, username, profile_data')
+            .or(`display_name.ilike.%${searchTerm}%,username.ilike.%${searchTerm}%`)
+            .limit(20);
+
+        if (error) {
+            console.error('[SocietyGolf] Error searching players:', error);
+            return [];
+        }
+
+        return (data || []).map(p => {
+            const golfInfo = p.profile_data?.golfInfo || {};
+            return {
+                id: p.id,
+                name: p.display_name || p.username,
+                username: p.username,
+                handicap: golfInfo.handicap ? parseFloat(golfInfo.handicap) : 36,
+                homeClub: golfInfo.homeClub || '',
+                profileData: p.profile_data
+            };
+        });
+    }
+
+    // =====================================================
     // PAIRINGS MANAGEMENT
     // =====================================================
 

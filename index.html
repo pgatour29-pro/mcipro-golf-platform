@@ -31062,7 +31062,22 @@ class LiveScorecardSystem {
 
                 } catch (error) {
                     console.error(`[LiveScorecard] ❌ Failed to sync scorecard ${data.player_name}:`, error);
-                    // Leave in localStorage for retry later
+                    
+                    // Track retry attempts to prevent infinite loop
+                    if (!data.sync_attempts) data.sync_attempts = 0;
+                    data.sync_attempts++;
+                    
+                    if (data.sync_attempts >= 3) {
+                        // After 3 failed attempts, remove to prevent groundhog day loop
+                        console.warn(`[LiveScorecard] 🗑️ Removing ${data.player_name} after 3 failed sync attempts`);
+                        localStorage.removeItem(key);
+                        const scoresKey = `scores_${data.id}`;
+                        localStorage.removeItem(scoresKey);
+                    } else {
+                        // Update retry count in localStorage
+                        localStorage.setItem(key, JSON.stringify(data));
+                        console.log(`[LiveScorecard] 🔄 Will retry sync (attempt ${data.sync_attempts}/3)`);
+                    }
                 }
             }
 

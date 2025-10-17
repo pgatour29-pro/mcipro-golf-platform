@@ -2,33 +2,66 @@
 
 This index catalogs the contents of `Documents/MciPro/compacted` and records the latest work completed so you can quickly resume.
 
-## Recent Work (This Session)
+## Recent Work (This Session - October 17, 2025)
 
-- Chat reliability and UX
-  - Added polling fallback when Supabase Realtime cannot join after max retries.
-    - Functions: `startPollingFallback()`, `stopPollingFallback()` appended near end of file.
-    - Wired into retry handler; polling backfills messages and updates badges, and periodically attempts to restore realtime.
-  - Fixed mojibake in chat UI labels/buttons (group labels, archive/delete buttons, Private folder arrow/label, modal close button, typing indicator).
-  - Corrected user mapping for DMs: map `user_profiles.line_user_id` → Supabase `profiles.id` in a single batched query for both initial contact load and live search.
-  - Synced updated web chat JS to mobile assets (Android/iOS) so the app versions match the web version.
+**Live Scorecard Multi-Format & Scramble Tracking**
 
-- Files touched
-  - Updated:
-    - `Documents/MciPro/www/chat/chat-system-full.js`
-      - Polling fallback helpers and integration.
-      - Batched profile mapping (search "queryContactsServer" and "initChat" user transform).
-      - Label/icon normalizations (group names, Private folder arrow/label, typing indicator, modal close button set to × after insertion).
-    - Mobile asset sync:
-      - `Documents/MciPro/android/app/src/main/assets/public/chat/chat-system-full.js`
-      - `Documents/MciPro/ios/App/App/public/chat/chat-system-full.js`
-  - Copied (to keep parity):
-      - `Documents/MciPro/www/chat/chat-database-functions.js` → Android/iOS asset folders
+- Scramble In-Round Tracking UI
+  - Added drive/putt selection interface that appears after all players score each hole
+  - Displays whose drive was used per hole with remaining drive counter
+  - Tracks who made the putt on each hole
+  - Automatic display with 500ms smooth transition
+  - Data stored: `scrambleDriveData`, `scramblePuttData`, `scrambleDriveCount`
+  - Methods: `showScrambleTracking()`, `saveScrambleTracking()`
+
+- Multi-Format Scorecard Display FIX
+  - Fixed format header: Now shows "Stableford • Stroke Play • Scramble" (all selected formats)
+  - Fixed score rows: Stableford Points row displays when stableford selected
+  - Fixed 8 locations using singular `scoringFormat` → array `scoringFormats`
+  - Summary section now shows totals for all selected formats
+  - Resolves user issue: "still only has stroke play" bug
+
+- Syntax Error Fixes
+  - Fixed missing closing brace in `nextHole()` method (line 29970)
+  - Removed extra closing brace after Scramble methods (line 30055)
+  - Resolved: `Uncaught SyntaxError: Unexpected token '{'`
+  - Resolved: `Uncaught ReferenceError: LiveScorecardManager is not defined`
+
+- Groundhog Day Sync Loop FIX
+  - Added 3-attempt retry limit for offline scorecard sync
+  - Auto-cleanup failed scorecards after 3 attempts
+  - Prevents infinite loop of 400 errors on every page load
+  - Resolves user issue: "why the same long list of errors. we are in a groundhog day"
+
+- Favicon Added
+  - Added favicon links using existing `mcipro.png` logo
+  - Browser tab icon, bookmarks, iOS home screen icons
+  - Resolved: `GET /favicon.ico 404 (Not Found)`
+
+- Files Modified
+  - `index.html` - +183 additions, -23 deletions (6 commits)
+  - Commits: 86a9e5f0, 15cc2abf, 62e2af55, 555ff2de, d7acf9e1, c59a4669
 
 ## How To Verify
 
-- Open chat on web/mobile, then temporarily break network; you should see messages continue to appear after brief intervals (polling), and realtime restores automatically when network stabilizes.
-- Start a DM from search or contacts; it should target the correct user (Supabase UUID), not only the LINE ID.
-- Sidebar labels should render cleanly (no garbled glyphs); Private folder arrow toggles ▸/▾.
+**Multi-Format Scorecard:**
+- Select: Thailand Stableford + Stroke Play + Scramble
+- Start round, play 1 hole, complete round
+- Verify finalized scorecard shows all 3 formats with separate score rows
+
+**Scramble Tracking:**
+- Enable "Track Drive Usage" and "Track Who Made Each Putt"
+- Enter scores for all players
+- Verify Scramble UI appears with drive/putt selection dropdowns
+- Check drive counter updates correctly
+
+**Sync Loop Fix:**
+- Clear localStorage: Run script in browser console (see session doc)
+- Hard refresh, verify console clean with no repeated 400 errors
+
+**Syntax Fixes:**
+- Verify can add players to Live Scorecard
+- Verify can start round without errors
 
 ## Compact Folder Contents (Catalog)
 
@@ -58,6 +91,8 @@ Profiles & Auth
 - PROFILE_SYNC_FIX_2025‑10‑09.txt — LINE ↔ Supabase profile mapping/sync.
 
 Live Scorecard
+- 2025‑10‑17_SCRAMBLE_MULTIFORMAT_SYNC_FIXES.md — **NEW** Scramble tracking UI, multi-format display fix, sync loop fix (groundhog day resolved).
+- 2025‑10‑17_SCORECARD_ENHANCEMENTS_SESSION.md — Multi-format backend implementation.
 - 2025‑10‑11_LiveScorecard_Complete_Overhaul.md — Overhaul: keypad entry, live leaderboards, offline‑first.
 - PLAN_Live_Scorecard_Leaderboard_2025‑10‑10.txt — Leaderboard/scoring plan.
 
@@ -86,3 +121,16 @@ Media
 
 —
 Generated: 2025‑10‑16
+
+**Updated Next Steps (2025-10-17):**
+
+**Immediate (from this session):**
+- Fix Supabase 400 errors when creating scorecards online
+- Add drive requirement validation at round completion
+- Add Nassau/Skins dedicated score rows
+- Test multi-format display with all formats
+
+**Future Enhancements:**
+- Multi-format leaderboards
+- Scramble team score display with highlights
+- Export multi-format scorecards (PDF/CSV)

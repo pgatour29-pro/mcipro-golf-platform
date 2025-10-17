@@ -31586,6 +31586,28 @@ class LiveScorecardSystem {
         const container = document.createElement('div');
         container.className = 'border-4 border-purple-500 rounded-lg p-4 mb-6 bg-gradient-to-br from-purple-50 to-blue-50 shadow-lg print:break-inside-avoid print:shadow-none';
 
+        // Calculate team handicap based on scramble format
+        const teamSize = this.players.length;
+        const sortedHandicaps = this.players.map(p => p.handicap).sort((a, b) => a - b);
+        let teamHandicap = 0;
+
+        if (teamSize === 2) {
+            // 2-Man Scramble: 35% of low HCP + 15% of high HCP
+            teamHandicap = (sortedHandicaps[0] * 0.35) + (sortedHandicaps[1] * 0.15);
+        } else if (teamSize === 3) {
+            // 3-Man Scramble: 30% + 20% + 10%
+            teamHandicap = (sortedHandicaps[0] * 0.30) + (sortedHandicaps[1] * 0.20) + (sortedHandicaps[2] * 0.10);
+        } else if (teamSize === 4) {
+            // 4-Man Scramble: 25% + 20% + 15% + 10%
+            teamHandicap = (sortedHandicaps[0] * 0.25) + (sortedHandicaps[1] * 0.20) + (sortedHandicaps[2] * 0.15) + (sortedHandicaps[3] * 0.10);
+        } else {
+            // 5+ players: Use average of all * 0.20
+            const avgHandicap = sortedHandicaps.reduce((sum, h) => sum + h, 0) / sortedHandicaps.length;
+            teamHandicap = avgHandicap * 0.20;
+        }
+
+        const teamPlayingHandicap = Math.round(teamHandicap);
+
         // Team header
         const header = document.createElement('div');
         header.className = 'mb-4 pb-3 border-b-2 border-purple-300';
@@ -31594,6 +31616,7 @@ class LiveScorecardSystem {
                 <div>
                     <h3 class="text-2xl font-bold text-purple-900">🏆 SCRAMBLE TEAM SCORE</h3>
                     <p class="text-sm text-purple-700 mt-1">Best Ball • ${this.players.length} Players: ${this.players.map(p => p.name).join(', ')}</p>
+                    <p class="text-xs text-purple-600 mt-1">Team Handicap: ${teamHandicap.toFixed(1)} (Playing: ${teamPlayingHandicap})</p>
                 </div>
                 <div class="text-right" id="teamTotal"></div>
             </div>
@@ -31619,13 +31642,25 @@ class LiveScorecardSystem {
 
             teamScores[holeNum] = bestScore;
 
-            // Calculate Stableford points for team's best score
+            // Calculate Stableford points for team's best score WITH handicap
             if (bestScore !== null) {
                 const hole = this.courseData?.holes?.find(h => h.number === holeNum);
                 const par = hole?.par || 4;
+                const strokeIndex = hole?.strokeIndex || holeNum;
 
-                // Team plays scratch (no handicap strokes on team score)
-                const diff = bestScore - par;
+                // Calculate handicap strokes for this hole
+                const fullStrokes = Math.floor(teamPlayingHandicap / 18);
+                const remainingStrokes = teamPlayingHandicap % 18;
+                let strokesReceived = fullStrokes;
+                if (strokeIndex <= remainingStrokes) {
+                    strokesReceived += 1;
+                }
+
+                // Calculate net score
+                const netScore = bestScore - strokesReceived;
+                const diff = netScore - par;
+
+                // Thailand Stableford points based on NET score
                 let points = 0;
                 if (diff <= -2) points = 4;      // Eagle or better
                 else if (diff === -1) points = 3; // Birdie
@@ -31692,6 +31727,35 @@ class LiveScorecardSystem {
         const totalGross = frontNineGross + backNineGross;
         tableHTML += `<td class="border border-purple-300 px-2 py-2 text-center font-bold text-lg bg-yellow-100">${totalGross || '-'}</td></tr>`;
 
+        // Team Net Score row (with handicap)
+        tableHTML += `<tr class="bg-blue-50"><td class="border border-purple-300 px-2 py-2 font-semibold">Team Net</td>`;
+        let frontNineNet = 0, backNineNet = 0;
+        for (let i = 1; i <= 18; i++) {
+            const score = teamScores[i];
+            let netScore = '-';
+
+            if (score !== null && score !== undefined) {
+                const hole = this.courseData?.holes?.find(h => h.number === i);
+                const strokeIndex = hole?.strokeIndex || i;
+
+                // Calculate handicap strokes for this hole
+                const fullStrokes = Math.floor(teamPlayingHandicap / 18);
+                const remainingStrokes = teamPlayingHandicap % 18;
+                let strokesReceived = fullStrokes;
+                if (strokeIndex <= remainingStrokes) {
+                    strokesReceived += 1;
+                }
+
+                netScore = score - strokesReceived;
+                if (i <= 9) frontNineNet += netScore;
+                else backNineNet += netScore;
+            }
+
+            tableHTML += `<td class="border border-purple-300 px-1 py-2 text-center font-semibold text-blue-700">${netScore !== '-' ? netScore : '-'}</td>`;
+        }
+        const totalNet = frontNineNet + backNineNet;
+        tableHTML += `<td class="border border-purple-300 px-2 py-2 text-center font-bold text-lg bg-blue-200">${totalNet || '-'}</td></tr>`;
+
         // Team Stableford Points row
         if (this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford')) {
             tableHTML += `<tr class="bg-green-50"><td class="border border-purple-300 px-2 py-2 font-semibold">Team Points</td>`;
@@ -31747,16 +31811,20 @@ class LiveScorecardSystem {
 
         let summaryHTML = `
             <div class="bg-blue-50 p-3 rounded border border-blue-200">
-                <div class="text-xs text-gray-600">Front 9</div>
+                <div class="text-xs text-gray-600">Front 9 Gross</div>
                 <div class="font-bold text-lg">${frontNineGross || '-'}</div>
             </div>
             <div class="bg-blue-50 p-3 rounded border border-blue-200">
-                <div class="text-xs text-gray-600">Back 9</div>
+                <div class="text-xs text-gray-600">Back 9 Gross</div>
                 <div class="font-bold text-lg">${backNineGross || '-'}</div>
             </div>
             <div class="bg-green-100 p-3 rounded border border-green-300">
                 <div class="text-xs text-gray-600">Total Gross</div>
                 <div class="font-bold text-2xl text-green-800">${totalGross || '-'}</div>
+            </div>
+            <div class="bg-blue-200 p-3 rounded border border-blue-400">
+                <div class="text-xs text-gray-600">Total Net (HCP ${teamPlayingHandicap})</div>
+                <div class="font-bold text-2xl text-blue-900">${totalNet || '-'}</div>
             </div>
         `;
 

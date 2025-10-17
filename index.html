@@ -30327,8 +30327,57 @@ class LiveScorecardSystem {
                 console.error('[LiveScorecard] Error saving to round history:', error);
                 return null;
             }
-    
+
             console.log(`[LiveScorecard] ✅ Saved round to database for ${player.name}. Round ID: ${round.id}`);
+
+            // Save hole-by-hole data including scramble tracking
+            const holeInserts = [];
+            for (let holeNum = 1; holeNum <= 18; holeNum++) {
+                const grossScore = this.scoresCache[player.id]?.[holeNum];
+                if (!grossScore) continue; // Skip holes with no score
+
+                const holeData = this.courseData.holes?.[holeNum - 1];
+                const par = holeData?.par || 4;
+                const strokeIndex = holeData?.strokeIndex || holeNum;
+
+                // Calculate net score and stableford
+                const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
+                const netScore = grossScore - shotsReceived;
+                const stablefordPoints = Math.max(0, (par - netScore) + 2);
+
+                // Get scramble tracking data for this hole
+                const driveData = this.scrambleDriveData?.[holeNum];
+                const puttData = this.scramblePuttData?.[holeNum];
+
+                holeInserts.push({
+                    round_id: round.id,
+                    hole_number: holeNum,
+                    par: par,
+                    stroke_index: strokeIndex,
+                    gross_score: grossScore,
+                    net_score: netScore,
+                    stableford_points: stablefordPoints,
+                    handicap_strokes: shotsReceived,
+                    drive_player_id: driveData?.player_id || null,
+                    drive_player_name: driveData?.player_name || null,
+                    putt_player_id: puttData?.player_id || null,
+                    putt_player_name: puttData?.player_name || null
+                });
+            }
+
+            // Insert all holes at once
+            if (holeInserts.length > 0) {
+                const { error: holesError } = await window.SupabaseDB.client
+                    .from('round_holes')
+                    .insert(holeInserts);
+
+                if (holesError) {
+                    console.error('[LiveScorecard] Error saving hole details:', holesError);
+                } else {
+                    console.log(`[LiveScorecard] ✅ Saved ${holeInserts.length} hole details with scramble tracking`);
+                }
+            }
+
             return round.id;
     
         } catch (error) {

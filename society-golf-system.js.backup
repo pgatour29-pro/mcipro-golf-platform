@@ -80,7 +80,6 @@ class SocietyGolfSupabase {
             name: data.name,
             date: data.date,
             cutoff: data.cutoff,
-            startTime: data.start_time,
             baseFee: data.base_fee || 0,
             cartFee: data.cart_fee || 0,
             caddyFee: data.caddy_fee || 0,
@@ -92,16 +91,7 @@ class SocietyGolfSupabase {
             status: data.status,
             courseId: data.course_id,
             courseName: data.course_name,
-            eventFormat: data.event_format,
-            notes: data.notes,
-            autoWaitlist: data.auto_waitlist,
-            recurring: data.recurring,
-            recurFrequency: data.recur_frequency,
-            recurDayOfWeek: data.recur_day_of_week,
-            recurMonthlyPattern: data.recur_monthly_pattern,
-            recurEndType: data.recur_end_type,
-            recurUntil: data.recur_until,
-            recurCount: data.recur_count
+            notes: data.notes
         } : null;
     }
 
@@ -125,17 +115,7 @@ class SocietyGolfSupabase {
                 status: 'open',
                 course_id: eventData.courseId,
                 course_name: eventData.courseName,
-                start_time: eventData.startTime,
-                event_format: eventData.eventFormat,
-                notes: eventData.notes,
-                auto_waitlist: eventData.autoWaitlist !== undefined ? eventData.autoWaitlist : true,
-                recurring: eventData.recurring || false,
-                recur_frequency: eventData.recurFrequency,
-                recur_day_of_week: eventData.recurDayOfWeek,
-                recur_monthly_pattern: eventData.recurMonthlyPattern,
-                recur_end_type: eventData.recurEndType,
-                recur_until: eventData.recurUntil,
-                recur_count: eventData.recurCount
+                notes: eventData.notes
             }])
             .select()
             .single();
@@ -362,40 +342,6 @@ class SocietyGolfSupabase {
             console.error('[SocietyGolf] Error removing from waitlist:', error);
             throw error;
         }
-    }
-
-    // =====================================================
-    // PLAYER SEARCH
-    // =====================================================
-
-    async searchPlayers(searchTerm) {
-        await this.waitForSupabase();
-        if (!searchTerm || searchTerm.length < 2) {
-            return [];
-        }
-
-        const { data, error } = await SupabaseManager.client
-            .from('profiles')
-            .select('id, display_name, username, profile_data')
-            .or(`display_name.ilike.%${searchTerm}%,username.ilike.%${searchTerm}%`)
-            .limit(20);
-
-        if (error) {
-            console.error('[SocietyGolf] Error searching players:', error);
-            return [];
-        }
-
-        return (data || []).map(p => {
-            const golfInfo = p.profile_data?.golfInfo || {};
-            return {
-                id: p.id,
-                name: p.display_name || p.username,
-                username: p.username,
-                handicap: golfInfo.handicap ? parseFloat(golfInfo.handicap) : 36,
-                homeClub: golfInfo.homeClub || '',
-                profileData: p.profile_data
-            };
-        });
     }
 
     // =====================================================

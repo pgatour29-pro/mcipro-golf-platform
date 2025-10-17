@@ -35,6 +35,7 @@ class SocietyGolfSupabase {
             name: e.name,
             date: e.date,
             cutoff: e.cutoff,
+            startTime: e.start_time,
             baseFee: e.base_fee || 0,
             cartFee: e.cart_fee || 0,
             caddyFee: e.caddy_fee || 0,
@@ -46,7 +47,16 @@ class SocietyGolfSupabase {
             status: e.status,
             courseId: e.course_id,
             courseName: e.course_name,
+            eventFormat: e.event_format,
             notes: e.notes,
+            autoWaitlist: e.auto_waitlist,
+            recurring: e.recurring,
+            recurFrequency: e.recur_frequency,
+            recurDayOfWeek: e.recur_day_of_week,
+            recurMonthlyPattern: e.recur_monthly_pattern,
+            recurEndType: e.recur_end_type,
+            recurUntil: e.recur_until,
+            recurCount: e.recur_count,
             createdAt: e.created_at,
             updatedAt: e.updated_at
         }));
@@ -70,6 +80,7 @@ class SocietyGolfSupabase {
             name: data.name,
             date: data.date,
             cutoff: data.cutoff,
+            startTime: data.start_time,
             baseFee: data.base_fee || 0,
             cartFee: data.cart_fee || 0,
             caddyFee: data.caddy_fee || 0,
@@ -81,7 +92,16 @@ class SocietyGolfSupabase {
             status: data.status,
             courseId: data.course_id,
             courseName: data.course_name,
-            notes: data.notes
+            eventFormat: data.event_format,
+            notes: data.notes,
+            autoWaitlist: data.auto_waitlist,
+            recurring: data.recurring,
+            recurFrequency: data.recur_frequency,
+            recurDayOfWeek: data.recur_day_of_week,
+            recurMonthlyPattern: data.recur_monthly_pattern,
+            recurEndType: data.recur_end_type,
+            recurUntil: data.recur_until,
+            recurCount: data.recur_count
         } : null;
     }
 
@@ -105,7 +125,17 @@ class SocietyGolfSupabase {
                 status: 'open',
                 course_id: eventData.courseId,
                 course_name: eventData.courseName,
-                notes: eventData.notes
+                start_time: eventData.startTime,
+                event_format: eventData.eventFormat,
+                notes: eventData.notes,
+                auto_waitlist: eventData.autoWaitlist !== undefined ? eventData.autoWaitlist : true,
+                recurring: eventData.recurring || false,
+                recur_frequency: eventData.recurFrequency,
+                recur_day_of_week: eventData.recurDayOfWeek,
+                recur_monthly_pattern: eventData.recurMonthlyPattern,
+                recur_end_type: eventData.recurEndType,
+                recur_until: eventData.recurUntil,
+                recur_count: eventData.recurCount
             }])
             .select()
             .single();
@@ -124,6 +154,7 @@ class SocietyGolfSupabase {
         if (updates.name !== undefined) dbUpdates.name = updates.name;
         if (updates.date !== undefined) dbUpdates.date = updates.date;
         if (updates.cutoff !== undefined) dbUpdates.cutoff = updates.cutoff;
+        if (updates.startTime !== undefined) dbUpdates.start_time = updates.startTime;
         if (updates.baseFee !== undefined) dbUpdates.base_fee = updates.baseFee;
         if (updates.cartFee !== undefined) dbUpdates.cart_fee = updates.cartFee;
         if (updates.caddyFee !== undefined) dbUpdates.caddy_fee = updates.caddyFee;
@@ -132,7 +163,16 @@ class SocietyGolfSupabase {
         if (updates.maxPlayers !== undefined) dbUpdates.max_players = updates.maxPlayers;
         if (updates.status !== undefined) dbUpdates.status = updates.status;
         if (updates.courseName !== undefined) dbUpdates.course_name = updates.courseName;
+        if (updates.eventFormat !== undefined) dbUpdates.event_format = updates.eventFormat;
         if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+        if (updates.autoWaitlist !== undefined) dbUpdates.auto_waitlist = updates.autoWaitlist;
+        if (updates.recurring !== undefined) dbUpdates.recurring = updates.recurring;
+        if (updates.recurFrequency !== undefined) dbUpdates.recur_frequency = updates.recurFrequency;
+        if (updates.recurDayOfWeek !== undefined) dbUpdates.recur_day_of_week = updates.recurDayOfWeek;
+        if (updates.recurMonthlyPattern !== undefined) dbUpdates.recur_monthly_pattern = updates.recurMonthlyPattern;
+        if (updates.recurEndType !== undefined) dbUpdates.recur_end_type = updates.recurEndType;
+        if (updates.recurUntil !== undefined) dbUpdates.recur_until = updates.recurUntil;
+        if (updates.recurCount !== undefined) dbUpdates.recur_count = updates.recurCount;
 
         const { error } = await SupabaseManager.client
             .from('society_events')

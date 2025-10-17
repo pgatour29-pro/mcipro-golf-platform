@@ -36293,8 +36293,81 @@ class GolferEventsManager {
             await this.loadEvents();
             this.renderEvents();
         }
+
+        // Subscribe to real-time event updates
+        this.subscribeToEventChanges();
     }
 
+    subscribeToEventChanges() {
+        console.log('[GolferEventsSystem] 🔔 Setting up real-time subscriptions...');
+
+        // Subscribe to society_events table changes (when organizer updates event details)
+        SocietyGolfDB.subscribeToEvents((payload) => {
+            console.log('[GolferEventsSystem] 📡 Event change detected:', payload.eventType);
+
+            // Show notification to user about the update
+            if (payload.eventType === 'UPDATE') {
+                NotificationManager.show('Event information updated', 'info', 3000);
+            } else if (payload.eventType === 'INSERT') {
+                NotificationManager.show('New event available', 'success', 3000);
+            } else if (payload.eventType === 'DELETE') {
+                NotificationManager.show('An event was cancelled', 'warning', 3000);
+            }
+
+            // Refresh events list to show updated information
+            this.loadEvents(false).then(() => {
+                this.filterEvents();
+                console.log('[GolferEventsSystem] ✅ Events refreshed after update');
+            });
+        });
+
+        // Subscribe to ALL registration changes (when players register/unregister)
+        const registrationSubscription = window.SupabaseDB.client
+            .channel('golfer_view_registrations')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'event_registrations'
+            }, (payload) => {
+                console.log('[GolferEventsSystem] 📡 Registration change detected:', payload.eventType);
+
+                // Only show notification if it affects current user
+                const currentUserId = AppState.currentUser?.lineUserId;
+                if (payload.new?.player_id === currentUserId || payload.old?.player_id === currentUserId) {
+                    if (payload.eventType === 'DELETE') {
+                        NotificationManager.show('You have been removed from an event', 'warning', 3000);
+                    }
+                }
+
+                // Refresh events to update registration counts and availability
+                this.loadEvents(false).then(() => {
+                    this.filterEvents();
+                });
+            })
+            .subscribe();
+
+        // Subscribe to ALL waitlist changes (when players are promoted/added to waitlist)
+        const waitlistSubscription = window.SupabaseDB.client
+            .channel('golfer_view_waitlist')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'event_waitlist'
+            }, (payload) => {
+                console.log('[GolferEventsSystem] 📡 Waitlist change detected:', payload.eventType);
+
+                // Refresh events to update waitlist counts and availability
+                this.loadEvents(false).then(() => {
+                    this.filterEvents();
+                });
+            })
+            .subscribe();
+
+        console.log('[GolferEventsSystem] ✅ Real-time subscriptions active (events, registrations, waitlist)');
+
+    }
+
+    
     isCacheValid() {
         if (!this.eventsCache || !this.cacheTimestamp) return false;
 

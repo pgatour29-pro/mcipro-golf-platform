@@ -97,6 +97,17 @@ self.addEventListener('fetch', (event) => {
     const { request } = event;
     const url = new URL(request.url);
 
+    // Bypass LINE OAuth callback and exchange endpoint entirely
+    // - Do not intercept requests that include ?code or ?state
+    // - Do not intercept calls to the Supabase Edge Function
+    if (
+        url.search.includes('code=') ||
+        url.search.includes('state=') ||
+        url.pathname.includes('/functions/v1/line-oauth-exchange')
+    ) {
+        return; // Let the network handle these without SW involvement
+    }
+
     // CRITICAL: Never intercept Supabase REST or Realtime (NETWORK ONLY)
     // Also bypass WebSocket and Server-Sent Events (SSE) requests
     const isSupabase =

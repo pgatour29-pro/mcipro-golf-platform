@@ -95,7 +95,7 @@ window.location.href = `https://access.line.me/oauth2/v2.1/authorize?...`;
 ```javascript
 // RESTORED: Working LIFF SDK
 if (!liff.isLoggedIn()) {
-    liff.login();
+    liff.login({ redirectUri: 'https://mycaddipro.com/' });
 } else {
     const profile = await liff.getProfile();
     await this.setUserFromLineProfile(profile);
@@ -615,3 +615,4 @@ if (seenMessages.size > 2000) {
 **Time Wasted**: ~8 hours over 1.5 days
 **Status**: All issues resolved, production stable
 **Moral**: Measure twice, cut once. Or in this case: Check netlify.toml BEFORE editing files. 🎯
+

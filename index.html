@@ -28141,6 +28141,9 @@ class SocietyGolfSupabase {
     }
 
     async updateEvent(eventId, updates) {
+        console.log('[SocietyGolfDB] 🔄 updateEvent called for ID:', eventId);
+        console.log('[SocietyGolfDB] Updates to apply:', updates);
+
         await this.waitForSupabase();
         const dbUpdates = {};
         if (updates.name !== undefined) dbUpdates.name = updates.name;
@@ -28166,15 +28169,19 @@ class SocietyGolfSupabase {
         if (updates.recurUntil !== undefined) dbUpdates.recur_until = updates.recurUntil;
         if (updates.recurCount !== undefined) dbUpdates.recur_count = updates.recurCount;
 
+        console.log('[SocietyGolfDB] Database updates to send:', dbUpdates);
+
         const { error } = await window.SupabaseDB.client
             .from('society_events')
             .update(dbUpdates)
             .eq('id', eventId);
 
         if (error) {
-            console.error('[SocietyGolf] Error updating event:', error);
+            console.error('[SocietyGolfDB] ❌ Error updating event:', error);
             throw error;
         }
+
+        console.log('[SocietyGolfDB] ✅ Event updated successfully in database');
     }
 
     async deleteEvent(eventId) {
@@ -34227,6 +34234,7 @@ class SocietyOrganizerManager {
     }
 
     async saveEvent() {
+        console.log('[SocietyOrganizer] 🎯 saveEvent called');
         try {
             const isRecurring = document.getElementById('eventRecurring').checked;
             const cutoffValue = document.getElementById('eventCutoff').value;
@@ -34263,23 +34271,31 @@ class SocietyOrganizerManager {
                     ? parseInt(document.getElementById('eventRecurCount').value) : null
             };
 
+            console.log('[SocietyOrganizer] Event data collected:', eventData);
+
             // Validation
             if (!eventData.name) {
+                console.warn('[SocietyOrganizer] ⚠️ Validation failed: No event name');
                 NotificationManager.show('Please enter event name', 'error');
                 return;
             }
             if (!eventData.date) {
+                console.warn('[SocietyOrganizer] ⚠️ Validation failed: No event date');
                 NotificationManager.show('Please select event date', 'error');
                 return;
             }
 
             if (this.currentEvent) {
                 // Update existing event
+                console.log('[SocietyOrganizer] 📝 Updating event:', this.currentEvent.id);
                 await SocietyGolfDB.updateEvent(this.currentEvent.id, eventData);
+                console.log('[SocietyOrganizer] ✅ Event updated in database');
                 NotificationManager.show('Event updated successfully', 'success');
             } else {
                 // Create new event
+                console.log('[SocietyOrganizer] ➕ Creating new event');
                 await SocietyGolfDB.createEvent(eventData);
+                console.log('[SocietyOrganizer] ✅ Event created in database');
 
                 // If recurring, create additional events in the database
                 if (isRecurring) {
@@ -34296,11 +34312,15 @@ class SocietyOrganizerManager {
                 }
             }
 
+            console.log('[SocietyOrganizer] Hiding form...');
             this.hideEventForm();
+            console.log('[SocietyOrganizer] Reloading events...');
             await this.loadEvents();
+            console.log('[SocietyOrganizer] ✅ Events reloaded successfully');
         } catch (error) {
-            console.error('[SocietyOrganizer] Error saving event:', error);
-            NotificationManager.show('Failed to save event', 'error');
+            console.error('[SocietyOrganizer] ❌ Error saving event:', error);
+            console.error('[SocietyOrganizer] Error stack:', error.stack);
+            NotificationManager.show('Failed to save event: ' + error.message, 'error');
         }
     }
 

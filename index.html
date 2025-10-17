@@ -25066,7 +25066,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <span class="material-symbols-outlined text-sm">download</span>
                         Export CSV
                     </button>
-                    <button onclick="SocietyOrganizerSystem.openPairingsModal()" class="btn-primary">
+                    <button id="rosterPairingsBtn" onclick="SocietyOrganizerSystem.openPairingsModalFromRoster()" class="btn-primary">
                         <span class="material-symbols-outlined text-sm">groups</span>
                         Manage Pairings
                     </button>
@@ -25076,7 +25076,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     </div>
 
     <!-- Manual Player Addition Modal -->
-    <div id="manualPlayerModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[9999]" style="display: none;">
+    <div id="manualPlayerModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center" style="display: none; z-index: 10001;">
         <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
             <!-- Header -->
             <div class="p-6 border-b border-gray-200 bg-gradient-to-r from-green-600 to-green-500">
@@ -35285,8 +35285,15 @@ class SocietyOrganizerManager {
     // =====================================================
 
     async openRoster(eventId) {
+        console.log('[Roster] Opening roster for event:', eventId);
         this.currentRosterEvent = this.events.find(e => e.id === eventId);
-        if (!this.currentRosterEvent) return;
+
+        if (!this.currentRosterEvent) {
+            console.error('[Roster] Event not found:', eventId);
+            return;
+        }
+
+        console.log('[Roster] currentRosterEvent set to:', this.currentRosterEvent);
 
         // Set modal title
         document.getElementById('rosterEventName').textContent = this.currentRosterEvent.name;
@@ -35399,7 +35406,16 @@ class SocietyOrganizerManager {
 
     closeRosterModal() {
         document.getElementById('rosterModal').style.display = 'none';
-        this.currentRosterEvent = null;
+        // Don't clear currentRosterEvent here - it may be needed by child modals
+        // this.currentRosterEvent = null;
+    }
+
+    openPairingsModalFromRoster() {
+        if (!this.currentRosterEvent || !this.currentRosterEvent.id) {
+            NotificationManager.show('No event selected', 'error');
+            return;
+        }
+        this.openPairingsModal(this.currentRosterEvent.id);
     }
 
     // =====================================================
@@ -35407,8 +35423,17 @@ class SocietyOrganizerManager {
     // =====================================================
 
     openManualPlayerModal(destination) {
+        console.log('[Manual Player] Opening modal, currentRosterEvent:', this.currentRosterEvent);
+
         if (!this.currentRosterEvent) {
-            NotificationManager.show('No event selected', 'error');
+            console.error('[Manual Player] currentRosterEvent is null!');
+            NotificationManager.show('Error: No event context. Please close and reopen the roster.', 'error');
+            return;
+        }
+
+        if (!this.currentRosterEvent.id) {
+            console.error('[Manual Player] currentRosterEvent.id is missing!', this.currentRosterEvent);
+            NotificationManager.show('Error: Event ID missing. Please close and reopen the roster.', 'error');
             return;
         }
 

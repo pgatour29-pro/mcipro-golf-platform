@@ -10652,11 +10652,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // SECURITY: Check if current user is admin
             async isAdmin() {
-                if (typeof liff === 'undefined' || !liff.isLoggedIn()) {
-                    return false;
+                try {
+                    if (typeof liff !== 'undefined' && liff.isLoggedIn && liff.isLoggedIn()) {
+                        const lineProfile = await liff.getProfile();
+                        return LineConfig.adminUserIds.includes(lineProfile.userId);
+                    }
+                } catch (error) {
+                    console.warn('[ProfileSystem] isAdmin LIFF check failed:', error.message);
                 }
-                const lineProfile = await liff.getProfile();
-                return LineConfig.adminUserIds.includes(lineProfile.userId);
+                return false;
             },
 
             getCurrentProfile(userType) {
@@ -11767,20 +11771,22 @@ document.addEventListener('DOMContentLoaded', function() {
             },
 
             async saveProfileFromForm(userType) {
+                console.log('[ProfileSystem] 💾 Save Profile button clicked! UserType:', userType);
                 const profile = this.getCurrentProfile(userType);
+                console.log('[ProfileSystem] Current profile:', profile);
 
                 // Cache LINE profile once at the start (single API call)
                 let linePictureUrl = AppState.currentUser?.avatar || profile.linePictureUrl || '';
-                if (typeof liff !== 'undefined' && liff.isLoggedIn()) {
-                    try {
+                try {
+                    if (typeof liff !== 'undefined' && liff.isLoggedIn && liff.isLoggedIn()) {
                         const lineProfile = await liff.getProfile();
                         if (!profile.lineUserId) {
                             profile.lineUserId = lineProfile.userId;
                         }
                         linePictureUrl = lineProfile.pictureUrl || linePictureUrl;
-                    } catch (e) {
-                        console.error('[ProfileSystem] LIFF error:', e);
                     }
+                } catch (e) {
+                    console.warn('[ProfileSystem] saveProfile LIFF check failed:', e.message);
                 }
 
                 try {
@@ -12008,13 +12014,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
 
                     // Save profile immediately to localStorage (fast)
+                    console.log('[ProfileSystem] 📝 Saving profile to localStorage...');
                     this.saveProfile(userType, profile);
+                    console.log('[ProfileSystem] ✅ Profile saved to localStorage');
 
                     // Close modal immediately
+                    console.log('[ProfileSystem] Closing modal...');
                     this.closeProfileModal();
+                    console.log('[ProfileSystem] ✅ Modal closed');
 
                     // Update dashboard data
+                    console.log('[ProfileSystem] Updating dashboard data...');
                     this.updateDashboardData();
+                    console.log('[ProfileSystem] ✅ Dashboard data updated');
 
                     // Show quick success message
                     const successModal = document.createElement('div');
@@ -12038,7 +12050,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     }, 1000);
 
                 } catch (error) {
-                    console.error('[ProfileSystem] Error saving profile:', error);
+                    console.error('[ProfileSystem] ❌ Error saving profile:', error);
+                    console.error('[ProfileSystem] Error message:', error.message);
+                    console.error('[ProfileSystem] Error stack:', error.stack);
                     alert('Error saving profile: ' + error.message + '\n\nPlease check the console for details.');
                 }
             }

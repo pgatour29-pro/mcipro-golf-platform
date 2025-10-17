@@ -25478,6 +25478,412 @@ Total Rounds: ${ningCaddy.totalRounds}`;
         </div>
     </div>
 
+    <!-- ============================================
+         PAYMENT TRACKING SYSTEM MODALS
+         ============================================ -->
+
+    <!-- Payment Tracking Modal (Organizer) -->
+    <div id="paymentTrackingModal" class="modal-backdrop" style="display: none;">
+        <div class="modal-container max-w-6xl">
+            <!-- Header with Summary -->
+            <div class="modal-header bg-gradient-to-r from-green-600 to-green-400 text-white">
+                <div class="flex-1">
+                    <h2 class="text-xl font-bold" id="paymentEventName">Payment Tracking</h2>
+                    <p class="text-sm text-green-100 mt-1" id="paymentEventDate">Event Date</p>
+
+                    <!-- Real-time Balance Summary -->
+                    <div class="grid grid-cols-4 gap-3 mt-4 text-center">
+                        <div class="bg-white/10 rounded-lg p-2">
+                            <div class="text-2xl font-bold" id="totalExpected">฿0</div>
+                            <div class="text-xs text-green-100">Total Expected</div>
+                        </div>
+                        <div class="bg-white/10 rounded-lg p-2">
+                            <div class="text-2xl font-bold" id="totalCollected">฿0</div>
+                            <div class="text-xs text-green-100">Collected</div>
+                        </div>
+                        <div class="bg-white/10 rounded-lg p-2">
+                            <div class="text-2xl font-bold" id="outstandingBalance">฿0</div>
+                            <div class="text-xs text-green-100">Outstanding</div>
+                        </div>
+                        <div class="bg-white/10 rounded-lg p-2">
+                            <div class="text-2xl font-bold" id="paymentPercentage">0%</div>
+                            <div class="text-xs text-green-100">Paid</div>
+                        </div>
+                    </div>
+                </div>
+                <button onclick="closePaymentTracking()" class="text-white hover:bg-white/20 rounded-lg p-2">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Filter Tabs -->
+                <div class="flex gap-2 mb-4 border-b">
+                    <button onclick="filterPayments('all')" id="filterAll" class="payment-filter-btn active px-4 py-2 border-b-2 border-green-600 text-green-600 font-medium">
+                        All (<span id="countAll">0</span>)
+                    </button>
+                    <button onclick="filterPayments('unpaid')" id="filterUnpaid" class="payment-filter-btn px-4 py-2 text-gray-600 hover:text-green-600">
+                        Unpaid (<span id="countUnpaid">0</span>)
+                    </button>
+                    <button onclick="filterPayments('partial')" id="filterPartial" class="payment-filter-btn px-4 py-2 text-gray-600 hover:text-green-600">
+                        Partial (<span id="countPartial">0</span>)
+                    </button>
+                    <button onclick="filterPayments('paid')" id="filterPaid" class="payment-filter-btn px-4 py-2 text-gray-600 hover:text-green-600">
+                        Paid (<span id="countPaid">0</span>)
+                    </button>
+                </div>
+
+                <!-- Payment Checklist Table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr class="text-left text-xs font-semibold text-gray-600">
+                                <th class="px-3 py-2">Player</th>
+                                <th class="px-3 py-2 text-center">HCP</th>
+                                <th class="px-3 py-2 text-right">Green</th>
+                                <th class="px-3 py-2 text-right">Cart</th>
+                                <th class="px-3 py-2 text-right">Caddy</th>
+                                <th class="px-3 py-2 text-right">Trans</th>
+                                <th class="px-3 py-2 text-right">Comp</th>
+                                <th class="px-3 py-2 text-right">Total</th>
+                                <th class="px-3 py-2 text-center">Status</th>
+                                <th class="px-3 py-2 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paymentChecklistTable">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Empty State -->
+                <div id="paymentEmptyState" class="text-center py-12 text-gray-500" style="display: none;">
+                    <span class="material-symbols-outlined text-6xl text-gray-300">payments</span>
+                    <p class="mt-4">No payments to display</p>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex justify-between items-center mt-6">
+                    <button onclick="exportPaymentChecklist()" class="btn-secondary">
+                        <span class="material-symbols-outlined text-sm">download</span>
+                        Export CSV
+                    </button>
+                    <button onclick="refreshPaymentData()" class="btn-secondary">
+                        <span class="material-symbols-outlined text-sm">refresh</span>
+                        Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Detail Modal (for marking individual fees paid) -->
+    <div id="paymentDetailModal" class="modal-backdrop" style="display: none;">
+        <div class="modal-container max-w-2xl">
+            <div class="modal-header bg-gradient-to-r from-green-600 to-green-400 text-white">
+                <div>
+                    <h3 class="text-lg font-bold" id="detailPlayerName">Player Payment</h3>
+                    <p class="text-sm text-green-100" id="detailTotalAmount">Total: ฿0</p>
+                </div>
+                <button onclick="closePaymentDetail()" class="text-white hover:bg-white/20 rounded-lg p-1">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Fee Breakdown -->
+                <div id="feeBreakdownContainer" class="space-y-3">
+                    <!-- Populated dynamically -->
+                </div>
+
+                <!-- Payment Method -->
+                <div class="mt-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                    <select id="paymentMethod" class="w-full border rounded-lg px-3 py-2">
+                        <option value="cash">Cash</option>
+                        <option value="card">Credit/Debit Card</option>
+                        <option value="bank_transfer">Bank Transfer</option>
+                        <option value="line_pay">LINE Pay</option>
+                        <option value="promptpay">PromptPay</option>
+                    </select>
+                </div>
+
+                <!-- Notes -->
+                <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Notes (optional)</label>
+                    <textarea id="paymentNotes" rows="2" class="w-full border rounded-lg px-3 py-2" placeholder="Add any payment notes..."></textarea>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex gap-3 mt-6">
+                    <button onclick="markAllPaid()" class="btn-primary flex-1">
+                        <span class="material-symbols-outlined text-sm">check_circle</span>
+                        Mark All Paid
+                    </button>
+                    <button onclick="closePaymentDetail()" class="btn-secondary flex-1">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Where Modal (shows breakdown by location) -->
+    <div id="paymentWhereModal" class="modal-backdrop" style="display: none;">
+        <div class="modal-container max-w-4xl">
+            <div class="modal-header bg-gradient-to-r from-blue-600 to-blue-400 text-white">
+                <h3 class="text-lg font-bold">Payment Breakdown by Location</h3>
+                <button onclick="closePaymentWhere()" class="text-white hover:bg-white/20 rounded-lg p-1">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div class="grid grid-cols-2 gap-4">
+                    <!-- Society Bar -->
+                    <div class="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-4 border-2 border-amber-200">
+                        <div class="flex items-center gap-2 mb-3">
+                            <span class="material-symbols-outlined text-amber-600">local_bar</span>
+                            <h4 class="font-bold text-gray-900">Society Bar</h4>
+                        </div>
+                        <div class="text-2xl font-bold text-amber-600" id="barAmount">฿0</div>
+                        <div class="text-sm text-gray-600 mt-1" id="barCount">0 players</div>
+                        <div class="mt-3 text-xs text-gray-500" id="barFees">
+                            <!-- Fee breakdown -->
+                        </div>
+                    </div>
+
+                    <!-- Golf Course -->
+                    <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border-2 border-green-200">
+                        <div class="flex items-center gap-2 mb-3">
+                            <span class="material-symbols-outlined text-green-600">golf_course</span>
+                            <h4 class="font-bold text-gray-900">Golf Course</h4>
+                        </div>
+                        <div class="text-2xl font-bold text-green-600" id="courseAmount">฿0</div>
+                        <div class="text-sm text-gray-600 mt-1" id="courseCount">0 players</div>
+                        <div class="mt-3 text-xs text-gray-500" id="courseFees">
+                            <!-- Fee breakdown -->
+                        </div>
+                    </div>
+
+                    <!-- Online -->
+                    <div class="bg-gradient-to-br from-sky-50 to-sky-100 rounded-xl p-4 border-2 border-sky-200">
+                        <div class="flex items-center gap-2 mb-3">
+                            <span class="material-symbols-outlined text-sky-600">payments</span>
+                            <h4 class="font-bold text-gray-900">Online Payment</h4>
+                        </div>
+                        <div class="text-2xl font-bold text-sky-600" id="onlineAmount">฿0</div>
+                        <div class="text-sm text-gray-600 mt-1" id="onlineCount">0 players</div>
+                        <div class="mt-3 text-xs text-gray-500" id="onlineFees">
+                            <!-- Fee breakdown -->
+                        </div>
+                    </div>
+
+                    <!-- Organizer -->
+                    <div class="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border-2 border-purple-200">
+                        <div class="flex items-center gap-2 mb-3">
+                            <span class="material-symbols-outlined text-purple-600">person</span>
+                            <h4 class="font-bold text-gray-900">Pay Organizer</h4>
+                        </div>
+                        <div class="text-2xl font-bold text-purple-600" id="organizerAmount">฿0</div>
+                        <div class="text-sm text-gray-600 mt-1" id="organizerCount">0 players</div>
+                        <div class="mt-3 text-xs text-gray-500" id="organizerFees">
+                            <!-- Fee breakdown -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-6 text-center">
+                    <button onclick="closePaymentWhere()" class="btn-primary">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Golfer Payment Selection Modal -->
+    <div id="golferPaymentModal" class="modal-backdrop" style="display: none;">
+        <div class="modal-container max-w-2xl">
+            <div class="modal-header bg-gradient-to-r from-sky-600 to-sky-400 text-white">
+                <div>
+                    <h2 class="text-xl font-bold">Select Payment Options</h2>
+                    <p class="text-sm text-sky-100 mt-1">Choose where you'd like to pay each fee</p>
+                </div>
+                <button onclick="closeGolferPaymentModal()" class="text-white hover:bg-white/20 rounded-lg p-2">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Event Summary -->
+                <div class="bg-gradient-to-br from-sky-50 to-sky-100 rounded-xl p-4 mb-6 border border-sky-200">
+                    <div class="flex items-center gap-3 mb-3">
+                        <span class="material-symbols-outlined text-sky-600 text-3xl">event</span>
+                        <div>
+                            <h3 class="font-bold text-gray-900" id="paymentEventTitle">Event Name</h3>
+                            <p class="text-sm text-gray-600" id="paymentEventInfo">Event Date</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fee Selection Grid -->
+                <div class="space-y-4" id="feeSelectionContainer">
+                    <!-- Green Fee -->
+                    <div class="payment-selection-item">
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <h4 class="font-bold text-gray-900">Green Fee</h4>
+                                <p class="text-sm text-gray-600">Golf course entry fee</p>
+                            </div>
+                            <div class="text-2xl font-bold text-sky-600" id="greenFeeAmount">฿0</div>
+                        </div>
+                        <select id="payGreenAt" class="payment-location-select w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:border-sky-500 focus:ring-2 focus:ring-sky-200">
+                            <option value="">Choose payment location...</option>
+                            <option value="bar">Society Bar</option>
+                            <option value="course">Golf Course</option>
+                            <option value="organizer">Pay Organizer</option>
+                        </select>
+                    </div>
+
+                    <!-- Cart Fee -->
+                    <div class="payment-selection-item">
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <h4 class="font-bold text-gray-900">Cart Fee</h4>
+                                <p class="text-sm text-gray-600">Golf cart rental</p>
+                            </div>
+                            <div class="text-2xl font-bold text-sky-600" id="cartFeeAmount">฿0</div>
+                        </div>
+                        <select id="payCartAt" class="payment-location-select w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:border-sky-500 focus:ring-2 focus:ring-sky-200">
+                            <option value="">Choose payment location...</option>
+                            <option value="bar">Society Bar</option>
+                            <option value="course">Golf Course</option>
+                            <option value="organizer">Pay Organizer</option>
+                        </select>
+                    </div>
+
+                    <!-- Caddy Fee -->
+                    <div class="payment-selection-item">
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <h4 class="font-bold text-gray-900">Caddy Fee</h4>
+                                <p class="text-sm text-gray-600">Caddie service fee</p>
+                            </div>
+                            <div class="text-2xl font-bold text-sky-600" id="caddyFeeAmount">฿0</div>
+                        </div>
+                        <select id="payCaddyAt" class="payment-location-select w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:border-sky-500 focus:ring-2 focus:ring-sky-200">
+                            <option value="">Choose payment location...</option>
+                            <option value="bar">Society Bar</option>
+                            <option value="course">Golf Course</option>
+                            <option value="organizer">Pay Organizer</option>
+                        </select>
+                    </div>
+
+                    <!-- Transport Fee (if applicable) -->
+                    <div id="transportFeeSection" class="payment-selection-item" style="display: none;">
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <h4 class="font-bold text-gray-900">Transport Fee</h4>
+                                <p class="text-sm text-gray-600">Transportation to course</p>
+                            </div>
+                            <div class="text-2xl font-bold text-sky-600" id="transportFeeAmount">฿0</div>
+                        </div>
+                        <select id="payTransportAt" class="payment-location-select w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:border-sky-500 focus:ring-2 focus:ring-sky-200">
+                            <option value="">Choose payment location...</option>
+                            <option value="bar">Society Bar</option>
+                            <option value="organizer">Pay Organizer</option>
+                        </select>
+                    </div>
+
+                    <!-- Competition Fee (if applicable) -->
+                    <div id="competitionFeeSection" class="payment-selection-item" style="display: none;">
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <h4 class="font-bold text-gray-900">Competition Fee</h4>
+                                <p class="text-sm text-gray-600">Entry into competition prizes</p>
+                            </div>
+                            <div class="text-2xl font-bold text-sky-600" id="competitionFeeAmount">฿0</div>
+                        </div>
+                        <select id="payCompetitionAt" class="payment-location-select w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:border-sky-500 focus:ring-2 focus:ring-sky-200">
+                            <option value="">Choose payment location...</option>
+                            <option value="bar">Society Bar</option>
+                            <option value="organizer">Pay Organizer</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Total Summary -->
+                <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 mt-6 border-2 border-green-300">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-900">Total Amount Due</h3>
+                            <p class="text-sm text-gray-600">All fees combined</p>
+                        </div>
+                        <div class="text-4xl font-bold text-green-600" id="totalPaymentAmount">฿0</div>
+                    </div>
+                </div>
+
+                <!-- Payment Summary Breakdown -->
+                <div class="mt-4 space-y-2">
+                    <h4 class="font-medium text-gray-700 text-sm">Payment Summary by Location:</h4>
+                    <div id="paymentBreakdownSummary" class="grid grid-cols-2 gap-2 text-xs">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex gap-3 mt-6">
+                    <button onclick="saveGolferPaymentSelections()" class="btn-primary flex-1">
+                        <span class="material-symbols-outlined text-sm">check</span>
+                        Confirm Selections
+                    </button>
+                    <button onclick="closeGolferPaymentModal()" class="btn-secondary flex-1">
+                        Cancel
+                    </button>
+                </div>
+
+                <!-- Helper Text -->
+                <div class="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div class="flex gap-2">
+                        <span class="material-symbols-outlined text-blue-600 text-sm">info</span>
+                        <p class="text-xs text-blue-900">
+                            <strong>Important:</strong> Select where you prefer to pay each fee. This helps the organizer track payments.
+                            You can pay at the society bar before the round, at the golf course directly, or to the organizer.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Payment Info Card (for registration page) -->
+    <div id="quickPaymentInfo" class="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-4 border border-amber-200 mb-4" style="display: none;">
+        <div class="flex items-start gap-3">
+            <span class="material-symbols-outlined text-amber-600 text-3xl">payments</span>
+            <div class="flex-1">
+                <h3 class="font-bold text-gray-900 mb-2">Payment Options</h3>
+                <div class="space-y-2 text-sm">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-amber-600 text-sm">local_bar</span>
+                        <span><strong>Society Bar:</strong> Pay before the round starts</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-green-600 text-sm">golf_course</span>
+                        <span><strong>Golf Course:</strong> Pay directly at the course</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-purple-600 text-sm">person</span>
+                        <span><strong>Organizer:</strong> Pay the event organizer</span>
+                    </div>
+                </div>
+                <button onclick="openGolferPaymentModal()" class="mt-3 btn-primary text-sm w-full">
+                    Set Payment Preferences
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Share Event Modal -->
     <div id="shareEventModal" class="modal-backdrop" style="display: none;">
         <div class="modal-content max-w-2xl" onclick="event.stopPropagation()">
@@ -27986,6 +28392,11 @@ window.AdminSystem = AdminSystem;
     <!-- Society Golf Analytics -->
     <script src="society-golf-analytics.js"></script>
     <script src="admin-pricing-control.js"></script>
+
+    <!-- Payment Tracking System -->
+    <script src="compacted/payment-tracking-database.js"></script>
+    <script src="compacted/payment-tracking-manager.js"></script>
+    <script src="compacted/payment-system-integration.js"></script>
 
     <!-- Analytics Drill-Down & Cash Management -->
     <script src="analytics-drilldown.js"></script>

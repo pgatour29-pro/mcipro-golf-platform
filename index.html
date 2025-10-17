@@ -31669,9 +31669,14 @@ class LiveScorecardSystem {
         // Calculate team handicap based on selected method
         const method = document.querySelector('input[name="scrambleHcpMethod"]:checked')?.value || 'usga';
         const teamSize = this.players.length;
-        const handicaps = this.players.map(p => p.handicap || 0);
+        // CRITICAL FIX: Convert handicaps to numbers to avoid string concatenation bug
+        const handicaps = this.players.map(p => parseFloat(p.handicap) || 0);
         const sortedHandicaps = [...handicaps].sort((a, b) => a - b);
         let teamHandicap = 0;
+
+        console.log('[Team Scorecard] Players handicaps:', this.players.map(p => `${p.name}=${p.handicap}`));
+        console.log('[Team Scorecard] Handicaps as numbers:', handicaps);
+        console.log('[Team Scorecard] Sorted:', sortedHandicaps);
 
         if (method === 'usga') {
             // USGA Standard formulas
@@ -33927,10 +33932,15 @@ window.calculateScrambleHcp = function() {
     }
 
     const method = document.querySelector('input[name="scrambleHcpMethod"]:checked')?.value;
-    const handicaps = players.map(p => p.handicap || 0);
+    // CRITICAL FIX: Convert handicaps to numbers to avoid string concatenation bug
+    const handicaps = players.map(p => parseFloat(p.handicap) || 0);
     const sortedHandicaps = [...handicaps].sort((a, b) => a - b);
     let teamHcp = 0;
     let details = '';
+
+    console.log('[Scramble HCP] Players:', players.map(p => `${p.name} (HCP ${p.handicap})`));
+    console.log('[Scramble HCP] Handicaps as numbers:', handicaps);
+    console.log('[Scramble HCP] Sorted handicaps:', sortedHandicaps);
 
     if (method === 'usga') {
         // USGA Standard formulas
@@ -33955,6 +33965,7 @@ window.calculateScrambleHcp = function() {
         const avgHcp = handicaps.reduce((sum, h) => sum + h, 0) / handicaps.length;
         teamHcp = avgHcp * (100 - percent) / 100;
         details = `Average ${avgHcp.toFixed(1)} minus ${percent}% = ${avgHcp.toFixed(1)} × ${100-percent}%`;
+        console.log('[Scramble HCP] Percentage calc: avg =', avgHcp, ', percent =', percent, ', teamHcp =', teamHcp);
     } else if (method === 'manual') {
         // Manual entry
         teamHcp = parseFloat(document.getElementById('scrambleHcpManualValue')?.value) || 0;

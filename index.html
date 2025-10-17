@@ -19973,6 +19973,43 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             </div>
                         </div>
 
+
+                        <!-- Scramble Tracking (shown after all players score) -->
+                        <div id="scrambleTrackingSection" class="metric-card bg-gradient-to-r from-blue-50 to-green-50 border-2 border-blue-300" style="display: none;">
+                            <div class="flex items-center gap-2 mb-3">
+                                <span class="material-symbols-outlined text-blue-600">groups</span>
+                                <h3 class="font-bold text-gray-900">Scramble - Hole <span id="scrambleHoleNumber"></span></h3>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    <span class="material-symbols-outlined text-sm">golf_course</span>
+                                    Whose drive was used?
+                                </label>
+                                <select id="scrambleDrivePlayer" class="w-full rounded-lg border-gray-300 p-2 text-sm">
+                                    <option value="">Select player...</option>
+                                </select>
+                                <div id="driveCounters" class="mt-2 text-xs text-gray-600">
+                                    <!-- Drive counters will be populated here -->
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    <span class="material-symbols-outlined text-sm">flag</span>
+                                    Who made the putt?
+                                </label>
+                                <select id="scramblePuttPlayer" class="w-full rounded-lg border-gray-300 p-2 text-sm">
+                                    <option value="">Select player...</option>
+                                </select>
+                            </div>
+
+                            <button onclick="LiveScorecardManager.saveScrambleTracking()" class="w-full btn-primary py-3">
+                                <span class="material-symbols-outlined">check_circle</span>
+                                Save & Continue
+                            </button>
+                        </div>
+
                         <!-- Hole Navigation -->
                         <div class="flex gap-3">
                             <button onclick="LiveScorecardManager.prevHole()" class="flex-1 btn-secondary py-3">
@@ -29865,12 +29902,20 @@ class LiveScorecardSystem {
         if (currentIndex < this.players.length - 1) {
             this.selectPlayer(this.players[currentIndex + 1].id);
         } else {
-            // All players done, check if should advance hole
+            // All players done, check if Scramble tracking or advance hole
             const allDone = this.players.every(p => this.getPlayerScore(p.id, this.currentHole));
-            if (allDone && this.currentHole < 18) {
-                setTimeout(() => {
-                    this.nextHole();
-                }, 500);
+            if (allDone) {
+                // Check if Scramble tracking is needed
+                if (this.scoringFormats.includes('scramble') &&
+                    (this.scrambleConfig?.trackDrives || this.scrambleConfig?.trackPutts)) {
+                    setTimeout(() => {
+                        this.showScrambleTracking();
+                    }, 500);
+                } else if (this.currentHole < 18) {
+                    setTimeout(() => {
+                        this.nextHole();
+                    }, 500);
+                }
             }
         }
 
@@ -29922,6 +29967,91 @@ class LiveScorecardSystem {
         } else {
             this.completeRound();
         }
+
+    // ===== SCRAMBLE TRACKING =====
+    showScrambleTracking() {
+        // Populate player dropdowns
+        const driveSelect = document.getElementById('scrambleDrivePlayer');
+        const puttSelect = document.getElementById('scramblePuttPlayer');
+        
+        if (!driveSelect || !puttSelect) return;
+        
+        // Clear and populate
+        driveSelect.innerHTML = '<option value="">Select player...</option>';
+        puttSelect.innerHTML = '<option value="">Select player...</option>';
+        
+        this.players.forEach(player => {
+            driveSelect.innerHTML += `<option value="${player.id}">${player.name}</option>`;
+            puttSelect.innerHTML += `<option value="${player.id}">${player.name}</option>`;
+        });
+        
+        // Update hole number
+        document.getElementById('scrambleHoleNumber').textContent = this.currentHole;
+        
+        // Show drive counters if tracking
+        if (this.scrambleConfig?.trackDrives) {
+            const counters = this.players.map(p => {
+                const used = this.scrambleDriveCount[p.id] || 0;
+                const remaining = 18 - used;
+                return `${p.name}: ${used} used, ${remaining} remaining`;
+            }).join(' • ');
+            document.getElementById('driveCounters').textContent = counters;
+        }
+        
+        // Show the tracking section
+        document.getElementById('scrambleTrackingSection').style.display = 'block';
+    }
+    
+    saveScrambleTracking() {
+        const drivePlayerId = document.getElementById('scrambleDrivePlayer')?.value;
+        const puttPlayerId = document.getElementById('scramblePuttPlayer')?.value;
+        
+        // Validate if tracking is enabled
+        if (this.scrambleConfig?.trackDrives && !drivePlayerId) {
+            NotificationManager.show('Please select whose drive was used', 'warning');
+            return;
+        }
+        
+        if (this.scrambleConfig?.trackPutts && !puttPlayerId) {
+            NotificationManager.show('Please select who made the putt', 'warning');
+            return;
+        }
+        
+        // Initialize tracking objects if needed
+        if (!this.scrambleDriveData) this.scrambleDriveData = {};
+        if (!this.scramblePuttData) this.scramblePuttData = {};
+        if (!this.scrambleDriveCount) this.scrambleDriveCount = {};
+        
+        // Save selections
+        if (drivePlayerId) {
+            const player = this.players.find(p => p.id === drivePlayerId);
+            this.scrambleDriveData[this.currentHole] = {
+                player_id: drivePlayerId,
+                player_name: player.name
+            };
+            // Increment drive counter
+            this.scrambleDriveCount[drivePlayerId] = (this.scrambleDriveCount[drivePlayerId] || 0) + 1;
+        }
+        
+        if (puttPlayerId) {
+            const player = this.players.find(p => p.id === puttPlayerId);
+            this.scramblePuttData[this.currentHole] = {
+                player_id: puttPlayerId,
+                player_name: player.name
+            };
+        }
+        
+        // Hide the section
+        document.getElementById('scrambleTrackingSection').style.display = 'none';
+        
+        // Continue to next hole or finish
+        if (this.currentHole < 18) {
+            this.nextHole();
+        } else {
+            this.completeRound();
+        }
+    }
+
     }
 
     async completeRound() {
@@ -30585,8 +30715,18 @@ class LiveScorecardSystem {
 
         const courseName = this.courseData?.name || 'Unknown Course';
         const teeMarker = document.getElementById('scorecardTeeMarkerSelect')?.value || 'White';
-        const format = this.scoringFormat === 'stableford' ? 'Stableford' : 'Stroke Play';
-        const date = new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        // Format all selected formats for display
+        const formatNames = {
+            'stableford': 'Stableford',
+            'strokeplay': 'Stroke Play',
+            'scramble': 'Scramble',
+            'modifiedstableford': 'Modified Stableford',
+            'nassau': 'Nassau',
+            'skins': 'Skins',
+            'matchplay': 'Match Play',
+            'bestball': 'Best Ball'
+        };
+        const format = this.scoringFormats.map(f => formatNames[f] || f).join(' • ');
 
         document.getElementById('finalScorecard_societyName').textContent = societyName;
         document.getElementById('finalScorecard_eventName').textContent = eventName;
@@ -30701,14 +30841,17 @@ class LiveScorecardSystem {
         tableHTML += `<td class="border border-gray-300 px-2 py-2 text-center font-bold text-lg bg-yellow-100">${totalGross || '-'}</td></tr>`;
 
         // Stableford Points row (if stableford format)
-        if (this.scoringFormat === 'stableford' || this.scoringFormat === 'modifiedstableford') {
-            tableHTML += `<tr class="bg-green-50"><td class="border border-gray-300 px-2 py-2 font-semibold">Points</td>`;
+        // Add rows for each selected format
+        const engine = LiveScorecardSystem.GolfScoringEngine;
+        
+        // Stableford Points row (if selected)
+        if (this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford')) {
+            const isModified = this.scoringFormats.includes('modifiedstableford');
+            const rowLabel = isModified ? 'Modified Points' : 'Stableford Points';
+            tableHTML += `<tr class="bg-green-50"><td class="border border-gray-300 px-2 py-2 font-semibold">${rowLabel}</td>`;
             let frontNinePoints = 0, backNinePoints = 0;
 
-            const engine = LiveScorecardSystem.GolfScoringEngine;
-            const pointsMap = this.scoringFormat === 'modifiedstableford'
-                ? engine.modifiedStablefordPoints
-                : engine.defaultStableford;
+            const pointsMap = isModified ? engine.modifiedStablefordPoints : engine.defaultStableford;
 
             for (let i = 1; i <= 18; i++) {
                 const scoreValue = this.scoresCache[player.id]?.[i];
@@ -30719,7 +30862,6 @@ class LiveScorecardSystem {
                     const par = hole?.par || 4;
                     const strokeIndex = hole?.strokeIndex || i;
 
-                    // Calculate stableford points using the engine
                     const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
                     const netScore = scoreValue - shotsReceived;
                     points = engine.stablefordPointsForHole(netScore, par, pointsMap);
@@ -30755,7 +30897,7 @@ class LiveScorecardSystem {
                 <div class="text-xs text-gray-600">Total Gross</div>
                 <div class="font-bold text-lg">${totalGross || '-'}</div>
             </div>
-            ${this.scoringFormat === 'stableford' ? `
+            ${(this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford')) ? `
                 <div class="bg-green-200 p-2 rounded">
                     <div class="text-xs text-gray-600">Total Points</div>
                     <div class="font-bold text-lg">${totalPoints}</div>

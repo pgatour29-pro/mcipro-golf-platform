@@ -31224,6 +31224,12 @@ class LiveScorecardSystem {
         const playersContainer = document.getElementById('finalScorecard_playersContainer');
         playersContainer.innerHTML = '';
 
+        // If scramble format, render team scorecard first
+        if (this.scoringFormats.includes('scramble')) {
+            const teamCard = this.renderTeamScrambleScorecard();
+            playersContainer.appendChild(teamCard);
+        }
+
         this.players.forEach(player => {
             const playerCard = this.renderPlayerFinalizedScorecard(player);
             playersContainer.appendChild(playerCard);
@@ -31571,6 +31577,203 @@ class LiveScorecardSystem {
                 </div>
             ` : ''}
         `;
+        container.appendChild(summary);
+
+        return container;
+    }
+
+    renderTeamScrambleScorecard() {
+        const container = document.createElement('div');
+        container.className = 'border-4 border-purple-500 rounded-lg p-4 mb-6 bg-gradient-to-br from-purple-50 to-blue-50 shadow-lg print:break-inside-avoid print:shadow-none';
+
+        // Team header
+        const header = document.createElement('div');
+        header.className = 'mb-4 pb-3 border-b-2 border-purple-300';
+        header.innerHTML = `
+            <div class="flex justify-between items-center">
+                <div>
+                    <h3 class="text-2xl font-bold text-purple-900">🏆 SCRAMBLE TEAM SCORE</h3>
+                    <p class="text-sm text-purple-700 mt-1">Best Ball • ${this.players.length} Players: ${this.players.map(p => p.name).join(', ')}</p>
+                </div>
+                <div class="text-right" id="teamTotal"></div>
+            </div>
+        `;
+        container.appendChild(header);
+
+        // Calculate team scores (best score per hole)
+        const teamScores = {}; // hole -> best gross score
+        const teamStablefordPoints = {}; // hole -> stableford points
+
+        for (let holeNum = 1; holeNum <= 18; holeNum++) {
+            let bestScore = null;
+
+            // Find best (lowest) score for this hole across all players
+            for (const player of this.players) {
+                const score = this.scoresCache[player.id]?.[holeNum];
+                if (typeof score === 'number') {
+                    if (bestScore === null || score < bestScore) {
+                        bestScore = score;
+                    }
+                }
+            }
+
+            teamScores[holeNum] = bestScore;
+
+            // Calculate Stableford points for team's best score
+            if (bestScore !== null) {
+                const hole = this.courseData?.holes?.find(h => h.number === holeNum);
+                const par = hole?.par || 4;
+
+                // Team plays scratch (no handicap strokes on team score)
+                const diff = bestScore - par;
+                let points = 0;
+                if (diff <= -2) points = 4;      // Eagle or better
+                else if (diff === -1) points = 3; // Birdie
+                else if (diff === 0) points = 2;  // Par
+                else if (diff === 1) points = 1;  // Bogey
+                else points = 0;                  // Double bogey+ (block)
+
+                teamStablefordPoints[holeNum] = points;
+            }
+        }
+
+        // Scorecard table
+        const table = document.createElement('div');
+        table.className = 'overflow-x-auto';
+
+        let tableHTML = `
+            <table class="w-full text-xs md:text-sm border-collapse">
+                <thead>
+                    <tr class="bg-purple-100">
+                        <th class="border border-purple-300 px-2 py-2 text-center font-bold">Hole</th>
+        `;
+
+        // Hole numbers
+        for (let i = 1; i <= 18; i++) {
+            tableHTML += `<th class="border border-purple-300 px-1 py-2 text-center font-bold">${i}</th>`;
+        }
+        tableHTML += `<th class="border border-purple-300 px-2 py-2 text-center font-bold bg-yellow-100">Total</th></tr>`;
+
+        // Par row
+        tableHTML += `<tr class="bg-blue-50"><td class="border border-purple-300 px-2 py-2 font-semibold">Par</td>`;
+        let frontNinePar = 0, backNinePar = 0;
+        for (let i = 1; i <= 18; i++) {
+            const hole = this.courseData?.holes?.find(h => h.number === i);
+            const par = hole?.par || 4;
+            if (i <= 9) frontNinePar += par;
+            else backNinePar += par;
+            tableHTML += `<td class="border border-purple-300 px-1 py-2 text-center">${par}</td>`;
+        }
+        tableHTML += `<td class="border border-purple-300 px-2 py-2 text-center font-bold bg-yellow-100">${frontNinePar + backNinePar}</td></tr>`;
+
+        // Team Best Score row
+        tableHTML += `<tr class="bg-white"><td class="border border-purple-300 px-2 py-2 font-semibold">Team Score</td>`;
+        let frontNineGross = 0, backNineGross = 0;
+        for (let i = 1; i <= 18; i++) {
+            const score = teamScores[i];
+
+            if (score !== null && score !== undefined) {
+                if (i <= 9) frontNineGross += score;
+                else backNineGross += score;
+            }
+
+            // Color code based on par
+            const hole = this.courseData?.holes?.find(h => h.number === i);
+            const par = hole?.par || 4;
+            let cellClass = 'border border-purple-300 px-1 py-2 text-center font-bold';
+            if (score !== null && score !== undefined) {
+                if (score < par) cellClass += ' bg-green-100 text-green-800'; // Under par
+                else if (score === par) cellClass += ' bg-blue-50'; // Par
+                else if (score === par + 1) cellClass += ' bg-yellow-50'; // Bogey
+                else if (score > par + 1) cellClass += ' bg-red-100 text-red-800'; // Double bogey+
+            }
+            tableHTML += `<td class="${cellClass}">${score !== null && score !== undefined ? score : '-'}</td>`;
+        }
+        const totalGross = frontNineGross + backNineGross;
+        tableHTML += `<td class="border border-purple-300 px-2 py-2 text-center font-bold text-lg bg-yellow-100">${totalGross || '-'}</td></tr>`;
+
+        // Team Stableford Points row
+        if (this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford')) {
+            tableHTML += `<tr class="bg-green-50"><td class="border border-purple-300 px-2 py-2 font-semibold">Team Points</td>`;
+            let frontNinePoints = 0, backNinePoints = 0;
+
+            for (let i = 1; i <= 18; i++) {
+                const points = teamStablefordPoints[i];
+
+                if (points !== null && points !== undefined) {
+                    if (i <= 9) frontNinePoints += points;
+                    else backNinePoints += points;
+                }
+
+                tableHTML += `<td class="border border-purple-300 px-1 py-2 text-center font-bold">${points !== null && points !== undefined ? points : '-'}</td>`;
+            }
+            const totalPoints = frontNinePoints + backNinePoints;
+            tableHTML += `<td class="border border-purple-300 px-2 py-2 text-center font-bold text-lg bg-green-200">${totalPoints || '-'}</td></tr>`;
+        }
+
+        // Drive Used row (show player initials)
+        if (this.scrambleConfig?.trackDrives && this.scrambleDriveData) {
+            tableHTML += `<tr class="bg-purple-50"><td class="border border-purple-300 px-2 py-2 font-semibold text-xs">Drive Used</td>`;
+
+            for (let i = 1; i <= 18; i++) {
+                const driveData = this.scrambleDriveData[i];
+                const cellContent = driveData ? driveData.player_name.charAt(0) : '-';
+                tableHTML += `<td class="border border-purple-300 px-1 py-2 text-center text-sm font-semibold text-purple-700">${cellContent}</td>`;
+            }
+
+            tableHTML += `<td class="border border-purple-300 px-2 py-2"></td></tr>`;
+        }
+
+        // Putt Used row (show player initials)
+        if (this.scrambleConfig?.trackPutts && this.scramblePuttData) {
+            tableHTML += `<tr class="bg-indigo-50"><td class="border border-purple-300 px-2 py-2 font-semibold text-xs">Putt Used</td>`;
+
+            for (let i = 1; i <= 18; i++) {
+                const puttData = this.scramblePuttData[i];
+                const cellContent = puttData ? puttData.player_name.charAt(0) : '-';
+                tableHTML += `<td class="border border-purple-300 px-1 py-2 text-center text-sm font-semibold text-indigo-700">${cellContent}</td>`;
+            }
+
+            tableHTML += `<td class="border border-purple-300 px-2 py-2"></td></tr>`;
+        }
+
+        tableHTML += `</thead></table>`;
+        table.innerHTML = tableHTML;
+        container.appendChild(table);
+
+        // Team Summary
+        const summary = document.createElement('div');
+        summary.className = 'mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm';
+
+        let summaryHTML = `
+            <div class="bg-blue-50 p-3 rounded border border-blue-200">
+                <div class="text-xs text-gray-600">Front 9</div>
+                <div class="font-bold text-lg">${frontNineGross || '-'}</div>
+            </div>
+            <div class="bg-blue-50 p-3 rounded border border-blue-200">
+                <div class="text-xs text-gray-600">Back 9</div>
+                <div class="font-bold text-lg">${backNineGross || '-'}</div>
+            </div>
+            <div class="bg-green-100 p-3 rounded border border-green-300">
+                <div class="text-xs text-gray-600">Total Gross</div>
+                <div class="font-bold text-2xl text-green-800">${totalGross || '-'}</div>
+            </div>
+        `;
+
+        if (this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford')) {
+            let totalPoints = 0;
+            for (let i = 1; i <= 18; i++) {
+                if (teamStablefordPoints[i]) totalPoints += teamStablefordPoints[i];
+            }
+            summaryHTML += `
+                <div class="bg-green-200 p-3 rounded border border-green-400">
+                    <div class="text-xs text-gray-600">Total Points</div>
+                    <div class="font-bold text-2xl text-green-900">${totalPoints}</div>
+                </div>
+            `;
+        }
+
+        summary.innerHTML = summaryHTML;
         container.appendChild(summary);
 
         return container;

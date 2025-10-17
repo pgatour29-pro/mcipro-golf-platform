@@ -29926,87 +29926,233 @@ class LiveScorecardSystem {
 
     async completeRound() {
         if (!confirm('Complete round for all players?')) return;
-
+    
         // Mark scorecards as completed in database
         for (const player of this.players) {
             const scorecardId = this.scorecards[player.id];
             if (scorecardId && !scorecardId.startsWith('local_')) {
                 await window.SocietyGolfDB.completeScorecard(scorecardId);
             }
-
+    
             // Calculate and update handicap for each player with a linked profile
             if (player.lineUserId) {
                 await this.updatePlayerHandicap(player);
             }
-
-            // Save round to Round History
-            this.saveRoundToHistory(player);
         }
-
-        NotificationManager.show('Round completed! Handicaps updated. Round saved to history.', 'success');
-
+    
+        // Distribute scores to all players and organizers
+        await this.distributeRoundScores();
+    
+        NotificationManager.show('Round completed! Scores saved and distributed.', 'success');
+    
         // Show finalized scorecard BEFORE resetting
         this.showFinalizedScorecard();
     }
 
-    saveRoundToHistory(player) {
+    async saveRoundToHistory(player) {
         try {
-            // Calculate total gross score
-            let totalGross = 0;
+            // Skip if no scores recorded
             let holesPlayed = 0;
-
             for (let hole = 1; hole <= 18; hole++) {
-                const scoreData = this.scoresCache[player.id]?.[hole];
-                if (scoreData) {
-                    totalGross += scoreData;
-                    holesPlayed++;
-                }
+                if (this.scoresCache[player.id]?.[hole]) holesPlayed++;
             }
-
+    
             if (holesPlayed === 0) {
                 console.log(`[LiveScorecard] Skipping history save for ${player.name} - no scores recorded`);
-                return;
+                return null;
             }
-
-            // Get course and tee info
+    
+            // Get course and event info
             const courseName = this.courseData?.name || 'Unknown Course';
             const courseId = document.getElementById('scorecardCourseSelect')?.value || '';
             const teeMarker = document.querySelector('input[name="teeMarker"]:checked')?.value || 'white';
-            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-
-            // Calculate course rating and slope (defaults if not available)
-            let courseRating = 72.0;
-            let slopeRating = 113;
-
-            if (this.courseData?.holes) {
-                // Calculate par as course rating approximation
-                courseRating = this.courseData.holes.reduce((sum, hole) => sum + (hole.par || 4), 0);
-            }
-
-            // Only save for current logged-in user
-            const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-            if (currentUser.userId === player.lineUserId || player.id === currentUser.userId) {
-                // Save to GolfScoreSystem
-                if (typeof GolfScoreSystem !== 'undefined') {
-                    GolfScoreSystem.saveScore({
-                        course: courseName,
-                        courseId: courseId,
-                        score: totalGross,
-                        holes: holesPlayed,
-                        courseRating: courseRating,
-                        slopeRating: slopeRating,
-                        date: today,
-                        tee: teeMarker,
-                        notes: `Completed via Live Scorecard. Format: ${this.scoringFormats.join(', ')}`
-                    });
-
-                    console.log(`[LiveScorecard] ✅ Saved round to history for ${player.name}: ${totalGross} (${holesPlayed} holes)`);
-                } else {
-                    console.warn('[LiveScorecard] GolfScoreSystem not available - round not saved to history');
+            const roundType = this.isPrivateRound ? 'private' : 'society';
+            const eventId = this.eventId;
+            const scorecardId = this.scorecards[player.id];
+    
+            // Calculate scores for ALL selected formats
+            const formatScores = {};
+            let totalGross = 0;
+            let totalStableford = 0;
+    
+            // Build scores array for engine
+            const scoresArray = [];
+            for (let hole = 1; hole <= 18; hole++) {
+                const score = this.scoresCache[player.id]?.[hole];
+                if (score) {
+                    totalGross += score;
+                    scoresArray.push({ hole_number: hole, gross_score: score });
                 }
             }
+    
+            const engine = LiveScorecardSystem.GolfScoringEngine;
+    
+            // Calculate each selected format
+            for (const format of this.scoringFormats) {
+                switch (format) {
+                    case 'stableford':
+                        formatScores.stableford = engine.calculateStablefordTotal(
+                            scoresArray,
+                            this.courseData.holes,
+                            player.handicap,
+                            true
+                        );
+                        totalStableford = formatScores.stableford;
+                        break;
+    
+                    case 'strokeplay':
+                        formatScores.strokeplay = totalGross;
+                        break;
+    
+                    case 'modifiedstableford':
+                        formatScores.modifiedstableford = engine.calculateStablefordTotal(
+                            scoresArray,
+                            this.courseData.holes,
+                            player.handicap,
+                            true,
+                            engine.modifiedStablefordPoints
+                        );
+                        break;
+    
+                    case 'nassau':
+                        const nassauResult = engine.calculateNassau([{
+                            player_id: player.id,
+                            scores: scoresArray
+                        }], this.courseData.holes);
+                        formatScores.nassau = nassauResult[0] || { front: 0, back: 0, total: 0 };
+                        break;
+    
+                    case 'skins':
+                        formatScores.skins = { holes_won: 0, points: 0 };
+                        break;
+    
+                    case 'scramble':
+                        formatScores.scramble = totalGross;
+                        break;
+    
+                    case 'matchplay':
+                        formatScores.matchplay = { holes_won: 0, holes_lost: 0, holes_tied: 0 };
+                        break;
+    
+                    case 'bestball':
+                        formatScores.bestball = totalGross;
+                        break;
+                }
+            }
+    
+            // Get Scramble config if selected
+            let scrambleConfig = null;
+            if (this.scoringFormats.includes('scramble')) {
+                const teamSize = document.querySelector('input[name="scrambleTeamSize"]:checked')?.value || '4';
+                const trackDrives = document.getElementById('scrambleTrackDrives')?.checked || false;
+                const trackPutts = document.getElementById('scrambleTrackPutts')?.checked || false;
+                const minDrives = document.getElementById('scrambleMinDrives')?.value || '4';
+    
+                scrambleConfig = {
+                    teamSize: parseInt(teamSize),
+                    trackDrives: trackDrives,
+                    trackPutts: trackPutts,
+                    minDrivesPerPlayer: parseInt(minDrives)
+                };
+            }
+    
+            // Only save for players with LINE IDs
+            if (!player.lineUserId || player.lineUserId.trim() === '') {
+                console.log(`[LiveScorecard] Skipping database save for ${player.name} - no LINE ID`);
+                return null;
+            }
+    
+            // Save to Supabase database
+            const { data: round, error } = await window.SupabaseDB.client
+                .from('rounds')
+                .insert({
+                    golfer_id: player.lineUserId,
+                    course_id: courseId,
+                    course_name: courseName,
+                    type: roundType,
+                    society_event_id: eventId,
+                    started_at: new Date().toISOString(),
+                    completed_at: new Date().toISOString(),
+                    status: 'completed',
+                    total_gross: totalGross,
+                    total_stableford: totalStableford,
+                    handicap_used: player.handicap,
+                    tee_marker: teeMarker,
+                    scoring_formats: this.scoringFormats,
+                    format_scores: formatScores,
+                    posted_formats: this.postedFormats || this.scoringFormats,
+                    scramble_config: scrambleConfig
+                })
+                .select()
+                .single();
+    
+            if (error) {
+                console.error('[LiveScorecard] Error saving to round history:', error);
+                return null;
+            }
+    
+            console.log(`[LiveScorecard] ✅ Saved round to database for ${player.name}. Round ID: ${round.id}`);
+            return round.id;
+    
         } catch (error) {
-            console.error('[LiveScorecard] Error saving round to history:', error);
+            console.error('[LiveScorecard] Error in saveRoundToHistory:', error);
+            return null;
+        }
+    }
+
+    async distributeRoundScores() {
+        try {
+            // Get all player LINE IDs
+            const playerIds = this.players
+                .filter(p => p.lineUserId && p.lineUserId.trim() !== '')
+                .map(p => p.lineUserId);
+    
+            if (playerIds.length === 0) {
+                console.log('[LiveScorecard] No players with LINE IDs to distribute to');
+                return;
+            }
+    
+            // Save round for each player and distribute
+            const roundIds = [];
+            for (const player of this.players) {
+                const roundId = await this.saveRoundToHistory(player);
+                if (roundId) {
+                    roundIds.push(roundId);
+    
+                    // Distribute this round to all players
+                    const { error } = await window.SupabaseDB.client.rpc(
+                        'distribute_round_to_players',
+                        {
+                            p_round_id: roundId,
+                            p_player_ids: playerIds
+                        }
+                    );
+    
+                    if (error) {
+                        console.error(`[LiveScorecard] Error distributing round ${roundId}:`, error);
+                    } else {
+                        console.log(`[LiveScorecard] ✅ Distributed round ${roundId} to ${playerIds.length} players`);
+                    }
+                }
+            }
+    
+            // Mark as posted to organizer if society event
+            if (!this.isPrivateRound && this.eventId && roundIds.length > 0) {
+                const { data: event } = await window.SupabaseDB.client
+                    .from('society_events')
+                    .select('organizer_id')
+                    .eq('id', this.eventId)
+                    .single();
+    
+                if (event) {
+                    console.log(`[LiveScorecard] ✅ Round visible to organizer: ${event.organizer_id}`);
+                }
+            }
+    
+            NotificationManager.show(`Scores shared with ${playerIds.length} player${playerIds.length !== 1 ? 's' : ''}!`, 'success');
+    
+        } catch (error) {
+            console.error('[LiveScorecard] Error distributing scores:', error);
         }
     }
 

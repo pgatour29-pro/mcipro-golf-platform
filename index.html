@@ -29177,20 +29177,22 @@ class SocietyGolfSupabase {
         const { data, error } = await window.SupabaseDB.client
             .from('event_pairings')
             .select('*')
-            .eq('event_id', eventId)
-            .single();
+            .eq('event_id', eventId);
 
-        if (error && error.code !== 'PGRST116') { // PGRST116 = no rows
+        if (error) {
             console.error('[SocietyGolf] Error fetching pairings:', error);
             return null;
         }
 
-        return data ? {
-            eventId: data.event_id,
-            groupSize: data.group_size,
-            groups: data.groups,
-            lockedAt: data.locked_at,
-            lockedBy: data.locked_by
+        // event_id is primary key, so 0 or 1 row max
+        const pairing = data && data.length > 0 ? data[0] : null;
+
+        return pairing ? {
+            eventId: pairing.event_id,
+            groupSize: pairing.group_size,
+            groups: pairing.groups,
+            lockedAt: pairing.locked_at,
+            lockedBy: pairing.locked_by
         } : null;
     }
 

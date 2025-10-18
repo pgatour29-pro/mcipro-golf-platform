@@ -37,20 +37,18 @@ CREATE TABLE IF NOT EXISTS society_members (
     updated_at TIMESTAMPTZ DEFAULT NOW(),
 
     -- Constraints
-    UNIQUE(society_name, golfer_id),
-
-    -- Ensure only one primary society per golfer
-    CONSTRAINT unique_primary_society EXCLUDE USING gist (
-        golfer_id WITH =,
-        is_primary_society WITH =
-    ) WHERE (is_primary_society = true)
+    UNIQUE(society_name, golfer_id)
 );
 
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_society_members_society ON society_members(society_name);
 CREATE INDEX IF NOT EXISTS idx_society_members_golfer ON society_members(golfer_id);
 CREATE INDEX IF NOT EXISTS idx_society_members_status ON society_members(status);
-CREATE INDEX IF NOT EXISTS idx_society_members_primary ON society_members(golfer_id, is_primary_society) WHERE is_primary_society = true;
+
+-- Partial unique index: Ensures only one primary society per golfer
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_primary_society
+    ON society_members(golfer_id)
+    WHERE is_primary_society = true;
 
 -- RLS Policies
 ALTER TABLE society_members ENABLE ROW LEVEL SECURITY;

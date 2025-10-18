@@ -35738,14 +35738,19 @@ class SocietyOrganizerManager {
     }
 
     async togglePayment(eventId, playerId, markAsPaid) {
+        console.log('[PaymentToggle] Called with:', { eventId, playerId, markAsPaid });
         try {
             const organizerId = AppState.currentUser?.lineUserId;
             if (!organizerId) {
+                console.error('[PaymentToggle] No organizer ID');
                 NotificationManager.show('Not authorized', 'error');
                 return;
             }
 
+            console.log('[PaymentToggle] Organizer ID:', organizerId);
+
             if (markAsPaid) {
+                console.log('[PaymentToggle] Marking as paid...');
                 // Get booking to find total fee
                 const bookings = await SocietyGolfDB.getEventBookingsWithPayment(eventId);
                 const booking = bookings.find(b => b.player_id === playerId);
@@ -36418,6 +36423,12 @@ class SocietyOrganizerManager {
             return;
         }
 
+        // Store eventId in a variable to use in the template
+        const eventId = this.currentRosterEvent?.id;
+
+        // Check if current user is Super Admin
+        const isSuperAdmin = AppState.currentUser?.lineUserId === this.currentRosterEvent?.organizerId;
+
         tbody.innerHTML = registrations.map(reg => {
             const totalFee = reg.total_fee || 0;
             const paymentStatus = reg.payment_status || 'unpaid';
@@ -36431,7 +36442,7 @@ class SocietyOrganizerManager {
                 <td class="px-4 py-2 text-center">${reg.wantCompetition ? '✓' : '-'}</td>
                 <td class="px-4 py-2 text-center">${(reg.partnerPrefs || []).length}</td>
                 <td class="px-4 py-2 text-right text-gray-900">
-                    <button onclick="SocietyOrganizerSystem.editPlayerFee('${reg.id}', '${reg.player_id}', ${totalFee})"
+                    <button onclick="SocietyOrganizerSystem.editPlayerFee('${reg.id}', '${reg.playerId}', ${totalFee})"
                         class="hover:text-green-600 hover:underline cursor-pointer" title="Click to edit fee">
                         ฿${totalFee.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                     </button>
@@ -36442,12 +36453,14 @@ class SocietyOrganizerManager {
                             <span class="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">
                                 PAID
                             </span>
-                            <button onclick="SocietyOrganizerSystem.togglePayment('${this.currentRosterEvent?.id}', '${reg.player_id}', false)"
-                                class="text-xs text-gray-500 hover:text-red-600" title="Mark as unpaid">
-                                <span class="material-symbols-outlined text-sm">cancel</span>
-                            </button>
+                            ${isSuperAdmin ? `
+                                <button onclick="SocietyOrganizerSystem.togglePayment('${eventId}', '${reg.playerId}', false)"
+                                    class="text-xs text-gray-500 hover:text-red-600" title="Super Admin: Mark as unpaid">
+                                    <span class="material-symbols-outlined text-sm">cancel</span>
+                                </button>
+                            ` : ''}
                         ` : `
-                            <button onclick="SocietyOrganizerSystem.togglePayment('${this.currentRosterEvent?.id}', '${reg.player_id}', true)"
+                            <button onclick="SocietyOrganizerSystem.togglePayment('${eventId}', '${reg.playerId}', true)"
                                 class="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">
                                 Mark Paid
                             </button>

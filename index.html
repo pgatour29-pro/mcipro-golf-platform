@@ -29137,34 +29137,92 @@ class SocietyGolfSupabase {
     // PLAYER SEARCH
     // =====================================================
 
-    async searchPlayers(searchTerm) {
+    async searchPlayers(searchTerm, societyName = null) {
         await this.waitForSupabase();
         if (!searchTerm || searchTerm.length < 2) {
             return [];
         }
 
-        const { data, error } = await window.SupabaseDB.client
-            .from('profiles')
-            .select('id, display_name, username, profile_data')
-            .or(`display_name.ilike.*${searchTerm}*,username.ilike.*${searchTerm}*`)
-            .limit(20);
+        console.log('[SocietyGolf] Searching players:', { searchTerm, societyName });
 
-        if (error) {
-            console.error('[SocietyGolf] Error searching players:', error);
-            return [];
+        // DUAL SEARCH: Platform-wide + Society-specific members
+        const results = [];
+        const seenIds = new Set();
+
+        // 1. Search society members first (if society name provided)
+        if (societyName) {
+            try {
+                const { data: members, error: memberError } = await window.SupabaseDB.client
+                    .from('society_members')
+                    .select(`
+                        golfer_id,
+                        member_number,
+                        is_primary_society,
+                        user_profiles!inner(line_user_id, name, profile_data)
+                    `)
+                    .eq('society_name', societyName)
+                    .eq('status', 'active')
+                    .ilike('user_profiles.name', `%${searchTerm}%`)
+                    .limit(10);
+
+                if (!memberError && members) {
+                    members.forEach(m => {
+                        const profile = m.user_profiles;
+                        if (profile && !seenIds.has(m.golfer_id)) {
+                            const golfInfo = profile.profile_data?.golfInfo || {};
+                            results.push({
+                                id: m.golfer_id,
+                                name: profile.name,
+                                username: profile.name,
+                                handicap: golfInfo.handicap ? parseFloat(golfInfo.handicap) : 36,
+                                homeClub: golfInfo.homeClub || '',
+                                profileData: profile.profile_data,
+                                isSocietyMember: true,
+                                memberNumber: m.member_number,
+                                isPrimarySociety: m.is_primary_society
+                            });
+                            seenIds.add(m.golfer_id);
+                        }
+                    });
+                    console.log(`[SocietyGolf] Found ${members.length} society members`);
+                }
+            } catch (err) {
+                console.error('[SocietyGolf] Error searching society members:', err);
+            }
         }
 
-        return (data || []).map(p => {
-            const golfInfo = p.profile_data?.golfInfo || {};
-            return {
-                id: p.id,
-                name: p.display_name || p.username,
-                username: p.username,
-                handicap: golfInfo.handicap ? parseFloat(golfInfo.handicap) : 36,
-                homeClub: golfInfo.homeClub || '',
-                profileData: p.profile_data
-            };
-        });
+        // 2. Search platform-wide user_profiles
+        try {
+            const { data, error } = await window.SupabaseDB.client
+                .from('user_profiles')
+                .select('line_user_id, name, profile_data')
+                .ilike('name', `%${searchTerm}%`)
+                .limit(20);
+
+            if (!error && data) {
+                data.forEach(p => {
+                    if (!seenIds.has(p.line_user_id)) {
+                        const golfInfo = p.profile_data?.golfInfo || {};
+                        results.push({
+                            id: p.line_user_id,
+                            name: p.name,
+                            username: p.name,
+                            handicap: golfInfo.handicap ? parseFloat(golfInfo.handicap) : 36,
+                            homeClub: golfInfo.homeClub || '',
+                            profileData: p.profile_data,
+                            isSocietyMember: false
+                        });
+                        seenIds.add(p.line_user_id);
+                    }
+                });
+                console.log(`[SocietyGolf] Found ${data.length} platform users`);
+            }
+        } catch (err) {
+            console.error('[SocietyGolf] Error searching platform users:', err);
+        }
+
+        console.log(`[SocietyGolf] Total search results: ${results.length}`);
+        return results;
     }
 
     // =====================================================
@@ -29627,6 +29685,115 @@ class SocietyGolfSupabase {
             sub.unsubscribe();
         });
         this.subscriptions = [];
+    }
+
+    // =====================================================
+    // SOCIETY MEMBERSHIP MANAGEMENT
+    // =====================================================
+
+    async getSocietyMembers(societyName, organizerId = null) {
+        await this.waitForSupabase();
+        let query = window.SupabaseDB.client
+            .from('society_members')
+            .select('*')
+            .eq('society_name', societyName)
+            .eq('status', 'active')
+            .order('joined_at', { ascending: false });
+
+        if (organizerId) {
+            query = query.eq('organizer_id', organizerId);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+            console.error('[SocietyGolfDB] Error loading society members:', error);
+            return [];
+        }
+
+        return data || [];
+    }
+
+    async addSocietyMember(societyName, organizerId, golferId, memberData = {}) {
+        await this.waitForSupabase();
+        const { data, error } = await window.SupabaseDB.client
+            .from('society_members')
+            .upsert({
+                society_name: societyName,
+                organizer_id: organizerId,
+                golfer_id: golferId,
+                member_number: memberData.memberNumber || null,
+                is_primary_society: memberData.isPrimary || false,
+                status: memberData.status || 'active',
+                member_data: memberData.extra || {}
+            }, {
+                onConflict: 'society_name,golfer_id'
+            })
+            .select();
+
+        if (error) {
+            console.error('[SocietyGolfDB] Error adding society member:', error);
+            throw error;
+        }
+
+        return data;
+    }
+
+    async removeSocietyMember(societyName, golferId) {
+        await this.waitForSupabase();
+        const { error } = await window.SupabaseDB.client
+            .from('society_members')
+            .delete()
+            .eq('society_name', societyName)
+            .eq('golfer_id', golferId);
+
+        if (error) {
+            console.error('[SocietyGolfDB] Error removing society member:', error);
+            throw error;
+        }
+
+        return true;
+    }
+
+    async getUserSocietyMemberships(golferId) {
+        await this.waitForSupabase();
+        const { data, error } = await window.SupabaseDB.client
+            .from('society_members')
+            .select('*')
+            .eq('golfer_id', golferId)
+            .eq('status', 'active')
+            .order('is_primary_society', { ascending: false });
+
+        if (error) {
+            console.error('[SocietyGolfDB] Error loading user memberships:', error);
+            return [];
+        }
+
+        return data || [];
+    }
+
+    async setPrimarySociety(golferId, societyName) {
+        await this.waitForSupabase();
+
+        // First, remove primary flag from all societies for this user
+        await window.SupabaseDB.client
+            .from('society_members')
+            .update({ is_primary_society: false })
+            .eq('golfer_id', golferId);
+
+        // Then set the new primary society
+        const { error } = await window.SupabaseDB.client
+            .from('society_members')
+            .update({ is_primary_society: true })
+            .eq('golfer_id', golferId)
+            .eq('society_name', societyName);
+
+        if (error) {
+            console.error('[SocietyGolfDB] Error setting primary society:', error);
+            throw error;
+        }
+
+        return true;
     }
 
     // =====================================================
@@ -35591,7 +35758,9 @@ class SocietyOrganizerManager {
         `;
 
         try {
-            const players = await SocietyGolfDB.searchPlayers(searchTerm);
+            // Pass society name for dual search (platform + society members)
+            const societyName = this.currentEvent?.organizerName || null;
+            const players = await SocietyGolfDB.searchPlayers(searchTerm, societyName);
 
             if (players.length === 0) {
                 resultsDiv.innerHTML = `
@@ -35608,12 +35777,18 @@ class SocietyOrganizerManager {
                 <div class="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
                      onclick="SocietyOrganizerSystem.selectPlayer('${player.id}', '${player.name.replace(/'/g, "\\'")}', ${player.handicap})">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                            <span class="material-symbols-outlined text-green-600">person</span>
+                        <div class="w-10 h-10 ${player.isSocietyMember ? 'bg-purple-100' : 'bg-green-100'} rounded-full flex items-center justify-center">
+                            <span class="material-symbols-outlined ${player.isSocietyMember ? 'text-purple-600' : 'text-green-600'}">person</span>
                         </div>
                         <div>
-                            <div class="font-medium text-gray-900">${player.name}</div>
-                            <div class="text-xs text-gray-500">HCP: ${player.handicap}${player.homeClub ? ' • ' + player.homeClub : ''}</div>
+                            <div class="flex items-center gap-2">
+                                <span class="font-medium text-gray-900">${player.name}</span>
+                                ${player.isSocietyMember ? '<span class="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">MEMBER</span>' : ''}
+                                ${player.isPrimarySociety ? '<span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">PRIMARY</span>' : ''}
+                            </div>
+                            <div class="text-xs text-gray-500">
+                                HCP: ${player.handicap}${player.homeClub ? ' • ' + player.homeClub : ''}${player.memberNumber ? ' • #' + player.memberNumber : ''}
+                            </div>
                         </div>
                     </div>
                     <button class="btn-primary text-xs py-1 px-3">

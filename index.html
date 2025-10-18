@@ -27,6 +27,7 @@
 
     <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
     <script src="https://static.line-scdn.net/liff/edge/2.1/sdk.js"></script>
+    <script src="js/scorecardProfileLoader.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <!-- OpenStreetMap with Leaflet (Free Alternative) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
@@ -26299,20 +26300,37 @@ Total Rounds: ${ningCaddy.totalRounds}`;
             <div class="p-6 space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Course Name</label>
-                    <input type="text" id="courseName" placeholder="e.g., Pattaya Golf Club"
+                    <select id="courseSelect" onchange="handleCourseChange()"
                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500">
+                        <option value="">Select a course...</option>
+                    </select>
+                    <input type="text" id="courseName" placeholder="Or enter custom course name"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 mt-2"
+                           style="display: none;">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Tee Marker</label>
+                    <select id="teeMarker" onchange="handleTeeChange()"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500">
+                        <option value="">Select tee marker...</option>
+                    </select>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Course Rating</label>
                         <input type="number" id="courseRating" placeholder="72.1" step="0.1" min="60" max="80"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500">
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 bg-gray-50"
+                               readonly>
+                        <small class="text-gray-500 text-xs">Auto-populated from course profile</small>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">Slope Rating</label>
                         <input type="number" id="slopeRating" placeholder="113" min="55" max="155"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500">
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500 bg-gray-50"
+                               readonly>
+                        <small class="text-gray-500 text-xs">Auto-populated from course profile</small>
                     </div>
                 </div>
 
@@ -26364,6 +26382,8 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 const newScore = {
                     id: Date.now(),
                     course: scoreData.course,
+                    courseId: scoreData.courseId || null,
+                    tee: scoreData.tee || null,
                     score: parseInt(scoreData.score),
                     holes: parseInt(scoreData.holes),
                     courseRating: parseFloat(scoreData.courseRating) || (scoreData.holes === 18 ? 72.0 : 36.0),
@@ -26716,26 +26736,139 @@ Total Rounds: ${ningCaddy.totalRounds}`;
         };
 
         // Modal functions
-        function showAddScoreModal() {
+        async function showAddScoreModal() {
             document.getElementById('addScoreModal').style.display = 'flex';
             // Set today's date as default
             document.getElementById('datePlayed').value = new Date().toISOString().split('T')[0];
+
+            // Populate course dropdown
+            await populateCourseDropdown();
+        }
+
+        async function populateCourseDropdown() {
+            const courseSelect = document.getElementById('courseSelect');
+            const loader = window.scorecardProfileLoader;
+
+            if (!loader) {
+                console.error('Scorecard profile loader not initialized');
+                return;
+            }
+
+            const courses = loader.getAvailableProfiles().filter(c => c !== 'generic');
+
+            courseSelect.innerHTML = '<option value="">Select a course...</option>';
+            courses.forEach(courseId => {
+                const option = document.createElement('option');
+                option.value = courseId;
+                option.textContent = loader.getCourseDisplayName(courseId);
+                courseSelect.appendChild(option);
+            });
+
+            // Add custom option
+            const customOption = document.createElement('option');
+            customOption.value = 'custom';
+            customOption.textContent = '+ Enter Custom Course';
+            courseSelect.appendChild(customOption);
+        }
+
+        async function handleCourseChange() {
+            const courseSelect = document.getElementById('courseSelect');
+            const courseName = document.getElementById('courseName');
+            const teeMarker = document.getElementById('teeMarker');
+            const courseId = courseSelect.value;
+
+            if (courseId === 'custom') {
+                courseName.style.display = 'block';
+                courseName.value = '';
+                teeMarker.innerHTML = '<option value="">N/A for custom courses</option>';
+                teeMarker.disabled = true;
+                document.getElementById('courseRating').value = '';
+                document.getElementById('slopeRating').value = '';
+                document.getElementById('courseRating').removeAttribute('readonly');
+                document.getElementById('slopeRating').removeAttribute('readonly');
+                return;
+            }
+
+            if (!courseId) {
+                courseName.style.display = 'none';
+                teeMarker.innerHTML = '<option value="">Select course first</option>';
+                return;
+            }
+
+            courseName.style.display = 'none';
+            courseName.value = window.scorecardProfileLoader.getCourseDisplayName(courseId);
+
+            // Load tee options
+            const tees = await window.scorecardProfileLoader.getTeeOptions(courseId);
+            teeMarker.innerHTML = '<option value="">Select tee marker...</option>';
+            teeMarker.disabled = false;
+
+            tees.forEach(tee => {
+                const option = document.createElement('option');
+                option.value = tee.color;
+                option.textContent = `${tee.color} Tees (${tee.name}) - CR: ${tee.course_rating}, SR: ${tee.slope_rating}`;
+                option.dataset.courseRating = tee.course_rating;
+                option.dataset.slopeRating = tee.slope_rating;
+                teeMarker.appendChild(option);
+            });
+        }
+
+        function handleTeeChange() {
+            const teeMarker = document.getElementById('teeMarker');
+            const selectedOption = teeMarker.options[teeMarker.selectedIndex];
+
+            if (selectedOption && selectedOption.value) {
+                const courseRating = selectedOption.dataset.courseRating;
+                const slopeRating = selectedOption.dataset.slopeRating;
+
+                document.getElementById('courseRating').value = courseRating;
+                document.getElementById('slopeRating').value = slopeRating;
+                document.getElementById('courseRating').setAttribute('readonly', 'readonly');
+                document.getElementById('slopeRating').setAttribute('readonly', 'readonly');
+            }
         }
 
         function closeAddScoreModal() {
             document.getElementById('addScoreModal').style.display = 'none';
             // Clear form
+            document.getElementById('courseSelect').value = '';
             document.getElementById('courseName').value = '';
+            document.getElementById('courseName').style.display = 'none';
+            document.getElementById('teeMarker').value = '';
             document.getElementById('courseRating').value = '';
             document.getElementById('slopeRating').value = '';
             document.getElementById('scoreValue').value = '';
+            document.getElementById('courseRating').removeAttribute('readonly');
+            document.getElementById('slopeRating').removeAttribute('readonly');
             document.getElementById('holesPlayed').value = '18';
             document.getElementById('datePlayed').value = '';
             document.getElementById('scoreNotes').value = '';
         }
 
         function saveGolfScore() {
-            const courseName = document.getElementById('courseName').value.trim();
+            const courseSelect = document.getElementById('courseSelect');
+            const courseNameInput = document.getElementById('courseName');
+            const teeMarker = document.getElementById('teeMarker');
+
+            // Get course name from dropdown or custom input
+            let courseName;
+            let courseId;
+            let teeColor;
+
+            if (courseSelect.value === 'custom') {
+                courseName = courseNameInput.value.trim();
+                courseId = null;
+                teeColor = null;
+            } else if (courseSelect.value) {
+                courseId = courseSelect.value;
+                courseName = window.scorecardProfileLoader.getCourseDisplayName(courseId);
+                teeColor = teeMarker.value || null;
+            } else {
+                courseName = courseNameInput.value.trim();
+                courseId = null;
+                teeColor = null;
+            }
+
             const scoreValue = document.getElementById('scoreValue').value;
             const holesPlayed = document.getElementById('holesPlayed').value;
             const courseRating = document.getElementById('courseRating').value;
@@ -26773,6 +26906,8 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     GolfScoreSystem.scores[scoreIndex] = {
                         id: window.editingScoreId,
                         course: courseName,
+                        courseId: courseId,
+                        tee: teeColor,
                         score: parseInt(scoreValue),
                         holes: parseInt(holesPlayed),
                         courseRating: parseFloat(courseRating) || (holesPlayed === '18' ? 72.0 : 36.0),
@@ -26794,6 +26929,8 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 // Add new score
                 GolfScoreSystem.saveScore({
                     course: courseName,
+                    courseId: courseId,
+                    tee: teeColor,
                     score: scoreValue,
                     holes: holesPlayed,
                     courseRating: courseRating,
@@ -31453,9 +31590,23 @@ class LiveScorecardSystem {
 
     renderHole() {
         // Get current hole data for the selected tee marker
-        const holeData = this.courseData?.holes?.find(h =>
-            h.number === this.currentHole && h.teeMarker === this.selectedTeeMarker
+        // Try to find hole with matching tee marker first, then fall back to any tee marker
+        let holeData = this.courseData?.holes?.find(h =>
+            h.number === this.currentHole &&
+            h.teeMarker?.toLowerCase() === this.selectedTeeMarker?.toLowerCase()
         );
+
+        // If no match with tee marker, try to find any hole with this number
+        if (!holeData) {
+            holeData = this.courseData?.holes?.find(h => h.number === this.currentHole);
+        }
+
+        // Debug logging
+        if (!holeData) {
+            console.warn(`[LiveScorecard] No hole data found for hole ${this.currentHole}, tee marker: ${this.selectedTeeMarker}`);
+            console.log('[LiveScorecard] Available holes:', this.courseData?.holes);
+        }
+
         const par = holeData?.par || 4;
         const strokeIndex = holeData?.strokeIndex || this.currentHole;
         const yardage = holeData?.yardage || 0;

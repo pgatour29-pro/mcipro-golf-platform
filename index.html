@@ -19771,11 +19771,24 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 <select id="scorecardCourseSelect" class="flex-1 rounded-lg border px-3 py-2">
                                     <option value="">-- Select Course --</option>
                                     <option value="bangpakong">Bangpakong Riverside Country Club</option>
+                                    <option value="bangpra_international">Bangpra International Golf Club</option>
                                     <option value="burapha_east">Burapha Golf Club - East Course</option>
                                     <option value="burapha_west">Burapha Golf Club - West Course</option>
+                                    <option value="crystal_bay">Crystal Bay Golf Club</option>
+                                    <option value="grand_prix">Grand Prix Golf Club</option>
                                     <option value="khao_kheow_ab">Khao Kheow A+B</option>
                                     <option value="khao_kheow_ac">Khao Kheow A+C</option>
                                     <option value="khao_kheow_bc">Khao Kheow B+C</option>
+                                    <option value="laem_chabang">Laem Chabang International Country Club</option>
+                                    <option value="mountain_shadow">Mountain Shadow Golf Club</option>
+                                    <option value="pattana_golf">Pattana Golf Resort & Spa</option>
+                                    <option value="pattavia">Pattavia Golf Club</option>
+                                    <option value="pattaya_country_club">Pattaya Country Club</option>
+                                    <option value="pleasant_valley">Pleasant Valley Golf Club</option>
+                                    <option value="plutaluang">Plutaluang Royal Thai Navy Golf Course</option>
+                                    <option value="royal_lakeside">Royal Lakeside Golf Club</option>
+                                    <option value="siam_cc_old">Siam Country Club - Old Course</option>
+                                    <option value="siam_plantation">Siam Plantation Golf Club</option>
                                 </select>
                                 <button onclick="LiveScorecardManager.openCourseLibrary()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
                                     <span class="material-symbols-outlined text-sm">library_books</span>
@@ -20059,7 +20072,11 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                     <h2 class="text-3xl font-bold" id="currentHoleNumber">Hole 1</h2>
                                     <p class="text-green-100" id="currentHoleInfo">Par 4 • Index 10</p>
                                 </div>
-                                <div class="text-right">
+                                <div class="text-right flex gap-2">
+                                    <button onclick="LiveScorecardManager.viewScorecardImage()" class="px-4 py-2 bg-white text-green-600 rounded-lg font-medium hover:bg-green-50 flex items-center gap-2">
+                                        <span class="material-symbols-outlined text-sm">image</span>
+                                        Scorecard
+                                    </button>
                                     <button onclick="LiveScorecardManager.endRound()" class="px-4 py-2 bg-white text-green-600 rounded-lg font-medium hover:bg-green-50">
                                         End Round
                                     </button>
@@ -20380,6 +20397,23 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         </div>
                     </form>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scorecard Image Viewer Modal -->
+    <div id="scorecardImageModal" class="fixed inset-0 bg-black bg-opacity-90 z-50 hidden flex items-center justify-center p-4" onclick="LiveScorecardManager.closeScorecardImage()">
+        <div class="relative max-w-6xl w-full" onclick="event.stopPropagation()">
+            <button onclick="LiveScorecardManager.closeScorecardImage()" class="absolute -top-12 right-0 text-white hover:text-gray-300 flex items-center gap-2 bg-black bg-opacity-50 px-4 py-2 rounded-lg">
+                <span class="material-symbols-outlined">close</span>
+                Close
+            </button>
+            <div class="bg-white rounded-lg p-4">
+                <h3 class="text-xl font-bold text-gray-900 mb-4" id="scorecardImageTitle">Course Scorecard</h3>
+                <div class="overflow-auto max-h-[80vh]">
+                    <img id="scorecardImage" src="" alt="Course Scorecard" class="w-full h-auto">
+                </div>
+                <p class="text-xs text-gray-500 mt-4 text-center">Tap outside or click Close to return to round</p>
             </div>
         </div>
     </div>
@@ -30907,10 +30941,10 @@ class LiveScorecardSystem {
         }
 
         try {
-            // Get course info
+            // Get course info (including scorecard_url)
             const { data: course, error: courseError } = await window.SupabaseDB.client
                 .from('courses')
-                .select('id, name')
+                .select('id, name, scorecard_url')
                 .eq('id', courseId)
                 .single();
 
@@ -30928,6 +30962,7 @@ class LiveScorecardSystem {
             this.courseData = {
                 id: course.id,
                 name: course.name,
+                scorecardUrl: course.scorecard_url,
                 holes: holes.map(h => ({
                     number: h.hole_number,
                     par: h.par,
@@ -32329,6 +32364,35 @@ class LiveScorecardSystem {
 
     closeJoinGamesModal() {
         const modal = document.getElementById('joinGamesModal');
+        modal.classList.add('hidden');
+    }
+
+    // =====================================================
+    // SCORECARD IMAGE VIEWER
+    // =====================================================
+
+    viewScorecardImage() {
+        if (!this.courseData || !this.courseData.scorecardUrl) {
+            NotificationManager.show('No scorecard image available for this course', 'warning');
+            return;
+        }
+
+        const modal = document.getElementById('scorecardImageModal');
+        const img = document.getElementById('scorecardImage');
+        const title = document.getElementById('scorecardImageTitle');
+
+        // Set image source
+        img.src = this.courseData.scorecardUrl;
+        title.textContent = `${this.courseData.name} - Scorecard`;
+
+        // Show modal
+        modal.classList.remove('hidden');
+
+        console.log('[LiveScorecard] Displaying scorecard image:', this.courseData.scorecardUrl);
+    }
+
+    closeScorecardImage() {
+        const modal = document.getElementById('scorecardImageModal');
         modal.classList.add('hidden');
     }
 

@@ -35510,7 +35510,23 @@ class SocietyOrganizerManager {
                     return;
                 }
 
-                await SocietyGolfDB.markPlayerPaid(eventId, playerId, booking.total_fee, organizerId);
+                let totalFee = booking.total_fee || 0;
+
+                // If no fee is set, prompt organizer to enter it
+                if (totalFee === 0) {
+                    const feeInput = prompt('Enter the total fee for this player (in Baht):', '2575');
+                    if (feeInput === null) {
+                        // User cancelled
+                        return;
+                    }
+                    totalFee = parseFloat(feeInput) || 0;
+                    if (totalFee <= 0) {
+                        NotificationManager.show('Invalid fee amount', 'error');
+                        return;
+                    }
+                }
+
+                await SocietyGolfDB.markPlayerPaid(eventId, playerId, totalFee, organizerId);
                 NotificationManager.show('✅ Marked as paid', 'success');
             } else {
                 await SocietyGolfDB.markPlayerUnpaid(eventId, playerId);

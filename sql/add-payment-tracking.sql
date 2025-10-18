@@ -13,10 +13,8 @@ ALTER TABLE event_registrations
 -- Index for payment queries
 CREATE INDEX IF NOT EXISTS idx_event_registrations_payment ON event_registrations(event_id, payment_status);
 
--- Update existing records to calculate total_fee from individual fees
-UPDATE event_registrations
-SET total_fee = COALESCE(base_fee, 0) + COALESCE(cart_fee, 0) + COALESCE(caddy_fee, 0) + COALESCE(transport_fee, 0) + COALESCE(competition_fee, 0)
-WHERE total_fee = 0;
+-- Note: total_fee will default to 0.00 for existing records
+-- Organizers will set the fee when marking players as paid
 
 -- Success message
 DO $$

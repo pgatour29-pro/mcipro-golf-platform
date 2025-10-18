@@ -28776,9 +28776,14 @@ class SocietyGolfSupabase {
             startTime: e.start_time,
             cutoff: e.cutoff,
             eventFormat: e.event_format,
+            // OLD fee structure (backwards compatibility)
             baseFee: e.base_fee || 0,
             cartFee: e.cart_fee || 0,
             caddyFee: e.caddy_fee || 0,
+            // NEW fee structure
+            memberFee: e.member_fee || 0,
+            nonMemberFee: e.non_member_fee || 0,
+            otherFee: e.other_fee || 0,
             transportFee: e.transport_fee || 0,
             competitionFee: e.competition_fee || 0,
             maxPlayers: e.max_players,
@@ -28822,9 +28827,14 @@ class SocietyGolfSupabase {
             startTime: data.start_time,
             cutoff: data.cutoff,
             eventFormat: data.event_format,
+            // OLD fee structure (backwards compatibility)
             baseFee: data.base_fee || 0,
             cartFee: data.cart_fee || 0,
             caddyFee: data.caddy_fee || 0,
+            // NEW fee structure
+            memberFee: data.member_fee || 0,
+            nonMemberFee: data.non_member_fee || 0,
+            otherFee: data.other_fee || 0,
             transportFee: data.transport_fee || 0,
             competitionFee: data.competition_fee || 0,
             maxPlayers: data.max_players,
@@ -35931,11 +35941,14 @@ class SocietyOrganizerManager {
             document.getElementById('eventMaxPlayers').value = event.maxPlayers || '';
             document.getElementById('eventCourse').value = event.courseName || '';
             document.getElementById('eventFormat').value = event.eventFormat || 'strokeplay';
-            document.getElementById('eventBaseFee').value = event.baseFee || 0;
-            document.getElementById('eventCartFee').value = event.cartFee || 0;
-            document.getElementById('eventCaddyFee').value = event.caddyFee || 0;
+
+            // NEW: Member/Non-Member fee structure (with backwards compatibility)
+            document.getElementById('eventMemberFee').value = event.memberFee || event.baseFee || 0;
+            document.getElementById('eventNonMemberFee').value = event.nonMemberFee || 0;
             document.getElementById('eventTransportFee').value = event.transportFee || 0;
             document.getElementById('eventCompetitionFee').value = event.competitionFee || 0;
+            document.getElementById('eventOtherFee').value = event.otherFee || 0;
+
             document.getElementById('eventAutoWaitlist').checked = event.autoWaitlist || false;
             document.getElementById('eventNotes').value = event.notes || '';
 
@@ -35967,11 +35980,14 @@ class SocietyOrganizerManager {
             document.getElementById('eventMaxPlayers').value = '40';
             document.getElementById('eventCourse').value = '';
             document.getElementById('eventFormat').value = 'strokeplay';
-            document.getElementById('eventBaseFee').value = '0';
-            document.getElementById('eventCartFee').value = '0';
-            document.getElementById('eventCaddyFee').value = '0';
+
+            // NEW: Member/Non-Member fee structure
+            document.getElementById('eventMemberFee').value = '0';
+            document.getElementById('eventNonMemberFee').value = '0';
             document.getElementById('eventTransportFee').value = '0';
             document.getElementById('eventCompetitionFee').value = '0';
+            document.getElementById('eventOtherFee').value = '0';
+
             document.getElementById('eventAutoWaitlist').checked = true; // Default to enabled
             document.getElementById('eventNotes').value = '';
 
@@ -37064,6 +37080,10 @@ class SocietyOrganizerManager {
             if (existingPairings && existingPairings.groups) {
                 this.currentPairings.groups = existingPairings.groups;
                 this.currentPairings.groupSize = existingPairings.groupSize || 4;
+                // Load 4-ball groups for 2-man scramble
+                if (existingPairings.fourBallGroups) {
+                    this.currentPairings.fourBallGroups = existingPairings.fourBallGroups;
+                }
                 document.getElementById('pairingsGroupSize').value = this.currentPairings.groupSize;
                 this.renderPairings();
             }
@@ -37235,7 +37255,14 @@ class SocietyOrganizerManager {
         const manualMode = this.manualPairingEnabled;
         const formatValue = document.getElementById('pairingsGroupSize').value;
         const isScramble = formatValue.includes('scramble');
+        const is2ManScramble = formatValue === '2man_scramble';
         const formatLabel = isScramble ? (formatValue === '2man_scramble' ? '2-Man Scramble' : '4-Man Scramble') : '';
+
+        // Special rendering for 2-man scramble with drag-and-drop grouping
+        if (is2ManScramble && groups && groups.length > 0) {
+            this.render2ManScramblePairings();
+            return;
+        }
 
         if (!groups || groups.length === 0) {
             // ALWAYS show players if they exist, regardless of manual mode
@@ -37356,6 +37383,214 @@ class SocietyOrganizerManager {
         `;
     }
 
+    render2ManScramblePairings() {
+        const container = document.getElementById('pairingsContainer');
+        const teams = this.currentPairings.groups; // Each "group" is actually a team of 2
+
+        // Initialize 4-ball groups structure if not exists
+        if (!this.currentPairings.fourBallGroups) {
+            this.currentPairings.fourBallGroups = [];
+        }
+
+        // Get teams that are already in 4-ball groups
+        const assignedTeamIndices = new Set();
+        this.currentPairings.fourBallGroups.forEach(group => {
+            if (group.teamIndices) {
+                group.teamIndices.forEach(idx => assignedTeamIndices.add(idx));
+            }
+        });
+
+        // Unassigned teams (not in any 4-ball group)
+        const unassignedTeams = teams.map((team, idx) => ({ team, idx }))
+            .filter(({ idx }) => !assignedTeamIndices.has(idx));
+
+        container.innerHTML = `
+            <div class="space-y-4">
+                <!-- 4-Ball Groups -->
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-bold text-gray-900">4-Ball Groups (Tee Times)</h3>
+                        <button onclick="SocietyOrganizerSystem.add4BallGroup()" class="btn-primary text-xs py-1 px-2">
+                            <span class="material-symbols-outlined text-xs">add</span>
+                            Add Group
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3" id="fourBallGroupsContainer">
+                        ${this.currentPairings.fourBallGroups.map((group, groupIdx) => this.render4BallGroup(group, groupIdx, teams)).join('')}
+                    </div>
+                    ${this.currentPairings.fourBallGroups.length === 0 ? '<p class="text-sm text-gray-500 text-center py-4">No groups yet. Click "Add Group" to create tee time groups.</p>' : ''}
+                </div>
+
+                <!-- Unassigned Teams -->
+                <div class="bg-purple-50 rounded-lg p-4">
+                    <h3 class="text-sm font-bold text-purple-900 mb-3">Teams (2-Man Scramble) - Drag to assign to groups</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+                        ${unassignedTeams.map(({ team, idx }) => this.renderDraggableTeam(team, idx)).join('')}
+                    </div>
+                    ${unassignedTeams.length === 0 ? '<p class="text-xs text-purple-700">All teams have been assigned to groups!</p>' : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    render4BallGroup(group, groupIdx, allTeams) {
+        const groupNumber = groupIdx + 1;
+        const teamSlots = group.teamIndices || [];
+        const team1 = teamSlots[0] !== undefined ? allTeams[teamSlots[0]] : null;
+        const team2 = teamSlots[1] !== undefined ? allTeams[teamSlots[1]] : null;
+
+        return `
+            <div class="bg-white border-2 border-green-300 rounded-lg p-3"
+                 ondrop="SocietyOrganizerSystem.handleTeamDrop(event, ${groupIdx})"
+                 ondragover="SocietyOrganizerSystem.allowDrop(event)"
+                 ondragleave="SocietyOrganizerSystem.handleDragLeave(event)">
+                <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-sm font-bold text-gray-900">Group ${groupNumber}</h4>
+                    <button onclick="SocietyOrganizerSystem.remove4BallGroup(${groupIdx})" class="text-xs text-red-600 hover:underline">
+                        Remove
+                    </button>
+                </div>
+
+                <!-- Team Slot 1 -->
+                <div class="mb-2">
+                    ${team1 ? `
+                        <div class="bg-purple-100 border border-purple-300 rounded p-2 relative">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-xs font-bold text-purple-900">Team A</span>
+                                <button onclick="SocietyOrganizerSystem.removeTeamFromGroup(${groupIdx}, 0)" class="text-xs text-red-600 hover:underline">×</button>
+                            </div>
+                            ${team1.map((player, playerIdx) => `
+                                <div class="flex items-center justify-between text-xs py-1">
+                                    <span class="font-medium text-gray-900">${player.playerName}</span>
+                                    <span class="text-gray-600">${Math.round(player.handicap)}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : `
+                        <div class="border-2 border-dashed border-gray-300 rounded p-3 text-center text-xs text-gray-400">
+                            Drop Team A here
+                        </div>
+                    `}
+                </div>
+
+                <!-- Team Slot 2 -->
+                <div>
+                    ${team2 ? `
+                        <div class="bg-purple-100 border border-purple-300 rounded p-2 relative">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-xs font-bold text-purple-900">Team B</span>
+                                <button onclick="SocietyOrganizerSystem.removeTeamFromGroup(${groupIdx}, 1)" class="text-xs text-red-600 hover:underline">×</button>
+                            </div>
+                            ${team2.map((player, playerIdx) => `
+                                <div class="flex items-center justify-between text-xs py-1">
+                                    <span class="font-medium text-gray-900">${player.playerName}</span>
+                                    <span class="text-gray-600">${Math.round(player.handicap)}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : `
+                        <div class="border-2 border-dashed border-gray-300 rounded p-3 text-center text-xs text-gray-400">
+                            Drop Team B here
+                        </div>
+                    `}
+                </div>
+            </div>
+        `;
+    }
+
+    renderDraggableTeam(team, teamIdx) {
+        const avgHandicap = team.reduce((sum, p) => sum + p.handicap, 0) / team.length;
+        return `
+            <div draggable="true"
+                 ondragstart="SocietyOrganizerSystem.handleTeamDragStart(event, ${teamIdx})"
+                 ondragend="SocietyOrganizerSystem.handleTeamDragEnd(event)"
+                 class="bg-white border-2 border-purple-200 rounded-lg p-2 cursor-move hover:shadow-lg transition-shadow">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs font-bold text-purple-900">Team ${teamIdx + 1}</span>
+                    <span class="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">
+                        Avg: ${avgHandicap.toFixed(1)}
+                    </span>
+                </div>
+                <div class="space-y-1">
+                    ${team.map((player, playerIdx) => `
+                        <div class="flex items-center justify-between bg-purple-50 rounded px-2 py-1">
+                            <span class="text-xs font-medium text-gray-900">${player.playerName}</span>
+                            <span class="text-xs text-gray-600">${Math.round(player.handicap)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // Drag-and-Drop handlers
+    handleTeamDragStart(event, teamIdx) {
+        event.dataTransfer.setData('teamIdx', teamIdx);
+        event.target.style.opacity = '0.5';
+    }
+
+    handleTeamDragEnd(event) {
+        event.target.style.opacity = '1';
+    }
+
+    allowDrop(event) {
+        event.preventDefault();
+        event.currentTarget.classList.add('bg-green-50');
+    }
+
+    handleDragLeave(event) {
+        event.currentTarget.classList.remove('bg-green-50');
+    }
+
+    handleTeamDrop(event, groupIdx) {
+        event.preventDefault();
+        event.currentTarget.classList.remove('bg-green-50');
+
+        const teamIdx = parseInt(event.dataTransfer.getData('teamIdx'));
+
+        // Ensure fourBallGroups structure exists
+        if (!this.currentPairings.fourBallGroups[groupIdx]) {
+            this.currentPairings.fourBallGroups[groupIdx] = { teamIndices: [] };
+        }
+
+        // Find next available slot (0 or 1)
+        const group = this.currentPairings.fourBallGroups[groupIdx];
+        if (!group.teamIndices) group.teamIndices = [];
+
+        if (group.teamIndices.length < 2) {
+            group.teamIndices.push(teamIdx);
+            NotificationManager.show('Team added to group', 'success');
+            this.renderPairings();
+        } else {
+            NotificationManager.show('Group is full (2 teams maximum)', 'warning');
+        }
+    }
+
+    add4BallGroup() {
+        if (!this.currentPairings.fourBallGroups) {
+            this.currentPairings.fourBallGroups = [];
+        }
+        this.currentPairings.fourBallGroups.push({ teamIndices: [] });
+        this.renderPairings();
+        NotificationManager.show('Group added', 'success');
+    }
+
+    remove4BallGroup(groupIdx) {
+        if (!confirm('Remove this group? Teams will be unassigned.')) return;
+        this.currentPairings.fourBallGroups.splice(groupIdx, 1);
+        this.renderPairings();
+        NotificationManager.show('Group removed', 'success');
+    }
+
+    removeTeamFromGroup(groupIdx, slotIdx) {
+        const group = this.currentPairings.fourBallGroups[groupIdx];
+        if (group && group.teamIndices) {
+            group.teamIndices.splice(slotIdx, 1);
+            this.renderPairings();
+            NotificationManager.show('Team removed from group', 'success');
+        }
+    }
+
     async removeGroup(groupIndex) {
         if (!confirm('Remove this group? Players will become available for pairing again.')) return;
 
@@ -37385,10 +37620,17 @@ class SocietyOrganizerManager {
         }
 
         try {
-            await SocietyGolfDB.savePairings(this.currentPairings.eventId, {
+            const pairingsData = {
                 groupSize: this.currentPairings.groupSize,
                 groups: this.currentPairings.groups
-            });
+            };
+
+            // For 2-man scramble, also save 4-ball groups
+            if (this.currentPairings.fourBallGroups) {
+                pairingsData.fourBallGroups = this.currentPairings.fourBallGroups;
+            }
+
+            await SocietyGolfDB.savePairings(this.currentPairings.eventId, pairingsData);
             NotificationManager.show('Pairings saved successfully', 'success');
         } catch (error) {
             console.error('[SocietyOrganizer] Error saving pairings:', error);

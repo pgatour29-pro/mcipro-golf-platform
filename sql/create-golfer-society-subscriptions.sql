@@ -32,18 +32,22 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_organizer ON golfer_society_subscri
 ALTER TABLE golfer_society_subscriptions ENABLE ROW LEVEL SECURITY;
 
 -- Users can read all subscriptions (to see who's subscribed to their society)
+DROP POLICY IF EXISTS "Subscriptions are viewable by everyone" ON golfer_society_subscriptions;
 CREATE POLICY "Subscriptions are viewable by everyone" ON golfer_society_subscriptions
   FOR SELECT USING (true);
 
 -- Users can only insert their own subscriptions
+DROP POLICY IF EXISTS "Users can create own subscriptions" ON golfer_society_subscriptions;
 CREATE POLICY "Users can create own subscriptions" ON golfer_society_subscriptions
   FOR INSERT WITH CHECK (true);
 
 -- Users can only update their own subscriptions
+DROP POLICY IF EXISTS "Users can update own subscriptions" ON golfer_society_subscriptions;
 CREATE POLICY "Users can update own subscriptions" ON golfer_society_subscriptions
   FOR UPDATE USING (true);
 
 -- Users can only delete their own subscriptions
+DROP POLICY IF EXISTS "Users can delete own subscriptions" ON golfer_society_subscriptions;
 CREATE POLICY "Users can delete own subscriptions" ON golfer_society_subscriptions
   FOR DELETE USING (true);
 
@@ -51,7 +55,14 @@ CREATE POLICY "Users can delete own subscriptions" ON golfer_society_subscriptio
 -- REALTIME PUBLICATION
 -- =====================================================
 
-ALTER PUBLICATION supabase_realtime ADD TABLE golfer_society_subscriptions;
+-- Enable realtime (ignore if already added)
+DO $$
+BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE golfer_society_subscriptions;
+EXCEPTION
+    WHEN duplicate_object THEN
+        NULL;
+END $$;
 
 -- =====================================================
 -- TRIGGERS
@@ -65,6 +76,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_subscriptions_timestamp ON golfer_society_subscriptions;
 CREATE TRIGGER update_subscriptions_timestamp
   BEFORE UPDATE ON golfer_society_subscriptions
   FOR EACH ROW

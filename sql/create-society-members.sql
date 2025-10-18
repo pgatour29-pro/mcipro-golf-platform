@@ -66,8 +66,14 @@ CREATE POLICY "Society members are manageable by everyone"
     USING (true)
     WITH CHECK (true);
 
--- Enable realtime
-ALTER PUBLICATION supabase_realtime ADD TABLE society_members;
+-- Enable realtime (ignore if already added)
+DO $$
+BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE society_members;
+EXCEPTION
+    WHEN duplicate_object THEN
+        NULL;
+END $$;
 
 -- Update timestamp trigger
 CREATE OR REPLACE FUNCTION update_society_members_updated_at()

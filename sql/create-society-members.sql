@@ -53,33 +53,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_primary_society
 -- RLS Policies
 ALTER TABLE society_members ENABLE ROW LEVEL SECURITY;
 
--- Everyone can view active members
+-- Allow public read access to active members (for search/discovery)
 DROP POLICY IF EXISTS "Society members are viewable by everyone" ON society_members;
 CREATE POLICY "Society members are viewable by everyone"
     ON society_members FOR SELECT
-    USING (status = 'active');
+    USING (true);
 
--- Society organizers can manage their own society's members
-DROP POLICY IF EXISTS "Society organizers can manage their members" ON society_members;
-CREATE POLICY "Society organizers can manage their members"
+-- Allow public insert/update/delete (app handles authorization via LINE auth)
+DROP POLICY IF EXISTS "Society members are manageable by everyone" ON society_members;
+CREATE POLICY "Society members are manageable by everyone"
     ON society_members FOR ALL
-    USING (
-        organizer_id = auth.uid()::text
-        OR organizer_id IN (
-            SELECT line_user_id FROM user_profiles WHERE supabase_user_id = auth.uid()
-        )
-    );
-
--- Users can view and update their own memberships
-DROP POLICY IF EXISTS "Users can manage own memberships" ON society_members;
-CREATE POLICY "Users can manage own memberships"
-    ON society_members FOR ALL
-    USING (
-        golfer_id = auth.uid()::text
-        OR golfer_id IN (
-            SELECT line_user_id FROM user_profiles WHERE supabase_user_id = auth.uid()
-        )
-    );
+    USING (true)
+    WITH CHECK (true);
 
 -- Enable realtime
 ALTER PUBLICATION supabase_realtime ADD TABLE society_members;

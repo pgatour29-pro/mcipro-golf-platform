@@ -1,250 +1,316 @@
--- =====================================================================
--- Crystal Bay Golf Club - Complete Tee Marker Data
--- =====================================================================
--- This file contains ALL tee markers for all 18 holes across Course A, B, and C
+-- =====================================================
+-- CRYSTAL BAY GOLF CLUB - ALL TEE MARKERS
+-- =====================================================
+-- 27-hole facility with 3 nine-hole courses: A, B, C
+-- Creating 3 separate 18-hole combinations
 -- Tee Markers: Blue, White, Yellow, Red
--- =====================================================================
+-- =====================================================
 
--- Delete existing data for Crystal Bay
-DELETE FROM course_holes WHERE course_id = 'crystal_bay';
+DELETE FROM course_holes WHERE course_id IN ('crystal_bay_ab', 'crystal_bay_ac', 'crystal_bay_bc');
 
--- =====================================================================
--- COURSE A (Holes 1-9)
--- =====================================================================
+-- =====================================================
+-- COMBINATION 1: COURSE A+B (crystal_bay_ab)
+-- =====================================================
 
--- BLUE Tees - Course A
-INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker, created_at, updated_at)
-VALUES
-('crystal_bay', 1, 4, 16, 389, 'blue', NOW(), NOW()),
-('crystal_bay', 2, 4, 2, 435, 'blue', NOW(), NOW()),
-('crystal_bay', 3, 4, 4, 430, 'blue', NOW(), NOW()),
-('crystal_bay', 4, 5, 8, 472, 'blue', NOW(), NOW()),
-('crystal_bay', 5, 4, 12, 373, 'blue', NOW(), NOW()),
-('crystal_bay', 6, 3, 18, 162, 'blue', NOW(), NOW()),
-('crystal_bay', 7, 4, 10, 420, 'blue', NOW(), NOW()),
-('crystal_bay', 8, 5, 6, 497, 'blue', NOW(), NOW()),
-('crystal_bay', 9, 3, 14, 138, 'blue', NOW(), NOW());
+-- BLUE TEES - Course A+B
+INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
+-- Course A (holes 1-9)
+('crystal_bay_ab', 1, 4, 16, 389, 'blue'),
+('crystal_bay_ab', 2, 4, 2, 435, 'blue'),
+('crystal_bay_ab', 3, 4, 4, 430, 'blue'),
+('crystal_bay_ab', 4, 5, 8, 472, 'blue'),
+('crystal_bay_ab', 5, 4, 12, 373, 'blue'),
+('crystal_bay_ab', 6, 3, 18, 162, 'blue'),
+('crystal_bay_ab', 7, 4, 10, 420, 'blue'),
+('crystal_bay_ab', 8, 5, 6, 497, 'blue'),
+('crystal_bay_ab', 9, 3, 14, 138, 'blue'),
+-- Course B (holes 10-18)
+('crystal_bay_ab', 10, 4, 13, 388, 'blue'),
+('crystal_bay_ab', 11, 4, 11, 376, 'blue'),
+('crystal_bay_ab', 12, 4, 7, 440, 'blue'),
+('crystal_bay_ab', 13, 5, 9, 484, 'blue'),
+('crystal_bay_ab', 14, 3, 17, 172, 'blue'),
+('crystal_bay_ab', 15, 5, 3, 476, 'blue'),
+('crystal_bay_ab', 16, 4, 5, 429, 'blue'),
+('crystal_bay_ab', 17, 3, 15, 332, 'blue'),
+('crystal_bay_ab', 18, 4, 1, 410, 'blue');
 
--- WHITE Tees - Course A
-INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker, created_at, updated_at)
-VALUES
-('crystal_bay', 1, 4, 16, 359, 'white', NOW(), NOW()),
-('crystal_bay', 2, 4, 2, 408, 'white', NOW(), NOW()),
-('crystal_bay', 3, 4, 4, 399, 'white', NOW(), NOW()),
-('crystal_bay', 4, 5, 8, 452, 'white', NOW(), NOW()),
-('crystal_bay', 5, 4, 12, 345, 'white', NOW(), NOW()),
-('crystal_bay', 6, 3, 18, 147, 'white', NOW(), NOW()),
-('crystal_bay', 7, 4, 10, 394, 'white', NOW(), NOW()),
-('crystal_bay', 8, 5, 6, 467, 'white', NOW(), NOW()),
-('crystal_bay', 9, 3, 14, 138, 'white', NOW(), NOW());
+-- WHITE TEES - Course A+B
+INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
+-- Course A (holes 1-9)
+('crystal_bay_ab', 1, 4, 16, 359, 'white'),
+('crystal_bay_ab', 2, 4, 2, 408, 'white'),
+('crystal_bay_ab', 3, 4, 4, 399, 'white'),
+('crystal_bay_ab', 4, 5, 8, 452, 'white'),
+('crystal_bay_ab', 5, 4, 12, 345, 'white'),
+('crystal_bay_ab', 6, 3, 18, 147, 'white'),
+('crystal_bay_ab', 7, 4, 10, 394, 'white'),
+('crystal_bay_ab', 8, 5, 6, 467, 'white'),
+('crystal_bay_ab', 9, 3, 14, 138, 'white'),
+-- Course B (holes 10-18)
+('crystal_bay_ab', 10, 4, 13, 388, 'white'),
+('crystal_bay_ab', 11, 4, 11, 350, 'white'),
+('crystal_bay_ab', 12, 4, 7, 413, 'white'),
+('crystal_bay_ab', 13, 5, 9, 456, 'white'),
+('crystal_bay_ab', 14, 3, 17, 147, 'white'),
+('crystal_bay_ab', 15, 5, 3, 450, 'white'),
+('crystal_bay_ab', 16, 4, 5, 402, 'white'),
+('crystal_bay_ab', 17, 3, 15, 308, 'white'),
+('crystal_bay_ab', 18, 4, 1, 385, 'white');
 
--- YELLOW Tees - Course A
-INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker, created_at, updated_at)
-VALUES
-('crystal_bay', 1, 4, 16, 341, 'yellow', NOW(), NOW()),
-('crystal_bay', 2, 4, 2, 360, 'yellow', NOW(), NOW()),
-('crystal_bay', 3, 4, 4, 370, 'yellow', NOW(), NOW()),
-('crystal_bay', 4, 5, 8, 433, 'yellow', NOW(), NOW()),
-('crystal_bay', 5, 4, 12, 318, 'yellow', NOW(), NOW()),
-('crystal_bay', 6, 3, 18, 138, 'yellow', NOW(), NOW()),
-('crystal_bay', 7, 4, 10, 364, 'yellow', NOW(), NOW()),
-('crystal_bay', 8, 5, 6, 438, 'yellow', NOW(), NOW()),
-('crystal_bay', 9, 3, 14, 135, 'yellow', NOW(), NOW());
+-- YELLOW TEES - Course A+B
+INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
+-- Course A (holes 1-9)
+('crystal_bay_ab', 1, 4, 16, 341, 'yellow'),
+('crystal_bay_ab', 2, 4, 2, 360, 'yellow'),
+('crystal_bay_ab', 3, 4, 4, 370, 'yellow'),
+('crystal_bay_ab', 4, 5, 8, 433, 'yellow'),
+('crystal_bay_ab', 5, 4, 12, 318, 'yellow'),
+('crystal_bay_ab', 6, 3, 18, 138, 'yellow'),
+('crystal_bay_ab', 7, 4, 10, 364, 'yellow'),
+('crystal_bay_ab', 8, 5, 6, 438, 'yellow'),
+('crystal_bay_ab', 9, 3, 14, 135, 'yellow'),
+-- Course B (holes 10-18)
+('crystal_bay_ab', 10, 4, 13, 346, 'yellow'),
+('crystal_bay_ab', 11, 4, 11, 336, 'yellow'),
+('crystal_bay_ab', 12, 4, 7, 388, 'yellow'),
+('crystal_bay_ab', 13, 5, 9, 440, 'yellow'),
+('crystal_bay_ab', 14, 3, 17, 139, 'yellow'),
+('crystal_bay_ab', 15, 5, 3, 412, 'yellow'),
+('crystal_bay_ab', 16, 4, 5, 381, 'yellow'),
+('crystal_bay_ab', 17, 3, 15, 300, 'yellow'),
+('crystal_bay_ab', 18, 4, 1, 363, 'yellow');
 
--- RED Tees - Course A
-INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker, created_at, updated_at)
-VALUES
-('crystal_bay', 1, 4, 16, 310, 'red', NOW(), NOW()),
-('crystal_bay', 2, 4, 2, 339, 'red', NOW(), NOW()),
-('crystal_bay', 3, 4, 4, 340, 'red', NOW(), NOW()),
-('crystal_bay', 4, 5, 8, 403, 'red', NOW(), NOW()),
-('crystal_bay', 5, 4, 12, 152, 'red', NOW(), NOW()),
-('crystal_bay', 6, 3, 18, 109, 'red', NOW(), NOW()),
-('crystal_bay', 7, 4, 10, 328, 'red', NOW(), NOW()),
-('crystal_bay', 8, 5, 6, 430, 'red', NOW(), NOW()),
-('crystal_bay', 9, 3, 14, 74, 'red', NOW(), NOW());
+-- RED TEES - Course A+B
+INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
+-- Course A (holes 1-9)
+('crystal_bay_ab', 1, 4, 16, 310, 'red'),
+('crystal_bay_ab', 2, 4, 2, 339, 'red'),
+('crystal_bay_ab', 3, 4, 4, 340, 'red'),
+('crystal_bay_ab', 4, 5, 8, 403, 'red'),
+('crystal_bay_ab', 5, 4, 12, 152, 'red'),
+('crystal_bay_ab', 6, 3, 18, 109, 'red'),
+('crystal_bay_ab', 7, 4, 10, 328, 'red'),
+('crystal_bay_ab', 8, 5, 6, 430, 'red'),
+('crystal_bay_ab', 9, 3, 14, 74, 'red'),
+-- Course B (holes 10-18)
+('crystal_bay_ab', 10, 4, 13, 320, 'red'),
+('crystal_bay_ab', 11, 4, 11, 308, 'red'),
+('crystal_bay_ab', 12, 4, 7, 340, 'red'),
+('crystal_bay_ab', 13, 5, 9, 416, 'red'),
+('crystal_bay_ab', 14, 3, 17, 98, 'red'),
+('crystal_bay_ab', 15, 5, 3, 381, 'red'),
+('crystal_bay_ab', 16, 4, 5, 345, 'red'),
+('crystal_bay_ab', 17, 3, 15, 152, 'red'),
+('crystal_bay_ab', 18, 4, 1, 306, 'red');
 
--- =====================================================================
--- COURSE B (Holes 10-18)
--- =====================================================================
+-- =====================================================
+-- COMBINATION 2: COURSE A+C (crystal_bay_ac)
+-- =====================================================
 
--- BLUE Tees - Course B
-INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker, created_at, updated_at)
-VALUES
-('crystal_bay', 10, 4, 13, 388, 'blue', NOW(), NOW()),
-('crystal_bay', 11, 4, 11, 376, 'blue', NOW(), NOW()),
-('crystal_bay', 12, 4, 7, 440, 'blue', NOW(), NOW()),
-('crystal_bay', 13, 5, 9, 484, 'blue', NOW(), NOW()),
-('crystal_bay', 14, 3, 17, 172, 'blue', NOW(), NOW()),
-('crystal_bay', 15, 5, 3, 476, 'blue', NOW(), NOW()),
-('crystal_bay', 16, 4, 5, 429, 'blue', NOW(), NOW()),
-('crystal_bay', 17, 3, 15, 332, 'blue', NOW(), NOW()),
-('crystal_bay', 18, 4, 1, 410, 'blue', NOW(), NOW());
+-- BLUE TEES - Course A+C
+INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
+-- Course A (holes 1-9)
+('crystal_bay_ac', 1, 4, 16, 389, 'blue'),
+('crystal_bay_ac', 2, 4, 2, 435, 'blue'),
+('crystal_bay_ac', 3, 4, 4, 430, 'blue'),
+('crystal_bay_ac', 4, 5, 8, 472, 'blue'),
+('crystal_bay_ac', 5, 4, 12, 373, 'blue'),
+('crystal_bay_ac', 6, 3, 18, 162, 'blue'),
+('crystal_bay_ac', 7, 4, 10, 420, 'blue'),
+('crystal_bay_ac', 8, 5, 6, 497, 'blue'),
+('crystal_bay_ac', 9, 3, 14, 138, 'blue'),
+-- Course C (holes 10-18)
+('crystal_bay_ac', 10, 4, 18, 378, 'blue'),
+('crystal_bay_ac', 11, 4, 6, 411, 'blue'),
+('crystal_bay_ac', 12, 3, 14, 167, 'blue'),
+('crystal_bay_ac', 13, 4, 8, 302, 'blue'),
+('crystal_bay_ac', 14, 5, 10, 427, 'blue'),
+('crystal_bay_ac', 15, 3, 16, 331, 'blue'),
+('crystal_bay_ac', 16, 4, 2, 160, 'blue'),
+('crystal_bay_ac', 17, 4, 12, 413, 'blue'),
+('crystal_bay_ac', 18, 4, 4, 326, 'blue');
 
--- WHITE Tees - Course B
-INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker, created_at, updated_at)
-VALUES
-('crystal_bay', 10, 4, 13, 388, 'white', NOW(), NOW()),
-('crystal_bay', 11, 4, 11, 350, 'white', NOW(), NOW()),
-('crystal_bay', 12, 4, 7, 413, 'white', NOW(), NOW()),
-('crystal_bay', 13, 5, 9, 456, 'white', NOW(), NOW()),
-('crystal_bay', 14, 3, 17, 147, 'white', NOW(), NOW()),
-('crystal_bay', 15, 5, 3, 450, 'white', NOW(), NOW()),
-('crystal_bay', 16, 4, 5, 402, 'white', NOW(), NOW()),
-('crystal_bay', 17, 3, 15, 308, 'white', NOW(), NOW()),
-('crystal_bay', 18, 4, 1, 385, 'white', NOW(), NOW());
+-- WHITE TEES - Course A+C
+INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
+-- Course A (holes 1-9)
+('crystal_bay_ac', 1, 4, 16, 359, 'white'),
+('crystal_bay_ac', 2, 4, 2, 408, 'white'),
+('crystal_bay_ac', 3, 4, 4, 399, 'white'),
+('crystal_bay_ac', 4, 5, 8, 452, 'white'),
+('crystal_bay_ac', 5, 4, 12, 345, 'white'),
+('crystal_bay_ac', 6, 3, 18, 147, 'white'),
+('crystal_bay_ac', 7, 4, 10, 394, 'white'),
+('crystal_bay_ac', 8, 5, 6, 467, 'white'),
+('crystal_bay_ac', 9, 3, 14, 138, 'white'),
+-- Course C (holes 10-18)
+('crystal_bay_ac', 10, 4, 18, 359, 'white'),
+('crystal_bay_ac', 11, 4, 6, 391, 'white'),
+('crystal_bay_ac', 12, 3, 14, 156, 'white'),
+('crystal_bay_ac', 13, 4, 8, 289, 'white'),
+('crystal_bay_ac', 14, 5, 10, 401, 'white'),
+('crystal_bay_ac', 15, 3, 16, 305, 'white'),
+('crystal_bay_ac', 16, 4, 2, 150, 'white'),
+('crystal_bay_ac', 17, 4, 12, 388, 'white'),
+('crystal_bay_ac', 18, 4, 4, 361, 'white');
 
--- YELLOW Tees - Course B
-INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker, created_at, updated_at)
-VALUES
-('crystal_bay', 10, 4, 13, 346, 'yellow', NOW(), NOW()),
-('crystal_bay', 11, 4, 11, 336, 'yellow', NOW(), NOW()),
-('crystal_bay', 12, 4, 7, 388, 'yellow', NOW(), NOW()),
-('crystal_bay', 13, 5, 9, 440, 'yellow', NOW(), NOW()),
-('crystal_bay', 14, 3, 17, 139, 'yellow', NOW(), NOW()),
-('crystal_bay', 15, 5, 3, 412, 'yellow', NOW(), NOW()),
-('crystal_bay', 16, 4, 5, 381, 'yellow', NOW(), NOW()),
-('crystal_bay', 17, 3, 15, 300, 'yellow', NOW(), NOW()),
-('crystal_bay', 18, 4, 1, 363, 'yellow', NOW(), NOW());
+-- YELLOW TEES - Course A+C
+INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
+-- Course A (holes 1-9)
+('crystal_bay_ac', 1, 4, 16, 341, 'yellow'),
+('crystal_bay_ac', 2, 4, 2, 360, 'yellow'),
+('crystal_bay_ac', 3, 4, 4, 370, 'yellow'),
+('crystal_bay_ac', 4, 5, 8, 433, 'yellow'),
+('crystal_bay_ac', 5, 4, 12, 318, 'yellow'),
+('crystal_bay_ac', 6, 3, 18, 138, 'yellow'),
+('crystal_bay_ac', 7, 4, 10, 364, 'yellow'),
+('crystal_bay_ac', 8, 5, 6, 438, 'yellow'),
+('crystal_bay_ac', 9, 3, 14, 135, 'yellow'),
+-- Course C (holes 10-18)
+('crystal_bay_ac', 10, 4, 18, 313, 'yellow'),
+('crystal_bay_ac', 11, 4, 6, 365, 'yellow'),
+('crystal_bay_ac', 12, 3, 14, 137, 'yellow'),
+('crystal_bay_ac', 13, 4, 8, 164, 'yellow'),
+('crystal_bay_ac', 14, 5, 10, 367, 'yellow'),
+('crystal_bay_ac', 15, 3, 16, 278, 'yellow'),
+('crystal_bay_ac', 16, 4, 2, 132, 'yellow'),
+('crystal_bay_ac', 17, 4, 12, 368, 'yellow'),
+('crystal_bay_ac', 18, 4, 4, 463, 'yellow');
 
--- RED Tees - Course B
-INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker, created_at, updated_at)
-VALUES
-('crystal_bay', 10, 4, 13, 320, 'red', NOW(), NOW()),
-('crystal_bay', 11, 4, 11, 308, 'red', NOW(), NOW()),
-('crystal_bay', 12, 4, 7, 340, 'red', NOW(), NOW()),
-('crystal_bay', 13, 5, 9, 416, 'red', NOW(), NOW()),
-('crystal_bay', 14, 3, 17, 98, 'red', NOW(), NOW()),
-('crystal_bay', 15, 5, 3, 381, 'red', NOW(), NOW()),
-('crystal_bay', 16, 4, 5, 345, 'red', NOW(), NOW()),
-('crystal_bay', 17, 3, 15, 152, 'red', NOW(), NOW()),
-('crystal_bay', 18, 4, 1, 306, 'red', NOW(), NOW());
+-- RED TEES - Course A+C
+INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
+-- Course A (holes 1-9)
+('crystal_bay_ac', 1, 4, 16, 310, 'red'),
+('crystal_bay_ac', 2, 4, 2, 339, 'red'),
+('crystal_bay_ac', 3, 4, 4, 340, 'red'),
+('crystal_bay_ac', 4, 5, 8, 403, 'red'),
+('crystal_bay_ac', 5, 4, 12, 152, 'red'),
+('crystal_bay_ac', 6, 3, 18, 109, 'red'),
+('crystal_bay_ac', 7, 4, 10, 328, 'red'),
+('crystal_bay_ac', 8, 5, 6, 430, 'red'),
+('crystal_bay_ac', 9, 3, 14, 74, 'red'),
+-- Course C (holes 10-18)
+('crystal_bay_ac', 10, 4, 18, 278, 'red'),
+('crystal_bay_ac', 11, 4, 6, 311, 'red'),
+('crystal_bay_ac', 12, 3, 14, 116, 'red'),
+('crystal_bay_ac', 13, 4, 8, 145, 'red'),
+('crystal_bay_ac', 14, 5, 10, 347, 'red'),
+('crystal_bay_ac', 15, 3, 16, 247, 'red'),
+('crystal_bay_ac', 16, 4, 2, 120, 'red'),
+('crystal_bay_ac', 17, 4, 12, 340, 'red'),
+('crystal_bay_ac', 18, 4, 4, 445, 'red');
 
--- =====================================================================
--- COURSE C (Holes 19-27, mapped as 1-9 for 9-hole alternative)
--- =====================================================================
+-- =====================================================
+-- COMBINATION 3: COURSE B+C (crystal_bay_bc)
+-- =====================================================
 
--- BLUE Tees - Course C
-INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker, created_at, updated_at)
-VALUES
-('crystal_bay', 19, 4, 18, 378, 'blue', NOW(), NOW()),
-('crystal_bay', 20, 4, 6, 411, 'blue', NOW(), NOW()),
-('crystal_bay', 21, 3, 14, 167, 'blue', NOW(), NOW()),
-('crystal_bay', 22, 4, 8, 302, 'blue', NOW(), NOW()),
-('crystal_bay', 23, 5, 10, 427, 'blue', NOW(), NOW()),
-('crystal_bay', 24, 3, 16, 331, 'blue', NOW(), NOW()),
-('crystal_bay', 25, 4, 2, 160, 'blue', NOW(), NOW()),
-('crystal_bay', 26, 4, 12, 413, 'blue', NOW(), NOW()),
-('crystal_bay', 27, 4, 4, 326, 'blue', NOW(), NOW());
+-- BLUE TEES - Course B+C
+INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
+-- Course B (holes 1-9)
+('crystal_bay_bc', 1, 4, 13, 388, 'blue'),
+('crystal_bay_bc', 2, 4, 11, 376, 'blue'),
+('crystal_bay_bc', 3, 4, 7, 440, 'blue'),
+('crystal_bay_bc', 4, 5, 9, 484, 'blue'),
+('crystal_bay_bc', 5, 3, 17, 172, 'blue'),
+('crystal_bay_bc', 6, 5, 3, 476, 'blue'),
+('crystal_bay_bc', 7, 4, 5, 429, 'blue'),
+('crystal_bay_bc', 8, 3, 15, 332, 'blue'),
+('crystal_bay_bc', 9, 4, 1, 410, 'blue'),
+-- Course C (holes 10-18)
+('crystal_bay_bc', 10, 4, 18, 378, 'blue'),
+('crystal_bay_bc', 11, 4, 6, 411, 'blue'),
+('crystal_bay_bc', 12, 3, 14, 167, 'blue'),
+('crystal_bay_bc', 13, 4, 8, 302, 'blue'),
+('crystal_bay_bc', 14, 5, 10, 427, 'blue'),
+('crystal_bay_bc', 15, 3, 16, 331, 'blue'),
+('crystal_bay_bc', 16, 4, 2, 160, 'blue'),
+('crystal_bay_bc', 17, 4, 12, 413, 'blue'),
+('crystal_bay_bc', 18, 4, 4, 326, 'blue');
 
--- WHITE Tees - Course C
-INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker, created_at, updated_at)
-VALUES
-('crystal_bay', 19, 4, 18, 359, 'white', NOW(), NOW()),
-('crystal_bay', 20, 4, 6, 391, 'white', NOW(), NOW()),
-('crystal_bay', 21, 3, 14, 156, 'white', NOW(), NOW()),
-('crystal_bay', 22, 4, 8, 289, 'white', NOW(), NOW()),
-('crystal_bay', 23, 5, 10, 401, 'white', NOW(), NOW()),
-('crystal_bay', 24, 3, 16, 305, 'white', NOW(), NOW()),
-('crystal_bay', 25, 4, 2, 150, 'white', NOW(), NOW()),
-('crystal_bay', 26, 4, 12, 388, 'white', NOW(), NOW()),
-('crystal_bay', 27, 4, 4, 361, 'white', NOW(), NOW());
+-- WHITE TEES - Course B+C
+INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
+-- Course B (holes 1-9)
+('crystal_bay_bc', 1, 4, 13, 388, 'white'),
+('crystal_bay_bc', 2, 4, 11, 350, 'white'),
+('crystal_bay_bc', 3, 4, 7, 413, 'white'),
+('crystal_bay_bc', 4, 5, 9, 456, 'white'),
+('crystal_bay_bc', 5, 3, 17, 147, 'white'),
+('crystal_bay_bc', 6, 5, 3, 450, 'white'),
+('crystal_bay_bc', 7, 4, 5, 402, 'white'),
+('crystal_bay_bc', 8, 3, 15, 308, 'white'),
+('crystal_bay_bc', 9, 4, 1, 385, 'white'),
+-- Course C (holes 10-18)
+('crystal_bay_bc', 10, 4, 18, 359, 'white'),
+('crystal_bay_bc', 11, 4, 6, 391, 'white'),
+('crystal_bay_bc', 12, 3, 14, 156, 'white'),
+('crystal_bay_bc', 13, 4, 8, 289, 'white'),
+('crystal_bay_bc', 14, 5, 10, 401, 'white'),
+('crystal_bay_bc', 15, 3, 16, 305, 'white'),
+('crystal_bay_bc', 16, 4, 2, 150, 'white'),
+('crystal_bay_bc', 17, 4, 12, 388, 'white'),
+('crystal_bay_bc', 18, 4, 4, 361, 'white');
 
--- YELLOW Tees - Course C
-INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker, created_at, updated_at)
-VALUES
-('crystal_bay', 19, 4, 18, 313, 'yellow', NOW(), NOW()),
-('crystal_bay', 20, 4, 6, 365, 'yellow', NOW(), NOW()),
-('crystal_bay', 21, 3, 14, 137, 'yellow', NOW(), NOW()),
-('crystal_bay', 22, 4, 8, 164, 'yellow', NOW(), NOW()),
-('crystal_bay', 23, 5, 10, 367, 'yellow', NOW(), NOW()),
-('crystal_bay', 24, 3, 16, 278, 'yellow', NOW(), NOW()),
-('crystal_bay', 25, 4, 2, 132, 'yellow', NOW(), NOW()),
-('crystal_bay', 26, 4, 12, 368, 'yellow', NOW(), NOW()),
-('crystal_bay', 27, 4, 4, 463, 'yellow', NOW(), NOW());
+-- YELLOW TEES - Course B+C
+INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
+-- Course B (holes 1-9)
+('crystal_bay_bc', 1, 4, 13, 346, 'yellow'),
+('crystal_bay_bc', 2, 4, 11, 336, 'yellow'),
+('crystal_bay_bc', 3, 4, 7, 388, 'yellow'),
+('crystal_bay_bc', 4, 5, 9, 440, 'yellow'),
+('crystal_bay_bc', 5, 3, 17, 139, 'yellow'),
+('crystal_bay_bc', 6, 5, 3, 412, 'yellow'),
+('crystal_bay_bc', 7, 4, 5, 381, 'yellow'),
+('crystal_bay_bc', 8, 3, 15, 300, 'yellow'),
+('crystal_bay_bc', 9, 4, 1, 363, 'yellow'),
+-- Course C (holes 10-18)
+('crystal_bay_bc', 10, 4, 18, 313, 'yellow'),
+('crystal_bay_bc', 11, 4, 6, 365, 'yellow'),
+('crystal_bay_bc', 12, 3, 14, 137, 'yellow'),
+('crystal_bay_bc', 13, 4, 8, 164, 'yellow'),
+('crystal_bay_bc', 14, 5, 10, 367, 'yellow'),
+('crystal_bay_bc', 15, 3, 16, 278, 'yellow'),
+('crystal_bay_bc', 16, 4, 2, 132, 'yellow'),
+('crystal_bay_bc', 17, 4, 12, 368, 'yellow'),
+('crystal_bay_bc', 18, 4, 4, 463, 'yellow');
 
--- RED Tees - Course C
-INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker, created_at, updated_at)
-VALUES
-('crystal_bay', 19, 4, 18, 278, 'red', NOW(), NOW()),
-('crystal_bay', 20, 4, 6, 311, 'red', NOW(), NOW()),
-('crystal_bay', 21, 3, 14, 116, 'red', NOW(), NOW()),
-('crystal_bay', 22, 4, 8, 145, 'red', NOW(), NOW()),
-('crystal_bay', 23, 5, 10, 347, 'red', NOW(), NOW()),
-('crystal_bay', 24, 3, 16, 247, 'red', NOW(), NOW()),
-('crystal_bay', 25, 4, 2, 120, 'red', NOW(), NOW()),
-('crystal_bay', 26, 4, 12, 340, 'red', NOW(), NOW()),
-('crystal_bay', 27, 4, 4, 445, 'red', NOW(), NOW());
+-- RED TEES - Course B+C
+INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
+-- Course B (holes 1-9)
+('crystal_bay_bc', 1, 4, 13, 320, 'red'),
+('crystal_bay_bc', 2, 4, 11, 308, 'red'),
+('crystal_bay_bc', 3, 4, 7, 340, 'red'),
+('crystal_bay_bc', 4, 5, 9, 416, 'red'),
+('crystal_bay_bc', 5, 3, 17, 98, 'red'),
+('crystal_bay_bc', 6, 5, 3, 381, 'red'),
+('crystal_bay_bc', 7, 4, 5, 345, 'red'),
+('crystal_bay_bc', 8, 3, 15, 152, 'red'),
+('crystal_bay_bc', 9, 4, 1, 306, 'red'),
+-- Course C (holes 10-18)
+('crystal_bay_bc', 10, 4, 18, 278, 'red'),
+('crystal_bay_bc', 11, 4, 6, 311, 'red'),
+('crystal_bay_bc', 12, 3, 14, 116, 'red'),
+('crystal_bay_bc', 13, 4, 8, 145, 'red'),
+('crystal_bay_bc', 14, 5, 10, 347, 'red'),
+('crystal_bay_bc', 15, 3, 16, 247, 'red'),
+('crystal_bay_bc', 16, 4, 2, 120, 'red'),
+('crystal_bay_bc', 17, 4, 12, 340, 'red'),
+('crystal_bay_bc', 18, 4, 4, 445, 'red');
 
--- =====================================================================
--- VERIFICATION QUERIES
--- =====================================================================
-
--- Verify total yardages per tee color
+-- =====================================================
+-- VERIFICATION
+-- =====================================================
 SELECT
+    course_id,
     tee_marker,
-    COUNT(*) as hole_count,
-    SUM(yardage) as total_yardage,
-    SUM(par) as total_par
+    COUNT(*) as holes,
+    SUM(par) as par,
+    SUM(yardage) as yards
 FROM course_holes
-WHERE course_id = 'crystal_bay'
-GROUP BY tee_marker
-ORDER BY tee_marker;
+WHERE course_id IN ('crystal_bay_ab', 'crystal_bay_ac', 'crystal_bay_bc')
+GROUP BY course_id, tee_marker
+ORDER BY course_id, yards DESC;
 
--- Expected Totals (Course A + B):
--- Blue:   3316 + 3507 = 6823 yards, Par 72
--- White:  3109 + 3299 = 6408 yards, Par 72
--- Yellow: 2897 + 3105 = 6002 yards, Par 72
--- Red:    2485 + 2666 = 5151 yards, Par 72
-
--- Expected Totals (Course A + C):
--- Blue:   3316 + 2915 = 6231 yards, Par 70
--- White:  3109 + 2800 = 5909 yards, Par 70
--- Yellow: 2897 + 2587 = 5484 yards, Par 70
--- Red:    2485 + 2349 = 4834 yards, Par 70
-
--- Expected Totals (Course B + C):
--- Blue:   3507 + 2915 = 6422 yards, Par 70
--- White:  3299 + 2800 = 6099 yards, Par 70
--- Yellow: 3105 + 2587 = 5692 yards, Par 70
--- Red:    2666 + 2349 = 5015 yards, Par 70
-
--- Verify all holes are present
-SELECT
-    hole_number,
-    COUNT(*) as tee_count
-FROM course_holes
-WHERE course_id = 'crystal_bay'
-GROUP BY hole_number
-ORDER BY hole_number;
-
--- =====================================================================
--- SUCCESS MESSAGE
--- =====================================================================
-SELECT 'Crystal Bay Golf Club - All tee markers imported successfully!' as message;
-
--- =====================================================================
--- SUMMARY
--- =====================================================================
--- Total Records: 108 (27 holes x 4 tee colors)
--- Courses: A (holes 1-9), B (holes 10-18), C (holes 19-27)
--- Tee Colors: Blue (Championship), White (Men's), Yellow (Senior), Red (Ladies)
---
--- Course A Totals:
---   Blue:   3316 yards, Par 36
---   White:  3109 yards, Par 36
---   Yellow: 2897 yards, Par 36
---   Red:    2485 yards, Par 36
---
--- Course B Totals:
---   Blue:   3507 yards, Par 36
---   White:  3299 yards, Par 36
---   Yellow: 3105 yards, Par 36
---   Red:    2666 yards, Par 36
---
--- Course C Totals:
---   Blue:   2915 yards, Par 34
---   White:  2800 yards, Par 34
---   Yellow: 2587 yards, Par 34
---   Red:    2349 yards, Par 34
--- =====================================================================
+-- Expected Results:
+-- crystal_bay_ab: Blue 6823, White 6408, Yellow 6002, Red 5151 (all Par 72)
+-- crystal_bay_ac: Blue 6231, White 5909, Yellow 5484, Red 4834 (all Par 70)
+-- crystal_bay_bc: Blue 6422, White 6099, Yellow 5692, Red 5015 (all Par 70)

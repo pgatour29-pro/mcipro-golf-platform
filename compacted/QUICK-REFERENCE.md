@@ -1,5 +1,5 @@
 # Quick Reference - Society Features Implementation
-## Session 2025-10-18
+## Sessions 2025-10-18 (Part 1 & 2)
 
 ---
 
@@ -29,6 +29,60 @@
 
 ---
 
+### Feature 2: Payment Tracking (100% COMPLETE)
+**Files Modified:** `index.html`, `sql/add-payment-tracking.sql`
+**Database:** `event_registrations` table enhanced with payment columns
+**Lines Added:** ~150 lines of code
+
+**What It Does:**
+- Mark players as paid/unpaid directly from roster
+- Track payment amounts and timestamps
+- Audit trail (who marked, when)
+- Fee input prompt for first-time payment
+- Real-time updates across roster and events list
+
+**How to Use:**
+1. Society Organizer Dashboard → Events tab
+2. Click "View Roster" on any event
+3. See "Total Fee" and "Paid Status" columns
+4. Click "Mark Paid" next to player
+5. Enter fee amount (e.g., 2575) if prompted
+6. Player shows green PAID badge
+7. Click X to mark as unpaid
+
+**Status:** ✅ DEPLOYED TO PRODUCTION
+
+---
+
+### Feature 3: Revenue Tracking (100% COMPLETE)
+**Files Modified:** `index.html`
+**Lines Added:** ~80 lines of code
+
+**What It Does:**
+- Shows revenue statistics on each event card
+- Real-time calculation: Collected vs Expected
+- Visual progress bar with color coding
+- Payment completion percentage
+- Outstanding balance display
+
+**Display Format:**
+```
+💰 Revenue                   2/4 Paid
+[█████░░░░░] 50%
+
+Collected: ฿5,150      Expected: ฿10,300
+฿5,150 outstanding
+```
+
+**Color Coding:**
+- Red (< 50% paid) - Urgent
+- Yellow (50-79% paid) - In progress
+- Green (≥ 80% paid) - On track
+
+**Status:** ✅ DEPLOYED TO PRODUCTION
+
+---
+
 ### Critical Fixes (100% COMPLETE)
 **1. Player Search Fixed**
 - Was searching `profiles` (chat table) ❌
@@ -46,40 +100,61 @@
 - Shows PRIMARY badge (blue) for home society
 - Displays member numbers
 
+**4. Subscription Persistence Fixed**
+- Society subscriptions in Browse Events were unchecking
+- Database is now single source of truth (not localStorage)
+- Opening Manage panel reloads from database
+- Checkboxes persist across page loads/logout
+- Real-time sync with database
+
 **Status:** ✅ DEPLOYED TO PRODUCTION
 
 ---
 
 ## WHAT'S PENDING ⏳
 
-### Feature 2: Payment Tracking (0% COMPLETE)
-**SQL Created:** `sql/add-payment-tracking.sql`
-**Status:** Ready to implement
+### Future Enhancement 1: Partial Payments (0% COMPLETE)
+**Status:** Database field exists, UI not implemented
 
 **What It Needs:**
-1. Run SQL in Supabase (adds payment fields to event_registrations)
-2. Add 4 backend functions (markPlayerPaid, markPlayerUnpaid, etc.)
-3. Add "Paid" column to roster table
-4. Add toggle button to mark paid/unpaid
-5. Show PAID badge for paid players
+1. Add "Partial" option in payment UI
+2. Allow entering partial amount (e.g., ฿1,000 of ฿2,575)
+3. Show remaining balance
+4. Track payment history
+5. Allow multiple partial payments per player
 
-**User Requirement:**
-*"on the roster, it should have paid... once the organizer clicks paid, then that total gets zeroed out"*
+**User Benefit:**
+Track players who pay in installments or deposits
 
 ---
 
-### Feature 3: Revenue Tracking (0% COMPLETE)
-**Status:** Design complete, implementation pending
+### Future Enhancement 2: Bulk Payment Operations (0% COMPLETE)
+**Status:** Concept design
 
 **What It Needs:**
-1. Calculate revenue stats per event
-2. Add revenue display to event cards
-3. Show: "฿5,150 / ฿10,300 (2/4 Paid)"
-4. Progress bar with color coding
-5. Real-time updates when payments marked
+1. Checkbox to select multiple players in roster
+2. "Mark All as Paid" button
+3. Bulk fee input (same fee for all selected)
+4. Confirmation dialog showing total amount
+5. Batch database update
 
-**User Requirement:**
-*"it shows the revenue with the amount of people that have signed up... if one has paid then that gets that go against the 10,300"*
+**User Benefit:**
+Quickly mark multiple players as paid at once (e.g., after collecting cash at event)
+
+---
+
+### Future Enhancement 3: Payment History & Audit (0% COMPLETE)
+**Status:** Database has paid_by and paid_at fields, no UI
+
+**What It Needs:**
+1. Payment history modal per player
+2. Show all payment events (marked paid, unmarked, amounts)
+3. Export payment history to CSV
+4. Filter by date range
+5. Summary report per organizer
+
+**User Benefit:**
+Full audit trail of who marked payments and when
 
 ---
 
@@ -88,9 +163,10 @@
 ### Documentation (NEW)
 ```
 compacted/
-├── SESSION-2025-10-18-SOCIETY-FEATURES.md    (Complete catalog - 600+ lines)
-├── PENDING-TASKS-PAYMENT-REVENUE.md           (Implementation guide)
-└── QUICK-REFERENCE.md                         (This file)
+├── SESSION-2025-10-18-SOCIETY-FEATURES.md    (Part 1: Player Directory - 600+ lines)
+├── SESSION-2025-10-18-PAYMENT-REVENUE.md     (Part 2: Payment & Revenue - 1,500+ lines)
+├── PENDING-TASKS-PAYMENT-REVENUE.md          (Now archived - features complete)
+└── QUICK-REFERENCE.md                        (This file)
 ```
 
 ### SQL Files
@@ -98,15 +174,15 @@ compacted/
 sql/
 ├── create-golfer-society-subscriptions.sql    ✅ DEPLOYED
 ├── create-society-members.sql                 ✅ DEPLOYED
-├── add-payment-tracking.sql                   ⏳ NOT YET RUN
+├── add-payment-tracking.sql                   ✅ DEPLOYED (fixed version)
 ├── diagnose-profiles-search.sql               (Diagnostic queries)
 └── SOCIETY-MEMBERSHIP-README.md               (Complete documentation)
 ```
 
 ### Code Files
 ```
-index.html    - Modified (~400 lines added)
-sw.js         - Cache version updated
+index.html    - Modified (~650 lines added total)
+sw.js         - Cache version updated (3 times this session)
 ```
 
 ---
@@ -114,6 +190,8 @@ sw.js         - Cache version updated
 ## QUICK COMMANDS
 
 ### Test What's Deployed
+
+**Player Directory:**
 ```
 1. Go to: https://mycaddipro.com
 2. Login as Society Organizer
@@ -123,12 +201,25 @@ sw.js         - Cache version updated
 6. Click to add - should show "✅ Pete Park added as member TRGG-001" ✅
 ```
 
-### Deploy Payment Tracking
+**Payment Tracking:**
 ```
-1. Open Supabase SQL Editor
-2. Run: sql/add-payment-tracking.sql
-3. Verify: 5 new columns added to event_registrations
-4. Continue with code implementation from PENDING-TASKS doc
+1. Login as Society Organizer
+2. Go to Events tab
+3. Click "View Roster" on any event
+4. Click "Mark Paid" next to player
+5. Enter fee (e.g., 2575) when prompted
+6. PAID badge should appear ✅
+7. Revenue on event card should update ✅
+```
+
+**Subscription Persistence:**
+```
+1. Login as Golfer
+2. Go to Society Events → Browse Events
+3. Click "Manage" subscriptions
+4. Check 2-3 societies
+5. Close panel and reopen
+6. Selections should persist ✅
 ```
 
 ### Git Status
@@ -266,58 +357,89 @@ editMember(golferId)  // Placeholder
 - [✅] Primary toggle works
 - [✅] Search shows MEMBER/PRIMARY badges
 
-### Payment Tracking ⏳
-- [ ] SQL deployed
-- [ ] Backend functions work
-- [ ] Roster shows Paid column
-- [ ] Mark paid button works
-- [ ] PAID badge shows
-- [ ] Mark unpaid works
-- [ ] Real-time updates
+### Payment Tracking ✅
+- [✅] SQL deployed
+- [✅] Backend functions work
+- [✅] Roster shows Paid column
+- [✅] Mark paid button works
+- [✅] PAID badge shows
+- [✅] Mark unpaid works
+- [✅] Real-time updates
+- [✅] Fee input prompt works
+- [✅] Fee persists across toggles
 
-### Revenue Display ⏳
-- [ ] Revenue shows on event cards
-- [ ] Calculations accurate
-- [ ] Progress bar displays
-- [ ] Color coding works
-- [ ] Updates after payment marked
+### Revenue Display ✅
+- [✅] Revenue shows on event cards
+- [✅] Calculations accurate
+- [✅] Progress bar displays
+- [✅] Color coding works (red/yellow/green)
+- [✅] Updates after payment marked
+- [✅] Outstanding balance shown
+- [✅] "All payments collected" message
+
+### Subscription Persistence ✅
+- [✅] Subscriptions load from database
+- [✅] Checkboxes show correct state
+- [✅] Changes save to database
+- [✅] Persist across page refreshes
+- [✅] Persist when closing/opening panel
+- [✅] No more unexpected unchecking
 
 ---
 
 ## DEPLOYMENT INFO
 
 **Live URL:** https://mycaddipro.com
-**Deploy ID:** 68f2f3c12c853c7351ff606a
-**Cache Version:** mcipro-v2025-10-18-society-membership
-**Deployed:** 2025-10-18
+**Latest Deploy ID:** 68f3167c2e8a87a9d3d5e686
+**Cache Version:** mcipro-v2025-10-18-subscription-persistence
+**Deployed:** 2025-10-18 (Part 2 - Final)
+
+### All Deployments Today
+1. **68f2f3c12c853c7351ff606a** - Player Directory
+2. **68f30e3e4435ac9e1755e9ef** - Payment & Revenue
+3. **68f30f154435ac9f7d55e8bc** - SQL Fix + Fee Prompt
+4. **68f3167c2e8a87a9d3d5e686** - Subscription Persistence Fix (CURRENT)
 
 ### Database Actions Required
 1. ✅ `create-golfer-society-subscriptions.sql` - COMPLETED
 2. ✅ `create-society-members.sql` - COMPLETED
-3. ⏳ `add-payment-tracking.sql` - PENDING
+3. ✅ `add-payment-tracking.sql` - COMPLETED
 
 ---
 
 ## NEXT SESSION QUICK START
 
-### To Continue Payment/Revenue Features:
-```
-1. Read: compacted/PENDING-TASKS-PAYMENT-REVENUE.md
-2. Run SQL: sql/add-payment-tracking.sql in Supabase
-3. Follow Task 2: Implement backend functions
-4. Follow Task 3: Add UI to roster
-5. Follow Tasks 4-8 for complete implementation
-```
+### All Core Features Complete! 🎉
 
-### To Test What's Live:
+**What's Live:**
+- ✅ Player Directory (Feature 1)
+- ✅ Payment Tracking (Feature 2)
+- ✅ Revenue Display (Feature 3)
+- ✅ All Critical Fixes
+
+**To Test Everything:**
 ```
 1. Open: https://mycaddipro.com
 2. Login as: Society Organizer
-3. Navigate: Society Organizer Dashboard
-4. Test: Player Directory tab
-5. Test: Add Player functionality
-6. Test: Member number generation
+3. Test Player Directory (Players tab)
+4. Test Payment Tracking (Events → View Roster)
+5. Test Revenue Display (Events list)
 ```
+
+**To Test as Golfer:**
+```
+1. Login as: Golfer
+2. Go to: Society Events → Browse Events
+3. Test subscription persistence (Manage button)
+4. Test event browsing with filters
+```
+
+### Recommended Next Steps:
+1. **User Testing** - Get real organizer feedback
+2. **Performance Testing** - Test with 50+ events
+3. **Future Enhancements** - See "WHAT'S PENDING" section above
+4. **Analytics** - Track usage patterns
+5. **Optimization** - Revenue query optimization (N+1 problem)
 
 ---
 
@@ -344,12 +466,20 @@ editMember(golferId)  // Placeholder
 
 ## GIT COMMITS THIS SESSION
 
+### Part 1: Player Directory
 ```
 108b7d1d - Fix player search 400 errors
 1a888c3d - Society membership system + Fix player search
 43ff6e39 - Fix society_members table creation
 73104b8e - Fix RLS policies
 40008008 - Make SQL scripts idempotent
+```
+
+### Part 2: Payment, Revenue & Subscription Fix
+```
+3ca991be - Add payment tracking and revenue display features
+a3fcf9fe - Fix payment tracking SQL and add fee input prompt
+963b472a - Fix society subscription persistence in Browse Events
 ```
 
 ---

@@ -36176,31 +36176,52 @@ class SocietyOrganizerManager {
         const formatLabel = isScramble ? (formatValue === '2man_scramble' ? '2-Man Scramble' : '4-Man Scramble') : '';
 
         if (!groups || groups.length === 0) {
-            // Show unpaired players in manual mode
-            if (manualMode && this.currentPairings.players.length > 0) {
-                container.innerHTML = `
-                    <div class="text-center py-2 text-gray-500">
-                        <p class="text-xs mb-3">Click on players below to select them for pairing</p>
-                    </div>
-                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
-                        ${this.currentPairings.players.map(player => {
-                            const isSelected = this.selectedPairingPlayers?.find(p => p.id === player.id);
-                            return `
-                                <div onclick="SocietyOrganizerSystem.togglePlayerForPairing(${JSON.stringify(player).replace(/"/g, '&quot;')})"
-                                     class="flex items-center justify-between px-2 py-1.5 border-2 rounded cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-green-50 border-green-500' : 'border-gray-200'}">
-                                    <span class="text-xs font-medium text-gray-900 truncate">${player.playerName}</span>
-                                    <span class="text-[10px] text-gray-600 ml-1 shrink-0">${Math.round(player.handicap)}</span>
-                                    ${isSelected ? '<span class="material-symbols-outlined text-green-600 text-xs ml-1">check_circle</span>' : ''}
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                `;
+            // ALWAYS show players if they exist, regardless of manual mode
+            if (this.currentPairings.players.length > 0) {
+                // In manual mode, make them clickable for selection
+                if (manualMode) {
+                    container.innerHTML = `
+                        <div class="text-center py-2 text-gray-500">
+                            <p class="text-xs mb-3">Click on players below to select them for pairing</p>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+                            ${this.currentPairings.players.map(player => {
+                                const isSelected = this.selectedPairingPlayers?.find(p => p.id === player.id);
+                                return `
+                                    <div onclick="SocietyOrganizerSystem.togglePlayerForPairing(${JSON.stringify(player).replace(/"/g, '&quot;')})"
+                                         class="flex items-center justify-between px-2 py-1.5 border-2 rounded cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-green-50 border-green-500' : 'border-gray-200'}">
+                                        <span class="text-xs font-medium text-gray-900 truncate">${player.playerName}</span>
+                                        <span class="text-[10px] text-gray-600 ml-1 shrink-0">${Math.round(player.handicap)}</span>
+                                        ${isSelected ? '<span class="material-symbols-outlined text-green-600 text-xs ml-1">check_circle</span>' : ''}
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `;
+                } else {
+                    // Auto mode - show players as read-only list
+                    container.innerHTML = `
+                        <div class="text-center py-2 text-gray-500">
+                            <p class="text-xs mb-3">Players available for pairing - Click "Auto-Pair" to create groups</p>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+                            ${this.currentPairings.players.map(player => {
+                                return `
+                                    <div class="flex items-center justify-between px-2 py-1.5 border-2 border-gray-200 rounded bg-white">
+                                        <span class="text-xs font-medium text-gray-900 truncate">${player.playerName}</span>
+                                        <span class="text-[10px] text-gray-600 ml-1 shrink-0">${Math.round(player.handicap)}</span>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    `;
+                }
             } else {
+                // No players at all - show empty state
                 container.innerHTML = `
                     <div class="text-center py-8 text-gray-500">
                         <span class="material-symbols-outlined text-5xl mb-2">groups</span>
-                        <p class="text-sm">Click "Auto-Pair Players" to generate pairings</p>
+                        <p class="text-sm">No players registered for this event</p>
                     </div>
                 `;
             }

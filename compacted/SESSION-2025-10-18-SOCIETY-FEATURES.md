@@ -305,11 +305,11 @@ selectPlayer(playerId, playerName, handicap) {
 
 ### 3.1 Database Schema Created
 **File:** `sql/add-payment-tracking.sql`
-**Purpose:** Add payment tracking to event_bookings table
+**Purpose:** Add payment tracking to event_registrations table
 
 **Fields Added:**
 ```sql
-ALTER TABLE event_bookings
+ALTER TABLE event_registrations
     ADD COLUMN payment_status TEXT DEFAULT 'unpaid'
         CHECK (payment_status IN ('paid', 'unpaid', 'partial')),
     ADD COLUMN amount_paid DECIMAL(10,2) DEFAULT 0.00,
@@ -320,13 +320,13 @@ ALTER TABLE event_bookings
 
 **Index Created:**
 ```sql
-CREATE INDEX idx_event_bookings_payment
-    ON event_bookings(event_id, payment_status);
+CREATE INDEX idx_event_registrations_payment
+    ON event_registrations(event_id, payment_status);
 ```
 
 **Auto-calculation:**
 ```sql
-UPDATE event_bookings
+UPDATE event_registrations
 SET total_fee =
     COALESCE(base_fee, 0) +
     COALESCE(cart_fee, 0) +
@@ -346,7 +346,7 @@ WHERE total_fee = 0;
 **Functions to Add:**
 ```javascript
 async markPlayerPaid(eventId, playerId, amountPaid, markedBy) {
-    // Update event_bookings.payment_status = 'paid'
+    // Update event_registrations.payment_status = 'paid'
     // Set amount_paid and paid_at
     // Store who marked it (markedBy = organizer LINE ID)
 }

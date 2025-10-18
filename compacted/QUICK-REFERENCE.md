@@ -57,7 +57,7 @@
 **Status:** Ready to implement
 
 **What It Needs:**
-1. Run SQL in Supabase (adds payment fields to event_bookings)
+1. Run SQL in Supabase (adds payment fields to event_registrations)
 2. Add 4 backend functions (markPlayerPaid, markPlayerUnpaid, etc.)
 3. Add "Paid" column to roster table
 4. Add toggle button to mark paid/unpaid
@@ -127,7 +127,7 @@ sw.js         - Cache version updated
 ```
 1. Open Supabase SQL Editor
 2. Run: sql/add-payment-tracking.sql
-3. Verify: 5 new columns added to event_bookings
+3. Verify: 5 new columns added to event_registrations
 4. Continue with code implementation from PENDING-TASKS doc
 ```
 
@@ -202,7 +202,7 @@ id, golfer_id, society_name, organizer_id,
 subscribed_at, updated_at
 ```
 
-### event_bookings (PENDING MODIFICATION)
+### event_registrations (PENDING MODIFICATION)
 ```
 [Existing fields...]
 + payment_status (paid/unpaid/partial)

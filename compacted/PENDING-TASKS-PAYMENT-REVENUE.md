@@ -27,12 +27,12 @@ This document outlines the remaining work to complete the payment tracking and r
 
 ### Expected Output
 ```
-✅ Payment tracking fields added to event_bookings!
+✅ Payment tracking fields added to event_registrations!
 Fields: payment_status, amount_paid, total_fee, paid_at, paid_by
 ```
 
 ### What This Does
-Adds 5 new columns to `event_bookings` table:
+Adds 5 new columns to `event_registrations` table:
 - `payment_status` - 'paid', 'unpaid', or 'partial'
 - `amount_paid` - Decimal amount paid
 - `total_fee` - Total fee for this booking (auto-calculated)
@@ -54,7 +54,7 @@ async markPlayerPaid(eventId, playerId, totalFee, organizerId) {
     await this.waitForSupabase();
 
     const { data, error } = await window.SupabaseDB.client
-        .from('event_bookings')
+        .from('event_registrations')
         .update({
             payment_status: 'paid',
             amount_paid: totalFee,
@@ -80,7 +80,7 @@ async markPlayerUnpaid(eventId, playerId) {
     await this.waitForSupabase();
 
     const { data, error } = await window.SupabaseDB.client
-        .from('event_bookings')
+        .from('event_registrations')
         .update({
             payment_status: 'unpaid',
             amount_paid: 0,
@@ -106,7 +106,7 @@ async getEventBookingsWithPayment(eventId) {
     await this.waitForSupabase();
 
     const { data, error } = await window.SupabaseDB.client
-        .from('event_bookings')
+        .from('event_registrations')
         .select('*')
         .eq('event_id', eventId)
         .order('created_at', { ascending: true });
@@ -463,7 +463,7 @@ ${event.revenue ? `
 
 ### Real-time Updates
 - Currently requires manual refresh
-- Could add Supabase realtime subscription to event_bookings
+- Could add Supabase realtime subscription to event_registrations
 - Would auto-update when another organizer marks paid
 - Not critical for MVP
 
@@ -500,7 +500,7 @@ grep -n "event.*card\|renderEventsList" index.html
 # Check if SQL deployed
 # Run in Supabase SQL Editor:
 SELECT column_name FROM information_schema.columns
-WHERE table_name = 'event_bookings' AND column_name IN ('payment_status', 'amount_paid', 'total_fee');
+WHERE table_name = 'event_registrations' AND column_name IN ('payment_status', 'amount_paid', 'total_fee');
 ```
 
 ### Common Issues

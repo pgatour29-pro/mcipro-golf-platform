@@ -26551,13 +26551,85 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 return div;
             },
 
-            // Load round history table
-            loadRoundHistoryTable() {
+            // Load round history table from DATABASE
+            async loadRoundHistoryTable() {
                 const tbody = document.getElementById('round-history-table');
                 if (!tbody) return;
 
-                if (this.scores.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-500">No rounds recorded yet. Click "Add Round" to get started!</td></tr>';
+                const userId = AppState.currentUser?.lineUserId;
+                let allRounds = [];
+
+                // Load from Supabase database (Live Scorecard rounds)
+                if (userId && window.SupabaseDB) {
+                    try {
+                        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500"><span class="material-symbols-outlined animate-spin">refresh</span> Loading rounds...</td></tr>';
+
+                        const { data: dbRounds, error } = await window.SupabaseDB.client
+                            .from('rounds')
+                            .select('*')
+                            .eq('golfer_id', userId)
+                            .order('completed_at', { ascending: false });
+
+                        if (error) {
+                            console.error('[Round History] Error loading from database:', error);
+                        } else if (dbRounds && dbRounds.length > 0) {
+                            // Convert database format to display format
+                            const convertedRounds = dbRounds.map(round => ({
+                                id: round.id,
+                                course: round.course_name,
+                                courseId: round.course_id,
+                                tee: round.tee_marker,
+                                score: round.total_gross,
+                                holes: 18, // Database rounds are always 18 holes
+                                date: round.completed_at?.split('T')[0] || round.started_at?.split('T')[0],
+                                courseRating: round.course_rating || 72.0,
+                                slopeRating: round.slope_rating || 113,
+                                notes: round.notes || '',
+                                differential: null, // Will calculate below
+                                timestamp: round.completed_at,
+                                source: 'database',
+                                type: round.type,
+                                stableford: round.total_stableford,
+                                handicapUsed: round.handicap_used
+                            }));
+
+                            // Calculate differentials for database rounds
+                            convertedRounds.forEach(round => {
+                                const courseRating = round.courseRating || 72.0;
+                                const slopeRating = round.slopeRating || 113;
+                                round.differential = ((round.score - courseRating) * 113 / slopeRating).toFixed(1);
+                            });
+
+                            allRounds = allRounds.concat(convertedRounds);
+                            console.log(`[Round History] ✅ Loaded ${dbRounds.length} rounds from database`);
+                        }
+                    } catch (error) {
+                        console.error('[Round History] Database query failed:', error);
+                    }
+                }
+
+                // Also load from localStorage (manual entry rounds - backwards compatibility)
+                const localRounds = this.scores.map(score => ({
+                    ...score,
+                    source: 'localStorage'
+                }));
+                allRounds = allRounds.concat(localRounds);
+
+                // Remove duplicates (prefer database version)
+                const uniqueRounds = [];
+                const seenIds = new Set();
+                for (const round of allRounds) {
+                    if (!seenIds.has(round.id)) {
+                        uniqueRounds.push(round);
+                        seenIds.add(round.id);
+                    }
+                }
+
+                // Sort by date (newest first)
+                uniqueRounds.sort((a, b) => new Date(b.date || b.timestamp) - new Date(a.date || a.timestamp));
+
+                if (uniqueRounds.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-500">No rounds recorded yet. Play a round or click "Add Round" to get started!</td></tr>';
 
                     // Update stats
                     document.getElementById('rounds-total-count').textContent = '0';
@@ -26568,45 +26640,111 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 }
 
                 // Calculate stats
-                const validScores = this.scores.filter(s => s.holes === 18);
-                const totalRounds = this.scores.length;
+                const validScores = uniqueRounds.filter(s => s.holes === 18 || !s.holes);
+                const totalRounds = uniqueRounds.length;
                 const avgScore = validScores.length > 0 ? (validScores.reduce((sum, s) => sum + s.score, 0) / validScores.length).toFixed(1) : '-';
                 const bestScore = validScores.length > 0 ? Math.min(...validScores.map(s => s.score)) : '-';
-                const handicap = this.calculateHandicapIndex();
+
+                // Use current handicap from profile instead of calculating
+                const currentHandicap = AppState.currentUser?.profile_data?.golfInfo?.handicap || AppState.currentUser?.handicap;
 
                 document.getElementById('rounds-total-count').textContent = totalRounds;
                 document.getElementById('rounds-avg-score').textContent = avgScore;
-                document.getElementById('rounds-handicap').textContent = handicap !== null ? handicap.toFixed(1) : '-';
+                document.getElementById('rounds-handicap').textContent = currentHandicap !== null && currentHandicap !== undefined ? Number(currentHandicap).toFixed(1) : '-';
                 document.getElementById('rounds-best-score').textContent = bestScore;
 
                 // Populate table
-                tbody.innerHTML = this.scores.map(score => {
-                    const par = score.holes === 18 ? 72 : 36;
+                tbody.innerHTML = uniqueRounds.map(score => {
+                    const par = score.holes === 18 ? 72 : (score.holes === 9 ? 36 : 72);
                     const diff = score.score - par;
                     const diffDisplay = diff === 0 ? 'E' : (diff > 0 ? `+${diff}` : diff);
                     const scoreColor = diff <= 0 ? 'text-green-600' : (diff <= 5 ? 'text-orange-600' : 'text-red-600');
-                    const formattedDate = new Date(score.date).toLocaleDateString('en-US', {
+                    const formattedDate = new Date(score.date || score.timestamp).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
                         year: 'numeric'
                     });
 
+                    // Show source badge
+                    const sourceBadge = score.source === 'database'
+                        ? '<span class="text-xs px-2 py-1 bg-green-100 text-green-700 rounded ml-2">Live</span>'
+                        : '<span class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded ml-2">Manual</span>';
+
+                    // Show round type for database rounds
+                    const roundType = score.type === 'society'
+                        ? '<span class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded ml-1">Society</span>'
+                        : '';
+
                     return `
                         <tr class="border-b border-gray-100 hover:bg-gray-50">
                             <td class="py-3 px-4">${formattedDate}</td>
-                            <td class="py-3 px-4 font-medium">${score.course}</td>
-                            <td class="py-3 px-4 text-center">${score.holes}</td>
+                            <td class="py-3 px-4 font-medium">
+                                ${score.course}
+                                ${sourceBadge}
+                                ${roundType}
+                            </td>
+                            <td class="py-3 px-4 text-center">${score.holes || 18}</td>
                             <td class="py-3 px-4 text-center font-bold ${scoreColor}">${score.score}</td>
                             <td class="py-3 px-4 text-center">${par}</td>
                             <td class="py-3 px-4 text-center">${diffDisplay}</td>
-                            <td class="py-3 px-4 text-center">${score.differential !== null ? score.differential.toFixed(1) : '-'}</td>
+                            <td class="py-3 px-4 text-center">${score.differential || '-'}</td>
                             <td class="py-3 px-4 text-right">
-                                <button onclick="GolfScoreSystem.editRound(${score.id})" class="text-primary-600 hover:text-primary-800 text-sm mr-2">Edit</button>
-                                <button onclick="GolfScoreSystem.deleteRound(${score.id})" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
+                                ${score.source === 'localStorage' ? `
+                                    <button onclick="GolfScoreSystem.editRound(${score.id})" class="text-primary-600 hover:text-primary-800 text-sm mr-2">Edit</button>
+                                    <button onclick="GolfScoreSystem.deleteRound(${score.id})" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
+                                ` : `
+                                    <button onclick="GolfScoreSystem.viewRoundDetails('${score.id}')" class="text-primary-600 hover:text-primary-800 text-sm">View Details</button>
+                                `}
                             </td>
                         </tr>
                     `;
                 }).join('');
+
+                console.log(`[Round History] Displayed ${uniqueRounds.length} total rounds (${allRounds.filter(r => r.source === 'database').length} from database, ${allRounds.filter(r => r.source === 'localStorage').length} from localStorage)`);
+            },
+
+            // View round details (for database rounds)
+            async viewRoundDetails(roundId) {
+                try {
+                    const { data: round, error } = await window.SupabaseDB.client
+                        .from('rounds')
+                        .select('*')
+                        .eq('id', roundId)
+                        .single();
+
+                    if (error) throw error;
+
+                    // Get hole-by-hole data
+                    const { data: holes, error: holesError } = await window.SupabaseDB.client
+                        .from('round_holes')
+                        .select('*')
+                        .eq('round_id', roundId)
+                        .order('hole_number');
+
+                    if (holesError) throw holesError;
+
+                    // Display round details in modal or alert
+                    let detailsHTML = `
+                        <strong>${round.course_name}</strong><br>
+                        Date: ${new Date(round.completed_at).toLocaleDateString()}<br>
+                        Tee: ${round.tee_marker}<br>
+                        Total: ${round.total_gross} (Stableford: ${round.total_stableford || 'N/A'})<br>
+                        Handicap Used: ${round.handicap_used}<br><br>
+                    `;
+
+                    if (holes && holes.length > 0) {
+                        detailsHTML += '<strong>Hole-by-Hole:</strong><br>';
+                        holes.forEach(h => {
+                            detailsHTML += `Hole ${h.hole_number}: ${h.gross_score} (Par ${h.par}, Net ${h.net_score}, ${h.stableford_points} pts)<br>`;
+                        });
+                    }
+
+                    alert(detailsHTML.replace(/<br>/g, '\n').replace(/<strong>/g, '').replace(/<\/strong>/g, ''));
+
+                } catch (error) {
+                    console.error('[Round History] Error viewing round details:', error);
+                    alert('Error loading round details');
+                }
             },
 
             // Delete round

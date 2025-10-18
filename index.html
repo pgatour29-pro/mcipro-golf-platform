@@ -29919,6 +29919,133 @@ class SocietyGolfSupabase {
         return stats;
     }
 
+    async updateRegistrationFee(registrationId, newFee) {
+        await this.waitForSupabase();
+
+        const { data, error } = await window.SupabaseDB.client
+            .from('event_registrations')
+            .update({
+                total_fee: newFee
+            })
+            .eq('id', registrationId)
+            .select();
+
+        if (error) {
+            console.error('[PaymentTracking] Error updating fee:', error);
+            throw error;
+        }
+
+        console.log('[PaymentTracking] ✅ Fee updated to ฿' + newFee.toFixed(2));
+        return data;
+    }
+
+    async recalculateEventFees(eventId) {
+        await this.waitForSupabase();
+
+        console.log('[FeeRecalculation] Starting fee recalculation for event:', eventId);
+
+        // Get event details
+        const event = await this.getEvent(eventId);
+        if (!event) {
+            console.error('[FeeRecalculation] Event not found');
+            return { success: false, error: 'Event not found' };
+        }
+
+        console.log('[FeeRecalculation] Event:', event.name);
+        console.log('[FeeRecalculation] Member Fee: ฿' + (event.memberFee || event.baseFee || 0));
+        console.log('[FeeRecalculation] Non-Member Fee: ฿' + (event.nonMemberFee || 0));
+
+        // Get all registrations for this event
+        const { data: registrations, error: regError } = await window.SupabaseDB.client
+            .from('event_registrations')
+            .select('*')
+            .eq('event_id', eventId);
+
+        if (regError) {
+            console.error('[FeeRecalculation] Error fetching registrations:', regError);
+            return { success: false, error: regError };
+        }
+
+        console.log('[FeeRecalculation] Found ' + registrations.length + ' registrations');
+
+        const results = [];
+        let updated = 0;
+        let skipped = 0;
+
+        // Process each registration
+        for (const reg of registrations) {
+            try {
+                // Check if player is a society member
+                const isMember = await this.checkSocietyMembership(reg.player_id, event.organizerName);
+
+                // Calculate total fee
+                const memberFee = parseFloat(event.memberFee) || parseFloat(event.baseFee) || 0;
+                const nonMemberFee = parseFloat(event.nonMemberFee) || 0;
+                const transportFee = parseFloat(event.transportFee) || 0;
+                const competitionFee = parseFloat(event.competitionFee) || 0;
+
+                let totalFee = isMember ? memberFee : (memberFee + nonMemberFee);
+
+                // Add optional fees if player selected them
+                if (reg.want_transport && transportFee > 0) {
+                    totalFee += transportFee;
+                }
+                if (reg.want_competition && competitionFee > 0) {
+                    totalFee += competitionFee;
+                }
+
+                console.log('[FeeRecalculation] ' + reg.player_name + ': ' +
+                    (isMember ? 'MEMBER' : 'NON-MEMBER') + ' → ฿' + totalFee.toFixed(2));
+
+                // Update the registration
+                const { error: updateError } = await window.SupabaseDB.client
+                    .from('event_registrations')
+                    .update({
+                        total_fee: totalFee
+                    })
+                    .eq('id', reg.id);
+
+                if (updateError) {
+                    console.error('[FeeRecalculation] Error updating ' + reg.player_name + ':', updateError);
+                    results.push({
+                        player: reg.player_name,
+                        success: false,
+                        error: updateError
+                    });
+                    skipped++;
+                } else {
+                    results.push({
+                        player: reg.player_name,
+                        isMember: isMember,
+                        totalFee: totalFee,
+                        success: true
+                    });
+                    updated++;
+                }
+
+            } catch (error) {
+                console.error('[FeeRecalculation] Error processing ' + reg.player_name + ':', error);
+                results.push({
+                    player: reg.player_name,
+                    success: false,
+                    error: error
+                });
+                skipped++;
+            }
+        }
+
+        console.log('[FeeRecalculation] ✅ Complete! Updated: ' + updated + ', Skipped: ' + skipped);
+
+        return {
+            success: true,
+            eventName: event.name,
+            totalRegistrations: registrations.length,
+            updated: updated,
+            skipped: skipped,
+            results: results
+        };
+    }
+
     async removeSocietySubscription(golferId, societyName) {
         await this.waitForSupabase();
         const { error } = await window.SupabaseDB.client
@@ -35569,6 +35696,41 @@ class SocietyOrganizerManager {
     // PAYMENT TRACKING
     // =====================================================
 
+    async editPlayerFee(registrationId, playerId, currentFee) {
+        try {
+            const feeInput = prompt(
+                'Enter the total fee for this player (in Baht):',
+                currentFee.toFixed(2)
+            );
+
+            if (feeInput === null) {
+                // User cancelled
+                return;
+            }
+
+            const newFee = parseFloat(feeInput);
+            if (isNaN(newFee) || newFee < 0) {
+                NotificationManager.show('Invalid fee amount', 'error');
+                return;
+            }
+
+            // Update the registration's total_fee
+            await SocietyGolfDB.updateRegistrationFee(registrationId, newFee);
+
+            NotificationManager.show('✅ Fee updated', 'success');
+
+            // Refresh roster to show updated fee
+            await this.viewRoster(this.currentRosterEvent.id);
+
+            // Refresh events list to update revenue display
+            await this.loadEvents();
+
+        } catch (error) {
+            console.error('[EditFee] Error:', error);
+            NotificationManager.show('Failed to update fee', 'error');
+        }
+    }
+
     async togglePayment(eventId, playerId, markAsPaid) {
         try {
             const organizerId = AppState.currentUser?.lineUserId;
@@ -35601,6 +35763,9 @@ class SocietyOrganizerManager {
                         NotificationManager.show('Invalid fee amount', 'error');
                         return;
                     }
+
+                    // Save the fee first
+                    await SocietyGolfDB.updateRegistrationFee(booking.id, totalFee);
                 }
 
                 await SocietyGolfDB.markPlayerPaid(eventId, playerId, totalFee, organizerId);
@@ -36259,7 +36424,12 @@ class SocietyOrganizerManager {
                 <td class="px-4 py-2 text-center">${reg.wantTransport ? '✓' : '-'}</td>
                 <td class="px-4 py-2 text-center">${reg.wantCompetition ? '✓' : '-'}</td>
                 <td class="px-4 py-2 text-center">${(reg.partnerPrefs || []).length}</td>
-                <td class="px-4 py-2 text-right text-gray-900">฿${totalFee.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                <td class="px-4 py-2 text-right text-gray-900">
+                    <button onclick="SocietyOrganizerSystem.editPlayerFee('${reg.id}', '${reg.player_id}', ${totalFee})"
+                        class="hover:text-green-600 hover:underline cursor-pointer" title="Click to edit fee">
+                        ฿${totalFee.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    </button>
+                </td>
                 <td class="px-4 py-2 text-center">
                     <div class="flex items-center justify-center gap-2">
                         ${isPaid ? `

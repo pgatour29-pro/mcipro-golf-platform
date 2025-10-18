@@ -25544,9 +25544,9 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <span class="material-symbols-outlined text-sm">save</span>
                         Save Pairings
                     </button>
-                    <button onclick="SocietyOrganizerSystem.exportPairings()" class="flex-1 btn-secondary text-sm py-2 px-3">
-                        <span class="material-symbols-outlined text-sm">download</span>
-                        Export PDF
+                    <button onclick="SocietyOrganizerSystem.printTeeSheet()" class="flex-1 btn-secondary text-sm py-2 px-3">
+                        <span class="material-symbols-outlined text-sm">print</span>
+                        Print Tee Sheet
                     </button>
                 </div>
             </div>
@@ -25656,6 +25656,17 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </h3>
                     <div id="registeredPlayersContent" class="space-y-2 text-sm max-h-40 overflow-y-auto">
                         <p class="text-gray-500 text-center py-2">Loading player list...</p>
+                    </div>
+                </div>
+
+                <!-- Your Group Assignment (Only shown when pairings exist) -->
+                <div id="golferPairingSection" class="bg-gradient-to-br from-green-50 to-blue-50 rounded-lg p-4 mb-6 border-2 border-green-200" style="display: none;">
+                    <h3 class="font-bold text-gray-900 mb-3 flex items-center">
+                        <span class="material-symbols-outlined text-sm mr-2 text-green-600">golf_course</span>
+                        Your Group Assignment
+                    </h3>
+                    <div id="golferPairingContent">
+                        <!-- Will be populated dynamically -->
                     </div>
                 </div>
 
@@ -37638,37 +37649,216 @@ class SocietyOrganizerManager {
         }
     }
 
-    exportPairings() {
+    printTeeSheet() {
         if (!this.currentPairings || !this.currentPairings.groups.length) {
-            NotificationManager.show('No pairings to export', 'warning');
+            NotificationManager.show('No pairings to print', 'warning');
             return;
         }
 
-        // Generate CSV
-        let csv = `${this.currentRosterEvent.name} - Pairings\n`;
-        csv += `Date: ${this.currentRosterEvent.date}\n\n`;
+        const formatValue = document.getElementById('pairingsGroupSize').value;
+        const is2ManScramble = formatValue === '2man_scramble';
 
-        this.currentPairings.groups.forEach((group, groupIndex) => {
-            csv += `Group ${groupIndex + 1}\n`;
-            group.forEach((player, playerIndex) => {
-                csv += `${playerIndex + 1}. ${player.playerName} (HCP ${Math.round(player.handicap)})`;
-                if (player.wantTransport) csv += ' - Transport';
-                if (player.wantCompetition) csv += ' - Competition';
-                csv += '\n';
+        // Generate print HTML
+        let printHTML = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>${this.currentRosterEvent.name} - Tee Sheet</title>
+                <style>
+                    @media print {
+                        body { margin: 0; }
+                        @page { margin: 1cm; }
+                    }
+                    body {
+                        font-family: Arial, sans-serif;
+                        max-width: 800px;
+                        margin: 0 auto;
+                        padding: 20px;
+                    }
+                    .header {
+                        text-align: center;
+                        margin-bottom: 30px;
+                        border-bottom: 3px solid #16a34a;
+                        padding-bottom: 15px;
+                    }
+                    h1 {
+                        margin: 0 0 10px 0;
+                        color: #16a34a;
+                        font-size: 28px;
+                    }
+                    .meta {
+                        color: #666;
+                        font-size: 14px;
+                    }
+                    .group {
+                        page-break-inside: avoid;
+                        margin-bottom: 25px;
+                        border: 2px solid #e5e7eb;
+                        border-radius: 8px;
+                        padding: 15px;
+                        background: #f9fafb;
+                    }
+                    .group-header {
+                        background: #16a34a;
+                        color: white;
+                        padding: 8px 12px;
+                        margin: -15px -15px 12px -15px;
+                        border-radius: 6px 6px 0 0;
+                        font-weight: bold;
+                        font-size: 16px;
+                    }
+                    .team {
+                        background: white;
+                        border: 1px solid #d1d5db;
+                        border-radius: 6px;
+                        padding: 10px;
+                        margin-bottom: 10px;
+                    }
+                    .team-label {
+                        font-weight: bold;
+                        color: #7c3aed;
+                        font-size: 14px;
+                        margin-bottom: 5px;
+                    }
+                    .player {
+                        display: flex;
+                        justify-content: space-between;
+                        padding: 5px 0;
+                        border-bottom: 1px dotted #e5e7eb;
+                    }
+                    .player:last-child {
+                        border-bottom: none;
+                    }
+                    .player-name {
+                        font-weight: 500;
+                    }
+                    .player-hcp {
+                        color: #666;
+                        font-size: 14px;
+                    }
+                    .footer {
+                        margin-top: 40px;
+                        text-align: center;
+                        color: #999;
+                        font-size: 12px;
+                        border-top: 1px solid #e5e7eb;
+                        padding-top: 15px;
+                    }
+                    .avg-hcp {
+                        background: #dbeafe;
+                        color: #1e40af;
+                        padding: 3px 8px;
+                        border-radius: 4px;
+                        font-size: 12px;
+                        display: inline-block;
+                        margin-left: 10px;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>${this.currentRosterEvent.name}</h1>
+                    <div class="meta">
+                        <div><strong>Date:</strong> ${new Date(this.currentRosterEvent.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+                        ${this.currentRosterEvent.courseName ? `<div><strong>Course:</strong> ${this.currentRosterEvent.courseName}</div>` : ''}
+                        ${this.currentRosterEvent.startTime ? `<div><strong>Start Time:</strong> ${this.currentRosterEvent.startTime}</div>` : ''}
+                        <div><strong>Format:</strong> ${is2ManScramble ? '2-Man Scramble' : 'Stroke Play'}</div>
+                    </div>
+                </div>
+        `;
+
+        if (is2ManScramble && this.currentPairings.fourBallGroups && this.currentPairings.fourBallGroups.length > 0) {
+            // Print 4-ball groups for 2-man scramble
+            this.currentPairings.fourBallGroups.forEach((group, groupIdx) => {
+                const teamSlots = group.teamIndices || [];
+                const team1 = teamSlots[0] !== undefined ? this.currentPairings.groups[teamSlots[0]] : null;
+                const team2 = teamSlots[1] !== undefined ? this.currentPairings.groups[teamSlots[1]] : null;
+
+                printHTML += `
+                    <div class="group">
+                        <div class="group-header">Group ${groupIdx + 1}</div>
+                `;
+
+                if (team1) {
+                    const avgHcp1 = team1.reduce((sum, p) => sum + p.handicap, 0) / team1.length;
+                    printHTML += `
+                        <div class="team">
+                            <div class="team-label">Team A <span class="avg-hcp">Avg HCP: ${avgHcp1.toFixed(1)}</span></div>
+                    `;
+                    team1.forEach(player => {
+                        printHTML += `
+                            <div class="player">
+                                <span class="player-name">${player.playerName}</span>
+                                <span class="player-hcp">HCP ${Math.round(player.handicap)}</span>
+                            </div>
+                        `;
+                    });
+                    printHTML += `</div>`;
+                }
+
+                if (team2) {
+                    const avgHcp2 = team2.reduce((sum, p) => sum + p.handicap, 0) / team2.length;
+                    printHTML += `
+                        <div class="team">
+                            <div class="team-label">Team B <span class="avg-hcp">Avg HCP: ${avgHcp2.toFixed(1)}</span></div>
+                    `;
+                    team2.forEach(player => {
+                        printHTML += `
+                            <div class="player">
+                                <span class="player-name">${player.playerName}</span>
+                                <span class="player-hcp">HCP ${Math.round(player.handicap)}</span>
+                            </div>
+                        `;
+                    });
+                    printHTML += `</div>`;
+                }
+
+                printHTML += `</div>`;
             });
-            csv += '\n';
-        });
+        } else {
+            // Regular groups
+            this.currentPairings.groups.forEach((group, groupIndex) => {
+                const avgHandicap = group.reduce((sum, p) => sum + p.handicap, 0) / group.length;
+                printHTML += `
+                    <div class="group">
+                        <div class="group-header">
+                            Group ${groupIndex + 1}
+                            <span class="avg-hcp">Avg HCP: ${avgHandicap.toFixed(1)}</span>
+                        </div>
+                `;
+                group.forEach(player => {
+                    printHTML += `
+                        <div class="player">
+                            <span class="player-name">${player.playerName}</span>
+                            <span class="player-hcp">HCP ${Math.round(player.handicap)}</span>
+                        </div>
+                    `;
+                });
+                printHTML += `</div>`;
+            });
+        }
 
-        // Download CSV
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${this.currentRosterEvent.name.replace(/\s+/g, '-')}-pairings.csv`;
-        a.click();
-        window.URL.revokeObjectURL(url);
+        printHTML += `
+                <div class="footer">
+                    Generated by MyCaddy Pro - ${new Date().toLocaleString()}
+                </div>
+            </body>
+            </html>
+        `;
 
-        NotificationManager.show('Pairings exported', 'success');
+        // Open print window
+        const printWindow = window.open('', '_blank', 'width=800,height=600');
+        printWindow.document.write(printHTML);
+        printWindow.document.close();
+        printWindow.focus();
+
+        // Wait for content to load, then print
+        setTimeout(() => {
+            printWindow.print();
+        }, 250);
+
+        NotificationManager.show('Opening print preview...', 'success');
     }
 
     // =====================================================
@@ -39308,6 +39498,9 @@ class GolferEventsManager {
         // Load and display registered players
         await this.loadRegisteredPlayers(eventId);
 
+        // Load and display pairing information
+        await this.loadGolferPairing(eventId);
+
         // Pre-fill player name and handicap from profile
         if (AppState.currentUser?.name) {
             document.getElementById('regPlayerName').value = AppState.currentUser.name;
@@ -39382,6 +39575,135 @@ class GolferEventsManager {
             document.getElementById('registeredPlayersContent').innerHTML = `
                 <p class="text-red-500 text-center py-2 text-xs">Failed to load player list</p>
             `;
+        }
+    }
+
+    async loadGolferPairing(eventId) {
+        try {
+            // Get pairings for this event
+            const pairings = await window.SocietyGolfDB.getPairings(eventId);
+            const section = document.getElementById('golferPairingSection');
+            const content = document.getElementById('golferPairingContent');
+
+            if (!pairings || !pairings.groups || pairings.groups.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+
+            // Find which group the current golfer is in
+            const currentPlayerId = AppState.currentUser?.lineUserId || AppState.currentUser?.userId;
+            let myGroup = null;
+            let groupIndex = -1;
+            let is2ManScramble = false;
+            let fourBallGroupIndex = -1;
+
+            // Check for 2-man scramble with 4-ball groups
+            if (pairings.fourBallGroups && pairings.fourBallGroups.length > 0) {
+                is2ManScramble = true;
+                // Find which team the player is in
+                for (let teamIdx = 0; teamIdx < pairings.groups.length; teamIdx++) {
+                    const team = pairings.groups[teamIdx];
+                    if (team.some(p => p.playerId === currentPlayerId)) {
+                        // Found player's team, now find which 4-ball group it's in
+                        for (let groupIdx = 0; groupIdx < pairings.fourBallGroups.length; groupIdx++) {
+                            const fourBallGroup = pairings.fourBallGroups[groupIdx];
+                            if (fourBallGroup.teamIndices && fourBallGroup.teamIndices.includes(teamIdx)) {
+                                fourBallGroupIndex = groupIdx;
+                                groupIndex = teamIdx;
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
+            } else {
+                // Regular format - find group
+                groupIndex = pairings.groups.findIndex(group =>
+                    group.some(p => p.playerId === currentPlayerId)
+                );
+                if (groupIndex !== -1) {
+                    myGroup = pairings.groups[groupIndex];
+                }
+            }
+
+            if (groupIndex === -1 && fourBallGroupIndex === -1) {
+                // Player not in any group
+                content.innerHTML = `
+                    <div class="text-center py-3 text-gray-600">
+                        <span class="material-symbols-outlined text-2xl mb-1 block">pending</span>
+                        <p class="text-sm">Pairings have been set, but you're not assigned to a group yet.</p>
+                        <p class="text-xs text-gray-500 mt-1">Contact the organizer if you should be included.</p>
+                    </div>
+                `;
+                section.style.display = 'block';
+                return;
+            }
+
+            // Display pairing information
+            if (is2ManScramble && fourBallGroupIndex !== -1) {
+                const fourBallGroup = pairings.fourBallGroups[fourBallGroupIndex];
+                const team1Idx = fourBallGroup.teamIndices[0];
+                const team2Idx = fourBallGroup.teamIndices[1];
+                const team1 = team1Idx !== undefined ? pairings.groups[team1Idx] : null;
+                const team2 = team2Idx !== undefined ? pairings.groups[team2Idx] : null;
+
+                content.innerHTML = `
+                    <div class="bg-white rounded-lg p-3 border border-green-300">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="font-bold text-green-700">Group ${fourBallGroupIndex + 1}</span>
+                            <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">2-Man Scramble</span>
+                        </div>
+
+                        ${team1 ? `
+                            <div class="bg-purple-50 rounded p-2 mb-2">
+                                <div class="text-xs font-bold text-purple-900 mb-1">Team A</div>
+                                ${team1.map(player => `
+                                    <div class="flex items-center justify-between text-sm py-1 ${player.playerId === currentPlayerId ? 'font-bold text-green-600' : ''}">
+                                        <span>${player.playerId === currentPlayerId ? '👉 ' : ''}${player.playerName}</span>
+                                        <span class="text-xs text-gray-600">HCP ${Math.round(player.handicap)}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+
+                        ${team2 ? `
+                            <div class="bg-purple-50 rounded p-2">
+                                <div class="text-xs font-bold text-purple-900 mb-1">Team B</div>
+                                ${team2.map(player => `
+                                    <div class="flex items-center justify-between text-sm py-1 ${player.playerId === currentPlayerId ? 'font-bold text-green-600' : ''}">
+                                        <span>${player.playerId === currentPlayerId ? '👉 ' : ''}${player.playerName}</span>
+                                        <span class="text-xs text-gray-600">HCP ${Math.round(player.handicap)}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            } else if (myGroup) {
+                // Regular group display
+                content.innerHTML = `
+                    <div class="bg-white rounded-lg p-3 border border-green-300">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="font-bold text-green-700">Group ${groupIndex + 1}</span>
+                            <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">${myGroup.length} Players</span>
+                        </div>
+                        <div class="space-y-1">
+                            ${myGroup.map(player => `
+                                <div class="flex items-center justify-between text-sm py-1 ${player.playerId === currentPlayerId ? 'font-bold text-green-600' : ''}">
+                                    <span>${player.playerId === currentPlayerId ? '👉 ' : ''}${player.playerName}</span>
+                                    <span class="text-xs text-gray-600">HCP ${Math.round(player.handicap)}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            section.style.display = 'block';
+        } catch (error) {
+            console.error('[GolferEventsSystem] Error loading pairing:', error);
+            // Silently fail - pairings are optional
+            document.getElementById('golferPairingSection').style.display = 'none';
         }
     }
 

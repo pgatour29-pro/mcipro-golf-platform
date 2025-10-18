@@ -17908,7 +17908,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
 <body>
     <script>
-    console.log('%c🚀 PAGE VERSION: 2025-10-18-DATABASE-PERSISTENCE-v1', 'background: #00ff00; color: #000; font-size: 16px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-10-18-FIX-PAIRING-DUPLICATES', 'background: #00ff00; color: #000; font-size: 16px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
     // IMMEDIATE OAuth detection - runs before DOMContentLoaded
@@ -36154,17 +36154,15 @@ class SocietyOrganizerManager {
         // Add selected players as a new group
         this.currentPairings.groups.push([...this.selectedPairingPlayers]);
 
-        // Remove selected players from available players
-        this.currentPairings.players = this.currentPairings.players.filter(p =>
-            !this.selectedPairingPlayers.find(sp => sp.id === p.id)
-        );
+        // DON'T remove players from currentPairings.players - they stay there and get filtered during rendering
+        // This keeps behavior consistent with autoPairPlayers()
 
         // Clear selection
         this.selectedPairingPlayers = [];
         document.getElementById('selectedPlayersCount').textContent = '0';
         document.getElementById('createGroupBtn').disabled = true;
 
-        // Re-render
+        // Re-render - paired players will be filtered out automatically
         this.renderPairings();
         NotificationManager.show('Group created successfully', 'success');
     }
@@ -36275,17 +36273,24 @@ class SocietyOrganizerManager {
         `;
     }
 
-    removeGroup(groupIndex) {
+    async removeGroup(groupIndex) {
         if (!confirm('Remove this group? Players will become available for pairing again.')) return;
 
-        // Return players to available pool
-        const removedPlayers = this.currentPairings.groups[groupIndex];
-        this.currentPairings.players.push(...removedPlayers);
-
-        // Remove group
+        // Remove group (players remain in currentPairings.players - they're filtered during rendering)
         this.currentPairings.groups.splice(groupIndex, 1);
 
-        // Re-render
+        // Auto-save to database so removal persists
+        try {
+            await SocietyGolfDB.savePairings(this.currentPairings.eventId, {
+                groupSize: this.currentPairings.groupSize,
+                groups: this.currentPairings.groups
+            });
+            console.log('[Pairings] Group removed and saved to database');
+        } catch (error) {
+            console.error('[Pairings] Error saving after group removal:', error);
+        }
+
+        // Re-render - unpaired players will automatically appear because renderPairings filters them
         this.renderPairings();
         NotificationManager.show('Group removed', 'success');
     }

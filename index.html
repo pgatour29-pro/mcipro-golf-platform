@@ -25124,6 +25124,8 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                     <th class="px-4 py-2 text-center">Transport</th>
                                     <th class="px-4 py-2 text-center">Competition</th>
                                     <th class="px-4 py-2 text-center">Partners</th>
+                                    <th class="px-4 py-2 text-right">Total Fee</th>
+                                    <th class="px-4 py-2 text-center">Paid Status</th>
                                     <th class="px-4 py-2 text-center">Actions</th>
                                 </tr>
                             </thead>
@@ -29746,6 +29748,98 @@ class SocietyGolfSupabase {
         }
 
         return data;
+    }
+
+    // =====================================================
+    // PAYMENT TRACKING
+    // =====================================================
+
+    async markPlayerPaid(eventId, playerId, totalFee, organizerId) {
+        await this.waitForSupabase();
+
+        const { data, error } = await window.SupabaseDB.client
+            .from('event_registrations')
+            .update({
+                payment_status: 'paid',
+                amount_paid: totalFee,
+                paid_at: new Date().toISOString(),
+                paid_by: organizerId
+            })
+            .eq('event_id', eventId)
+            .eq('player_id', playerId)
+            .select();
+
+        if (error) {
+            console.error('[PaymentTracking] Error marking paid:', error);
+            throw error;
+        }
+
+        console.log('[PaymentTracking] ✅ Marked player as paid:', data);
+        return data;
+    }
+
+    async markPlayerUnpaid(eventId, playerId) {
+        await this.waitForSupabase();
+
+        const { data, error } = await window.SupabaseDB.client
+            .from('event_registrations')
+            .update({
+                payment_status: 'unpaid',
+                amount_paid: 0,
+                paid_at: null,
+                paid_by: null
+            })
+            .eq('event_id', eventId)
+            .eq('player_id', playerId)
+            .select();
+
+        if (error) {
+            console.error('[PaymentTracking] Error marking unpaid:', error);
+            throw error;
+        }
+
+        console.log('[PaymentTracking] ✅ Marked player as unpaid:', data);
+        return data;
+    }
+
+    async getEventBookingsWithPayment(eventId) {
+        await this.waitForSupabase();
+
+        const { data, error } = await window.SupabaseDB.client
+            .from('event_registrations')
+            .select('*')
+            .eq('event_id', eventId)
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error('[PaymentTracking] Error loading bookings:', error);
+            return [];
+        }
+
+        return data || [];
+    }
+
+    async getEventPaymentStats(eventId) {
+        await this.waitForSupabase();
+
+        const bookings = await this.getEventBookingsWithPayment(eventId);
+
+        const stats = {
+            totalCount: bookings.length,
+            paidCount: bookings.filter(b => b.payment_status === 'paid').length,
+            unpaidCount: bookings.filter(b => b.payment_status === 'unpaid').length,
+            partialCount: bookings.filter(b => b.payment_status === 'partial').length,
+            totalExpected: bookings.reduce((sum, b) => sum + parseFloat(b.total_fee || 0), 0),
+            totalPaid: bookings.reduce((sum, b) => sum + parseFloat(b.amount_paid || 0), 0),
+            totalUnpaid: 0
+        };
+
+        stats.totalUnpaid = stats.totalExpected - stats.totalPaid;
+        stats.percentagePaid = stats.totalCount > 0
+            ? Math.round((stats.paidCount / stats.totalCount) * 100)
+            : 0;
+
+        return stats;
     }
 
     async removeSocietySubscription(golferId, societyName) {
@@ -35074,14 +35168,27 @@ class SocietyOrganizerManager {
                 return;
             }
 
-            console.log('[SocietyOrganizer] Loading events with stats...');
+            console.log('[SocietyOrganizer] Loading events with stats and revenue...');
             const startTime = Date.now();
 
             // Use enhanced method that includes registration statistics
-            this.events = await SocietyGolfDB.getOrganizerEventsWithStats(organizerId);
+            const events = await SocietyGolfDB.getOrganizerEventsWithStats(organizerId);
+
+            // Enrich each event with payment stats
+            const enrichedEvents = await Promise.all(
+                events.map(async (event) => {
+                    const paymentStats = await SocietyGolfDB.getEventPaymentStats(event.id);
+                    return {
+                        ...event,
+                        revenue: paymentStats
+                    };
+                })
+            );
+
+            this.events = enrichedEvents;
 
             const endTime = Date.now();
-            console.log(`[SocietyOrganizer] ⚡ Loaded ${this.events.length} events with stats in ${endTime - startTime}ms`);
+            console.log(`[SocietyOrganizer] ⚡ Loaded ${this.events.length} events with stats and revenue in ${endTime - startTime}ms`);
 
             this.renderEventsList();
         } catch (error) {
@@ -35379,6 +35486,47 @@ class SocietyOrganizerManager {
     async editMember(golferId) {
         // Future enhancement: Show edit modal
         NotificationManager.show('Edit member feature coming soon', 'info');
+    }
+
+    // =====================================================
+    // PAYMENT TRACKING
+    // =====================================================
+
+    async togglePayment(eventId, playerId, markAsPaid) {
+        try {
+            const organizerId = AppState.currentUser?.lineUserId;
+            if (!organizerId) {
+                NotificationManager.show('Not authorized', 'error');
+                return;
+            }
+
+            if (markAsPaid) {
+                // Get booking to find total fee
+                const bookings = await SocietyGolfDB.getEventBookingsWithPayment(eventId);
+                const booking = bookings.find(b => b.player_id === playerId);
+
+                if (!booking) {
+                    NotificationManager.show('Booking not found', 'error');
+                    return;
+                }
+
+                await SocietyGolfDB.markPlayerPaid(eventId, playerId, booking.total_fee, organizerId);
+                NotificationManager.show('✅ Marked as paid', 'success');
+            } else {
+                await SocietyGolfDB.markPlayerUnpaid(eventId, playerId);
+                NotificationManager.show('✅ Marked as unpaid', 'success');
+            }
+
+            // Refresh roster to show updated payment status
+            await this.viewRoster(eventId);
+
+            // Refresh events list to update revenue display
+            await this.loadEvents();
+
+        } catch (error) {
+            console.error('[PaymentToggle] Error:', error);
+            NotificationManager.show('Failed to update payment status', 'error');
+        }
     }
 
     generateRecurringEvents(baseEventData) {
@@ -35839,10 +35987,6 @@ class SocietyOrganizerManager {
 
                         <div class="grid grid-cols-2 gap-2 text-xs">
                             <div class="flex justify-between">
-                                <span class="text-gray-600">💰 Revenue:</span>
-                                <span class="font-bold text-green-700">฿${stats.revenue.toLocaleString()}</span>
-                            </div>
-                            <div class="flex justify-between">
                                 <span class="text-gray-600">⏳ Waitlist:</span>
                                 <span class="font-semibold text-gray-900">${stats.waitlist}</span>
                             </div>
@@ -35854,12 +35998,55 @@ class SocietyOrganizerManager {
                                 <span class="text-gray-600">🏆 Competition:</span>
                                 <span class="font-semibold text-gray-900">${stats.competitionCount}</span>
                             </div>
-                            <div class="flex justify-between col-span-2">
-                                <span class="text-gray-600">💳 Paid:</span>
-                                <span class="font-semibold ${stats.paidCount === registered && registered > 0 ? 'text-green-600' : 'text-orange-600'}">${stats.paidCount}/${registered}</span>
-                            </div>
                         </div>
                     </div>
+
+                    <!-- ENHANCED: Revenue Tracking -->
+                    ${event.revenue ? `
+                    <div class="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 mb-3 border border-green-100">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-semibold text-gray-700">💰 Revenue</span>
+                            <span class="text-xs font-medium ${
+                                event.revenue.percentagePaid >= 80 ? 'text-green-600' :
+                                event.revenue.percentagePaid >= 50 ? 'text-yellow-600' :
+                                'text-red-600'
+                            }">
+                                ${event.revenue.paidCount}/${event.revenue.totalCount} Paid
+                            </span>
+                        </div>
+
+                        <!-- Progress Bar -->
+                        <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+                            <div class="h-2 rounded-full ${
+                                event.revenue.percentagePaid >= 80 ? 'bg-green-500' :
+                                event.revenue.percentagePaid >= 50 ? 'bg-yellow-500' :
+                                'bg-red-500'
+                            }" style="width: ${event.revenue.percentagePaid}%"></div>
+                        </div>
+
+                        <!-- Amount Display -->
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                                <span class="text-gray-600">Collected:</span>
+                                <span class="font-bold text-green-700 ml-1">฿${event.revenue.totalPaid.toLocaleString()}</span>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-gray-600">Expected:</span>
+                                <span class="font-medium text-gray-900 ml-1">฿${event.revenue.totalExpected.toLocaleString()}</span>
+                            </div>
+                        </div>
+
+                        ${event.revenue.totalUnpaid > 0 ? `
+                            <div class="mt-2 text-xs text-red-600 font-medium">
+                                ฿${event.revenue.totalUnpaid.toLocaleString()} outstanding
+                            </div>
+                        ` : `
+                            <div class="mt-2 text-xs text-green-600 font-medium">
+                                ✓ All payments collected
+                            </div>
+                        `}
+                    </div>
+                    ` : ''}
 
                     <!-- Event Details -->
                     <div class="bg-gray-50 rounded-lg p-3 mb-3 text-xs">
@@ -35959,24 +36146,48 @@ class SocietyOrganizerManager {
     renderConfirmedPlayers(registrations) {
         const tbody = document.getElementById('confirmedPlayersTable');
         if (!registrations || registrations.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-500">No registrations yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">No registrations yet</td></tr>';
             return;
         }
 
-        tbody.innerHTML = registrations.map(reg => `
+        tbody.innerHTML = registrations.map(reg => {
+            const totalFee = reg.total_fee || 0;
+            const paymentStatus = reg.payment_status || 'unpaid';
+            const isPaid = paymentStatus === 'paid';
+
+            return `
             <tr class="border-t">
                 <td class="px-4 py-2">${reg.playerName}</td>
                 <td class="px-4 py-2">${Math.round(reg.handicap)}</td>
                 <td class="px-4 py-2 text-center">${reg.wantTransport ? '✓' : '-'}</td>
                 <td class="px-4 py-2 text-center">${reg.wantCompetition ? '✓' : '-'}</td>
                 <td class="px-4 py-2 text-center">${(reg.partnerPrefs || []).length}</td>
+                <td class="px-4 py-2 text-right text-gray-900">฿${totalFee.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                <td class="px-4 py-2 text-center">
+                    <div class="flex items-center justify-center gap-2">
+                        ${isPaid ? `
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">
+                                PAID
+                            </span>
+                            <button onclick="SocietyOrganizerSystem.togglePayment('${this.currentRosterEvent?.id}', '${reg.player_id}', false)"
+                                class="text-xs text-gray-500 hover:text-red-600" title="Mark as unpaid">
+                                <span class="material-symbols-outlined text-sm">cancel</span>
+                            </button>
+                        ` : `
+                            <button onclick="SocietyOrganizerSystem.togglePayment('${this.currentRosterEvent?.id}', '${reg.player_id}', true)"
+                                class="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">
+                                Mark Paid
+                            </button>
+                        `}
+                    </div>
+                </td>
                 <td class="px-4 py-2 text-center">
                     <button onclick="SocietyOrganizerSystem.removeRegistration('${reg.id}')" class="text-xs text-red-600 hover:underline">
                         Remove
                     </button>
                 </td>
             </tr>
-        `).join('');
+        `}).join('');
     }
 
     renderWaitlistPlayers(waitlist) {

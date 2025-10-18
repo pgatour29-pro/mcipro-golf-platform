@@ -1,7 +1,7 @@
 // SERVICE WORKER - Offline-First Caching for MciPro Golf Platform
 // Provides instant loading and offline support
 
-const CACHE_VERSION = 'mcipro-v2025-10-18-society-membership';
+const CACHE_VERSION = 'mcipro-v2025-10-18-payment-revenue';
 const CACHE_NAME = `${CACHE_VERSION}-${Date.now()}`;
 
 // Cache strategies

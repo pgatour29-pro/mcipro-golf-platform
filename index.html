@@ -17908,7 +17908,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
 <body>
     <script>
-    console.log('%c🚀 PAGE VERSION: 2025-10-18-COMPACT-PAIRINGS-v1', 'background: #00ff00; color: #000; font-size: 16px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-10-18-DATABASE-PERSISTENCE-v1', 'background: #00ff00; color: #000; font-size: 16px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
     // IMMEDIATE OAuth detection - runs before DOMContentLoaded
@@ -29550,6 +29550,78 @@ class SocietyGolfSupabase {
         return data;
     }
 
+    // =====================================================
+    // SOCIETY SUBSCRIPTIONS (DATABASE PERSISTENCE)
+    // =====================================================
+
+    async getSocietySubscriptions(golferId) {
+        await this.waitForSupabase();
+        const { data, error } = await window.SupabaseDB.client
+            .from('golfer_society_subscriptions')
+            .select('society_name, organizer_id, subscribed_at')
+            .eq('golfer_id', golferId)
+            .order('subscribed_at', { ascending: false });
+
+        if (error) {
+            console.error('[SocietyGolfDB] Error loading subscriptions:', error);
+            return [];
+        }
+
+        return data || [];
+    }
+
+    async saveSocietySubscription(golferId, societyName, organizerId = null) {
+        await this.waitForSupabase();
+        const { data, error } = await window.SupabaseDB.client
+            .from('golfer_society_subscriptions')
+            .upsert({
+                golfer_id: golferId,
+                society_name: societyName,
+                organizer_id: organizerId
+            }, {
+                onConflict: 'golfer_id,society_name'
+            })
+            .select();
+
+        if (error) {
+            console.error('[SocietyGolfDB] Error saving subscription:', error);
+            throw error;
+        }
+
+        return data;
+    }
+
+    async removeSocietySubscription(golferId, societyName) {
+        await this.waitForSupabase();
+        const { error } = await window.SupabaseDB.client
+            .from('golfer_society_subscriptions')
+            .delete()
+            .eq('golfer_id', golferId)
+            .eq('society_name', societyName);
+
+        if (error) {
+            console.error('[SocietyGolfDB] Error removing subscription:', error);
+            throw error;
+        }
+
+        return true;
+    }
+
+    async clearAllSubscriptions(golferId) {
+        await this.waitForSupabase();
+        const { error } = await window.SupabaseDB.client
+            .from('golfer_society_subscriptions')
+            .delete()
+            .eq('golfer_id', golferId);
+
+        if (error) {
+            console.error('[SocietyGolfDB] Error clearing subscriptions:', error);
+            throw error;
+        }
+
+        return true;
+    }
+
     unsubscribeAll() {
         this.subscriptions.forEach(sub => {
             sub.unsubscribe();
@@ -37357,6 +37429,9 @@ class GolferEventsManager {
     async init() {
         console.log('[GolferEventsSystem] Initializing...');
 
+        // CRITICAL: Load subscriptions from database first
+        await this.loadSubscriptionsFromDatabase();
+
         // Try to show cached data immediately if available
         if (this.isCacheValid()) {
             console.log('[GolferEventsSystem] ⚡ Using cached events (instant load)');
@@ -38807,13 +38882,74 @@ class GolferEventsManager {
     // SOCIETY SUBSCRIPTIONS
     // ======================
 
+    // DEPRECATED - Old localStorage method
     loadSubscribedSocieties() {
         const stored = localStorage.getItem('mcipro_subscribed_societies');
         return stored ? JSON.parse(stored) : [];
     }
 
-    saveSubscribedSocieties() {
-        localStorage.setItem('mcipro_subscribed_societies', JSON.stringify(this.subscribedSocieties));
+    // NEW: Load subscriptions from database
+    async loadSubscriptionsFromDatabase() {
+        try {
+            const golferId = AppState.currentUser?.lineUserId;
+            if (!golferId) {
+                console.warn('[GolferEventsSystem] No user logged in, skipping subscription load');
+                return;
+            }
+
+            console.log('[GolferEventsSystem] Loading subscriptions from database for:', golferId);
+
+            // First, check if there are localStorage subscriptions to migrate
+            const localSubscriptions = this.loadSubscribedSocieties();
+            if (localSubscriptions.length > 0) {
+                console.log('[GolferEventsSystem] Migrating', localSubscriptions.length, 'subscriptions from localStorage to database');
+                await this.migrateSubscriptionsToDatabase(golferId, localSubscriptions);
+            }
+
+            // Load from database
+            const subscriptions = await SocietyGolfDB.getSocietySubscriptions(golferId);
+            this.subscribedSocieties = subscriptions.map(s => s.society_name);
+
+            console.log('[GolferEventsSystem] ✅ Loaded', this.subscribedSocieties.length, 'subscriptions from database');
+            this.updateSelectedSocietiesDisplay();
+        } catch (error) {
+            console.error('[GolferEventsSystem] Error loading subscriptions from database:', error);
+            // Fallback to localStorage
+            this.subscribedSocieties = this.loadSubscribedSocieties();
+        }
+    }
+
+    async migrateSubscriptionsToDatabase(golferId, societyNames) {
+        try {
+            for (const societyName of societyNames) {
+                await SocietyGolfDB.saveSocietySubscription(golferId, societyName);
+            }
+            console.log('[GolferEventsSystem] ✅ Migration complete - clearing localStorage');
+            localStorage.removeItem('mcipro_subscribed_societies');
+        } catch (error) {
+            console.error('[GolferEventsSystem] Error migrating subscriptions:', error);
+        }
+    }
+
+    async saveSubscriptionToDatabase(societyName, isSubscribing) {
+        try {
+            const golferId = AppState.currentUser?.lineUserId;
+            if (!golferId) {
+                console.warn('[GolferEventsSystem] No user logged in, cannot save subscription');
+                return;
+            }
+
+            if (isSubscribing) {
+                await SocietyGolfDB.saveSocietySubscription(golferId, societyName);
+                console.log('[GolferEventsSystem] ✅ Subscribed to:', societyName);
+            } else {
+                await SocietyGolfDB.removeSocietySubscription(golferId, societyName);
+                console.log('[GolferEventsSystem] ❌ Unsubscribed from:', societyName);
+            }
+        } catch (error) {
+            console.error('[GolferEventsSystem] Error saving subscription:', error);
+            NotificationManager.show('Failed to update subscription', 'error');
+        }
     }
 
     extractUniqueSocieties() {
@@ -38854,14 +38990,19 @@ class GolferEventsManager {
         this.updateSelectedSocietiesDisplay();
     }
 
-    toggleSocietySubscription(society) {
+    async toggleSocietySubscription(society) {
         const index = this.subscribedSocieties.indexOf(society);
+        const isSubscribing = index === -1;
+
         if (index > -1) {
             this.subscribedSocieties.splice(index, 1);
         } else {
             this.subscribedSocieties.push(society);
         }
-        this.saveSubscribedSocieties();
+
+        // Save to database
+        await this.saveSubscriptionToDatabase(society, isSubscribing);
+
         this.updateSelectedSocietiesDisplay();
         this.filterEvents();
     }
@@ -38896,16 +39037,40 @@ class GolferEventsManager {
         }
     }
 
-    selectAllSocieties() {
+    async selectAllSocieties() {
+        const golferId = AppState.currentUser?.lineUserId;
+        if (!golferId) return;
+
         this.subscribedSocieties = [...this.allSocieties];
-        this.saveSubscribedSocieties();
+
+        // Save all to database
+        try {
+            for (const society of this.allSocieties) {
+                await SocietyGolfDB.saveSocietySubscription(golferId, society);
+            }
+            console.log('[GolferEventsSystem] ✅ Subscribed to all societies');
+        } catch (error) {
+            console.error('[GolferEventsSystem] Error subscribing to all societies:', error);
+        }
+
         this.renderSocietyCheckboxes();
         this.filterEvents();
     }
 
-    clearAllSocieties() {
+    async clearAllSocieties() {
+        const golferId = AppState.currentUser?.lineUserId;
+        if (!golferId) return;
+
         this.subscribedSocieties = [];
-        this.saveSubscribedSocieties();
+
+        // Clear from database
+        try {
+            await SocietyGolfDB.clearAllSubscriptions(golferId);
+            console.log('[GolferEventsSystem] ✅ Cleared all subscriptions');
+        } catch (error) {
+            console.error('[GolferEventsSystem] Error clearing subscriptions:', error);
+        }
+
         this.renderSocietyCheckboxes();
         this.filterEvents();
     }

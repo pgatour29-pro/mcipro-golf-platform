@@ -31272,6 +31272,7 @@ class LiveScorecardSystem {
         this.currentScore = '';
         this.leaderboardView = 'group';
         this.subscriptions = [];
+        this.autoAdvanceTimeout = null; // FIX: Store timeout to prevent race condition
         this.courseData = null; // Store loaded course data
         this.availableCourses = []; // List of courses from database
     }
@@ -32420,7 +32421,9 @@ class LiveScorecardSystem {
             const allDone = this.players.every(p => this.getPlayerScore(p.id, this.currentHole));
             if (allDone && this.currentHole < 18) {
                 // Auto-advance to next hole after a short delay
-                setTimeout(() => {
+                // FIX: Store timeout reference to prevent race condition
+                this.autoAdvanceTimeout = setTimeout(() => {
+                    this.autoAdvanceTimeout = null; // Clear reference
                     this.nextHole();
                 }, 1000);  // Give user time to see all scores entered before advancing
             }
@@ -32460,6 +32463,12 @@ class LiveScorecardSystem {
     }
 
     prevHole() {
+        // FIX: Clear any pending auto-advance timeout to prevent race condition
+        if (this.autoAdvanceTimeout) {
+            clearTimeout(this.autoAdvanceTimeout);
+            this.autoAdvanceTimeout = null;
+        }
+
         if (this.currentHole > 1) {
             this.currentHole--;
             this.renderHole();
@@ -32467,6 +32476,12 @@ class LiveScorecardSystem {
     }
 
     nextHole() {
+        // FIX: Clear any pending auto-advance timeout to prevent race condition
+        if (this.autoAdvanceTimeout) {
+            clearTimeout(this.autoAdvanceTimeout);
+            this.autoAdvanceTimeout = null;
+        }
+
         if (this.currentHole < 18) {
             this.currentHole++;
             this.currentPlayerId = this.players[0].id;
@@ -32695,6 +32710,12 @@ class LiveScorecardSystem {
 
 
     async completeRound() {
+        // FIX: Clear any pending auto-advance timeout
+        if (this.autoAdvanceTimeout) {
+            clearTimeout(this.autoAdvanceTimeout);
+            this.autoAdvanceTimeout = null;
+        }
+
         if (!confirm('Complete round for all players?')) return;
 
         // Check scramble drive requirements if scramble format is active
@@ -33409,6 +33430,12 @@ class LiveScorecardSystem {
     }
 
     actuallyEndRound() {
+        // FIX: Clear any pending auto-advance timeout
+        if (this.autoAdvanceTimeout) {
+            clearTimeout(this.autoAdvanceTimeout);
+            this.autoAdvanceTimeout = null;
+        }
+
         // Reset state
         this.players = [];
         this.currentHole = 1;

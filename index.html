@@ -32894,15 +32894,29 @@ class LiveScorecardSystem {
     async loadCourseData(courseId) {
         console.log(`[LiveScorecard] Loading course data for: ${courseId}`);
 
+        // Course cache versions - increment to force refresh
+        const COURSE_CACHE_VERSIONS = {
+            'bangpakong': 2  // v2: Par 72 with all 5 tees (black, blue, white, yellow, red)
+        };
+
         // Check cache first (courses don't change often)
         const cacheKey = `mcipro_course_${courseId}`;
+        const cacheVersionKey = `mcipro_course_version_${courseId}`;
+        const expectedVersion = COURSE_CACHE_VERSIONS[courseId] || 1;
+
         try {
             const cached = localStorage.getItem(cacheKey);
-            if (cached) {
+            const cachedVersion = parseInt(localStorage.getItem(cacheVersionKey) || '0');
+
+            if (cached && cachedVersion === expectedVersion) {
                 const courseData = JSON.parse(cached);
-                console.log('[LiveScorecard] Using cached course data');
+                console.log(`[LiveScorecard] Using cached course data (v${cachedVersion})`);
                 this.courseData = courseData;
                 return this.courseData;
+            } else if (cached && cachedVersion < expectedVersion) {
+                console.log(`[LiveScorecard] Cache outdated (v${cachedVersion} < v${expectedVersion}), refreshing...`);
+                localStorage.removeItem(cacheKey);
+                localStorage.removeItem(cacheVersionKey);
             }
         } catch (e) {
             console.warn('[LiveScorecard] Cache read failed:', e);
@@ -32940,9 +32954,11 @@ class LiveScorecardSystem {
                 }))
             };
 
-            // Cache this course data
+            // Cache this course data with version
             try {
                 localStorage.setItem(cacheKey, JSON.stringify(this.courseData));
+                localStorage.setItem(cacheVersionKey, expectedVersion.toString());
+                console.log(`[LiveScorecard] Course data cached (v${expectedVersion})`);
             } catch (e) {
                 console.warn('[LiveScorecard] Cache write failed:', e);
             }

@@ -22,6 +22,7 @@
 |----------|---------|--------|
 | `SCORECARD_AUDIT_REPORT.md` | Live scorecard system audit | ✅ Complete |
 | `IMPLEMENTATION_SUMMARY.md` | Scorecard profiles + i18n implementation | ✅ Complete |
+| `TRANSLATION_SYSTEM_GUIDE.md` | Complete i18n translation system guide | ✅ Complete |
 | `NEXT_STEPS_SCORECARD.md` | Roadmap for scorecard enhancements | 🔄 In Progress |
 
 ---

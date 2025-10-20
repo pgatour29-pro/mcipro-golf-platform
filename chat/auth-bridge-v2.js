@@ -69,10 +69,8 @@ export async function ensureSupabaseSessionWithLIFF() {
   }
 
   // 3) Try LIFF as last resort
-  if (!lineUserId) {
-    console.warn('🔍 [AUTH-BRIDGE-V2] No session, checking LIFF...');
-
   if (!lineUserId && window.liff) {
+    console.warn('🔍 [AUTH-BRIDGE-V2] No session, checking LIFF...');
     try {
       if (window.liff.isLoggedIn()) {
         console.log('[Auth Bridge] Using LIFF authentication');

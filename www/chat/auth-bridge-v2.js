@@ -47,8 +47,10 @@ export async function ensureSupabaseSessionWithLIFF() {
 
   // 2) Try AppState if Supabase session check didn't work
   if (!lineUserId) {
+    console.warn('🔍 [AUTH-BRIDGE-V2] No LINE ID from session, checking AppState...');
+    console.warn('🔍 [AUTH-BRIDGE-V2] window.AppState exists:', !!window.AppState);
     const oauthUser = window.AppState?.currentUser;
-    console.log('[Auth Bridge] AppState.currentUser:', oauthUser);
+    console.warn('🔍 [AUTH-BRIDGE-V2] AppState.currentUser:', oauthUser);
 
     if (oauthUser) {
       // Try different possible field names for LINE user ID

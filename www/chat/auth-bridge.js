@@ -6,33 +6,49 @@ import { getSupabaseClient } from './supabaseClient.js';
 /**
  * Ensures a Supabase session exists for the current LINE user
  * Creates an anonymous session if needed and links it to the LINE user ID
+ * Supports both OAuth and LIFF authentication methods
  *
  * @returns {Promise<{supaUser: Object, lineUserId: string, lineProfile: Object} | null>}
  */
 export async function ensureSupabaseSessionWithLIFF() {
   const supabase = await getSupabaseClient();
 
-  // 1) Check if LIFF is initialized and user is logged in
-  if (!window.liff) {
-    console.warn('[Auth Bridge] LIFF SDK not loaded');
-    return null;
-  }
+  let lineProfile = null;
+  let lineUserId = null;
 
-  try {
-    if (!window.liff.isLoggedIn()) {
-      console.warn('[Auth Bridge] LIFF not logged in yet');
-      return null;
+  // 1) Try OAuth first - Check if user is logged in via LINE OAuth (in localStorage)
+  const oauthUser = window.AppState?.currentUser;
+  if (oauthUser && oauthUser.lineUserId) {
+    console.log('[Auth Bridge] Found OAuth LINE user:', oauthUser.lineUserId);
+    lineUserId = oauthUser.lineUserId;
+    lineProfile = {
+      userId: oauthUser.lineUserId,
+      displayName: oauthUser.displayName || oauthUser.username || 'Golfer',
+      pictureUrl: oauthUser.linePictureUrl || oauthUser.avatarUrl || null
+    };
+  }
+  // 2) Try LIFF if OAuth not available
+  else if (window.liff) {
+    try {
+      if (window.liff.isLoggedIn()) {
+        console.log('[Auth Bridge] Using LIFF authentication');
+        lineProfile = await window.liff.getProfile();
+        lineUserId = lineProfile.userId;
+      } else {
+        console.warn('[Auth Bridge] LIFF not logged in');
+      }
+    } catch (error) {
+      console.warn('[Auth Bridge] LIFF error:', error.message);
     }
-  } catch (error) {
-    console.warn('[Auth Bridge] LIFF not initialized:', error.message);
+  }
+
+  // 3) If no authentication method available, return null
+  if (!lineUserId || !lineProfile) {
+    console.warn('[Auth Bridge] No LINE authentication found (tried OAuth and LIFF)');
     return null;
   }
 
-  // 2) Get LINE profile
-  const lineProfile = await window.liff.getProfile();
-  const lineUserId = lineProfile.userId; // e.g., "U9e64d5456b0..."
-
-  console.log('[Auth Bridge] LINE user:', lineUserId);
+  console.log('[Auth Bridge] LINE user authenticated:', lineUserId);
 
   // 3) Check if there's already a Supabase session
   let { data: userResp } = await supabase.auth.getUser();

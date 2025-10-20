@@ -7143,6 +7143,17 @@
             }, 2500); // Wait for alert to be added to activeAlerts
         };
 
+        // Global error handler to catch silent failures
+        window.addEventListener('error', function(event) {
+            console.error('🚨 GLOBAL ERROR CAUGHT:', event.error);
+            console.error('🚨 Error message:', event.message);
+            console.error('🚨 Stack:', event.error?.stack);
+        });
+
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('🚨 UNHANDLED PROMISE REJECTION:', event.reason);
+        });
+
         // Application Initialization
         document.addEventListener('DOMContentLoaded', async function() {
             console.warn('🔥🔥🔥 DOMContentLoaded FIRED 🔥🔥🔥');
@@ -7165,20 +7176,21 @@
 
             console.warn('🔥🔥🔥 ABOUT TO CHECK IF CONDITION 🔥🔥🔥');
             if (code && state === storedState) {
-                console.warn('🎯🎯🎯 INSIDE IF BLOCK - PROCESSING OAUTH 🎯🎯🎯');
-
-                // DUPLICATE CHECK REMOVED - OAuth exchange is idempotent, edge function handles duplicates
-                console.warn('🚀🚀🚀 STARTING OAUTH EXCHANGE (duplicate check disabled) 🚀🚀🚀');
-                console.log('[LINE OAuth] Callback received, exchanging code for profile');
-
                 try {
-                    LoadingManager.show('Completing LINE login...');
-                } catch (loadErr) {
-                    console.error('[LINE OAuth] LoadingManager.show failed:', loadErr);
-                    // Continue anyway
-                }
+                    console.warn('🎯🎯🎯 INSIDE IF BLOCK - PROCESSING OAUTH 🎯🎯🎯');
 
-                try {
+                    // DUPLICATE CHECK REMOVED - OAuth exchange is idempotent, edge function handles duplicates
+                    console.warn('🚀🚀🚀 STARTING OAUTH EXCHANGE (duplicate check disabled) 🚀🚀🚀');
+                    console.log('[LINE OAuth] Callback received, exchanging code for profile');
+
+                    try {
+                        LoadingManager.show('Completing LINE login...');
+                    } catch (loadErr) {
+                        console.error('[LINE OAuth] LoadingManager.show failed:', loadErr);
+                        // Continue anyway
+                    }
+
+                    console.warn('💫 About to call fetch to line-oauth-exchange...');
                     // Call Supabase Edge Function to exchange code for profile
                     const res = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-oauth-exchange', {
                         method: 'POST',

@@ -1,7 +1,7 @@
 // SERVICE WORKER - Offline-First Caching for MciPro Golf Platform
 // Provides instant loading and offline support
 
-const CACHE_VERSION = 'mcipro-v2025-10-20-chat-liff-fix';
+const CACHE_VERSION = 'mcipro-v2025-10-20-session-auth-fix';
 const CACHE_NAME = `${CACHE_VERSION}-${Date.now()}`;
 
 // Cache strategies
@@ -129,9 +129,10 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Chat system files: Always network-first with MIME validation
-    if (url.pathname.startsWith('/chat/')) {
-        event.respondWith(handleChatFetch(request));
+    // Chat system files: NETWORK ONLY - bypass cache entirely
+    if (url.pathname.startsWith('/chat/') || url.search.includes('v=2025-10-20')) {
+        console.log('[ServiceWorker] Chat file - bypassing cache:', url.pathname);
+        event.respondWith(fetch(request, { cache: 'no-store' }));
         return;
     }
 

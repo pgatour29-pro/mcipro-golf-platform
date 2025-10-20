@@ -16,16 +16,23 @@ export async function ensureSupabaseSessionWithLIFF() {
   let lineProfile = null;
   let lineUserId = null;
 
-  // 1) Try OAuth first - Check if user is logged in via LINE OAuth (in localStorage)
+  // 1) Try OAuth first - Check if user is logged in via LINE OAuth
   const oauthUser = window.AppState?.currentUser;
-  if (oauthUser && oauthUser.lineUserId) {
-    console.log('[Auth Bridge] Found OAuth LINE user:', oauthUser.lineUserId);
-    lineUserId = oauthUser.lineUserId;
-    lineProfile = {
-      userId: oauthUser.lineUserId,
-      displayName: oauthUser.displayName || oauthUser.username || 'Golfer',
-      pictureUrl: oauthUser.linePictureUrl || oauthUser.avatarUrl || null
-    };
+  console.log('[Auth Bridge] AppState.currentUser:', oauthUser);
+
+  if (oauthUser) {
+    // Try different possible field names for LINE user ID
+    lineUserId = oauthUser.lineUserId || oauthUser.userId || oauthUser.uniqueId?.userId;
+    console.log('[Auth Bridge] Extracted LINE user ID:', lineUserId);
+
+    if (lineUserId) {
+      console.log('[Auth Bridge] Found OAuth LINE user:', lineUserId);
+      lineProfile = {
+        userId: lineUserId,
+        displayName: oauthUser.displayName || oauthUser.username || 'Golfer',
+        pictureUrl: oauthUser.linePictureUrl || oauthUser.avatarUrl || null
+      };
+    }
   }
   // 2) Try LIFF if OAuth not available
   else if (window.liff) {

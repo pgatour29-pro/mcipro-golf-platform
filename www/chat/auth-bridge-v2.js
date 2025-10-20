@@ -20,54 +20,58 @@ export async function ensureSupabaseSessionWithLIFF() {
   let lineProfile = null;
   let lineUserId = null;
 
-  // 1) Check if there's already a Supabase session (from OAuth or previous login)
-  console.warn('🔍 [AUTH-BRIDGE-V2] Checking Supabase session...');
-  const { data: sessionData } = await supabase.auth.getSession();
-  console.warn('🔍 [AUTH-BRIDGE-V2] Session data:', sessionData);
-  console.warn('🔍 [AUTH-BRIDGE-V2] Session user ID:', sessionData?.session?.user?.id);
+  // 1) Check AppState FIRST (OAuth flow populates this, NOT Supabase session)
+  console.warn('🔍 [AUTH-BRIDGE-V2] Checking AppState (OAuth primary auth)...');
+  console.warn('🔍 [AUTH-BRIDGE-V2] window.AppState exists:', !!window.AppState);
+  const oauthUser = window.AppState?.currentUser;
+  console.warn('🔍 [AUTH-BRIDGE-V2] AppState.currentUser:', oauthUser);
 
-  if (sessionData?.session?.user) {
-    // User has a Supabase session - get their profile from database
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', sessionData.session.user.id)
-      .single();
+  if (oauthUser) {
+    // OAuth flow - AppState has LINE user info
+    lineUserId = oauthUser.lineUserId || oauthUser.userId || oauthUser.lineId;
+    console.warn('🔍 [AUTH-BRIDGE-V2] Extracted LINE user ID from AppState:', lineUserId);
 
-    if (profile && profile.line_user_id) {
-      console.log('[Auth Bridge] Found profile with LINE ID from Supabase session');
-      lineUserId = profile.line_user_id;
+    if (lineUserId) {
+      console.warn('✅ [AUTH-BRIDGE-V2] Found OAuth LINE user:', lineUserId);
       lineProfile = {
-        userId: profile.line_user_id,
-        displayName: profile.display_name || profile.username || 'Golfer',
-        pictureUrl: profile.avatar_url || null
+        userId: lineUserId,
+        displayName: oauthUser.name || oauthUser.username || 'Golfer',
+        pictureUrl: oauthUser.avatar || null
       };
     }
   }
 
-  // 2) Try AppState if Supabase session check didn't work
+  // 2) Try Supabase session if AppState didn't work (alternative auth methods)
   if (!lineUserId) {
-    console.warn('🔍 [AUTH-BRIDGE-V2] No LINE ID from session, checking AppState...');
-    console.warn('🔍 [AUTH-BRIDGE-V2] window.AppState exists:', !!window.AppState);
-    const oauthUser = window.AppState?.currentUser;
-    console.warn('🔍 [AUTH-BRIDGE-V2] AppState.currentUser:', oauthUser);
+    console.warn('🔍 [AUTH-BRIDGE-V2] No AppState, checking Supabase session...');
+    const { data: sessionData } = await supabase.auth.getSession();
+    console.warn('🔍 [AUTH-BRIDGE-V2] Session data:', sessionData);
+    console.warn('🔍 [AUTH-BRIDGE-V2] Session user ID:', sessionData?.session?.user?.id);
 
-    if (oauthUser) {
-      // Try different possible field names for LINE user ID
-      lineUserId = oauthUser.lineUserId || oauthUser.userId || oauthUser.lineId;
-      console.log('[Auth Bridge] Extracted LINE user ID:', lineUserId);
+    if (sessionData?.session?.user) {
+      // User has a Supabase session - get their profile from database
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', sessionData.session.user.id)
+        .single();
 
-      if (lineUserId) {
-        console.log('[Auth Bridge] Found OAuth LINE user:', lineUserId);
+      if (profile && profile.line_user_id) {
+        console.log('[Auth Bridge] Found profile with LINE ID from Supabase session');
+        lineUserId = profile.line_user_id;
         lineProfile = {
-          userId: lineUserId,
-          displayName: oauthUser.name || oauthUser.username || 'Golfer',
-          pictureUrl: oauthUser.avatar || null
+          userId: profile.line_user_id,
+          displayName: profile.display_name || profile.username || 'Golfer',
+          pictureUrl: profile.avatar_url || null
         };
       }
     }
   }
-  // 3) Try LIFF if still no authentication found
+
+  // 3) Try LIFF as last resort
+  if (!lineUserId) {
+    console.warn('🔍 [AUTH-BRIDGE-V2] No session, checking LIFF...');
+
   if (!lineUserId && window.liff) {
     try {
       if (window.liff.isLoggedIn()) {

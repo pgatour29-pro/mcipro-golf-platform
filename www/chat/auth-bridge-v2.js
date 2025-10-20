@@ -136,7 +136,7 @@ export async function ensureSupabaseSessionWithLIFF() {
     .from('profiles')
     .update(profilePayload)
     .eq('line_user_id', lineUserId)
-    .select('id')
+    .select()
     .maybeSingle();
 
   if (!byLine && byLineErr) console.warn('[Auth Bridge] update-by-line failed', byLineErr);

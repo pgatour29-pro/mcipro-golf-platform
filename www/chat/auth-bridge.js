@@ -13,8 +13,18 @@ export async function ensureSupabaseSessionWithLIFF() {
   const supabase = await getSupabaseClient();
 
   // 1) Check if LIFF is initialized and user is logged in
-  if (!window.liff || !window.liff.isLoggedIn()) {
-    console.warn('[Auth Bridge] LIFF not logged in yet');
+  if (!window.liff) {
+    console.warn('[Auth Bridge] LIFF SDK not loaded');
+    return null;
+  }
+
+  try {
+    if (!window.liff.isLoggedIn()) {
+      console.warn('[Auth Bridge] LIFF not logged in yet');
+      return null;
+    }
+  } catch (error) {
+    console.warn('[Auth Bridge] LIFF not initialized:', error.message);
     return null;
   }
 

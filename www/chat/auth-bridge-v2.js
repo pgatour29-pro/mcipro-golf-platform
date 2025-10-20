@@ -145,9 +145,7 @@ export async function ensureSupabaseSessionWithLIFF() {
     // Insert or merge on conflict(line_user_id)
     const { error: insertErr } = await supabase
       .from('profiles')
-      .insert(profilePayload)
-      .onConflict('line_user_id')
-      .merge();
+      .upsert(profilePayload, { onConflict: "line_user_id" })
 
     if (insertErr) {
       if (insertErr.code === '23505') {
@@ -155,9 +153,7 @@ export async function ensureSupabaseSessionWithLIFF() {
         const rescue = { ...profilePayload, username: `${safeUserName}-${Math.random().toString(36).slice(2,7)}` };
         const { error: second } = await supabase
           .from('profiles')
-          .insert(rescue)
-          .onConflict('line_user_id')
-          .merge();
+          .upsert(rescue, { onConflict: "line_user_id" })
         if (second) console.error('[Auth Bridge] profile upsert failed twice:', second);
       } else {
         console.error('[Auth Bridge] profile upsert failed:', insertErr);

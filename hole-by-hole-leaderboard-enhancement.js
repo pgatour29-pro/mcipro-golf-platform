@@ -219,7 +219,15 @@ LiveScorecardManager.renderHoleByHoleLeaderboard = function(leaderboard) {
 
     // Add column headers for each hole
     for (let hole = 1; hole <= maxHole; hole++) {
-        const holeData = this.courseData?.holes?.[hole - 1];
+        // FIXED: Filter by selected tee marker (same logic as renderHole())
+        let holeData = this.courseData?.holes?.find(h =>
+            h.number === hole &&
+            h.teeMarker?.toLowerCase() === this.selectedTeeMarker?.toLowerCase()
+        );
+        // Fallback to any tee marker if no match
+        if (!holeData) {
+            holeData = this.courseData?.holes?.find(h => h.number === hole);
+        }
         const par = holeData?.par || 4;
         html += `
             <th class="px-2 py-2 text-center font-semibold text-gray-700 border-l border-gray-200 min-w-[50px]">
@@ -259,7 +267,15 @@ LiveScorecardManager.renderHoleByHoleLeaderboard = function(leaderboard) {
         // Add score for each hole
         for (let hole = 1; hole <= maxHole; hole++) {
             const score = scoreMap[hole];
-            const holeData = this.courseData?.holes?.[hole - 1];
+            // FIXED: Filter by selected tee marker (same logic as renderHole())
+            let holeData = this.courseData?.holes?.find(h =>
+                h.number === hole &&
+                h.teeMarker?.toLowerCase() === this.selectedTeeMarker?.toLowerCase()
+            );
+            // Fallback to any tee marker if no match
+            if (!holeData) {
+                holeData = this.courseData?.holes?.find(h => h.number === hole);
+            }
             const par = holeData?.par || 4;
 
             if (score !== undefined) {

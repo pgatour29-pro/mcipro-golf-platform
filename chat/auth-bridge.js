@@ -16,26 +16,51 @@ export async function ensureSupabaseSessionWithLIFF() {
   let lineProfile = null;
   let lineUserId = null;
 
-  // 1) Try OAuth first - Check if user is logged in via LINE OAuth
-  const oauthUser = window.AppState?.currentUser;
-  console.log('[Auth Bridge] AppState.currentUser:', oauthUser);
+  // 1) Check if there's already a Supabase session (from OAuth or previous login)
+  const { data: sessionData } = await supabase.auth.getSession();
+  console.log('[Auth Bridge] Existing Supabase session:', sessionData?.session?.user?.id);
 
-  if (oauthUser) {
-    // Try different possible field names for LINE user ID
-    lineUserId = oauthUser.lineUserId || oauthUser.userId || oauthUser.uniqueId?.userId;
-    console.log('[Auth Bridge] Extracted LINE user ID:', lineUserId);
+  if (sessionData?.session?.user) {
+    // User has a Supabase session - get their profile from database
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', sessionData.session.user.id)
+      .single();
 
-    if (lineUserId) {
-      console.log('[Auth Bridge] Found OAuth LINE user:', lineUserId);
+    if (profile && profile.line_user_id) {
+      console.log('[Auth Bridge] Found profile with LINE ID from Supabase session');
+      lineUserId = profile.line_user_id;
       lineProfile = {
-        userId: lineUserId,
-        displayName: oauthUser.displayName || oauthUser.username || 'Golfer',
-        pictureUrl: oauthUser.linePictureUrl || oauthUser.avatarUrl || null
+        userId: profile.line_user_id,
+        displayName: profile.display_name || profile.username || 'Golfer',
+        pictureUrl: profile.avatar_url || null
       };
     }
   }
-  // 2) Try LIFF if OAuth not available
-  else if (window.liff) {
+
+  // 2) Try AppState if Supabase session check didn't work
+  if (!lineUserId) {
+    const oauthUser = window.AppState?.currentUser;
+    console.log('[Auth Bridge] AppState.currentUser:', oauthUser);
+
+    if (oauthUser) {
+      // Try different possible field names for LINE user ID
+      lineUserId = oauthUser.lineUserId || oauthUser.userId || oauthUser.lineId;
+      console.log('[Auth Bridge] Extracted LINE user ID:', lineUserId);
+
+      if (lineUserId) {
+        console.log('[Auth Bridge] Found OAuth LINE user:', lineUserId);
+        lineProfile = {
+          userId: lineUserId,
+          displayName: oauthUser.name || oauthUser.username || 'Golfer',
+          pictureUrl: oauthUser.avatar || null
+        };
+      }
+    }
+  }
+  // 3) Try LIFF if still no authentication found
+  if (!lineUserId && window.liff) {
     try {
       if (window.liff.isLoggedIn()) {
         console.log('[Auth Bridge] Using LIFF authentication');
@@ -49,15 +74,15 @@ export async function ensureSupabaseSessionWithLIFF() {
     }
   }
 
-  // 3) If no authentication method available, return null
+  // 4) If no authentication method available, return null
   if (!lineUserId || !lineProfile) {
-    console.warn('[Auth Bridge] No LINE authentication found (tried OAuth and LIFF)');
+    console.warn('[Auth Bridge] No LINE authentication found (tried Supabase session, AppState, and LIFF)');
     return null;
   }
 
-  console.log('[Auth Bridge] LINE user authenticated:', lineUserId);
+  console.log('[Auth Bridge] ✅ LINE user authenticated:', lineUserId);
 
-  // 3) Check if there's already a Supabase session
+  // 5) Check if we need to create/link a Supabase session
   let { data: userResp } = await supabase.auth.getUser();
 
   if (!userResp?.user) {

@@ -244,7 +244,7 @@ LiveScorecardManager.renderHoleByHoleLeaderboard = function(leaderboard) {
             }
         }
 
-        const holesPicked by = entry.holes_played || entry.scores?.length || 0;
+        const holesPlayed = entry.holes_played || entry.scores?.length || 0;
         const totalScore = entry.total_gross || 0;
 
         html += `

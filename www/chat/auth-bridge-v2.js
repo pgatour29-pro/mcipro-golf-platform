@@ -12,14 +12,19 @@ import { getSupabaseClient } from './supabaseClient.js';
  * @returns {Promise<{supaUser: Object, lineUserId: string, lineProfile: Object} | null>}
  */
 export async function ensureSupabaseSessionWithLIFF() {
+  console.warn('🚨🚨🚨 [AUTH-BRIDGE-V2] FUNCTION STARTED 🚨🚨🚨');
+
   const supabase = await getSupabaseClient();
+  console.warn('🔧 [AUTH-BRIDGE-V2] Got Supabase client');
 
   let lineProfile = null;
   let lineUserId = null;
 
   // 1) Check if there's already a Supabase session (from OAuth or previous login)
+  console.warn('🔍 [AUTH-BRIDGE-V2] Checking Supabase session...');
   const { data: sessionData } = await supabase.auth.getSession();
-  console.log('[Auth Bridge] Existing Supabase session:', sessionData?.session?.user?.id);
+  console.warn('🔍 [AUTH-BRIDGE-V2] Session data:', sessionData);
+  console.warn('🔍 [AUTH-BRIDGE-V2] Session user ID:', sessionData?.session?.user?.id);
 
   if (sessionData?.session?.user) {
     // User has a Supabase session - get their profile from database

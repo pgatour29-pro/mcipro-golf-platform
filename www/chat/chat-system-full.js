@@ -394,35 +394,14 @@ async function queryContactsServer(q) {
     searchAbortCtrl = new AbortController();
     const supabase = await getSupabaseClient();
     const { data, error } = await supabase
-      .from('user_profiles')
-      .select('line_user_id, name, caddy_number')
-      .or(`name.ilike.%${q}%,caddy_number.ilike.%${q}%`)
+      .from('profiles')
+      .select('id, display_name, username, line_user_id')
+      .or(`display_name.ilike.%${q}%,username.ilike.%${q}%,line_user_id.ilike.%${q}%`)
       .limit(25)
       .abortSignal(searchAbortCtrl.signal);
     if (error) throw error;
 
-    // Resolve Supabase auth IDs from line_user_id in a single batch
-    const lineIds = (data || []).map(u => u.line_user_id).filter(Boolean);
-    let idMap = new Map();
-    if (lineIds.length) {
-      const { data: profs } = await supabase
-        .from('profiles')
-        .select('id, line_user_id')
-        .in('line_user_id', lineIds)
-        .abortSignal(searchAbortCtrl.signal);
-      if (Array.isArray(profs)) {
-        idMap = new Map(profs.map(p => [p.line_user_id, p.id]));
-      }
-    }
-
-    // Transform to expected format using Supabase UUIDs, filter unknowns
-    return (data || [])
-      .map(u => ({
-        id: idMap.get(u.line_user_id),
-        display_name: u.name || `Caddy ${u.caddy_number || 'User'}`,
-        username: u.caddy_number ? `${u.caddy_number}` : u.line_user_id
-      }))
-      .filter(u => !!u.id);
+// Already in correct format - no transformation needed    return (data || [])      .filter(u => !!u.id && !!u.line_user_id)      .map(u => ({        id: u.id,        display_name: u.display_name || u.username || 'User',        username: u.username || u.line_user_id,        line_user_id: u.line_user_id      }));
   } catch {
     return null;
   }
@@ -1125,12 +1104,12 @@ export async function initChat() {
       .eq('status', 'approved')
       .limit(20), // Limit to 20 most recent rooms for speed
 
-    // Load ALL REAL users from user_profiles table
+    // Load ALL REAL users from profiles table
     supabase
-      .from('user_profiles')
-      .select('line_user_id, name, caddy_number')
-      .neq('line_user_id', user.id)
-      .order('name')
+      .from('profiles')
+      .select('id, display_name, username, line_user_id')
+      .neq('id', user.id)
+      .order('display_name')
   ]);
 
   const { data: userRooms, error: roomsError} = roomsResult;
@@ -1146,31 +1125,7 @@ export async function initChat() {
     return;
   }
 
-  // Transform user_profiles format to expected format with Supabase auth UUIDs
-  let transformedUsers = [];
-  try {
-    const lineIds = (allUsers || []).map(u => u.line_user_id).filter(Boolean);
-    let idMap = new Map();
-    if (lineIds.length) {
-      const { data: profs } = await supabase
-        .from('profiles')
-        .select('id, line_user_id')
-        .in('line_user_id', lineIds);
-      if (Array.isArray(profs)) {
-        idMap = new Map(profs.map(p => [p.line_user_id, p.id]));
-      }
-    }
-    transformedUsers = (allUsers || [])
-      .map(u => ({
-        id: idMap.get(u.line_user_id),
-        display_name: u.name || `Caddy ${u.caddy_number || 'User'}`,
-        username: u.caddy_number ? `${u.caddy_number}` : u.line_user_id
-      }))
-      .filter(u => !!u.id);
-  } catch (e) {
-    console.warn('[Chat] Failed to map profiles to Supabase IDs:', e);
-    transformedUsers = [];
-  }
+// Users are already in correct format from profiles table (no transformation needed)  const transformedUsers = (allUsers || [])    .filter(u => !!u.id && !!u.line_user_id)  // Only include valid profiles    .map(u => ({      id: u.id,      display_name: u.display_name || u.username || 'User',      username: u.username || u.line_user_id,      line_user_id: u.line_user_id    }));  console.log('[Chat] Loaded', transformedUsers.length, 'contacts from profiles table');
 
   // Store in state for search functionality and caching
   state.users = transformedUsers;

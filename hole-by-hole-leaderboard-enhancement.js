@@ -14,14 +14,17 @@
  * ===========================================================================
  */
 
-// ===========================================================================
-// PART 1: SCORE DISPLAY IN SCORING INPUT SECTION
-// ===========================================================================
+// Wait for LiveScorecardManager to be available
+(function() {
+    function initLeaderboardEnhancement() {
+        // Check if LiveScorecardManager exists
+        if (typeof LiveScorecardManager === 'undefined' || typeof LiveScorecardSystem === 'undefined') {
+            console.log('[Leaderboard Enhancement] Waiting for LiveScorecardManager...');
+            setTimeout(initLeaderboardEnhancement, 100);
+            return;
+        }
 
-/**
- * Update the current player's score display card
- * Shows running totals for all selected scoring formats
- */
+        console.log('[Leaderboard Enhancement] Initializing...');
 LiveScorecardManager.updatePlayerScoreDisplay = function() {
     const displayCard = document.getElementById('currentPlayerScoreDisplay');
     const formatScoresDiv = document.getElementById('playerFormatScores');
@@ -431,3 +434,12 @@ LiveScorecardManager.saveCurrentScore = async function() {
 };
 
 console.log('[HoleByHoleLeaderboard] Enhancement loaded successfully');
+    }
+
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initLeaderboardEnhancement);
+    } else {
+        initLeaderboardEnhancement();
+    }
+})();

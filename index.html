@@ -7166,27 +7166,17 @@
             console.warn('🔥🔥🔥 ABOUT TO CHECK IF CONDITION 🔥🔥🔥');
             if (code && state === storedState) {
                 console.warn('🎯🎯🎯 INSIDE IF BLOCK - PROCESSING OAUTH 🎯🎯🎯');
-                // Prevent duplicate processing of the same EXACT code (page refresh protection)
-                const usedCode = sessionStorage.getItem('__line_code_used');
-                console.warn('🔍 [DUPLICATE CHECK] usedCode from session:', usedCode);
-                console.warn('🔍 [DUPLICATE CHECK] current code:', code);
-                console.warn('🔍 [DUPLICATE CHECK] usedCode === code:', usedCode === code);
 
-                if (usedCode === code) {
-                    console.error('❌❌❌ DUPLICATE CODE DETECTED - RETURNING EARLY ❌❌❌');
-                    console.log('[LINE OAuth] This exact code was already processed, skipping duplicate');
-                    return;
-                }
-
-                console.warn('✅ [DUPLICATE CHECK] PASSED - Not a duplicate, continuing...');
-
-                // Store this code as used (only prevents processing the SAME code twice)
-                sessionStorage.setItem('__line_code_used', code);
-                console.warn('✅ [SESSION STORAGE] Stored code as used');
-
-                console.warn('🚀🚀🚀 ABOUT TO EXCHANGE CODE 🚀🚀🚀');
+                // DUPLICATE CHECK REMOVED - OAuth exchange is idempotent, edge function handles duplicates
+                console.warn('🚀🚀🚀 STARTING OAUTH EXCHANGE (duplicate check disabled) 🚀🚀🚀');
                 console.log('[LINE OAuth] Callback received, exchanging code for profile');
-                LoadingManager.show('Completing LINE login...');
+
+                try {
+                    LoadingManager.show('Completing LINE login...');
+                } catch (loadErr) {
+                    console.error('[LINE OAuth] LoadingManager.show failed:', loadErr);
+                    // Continue anyway
+                }
 
                 try {
                     // Call Supabase Edge Function to exchange code for profile

@@ -26064,14 +26064,24 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             </div>
                         </div>
 
-                        <div class="flex justify-end gap-3 mt-6">
-                            <button onclick="SocietyOrganizerSystem.hideEventForm()" class="btn-secondary">
-                                Cancel
+                        <div class="flex justify-between items-center mt-6">
+                            <!-- Delete button (only visible in edit mode) -->
+                            <button id="deleteEventBtn" onclick="SocietyOrganizerSystem.deleteEvent()" class="btn-danger flex items-center gap-2" style="display: none;">
+                                <span class="material-symbols-outlined text-sm">delete</span>
+                                Delete Event
                             </button>
-                            <button onclick="SocietyOrganizerSystem.saveEvent()" class="btn-primary">
-                                <span class="material-symbols-outlined text-sm">save</span>
-                                Save Event
-                            </button>
+                            <div></div>
+
+                            <!-- Cancel and Save buttons -->
+                            <div class="flex gap-3">
+                                <button onclick="SocietyOrganizerSystem.hideEventForm()" class="btn-secondary">
+                                    Cancel
+                                </button>
+                                <button onclick="SocietyOrganizerSystem.saveEvent()" class="btn-primary">
+                                    <span class="material-symbols-outlined text-sm">save</span>
+                                    Save Event
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -38665,6 +38675,7 @@ class SocietyOrganizerManager {
             if (!event) return;
 
             title.textContent = 'Edit Event';
+            document.getElementById('deleteEventBtn').style.display = 'flex'; // Show delete button
             this.currentEvent = event;
 
             // Populate form
@@ -38705,6 +38716,7 @@ class SocietyOrganizerManager {
             // Create mode
             title.textContent = 'Create New Event';
             this.currentEvent = null;
+            document.getElementById('deleteEventBtn').style.display = 'none'; // Hide delete button
 
             // Clear form
             document.getElementById('eventName').value = '';
@@ -38743,6 +38755,46 @@ class SocietyOrganizerManager {
     hideEventForm() {
         document.getElementById('eventFormContainer').style.display = 'none';
         this.currentEvent = null;
+    }
+
+    async deleteEvent() {
+        if (!this.currentEvent || !this.currentEvent.id) {
+            NotificationManager.show('No event selected', 'error');
+            return;
+        }
+
+        // Confirm deletion
+        const confirmed = confirm(`Are you sure you want to delete "${this.currentEvent.name}"?
+
+This will also delete all registrations, waitlist entries, and pairings for this event.
+
+This action cannot be undone.`);
+        
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            console.log('[SocietyOrganizer] Deleting event:', this.currentEvent.id);
+
+            // Delete from database
+            await SocietyGolfDB.deleteEvent(this.currentEvent.id);
+
+            // Remove from local array
+            this.events = this.events.filter(e => e.id !== this.currentEvent.id);
+
+            // Hide form
+            this.hideEventForm();
+
+            // Refresh the display
+            this.renderEvents();
+            this.renderCalendar();
+
+            NotificationManager.show('Event deleted successfully', 'success');
+        } catch (error) {
+            console.error('[SocietyOrganizer] Error deleting event:', error);
+            NotificationManager.show('Failed to delete event: ' + error.message, 'error');
+        }
     }
 
     async saveEvent() {

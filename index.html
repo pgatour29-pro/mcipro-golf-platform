@@ -5769,7 +5769,7 @@
                 }
             }
 
-            static redirectToDashboard() {
+            static async redirectToDashboard() {
                 console.log('[redirectToDashboard] Called with user:', AppState.currentUser);
 
                 const dashboardMap = {
@@ -5783,6 +5783,29 @@
 
                 const targetDashboard = dashboardMap[AppState.currentUser.role] || 'golferDashboard';
                 console.log('[redirectToDashboard] Redirecting to:', targetDashboard, 'for role:', AppState.currentUser.role);
+
+                // PIN PROTECTION: Check if society_organizer needs PIN verification
+                if (AppState.currentUser.role === 'society_organizer') {
+                    if (typeof SocietyOrganizerAuth !== 'undefined') {
+                        // Check if already verified in this session
+                        if (!SocietyOrganizerAuth.isVerified()) {
+                            // Check if this organizer has a PIN set
+                            const hasPinSet = await SocietyOrganizerAuth.checkIfPinRequired();
+                            if (hasPinSet) {
+                                console.log('[redirectToDashboard] Society organizer has PIN set - showing PIN modal');
+                                // Store the pending dashboard so we can redirect after PIN verification
+                                SocietyOrganizerAuth.pendingDashboard = targetDashboard;
+                                SocietyOrganizerAuth.showPinModal('society_organizer');
+                                return; // Don't proceed to dashboard yet - wait for PIN verification
+                            } else {
+                                console.log('[redirectToDashboard] Society organizer has NO PIN set - allowing access');
+                            }
+                        } else {
+                            console.log('[redirectToDashboard] Society organizer already verified in this session');
+                        }
+                    }
+                }
+
                 ScreenManager.showScreen(targetDashboard);
 
                 const userName = AppState.currentUser.name || AppState.currentUser.displayName || 'User';
@@ -43851,6 +43874,7 @@ window.GolferEventsSystem = new GolferEventsManager();
     // ===== SOCIETY ORGANIZER PIN AUTHENTICATION (Per-Organizer) =====
     const SocietyOrganizerAuth = {
         pendingRole: null,
+        pendingDashboard: null,
 
         isVerified() {
             return sessionStorage.getItem('society_organizer_verified') === 'true';
@@ -43922,8 +43946,27 @@ window.GolferEventsSystem = new GolferEventsManager();
                 if (data === true) {
                     sessionStorage.setItem('society_organizer_verified', 'true');
                     this.hidePinModal();
+
+                    // Handle DevMode role switch
                     if (this.pendingRole) {
                         DevMode.proceedWithRoleSwitch(this.pendingRole);
+                        this.pendingRole = null;
+                    }
+
+                    // Handle normal login redirect to dashboard
+                    if (this.pendingDashboard) {
+                        console.log('[SocietyAuth] PIN verified - redirecting to:', this.pendingDashboard);
+                        ScreenManager.showScreen(this.pendingDashboard);
+                        this.pendingDashboard = null;
+
+                        // Show welcome message
+                        const userName = AppState.currentUser?.name || AppState.currentUser?.displayName || 'User';
+                        NotificationManager.show(`Welcome back, ${userName}!`, 'success');
+
+                        // Update UI with user data
+                        if (typeof UserInterface !== 'undefined' && UserInterface.updateUserDisplays) {
+                            UserInterface.updateUserDisplays();
+                        }
                     }
                 } else {
                     this.showError('Incorrect PIN. Please try again.');
@@ -43938,7 +43981,15 @@ window.GolferEventsSystem = new GolferEventsManager();
 
         cancelPinEntry() {
             this.pendingRole = null;
+            this.pendingDashboard = null;
             this.hidePinModal();
+
+            // If user cancels PIN during login, redirect to golfer dashboard instead
+            if (AppState.currentUser?.role === 'society_organizer') {
+                console.log('[SocietyAuth] PIN entry cancelled - redirecting to golfer dashboard');
+                NotificationManager.show('Society Organizer access requires PIN. Redirecting to Golfer dashboard.', 'warning');
+                ScreenManager.showScreen('golferDashboard');
+            }
         },
 
         showError(message) {

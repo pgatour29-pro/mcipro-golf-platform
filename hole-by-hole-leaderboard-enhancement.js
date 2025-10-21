@@ -134,7 +134,23 @@ LiveScorecardManager.updatePlayerScoreDisplay = function() {
             case 'scramble':
                 formatName = 'Scramble (Team)';
                 formatIcon = 'groups';
-                formatScore = `${totalGross} (team)`;
+                // Calculate team handicap (sum of all players * 0.375 for 2-person teams)
+                const teamHandicapSum = this.players.reduce((sum, p) => sum + (p.handicap || 0), 0);
+                const teamHandicap = Math.round(teamHandicapSum * 0.375); // 2-person scramble formula
+                
+                // Calculate stableford points for team using team handicap
+                let scrambleStableford = '-';
+                if (this.courseData && this.courseData.holes) {
+                    const teamStablefordPoints = engine.calculateStablefordTotal(
+                        scoresArray,
+                        this.courseData.holes,
+                        teamHandicap,
+                        true
+                    );
+                    scrambleStableford = `${teamStablefordPoints} pts`;
+                }
+                
+                formatScore = `${totalGross} strokes • ${scrambleStableford}`;
                 formatColor = 'text-orange-700';
                 break;
 

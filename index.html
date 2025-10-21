@@ -36627,7 +36627,67 @@ class LiveScorecardSystem {
                 `;
             }
 
-            // Special rendering for Match Play format
+            // Special rendering for Scramble format
+            if (format === 'scramble') {
+                // Calculate team handicap for each entry (assuming 2-person teams with 0.375 multiplier)
+                const calculateTeamHandicap = (players) => {
+                    if (!players || players.length === 0) return 0;
+                    const totalHcp = players.reduce((sum, p) => sum + (p.handicap || 0), 0);
+                    return Math.round(totalHcp * 0.375);
+                };
+
+                return `
+                    <div class="mb-6 ${formatIndex > 0 ? 'mt-6 pt-6 border-t-4 border-gray-300' : ''}">
+                        <h3 class="text-lg font-bold text-gray-900 mb-3 bg-gradient-to-r from-orange-100 to-orange-50 px-4 py-2 rounded-lg border-l-4 border-orange-500">
+                            ${formatName} Leaderboard
+                        </h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="border-b-2 border-gray-300">
+                                    <tr class="text-left">
+                                        <th class="py-2 px-2">Pos</th>
+                                        <th class="py-2 px-2">Team</th>
+                                        <th class="py-2 px-2">Thru</th>
+                                        <th class="py-2 px-2 text-center">Team HCP</th>
+                                        <th class="py-2 px-2 text-center">Gross</th>
+                                        <th class="py-2 px-2 text-center bg-orange-50">Stableford</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${sortedLeaderboard.map((entry, index) => {
+                                        const holesPlayed = entry.holes_played || 0;
+                                        const thru = holesPlayed === 18 ? 'F' : holesPlayed === 0 ? '-' : holesPlayed.toString();
+                                        const teamHcp = entry.team_handicap || 0; // Assume this is calculated elsewhere
+                                        const grossScore = entry.total_gross || 0;
+                                        const stablefordPoints = entry.total_stableford || 0; // Assume calculated with team HCP
+                                        
+                                        return \`
+                                            <tr class="border-b border-gray-200">
+                                                <td class="py-2 px-2 font-bold">\${index + 1}</td>
+                                                <td class="py-2 px-2">\${entry.player_name || 'Team'}</td>
+                                                <td class="py-2 px-2">\${thru}</td>
+                                                <td class="py-2 px-2 text-center font-semibold text-gray-600">\${teamHcp}</td>
+                                                <td class="py-2 px-2 text-center font-bold text-lg">\${grossScore}</td>
+                                                <td class="py-2 px-2 text-center font-bold text-lg bg-orange-50 text-orange-700">\${stablefordPoints} pts</td>
+                                            </tr>
+                                        \`;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mt-4 p-3 bg-orange-50 rounded-lg text-sm">
+                            <div class="font-semibold text-gray-900 mb-1">Scramble Format:</div>
+                            <div class="text-gray-700">
+                                • Team plays best ball on each shot<br>
+                                • Team Handicap = Sum of individual handicaps × 0.375 (2-person)<br>
+                                • Stableford points calculated using team handicap
+                            </div>
+                        </div>
+                    </div>
+                \`;
+            }
+
+                        // Special rendering for Match Play format
             if (format === 'matchplay') {
                 // Sort by net holes (holes up)
                 sortedLeaderboard.sort((a, b) => (b.matchplay?.netHoles || 0) - (a.matchplay?.netHoles || 0));
@@ -36724,7 +36784,7 @@ class LiveScorecardSystem {
                     borderColor = 'border-purple-500';
                     break;
                 case 'strokeplay':
-                    scoreHeader = 'Gross';
+                    scoreHeader = 'Gross/Net';
                     getDisplayScore = (entry) => entry.total_gross;
                     headerColor = 'from-blue-100 to-blue-50';
                     borderColor = 'border-blue-500';
@@ -36752,7 +36812,8 @@ class LiveScorecardSystem {
                                     <th class="py-2 px-2">Pos</th>
                                     <th class="py-2 px-2">Player</th>
                                     <th class="py-2 px-2">Thru</th>
-                                    <th class="py-2 px-2">${scoreHeader}</th>
+                                    <th class="py-2 px-2 text-center">Gross</th>
+                                    <th class="py-2 px-2 text-center bg-blue-50">Net</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -36766,7 +36827,8 @@ class LiveScorecardSystem {
                                             <td class="py-2 px-2 font-bold">${index + 1}</td>
                                             <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
                                             <td class="py-2 px-2">${thru}</td>
-                                            <td class="py-2 px-2 font-bold text-lg">${displayScore}</td>
+                                            <td class="py-2 px-2 font-bold text-lg text-center">${displayScore}</td>
+                                            <td class="py-2 px-2 font-bold text-lg text-center bg-blue-50">${displayScore - (entry.handicap || 0)}</td>
                                         </tr>
                                     `;
                                 }).join('')}

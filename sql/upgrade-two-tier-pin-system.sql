@@ -19,7 +19,12 @@ WHERE super_admin_pin IS NULL AND access_pin IS NOT NULL;
 -- Drop old access_pin column (after migration)
 -- ALTER TABLE society_organizer_access DROP COLUMN IF EXISTS access_pin;
 
--- Update verify function to support two-tier verification
+-- Drop old functions to allow return type changes
+DROP FUNCTION IF EXISTS verify_society_organizer_pin(TEXT, TEXT);
+DROP FUNCTION IF EXISTS organizer_has_pin(TEXT);
+DROP FUNCTION IF EXISTS set_organizer_pin(TEXT, TEXT);
+
+-- Create new verify function to support two-tier verification
 -- Returns 'super_admin', 'admin', or NULL
 CREATE OR REPLACE FUNCTION verify_society_organizer_pin(org_id TEXT, input_pin TEXT)
 RETURNS TEXT

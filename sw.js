@@ -1,33 +1,20 @@
 // SERVICE WORKER - Offline-First Caching for MciPro Golf Platform
-// Provides instant loading and offline support
+// DEPLOYMENT VERSION: 2025-10-21-CACHE-FIX
 
-const CACHE_VERSION = 'mcipro-v2025-10-20-session-auth-fix';
-const CACHE_NAME = `${CACHE_VERSION}-${Date.now()}`;
+const BUILD_TIMESTAMP = '2025-10-21T08:00:00Z'; // UPDATE THIS ON EVERY DEPLOYMENT
+const CACHE_VERSION = `mcipro-v${BUILD_TIMESTAMP}`;
+const CACHE_NAME = CACHE_VERSION;
 
-// Cache strategies
-const CACHE_STRATEGIES = {
-    CACHE_FIRST: 'cache-first',      // Instant load from cache, update in background
-    NETWORK_FIRST: 'network-first',  // Try network first, fallback to cache
-    CACHE_ONLY: 'cache-only',        // Only serve from cache
-    NETWORK_ONLY: 'network-only'     // Only fetch from network
-};
-
-// Resources to cache immediately (app shell)
-const APP_SHELL = [
+// NEVER cache these - always fetch fresh from network
+const NEVER_CACHE = [
     '/index.html',
-    '/public/assets/tailwind.css',   // Built Tailwind CSS
-    '/supabase-config.js',
-    '/weather-integration.js',
-    '/maintenance-management.js',
-    // Add other critical resources
+    '/',
 ];
 
-// API endpoints to cache
+// API endpoints
 const API_CACHE_PATTERNS = [
     /supabase\.co/,
     /api\.openweathermap\.org/,
-    /api\.rainviewer\.com/,
-    /tilecache\.rainviewer\.com/
 ];
 
 // Static resources to cache
@@ -41,26 +28,12 @@ const STATIC_CACHE_PATTERNS = [
 ];
 
 // =====================================================
-// INSTALL - Cache app shell
+// INSTALL
 // =====================================================
 
 self.addEventListener('install', (event) => {
-    console.log('[ServiceWorker] Installing...');
-
-    event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then((cache) => {
-                console.log('[ServiceWorker] Caching app shell');
-                return cache.addAll(APP_SHELL.map(url => new Request(url, { cache: 'reload' })));
-            })
-            .then(() => {
-                console.log('[ServiceWorker] App shell cached');
-                return self.skipWaiting(); // Activate immediately
-            })
-            .catch((err) => {
-                console.error('[ServiceWorker] Install failed:', err);
-            })
-    );
+    console.log('[ServiceWorker] Installing version:', BUILD_TIMESTAMP);
+    self.skipWaiting(); // Activate immediately
 });
 
 // =====================================================
@@ -68,7 +41,7 @@ self.addEventListener('install', (event) => {
 // =====================================================
 
 self.addEventListener('activate', (event) => {
-    console.log('[ServiceWorker] Activating...');
+    console.log('[ServiceWorker] Activating version:', BUILD_TIMESTAMP);
 
     event.waitUntil(
         caches.keys()
@@ -83,44 +56,28 @@ self.addEventListener('activate', (event) => {
                 );
             })
             .then(() => {
-                console.log('[ServiceWorker] Activated');
-                return self.clients.claim(); // Take control immediately
+                console.log('[ServiceWorker] Activated - All old caches cleared');
+                return self.clients.claim();
             })
     );
 });
 
 // =====================================================
-// FETCH - Intercept requests and serve from cache
+// FETCH
 // =====================================================
 
 self.addEventListener('fetch', (event) => {
     const { request } = event;
     const url = new URL(request.url);
 
-    // Bypass LINE OAuth callback and exchange endpoint entirely
-    // - Do not intercept requests that include ?code or ?state
-    // - Do not intercept calls to the Supabase Edge Function
+    // Skip OAuth and Supabase
     if (
         url.search.includes('code=') ||
         url.search.includes('state=') ||
-        url.pathname.includes('/functions/v1/line-oauth-exchange')
-    ) {
-        return; // Let the network handle these without SW involvement
-    }
-
-    // CRITICAL: Never intercept Supabase REST or Realtime (NETWORK ONLY)
-    // Also bypass WebSocket and Server-Sent Events (SSE) requests
-    const isSupabase =
+        url.pathname.includes('/functions/v1/') ||
         url.hostname.endsWith('.supabase.co') ||
-        url.hostname.includes('realtime.supabase');
-
-    const isLiveTransport =
-        request.headers.get('upgrade') === 'websocket' ||
-        request.headers.get('accept') === 'text/event-stream';
-
-    if (isSupabase || isLiveTransport) {
-        // Pure network-only, no cache, no SW interference
-        event.respondWith(fetch(request));
+        url.hostname.includes('realtime.supabase')
+    ) {
         return;
     }
 
@@ -129,75 +86,57 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Chat system files: NETWORK ONLY - bypass cache entirely
-    if (url.pathname.startsWith('/chat/') || url.search.includes('v=2025-10-20')) {
+    // NEVER cache HTML files - ALWAYS fetch fresh
+    const isHTML = url.pathname.endsWith('.html') || 
+                   url.pathname === '/' ||
+                   url.pathname.endsWith('/') ||
+                   url.search.length > 0;
+
+    if (isHTML) {
+        console.log('[ServiceWorker] HTML - ALWAYS FRESH:', url.pathname);
+        event.respondWith(fetch(request, { cache: 'no-store' }));
+        return;
+    }
+
+    // Chat files: NEVER cache
+    if (url.pathname.startsWith('/chat/')) {
         console.log('[ServiceWorker] Chat file - bypassing cache:', url.pathname);
         event.respondWith(fetch(request, { cache: 'no-store' }));
         return;
     }
 
-    // Determine cache strategy
-    let strategy = CACHE_STRATEGIES.NETWORK_FIRST;
-
-    // API requests: Network first (fresh data preferred)
-    if (API_CACHE_PATTERNS.some(pattern => pattern.test(url.href))) {
-        strategy = CACHE_STRATEGIES.NETWORK_FIRST;
-    }
-    // Static resources: Cache first (instant loading)
-    else if (STATIC_CACHE_PATTERNS.some(pattern => pattern.test(url.pathname))) {
-        strategy = CACHE_STRATEGIES.CACHE_FIRST;
-    }
-    // HTML pages: Network first
-    else if (url.pathname.endsWith('.html') || url.pathname === '/') {
-        strategy = CACHE_STRATEGIES.NETWORK_FIRST;
+    // Static resources: Cache first
+    if (STATIC_CACHE_PATTERNS.some(pattern => pattern.test(url.pathname))) {
+        event.respondWith(cacheFirst(request));
+        return;
     }
 
-    event.respondWith(handleFetch(request, strategy));
+    // Everything else: Network first
+    event.respondWith(networkFirst(request));
 });
 
 // =====================================================
-// FETCH HANDLERS
+// CACHE STRATEGIES
 // =====================================================
 
-async function handleFetch(request, strategy) {
-    switch (strategy) {
-        case CACHE_STRATEGIES.CACHE_FIRST:
-            return cacheFirst(request);
-        case CACHE_STRATEGIES.NETWORK_FIRST:
-            return networkFirst(request);
-        case CACHE_STRATEGIES.CACHE_ONLY:
-            return cacheOnly(request);
-        case CACHE_STRATEGIES.NETWORK_ONLY:
-            return fetch(request);
-        default:
-            return networkFirst(request);
-    }
-}
-
-// Cache first: Instant load, update in background
 async function cacheFirst(request) {
     const cache = await caches.open(CACHE_NAME);
     const cachedResponse = await cache.match(request);
 
     if (cachedResponse) {
-        // Serve from cache instantly
         console.log('[ServiceWorker] Serving from cache:', request.url);
-
-        // Update cache in background
-        fetch(request)
-            .then((response) => {
-                if (response && response.status === 200) {
-                    cache.put(request, response.clone());
-                }
-            })
-            .catch(() => {
-                // Ignore network errors
-            });
+        
+        // Update in background
+        fetch(request).then((response) => {
+            if (response && response.status === 200) {
+                cache.put(request, response.clone());
+            }
+        }).catch(() => {});
 
         return cachedResponse;
     }
 
-    // Cache miss: Fetch from network
+    // Fetch from network
     try {
         const response = await fetch(request);
         if (response && response.status === 200) {
@@ -205,138 +144,50 @@ async function cacheFirst(request) {
         }
         return response;
     } catch (error) {
-        console.error('[ServiceWorker] Fetch failed:', request.url, error);
+        console.error('[ServiceWorker] Fetch failed:', request.url);
         throw error;
     }
 }
 
-// Network first: Fresh data preferred, fallback to cache
 async function networkFirst(request) {
     const cache = await caches.open(CACHE_NAME);
 
     try {
         const response = await fetch(request);
-
-        // Cache successful responses
         if (response && response.status === 200) {
             cache.put(request, response.clone());
         }
-
         return response;
     } catch (error) {
-        console.log('[ServiceWorker] Network failed, serving from cache:', request.url);
-
-        // Fallback to cache
         const cachedResponse = await cache.match(request);
         if (cachedResponse) {
+            console.log('[ServiceWorker] Network failed, using cache:', request.url);
             return cachedResponse;
         }
-
-        throw error;
-    }
-}
-
-// Cache only: Never fetch from network
-async function cacheOnly(request) {
-    const cache = await caches.open(CACHE_NAME);
-    const cachedResponse = await cache.match(request);
-
-    if (cachedResponse) {
-        return cachedResponse;
-    }
-
-    throw new Error('Resource not in cache');
-}
-
-// Chat system: Network-first with MIME validation
-async function handleChatFetch(request) {
-    const cache = await caches.open(CACHE_NAME);
-
-    try {
-        // Always fetch from network with no-store
-        const response = await fetch(request, { cache: 'no-store' });
-
-        // Validate MIME type before caching
-        const contentType = response.headers.get('content-type') || '';
-        const url = new URL(request.url);
-        let validType = true;
-
-        if (url.pathname.endsWith('.js')) {
-            validType = contentType.includes('javascript');
-        } else if (url.pathname.endsWith('.css')) {
-            validType = contentType.includes('css');
-        }
-
-        // Only cache if status is OK and MIME type is correct
-        if (response.status === 200 && validType) {
-            cache.put(request, response.clone());
-        } else if (!validType) {
-            console.warn('[ServiceWorker] Invalid MIME type for', url.pathname, '- got', contentType);
-        }
-
-        return response;
-    } catch (error) {
-        console.log('[ServiceWorker] Network failed for chat file, checking cache:', request.url);
-
-        // Fallback to cache only if network fails
-        const cachedResponse = await cache.match(request);
-        if (cachedResponse) {
-            return cachedResponse;
-        }
-
         throw error;
     }
 }
 
 // =====================================================
-// BACKGROUND SYNC (for offline operations)
+// MESSAGE HANDLER
 // =====================================================
 
-self.addEventListener('sync', (event) => {
-    if (event.tag === 'sync-bookings') {
-        console.log('[ServiceWorker] Background sync: bookings');
-        event.waitUntil(syncBookings());
+self.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        console.log('[ServiceWorker] Force update requested');
+        self.skipWaiting();
+    }
+
+    if (event.data && event.data.type === 'CLEAR_CACHE') {
+        console.log('[ServiceWorker] Cache clear requested');
+        event.waitUntil(
+            caches.keys().then(cacheNames => {
+                return Promise.all(
+                    cacheNames.map(cacheName => caches.delete(cacheName))
+                );
+            })
+        );
     }
 });
 
-async function syncBookings() {
-    // Sync pending bookings when back online
-    // This would be triggered by the main app when operations fail
-    console.log('[ServiceWorker] Syncing bookings...');
-
-    // Get pending operations from IndexedDB or cache
-    // Send to server
-    // Clear pending queue
-
-    return Promise.resolve();
-}
-
-// =====================================================
-// PUSH NOTIFICATIONS (future enhancement)
-// =====================================================
-
-self.addEventListener('push', (event) => {
-    const data = event.data ? event.data.json() : {};
-
-    const title = data.title || 'MciPro Golf';
-    const options = {
-        body: data.body || 'New notification',
-        icon: '/icon-192.png',
-        badge: '/badge-72.png',
-        data: data
-    };
-
-    event.waitUntil(
-        self.registration.showNotification(title, options)
-    );
-});
-
-self.addEventListener('notificationclick', (event) => {
-    event.notification.close();
-
-    event.waitUntil(
-        clients.openWindow(event.notification.data.url || '/')
-    );
-});
-
-console.log('[ServiceWorker] Loaded and ready');
+console.log('[ServiceWorker] Loaded - Version:', BUILD_TIMESTAMP);

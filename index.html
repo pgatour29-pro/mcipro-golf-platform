@@ -44962,9 +44962,16 @@ class OrganizerScoringSystem {
         const total = this.leaderboardData.length;
         const completed = this.leaderboardData.filter(r => r.status === 'completed').length;
         const inProgress = total - completed;
-        const avgScore = total > 0
-            ? Math.round(this.leaderboardData.reduce((sum, r) => sum + (r.total_stableford || 0), 0) / total)
-            : '-';
+
+        // FIX: Calculate avgScore based on CURRENT format, not always stableford
+        let avgScore = '-';
+        if (total > 0) {
+            const sumScores = this.leaderboardData.reduce((sum, r) => {
+                const score = this.getScoreForFormat(r, this.currentFormat);
+                return sum + (typeof score === 'number' ? score : 0);
+            }, 0);
+            avgScore = Math.round(sumScores / total);
+        }
 
         document.getElementById('statTotalPlayers').textContent = total;
         document.getElementById('statCompleted').textContent = completed;
@@ -44975,6 +44982,7 @@ class OrganizerScoringSystem {
     changeFormat(format) {
         this.currentFormat = format;
         this.renderLeaderboard();
+        this.updateStats(); // FIX: Update stats when format changes so avgScore matches
     }
 
     updatePointsTable() {

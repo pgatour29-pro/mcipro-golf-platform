@@ -26612,32 +26612,65 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
                             <!-- PIN Setup Form (Hidden by default) -->
                             <div id="pinSetupForm" style="display: none;">
-                                <div class="space-y-4">
-                                    <div>
-                                        <label class="block text-sm font-medium text-gray-700 mb-2">New PIN</label>
-                                        <input type="password" id="newPin"
-                                               placeholder="Enter 4-6 digit PIN"
-                                               maxlength="6"
-                                               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-center text-2xl tracking-widest">
-                                        <p class="text-xs text-gray-500 mt-1">Use 4-6 digits for your PIN</p>
+                                <div class="space-y-6">
+                                    <!-- Super Admin PIN Section -->
+                                    <div class="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-4 border-2 border-purple-300">
+                                        <div class="flex items-center gap-2 mb-3">
+                                            <span class="material-symbols-outlined text-purple-600">admin_panel_settings</span>
+                                            <h4 class="font-bold text-gray-900">Super Admin PIN (Your Personal PIN)</h4>
+                                        </div>
+                                        <div class="space-y-3">
+                                            <div>
+                                                <label class="block text-sm font-medium text-gray-700 mb-2">Super Admin PIN</label>
+                                                <input type="password" id="superAdminPin"
+                                                       placeholder="Enter 4-6 digit PIN"
+                                                       maxlength="6"
+                                                       class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-center text-2xl tracking-widest">
+                                                <p class="text-xs text-gray-600 mt-1">Full access - Event management, user management, PIN settings</p>
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-gray-700 mb-2">Confirm Super Admin PIN</label>
+                                                <input type="password" id="confirmSuperAdminPin"
+                                                       placeholder="Re-enter PIN"
+                                                       maxlength="6"
+                                                       class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-center text-2xl tracking-widest">
+                                            </div>
+                                        </div>
                                     </div>
 
-                                    <div>
-                                        <label class="block text-sm font-medium text-gray-700 mb-2">Confirm PIN</label>
-                                        <input type="password" id="confirmPin"
-                                               placeholder="Re-enter PIN"
-                                               maxlength="6"
-                                               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-center text-2xl tracking-widest">
+                                    <!-- Staff PIN Section -->
+                                    <div class="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-4 border-2 border-blue-300">
+                                        <div class="flex items-center gap-2 mb-3">
+                                            <span class="material-symbols-outlined text-blue-600">badge</span>
+                                            <h4 class="font-bold text-gray-900">Staff/Admin PIN (Share with Team)</h4>
+                                        </div>
+                                        <div class="space-y-3">
+                                            <div>
+                                                <label class="block text-sm font-medium text-gray-700 mb-2">Staff PIN</label>
+                                                <input type="password" id="staffPin"
+                                                       placeholder="Enter 4-6 digit PIN"
+                                                       maxlength="6"
+                                                       class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center text-2xl tracking-widest">
+                                                <p class="text-xs text-gray-600 mt-1">Limited access - Event management, roster management (cannot change PINs)</p>
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-gray-700 mb-2">Confirm Staff PIN</label>
+                                                <input type="password" id="confirmStaffPin"
+                                                       placeholder="Re-enter PIN"
+                                                       maxlength="6"
+                                                       class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center text-2xl tracking-widest">
+                                            </div>
+                                        </div>
                                     </div>
 
                                     <div class="bg-amber-50 rounded-lg p-4">
                                         <div class="flex items-start space-x-2">
-                                            <span class="material-symbols-outlined text-amber-600 text-sm">warning</span>
+                                            <span class="material-symbols-outlined text-amber-600 text-sm">info</span>
                                             <div class="text-xs text-amber-800">
-                                                <p class="font-medium mb-1">Important:</p>
-                                                <p>• This PIN protects the entire Society Organizer dashboard</p>
-                                                <p>• Only Super Admin can change this PIN</p>
-                                                <p>• All users (including regular admins) must enter this PIN to access</p>
+                                                <p class="font-medium mb-1">Two-Tier Security:</p>
+                                                <p>• <strong>Super Admin PIN</strong>: Keep this private - full control including PIN management</p>
+                                                <p>• <strong>Staff PIN</strong>: Share with trusted team members - limited access</p>
+                                                <p>• You can set one or both PINs (leave blank to skip)</p>
                                             </div>
                                         </div>
                                     </div>
@@ -41014,8 +41047,10 @@ This action cannot be undone.`);
     }
 
     async saveDashboardPin() {
-        const newPin = document.getElementById('newPin').value;
-        const confirmPin = document.getElementById('confirmPin').value;
+        const superAdminPin = document.getElementById('superAdminPin').value;
+        const confirmSuperAdminPin = document.getElementById('confirmSuperAdminPin').value;
+        const staffPin = document.getElementById('staffPin').value;
+        const confirmStaffPin = document.getElementById('confirmStaffPin').value;
         const userId = AppState.currentUser?.lineUserId;
 
         if (!userId) {
@@ -41023,46 +41058,96 @@ This action cannot be undone.`);
             return;
         }
 
-        if (!newPin || newPin.length < 4) {
-            NotificationManager.show('PIN must be at least 4 digits', 'error');
-            return;
+        // Validate Super Admin PIN if provided
+        if (superAdminPin) {
+            if (superAdminPin.length < 4) {
+                NotificationManager.show('Super Admin PIN must be at least 4 digits', 'error');
+                return;
+            }
+            if (superAdminPin !== confirmSuperAdminPin) {
+                NotificationManager.show('Super Admin PINs do not match', 'error');
+                return;
+            }
+            if (!/^\d+$/.test(superAdminPin)) {
+                NotificationManager.show('Super Admin PIN must contain only numbers', 'error');
+                return;
+            }
         }
 
-        if (newPin !== confirmPin) {
-            NotificationManager.show('PINs do not match', 'error');
-            return;
+        // Validate Staff PIN if provided
+        if (staffPin) {
+            if (staffPin.length < 4) {
+                NotificationManager.show('Staff PIN must be at least 4 digits', 'error');
+                return;
+            }
+            if (staffPin !== confirmStaffPin) {
+                NotificationManager.show('Staff PINs do not match', 'error');
+                return;
+            }
+            if (!/^\d+$/.test(staffPin)) {
+                NotificationManager.show('Staff PIN must contain only numbers', 'error');
+                return;
+            }
         }
 
-        // Validate PIN contains only numbers
-        if (!/^\d+$/.test(newPin)) {
-            NotificationManager.show('PIN must contain only numbers', 'error');
+        // At least one PIN must be provided
+        if (!superAdminPin && !staffPin) {
+            NotificationManager.show('Please set at least one PIN', 'error');
             return;
         }
 
         try {
-            const { data, error } = await window.SupabaseDB.client
-                .rpc('set_organizer_pin', {
-                    org_id: userId,
-                    new_pin: newPin
-                });
+            let successCount = 0;
+            let errorOccurred = false;
 
-            if (error) {
-                console.error('[SocietyOrganizer] Error setting PIN:', error);
-                NotificationManager.show('Failed to save PIN', 'error');
-                return;
+            // Save Super Admin PIN
+            if (superAdminPin) {
+                const { error } = await window.SupabaseDB.client
+                    .rpc('set_super_admin_pin', {
+                        org_id: userId,
+                        new_pin: superAdminPin
+                    });
+
+                if (error) {
+                    console.error('[SocietyOrganizer] Error setting Super Admin PIN:', error);
+                    NotificationManager.show('Failed to save Super Admin PIN', 'error');
+                    errorOccurred = true;
+                } else {
+                    successCount++;
+                }
             }
 
-            NotificationManager.show('PIN saved successfully', 'success');
+            // Save Staff PIN
+            if (staffPin) {
+                const { error } = await window.SupabaseDB.client
+                    .rpc('set_staff_pin', {
+                        org_id: userId,
+                        new_pin: staffPin
+                    });
 
-            // Clear form
-            document.getElementById('newPin').value = '';
-            document.getElementById('confirmPin').value = '';
+                if (error) {
+                    console.error('[SocietyOrganizer] Error setting Staff PIN:', error);
+                    NotificationManager.show('Failed to save Staff PIN', 'error');
+                    errorOccurred = true;
+                } else {
+                    successCount++;
+                }
+            }
 
-            // Hide form and show status
-            document.getElementById('pinSetupForm').style.display = 'none';
-            document.getElementById('pinStatusSection').style.display = 'block';
+            if (!errorOccurred && successCount > 0) {
+                NotificationManager.show(`PIN(s) saved successfully (${successCount} PIN${successCount > 1 ? 's' : ''})`, 'success');
 
-            // Reload PIN status
+                // Clear form
+                document.getElementById('superAdminPin').value = '';
+                document.getElementById('confirmSuperAdminPin').value = '';
+                document.getElementById('staffPin').value = '';
+                document.getElementById('confirmStaffPin').value = '';
+
+                // Hide form and show status
+                document.getElementById('pinSetupForm').style.display = 'none';
+                document.getElementById('pinStatusSection').style.display = 'block';
+
+                // Reload PIN status
             await this.loadPinStatus();
 
             // Clear session verification so they need to re-enter on next access
@@ -43943,8 +44028,18 @@ window.GolferEventsSystem = new GolferEventsManager();
                     return;
                 }
 
-                if (data === true) {
+                // data will be 'super_admin', 'admin', or NULL
+                if (data) {
+                    const userRole = data; // 'super_admin' or 'admin'
+                    console.log('[SocietyAuth] PIN verified - User role:', userRole);
+
+                    // Store verification status and role
                     sessionStorage.setItem('society_organizer_verified', 'true');
+                    sessionStorage.setItem('society_organizer_role', userRole);
+
+                    // Update user role in society_organizer_roles table
+                    await this.updateUserRole(userId, userRole);
+
                     this.hidePinModal();
 
                     // Handle DevMode role switch
@@ -43959,13 +44054,19 @@ window.GolferEventsSystem = new GolferEventsManager();
                         ScreenManager.showScreen(this.pendingDashboard);
                         this.pendingDashboard = null;
 
-                        // Show welcome message
+                        // Show welcome message with role
                         const userName = AppState.currentUser?.name || AppState.currentUser?.displayName || 'User';
-                        NotificationManager.show(`Welcome back, ${userName}!`, 'success');
+                        const roleDisplay = userRole === 'super_admin' ? 'Super Admin' : 'Admin';
+                        NotificationManager.show(`Welcome back, ${userName}! (${roleDisplay})`, 'success');
 
                         // Update UI with user data
                         if (typeof UserInterface !== 'undefined' && UserInterface.updateUserDisplays) {
                             UserInterface.updateUserDisplays();
+                        }
+
+                        // Reload admin tab to show proper UI for role
+                        if (typeof SocietyOrganizerSystem !== 'undefined') {
+                            SocietyOrganizerSystem.updateAdminTabUI(userRole);
                         }
                     }
                 } else {
@@ -43976,6 +44077,24 @@ window.GolferEventsSystem = new GolferEventsManager();
             } catch (error) {
                 console.error('[SocietyAuth] Exception verifying PIN:', error);
                 this.showError('Error verifying PIN. Please try again.');
+            }
+        },
+
+        async updateUserRole(userId, role) {
+            try {
+                const { error } = await window.SupabaseDB.client
+                    .from('society_organizer_roles')
+                    .upsert({
+                        user_id: userId,
+                        organizer_id: userId,
+                        role: role
+                    });
+
+                if (error) {
+                    console.error('[SocietyAuth] Error updating user role:', error);
+                }
+            } catch (error) {
+                console.error('[SocietyAuth] Exception updating user role:', error);
             }
         },
 

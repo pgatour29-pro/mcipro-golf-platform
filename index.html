@@ -31774,8 +31774,11 @@ class SocietyGolfSupabase {
         const eventIds = events.map(e => e.id);
         console.log('[SocietyGolfDB] Loading stats for event IDs:', eventIds);
 
+        // Get organizer IDs to fetch society profiles
+        const organizerIds = [...new Set(events.map(e => e.organizer_id).filter(id => id))];
+
         // Parallel queries for all events' data with error handling
-        const [regsResult, waitlistResult] = await Promise.all([
+        const [regsResult, waitlistResult, societyProfilesResult] = await Promise.all([
             window.SupabaseDB.client
                 .from('event_registrations')
                 .select('event_id, want_transport, want_competition')
@@ -31802,14 +31805,35 @@ class SocietyGolfSupabase {
                         return { data: [], error: result.error };
                     }
                     return result;
+                }),
+            // Fetch society profiles (same as getAllPublicEvents)
+            window.SupabaseDB.client
+                .from('society_profiles')
+                .select('organizer_id, society_name, society_logo')
+                .in('organizer_id', organizerIds)
+                .then(result => {
+                    if (result.error) {
+                        console.error('[SocietyGolfDB] Error loading society profiles:', result.error);
+                        return { data: [], error: result.error };
+                    }
+                    return result;
                 })
         ]);
 
         console.log('[SocietyGolfDB] Registrations loaded:', regsResult.data?.length || 0);
         console.log('[SocietyGolfDB] Waitlist loaded:', waitlistResult.data?.length || 0);
 
+        // Create map of organizer_id to society profile (same as getAllPublicEvents)
+        const societyMap = {};
+        if (societyProfilesResult.data) {
+            societyProfilesResult.data.forEach(s => {
+                societyMap[s.organizer_id] = s;
+            });
+        }
+
         // Calculate stats per event
         const eventsWithStats = events.map(event => {
+            const society = societyMap[event.organizer_id];
             const eventRegs = regsResult.data?.filter(r => r.event_id === event.id) || [];
             const eventWaitlist = waitlistResult.data?.filter(w => w.event_id === event.id) || [];
 
@@ -31834,6 +31858,8 @@ class SocietyGolfSupabase {
                 notes: event.notes,
                 organizerId: event.organizer_id,
                 organizerName: event.organizer_name,
+                societyName: society?.society_name || event.organizer_name,
+                societyLogo: society?.society_logo || '',
                 recurring: event.recurring,
                 recurFrequency: event.recur_frequency,
                 recurDayOfWeek: event.recur_day_of_week,

@@ -33270,16 +33270,40 @@ class LiveScorecardSystem {
     async loadEvents() {
         // Load today's events for event selector
         const events = await window.SocietyGolfDB.getAllPublicEvents();
-        const today = new Date().toISOString().split('T')[0];
-        const todaysEvents = events.filter(e => e.date === today);
+
+        // FIX: Use local date in YYYY-MM-DD format (avoid timezone issues)
+        const today = new Date();
+        const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+        console.log('[LiveScorecard] Today\'s date:', localToday);
+        console.log('[LiveScorecard] All events:', events.map(e => ({ name: e.name, date: e.date })));
+
+        // Filter for today's events (compare date strings)
+        const todaysEvents = events.filter(e => {
+            // Handle both date-only strings and timestamps
+            const eventDate = e.date ? e.date.split('T')[0] : null;
+            return eventDate === localToday;
+        });
+
+        console.log('[LiveScorecard] Today\'s events:', todaysEvents);
 
         const select = document.getElementById('scorecardEventSelect');
+
+        // FIX: Clear existing options first (except "Practice Round")
+        // Keep the first option (Practice Round) and remove everything else
+        while (select.options.length > 1) {
+            select.remove(1);
+        }
+
+        // Add today's events
         todaysEvents.forEach(event => {
             const option = document.createElement('option');
             option.value = event.id;
             option.textContent = `${event.name} - ${event.societyName}`;
             select.appendChild(option);
         });
+
+        console.log('[LiveScorecard] Loaded', todaysEvents.length, 'events for today');
     }
 
     // Course dropdown is now static HTML - no need to load from database!

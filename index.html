@@ -5545,66 +5545,91 @@
 
                     // ===== FIX: Restore FULL profile to localStorage from Supabase =====
                     if (userProfile.profile_data) {
-                        // ===== AUTO-RESTORE: Pete's profile if golfInfo/organizationInfo is empty =====
-                        if (lineUserId === 'U2b6d976f19bca4b2f4374ae0e10ed873') {
-                            let needsRestore = false;
+                        // ===== GLOBAL AUTO-RESTORE: Fix missing profile_data sections for ALL users =====
+                        let needsRestore = false;
 
-                            // Check if golfInfo is missing or empty
-                            if (!userProfile.profile_data.golfInfo || Object.keys(userProfile.profile_data.golfInfo).length === 0) {
-                                console.log('[AUTO-RESTORE] Pete profile golfInfo is empty - restoring...');
-                                userProfile.profile_data.golfInfo = {
-                                    handicap: "1",
-                                    homeClub: "Pattana Golf Resort & Spa",
-                                    clubAffiliation: "Travellers Rest Golf Group"
-                                };
-                                needsRestore = true;
-                            }
+                        // Ensure all profile_data sections exist (prevent empty {} objects)
+                        if (!userProfile.profile_data.golfInfo) {
+                            userProfile.profile_data.golfInfo = {};
+                        }
+                        if (!userProfile.profile_data.organizationInfo) {
+                            userProfile.profile_data.organizationInfo = {};
+                        }
+                        if (!userProfile.profile_data.personalInfo) {
+                            userProfile.profile_data.personalInfo = {};
+                        }
+                        if (!userProfile.profile_data.professionalInfo) {
+                            userProfile.profile_data.professionalInfo = {};
+                        }
 
-                            // Check if organizationInfo is missing or empty
-                            if (!userProfile.profile_data.organizationInfo || Object.keys(userProfile.profile_data.organizationInfo).length === 0) {
-                                console.log('[AUTO-RESTORE] Pete profile organizationInfo is empty - restoring...');
-                                userProfile.profile_data.organizationInfo = {
-                                    societyName: "Travellers Rest Golf Group",
-                                    societyId: null,
-                                    clubAffiliation: "Travellers Rest Golf Group"
-                                };
-                                needsRestore = true;
-                            }
+                        // GLOBAL: If columns have data but JSONB doesn't, copy to JSONB
+                        if (userProfile.home_course_name && !userProfile.profile_data.golfInfo.homeClub) {
+                            console.log('[AUTO-RESTORE] Copying home_course_name to golfInfo.homeClub');
+                            userProfile.profile_data.golfInfo.homeClub = userProfile.home_course_name;
+                            needsRestore = true;
+                        }
+                        if (userProfile.home_course_id && !userProfile.profile_data.golfInfo.homeCourseId) {
+                            userProfile.profile_data.golfInfo.homeCourseId = userProfile.home_course_id;
+                            needsRestore = true;
+                        }
+                        if (userProfile.society_name && !userProfile.profile_data.organizationInfo.societyName) {
+                            console.log('[AUTO-RESTORE] Copying society_name to organizationInfo.societyName');
+                            userProfile.profile_data.organizationInfo.societyName = userProfile.society_name;
+                            needsRestore = true;
+                        }
+                        if (userProfile.society_id && !userProfile.profile_data.organizationInfo.societyId) {
+                            userProfile.profile_data.organizationInfo.societyId = userProfile.society_id;
+                            needsRestore = true;
+                        }
 
-                            // Check if personalInfo is missing username
-                            if (!userProfile.profile_data.personalInfo) {
-                                userProfile.profile_data.personalInfo = {};
-                            }
-                            if (!userProfile.profile_data.personalInfo.username) {
-                                userProfile.profile_data.personalInfo.username = '007';
-                                userProfile.profile_data.personalInfo.firstName = 'Pete';
-                                userProfile.profile_data.personalInfo.lastName = 'Park';
-                                needsRestore = true;
-                            }
+                        // GLOBAL: If JSONB has data but columns don't, copy to columns
+                        if (userProfile.profile_data.golfInfo.homeClub && !userProfile.home_course_name) {
+                            console.log('[AUTO-RESTORE] Copying golfInfo.homeClub to home_course_name column');
+                            userProfile.home_course_name = userProfile.profile_data.golfInfo.homeClub;
+                            userProfile.home_club = userProfile.profile_data.golfInfo.homeClub; // Also update old column
+                            needsRestore = true;
+                        }
+                        if (userProfile.profile_data.golfInfo.homeCourseId && !userProfile.home_course_id) {
+                            userProfile.home_course_id = userProfile.profile_data.golfInfo.homeCourseId;
+                            needsRestore = true;
+                        }
+                        if (userProfile.profile_data.organizationInfo.societyName && !userProfile.society_name) {
+                            console.log('[AUTO-RESTORE] Copying organizationInfo.societyName to society_name column');
+                            userProfile.society_name = userProfile.profile_data.organizationInfo.societyName;
+                            needsRestore = true;
+                        }
+                        if (userProfile.profile_data.organizationInfo.societyId && !userProfile.society_id) {
+                            userProfile.society_id = userProfile.profile_data.organizationInfo.societyId;
+                            needsRestore = true;
+                        }
 
-                            // Auto-save to Supabase if anything was restored
-                            if (needsRestore) {
-                                console.log('[AUTO-RESTORE] Saving restored profile to Supabase...');
-                                window.SupabaseDB.saveUserProfile({
-                                    line_user_id: lineUserId,
-                                    name: userProfile.name,
-                                    role: userProfile.role,
-                                    email: userProfile.email,
-                                    phone: userProfile.phone,
-                                    username: '007',
-                                    home_course_name: 'Pattana Golf Resort & Spa',
-                                    home_club: 'Pattana Golf Resort & Spa',
-                                    society_name: 'Travellers Rest Golf Group',
-                                    profile_data: userProfile.profile_data,
-                                    golfInfo: userProfile.profile_data.golfInfo,
-                                    organizationInfo: userProfile.profile_data.organizationInfo,
-                                    personalInfo: userProfile.profile_data.personalInfo
-                                }).then(() => {
-                                    console.log('[AUTO-RESTORE] ✅ Pete profile restored successfully');
-                                }).catch(err => {
-                                    console.error('[AUTO-RESTORE] ❌ Failed to save:', err);
-                                });
-                            }
+                        // GLOBAL: Auto-save to Supabase if data was restored (for ANY user)
+                        if (needsRestore) {
+                            console.log('[AUTO-RESTORE] Data mismatch detected - syncing columns ↔ JSONB for user:', lineUserId);
+                            window.SupabaseDB.saveUserProfile({
+                                line_user_id: lineUserId,
+                                name: userProfile.name,
+                                role: userProfile.role,
+                                email: userProfile.email,
+                                phone: userProfile.phone,
+                                caddy_number: userProfile.caddy_number,
+                                username: userProfile.username,
+                                home_course_id: userProfile.home_course_id,
+                                home_course_name: userProfile.home_course_name,
+                                home_club: userProfile.home_club,
+                                society_id: userProfile.society_id,
+                                society_name: userProfile.society_name,
+                                member_since: userProfile.member_since,
+                                profile_data: userProfile.profile_data,
+                                golfInfo: userProfile.profile_data.golfInfo,
+                                organizationInfo: userProfile.profile_data.organizationInfo,
+                                personalInfo: userProfile.profile_data.personalInfo,
+                                professionalInfo: userProfile.profile_data.professionalInfo
+                            }).then(() => {
+                                console.log('[AUTO-RESTORE] ✅ Profile synced successfully for:', userProfile.name);
+                            }).catch(err => {
+                                console.error('[AUTO-RESTORE] ❌ Failed to sync profile:', err);
+                            });
                         }
 
                         const profileKey = UserIDSystem.getProfileKey(userProfile.role, lineUserId);

@@ -5545,6 +5545,68 @@
 
                     // ===== FIX: Restore FULL profile to localStorage from Supabase =====
                     if (userProfile.profile_data) {
+                        // ===== AUTO-RESTORE: Pete's profile if golfInfo/organizationInfo is empty =====
+                        if (lineUserId === 'U2b6d976f19bca4b2f4374ae0e10ed873') {
+                            let needsRestore = false;
+
+                            // Check if golfInfo is missing or empty
+                            if (!userProfile.profile_data.golfInfo || Object.keys(userProfile.profile_data.golfInfo).length === 0) {
+                                console.log('[AUTO-RESTORE] Pete profile golfInfo is empty - restoring...');
+                                userProfile.profile_data.golfInfo = {
+                                    handicap: "1",
+                                    homeClub: "Pattana Golf Resort & Spa",
+                                    clubAffiliation: "Travellers Rest Golf Group"
+                                };
+                                needsRestore = true;
+                            }
+
+                            // Check if organizationInfo is missing or empty
+                            if (!userProfile.profile_data.organizationInfo || Object.keys(userProfile.profile_data.organizationInfo).length === 0) {
+                                console.log('[AUTO-RESTORE] Pete profile organizationInfo is empty - restoring...');
+                                userProfile.profile_data.organizationInfo = {
+                                    societyName: "Travellers Rest Golf Group",
+                                    societyId: null,
+                                    clubAffiliation: "Travellers Rest Golf Group"
+                                };
+                                needsRestore = true;
+                            }
+
+                            // Check if personalInfo is missing username
+                            if (!userProfile.profile_data.personalInfo) {
+                                userProfile.profile_data.personalInfo = {};
+                            }
+                            if (!userProfile.profile_data.personalInfo.username) {
+                                userProfile.profile_data.personalInfo.username = '007';
+                                userProfile.profile_data.personalInfo.firstName = 'Pete';
+                                userProfile.profile_data.personalInfo.lastName = 'Park';
+                                needsRestore = true;
+                            }
+
+                            // Auto-save to Supabase if anything was restored
+                            if (needsRestore) {
+                                console.log('[AUTO-RESTORE] Saving restored profile to Supabase...');
+                                window.SupabaseDB.saveUserProfile({
+                                    line_user_id: lineUserId,
+                                    name: userProfile.name,
+                                    role: userProfile.role,
+                                    email: userProfile.email,
+                                    phone: userProfile.phone,
+                                    username: '007',
+                                    home_course_name: 'Pattana Golf Resort & Spa',
+                                    home_club: 'Pattana Golf Resort & Spa',
+                                    society_name: 'Travellers Rest Golf Group',
+                                    profile_data: userProfile.profile_data,
+                                    golfInfo: userProfile.profile_data.golfInfo,
+                                    organizationInfo: userProfile.profile_data.organizationInfo,
+                                    personalInfo: userProfile.profile_data.personalInfo
+                                }).then(() => {
+                                    console.log('[AUTO-RESTORE] ✅ Pete profile restored successfully');
+                                }).catch(err => {
+                                    console.error('[AUTO-RESTORE] ❌ Failed to save:', err);
+                                });
+                            }
+                        }
+
                         const profileKey = UserIDSystem.getProfileKey(userProfile.role, lineUserId);
                         const fullProfile = {
                             userId: lineUserId,
@@ -5553,6 +5615,7 @@
                             linePictureUrl: userProfile.profile_data.linePictureUrl || profile.pictureUrl,
                             personalInfo: userProfile.profile_data.personalInfo || {},
                             golfInfo: userProfile.profile_data.golfInfo || {},
+                            organizationInfo: userProfile.profile_data.organizationInfo || {},
                             professionalInfo: userProfile.profile_data.professionalInfo || {},
                             skills: userProfile.profile_data.skills || {},
                             preferences: userProfile.profile_data.preferences || {},

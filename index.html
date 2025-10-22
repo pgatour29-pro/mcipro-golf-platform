@@ -19286,7 +19286,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
 <body>
     <script>
-    console.log('%c🚀 PAGE VERSION: 2025-10-22-ADMIN-USERS-FIX', 'background: #00ff00; color: #000; font-size: 16px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-10-23-ROUND-HISTORY-SAVE-DELETE-FIX', 'background: #00ff00; color: #000; font-size: 16px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
     // IMMEDIATE OAuth detection - runs before DOMContentLoaded
@@ -28484,10 +28484,15 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         ? '<span class="text-xs px-2 py-1 bg-green-100 text-green-700 rounded ml-2">Live</span>'
                         : '<span class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded ml-2">Manual</span>';
 
-                    // Show round type for database rounds
-                    const roundType = score.type === 'society'
-                        ? '<span class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded ml-1">Society</span>'
-                        : '';
+                    // FIX: Show round type badge for ALL types (practice, private, society)
+                    let roundTypeBadge = '';
+                    if (score.type === 'practice') {
+                        roundTypeBadge = '<span class="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded ml-1">Practice</span>';
+                    } else if (score.type === 'private') {
+                        roundTypeBadge = '<span class="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded ml-1">Private</span>';
+                    } else if (score.type === 'society') {
+                        roundTypeBadge = '<span class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded ml-1">Society</span>';
+                    }
 
                     return `
                         <tr class="border-b border-gray-100 hover:bg-gray-50">
@@ -28495,7 +28500,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <td class="py-3 px-4 font-medium">
                                 ${score.course}
                                 ${sourceBadge}
-                                ${roundType}
+                                ${roundTypeBadge}
                             </td>
                             <td class="py-3 px-4 text-center">${score.holes || 18}</td>
                             <td class="py-3 px-4 text-center font-bold ${scoreColor}">${score.score}</td>
@@ -28504,10 +28509,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <td class="py-3 px-4 text-center">${score.differential || '-'}</td>
                             <td class="py-3 px-4 text-right">
                                 ${score.source === 'localStorage' ? `
-                                    <button onclick="GolfScoreSystem.editRound(${score.id})" class="text-primary-600 hover:text-primary-800 text-sm mr-2">Edit</button>
-                                    <button onclick="GolfScoreSystem.deleteRound(${score.id})" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
+                                    <button onclick="GolfScoreSystem.deleteRound(${score.id}, 'localStorage')" class="text-red-600 hover:text-red-800 text-sm mr-2">Delete</button>
                                 ` : `
-                                    <button onclick="GolfScoreSystem.viewRoundDetails('${score.id}')" class="text-primary-600 hover:text-primary-800 text-sm">View Details</button>
+                                    <button onclick="GolfScoreSystem.viewRoundDetails('${score.id}')" class="text-primary-600 hover:text-primary-800 text-sm mr-2">View</button>
+                                    <button onclick="GolfScoreSystem.deleteRound('${score.id}', 'database')" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
                                 `}
                             </td>
                         </tr>
@@ -28763,19 +28768,58 @@ Total Rounds: ${ningCaddy.totalRounds}`;
             },
 
             // Delete round
-            deleteRound(scoreId) {
+            async deleteRound(scoreId, source) {
+                // FIX: Support deletion for BOTH localStorage AND database rounds
+                // User requirement: All rounds can be deleted but NOT edited
+
                 if (!confirm('Are you sure you want to delete this round? This cannot be undone.')) {
                     return;
                 }
 
-                this.scores = this.scores.filter(s => s.id !== scoreId);
-                localStorage.setItem('mcipro_golf_scores', JSON.stringify(this.scores));
-                this.updateStatistics();
-                this.refreshRecentRounds();
-                this.loadRoundHistoryTable();
+                try {
+                    if (source === 'database') {
+                        // Delete from Supabase database
+                        console.log(`[Round History] Deleting database round ${scoreId}...`);
 
-                if (typeof DevMode !== 'undefined' && DevMode.showNotification) {
-                    DevMode.showNotification('Round deleted successfully', 'success');
+                        // First delete hole-by-hole data
+                        const { error: holesError } = await window.SupabaseDB.client
+                            .from('round_holes')
+                            .delete()
+                            .eq('round_id', scoreId);
+
+                        if (holesError) {
+                            console.error('[Round History] Error deleting round holes:', holesError);
+                            throw holesError;
+                        }
+
+                        // Then delete the round itself
+                        const { error: roundError } = await window.SupabaseDB.client
+                            .from('rounds')
+                            .delete()
+                            .eq('id', scoreId);
+
+                        if (roundError) {
+                            console.error('[Round History] Error deleting round:', roundError);
+                            throw roundError;
+                        }
+
+                        console.log(`[Round History] ✅ Deleted database round ${scoreId}`);
+                        NotificationManager.show('Round deleted successfully', 'success');
+                    } else {
+                        // Delete from localStorage (legacy rounds)
+                        this.scores = this.scores.filter(s => s.id !== scoreId);
+                        localStorage.setItem('mcipro_golf_scores', JSON.stringify(this.scores));
+                        this.updateStatistics();
+                        this.refreshRecentRounds();
+                        NotificationManager.show('Round deleted successfully', 'success');
+                    }
+
+                    // Reload table to show updated list
+                    this.loadRoundHistoryTable();
+
+                } catch (error) {
+                    console.error('[Round History] Error deleting round:', error);
+                    NotificationManager.show('Error deleting round. Please try again.', 'error');
                 }
             },
 
@@ -28937,10 +28981,15 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         ? '<span class="text-xs px-2 py-1 bg-green-100 text-green-700 rounded ml-2">Live</span>'
                         : '<span class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded ml-2">Manual</span>';
 
-                    // Show round type for database rounds
-                    const roundType = score.type === 'society'
-                        ? '<span class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded ml-1">Society</span>'
-                        : '';
+                    // FIX: Show round type badge for ALL types (practice, private, society)
+                    let roundTypeBadge = '';
+                    if (score.type === 'practice') {
+                        roundTypeBadge = '<span class="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded ml-1">Practice</span>';
+                    } else if (score.type === 'private') {
+                        roundTypeBadge = '<span class="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded ml-1">Private</span>';
+                    } else if (score.type === 'society') {
+                        roundTypeBadge = '<span class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded ml-1">Society</span>';
+                    }
 
                     return `
                         <tr class="border-b border-gray-100 hover:bg-gray-50">
@@ -28948,7 +28997,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <td class="py-3 px-4 font-medium">
                                 ${score.course}
                                 ${sourceBadge}
-                                ${roundType}
+                                ${roundTypeBadge}
                             </td>
                             <td class="py-3 px-4 text-center">${score.holes || 18}</td>
                             <td class="py-3 px-4 text-center font-bold ${scoreColor}">${score.score}</td>
@@ -28957,10 +29006,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <td class="py-3 px-4 text-center">${score.differential || '-'}</td>
                             <td class="py-3 px-4 text-right">
                                 ${score.source === 'localStorage' ? `
-                                    <button onclick="GolfScoreSystem.editRound(${score.id})" class="text-primary-600 hover:text-primary-800 text-sm mr-2">Edit</button>
-                                    <button onclick="GolfScoreSystem.deleteRound(${score.id})" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
+                                    <button onclick="GolfScoreSystem.deleteRound(${score.id}, 'localStorage')" class="text-red-600 hover:text-red-800 text-sm mr-2">Delete</button>
                                 ` : `
-                                    <button onclick="GolfScoreSystem.viewRoundDetails('${score.id}')" class="text-primary-600 hover:text-primary-800 text-sm">View Details</button>
+                                    <button onclick="GolfScoreSystem.viewRoundDetails('${score.id}')" class="text-primary-600 hover:text-primary-800 text-sm mr-2">View</button>
+                                    <button onclick="GolfScoreSystem.deleteRound('${score.id}', 'database')" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
                                 `}
                             </td>
                         </tr>
@@ -33799,13 +33848,27 @@ class LiveScorecardSystem {
 
         const eventSelectValue = document.getElementById('scorecardEventSelect').value;
 
-        // Determine round type
-        this.isPrivateRound = (eventSelectValue === 'private');
-        this.eventId = (eventSelectValue === '' || eventSelectValue === 'private') ? null : eventSelectValue;
+        // FIX: Determine round type properly (practice, private, society, tournament)
+        // Practice Round: eventSelectValue === ''
+        // Private Round: eventSelectValue === 'private'
+        // Society Event: eventSelectValue = event ID
+        if (eventSelectValue === '') {
+            this.roundType = 'practice';
+            this.isPrivateRound = false;
+            this.eventId = null;
+        } else if (eventSelectValue === 'private') {
+            this.roundType = 'private';
+            this.isPrivateRound = true;
+            this.eventId = null;
+        } else {
+            this.roundType = 'society';
+            this.isPrivateRound = false;
+            this.eventId = eventSelectValue;
+        }
 
         this.groupId = `group_${Date.now()}`;
 
-        console.log(`[LiveScorecard] Starting round at ${this.courseData.name} with formats: ${this.scoringFormats.join(', ')} (${this.isPrivateRound ? 'Private' : 'Society'})`);
+        console.log(`[LiveScorecard] Starting round at ${this.courseData.name} with formats: ${this.scoringFormats.join(', ')} (Type: ${this.roundType})`);
 
         // Try to create scorecards online, fall back to offline mode if needed
         let isOfflineMode = false;
@@ -34514,7 +34577,8 @@ class LiveScorecardSystem {
             const courseName = this.courseData?.name || 'Unknown Course';
             const courseId = document.getElementById('scorecardCourseSelect')?.value || '';
             const teeMarker = document.querySelector('input[name="teeMarker"]:checked')?.value || 'white';
-            const roundType = this.isPrivateRound ? 'private' : 'society';
+            // FIX: Use this.roundType which is properly set (practice, private, society)
+            const roundType = this.roundType || 'practice';
             const eventId = this.eventId;
             const scorecardId = this.scorecards[player.id];
     

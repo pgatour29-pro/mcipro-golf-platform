@@ -34007,35 +34007,48 @@ class LiveScorecardSystem {
     }
 
     getPlayerTotal(playerId) {
-        // Calculate total based on scoring format using ACTUAL course data
-        let total = 0;
+        // Calculate total based on scoring format using GolfScoringEngine (MUST MATCH LEADERBOARD!)
         const player = this.players.find(p => p.id === playerId);
+        if (!player) return 0;
+
         const playerScores = this.scoresCache[playerId] || {};
 
-        for (let hole = 1; hole <= 18; hole++) { // FIXED: Calculate ALL holes with scores
-            const score = playerScores[hole];
-            if (score) {
-                if (this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford')) {
-                    // Get REAL course data for this hole
-                    const holeData = this.courseData?.holes?.[hole - 1];
-                    const par = holeData?.par || 4;
-                    const strokeIndex = holeData?.strokeIndex || hole;
+        // Convert scores cache to array format for engine
+        const scoresArray = Object.entries(playerScores).map(([hole, score]) => ({
+            hole_number: parseInt(hole),
+            gross_score: score
+        }));
 
-                    // Thailand Stableford: calculate points with handicap strokes
-                    const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
-                    const netScore = score - shotsReceived;
-                    const diff = par - netScore;
-                    let points = diff + 2;
-                    if (points < 0) points = 0;
+        if (scoresArray.length === 0) return 0;
 
-                    total += points;
-                } else {
-                    total += score; // Stroke play: just sum gross scores
-                }
+        const engine = LiveScorecardSystem.GolfScoringEngine;
+
+        // Calculate based on scoring format (SAME AS LEADERBOARD)
+        if (this.scoringFormats.includes('stableford')) {
+            // Thailand Stableford with net (PROPER calculation)
+            return engine.calculateStablefordTotal(
+                scoresArray,
+                this.courseData.holes,
+                player.handicap,
+                true // useNet
+            );
+        } else if (this.scoringFormats.includes('modifiedstableford')) {
+            // Modified Stableford
+            return engine.calculateStablefordTotal(
+                scoresArray,
+                this.courseData.holes,
+                player.handicap,
+                true,
+                engine.modifiedStablefordPoints
+            );
+        } else {
+            // Stroke play or other formats: sum gross scores
+            let total = 0;
+            for (const entry of scoresArray) {
+                total += entry.gross_score;
             }
+            return total;
         }
-
-        return total;
     }
 
     selectPlayer(playerId) {

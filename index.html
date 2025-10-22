@@ -26007,8 +26007,16 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
                             <!-- Departure Time -->
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Departure Time</label>
-                                <input type="time" id="eventStartTime" class="w-full rounded-lg border px-3 py-2">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">🚌 Departure Time</label>
+                                <input type="time" id="eventDepartureTime" class="w-full rounded-lg border px-3 py-2" placeholder="e.g., 10:45">
+                                <p class="text-xs text-gray-500 mt-1">Time players should meet/depart</p>
+                            </div>
+
+                            <!-- Tee Time (Start Time) -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">🏌️ Tee Time (First Tee)</label>
+                                <input type="time" id="eventStartTime" class="w-full rounded-lg border px-3 py-2" placeholder="e.g., 12:00">
+                                <p class="text-xs text-gray-500 mt-1">Time of first tee off</p>
                             </div>
 
                             <!-- Registration Cutoff -->
@@ -31284,6 +31292,7 @@ class SocietyGolfSupabase {
                 id: eventData.id || this.generateId(),
                 name: eventData.name,
                 date: eventData.date,
+                departure_time: eventData.departureTime,
                 start_time: eventData.startTime,
                 cutoff: eventData.cutoff,
                 event_format: eventData.eventFormat,
@@ -31333,6 +31342,7 @@ class SocietyGolfSupabase {
         const dbUpdates = {};
         if (updates.name !== undefined) dbUpdates.name = updates.name;
         if (updates.date !== undefined) dbUpdates.date = updates.date;
+        if (updates.departureTime !== undefined) dbUpdates.departure_time = updates.departureTime;
         if (updates.startTime !== undefined) dbUpdates.start_time = updates.startTime;
         if (updates.cutoff !== undefined) dbUpdates.cutoff = updates.cutoff;
         if (updates.eventFormat !== undefined) dbUpdates.event_format = updates.eventFormat;
@@ -38946,6 +38956,7 @@ class SocietyOrganizerManager {
             // Populate form
             document.getElementById('eventName').value = event.name || '';
             document.getElementById('eventDate').value = event.date || '';
+            document.getElementById('eventDepartureTime').value = event.departureTime || '';
             document.getElementById('eventStartTime').value = event.startTime || '';
             document.getElementById('eventCutoff').value = event.cutoff?.substring(0, 16) || '';
             document.getElementById('eventMaxPlayers').value = event.maxPlayers || '';
@@ -38986,6 +38997,7 @@ class SocietyOrganizerManager {
             // Clear form
             document.getElementById('eventName').value = '';
             document.getElementById('eventDate').value = '';
+            document.getElementById('eventDepartureTime').value = '';
             document.getElementById('eventStartTime').value = '';
             document.getElementById('eventCutoff').value = '';
             document.getElementById('eventMaxPlayers').value = '40';
@@ -39072,6 +39084,7 @@ This action cannot be undone.`);
             const eventData = {
                 name: document.getElementById('eventName').value.trim(),
                 date: document.getElementById('eventDate').value,
+                departureTime: document.getElementById('eventDepartureTime').value || null,
                 startTime: document.getElementById('eventStartTime').value || null,
                 cutoff: cutoffISO,
                 maxPlayers: parseInt(document.getElementById('eventMaxPlayers').value) || null,
@@ -42542,9 +42555,10 @@ class GolferEventsManager {
                     <!-- Date & Time -->
                     <div class="flex items-center text-sm">
                         <span class="material-symbols-outlined text-gray-400 text-base mr-2">event</span>
-                        <div>
+                        <div class="flex-1">
                             <div class="font-medium text-gray-900">${this.formatDate(event.date)}</div>
-                            ${event.startTime ? `<div class="text-xs text-gray-600 mt-0.5">🏌️ Tee Time: ${event.startTime}</div>` : ''}
+                            ${event.departureTime ? `<div class="text-xs text-gray-600 mt-0.5">🚌 Departure: ${event.departureTime}</div>` : ''}
+                            ${event.startTime ? `<div class="text-xs text-gray-600 ${event.departureTime ? '' : 'mt-0.5'}">🏌️ Tee Time: ${event.startTime}</div>` : ''}
                         </div>
                     </div>
 
@@ -42652,7 +42666,15 @@ class GolferEventsManager {
             ${this.currentEvent.societyLogo ? `<img src="${this.currentEvent.societyLogo}" alt="${organizerText}" class="inline-block w-6 h-6 rounded-full border border-green-200 mr-2 object-cover bg-white">` : ''}
             Organized by ${organizerText}
         `;
-        document.getElementById('eventDetailDate').textContent = this.formatDate(this.currentEvent.date);
+        // Build date/time display with departure and tee times
+        let dateTimeHtml = this.formatDate(this.currentEvent.date);
+        if (this.currentEvent.departureTime) {
+            dateTimeHtml += `<br><span class="text-sm text-gray-600">🚌 Departure: ${this.currentEvent.departureTime}</span>`;
+        }
+        if (this.currentEvent.startTime) {
+            dateTimeHtml += `<br><span class="text-sm text-gray-600">🏌️ Tee Time: ${this.currentEvent.startTime}</span>`;
+        }
+        document.getElementById('eventDetailDate').innerHTML = dateTimeHtml;
         document.getElementById('eventDetailCourse').textContent = this.currentEvent.courseName || 'TBD';
 
         // Event Format

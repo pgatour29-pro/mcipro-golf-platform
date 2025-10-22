@@ -30453,36 +30453,48 @@ const AdminSystem = {
     subscriptions: [],
     societies: [],
 
-    init() {
-        this.loadData();
+    async init() {
+        await this.loadData();
         this.updateOverview();
+        this.loadUsersTable();
     },
 
-    loadData() {
-        // Load all users from localStorage
-        this.users = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+    async loadData() {
+        // FIXED: Load all users from Supabase database (not just localStorage)
+        try {
+            console.log('[AdminSystem] Loading users from Supabase...');
+            const profiles = await window.SupabaseDB.getAllProfiles();
+            console.log('[AdminSystem] Loaded', profiles?.length || 0, 'users from database');
 
-        // Load subscriptions
-        this.subscriptions = this.users.map(user => ({
-            userId: user.lineUserId,
-            username: user.username,
-            name: `${user.firstName} ${user.lastName}`,
-            tier: user.subscriptionTier || 'free',
-            status: 'active',
-            nextBilling: this.getNextBillingDate()
-        }));
+            this.users = profiles || [];
 
-        // Load golf societies from localStorage
-        this.societies = JSON.parse(localStorage.getItem('mcipro_golf_societies') || '[]');
+            // Load subscriptions
+            this.subscriptions = this.users.map(user => ({
+                userId: user.line_user_id || user.lineUserId,
+                username: user.username,
+                name: user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+                tier: user.subscription_tier || user.subscriptionTier || 'free',
+                status: 'active',
+                nextBilling: this.getNextBillingDate()
+            }));
+
+            // Load golf societies from localStorage (will upgrade to Supabase later)
+            this.societies = JSON.parse(localStorage.getItem('mcipro_golf_societies') || '[]');
+        } catch (error) {
+            console.error('[AdminSystem] Error loading data:', error);
+            this.users = [];
+            this.subscriptions = [];
+            this.societies = [];
+        }
     },
 
-    refreshData() {
-        this.loadData();
+    async refreshData() {
+        await this.loadData();
         this.updateOverview();
         this.loadUsersTable();
         this.loadSubscriptionsTable();
         this.loadSocietiesTable();
-        DevMode.showNotification('Data refreshed', 'success');
+        NotificationManager.show('Data refreshed from database', 'success');
     },
 
     updateOverview() {
@@ -30515,15 +30527,22 @@ const AdminSystem = {
             return;
         }
 
-        container.innerHTML = recent.map(user => `
-            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div>
-                    <p class="font-medium text-gray-900">${user.firstName} ${user.lastName}</p>
-                    <p class="text-xs text-gray-500">${user.role} • ${user.username}</p>
+        container.innerHTML = recent.map(user => {
+            const name = user.name || `${user.first_name || user.firstName || ''} ${user.last_name || user.lastName || ''}`.trim() || 'Unknown User';
+            const username = user.username || 'no-username';
+            const role = user.role || 'golfer';
+            const createdAt = user.created_at || user.createdAt || new Date().toISOString();
+
+            return `
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                        <p class="font-medium text-gray-900">${name}</p>
+                        <p class="text-xs text-gray-500">${role} • ${username}</p>
+                    </div>
+                    <span class="text-xs text-gray-400">${this.getTimeAgo(createdAt)}</span>
                 </div>
-                <span class="text-xs text-gray-400">${this.getTimeAgo(user.createdAt)}</span>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     },
 
     loadUsersTable() {
@@ -30534,38 +30553,48 @@ const AdminSystem = {
             return;
         }
 
-        tbody.innerHTML = this.users.map(user => `
-            <tr class="border-b border-gray-100 hover:bg-gray-50">
-                <td class="py-3 px-4">
-                    <div class="font-medium text-gray-900">${user.firstName} ${user.lastName}</div>
-                    <div class="text-xs text-gray-500">@${user.username}</div>
-                </td>
-                <td class="py-3 px-4">
-                    <span class="px-2 py-1 rounded-full text-xs font-medium ${this.getRoleBadgeClass(user.role)}">
-                        ${user.role}
-                    </span>
-                </td>
-                <td class="py-3 px-4">
-                    <span class="px-2 py-1 rounded-full text-xs font-medium ${this.getTierBadgeClass(user.subscriptionTier || 'free')}">
-                        ${(user.subscriptionTier || 'free').toUpperCase()}
-                    </span>
-                </td>
-                <td class="py-3 px-4">
-                    <span class="text-green-600 text-xs">● Active</span>
-                </td>
-                <td class="py-3 px-4 text-sm text-gray-600">
-                    ${this.formatDate(user.createdAt)}
-                </td>
-                <td class="py-3 px-4 text-right">
-                    <button onclick="AdminSystem.editUser('${user.lineUserId}')" class="text-primary-600 hover:text-primary-800 text-sm mr-2">
-                        Edit
-                    </button>
-                    <button onclick="AdminSystem.viewUser('${user.lineUserId}')" class="text-gray-600 hover:text-gray-800 text-sm">
-                        View
-                    </button>
-                </td>
-            </tr>
-        `).join('');
+        tbody.innerHTML = this.users.map(user => {
+            // Handle both database format and localStorage format
+            const name = user.name || `${user.first_name || user.firstName || ''} ${user.last_name || user.lastName || ''}`.trim() || 'Unknown User';
+            const username = user.username || 'no-username';
+            const role = user.role || 'golfer';
+            const tier = user.subscription_tier || user.subscriptionTier || 'free';
+            const createdAt = user.created_at || user.createdAt || new Date().toISOString();
+            const userId = user.line_user_id || user.lineUserId || user.id;
+
+            return `
+                <tr class="border-b border-gray-100 hover:bg-gray-50">
+                    <td class="py-3 px-4">
+                        <div class="font-medium text-gray-900">${name}</div>
+                        <div class="text-xs text-gray-500">@${username}</div>
+                    </td>
+                    <td class="py-3 px-4">
+                        <span class="px-2 py-1 rounded-full text-xs font-medium ${this.getRoleBadgeClass(role)}">
+                            ${role}
+                        </span>
+                    </td>
+                    <td class="py-3 px-4">
+                        <span class="px-2 py-1 rounded-full text-xs font-medium ${this.getTierBadgeClass(tier)}">
+                            ${tier.toUpperCase()}
+                        </span>
+                    </td>
+                    <td class="py-3 px-4">
+                        <span class="text-green-600 text-xs">● Active</span>
+                    </td>
+                    <td class="py-3 px-4 text-sm text-gray-600">
+                        ${this.formatDate(createdAt)}
+                    </td>
+                    <td class="py-3 px-4 text-right">
+                        <button onclick="AdminSystem.editUser('${userId}')" class="text-primary-600 hover:text-primary-800 text-sm mr-2">
+                            Edit
+                        </button>
+                        <button onclick="AdminSystem.viewUser('${userId}')" class="text-gray-600 hover:text-gray-800 text-sm">
+                            View
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
     },
 
     filterUsers() {
@@ -30575,50 +30604,19 @@ const AdminSystem = {
         let filtered = this.users;
 
         if (search) {
-            filtered = filtered.filter(u =>
-                u.firstName.toLowerCase().includes(search) ||
-                u.lastName.toLowerCase().includes(search) ||
-                u.username.toLowerCase().includes(search)
-            );
+            filtered = filtered.filter(u => {
+                const name = (u.name || `${u.first_name || u.firstName || ''} ${u.last_name || u.lastName || ''}`).toLowerCase();
+                const username = (u.username || '').toLowerCase();
+                return name.includes(search) || username.includes(search);
+            });
         }
 
         if (roleFilter) {
             filtered = filtered.filter(u => u.role === roleFilter);
         }
 
-        const tbody = document.getElementById('admin-users-table');
-        tbody.innerHTML = filtered.map(user => `
-            <tr class="border-b border-gray-100 hover:bg-gray-50">
-                <td class="py-3 px-4">
-                    <div class="font-medium text-gray-900">${user.firstName} ${user.lastName}</div>
-                    <div class="text-xs text-gray-500">@${user.username}</div>
-                </td>
-                <td class="py-3 px-4">
-                    <span class="px-2 py-1 rounded-full text-xs font-medium ${this.getRoleBadgeClass(user.role)}">
-                        ${user.role}
-                    </span>
-                </td>
-                <td class="py-3 px-4">
-                    <span class="px-2 py-1 rounded-full text-xs font-medium ${this.getTierBadgeClass(user.subscriptionTier || 'free')}">
-                        ${(user.subscriptionTier || 'free').toUpperCase()}
-                    </span>
-                </td>
-                <td class="py-3 px-4">
-                    <span class="text-green-600 text-xs">● Active</span>
-                </td>
-                <td class="py-3 px-4 text-sm text-gray-600">
-                    ${this.formatDate(user.createdAt)}
-                </td>
-                <td class="py-3 px-4 text-right">
-                    <button onclick="AdminSystem.editUser('${user.lineUserId}')" class="text-primary-600 hover:text-primary-800 text-sm mr-2">
-                        Edit
-                    </button>
-                    <button onclick="AdminSystem.viewUser('${user.lineUserId}')" class="text-gray-600 hover:text-gray-800 text-sm">
-                        View
-                    </button>
-                </td>
-            </tr>
-        `).join('');
+        this.users = filtered;
+        this.loadUsersTable();
     },
 
     loadSubscriptionsTable() {

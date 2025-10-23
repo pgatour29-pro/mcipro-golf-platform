@@ -33686,6 +33686,7 @@ class LiveScorecardSystem {
     // Only load course data when user starts a round
 
     async loadCourseData(courseId, teeMarker = 'white') {
+        console.time('[PERFORMANCE] loadCourseData TOTAL');
         console.log(`[LiveScorecard] Loading course data for: ${courseId}, tee: ${teeMarker}`);
 
         // Course cache versions - increment to force refresh
@@ -33706,6 +33707,7 @@ class LiveScorecardSystem {
                 const courseData = JSON.parse(cached);
                 console.log(`[LiveScorecard] Using cached course data (v${cachedVersion})`);
                 this.courseData = courseData;
+                console.timeEnd('[PERFORMANCE] loadCourseData TOTAL');
                 return this.courseData;
             } else if (cached && cachedVersion < expectedVersion) {
                 console.log(`[LiveScorecard] Cache outdated (v${cachedVersion} < v${expectedVersion}), refreshing...`);
@@ -33718,21 +33720,26 @@ class LiveScorecardSystem {
 
         try {
             // Get course info (including scorecard_url)
+            console.time('[PERFORMANCE] Query: courses table');
             const { data: course, error: courseError } = await window.SupabaseDB.client
                 .from('courses')
                 .select('id, name, scorecard_url')
                 .eq('id', courseId)
                 .single();
+            console.timeEnd('[PERFORMANCE] Query: courses table');
 
             if (courseError) throw courseError;
 
             // FIX: Get hole data for SELECTED TEE MARKER ONLY (not all 4 tees!)
+            console.time('[PERFORMANCE] Query: course_holes table');
             const { data: holes, error: holesError } = await window.SupabaseDB.client
                 .from('course_holes')
                 .select('hole_number, par, stroke_index, yardage, tee_marker')
                 .eq('course_id', courseId)
                 .eq('tee_marker', teeMarker.toLowerCase())
                 .order('hole_number');
+            console.timeEnd('[PERFORMANCE] Query: course_holes table');
+            console.log(`[PERFORMANCE] Received ${holes?.length || 0} holes from database`);
 
             if (holesError) throw holesError;
 
@@ -33759,10 +33766,12 @@ class LiveScorecardSystem {
             }
 
             console.log('[LiveScorecard] Course data loaded from database');
+            console.timeEnd('[PERFORMANCE] loadCourseData TOTAL');
             return this.courseData;
 
         } catch (error) {
             console.error('[LiveScorecard] Error loading course data:', error);
+            console.timeEnd('[PERFORMANCE] loadCourseData TOTAL');
             NotificationManager.show('Error loading course data', 'error');
             return null;
         }

@@ -136,15 +136,15 @@ ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
 -- Check index usage
 SELECT
     schemaname,
-    tablename,
-    indexname,
+    relname as tablename,
+    indexrelname as indexname,
     idx_scan as index_scans,
     idx_tup_read as tuples_read,
     idx_tup_fetch as tuples_fetched
 FROM pg_stat_user_indexes
 WHERE schemaname = 'public'
-AND tablename IN ('courses', 'course_holes', 'scorecards', 'scorecard_holes')
-ORDER BY tablename, indexname;
+AND relname IN ('courses', 'course_holes', 'scorecards', 'scorecard_holes')
+ORDER BY relname, indexrelname;
 
 -- ============================================================================
 -- COMPLETION MESSAGE

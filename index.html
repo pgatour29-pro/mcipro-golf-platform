@@ -35005,74 +35005,21 @@ class LiveScorecardSystem {
 
 
     async completeRound() {
-        console.log('[LiveScorecard] ========== END ROUND CLICKED ==========');
-        alert('END ROUND: Starting...');
+        console.log('[LiveScorecard] END ROUND CLICKED');
 
+        // JUST SHOW THE SCORECARD - NOTHING ELSE
         try {
-            console.log('[LiveScorecard] Step 1: Clear timeout');
-            if (this.autoAdvanceTimeout) {
-                clearTimeout(this.autoAdvanceTimeout);
-                this.autoAdvanceTimeout = null;
-            }
-
-            console.log('[LiveScorecard] Step 2: Check scramble drives');
-            // SKIP scramble drive check - just end the round
-            if (this.scoringFormats.includes('scramble') && this.scrambleConfig?.minDrivesPerPlayer > 0) {
-                console.log('[LiveScorecard] WARNING: Scramble drive requirements not met, but allowing completion anyway');
-            }
-
-            console.log('[LiveScorecard] Step 3: Proceeding to complete round');
-
-            console.log('[LiveScorecard] Step 4: Starting database operations (non-blocking)');
-            // Mark scorecards as completed in database (NON-BLOCKING for speed)
-            for (const player of this.players) {
-                const scorecardId = this.scorecards[player.id];
-                if (scorecardId && !scorecardId.startsWith('local_')) {
-                    window.SocietyGolfDB.completeScorecard(scorecardId).then(() => {
-                        console.log(`[LiveScorecard] Completed scorecard for ${player.name}`);
-                    }).catch(err => {
-                        console.error(`[LiveScorecard] Error completing scorecard for ${player.name}:`, err);
-                    });
-                }
-
-                // Calculate and update handicap (NON-BLOCKING for speed)
-                if (player.lineUserId) {
-                    this.updatePlayerHandicap(player).then(() => {
-                        console.log(`[LiveScorecard] Updated handicap for ${player.name}`);
-                    }).catch(err => {
-                        console.error(`[LiveScorecard] Error updating handicap for ${player.name}:`, err);
-                    });
-                }
-            }
-
-            console.log('[LiveScorecard] Step 5: About to show finalized scorecard');
-            alert('About to call showFinalizedScorecard()');
-
-            // Show finalized scorecard IMMEDIATELY (no waiting)
             this.showFinalizedScorecard();
-
-            console.log('[LiveScorecard] Step 6: Finalized scorecard shown');
-            alert('showFinalizedScorecard() completed');
-
-            NotificationManager.show('Round completed! Saving to history...', 'info');
-
-            console.log('[LiveScorecard] Step 7: Starting distributeRoundScores');
-            // Distribute scores and save to history (WAIT for this to complete)
-            try {
-                await this.distributeRoundScores();
-                console.log('[LiveScorecard] Step 8: Successfully saved to history');
-                NotificationManager.show('Round saved to history!', 'success');
-            } catch (err) {
-                console.error('[LiveScorecard] Step 8 FAILED: Error saving to history:', err);
-                NotificationManager.show('ERROR: Round not saved to history! Check console.', 'error');
-            }
-
+            NotificationManager.show('Round completed!', 'success');
         } catch (error) {
-            console.error('[LiveScorecard] ERROR in completeRound():', error);
-            console.error('[LiveScorecard] Error stack:', error.stack);
-            NotificationManager.show('Error completing round: ' + error.message, 'error');
-            // Don't show scorecard if there was an error
+            alert('ERROR showing scorecard: ' + error.message);
+            console.error('[LiveScorecard] ERROR:', error);
         }
+
+        // Do database stuff in background (don't wait, don't care if it fails)
+        setTimeout(() => {
+            this.distributeRoundScores().catch(err => console.error('Background save failed:', err));
+        }, 1000);
     }
 
     async saveRoundToHistory(player) {

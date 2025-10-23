@@ -36263,27 +36263,29 @@ class LiveScorecardSystem {
         `;
         container.appendChild(header);
 
-        // Calculate team scores (best score per hole)
-        const teamScores = {}; // hole -> best gross score
+        // Calculate team scores
+        // NOTE: In PROPER scramble, all players should have THE SAME score (team score)
+        // We take the first player's score as the team score (all should be identical)
+        const teamScores = {}; // hole -> team gross score
         const teamStablefordPoints = {}; // hole -> stableford points
 
         for (let holeNum = 1; holeNum <= 18; holeNum++) {
-            let bestScore = null;
+            let teamScore = null;
 
-            // Find best (lowest) score for this hole across all players
+            // Get team score from first player (all should have same score in scramble)
             for (const player of this.players) {
                 const score = this.scoresCache[player.id]?.[holeNum];
                 if (typeof score === 'number') {
-                    if (bestScore === null || score < bestScore) {
-                        bestScore = score;
+                    if (teamScore === null) {
+                        teamScore = score; break; // Only use first player score (all should be same)
                     }
                 }
             }
 
-            teamScores[holeNum] = bestScore;
+            teamScores[holeNum] = teamScore;
 
             // Calculate Stableford points for team's best score WITH handicap
-            if (bestScore !== null) {
+            if (teamScore !== null) {
                 const hole = this.courseData?.holes?.find(h => h.number === holeNum);
                 const par = hole?.par || 4;
                 const strokeIndex = hole?.strokeIndex || holeNum;
@@ -36473,13 +36475,15 @@ class LiveScorecardSystem {
                 <div class="text-xs text-gray-600">Back 9 Gross</div>
                 <div class="font-bold text-lg">${backNineGross || '-'}</div>
             </div>
-            <div class="bg-green-100 p-3 rounded border border-green-300">
-                <div class="text-xs text-gray-600">Total Gross</div>
-                <div class="font-bold text-2xl text-green-800">${totalGross || '-'}</div>
+            <div class="bg-blue-100 p-3 rounded border border-blue-300">
+                <div class="text-xs font-semibold text-gray-700">GROSS STROKES</div>
+                <div class="font-bold text-3xl text-blue-800">${totalGross || '-'}</div>
+                <div class="text-xs text-gray-500 mt-1">Total Strokes</div>
             </div>
             <div class="bg-green-200 p-3 rounded border border-green-500">
-                <div class="text-xs text-gray-600">Total Net (HCP ${teamPlayingHandicap})</div>
+                <div class="text-xs font-semibold text-gray-700">NET SCORE (HCP ${teamPlayingHandicap})</div>
                 <div class="font-bold text-2xl text-green-900">${totalNet || '-'}</div>
+                <div class="text-xs text-gray-500 mt-1">With Handicap</div>
             </div>
         `;
 
@@ -36489,9 +36493,10 @@ class LiveScorecardSystem {
                 if (teamStablefordPoints[i]) totalPoints += teamStablefordPoints[i];
             }
             summaryHTML += `
-                <div class="bg-green-200 p-3 rounded border border-green-400">
-                    <div class="text-xs text-gray-600">Total Points</div>
-                    <div class="font-bold text-2xl text-green-900">${totalPoints}</div>
+                <div class="bg-yellow-200 p-3 rounded border border-yellow-500">
+                    <div class="text-xs font-semibold text-gray-700">STABLEFORD POINTS</div>
+                    <div class="font-bold text-3xl text-yellow-900">${totalPoints}</div>
+                    <div class="text-xs text-gray-500 mt-1">Based on Net Score</div>
                 </div>
             `;
         }

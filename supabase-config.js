@@ -224,6 +224,38 @@ class SupabaseClient {
             return null;
         }
 
+        // Transform database row into UI-expected structure
+        if (data) {
+            // Ensure profile_data exists
+            if (!data.profile_data) {
+                data.profile_data = {};
+            }
+
+            // Ensure golfInfo structure exists with homeClub for UI compatibility
+            if (!data.profile_data.golfInfo) {
+                data.profile_data.golfInfo = {};
+            }
+            // Populate from dedicated columns if not in JSONB
+            if (!data.profile_data.golfInfo.homeClub && (data.home_course_name || data.home_club)) {
+                data.profile_data.golfInfo.homeClub = data.home_course_name || data.home_club;
+            }
+            if (!data.profile_data.golfInfo.homeCourseId && data.home_course_id) {
+                data.profile_data.golfInfo.homeCourseId = data.home_course_id;
+            }
+
+            // Ensure organizationInfo structure exists
+            if (!data.profile_data.organizationInfo) {
+                data.profile_data.organizationInfo = {};
+            }
+            // Populate from dedicated columns if not in JSONB
+            if (!data.profile_data.organizationInfo.societyName && data.society_name) {
+                data.profile_data.organizationInfo.societyName = data.society_name;
+            }
+            if (!data.profile_data.organizationInfo.societyId && data.society_id) {
+                data.profile_data.organizationInfo.societyId = data.society_id;
+            }
+        }
+
         return data;
     }
 
@@ -237,6 +269,33 @@ class SupabaseClient {
         if (error && error.code !== 'PGRST116') { // Not found is OK
             console.error('[Supabase] Error fetching profile by Supabase ID:', error);
             return null;
+        }
+
+        // Transform database row into UI-expected structure (same as getUserProfile)
+        if (data) {
+            if (!data.profile_data) {
+                data.profile_data = {};
+            }
+
+            if (!data.profile_data.golfInfo) {
+                data.profile_data.golfInfo = {};
+            }
+            if (!data.profile_data.golfInfo.homeClub && (data.home_course_name || data.home_club)) {
+                data.profile_data.golfInfo.homeClub = data.home_course_name || data.home_club;
+            }
+            if (!data.profile_data.golfInfo.homeCourseId && data.home_course_id) {
+                data.profile_data.golfInfo.homeCourseId = data.home_course_id;
+            }
+
+            if (!data.profile_data.organizationInfo) {
+                data.profile_data.organizationInfo = {};
+            }
+            if (!data.profile_data.organizationInfo.societyName && data.society_name) {
+                data.profile_data.organizationInfo.societyName = data.society_name;
+            }
+            if (!data.profile_data.organizationInfo.societyId && data.society_id) {
+                data.profile_data.organizationInfo.societyId = data.society_id;
+            }
         }
 
         return data;
@@ -254,10 +313,31 @@ class SupabaseClient {
             home_club: profile.home_club || profile.homeClub,
             language: profile.language || 'en',
 
+            // ===== NEW: Society Affiliation Fields =====
+            society_id: profile.society_id || profile.societyId || null,
+            society_name: profile.society_name || profile.societyName || profile.organizationInfo?.societyName || '',
+            member_since: profile.member_since || profile.memberSince || null,
+
+            // ===== NEW: Home Course Fields =====
+            home_course_id: profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId || '',
+            home_course_name: profile.home_course_name || profile.homeCourseName || profile.golfInfo?.homeClub || '',
+
             // ===== NEW: Store FULL profile data in JSONB column =====
             profile_data: {
                 personalInfo: profile.personalInfo || {},
-                golfInfo: profile.golfInfo || {},
+                golfInfo: {
+                    ...(profile.golfInfo || {}),
+                    // Ensure homeClub is in JSONB for UI compatibility
+                    homeClub: profile.home_course_name || profile.homeCourseName || profile.golfInfo?.homeClub || profile.home_club || profile.homeClub || '',
+                    homeCourseId: profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId || '',
+                    handicap: profile.handicap || profile.golfInfo?.handicap || null
+                },
+                organizationInfo: {
+                    ...(profile.organizationInfo || {}),
+                    // Ensure society data is in JSONB for UI compatibility
+                    societyName: profile.society_name || profile.societyName || profile.organizationInfo?.societyName || '',
+                    societyId: profile.society_id || profile.societyId || profile.organizationInfo?.societyId || null
+                },
                 professionalInfo: profile.professionalInfo || {},
                 skills: profile.skills || {},
                 preferences: profile.preferences || {},
@@ -288,13 +368,64 @@ class SupabaseClient {
 
     async getAllProfiles() {
         await this.waitForReady();
-        const { data, error } = await this.client
+
+        // PERFORMANCE FIX: Cache profiles for 5 minutes to avoid slow database queries
+        const cacheKey = 'mcipro_all_profiles_cache';
+        const cacheTimeKey = 'mcipro_all_profiles_cache_time';
+        const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+        try {
+            const cached = localStorage.getItem(cacheKey);
+            const cacheTime = parseInt(localStorage.getItem(cacheTimeKey) || '0');
+            const now = Date.now();
+
+            if (cached && (now - cacheTime) < CACHE_DURATION) {
+                console.log('[Supabase] Using cached profiles (age: ' + Math.round((now - cacheTime) / 1000) + 's)');
+                return JSON.parse(cached);
+            }
+        } catch (e) {
+            console.warn('[Supabase] Cache read failed:', e);
+        }
+
+        // PERFORMANCE FIX: Only select columns we need (not *)
+        const { data, error} = await this.client
             .from('user_profiles')
-            .select('*');
+            .select('line_user_id, name, email, profile_data, home_course_name, home_course_id, home_club, society_name, society_id')
+            .order('name');
 
         if (error) {
             console.error('[Supabase] Error fetching profiles:', error);
             return [];
+        }
+
+        // Transform each profile to include golfInfo.homeClub structure
+        if (data && Array.isArray(data)) {
+            data.forEach(profile => {
+                if (!profile.profile_data) profile.profile_data = {};
+                if (!profile.profile_data.golfInfo) profile.profile_data.golfInfo = {};
+                if (!profile.profile_data.golfInfo.homeClub && (profile.home_course_name || profile.home_club)) {
+                    profile.profile_data.golfInfo.homeClub = profile.home_course_name || profile.home_club;
+                }
+                if (!profile.profile_data.golfInfo.homeCourseId && profile.home_course_id) {
+                    profile.profile_data.golfInfo.homeCourseId = profile.home_course_id;
+                }
+                if (!profile.profile_data.organizationInfo) profile.profile_data.organizationInfo = {};
+                if (!profile.profile_data.organizationInfo.societyName && profile.society_name) {
+                    profile.profile_data.organizationInfo.societyName = profile.society_name;
+                }
+                if (!profile.profile_data.organizationInfo.societyId && profile.society_id) {
+                    profile.profile_data.organizationInfo.societyId = profile.society_id;
+                }
+            });
+        }
+
+        // Cache the results
+        try {
+            localStorage.setItem(cacheKey, JSON.stringify(data || []));
+            localStorage.setItem(cacheTimeKey, Date.now().toString());
+            console.log('[Supabase] Profiles cached (' + (data?.length || 0) + ' profiles)');
+        } catch (e) {
+            console.warn('[Supabase] Cache write failed:', e);
         }
 
         return data || [];

@@ -19286,7 +19286,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
 <body>
     <script>
-    console.log('%c🚀 PAGE VERSION: 2025-10-23-EASTERN-STAR-COURSE-ADDED', 'background: #00ff00; color: #000; font-size: 16px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-10-23-CRITICAL-FIX-MULTI-TEE-COURSES', 'background: #00ff00; color: #000; font-size: 16px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
     // IMMEDIATE OAuth detection - runs before DOMContentLoaded
@@ -33425,17 +33425,17 @@ class LiveScorecardSystem {
     // Course dropdown is now static HTML - no need to load from database!
     // Only load course data when user starts a round
 
-    async loadCourseData(courseId) {
-        console.log(`[LiveScorecard] Loading course data for: ${courseId}`);
+    async loadCourseData(courseId, teeMarker = 'white') {
+        console.log(`[LiveScorecard] Loading course data for: ${courseId}, tee: ${teeMarker}`);
 
         // Course cache versions - increment to force refresh
         const COURSE_CACHE_VERSIONS = {
             'bangpakong': 3  // v3: Clean scorecard image + Par 72 with all 5 tees
         };
 
-        // Check cache first (courses don't change often)
-        const cacheKey = `mcipro_course_${courseId}`;
-        const cacheVersionKey = `mcipro_course_version_${courseId}`;
+        // FIX: Cache key includes tee marker (different tees = different data)
+        const cacheKey = `mcipro_course_${courseId}_${teeMarker}`;
+        const cacheVersionKey = `mcipro_course_version_${courseId}_${teeMarker}`;
         const expectedVersion = COURSE_CACHE_VERSIONS[courseId] || 1;
 
         try {
@@ -33466,11 +33466,12 @@ class LiveScorecardSystem {
 
             if (courseError) throw courseError;
 
-            // Get hole data
+            // FIX: Get hole data for SELECTED TEE MARKER ONLY (not all 4 tees!)
             const { data: holes, error: holesError } = await window.SupabaseDB.client
                 .from('course_holes')
                 .select('hole_number, par, stroke_index, yardage, tee_marker')
                 .eq('course_id', courseId)
+                .eq('tee_marker', teeMarker.toLowerCase())
                 .order('hole_number');
 
             if (holesError) throw holesError;
@@ -33800,15 +33801,16 @@ class LiveScorecardSystem {
             return;
         }
 
-        // Load course data from database
-        await this.loadCourseData(courseId);
+        // FIX: Get tee marker BEFORE loading course data
+        const teeMarker = document.querySelector('input[name="teeMarker"]:checked').value;
+        this.selectedTeeMarker = teeMarker; // Store for yardage display
+
+        // Load course data from database with selected tee marker
+        await this.loadCourseData(courseId, teeMarker);
         if (!this.courseData) {
             NotificationManager.show('Error loading course data', 'error');
             return;
         }
-
-        const teeMarker = document.querySelector('input[name="teeMarker"]:checked').value;
-        this.selectedTeeMarker = teeMarker; // Store for yardage display
 
         // Collect all selected formats (supports multiple simultaneous formats)
         this.scoringFormats = Array.from(

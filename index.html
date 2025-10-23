@@ -34151,6 +34151,9 @@ class LiveScorecardSystem {
         const teeMarker = document.querySelector('input[name="teeMarker"]:checked').value;
         this.selectedTeeMarker = teeMarker; // Store for yardage display
 
+        // Set flag to skip scramble panel on first render (performance)
+        this._initialRender = true;
+
         // Load course data from database with selected tee marker
         await this.loadCourseData(courseId, teeMarker);
         if (!this.courseData) {
@@ -34294,7 +34297,7 @@ class LiveScorecardSystem {
         this.currentScore = '';
         this.scoresCache = {}; // Clear any old scores from previous rounds
 
-        // Hide start section, show active section
+        // Hide start section, show active section IMMEDIATELY (performance)
         document.getElementById('scorecardStartSection').style.display = 'none';
         document.getElementById('scorecardActiveSection').style.display = 'block';
 
@@ -34307,8 +34310,17 @@ class LiveScorecardSystem {
         // Render first hole and leaderboard
         this.refreshLeaderboard();
 
-        // Create public pools if enabled
-        await this.createPublicPools();
+        // Defer scramble panel to next tick for faster UI (100ms delay)
+        setTimeout(() => {
+            if (this.scoringFormats.includes('scramble')) {
+                this.renderScramblePanel();
+            }
+        }, 100);
+
+        // Create public pools if enabled (do this in background)
+        this.createPublicPools().catch(err => {
+            console.error('[LiveScorecard] Error creating public pools:', err);
+        });
 
         NotificationManager.show('Round started!', 'success');
     }
@@ -34418,8 +34430,11 @@ class LiveScorecardSystem {
             if (finishRoundBtn) finishRoundBtn.style.display = 'none';
         }
 
-        // Render scramble panel if scramble format is active
-        this.renderScramblePanel();
+        // Render scramble panel if scramble format is active (skip on first render)
+        if (!this._initialRender) {
+            this.renderScramblePanel();
+        }
+        this._initialRender = false;
     }
 
     getPlayerScore(playerId, holeNumber) {

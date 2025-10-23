@@ -126,12 +126,12 @@ ORDER BY course_id;
 -- Check table sizes
 SELECT
     schemaname,
-    tablename,
-    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size,
+    relname as tablename,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||relname)) AS size,
     n_live_tup as row_count
 FROM pg_stat_user_tables
-WHERE tablename IN ('courses', 'course_holes', 'scorecards', 'scorecard_holes', 'rounds', 'round_holes')
-ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+WHERE relname IN ('courses', 'course_holes', 'scorecards', 'scorecard_holes', 'rounds', 'round_holes')
+ORDER BY pg_total_relation_size(schemaname||'.'||relname) DESC;
 
 -- Check index usage
 SELECT

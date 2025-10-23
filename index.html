@@ -33711,7 +33711,7 @@ class LiveScorecardSystem {
     // Only load course data when user starts a round
 
     async loadCourseData(courseId, teeMarker = 'white') {
-        console.time('[PERFORMANCE] loadCourseData TOTAL');
+        
         console.log(`[LiveScorecard] Loading course data for: ${courseId}, tee: ${teeMarker}`);
 
         // Course cache versions - increment to force refresh
@@ -33729,11 +33729,29 @@ class LiveScorecardSystem {
             const cachedVersion = parseInt(localStorage.getItem(cacheVersionKey) || '0');
 
             if (cached && cachedVersion === expectedVersion) {
-                const courseData = JSON.parse(cached);
-                console.log(`[LiveScorecard] Using cached course data (v${cachedVersion})`);
-                this.courseData = courseData;
-                console.timeEnd('[PERFORMANCE] loadCourseData TOTAL');
-                return this.courseData;
+                const cacheData = JSON.parse(cached);
+
+                // Check if timestamp-based cache (new format)
+                if (cacheData.timestamp && cacheData.course) {
+                    const cacheAge = Date.now() - cacheData.timestamp;
+                    const tenMinutes = 10 * 60 * 1000;
+
+                    // Use cache if less than 10 minutes old
+                    if (cacheAge < tenMinutes) {
+                        console.log(`[LiveScorecard] Using cached course data (${Math.floor(cacheAge / 1000)}s old)`);
+                        this.courseData = cacheData.course;
+                        return this.courseData;
+                    } else {
+                        console.log(`[LiveScorecard] Cache expired (${Math.floor(cacheAge / 1000)}s old), refreshing...`);
+                        localStorage.removeItem(cacheKey);
+                        localStorage.removeItem(cacheVersionKey);
+                    }
+                } else {
+                    // Old format cache (no timestamp) - use it but log warning
+                    console.log(`[LiveScorecard] Using old-format cached course data (v${cachedVersion})`);
+                    this.courseData = cacheData;
+                    return this.courseData;
+                }
             } else if (cached && cachedVersion < expectedVersion) {
                 console.log(`[LiveScorecard] Cache outdated (v${cachedVersion} < v${expectedVersion}), refreshing...`);
                 localStorage.removeItem(cacheKey);
@@ -33745,18 +33763,18 @@ class LiveScorecardSystem {
 
         try {
             // Get course info (including scorecard_url)
-            console.time('[PERFORMANCE] Query: courses table');
+            
             const { data: course, error: courseError } = await window.SupabaseDB.client
                 .from('courses')
                 .select('id, name, scorecard_url')
                 .eq('id', courseId)
                 .single();
-            console.timeEnd('[PERFORMANCE] Query: courses table');
+            
 
             if (courseError) throw courseError;
 
             // FIXED: Get hole data with fallback for courses without tee markers
-            console.time('[PERFORMANCE] Query: course_holes table');
+            
 
             // Try with tee marker first
             let queryResult = await window.SupabaseDB.client
@@ -33781,8 +33799,8 @@ class LiveScorecardSystem {
                 holesError = queryResult.error;
             }
 
-            console.timeEnd('[PERFORMANCE] Query: course_holes table');
-            console.log(`[PERFORMANCE] Received ${holes?.length || 0} holes from database`);
+            
+            
 
             if (holesError) throw holesError;
 
@@ -33799,22 +33817,27 @@ class LiveScorecardSystem {
                 }))
             };
 
-            // Cache this course data with version
+            // Cache this course data with version and timestamp (10 min expiration)
             try {
-                localStorage.setItem(cacheKey, JSON.stringify(this.courseData));
+                const cacheData = {
+                    course: this.courseData,
+                    timestamp: Date.now(),
+                    version: expectedVersion
+                };
+                localStorage.setItem(cacheKey, JSON.stringify(cacheData));
                 localStorage.setItem(cacheVersionKey, expectedVersion.toString());
-                console.log(`[LiveScorecard] Course data cached (v${expectedVersion})`);
+                console.log(`[LiveScorecard] Course data cached (v${expectedVersion}) - expires in 10 min`);
             } catch (e) {
                 console.warn('[LiveScorecard] Cache write failed:', e);
             }
 
             console.log('[LiveScorecard] Course data loaded from database');
-            console.timeEnd('[PERFORMANCE] loadCourseData TOTAL');
+            
             return this.courseData;
 
         } catch (error) {
             console.error('[LiveScorecard] Error loading course data:', error);
-            console.timeEnd('[PERFORMANCE] loadCourseData TOTAL');
+            
             NotificationManager.show('Error loading course data', 'error');
             return null;
         }
@@ -34831,16 +34854,19 @@ class LiveScorecardSystem {
 
 
     async completeRound() {
-        // FIX: Clear any pending auto-advance timeout
-        if (this.autoAdvanceTimeout) {
-            clearTimeout(this.autoAdvanceTimeout);
-            this.autoAdvanceTimeout = null;
-        }
+        console.log('[LiveScorecard] completeRound() called');
 
-        // NO POPUPS: Just execute the command directly as user requested
-        // Removed: confirm('Complete round for all players?')
+        try {
+            // FIX: Clear any pending auto-advance timeout
+            if (this.autoAdvanceTimeout) {
+                clearTimeout(this.autoAdvanceTimeout);
+                this.autoAdvanceTimeout = null;
+            }
 
-        // Check scramble drive requirements if scramble format is active
+            // NO POPUPS: Just execute the command directly as user requested
+            // Removed: confirm('Complete round for all players?')
+
+            // Check scramble drive requirements if scramble format is active
         if (this.scoringFormats.includes('scramble') && this.scrambleConfig?.minDrivesPerPlayer > 0) {
             for (const player of this.players) {
                 const used = this.scrambleDriveCount[player.id] || 0;
@@ -34867,12 +34893,19 @@ class LiveScorecardSystem {
         }
     
         // Distribute scores to all players and organizers
-        await this.distributeRoundScores();
-    
-        NotificationManager.show('Round completed! Scores saved and distributed.', 'success');
-    
-        // Show finalized scorecard BEFORE resetting
-        this.showFinalizedScorecard();
+            await this.distributeRoundScores();
+
+            NotificationManager.show('Round completed! Scores saved and distributed.', 'success');
+
+            // Show finalized scorecard BEFORE resetting
+            this.showFinalizedScorecard();
+
+        } catch (error) {
+            console.error('[LiveScorecard] ERROR in completeRound():', error);
+            console.error('[LiveScorecard] Error stack:', error.stack);
+            NotificationManager.show('Error completing round: ' + error.message, 'error');
+            // Don't show scorecard if there was an error
+        }
     }
 
     async saveRoundToHistory(player) {
@@ -36306,8 +36339,11 @@ class LiveScorecardSystem {
     }
 
     closeFinalizedScorecard() {
+        console.log('[LiveScorecard] Closing finalized scorecard modal');
         document.getElementById('finalizedScorecardModal').classList.add('hidden');
+        console.log('[LiveScorecard] Calling actuallyEndRound()');
         this.actuallyEndRound();
+        console.log('[LiveScorecard] Round ended successfully');
     }
 
     printScorecard() {

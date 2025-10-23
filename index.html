@@ -38743,11 +38743,13 @@ class SocietyOrganizerManager {
 
     async loadEvents() {
         try {
-            const organizerId = AppState.currentUser?.lineUserId;
+            // Use selected society organizer ID if available, otherwise use current user
+            const organizerId = AppState.selectedSociety?.organizerId || AppState.currentUser?.lineUserId;
             if (!organizerId) {
                 console.error('[SocietyOrganizer] No organizer ID');
                 return;
             }
+            console.log('[SocietyOrganizer] Loading events for organizer:', organizerId);
 
             console.log('[SocietyOrganizer] Loading events with stats and revenue...');
             const startTime = Date.now();
@@ -38797,7 +38799,7 @@ class SocietyOrganizerManager {
             }
 
             const societyName = this.societyProfile.society_name;
-            const organizerId = AppState.currentUser?.lineUserId;
+            const organizerId = AppState.selectedSociety?.organizerId || AppState.currentUser?.lineUserId;
 
             console.log('[PlayerDirectory] Loading members for:', societyName);
 
@@ -38953,7 +38955,7 @@ class SocietyOrganizerManager {
             }
 
             const societyName = this.societyProfile.society_name;
-            const organizerId = AppState.currentUser?.lineUserId;
+            const organizerId = AppState.selectedSociety?.organizerId || AppState.currentUser?.lineUserId;
 
             // Generate member number
             const memberNumber = await this.generateMemberNumber(societyName);
@@ -41391,11 +41393,24 @@ This action cannot be undone.`);
 
     async loadSocietyProfile() {
         try {
-            const organizerId = AppState.currentUser?.lineUserId;
+            // Use selected society organizer ID if available, otherwise use current user
+            const organizerId = AppState.selectedSociety?.organizerId || AppState.currentUser?.lineUserId;
             if (!organizerId) return;
 
+            console.log('[SocietyOrganizer] Loading profile for organizer:', organizerId);
             const profile = await SocietyGolfDB.getSocietyProfile(organizerId);
-            this.societyProfile = profile;
+
+            // If no profile in database, use data from AppState.selectedSociety
+            if (!profile && AppState.selectedSociety) {
+                this.societyProfile = {
+                    organizerId: AppState.selectedSociety.organizerId,
+                    societyName: AppState.selectedSociety.name,
+                    societyLogo: AppState.selectedSociety.logo,
+                    website: AppState.selectedSociety.website
+                };
+            } else {
+                this.societyProfile = profile;
+            }
 
             // Update header with society branding
             this.updateHeader();

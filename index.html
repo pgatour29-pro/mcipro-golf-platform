@@ -35008,7 +35008,8 @@ class LiveScorecardSystem {
 
 
     async completeRound() {
-        console.log('[LiveScorecard] completeRound() called');
+        console.log('[LiveScorecard] ========== END ROUND CLICKED ==========');
+        alert('END ROUND: Button clicked! Check console.');
 
         // INSTANT feedback to user
         NotificationManager.show('Finalizing round...', 'info');
@@ -35036,26 +35037,24 @@ class LiveScorecardSystem {
             }
         }
 
-        // Mark scorecards as completed in database (BLOCKING - ENSURE COMPLETION)
+        // Mark scorecards as completed in database (NON-BLOCKING for speed)
         for (const player of this.players) {
             const scorecardId = this.scorecards[player.id];
             if (scorecardId && !scorecardId.startsWith('local_')) {
-                try {
-                    await window.SocietyGolfDB.completeScorecard(scorecardId);
+                window.SocietyGolfDB.completeScorecard(scorecardId).then(() => {
                     console.log(`[LiveScorecard] Completed scorecard for ${player.name}`);
-                } catch (err) {
+                }).catch(err => {
                     console.error(`[LiveScorecard] Error completing scorecard for ${player.name}:`, err);
-                }
+                });
             }
 
-            // Calculate and update handicap (BLOCKING - ENSURE COMPLETION)
+            // Calculate and update handicap (NON-BLOCKING for speed)
             if (player.lineUserId) {
-                try {
-                    await this.updatePlayerHandicap(player);
+                this.updatePlayerHandicap(player).then(() => {
                     console.log(`[LiveScorecard] Updated handicap for ${player.name}`);
-                } catch (err) {
+                }).catch(err => {
                     console.error(`[LiveScorecard] Error updating handicap for ${player.name}:`, err);
-                }
+                });
             }
         }
     

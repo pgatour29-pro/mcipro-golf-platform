@@ -35053,16 +35053,20 @@ class LiveScorecardSystem {
             }
         }
     
-        // Distribute scores to all players and organizers
-            // Distribute scores in background (NON-BLOCKING)
-            this.distributeRoundScores().catch(err => {
-                console.error('[LiveScorecard] Error distributing scores:', err);
-            });
-
-            // Show finalized scorecard IMMEDIATELY (no waiting)
+        // Show finalized scorecard IMMEDIATELY (no waiting)
             this.showFinalizedScorecard();
 
-            NotificationManager.show('Round completed! Scores saving...', 'success');
+            NotificationManager.show('Round completed! Saving to history...', 'info');
+
+            // Distribute scores and save to history (WAIT for this to complete)
+            try {
+                await this.distributeRoundScores();
+                console.log('[LiveScorecard] Successfully saved to history');
+                NotificationManager.show('Round saved to history!', 'success');
+            } catch (err) {
+                console.error('[LiveScorecard] FAILED to save to history:', err);
+                NotificationManager.show('ERROR: Round not saved to history! Check console.', 'error');
+            }
 
         } catch (error) {
             console.error('[LiveScorecard] ERROR in completeRound():', error);

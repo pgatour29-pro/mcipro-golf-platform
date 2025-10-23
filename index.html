@@ -35006,67 +35006,64 @@ class LiveScorecardSystem {
 
     async completeRound() {
         console.log('[LiveScorecard] ========== END ROUND CLICKED ==========');
-        alert('END ROUND: Button clicked! Check console.');
-
-        // INSTANT feedback to user
-        NotificationManager.show('Finalizing round...', 'info');
+        alert('END ROUND: Starting...');
 
         try {
-            // FIX: Clear any pending auto-advance timeout
+            console.log('[LiveScorecard] Step 1: Clear timeout');
             if (this.autoAdvanceTimeout) {
                 clearTimeout(this.autoAdvanceTimeout);
                 this.autoAdvanceTimeout = null;
             }
 
-            // NO POPUPS: Just execute the command directly as user requested
-            // Removed: confirm('Complete round for all players?')
+            console.log('[LiveScorecard] Step 2: Check scramble drives');
+            // SKIP scramble drive check - just end the round
+            if (this.scoringFormats.includes('scramble') && this.scrambleConfig?.minDrivesPerPlayer > 0) {
+                console.log('[LiveScorecard] WARNING: Scramble drive requirements not met, but allowing completion anyway');
+            }
 
-            // Check scramble drive requirements if scramble format is active
-        if (this.scoringFormats.includes('scramble') && this.scrambleConfig?.minDrivesPerPlayer > 0) {
+            console.log('[LiveScorecard] Step 3: Proceeding to complete round');
+
+            console.log('[LiveScorecard] Step 4: Starting database operations (non-blocking)');
+            // Mark scorecards as completed in database (NON-BLOCKING for speed)
             for (const player of this.players) {
-                const used = this.scrambleDriveCount[player.id] || 0;
-                const required = this.scrambleConfig.minDrivesPerPlayer;
-                if (used < required) {
-                    // NO POPUPS: Show notification instead of alert
-                    NotificationManager.show(`${player.name} needs ${required - used} more drive(s) to meet minimum ${required}.`, 'warning');
-                    return; // Prevent completion
+                const scorecardId = this.scorecards[player.id];
+                if (scorecardId && !scorecardId.startsWith('local_')) {
+                    window.SocietyGolfDB.completeScorecard(scorecardId).then(() => {
+                        console.log(`[LiveScorecard] Completed scorecard for ${player.name}`);
+                    }).catch(err => {
+                        console.error(`[LiveScorecard] Error completing scorecard for ${player.name}:`, err);
+                    });
+                }
+
+                // Calculate and update handicap (NON-BLOCKING for speed)
+                if (player.lineUserId) {
+                    this.updatePlayerHandicap(player).then(() => {
+                        console.log(`[LiveScorecard] Updated handicap for ${player.name}`);
+                    }).catch(err => {
+                        console.error(`[LiveScorecard] Error updating handicap for ${player.name}:`, err);
+                    });
                 }
             }
-        }
 
-        // Mark scorecards as completed in database (NON-BLOCKING for speed)
-        for (const player of this.players) {
-            const scorecardId = this.scorecards[player.id];
-            if (scorecardId && !scorecardId.startsWith('local_')) {
-                window.SocietyGolfDB.completeScorecard(scorecardId).then(() => {
-                    console.log(`[LiveScorecard] Completed scorecard for ${player.name}`);
-                }).catch(err => {
-                    console.error(`[LiveScorecard] Error completing scorecard for ${player.name}:`, err);
-                });
-            }
+            console.log('[LiveScorecard] Step 5: About to show finalized scorecard');
+            alert('About to call showFinalizedScorecard()');
 
-            // Calculate and update handicap (NON-BLOCKING for speed)
-            if (player.lineUserId) {
-                this.updatePlayerHandicap(player).then(() => {
-                    console.log(`[LiveScorecard] Updated handicap for ${player.name}`);
-                }).catch(err => {
-                    console.error(`[LiveScorecard] Error updating handicap for ${player.name}:`, err);
-                });
-            }
-        }
-    
-        // Show finalized scorecard IMMEDIATELY (no waiting)
+            // Show finalized scorecard IMMEDIATELY (no waiting)
             this.showFinalizedScorecard();
+
+            console.log('[LiveScorecard] Step 6: Finalized scorecard shown');
+            alert('showFinalizedScorecard() completed');
 
             NotificationManager.show('Round completed! Saving to history...', 'info');
 
+            console.log('[LiveScorecard] Step 7: Starting distributeRoundScores');
             // Distribute scores and save to history (WAIT for this to complete)
             try {
                 await this.distributeRoundScores();
-                console.log('[LiveScorecard] Successfully saved to history');
+                console.log('[LiveScorecard] Step 8: Successfully saved to history');
                 NotificationManager.show('Round saved to history!', 'success');
             } catch (err) {
-                console.error('[LiveScorecard] FAILED to save to history:', err);
+                console.error('[LiveScorecard] Step 8 FAILED: Error saving to history:', err);
                 NotificationManager.show('ERROR: Round not saved to history! Check console.', 'error');
             }
 

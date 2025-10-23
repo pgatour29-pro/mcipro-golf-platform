@@ -35036,20 +35036,26 @@ class LiveScorecardSystem {
             }
         }
 
-        // Mark scorecards as completed in database (NON-BLOCKING - INSTANT)
+        // Mark scorecards as completed in database (BLOCKING - ENSURE COMPLETION)
         for (const player of this.players) {
             const scorecardId = this.scorecards[player.id];
             if (scorecardId && !scorecardId.startsWith('local_')) {
-                window.SocietyGolfDB.completeScorecard(scorecardId).catch(err => {
+                try {
+                    await window.SocietyGolfDB.completeScorecard(scorecardId);
+                    console.log(`[LiveScorecard] Completed scorecard for ${player.name}`);
+                } catch (err) {
                     console.error(`[LiveScorecard] Error completing scorecard for ${player.name}:`, err);
-                });
+                }
             }
 
-            // Calculate and update handicap (NON-BLOCKING - INSTANT)
+            // Calculate and update handicap (BLOCKING - ENSURE COMPLETION)
             if (player.lineUserId) {
-                this.updatePlayerHandicap(player).catch(err => {
+                try {
+                    await this.updatePlayerHandicap(player);
+                    console.log(`[LiveScorecard] Updated handicap for ${player.name}`);
+                } catch (err) {
                     console.error(`[LiveScorecard] Error updating handicap for ${player.name}:`, err);
-                });
+                }
             }
         }
     

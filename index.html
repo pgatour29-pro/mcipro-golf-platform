@@ -21576,7 +21576,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                         <span class="material-symbols-outlined text-sm">image</span>
                                         Scorecard
                                     </button>
-                                    <button onclick="LiveScorecardManager.completeRound()" class="px-4 py-2 bg-white text-green-600 rounded-lg font-medium hover:bg-green-50">
+                                    <button onclick="console.log('[DEBUG] End Round button clicked'); try { LiveScorecardManager.completeRound(); } catch(e) { console.error('[DEBUG] End Round error:', e); alert('End Round Error: ' + e.message); }" class="px-4 py-2 bg-white text-green-600 rounded-lg font-medium hover:bg-green-50">
                                         End Round
                                     </button>
                                 </div>
@@ -34349,25 +34349,48 @@ class LiveScorecardSystem {
             }
         }
 
-        // Render player score boxes
+        // Render player score boxes OR team score box for scramble
         const grid = document.getElementById('groupScorecardGrid');
-        grid.innerHTML = this.players.map(p => {
-            const score = this.getPlayerScore(p.id, this.currentHole);
-            const total = this.getPlayerTotal(p.id);
-            const isActive = p.id === this.currentPlayerId;
-            const formatLabel = (this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford')) ? 'pts' : 'strokes';
 
-            return `
-                <div onclick="LiveScorecardManager.selectPlayer('${p.id}')"
-                     class="p-3 border-2 ${isActive ? 'border-green-500 bg-green-50' : 'border-gray-300 bg-white'} rounded-lg cursor-pointer hover:border-green-400 transition">
-                    <div class="text-sm font-medium text-gray-700">${p.name}</div>
-                    <div class="text-2xl font-bold ${score ? 'text-gray-900' : 'text-gray-400'}">
-                        ${score || '_'}
+        // SCRAMBLE MODE: Show single team score box
+        if (this.scoringFormats.includes('scramble')) {
+            const teamScore = this.getPlayerScore(this.players[0].id, this.currentHole);
+            const teamTotal = this.getPlayerTotal(this.players[0].id);
+
+            grid.innerHTML = `
+                <div class="p-4 border-2 border-green-500 bg-green-50 rounded-lg text-center">
+                    <div class="text-sm font-semibold text-gray-700 mb-2">TEAM SCORE</div>
+                    <div class="text-4xl font-bold ${teamScore ? 'text-gray-900' : 'text-gray-400'}">
+                        ${teamScore || '_'}
                     </div>
-                    ${total !== 0 ? `<div class="text-xs text-gray-600 mt-1">Total: ${total > 0 && (this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford')) ? '+' : ''}${total} ${formatLabel}</div>` : ''}
+                    ${teamTotal !== 0 ? `<div class="text-sm text-gray-600 mt-2">Total: ${teamTotal} strokes</div>` : ''}
+                    <div class="text-xs text-gray-500 mt-2">${this.players.length} players</div>
                 </div>
             `;
-        }).join('');
+
+            // Auto-select first player for score entry
+            this.currentPlayerId = this.players[0].id;
+
+        } else {
+            // NORMAL MODE: Show individual player score boxes
+            grid.innerHTML = this.players.map(p => {
+                const score = this.getPlayerScore(p.id, this.currentHole);
+                const total = this.getPlayerTotal(p.id);
+                const isActive = p.id === this.currentPlayerId;
+                const formatLabel = (this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford')) ? 'pts' : 'strokes';
+
+                return `
+                    <div onclick="LiveScorecardManager.selectPlayer('${p.id}')"
+                         class="p-3 border-2 ${isActive ? 'border-green-500 bg-green-50' : 'border-gray-300 bg-white'} rounded-lg cursor-pointer hover:border-green-400 transition">
+                        <div class="text-sm font-medium text-gray-700">${p.name}</div>
+                        <div class="text-2xl font-bold ${score ? 'text-gray-900' : 'text-gray-400'}">
+                            ${score || '_'}
+                        </div>
+                        ${total !== 0 ? `<div class="text-xs text-gray-600 mt-1">Total: ${total > 0 && (this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford')) ? '+' : ''}${total} ${formatLabel}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
 
         // Update progress
         const entered = this.players.filter(p => this.getPlayerScore(p.id, this.currentHole)).length;
@@ -34531,6 +34554,72 @@ class LiveScorecardSystem {
             return;
         }
 
+        // SCRAMBLE MODE: Apply score to ALL players
+        if (this.scoringFormats.includes('scramble')) {
+            console.log(`[LiveScorecard] SCRAMBLE: Applying team score ${score} to all ${this.players.length} players`);
+
+            // Save score for ALL players
+            for (const player of this.players) {
+                const scorecardId = this.scorecards[player.id];
+
+                // Update local cache
+                if (!this.scoresCache[player.id]) {
+                    this.scoresCache[player.id] = {};
+                }
+                this.scoresCache[player.id][this.currentHole] = score;
+
+                // Get hole data
+                const holeData = this.courseData?.holes?.[this.currentHole - 1];
+                const par = holeData?.par || 4;
+                const strokeIndex = holeData?.strokeIndex || this.currentHole;
+
+                // Save to database if online
+                if (scorecardId && !scorecardId.startsWith('local_')) {
+                    window.SocietyGolfDB.saveScore(
+                        scorecardId,
+                        this.currentHole,
+                        score,
+                        par,
+                        strokeIndex,
+                        player.handicap
+                    ).catch(err => {
+                        console.error(`[LiveScorecard] Error saving score for ${player.name}:`, err);
+                    });
+                } else if (scorecardId && scorecardId.startsWith('local_')) {
+                    // Save offline
+                    const localScores = JSON.parse(localStorage.getItem(`scores_${scorecardId}`) || '{}');
+                    localScores[this.currentHole] = {
+                        hole_number: this.currentHole,
+                        gross_score: score,
+                        par: par,
+                        stroke_index: strokeIndex,
+                        handicap: player.handicap,
+                        recorded_at: new Date().toISOString()
+                    };
+                    localStorage.setItem(`scores_${scorecardId}`, JSON.stringify(localScores));
+                }
+            }
+
+            // Clear input and update UI
+            this.currentScore = '';
+            this.renderHole();
+            this.refreshLeaderboard();
+
+            NotificationManager.show(`Team score ${score} saved for Hole ${this.currentHole}`, 'success');
+
+            // Auto-advance to next hole after short delay
+            clearTimeout(this.autoAdvanceTimeout);
+            this.autoAdvanceTimeout = setTimeout(() => {
+                this.autoAdvanceTimeout = null;
+                if (this.currentHole < 18) {
+                    this.nextHole();
+                }
+            }, 1500);
+
+            return; // Exit early for scramble mode
+        }
+
+        // NORMAL MODE: Continue with single player scoring
         const scorecardId = this.scorecards[this.currentPlayerId];
         const player = this.players.find(p => p.id === this.currentPlayerId);
 

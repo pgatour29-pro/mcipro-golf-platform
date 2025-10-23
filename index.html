@@ -33277,6 +33277,28 @@ class LiveScorecardSystem {
         this.availableCourses = []; // List of courses from database
     }
 
+    // FORCE CACHE CLEAR: Remove all old course caches with tee markers in key
+    clearOldCourseCaches() {
+        console.log('[LiveScorecard] Clearing old course caches...');
+        const keysToRemove = [];
+
+        // Find all course cache keys
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('mcipro_course_')) {
+                keysToRemove.push(key);
+            }
+        }
+
+        // Remove them
+        keysToRemove.forEach(key => {
+            localStorage.removeItem(key);
+            console.log(`[LiveScorecard]   Removed: ${key}`);
+        });
+
+        console.log(`[LiveScorecard] Cleared ${keysToRemove.length} old cache entries`);
+    }
+
     // ============================================
     // GOLF SCORING ENGINE
     // Professional scoring engine supporting multiple formats
@@ -33627,6 +33649,9 @@ class LiveScorecardSystem {
     async init() {
         console.log('[LiveScorecard] Initializing...');
 
+        // CRITICAL FIX: Clear old course caches with tee markers in keys
+        this.clearOldCourseCaches();
+
         // Clean up old/failed offline data first
         this.cleanupOldOfflineData();
 
@@ -33694,9 +33719,9 @@ class LiveScorecardSystem {
             'bangpakong': 3  // v3: Clean scorecard image + Par 72 with all 5 tees
         };
 
-        // FIX: Cache key includes tee marker (different tees = different data)
-        const cacheKey = `mcipro_course_${courseId}_${teeMarker}`;
-        const cacheVersionKey = `mcipro_course_version_${courseId}_${teeMarker}`;
+        // Cache course data (tee marker handled in query, not cache key)
+        const cacheKey = `mcipro_course_${courseId}`;
+        const cacheVersionKey = `mcipro_course_version_${courseId}`;
         const expectedVersion = COURSE_CACHE_VERSIONS[courseId] || 1;
 
         try {
@@ -33730,14 +33755,32 @@ class LiveScorecardSystem {
 
             if (courseError) throw courseError;
 
-            // FIX: Get hole data for SELECTED TEE MARKER ONLY (not all 4 tees!)
+            // FIXED: Get hole data with fallback for courses without tee markers
             console.time('[PERFORMANCE] Query: course_holes table');
-            const { data: holes, error: holesError } = await window.SupabaseDB.client
+
+            // Try with tee marker first
+            let queryResult = await window.SupabaseDB.client
                 .from('course_holes')
                 .select('hole_number, par, stroke_index, yardage, tee_marker')
                 .eq('course_id', courseId)
                 .eq('tee_marker', teeMarker.toLowerCase())
                 .order('hole_number');
+
+            let holes = queryResult.data;
+            let holesError = queryResult.error;
+
+            // Fallback: If no holes found, try without tee marker filter
+            if (!holesError && (!holes || holes.length === 0)) {
+                console.log(`[LiveScorecard] No holes for tee "${teeMarker}", trying without filter...`);
+                queryResult = await window.SupabaseDB.client
+                    .from('course_holes')
+                    .select('hole_number, par, stroke_index, yardage, tee_marker')
+                    .eq('course_id', courseId)
+                    .order('hole_number');
+                holes = queryResult.data;
+                holesError = queryResult.error;
+            }
+
             console.timeEnd('[PERFORMANCE] Query: course_holes table');
             console.log(`[PERFORMANCE] Received ${holes?.length || 0} holes from database`);
 
@@ -34065,26 +34108,8 @@ class LiveScorecardSystem {
         console.log('[LiveScorecard] Selected course:', courseId);
 
         if (!courseId) {
-            console.warn('[LiveScorecard] ⚠️ No course selected');
-
-            // Flash the dropdown red and scroll to it
-            const dropdown = document.getElementById('scorecardCourseSelect');
-            if (dropdown) {
-                dropdown.style.border = '3px solid red';
-                dropdown.style.backgroundColor = '#ffe6e6';
-                dropdown.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-                // Remove red after 3 seconds
-                setTimeout(() => {
-                    dropdown.style.border = '';
-                    dropdown.style.backgroundColor = '';
-                }, 3000);
-            }
-
-            // Show big obvious alert
-            alert('⚠️ COURSE NOT SELECTED\n\nPlease select a golf course from the dropdown first, then click Start Round.');
-
-            NotificationManager.show('Please select a course', 'error');
+            console.warn('[LiveScorecard] No course selected');
+            NotificationManager.show('Please select a course first', 'error');
             return;
         }
 

@@ -36182,41 +36182,14 @@ class LiveScorecardSystem {
         const container = document.createElement('div');
         container.className = 'border-4 border-green-600 rounded-lg p-4 mb-6 bg-gradient-to-br from-green-50 to-green-100 shadow-lg print:break-inside-avoid print:shadow-none';
 
-        // Calculate team handicap based on selected method
-        const method = document.querySelector('input[name="scrambleHcpMethod"]:checked')?.value || 'usga';
-        const teamSize = this.players.length;
-        // CRITICAL FIX: Convert handicaps to numbers to avoid string concatenation bug
-        const handicaps = this.players.map(p => parseFloat(p.handicap) || 0);
-        const sortedHandicaps = [...handicaps].sort((a, b) => a - b);
-        let teamHandicap = 0;
-
-        console.log('[Team Scorecard] Players handicaps:', this.players.map(p => `${p.name}=${p.handicap}`));
-        console.log('[Team Scorecard] Handicaps as numbers:', handicaps);
-        console.log('[Team Scorecard] Sorted:', sortedHandicaps);
-
-        if (method === 'usga') {
-            // USGA Standard formulas
-            if (teamSize === 2) {
-                teamHandicap = (sortedHandicaps[0] * 0.35) + (sortedHandicaps[1] * 0.15);
-            } else if (teamSize === 3) {
-                teamHandicap = (sortedHandicaps[0] * 0.30) + (sortedHandicaps[1] * 0.20) + (sortedHandicaps[2] * 0.10);
-            } else if (teamSize === 4) {
-                teamHandicap = (sortedHandicaps[0] * 0.25) + (sortedHandicaps[1] * 0.20) + (sortedHandicaps[2] * 0.15) + (sortedHandicaps[3] * 0.10);
-            } else {
-                const avgHandicap = sortedHandicaps.reduce((sum, h) => sum + h, 0) / sortedHandicaps.length;
-                teamHandicap = avgHandicap * 0.20;
-            }
-        } else if (method === 'percentage') {
-            // Percentage REDUCTION of average handicap
-            const percent = parseFloat(document.getElementById('scrambleHcpPercent')?.value) || 25;
-            const avgHcp = handicaps.reduce((sum, h) => sum + h, 0) / handicaps.length;
-            teamHandicap = avgHcp * (100 - percent) / 100;
-        } else if (method === 'manual') {
-            // Manual entry
-            teamHandicap = parseFloat(document.getElementById('scrambleHcpManualValue')?.value) || 0;
-        }
-
+        // Use the SAME team handicap calculation as leaderboard (calculateTeamHandicap method)
+        // This ensures consistency across all displays
+        const teamHandicap = this.calculateTeamHandicap();
         const teamPlayingHandicap = Math.round(teamHandicap);
+
+        console.log('[Team Scorecard] Team HCP calculated:', teamHandicap);
+        console.log('[Team Scorecard] Team Playing HCP:', teamPlayingHandicap);
+        console.log('[Team Scorecard] Players:', this.players.map(p => `${p.name}=${p.handicap}`));
 
         // Calculate team scores FIRST (before header)
         // NOTE: In PROPER scramble, all players should have THE SAME score (team score)

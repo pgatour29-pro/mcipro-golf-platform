@@ -37093,6 +37093,17 @@ class LiveScorecardSystem {
         await this.refreshLeaderboard();
     }
 
+    debouncedRefreshLeaderboard() {
+        // Debounce leaderboard refresh to avoid lag (max once per 500ms)
+        if (this.leaderboardRefreshTimeout) {
+            clearTimeout(this.leaderboardRefreshTimeout);
+        }
+        this.leaderboardRefreshTimeout = setTimeout(() => {
+            this.refreshLeaderboard();
+            this.leaderboardRefreshTimeout = null;
+        }, 500);
+    }
+
     async refreshLeaderboard() {
         const content = document.getElementById('leaderboardContent');
 
@@ -37140,33 +37151,7 @@ class LiveScorecardSystem {
         return Math.round(totalHcp * multiplier);
     }
 
-        calculateTeamHandicap() {
-        // Calculate team handicap based on number of players
-        // Standard USGA scramble handicap formula:
-        // 2-person: sum × 0.375
-        // 3-person: sum × 0.25
-        // 4-person: sum × 0.20
-        if (!this.players || this.players.length === 0) return 0;
-
-        const totalHcp = this.players.reduce((sum, p) => sum + (p.handicap || 0), 0);
-        const teamSize = this.players.length;
-
-        let multiplier;
-        if (teamSize === 2) {
-            multiplier = 0.375;
-        } else if (teamSize === 3) {
-            multiplier = 0.25;
-        } else if (teamSize === 4) {
-            multiplier = 0.20;
-        } else {
-            // Default to 4-person formula
-            multiplier = 0.20;
-        }
-
-        return Math.round(totalHcp * multiplier);
-    }
-
-        async getGroupLeaderboard() {
+    async getGroupLeaderboard() {
         if (!this.groupId) return [];
 
         // Build leaderboard from LOCAL cache (instant, works offline)

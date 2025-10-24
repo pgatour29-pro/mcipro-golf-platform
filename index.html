@@ -19286,7 +19286,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
 <body>
     <script>
-    console.log('%c🚀 PAGE VERSION: 2025-10-24-PERCENTAGE-METHOD-FIXED', 'background: #00ffff; color: #000; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-10-24-TEAM-MATCH-PLAY-ADDED', 'background: #ff00ff; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
     // IMMEDIATE OAuth detection - runs before DOMContentLoaded
@@ -21403,6 +21403,39 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <p class="text-xs text-gray-500 mt-1">💰 Points awarded per hole (e.g., 100 points/hole = 1,800 total)</p>
                         </div>
 
+                        <!-- Match Play Configuration -->
+                        <div class="mb-4" id="matchPlayConfig" style="display: none;">
+                            <div class="p-4 bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-200 rounded-lg">
+                                <div class="flex items-center gap-2 mb-3">
+                                    <span class="material-symbols-outlined text-yellow-600">emoji_events</span>
+                                    <label class="text-sm font-semibold text-gray-900">Match Play Format</label>
+                                </div>
+
+                                <div class="flex gap-2 mb-3">
+                                    <label class="flex-1 flex items-center justify-center p-2 border-2 border-blue-500 bg-blue-50 rounded-lg cursor-pointer">
+                                        <input type="radio" name="matchPlayType" value="individual" checked class="mr-2" onchange="updateMatchPlayType()">
+                                        <span class="text-xs font-medium">Individual vs Field</span>
+                                    </label>
+                                    <label class="flex-1 flex items-center justify-center p-2 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-blue-400">
+                                        <input type="radio" name="matchPlayType" value="teams" class="mr-2" onchange="updateMatchPlayType()">
+                                        <span class="text-xs font-medium">2-Man Teams</span>
+                                    </label>
+                                </div>
+
+                                <!-- Individual Match Play Info -->
+                                <div id="matchPlayIndividual" class="text-sm text-gray-700">
+                                    <strong>Individual:</strong> Each player compares their net score on each hole against all other players.
+                                </div>
+
+                                <!-- Team Match Play Info -->
+                                <div id="matchPlayTeams" class="hidden text-sm text-gray-700">
+                                    <strong>2-Man Teams:</strong> Best ball vs best ball, second ball breaks ties.<br>
+                                    <span class="text-xs">• Scored as Front 9, Back 9, and Overall<br>
+                                    • Example: If both teams have 4 (best ball tied), then 5 beats 6 (second ball)<br>
+                                    • Can use stroke or stableford scoring</span>
+                                </div>
+                            </div>
+                        </div>
 
                         <!-- Scramble Configuration -->
                         <div class="mb-4" id="scrambleConfigSection" style="display: none;">
@@ -33625,6 +33658,158 @@ class LiveScorecardSystem {
             return matchResults;
         },
 
+        calculateTeamMatchPlay(team1Data, team2Data, courseHoles, useNet = true, useStableford = false) {
+            // 2-man team match play: best ball vs best ball, second ball breaks ties
+            // Returns: { front9: +/-, back9: +/-, overall: +/-, holeResults: [...] }
+
+            const team1Results = { front9: 0, back9: 0, overall: 0 };
+            const holeResults = [];
+
+            for (let holeNum = 1; holeNum <= 18; holeNum++) {
+                const hole = courseHoles.find(h => (h.hole || h.hole_number || h.number) === holeNum);
+                if (!hole) continue;
+
+                const par = hole.par;
+                const strokeIndex = hole.strokeIndex || hole.stroke_index || holeNum;
+
+                // Get both players' scores for each team
+                const team1Player1 = team1Data[0];
+                const team1Player2 = team1Data[1];
+                const team2Player1 = team2Data[0];
+                const team2Player2 = team2Data[1];
+
+                const t1p1Score = team1Player1.scores.find(s => s.hole_number === holeNum);
+                const t1p2Score = team1Player2.scores.find(s => s.hole_number === holeNum);
+                const t2p1Score = team2Player1.scores.find(s => s.hole_number === holeNum);
+                const t2p2Score = team2Player2.scores.find(s => s.hole_number === holeNum);
+
+                if (!t1p1Score || !t1p2Score || !t2p1Score || !t2p2Score) {
+                    holeResults.push({ hole: holeNum, result: 'AS', team1Best: null, team2Best: null });
+                    continue;
+                }
+
+                let team1Scores = [];
+                let team2Scores = [];
+
+                if (useStableford) {
+                    // Calculate stableford points for each player
+                    const getStablefordPoints = (grossScore, playerHcp) => {
+                        const shotsReceived = playerHcp >= strokeIndex ? 1 : 0;
+                        const netScore = grossScore - shotsReceived;
+                        const diff = netScore - par;
+
+                        if (diff <= -2) return 4;      // Eagle or better
+                        else if (diff === -1) return 3; // Birdie
+                        else if (diff === 0) return 2;  // Par
+                        else if (diff === 1) return 1;  // Bogey
+                        else return 0;                  // Double bogey+
+                    };
+
+                    team1Scores = [
+                        getStablefordPoints(t1p1Score.gross_score, team1Player1.handicap),
+                        getStablefordPoints(t1p2Score.gross_score, team1Player2.handicap)
+                    ].sort((a, b) => b - a); // Sort descending (best first)
+
+                    team2Scores = [
+                        getStablefordPoints(t2p1Score.gross_score, team2Player1.handicap),
+                        getStablefordPoints(t2p2Score.gross_score, team2Player2.handicap)
+                    ].sort((a, b) => b - a);
+                } else {
+                    // Stroke play - use net scores
+                    const getNetScore = (grossScore, playerHcp) => {
+                        const shotsReceived = playerHcp >= strokeIndex ? 1 : 0;
+                        return grossScore - shotsReceived;
+                    };
+
+                    team1Scores = [
+                        getNetScore(t1p1Score.gross_score, team1Player1.handicap),
+                        getNetScore(t1p2Score.gross_score, team1Player2.handicap)
+                    ].sort((a, b) => a - b); // Sort ascending (best first for strokes)
+
+                    team2Scores = [
+                        getNetScore(t2p1Score.gross_score, team2Player1.handicap),
+                        getNetScore(t2p2Score.gross_score, team2Player2.handicap)
+                    ].sort((a, b) => a - b);
+                }
+
+                // Compare best balls
+                let holeResult;
+                if (useStableford) {
+                    // Higher is better for stableford
+                    if (team1Scores[0] > team2Scores[0]) {
+                        holeResult = 'W';  // Team 1 wins
+                        team1Results.overall++;
+                        if (holeNum <= 9) team1Results.front9++;
+                        else team1Results.back9++;
+                    } else if (team1Scores[0] < team2Scores[0]) {
+                        holeResult = 'L';  // Team 2 wins
+                        team1Results.overall--;
+                        if (holeNum <= 9) team1Results.front9--;
+                        else team1Results.back9--;
+                    } else {
+                        // Best balls tied - check second ball
+                        if (team1Scores[1] > team2Scores[1]) {
+                            holeResult = 'W';
+                            team1Results.overall++;
+                            if (holeNum <= 9) team1Results.front9++;
+                            else team1Results.back9++;
+                        } else if (team1Scores[1] < team2Scores[1]) {
+                            holeResult = 'L';
+                            team1Results.overall--;
+                            if (holeNum <= 9) team1Results.front9--;
+                            else team1Results.back9--;
+                        } else {
+                            holeResult = 'AS';  // All square
+                        }
+                    }
+                } else {
+                    // Lower is better for stroke play
+                    if (team1Scores[0] < team2Scores[0]) {
+                        holeResult = 'W';
+                        team1Results.overall++;
+                        if (holeNum <= 9) team1Results.front9++;
+                        else team1Results.back9++;
+                    } else if (team1Scores[0] > team2Scores[0]) {
+                        holeResult = 'L';
+                        team1Results.overall--;
+                        if (holeNum <= 9) team1Results.front9--;
+                        else team1Results.back9--;
+                    } else {
+                        // Best balls tied - check second ball
+                        if (team1Scores[1] < team2Scores[1]) {
+                            holeResult = 'W';
+                            team1Results.overall++;
+                            if (holeNum <= 9) team1Results.front9++;
+                            else team1Results.back9++;
+                        } else if (team1Scores[1] > team2Scores[1]) {
+                            holeResult = 'L';
+                            team1Results.overall--;
+                            if (holeNum <= 9) team1Results.front9--;
+                            else team1Results.back9--;
+                        } else {
+                            holeResult = 'AS';
+                        }
+                    }
+                }
+
+                holeResults.push({
+                    hole: holeNum,
+                    result: holeResult,
+                    team1Best: team1Scores[0],
+                    team1Second: team1Scores[1],
+                    team2Best: team2Scores[0],
+                    team2Second: team2Scores[1]
+                });
+            }
+
+            return {
+                front9: team1Results.front9,
+                back9: team1Results.back9,
+                overall: team1Results.overall,
+                holeResults: holeResults
+            };
+        },
+
         // Calculate better ball / best ball (team format)
         calculateBetterBall(teamScores, courseHoles, scoresToCount = 1) {
             let teamTotal = 0;
@@ -38884,6 +39069,16 @@ window.toggleFormatCheckbox = function(label, event) {
             scrambleSection.style.display = 'none';
         }
     }
+
+    // Show/hide match play configuration
+    const matchPlaySection = document.getElementById('matchPlayConfig');
+    if (matchPlaySection) {
+        if (selectedFormats.includes('matchplay')) {
+            matchPlaySection.style.display = 'block';
+        } else {
+            matchPlaySection.style.display = 'none';
+        }
+    }
 };
 
 // Toggle all scoring formats on/off
@@ -38943,6 +39138,33 @@ window.updateScrambleHcpMethod = function() {
 
     // Recalculate preview
     calculateScrambleHcp();
+};
+
+window.updateMatchPlayType = function() {
+    const selected = document.querySelector('input[name="matchPlayType"]:checked')?.value;
+
+    const individualDiv = document.getElementById('matchPlayIndividual');
+    const teamsDiv = document.getElementById('matchPlayTeams');
+
+    if (selected === 'teams') {
+        individualDiv.classList.add('hidden');
+        teamsDiv.classList.remove('hidden');
+    } else {
+        individualDiv.classList.remove('hidden');
+        teamsDiv.classList.add('hidden');
+    }
+
+    // Update radio button styling
+    document.querySelectorAll('input[name="matchPlayType"]').forEach(radio => {
+        const label = radio.closest('label');
+        if (radio.checked) {
+            label.classList.remove('border-gray-300', 'bg-white');
+            label.classList.add('border-blue-500', 'bg-blue-50');
+        } else {
+            label.classList.remove('border-blue-500', 'bg-blue-50');
+            label.classList.add('border-gray-300', 'bg-white');
+        }
+    });
 };
 
 window.calculateScrambleHcp = function() {

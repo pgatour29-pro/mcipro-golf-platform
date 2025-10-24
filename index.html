@@ -33272,6 +33272,7 @@ window.SocietyGolfDB = new SocietyGolfSupabase();
 class LiveScorecardSystem {
     constructor() {
         this.players = [];
+        this.leaderboardRefreshTimeout = null;
         this.currentHole = 1;
         this.groupId = null;
         this.eventId = null;
@@ -34635,9 +34636,9 @@ class LiveScorecardSystem {
             // Clear input and update UI
             this.currentScore = '';
             this.renderHole();
-            this.refreshLeaderboard();
+            this.debouncedRefreshLeaderboard(); // Debounced to prevent lag
 
-            NotificationManager.show(`Team score ${score} saved for Hole ${this.currentHole}`, 'success');
+            NotificationManager.show(`Team score ${score} saved for all ${this.players.length} players on Hole ${this.currentHole}`, 'success');
 
             // Auto-advance to next hole after short delay
             clearTimeout(this.autoAdvanceTimeout);
@@ -34672,10 +34673,12 @@ class LiveScorecardSystem {
         this.renderHole();
 
         // Update leaderboard immediately
-        this.refreshLeaderboard();
+        this.debouncedRefreshLeaderboard(); // Debounced to prevent lag
 
-        // Update public pool progress (for multi-group competition)
-        await this.updatePublicPoolProgress(this.currentHole);
+        // Update public pool progress in background (don't block UI)
+        this.updatePublicPoolProgress(this.currentHole).catch(err =>
+            console.error('[LiveScorecard] Pool progress update failed:', err)
+        );
 
         // Auto-advance to next player IMMEDIATELY
         const currentIndex = this.players.findIndex(p => p.id === this.currentPlayerId);
@@ -35012,6 +35015,12 @@ class LiveScorecardSystem {
             this.showFinalizedScorecard();
             NotificationManager.show('Round completed!', 'success');
         } catch (error) {
+            // Remove loading indicator on error
+            const loadingIndicator = document.getElementById('endRoundLoadingIndicator');
+            if (loadingIndicator) {
+                loadingIndicator.remove();
+            }
+
             alert('ERROR showing scorecard: ' + error.message);
             console.error('[LiveScorecard] ERROR:', error);
         }
@@ -35132,6 +35141,7 @@ class LiveScorecardSystem {
     
             // Only save for players with LINE IDs
             if (!player.lineUserId || player.lineUserId.trim() === '') {
+                console.warn(`[LiveScorecard] Cannot save history for ${player.name} - no LINE ID`);
                 console.log(`[LiveScorecard] Skipping database save for ${player.name} - no LINE ID`);
                 return null;
             }
@@ -37104,7 +37114,59 @@ class LiveScorecardSystem {
         }
     }
 
-    async getGroupLeaderboard() {
+    calculateTeamHandicap() {
+        // Calculate team handicap based on number of players
+        // Standard USGA scramble handicap formula:
+        // 2-person: sum × 0.375
+        // 3-person: sum × 0.25
+        // 4-person: sum × 0.20
+        if (!this.players || this.players.length === 0) return 0;
+
+        const totalHcp = this.players.reduce((sum, p) => sum + (p.handicap || 0), 0);
+        const teamSize = this.players.length;
+
+        let multiplier;
+        if (teamSize === 2) {
+            multiplier = 0.375;
+        } else if (teamSize === 3) {
+            multiplier = 0.25;
+        } else if (teamSize === 4) {
+            multiplier = 0.20;
+        } else {
+            // Default to 4-person formula
+            multiplier = 0.20;
+        }
+
+        return Math.round(totalHcp * multiplier);
+    }
+
+        calculateTeamHandicap() {
+        // Calculate team handicap based on number of players
+        // Standard USGA scramble handicap formula:
+        // 2-person: sum × 0.375
+        // 3-person: sum × 0.25
+        // 4-person: sum × 0.20
+        if (!this.players || this.players.length === 0) return 0;
+
+        const totalHcp = this.players.reduce((sum, p) => sum + (p.handicap || 0), 0);
+        const teamSize = this.players.length;
+
+        let multiplier;
+        if (teamSize === 2) {
+            multiplier = 0.375;
+        } else if (teamSize === 3) {
+            multiplier = 0.25;
+        } else if (teamSize === 4) {
+            multiplier = 0.20;
+        } else {
+            // Default to 4-person formula
+            multiplier = 0.20;
+        }
+
+        return Math.round(totalHcp * multiplier);
+    }
+
+        async getGroupLeaderboard() {
         if (!this.groupId) return [];
 
         // Build leaderboard from LOCAL cache (instant, works offline)
@@ -37136,10 +37198,14 @@ class LiveScorecardSystem {
                     switch (format) {
                         case 'stableford':
                             // Thailand Stableford with net (default)
+                            // For scramble: use team handicap, not individual
+                            const handicapToUse = this.scoringFormats.includes('scramble')
+                                ? this.calculateTeamHandicap()
+                                : player.handicap;
                             totalStableford = engine.calculateStablefordTotal(
                                 scoresArray,
                                 this.courseData.holes,
-                                player.handicap,
+                                handicapToUse,
                                 true // useNet
                             );
                             break;
@@ -37272,7 +37338,28 @@ class LiveScorecardSystem {
         // Render multiple leaderboards - one for each selected format
         const leaderboardsHtml = this.scoringFormats.map((format, formatIndex) => {
             // Clone and sort leaderboard for this specific format
-            const sortedLeaderboard = [...leaderboard];
+            let sortedLeaderboard = [...leaderboard];
+
+            // SPECIAL HANDLING FOR SCRAMBLE: Show ONE team row, not individual players
+            if (format === 'scramble' && sortedLeaderboard.length > 0) {
+                // In scramble, all players have the SAME scores (team scores)
+                // So we combine them into ONE team entry
+                const firstPlayer = sortedLeaderboard[0];
+                const teamEntry = {
+                    player_id: 'team_' + this.groupId,
+                    player_name: 'Team: ' + this.players.map(p => p.name).join(', '),
+                    handicap: this.calculateTeamHandicap(),
+                    holes_played: firstPlayer.holes_played,
+                    total_gross: firstPlayer.total_gross,
+                    total_stableford: firstPlayer.total_stableford,
+                    team_handicap: this.calculateTeamHandicap(),
+                    scores: firstPlayer.scores,
+                    isTeam: true
+                };
+
+                // Replace entire leaderboard with single team entry
+                sortedLeaderboard = [teamEntry];
+            }
 
             // Sort based on format
             switch (format) {
@@ -37489,11 +37576,9 @@ class LiveScorecardSystem {
             // Special rendering for Scramble format
             if (format === 'scramble') {
                 // Calculate team handicap for each entry (assuming 2-person teams with 0.375 multiplier)
-                const calculateTeamHandicap = (players) => {
-                    if (!players || players.length === 0) return 0;
-                    const totalHcp = players.reduce((sum, p) => sum + (p.handicap || 0), 0);
-                    return Math.round(totalHcp * 0.375);
-                };
+                // Use LiveScorecardSystem's calculateTeamHandicap method
+                // (which handles 2/3/4 person teams correctly)
+                const teamHandicap = this.calculateTeamHandicap();
 
                 return `
                     <div class="mb-6 ${formatIndex > 0 ? 'mt-6 pt-6 border-t-4 border-gray-300' : ''}">
@@ -37516,7 +37601,7 @@ class LiveScorecardSystem {
                                     ${sortedLeaderboard.map((entry, index) => {
                                         const holesPlayed = entry.holes_played || 0;
                                         const thru = holesPlayed === 18 ? 'F' : holesPlayed === 0 ? '-' : holesPlayed.toString();
-                                        const teamHcp = entry.team_handicap || 0; // Assume this is calculated elsewhere
+                                        const teamHcp = teamHandicap; // Use calculated team handicap
                                         const grossScore = entry.total_gross || 0;
                                         const stablefordPoints = entry.total_stableford || 0; // Assume calculated with team HCP
                                         

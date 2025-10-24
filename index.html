@@ -34235,8 +34235,9 @@ class LiveScorecardSystem {
         // Try to create scorecards online, fall back to offline mode if needed
         let isOfflineMode = false;
 
-        for (const player of this.players) {
-            try {
+        // Create all scorecards in PARALLEL for speed (was taking 2+ mins for 4 players!)
+        try {
+            const scorecardPromises = this.players.map(async (player) => {
                 const scorecard = await window.SocietyGolfDB.createScorecard(
                     this.eventId,
                     player.id,
@@ -34252,7 +34253,7 @@ class LiveScorecardSystem {
                         course_name: this.courseData.name,
                         tee_marker: teeMarker,
                         player_name: player.name,
-                        scoring_format: JSON.stringify(this.scoringFormats) // Store as JSON array
+                        scoring_format: JSON.stringify(this.scoringFormats)
                     })
                     .eq('id', scorecard.id);
 
@@ -34261,15 +34262,25 @@ class LiveScorecardSystem {
                     throw updateError;
                 }
 
-                this.scorecards[player.id] = scorecard.id;
-            } catch (error) {
-                console.warn('[LiveScorecard] Online scorecard creation failed, switching to OFFLINE mode:', error);
+                return { playerId: player.id, scorecardId: scorecard.id };
+            });
 
-                // OFFLINE MODE: Create local scorecards
-                isOfflineMode = true;
-                this.scorecards = {}; // Reset any partial online scorecards
+            // Wait for ALL scorecard creations in parallel (MUCH faster!)
+            const results = await Promise.all(scorecardPromises);
 
-                for (const p of this.players) {
+            // Store scorecard IDs
+            results.forEach(({ playerId, scorecardId }) => {
+                this.scorecards[playerId] = scorecardId;
+            });
+
+        } catch (error) {
+            console.warn('[LiveScorecard] Online scorecard creation failed, switching to OFFLINE mode:', error);
+
+            // OFFLINE MODE: Create local scorecards
+            isOfflineMode = true;
+            this.scorecards = {}; // Reset any partial online scorecards
+
+            for (const p of this.players) {
                     // Generate temporary local scorecard ID
                     const localId = `local_${this.groupId}_${p.id}`;
                     this.scorecards[p.id] = localId;
@@ -34298,7 +34309,6 @@ class LiveScorecardSystem {
                 }
 
                 NotificationManager.show('🔌 Starting round OFFLINE - will sync when online', 'warning');
-                break; // Exit the outer loop
             }
         }
 
@@ -38949,22 +38959,26 @@ window.calculateScrambleHcp = function() {
     console.log('[Scramble HCP] Sorted handicaps:', sortedHandicaps);
 
     if (method === 'usga') {
-        // USGA Standard formulas
+        // SIMPLE MULTIPLIER (same as calculateTeamHandicap for consistency)
         const teamSize = players.length;
+        const totalHcp = handicaps.reduce((sum, h) => sum + h, 0);
+
+        let multiplier;
         if (teamSize === 2) {
-            teamHcp = (sortedHandicaps[0] * 0.35) + (sortedHandicaps[1] * 0.15);
-            details = `${sortedHandicaps[0]} × 35% + ${sortedHandicaps[1]} × 15%`;
+            multiplier = 0.375;
+            details = `Sum (${totalHcp}) × 37.5%`;
         } else if (teamSize === 3) {
-            teamHcp = (sortedHandicaps[0] * 0.30) + (sortedHandicaps[1] * 0.20) + (sortedHandicaps[2] * 0.10);
-            details = `${sortedHandicaps[0]} × 30% + ${sortedHandicaps[1]} × 20% + ${sortedHandicaps[2]} × 10%`;
+            multiplier = 0.25;
+            details = `Sum (${totalHcp}) × 25%`;
         } else if (teamSize === 4) {
-            teamHcp = (sortedHandicaps[0] * 0.25) + (sortedHandicaps[1] * 0.20) + (sortedHandicaps[2] * 0.15) + (sortedHandicaps[3] * 0.10);
-            details = `${sortedHandicaps[0]} × 25% + ${sortedHandicaps[1]} × 20% + ${sortedHandicaps[2]} × 15% + ${sortedHandicaps[3]} × 10%`;
+            multiplier = 0.20;
+            details = `Sum (${totalHcp}) × 20%`;
         } else {
-            const avgHandicap = sortedHandicaps.reduce((sum, h) => sum + h, 0) / sortedHandicaps.length;
-            teamHcp = avgHandicap * 0.20;
-            details = `Average (${avgHandicap.toFixed(1)}) × 20%`;
+            multiplier = 0.20;
+            details = `Sum (${totalHcp}) × 20%`;
         }
+
+        teamHcp = Math.round(totalHcp * multiplier);
     } else if (method === 'percentage') {
         // Percentage REDUCTION of average handicap
         const percent = parseFloat(document.getElementById('scrambleHcpPercent')?.value) || 25;

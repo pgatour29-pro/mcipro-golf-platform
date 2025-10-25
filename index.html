@@ -19286,7 +19286,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
 <body>
     <script>
-    console.log('%c🚀 PAGE VERSION: 2025-10-24-VIEW-DETAILS-SPEED-FIX', 'background: #00ff00; color: #000; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-10-24-START-ROUND-ULTRA-FAST', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
     // IMMEDIATE OAuth detection - runs before DOMContentLoaded
@@ -33959,28 +33959,28 @@ class LiveScorecardSystem {
         }
 
         try {
-            // Get course info (including scorecard_url)
-            
-            const { data: course, error: courseError } = await window.SupabaseDB.client
-                .from('courses')
-                .select('id, name, scorecard_url')
-                .eq('id', courseId)
-                .single();
-            
+            // PERFORMANCE: Get course info AND hole data in PARALLEL (was sequential causing lag!)
+            const [courseResult, holesResult] = await Promise.all([
+                // Get course info (including scorecard_url)
+                window.SupabaseDB.client
+                    .from('courses')
+                    .select('id, name, scorecard_url')
+                    .eq('id', courseId)
+                    .single(),
 
+                // Get hole data with tee marker
+                window.SupabaseDB.client
+                    .from('course_holes')
+                    .select('hole_number, par, stroke_index, yardage, tee_marker')
+                    .eq('course_id', courseId)
+                    .eq('tee_marker', teeMarker.toLowerCase())
+                    .order('hole_number')
+            ]);
+
+            const { data: course, error: courseError } = courseResult;
             if (courseError) throw courseError;
 
-            // FIXED: Get hole data with fallback for courses without tee markers
-            
-
-            // Try with tee marker first
-            let queryResult = await window.SupabaseDB.client
-                .from('course_holes')
-                .select('hole_number, par, stroke_index, yardage, tee_marker')
-                .eq('course_id', courseId)
-                .eq('tee_marker', teeMarker.toLowerCase())
-                .order('hole_number');
-
+            let queryResult = holesResult;
             let holes = queryResult.data;
             let holesError = queryResult.error;
 
@@ -35527,75 +35527,90 @@ Please screenshot this and contact support.`);
         this.publicPoolIds = [];
 
         try {
+            // PERFORMANCE: Create all pools in PARALLEL (was sequential causing 2-6 second lag!)
+            const poolPromises = [];
+
             // Create Skins pool
             if (createSkins) {
                 const pointsPerHole = parseInt(document.getElementById('skinsValueInput')?.value) || 100;
-                const result = await window.LiveGamesSystem.createPool({
-                    courseId: courseId,
-                    eventId: this.eventId,
-                    dateISO: today,
-                    type: 'skins',
-                    name: `Skins Game - ${pointsPerHole}pts/hole`,
-                    isPublic: true,
-                    config: {
-                        useNet: true,
-                        pointsPerHole: pointsPerHole,
-                        carryOver: true
-                    },
-                    createdBy: userId
-                });
-
-                if (result.success) {
-                    this.publicPoolIds.push({ type: 'skins', poolId: result.pool.id });
-                    // Auto-join creator
-                    await window.LiveGamesSystem.joinPool(result.pool.id, userId);
-                    console.log('[LiveScorecard] Created and joined Skins pool:', result.pool.id);
-                }
+                poolPromises.push(
+                    window.LiveGamesSystem.createPool({
+                        courseId: courseId,
+                        eventId: this.eventId,
+                        dateISO: today,
+                        type: 'skins',
+                        name: `Skins Game - ${pointsPerHole}pts/hole`,
+                        isPublic: true,
+                        config: {
+                            useNet: true,
+                            pointsPerHole: pointsPerHole,
+                            carryOver: true
+                        },
+                        createdBy: userId
+                    }).then(async (result) => {
+                        if (result.success) {
+                            await window.LiveGamesSystem.joinPool(result.pool.id, userId);
+                            console.log('[LiveScorecard] Created and joined Skins pool:', result.pool.id);
+                            return { type: 'skins', poolId: result.pool.id };
+                        }
+                        return null;
+                    })
+                );
             }
 
             // Create Match Play pool
             if (createMatchPlay) {
-                const result = await window.LiveGamesSystem.createPool({
-                    courseId: courseId,
-                    eventId: this.eventId,
-                    dateISO: today,
-                    type: 'matchplay',
-                    name: `Match Play - Open`,
-                    isPublic: true,
-                    config: {
-                        useNet: true
-                    },
-                    createdBy: userId
-                });
-
-                if (result.success) {
-                    this.publicPoolIds.push({ type: 'matchplay', poolId: result.pool.id });
-                    await window.LiveGamesSystem.joinPool(result.pool.id, userId);
-                    console.log('[LiveScorecard] Created and joined Match Play pool:', result.pool.id);
-                }
+                poolPromises.push(
+                    window.LiveGamesSystem.createPool({
+                        courseId: courseId,
+                        eventId: this.eventId,
+                        dateISO: today,
+                        type: 'matchplay',
+                        name: `Match Play - Open`,
+                        isPublic: true,
+                        config: {
+                            useNet: true
+                        },
+                        createdBy: userId
+                    }).then(async (result) => {
+                        if (result.success) {
+                            await window.LiveGamesSystem.joinPool(result.pool.id, userId);
+                            console.log('[LiveScorecard] Created and joined Match Play pool:', result.pool.id);
+                            return { type: 'matchplay', poolId: result.pool.id };
+                        }
+                        return null;
+                    })
+                );
             }
 
             // Create Nassau pool
             if (createNassau) {
-                const result = await window.LiveGamesSystem.createPool({
-                    courseId: courseId,
-                    eventId: this.eventId,
-                    dateISO: today,
-                    type: 'nassau',
-                    name: `Nassau - Open`,
-                    isPublic: true,
-                    config: {
-                        useNet: true
-                    },
-                    createdBy: userId
-                });
-
-                if (result.success) {
-                    this.publicPoolIds.push({ type: 'nassau', poolId: result.pool.id });
-                    await window.LiveGamesSystem.joinPool(result.pool.id, userId);
-                    console.log('[LiveScorecard] Created and joined Nassau pool:', result.pool.id);
-                }
+                poolPromises.push(
+                    window.LiveGamesSystem.createPool({
+                        courseId: courseId,
+                        eventId: this.eventId,
+                        dateISO: today,
+                        type: 'nassau',
+                        name: `Nassau - Open`,
+                        isPublic: true,
+                        config: {
+                            useNet: true
+                        },
+                        createdBy: userId
+                    }).then(async (result) => {
+                        if (result.success) {
+                            await window.LiveGamesSystem.joinPool(result.pool.id, userId);
+                            console.log('[LiveScorecard] Created and joined Nassau pool:', result.pool.id);
+                            return { type: 'nassau', poolId: result.pool.id };
+                        }
+                        return null;
+                    })
+                );
             }
+
+            // Wait for all pools to be created and joined in parallel
+            const results = await Promise.all(poolPromises);
+            this.publicPoolIds = results.filter(r => r !== null);
 
             if (this.publicPoolIds.length > 0) {
                 NotificationManager.show(`✅ Created ${this.publicPoolIds.length} public game${this.publicPoolIds.length > 1 ? 's' : ''} - others can now join!`, 'success');

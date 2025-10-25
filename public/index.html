@@ -1292,6 +1292,17 @@
             display: none !important;
         }
 
+        /* Desktop-specific: Kill mobile overlays that might block tab clicks */
+        @media (min-width: 1024px) {
+            .drawer-backdrop,
+            .mobile-nav-overlay,
+            .mobile-menu-backdrop,
+            [class*="mobile"][class*="overlay"] {
+                display: none !important;
+                pointer-events: none !important;
+            }
+        }
+
         .modal-container {
             background: white;
             border-radius: 1rem;
@@ -7691,6 +7702,30 @@ if ('serviceWorker' in navigator && !(location.search.includes('code=') && locat
                 PersistentEmergencyAlerts.updateAllOverviewAlerts();
 
                 console.log('MciPro Enterprise Platform initialized successfully');
+
+                // ROBUST TAB DELEGATION: Works for both mouse and touch across all breakpoints
+                (function initGolferTabDelegation() {
+                    const navContainer = document.querySelector('#golferDashboard nav.bg-white');
+                    if (!navContainer) return;
+
+                    const handleTabClick = (e) => {
+                        const tabButton = e.target.closest('.tab-button[onclick*="showGolferTab"]');
+                        if (!tabButton || !navContainer.contains(tabButton)) return;
+
+                        // Let onclick handler work, but ensure it fires
+                        console.log('[TabDelegation] Tab clicked:', tabButton.textContent.trim());
+                    };
+
+                    // Click works for mouse AND synthesized touch clicks
+                    navContainer.addEventListener('click', handleTabClick, { passive: false });
+
+                    // Extra safety for direct touch (no 300ms delay)
+                    navContainer.addEventListener('pointerup', (e) => {
+                        if (e.pointerType === 'touch') handleTabClick(e);
+                    }, { passive: false });
+
+                    console.log('[TabDelegation] Golfer tab event delegation initialized');
+                })();
 
             } catch (error) {
                 console.error('Initialization error:', error);

@@ -7,7 +7,7 @@ CREATE OR REPLACE FUNCTION public.ensure_direct_conversation(
   me uuid,
   partner uuid
 )
-RETURNS TABLE(room_id uuid, room_slug text)
+RETURNS TAaBLE(room_id uuid, room_slug text)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public

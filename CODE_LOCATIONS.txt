@@ -1,0 +1,118 @@
+MCIPRO ROUND SAVING - CRITICAL CODE LOCATIONS
+==============================================
+
+1. END ROUND BUTTON
+   File: /c/Users/pete/Documents/MciPro/index.html
+   Line: 21558
+   Handler: onclick="LiveScorecardManager.completeRound()"
+
+2. COMPLETE ROUND FUNCTION
+   File: /c/Users/pete/Documents/MciPro/index.html
+   Lines: 35007-35024
+   Key Actions:
+     - Show finalized scorecard immediately
+     - Call distributeRoundScores() after 1000ms delay
+
+3. ROUND TYPE DETECTION
+   File: /c/Users/pete/Documents/MciPro/index.html
+   Lines: 34210-34232
+   Key Conditions:
+     - if eventSelectValue === "" -> roundType = "practice"
+     - if eventSelectValue === "private" -> roundType = "private"
+     - else -> roundType = "society"
+
+4. DISTRIBUTE ROUND SCORES
+   File: /c/Users/pete/Documents/MciPro/index.html
+   Lines: 35226-35280
+   Key Functions:
+     - Get all players with LINE IDs
+     - Call saveRoundToHistory() for each
+     - Call RPC distribute_round_to_players()
+
+5. SAVE ROUND TO HISTORY
+   File: /c/Users/pete/Documents/MciPro/index.html
+   Lines: 35025-35225
+   Key Validation Points:
+     - Line 35028-35034: Check holesPlayed > 0 (BLOCKS if 0)
+     - Line 35122-35127: Check player.lineUserId (CRITICAL BLOCKER)
+     - Line 35129-35155: INSERT into rounds table
+     - Line 35157-35215: INSERT into round_holes table
+
+6. DELETE ROUND
+   File: /c/Users/pete/Documents/MciPro/index.html
+   Lines: 29018-29067
+   Supports:
+     - Database deletion (delete round_holes, then rounds)
+     - localStorage deletion
+
+7. LOAD ROUND HISTORY TABLE
+   File: /c/Users/pete/Documents/MciPro/index.html
+   Lines: 28471-28800
+   Action: Query rounds table for current user
+   If empty: Database save was blocked
+
+8. ROUNDS TABLE SCHEMA
+   File: /c/Users/pete/Documents/MciPro/sql/02_create_round_history_system.sql
+   Key Fields:
+     - id (UUID)
+     - golfer_id (TEXT) - CRITICAL: must match auth.uid()::text
+     - type (TEXT) - 'practice' | 'society' | 'tournament'
+     - scoring_formats (JSONB)
+     - format_scores (JSONB)
+
+9. ROUND_HOLES TABLE SCHEMA
+   File: /c/Users/pete/Documents/MciPro/sql/02_create_round_history_system.sql
+   Key Fields:
+     - round_id (UUID FK)
+     - hole_number (1-18)
+     - gross_score, net_score, stableford_points
+
+10. RLS POLICIES
+    File: /c/Users/pete/Documents/MciPro/sql/02_create_round_history_system.sql
+    Policy: golfer_id = auth.uid()::text
+    Effect: User can only see their own rounds
+
+11. RPC FUNCTION
+    File: /c/Users/pete/Documents/MciPro/sql/03_enhance_rounds_multi_format.sql
+    Function: distribute_round_to_players(p_round_id, p_player_ids)
+    Action: Updates shared_with array in rounds table
+
+12. SCRAMBLE VALIDATION
+    File: /c/Users/pete/Documents/MciPro/index.html
+    Line: 35020-35024 (in completeRound)
+    Check: if minDrivesPerPlayer > 0
+    Block: Exits without saving if not met
+
+
+CONDITIONS THAT BLOCK SAVES
+===========================
+
+CRITICAL:
+  1. No LINE ID (Line 35122) - MOST COMMON
+  2. No scores recorded (Line 35028)
+  3. Supabase RLS blocks insert (Line 35145)
+  4. Course not selected (Line 35037)
+  5. No formats selected (Line 34190)
+
+SCRAMBLE:
+  6. Minimum drives not met (Line 35020)
+
+
+DEBUGGING CONSOLE COMMANDS
+===========================
+
+AppState.currentUser?.lineUserId
+  -> Check if user logged in with LINE
+
+LiveScorecardManager.scoresCache
+  -> Check if scores were entered
+
+LiveScorecardManager.roundType
+  -> Check if round type was set
+
+LiveScorecardManager.players[0].lineUserId
+  -> Check if player has LINE ID
+
+LiveScorecardManager.scrambleDriveCount
+  -> Check drive tracking in scramble
+

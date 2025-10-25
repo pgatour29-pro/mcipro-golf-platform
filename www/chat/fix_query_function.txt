@@ -1,0 +1,28 @@
+async function queryContactsServer(q) {
+  if (!q || q.length < 2) return null;
+  try {
+    searchAbortCtrl?.abort();
+    searchAbortCtrl = new AbortController();
+    const supabase = await getSupabaseClient();
+    // FIXED: Query profiles table directly (has both Supabase UUID and LINE ID)
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, display_name, username, line_user_id')
+      .or(\`display_name.ilike.%\${q}%,username.ilike.%\${q}%,line_user_id.ilike.%\${q}%\`)
+      .limit(25)
+      .abortSignal(searchAbortCtrl.signal);
+    if (error) throw error;
+
+    // Already in correct format - no transformation needed
+    return (data || [])
+      .filter(u => !!u.id && !!u.line_user_id)
+      .map(u => ({
+        id: u.id,
+        display_name: u.display_name || u.username || 'User',
+        username: u.username || u.line_user_id,
+        line_user_id: u.line_user_id
+      }));
+  } catch {
+    return null;
+  }
+}

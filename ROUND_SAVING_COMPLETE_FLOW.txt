@@ -1,0 +1,197 @@
+MciPro ROUND SAVING - COMPLETE ANALYSIS
+========================================
+
+FILE LOCATIONS WITH LINE NUMBERS
+=================================
+
+1. End Round Button
+   /c/Users/pete/Documents/MciPro/index.html:21558-21566
+   onclick="LiveScorecardManager.completeRound()"
+
+2. Complete Round Function (MAIN ENTRY)
+   /c/Users/pete/Documents/MciPro/index.html:35007-35024
+   - Shows finalized scorecard immediately
+   - Calls distributeRoundScores() in background (1000ms delay)
+
+3. Round Type Detection
+   /c/Users/pete/Documents/MciPro/index.html:34210-34232
+   if eventSelectValue === "" -> roundType = "practice"
+   if eventSelectValue === "private" -> roundType = "private"
+   else -> roundType = "society"
+
+4. Distribute Round Scores
+   /c/Users/pete/Documents/MciPro/index.html:35226-35280
+   - Gets all players with LINE IDs
+   - Calls saveRoundToHistory() for each player
+   - Calls RPC distribute_round_to_players() for each saved round
+
+5. Save Round to History (ACTUAL DATABASE SAVE)
+   /c/Users/pete/Documents/MciPro/index.html:35025-35225
+   VALIDATION CHECKS:
+   - Line 35028-35034: if holesPlayed === 0, return null (BLOCKS)
+   - Line 35122-35127: if !player.lineUserId, return null (CRITICAL BLOCKER!)
+   
+   SAVE STEPS:
+   - Collect course & event info (35036-35044)
+   - Calculate format scores (35046-35105)
+   - Get scramble config if needed (35107-35120)
+   - INSERT INTO rounds table (35129-35155)
+   - INSERT INTO round_holes table (35157-35215)
+   - Return round.id if successful
+
+6. Delete Round
+   /c/Users/pete/Documents/MciPro/index.html:29018-29067
+   - Deletes from database (delete round_holes, then rounds)
+   - Or deletes from localStorage
+   - Both sources fully supported
+
+7. Load Round History Table
+   /c/Users/pete/Documents/MciPro/index.html:28471-28800
+   - Queries rounds table for current user
+   - If empty = database save was blocked
+
+CONDITIONS BLOCKING SAVES
+===========================
+
+CRITICAL (Most Common):
+1. NO LINE ID for player (Line 35122-35127)
+   - Player must be authenticated with LINE
+   - Check console: AppState.currentUser?.lineUserId
+   - THIS IS THE #1 REASON ROUNDS DON'T SAVE
+
+2. NO SCORES RECORDED (Line 35028-35034)
+   - Must have at least 1 hole with a score
+   - Check console: LiveScorecardManager.scoresCache
+
+3. SUPABASE RLS BLOCKS INSERT (Line 35145, 35211)
+   - golfer_id must match auth.uid()::text
+   - Check Supabase RLS policies
+
+4. COURSE NOT SELECTED (Line 35037)
+   - courseId empty
+   - Must select a course first
+
+5. NO FORMATS SELECTED (Line 34190)
+   - Must select at least 1 scoring format
+
+SCRAMBLE-SPECIFIC:
+6. MINIMUM DRIVES NOT MET (Line 35020-35024)
+   - If minDrivesPerPlayer > 0
+   - Each player must track enough drives
+   - completeRound() exits early without saving
+
+DATABASE SCHEMA
+===============
+
+ROUNDS TABLE (/c/Users/pete/Documents/MciPro/sql/02_create_round_history_system.sql):
+  id (UUID)
+  golfer_id (TEXT) - LINE user ID (CRITICAL: must match auth.uid()::text)
+  course_id, course_name
+  type - 'practice' | 'society' | 'tournament'
+  society_event_id (UUID)
+  started_at, completed_at
+  status - 'completed' | 'in_progress' | 'abandoned'
+  total_gross, total_net, total_stableford
+  handicap_used, tee_marker
+  scoring_formats (JSONB)
+  format_scores (JSONB)
+  scramble_config (JSONB)
+  shared_with (TEXT[]) - Array of player IDs
+
+ROUND_HOLES TABLE:
+  round_id (UUID FK)
+  hole_number (1-18)
+  par, stroke_index, gross_score, net_score, stableford_points
+  scramble_drive_player, scramble_putt_player
+
+RLS POLICY:
+  golfer_id = auth.uid()::text (user can only see own rounds)
+
+COMPLETE SAVE FLOW
+==================
+
+Button Click (21558)
+    |
+    v
+completeRound() (35007)
+    |
+    +-- Show finalized scorecard
+    |
+    +-- After 1000ms:
+        |
+        v
+    distributeRoundScores() (35226)
+        |
+        +-- Get players with LINE IDs
+        |
+        +-- For each player:
+        |   |
+        |   v
+        |   saveRoundToHistory() (35025)
+        |   |
+        |   +-- Check holesPlayed > 0 (35028) BLOCKS if 0
+        |   +-- Check player.lineUserId exists (35122) BLOCKS if missing
+        |   +-- Calculate format scores (35046)
+        |   +-- INSERT rounds table (35129)
+        |   +-- INSERT round_holes table (35157)
+        |   +-- Return round.id
+        |
+        +-- For each round:
+        |   |
+        |   v
+        |   RPC distribute_round_to_players() (35246)
+        |   |
+        |   +-- Update shared_with array
+        |
+        +-- Show success notification
+
+Result: Round visible in Round History tab
+
+RECENT FIXES
+============
+
+2025-10-21: Wrong button handler
+  - End Round button called endRound() instead of completeRound()
+  - Scorecard showed but didn't save
+  - FIXED: Changed onclick to completeRound()
+
+2025-10-23: Practice rounds saved as 'society'
+  - Old logic: roundType = isPrivateRound ? 'private' : 'society'
+  - Practice rounds (isPrivateRound=false) became 'society'
+  - FIXED: Explicit if/else for all 3 types (lines 34210-34232)
+
+2025-10-23: Database rounds couldn't delete
+  - deleteRound() only handled localStorage
+  - FIXED: Added proper database delete logic with FK cascade
+
+2025-10-23: Edit button shown for completed rounds
+  - User wants rounds to be final after save
+  - FIXED: Removed edit button from UI
+
+DEBUGGING STEPS
+===============
+
+[ ] 1. Check user logged in
+    Console: AppState.currentUser?.lineUserId
+    Should return value like "U1234567..."
+
+[ ] 2. Check scores entered
+    Console: LiveScorecardManager.scoresCache
+    Should be: { playerId: { 1: score, 2: score, ... } }
+
+[ ] 3. Check round type set
+    Console: LiveScorecardManager.roundType
+    Should be: 'practice' | 'private' | 'society'
+
+[ ] 4. Check player has LINE ID
+    Console: LiveScorecardManager.players[0].lineUserId
+    Should have value
+
+[ ] 5. Check database for round
+    Supabase Dashboard -> Editor -> rounds table
+    Filter by golfer_id
+    If empty: RLS blocking
+
+[ ] 6. Check for scramble issues
+    Console: this.scrambleDriveCount
+    Each player should have >= minDrivesPerPlayer

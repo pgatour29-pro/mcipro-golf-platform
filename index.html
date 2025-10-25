@@ -43668,6 +43668,23 @@ const CourseAdminSystem = {
 
             const statusBadge = statusColors[caddy.availability_status] || 'bg-gray-100 text-gray-800';
 
+            // Role-based action buttons
+            const isSuperAdmin = this.userRole === 'super_admin';
+            const actionButtons = `
+                <button onclick="CourseAdminSystem.editCaddy('${caddy.id}')"
+                    class="text-blue-600 hover:text-blue-800 font-medium"
+                    title="Edit caddy details">
+                    Edit
+                </button>
+                ${isSuperAdmin ? `
+                    <button onclick="CourseAdminSystem.deleteCaddy('${caddy.id}')"
+                        class="text-red-600 hover:text-red-800 ml-3 font-medium"
+                        title="Delete caddy (Super Admin only)">
+                        Delete
+                    </button>
+                ` : ''}
+            `;
+
             return `
                 <tr class="hover:bg-gray-50">
                     <td class="px-4 py-3 text-sm font-medium text-gray-900">${caddy.caddy_number}</td>
@@ -43678,18 +43695,15 @@ const CourseAdminSystem = {
                             ${caddy.rating}
                         </div>
                     </td>
-                    <td class="px-4 py-3 text-sm text-gray-600">${caddy.experience_years} years</td>
-                    <td class="px-4 py-3 text-sm text-gray-600">${caddy.specialty || 'General'}</td>
+                    <td class="px-4 py-3 text-sm text-gray-600 hidden md:table-cell">${caddy.experience_years} years</td>
+                    <td class="px-4 py-3 text-sm text-gray-600 hidden lg:table-cell">${caddy.specialty || 'General'}</td>
                     <td class="px-4 py-3">
                         <span class="px-2 py-1 text-xs font-medium rounded-full ${statusBadge}">
                             ${caddy.availability_status.replace('_', ' ')}
                         </span>
                     </td>
-                    <td class="px-4 py-3 text-sm">
-                        <button onclick="CourseAdminSystem.toggleCaddyAvailability('${caddy.id}')"
-                            class="text-blue-600 hover:text-blue-800 mr-2">
-                            Toggle
-                        </button>
+                    <td class="px-4 py-3 text-sm whitespace-nowrap">
+                        ${actionButtons}
                     </td>
                 </tr>
             `;
@@ -43831,11 +43845,7 @@ const CourseAdminSystem = {
     // ACTIONS (Placeholders for full implementation)
     // ===========================================
     async toggleCaddyAvailability(caddyId) {
-        if (this.userRole !== 'super_admin') {
-            alert('Only Super Admin can change caddy status');
-            return;
-        }
-
+        // Both Super Admin and Staff can edit caddy status
         try {
             const caddy = this.allCaddies.find(c => c.id === caddyId);
             const newStatus = caddy.availability_status === 'available' ? 'off_duty' : 'available';
@@ -43854,6 +43864,48 @@ const CourseAdminSystem = {
         } catch (error) {
             console.error('[CourseAdmin] Error toggling caddy:', error);
             alert('Failed to update caddy status');
+        }
+    },
+
+    async editCaddy(caddyId) {
+        // Both Super Admin and Staff can edit caddies
+        const caddy = this.allCaddies.find(c => c.id === caddyId);
+        if (!caddy) return;
+
+        alert(`Edit Caddy Modal - Coming Soon!\n\nEditing: ${caddy.name}\n\nYou'll be able to update:\n- Name\n- Rating\n- Experience\n- Specialty\n- Languages`);
+    },
+
+    async deleteCaddy(caddyId) {
+        // ONLY Super Admin can delete caddies
+        if (this.userRole !== 'super_admin') {
+            alert('⚠️ Permission Denied\n\nOnly Super Admin can delete caddies.\n\nStaff can add and edit caddies, but deletion requires Super Admin access.');
+            return;
+        }
+
+        const caddy = this.allCaddies.find(c => c.id === caddyId);
+        if (!caddy) return;
+
+        if (!confirm(`⚠️ Delete Caddy?\n\nAre you sure you want to permanently delete:\n${caddy.name} (#${caddy.caddy_number})\n\nThis action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            const { error } = await window.SupabaseDB.client
+                .from('caddies')
+                .delete()
+                .eq('id', caddyId);
+
+            if (error) throw error;
+
+            console.log(`[CourseAdmin] Deleted caddy ${caddyId}`);
+            alert(`✅ Caddy deleted successfully`);
+
+            await this.loadCaddies();
+            await this.loadStats();
+
+        } catch (error) {
+            console.error('[CourseAdmin] Error deleting caddy:', error);
+            alert('Failed to delete caddy');
         }
     },
 
@@ -43890,11 +43942,7 @@ const CourseAdminSystem = {
     },
 
     async approveWaitlist(requestId) {
-        if (this.userRole !== 'super_admin') {
-            alert('Only Super Admin can approve waitlist requests');
-            return;
-        }
-
+        // Both Super Admin and Staff can approve waitlist requests
         try {
             const { error } = await window.SupabaseDB.client
                 .from('caddy_waitlist')
@@ -43920,11 +43968,7 @@ const CourseAdminSystem = {
     },
 
     async denyWaitlist(requestId) {
-        if (this.userRole !== 'super_admin') {
-            alert('Only Super Admin can deny waitlist requests');
-            return;
-        }
-
+        // Both Super Admin and Staff can deny waitlist requests
         try {
             const { error } = await window.SupabaseDB.client
                 .from('caddy_waitlist')
@@ -43947,10 +43991,7 @@ const CourseAdminSystem = {
     },
 
     openAddCaddyModal() {
-        if (this.userRole !== 'super_admin') {
-            alert('Only Super Admin can add new caddies');
-            return;
-        }
+        // Both Super Admin and Staff can add caddies
         alert('Add Caddy Modal - Coming Soon!\n\nThis will open a form to add a new caddy to your course.');
     },
 

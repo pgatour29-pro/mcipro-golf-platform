@@ -1,7 +1,7 @@
 // SERVICE WORKER - Offline-First Caching for MciPro Golf Platform
 // DEPLOYMENT VERSION: 2025-10-21-CACHE-FIX
 
-const BUILD_TIMESTAMP = '2025-10-25T11:55:00Z'; // UPDATE THIS ON EVERY DEPLOYMENT
+const BUILD_TIMESTAMP = '2025-10-25T15:59:42Z'; // UPDATE THIS ON EVERY DEPLOYMENT
 const CACHE_VERSION = `mcipro-v${BUILD_TIMESTAMP}`;
 const CACHE_NAME = CACHE_VERSION;
 
@@ -9,7 +9,6 @@ const CACHE_NAME = CACHE_VERSION;
 const NEVER_CACHE = [
     '/index.html',
     '/',
-    '/chat/', // Chat files not deployed - prevent caching errors
 ];
 
 // API endpoints
@@ -99,15 +98,10 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Chat files: NEVER cache, fail silently on 404
+    // Chat files: NEVER cache
     if (url.pathname.startsWith('/chat/')) {
-        console.log('[ServiceWorker] Chat file - skipping (not deployed):', url.pathname);
-        event.respondWith(
-            fetch(request, { cache: 'no-store' }).catch(() => {
-                // Return empty response for chat files to prevent console errors
-                return new Response('', { status: 404, statusText: 'Chat system not deployed' });
-            })
-        );
+        console.log('[ServiceWorker] Chat file - bypassing cache:', url.pathname);
+        event.respondWith(fetch(request, { cache: 'no-store' }));
         return;
     }
 

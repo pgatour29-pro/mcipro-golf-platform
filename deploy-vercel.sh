@@ -20,9 +20,17 @@ echo "📅 Build Timestamp: $BUILD_TIMESTAMP"
 echo "🔄 Updating service worker version..."
 if [ -f "sw.js" ]; then
     sed -i "s/const BUILD_TIMESTAMP = '.*'/const BUILD_TIMESTAMP = '$BUILD_TIMESTAMP'/" sw.js
-    echo "✅ Service worker updated"
+    echo "✅ Root service worker updated"
 else
     echo "⚠️  Warning: sw.js not found in current directory"
+fi
+
+# Also update public/sw.js (this is what Vercel deploys)
+if [ -f "public/sw.js" ]; then
+    sed -i "s/const BUILD_TIMESTAMP = '.*'/const BUILD_TIMESTAMP = '$BUILD_TIMESTAMP'/" public/sw.js
+    echo "✅ Public service worker updated"
+else
+    echo "⚠️  Warning: public/sw.js not found"
 fi
 
 # Git operations

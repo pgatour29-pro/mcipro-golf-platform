@@ -27,7 +27,6 @@
 
     <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
     <script src="https://static.line-scdn.net/liff/edge/2.1/sdk.js"></script>
-    <script src="js/scorecardProfileLoader.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <!-- OpenStreetMap with Leaflet (Free Alternative) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
@@ -13757,6 +13756,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
 
+                // Handle Caddi Bookings filters
+                if (this.currentFilter === 'caddi-bookings' || this.currentFilter === 'caddi-waitlist' || this.currentFilter === 'caddi-history') {
+                    this.renderCaddiBookings(container, emptyState);
+                    return;
+                }
+
                 // CRITICAL FIX: Render from bookings directly (single source of truth)
                 // Load from localStorage if BookingManager.bookings is empty
                 let bookings = BookingManager.bookings || [];
@@ -13926,6 +13931,159 @@ document.addEventListener('DOMContentLoaded', function() {
                 groupedBookings.sort((a, b) => new Date(a.teeTime) - new Date(b.teeTime));
 
                 container.innerHTML = groupedBookings.map(group => this.createGroupedScheduleItem(group)).join('');
+            },
+
+            async renderCaddiBookings(container, emptyState) {
+                console.log('[renderCaddiBookings] Rendering caddi bookings for filter:', this.currentFilter);
+
+                // Load caddy bookings from GolferCaddyBooking module
+                if (!window.GolferCaddyBooking) {
+                    console.error('[renderCaddiBookings] GolferCaddyBooking module not available');
+                    container.innerHTML = '<div class="text-center py-12 text-gray-500">Caddy booking system not available</div>';
+                    return;
+                }
+
+                await window.GolferCaddyBooking.loadMyBookings();
+                const bookings = window.GolferCaddyBooking.myBookings || [];
+                console.log('[renderCaddiBookings] Total bookings loaded:', bookings.length);
+
+                let filteredBookings = [];
+                let title = '';
+                let icon = '';
+                let emptyMessage = '';
+
+                if (this.currentFilter === 'caddi-bookings') {
+                    // Active bookings (pending, confirmed)
+                    filteredBookings = bookings.filter(b => b.status === 'pending' || b.status === 'confirmed');
+                    title = 'My Caddi Bookings';
+                    icon = 'support_agent';
+                    emptyMessage = 'No active caddy bookings. Click "Book New Caddi" to get started!';
+                } else if (this.currentFilter === 'caddi-waitlist') {
+                    // Waitlist bookings
+                    filteredBookings = bookings.filter(b => b.status === 'waitlist');
+                    title = 'Caddi Waitlist';
+                    icon = 'schedule';
+                    emptyMessage = 'No caddies on your waitlist.';
+                } else if (this.currentFilter === 'caddi-history') {
+                    // Completed or cancelled bookings
+                    filteredBookings = bookings.filter(b => b.status === 'completed' || b.status === 'cancelled');
+                    title = 'Caddi History';
+                    icon = 'history';
+                    emptyMessage = 'No past caddy bookings.';
+                }
+
+                console.log('[renderCaddiBookings] Filtered bookings:', filteredBookings.length);
+
+                // Render complete content in one go
+                if (filteredBookings.length === 0) {
+                    container.innerHTML = `
+                        <div class="mb-6">
+                            <h2 class="text-2xl font-bold text-gray-900 flex items-center gap-3">
+                                <span class="material-symbols-outlined text-3xl text-emerald-600">${icon}</span>
+                                ${title}
+                            </h2>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-sm border p-12 text-center">
+                            <span class="material-symbols-outlined text-6xl text-gray-300 mb-4 block">${icon}</span>
+                            <p class="text-gray-600 mb-4">${emptyMessage}</p>
+                            ${this.currentFilter === 'caddi-bookings' ? `
+                                <button onclick="showGolferTab('caddy', event)" class="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold rounded-xl shadow-lg transition-all">
+                                    <span class="material-symbols-outlined text-sm align-middle mr-2">add_circle</span>
+                                    Book New Caddi
+                                </button>
+                            ` : ''}
+                        </div>
+                    `;
+                    console.log('[renderCaddiBookings] Rendered empty state');
+                    return;
+                }
+
+                // Render bookings
+                const bookingsHTML = filteredBookings.map(booking => {
+                    const statusColors = {
+                        pending: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+                        confirmed: 'bg-green-100 text-green-800 border-green-300',
+                        completed: 'bg-blue-100 text-blue-800 border-blue-300',
+                        cancelled: 'bg-red-100 text-red-800 border-red-300',
+                        waitlist: 'bg-purple-100 text-purple-800 border-purple-300'
+                    };
+
+                    const statusColor = statusColors[booking.status] || 'bg-gray-100 text-gray-800 border-gray-300';
+                    const caddyPhoto = booking.caddies?.photo_url || '/images/caddies/default.jpg';
+                    const caddyName = booking.caddies?.name || 'Caddy';
+                    const caddyNumber = booking.caddies?.caddy_number || '---';
+                    const rating = booking.caddies?.rating || 'N/A';
+
+                    return `
+                        <div class="bg-white rounded-xl shadow-sm border p-6 mb-4 hover:shadow-md transition-shadow">
+                            <div class="flex flex-col md:flex-row md:items-center gap-4">
+                                <!-- Caddy Photo -->
+                                <div class="flex-shrink-0">
+                                    <img src="${caddyPhoto}" alt="${caddyName}" class="w-20 h-20 rounded-xl object-cover border-2 border-emerald-100">
+                                </div>
+
+                                <!-- Booking Details -->
+                                <div class="flex-1">
+                                    <div class="flex items-start justify-between mb-3">
+                                        <div>
+                                            <h3 class="text-lg font-bold text-gray-900">${caddyName}</h3>
+                                            <p class="text-sm text-gray-600">Caddy #${caddyNumber} • ${booking.course_name || 'Golf Course'}</p>
+                                        </div>
+                                        <span class="px-3 py-1 rounded-full text-xs font-semibold border ${statusColor}">
+                                            ${booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
+                                        </span>
+                                    </div>
+
+                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                                        <div class="flex items-center text-gray-600">
+                                            <span class="material-symbols-outlined text-sm mr-2">calendar_today</span>
+                                            <span>${new Date(booking.booking_date).toLocaleDateString()}</span>
+                                        </div>
+                                        <div class="flex items-center text-gray-600">
+                                            <span class="material-symbols-outlined text-sm mr-2">schedule</span>
+                                            <span>${booking.tee_time || 'TBD'}</span>
+                                        </div>
+                                        <div class="flex items-center text-gray-600">
+                                            <span class="material-symbols-outlined text-sm mr-2">golf_course</span>
+                                            <span>${booking.holes || 18} Holes</span>
+                                        </div>
+                                        <div class="flex items-center text-gray-600">
+                                            <span class="material-symbols-outlined text-sm mr-2" style="font-variation-settings: 'FILL' 1;">star</span>
+                                            <span>${rating}</span>
+                                        </div>
+                                    </div>
+
+                                    ${booking.special_requests ? `
+                                        <div class="mt-3 p-3 bg-gray-50 rounded-lg">
+                                            <p class="text-sm text-gray-700"><strong>Special Requests:</strong> ${booking.special_requests}</p>
+                                        </div>
+                                    ` : ''}
+                                </div>
+
+                                <!-- Actions -->
+                                ${booking.status === 'pending' || booking.status === 'confirmed' ? `
+                                    <div class="flex gap-2">
+                                        <button onclick="GolferCaddyBooking.cancelBooking('${booking.id}')" class="flex items-center gap-2 px-4 py-2 rounded-xl border border-red-300 text-red-700 hover:bg-red-50 transition-all text-sm font-medium">
+                                            <span class="material-symbols-outlined text-sm">cancel</span>
+                                            <span>Cancel</span>
+                                        </button>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                container.innerHTML = `
+                    <div class="mb-6">
+                        <h2 class="text-2xl font-bold text-gray-900 flex items-center gap-3">
+                            <span class="material-symbols-outlined text-3xl text-emerald-600">${icon}</span>
+                            ${title}
+                        </h2>
+                    </div>
+                    ${bookingsHTML}
+                `;
+                console.log('[renderCaddiBookings] Rendered', filteredBookings.length, 'bookings');
             },
 
             createGroupedScheduleItem(group) {
@@ -19307,8 +19465,29 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
 <body>
     <script>
-    console.log('%c🚀 PAGE VERSION: 2025-10-25-SETTINGS-TAB-ADMIN', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-10-25-ENTERPRISE-UI-COMPLETE', 'background: #10b981; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
+
+    // FORCE UNREGISTER OLD SERVICE WORKERS
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for(let registration of registrations) {
+                console.log('[SW-FORCE] Unregistering old service worker:', registration.scope);
+                registration.unregister();
+            }
+        });
+        // Clear all caches
+        if ('caches' in window) {
+            caches.keys().then(function(cacheNames) {
+                return Promise.all(
+                    cacheNames.map(function(cacheName) {
+                        console.log('[CACHE-FORCE] Deleting cache:', cacheName);
+                        return caches.delete(cacheName);
+                    })
+                );
+            });
+        }
+    }
 
     // IMMEDIATE OAuth detection - runs before DOMContentLoaded
     (function() {
@@ -20494,12 +20673,22 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             </div>
 
                             <!-- Quick Filter Tabs -->
-                            <div class="flex items-center overflow-x-auto scrollbar-hide">
-                                <div class="flex space-x-2 min-w-max">
-                                    <button onclick="filterSchedule('upcoming')" class="schedule-filter-btn active whitespace-nowrap" data-filter="upcoming" data-i18n="golfer.upcoming">
-                                        Upcoming
-                                    </button>
-                                </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button onclick="filterSchedule('upcoming')" class="schedule-filter-btn active whitespace-nowrap" data-filter="upcoming" data-i18n="golfer.upcoming">
+                                    Upcoming
+                                </button>
+                                <button onclick="filterSchedule('caddi-bookings')" class="schedule-filter-btn whitespace-nowrap flex items-center gap-1" data-filter="caddi-bookings">
+                                    <span class="material-symbols-outlined text-sm">support_agent</span>
+                                    My Caddi Bookings
+                                </button>
+                                <button onclick="filterSchedule('caddi-waitlist')" class="schedule-filter-btn whitespace-nowrap flex items-center gap-1" data-filter="caddi-waitlist">
+                                    <span class="material-symbols-outlined text-sm">schedule</span>
+                                    Waitlist
+                                </button>
+                                <button onclick="filterSchedule('caddi-history')" class="schedule-filter-btn whitespace-nowrap flex items-center gap-1" data-filter="caddi-history">
+                                    <span class="material-symbols-outlined text-sm">history</span>
+                                    History
+                                </button>
                             </div>
                         </div>
 
@@ -32018,11 +32207,6 @@ window.AdminSystem = AdminSystem;
     <!-- Society Golf Analytics -->
     <script src="society-golf-analytics.js"></script>
     <script src="admin-pricing-control.js"></script>
-
-    <!-- Payment Tracking System -->
-    <script src="compacted/payment-tracking-database.js"></script>
-    <script src="compacted/payment-tracking-manager.js"></script>
-    <script src="compacted/payment-system-integration.js"></script>
 
     <!-- Analytics Drill-Down & Cash Management -->
     <script src="analytics-drilldown.js"></script>
@@ -44491,20 +44675,19 @@ const GolferCaddyBooking = {
         if (!container) return;
 
         container.innerHTML = `
-            <div class="min-h-screen relative overflow-hidden" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);">
+            <div class="min-h-screen relative overflow-hidden py-8 px-4" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);">
                 <!-- Animated Background Elements -->
                 <div class="absolute inset-0 overflow-hidden pointer-events-none">
-                    <div class="absolute top-20 left-10 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl animate-pulse"></div>
-                    <div class="absolute bottom-20 right-10 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl animate-pulse" style="animation-delay: 1s;"></div>
-                    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl animate-pulse" style="animation-delay: 2s;"></div>
+                    <div class="absolute top-20 left-10 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl animate-pulse"></div>
+                    <div class="absolute bottom-20 right-10 w-96 h-96 bg-teal-500/5 rounded-full blur-3xl animate-pulse" style="animation-delay: 1s;"></div>
                 </div>
 
                 <!-- Content -->
                 <div class="relative z-10">
                     <!-- Hero Section -->
-                    <div class="max-w-7xl mx-auto px-4 pt-16 pb-12">
-                        <button onclick="showGolferTab('overview', event)" class="group flex items-center text-white/70 hover:text-white mb-8 transition-all duration-200">
-                            <span class="material-symbols-outlined mr-2 group-hover:-translate-x-1 transition-transform duration-200">arrow_back</span>
+                    <div class="max-w-7xl mx-auto mb-8">
+                        <button onclick="showGolferTab('overview', event)" class="group flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/50 text-white transition-all duration-300 mb-8">
+                            <span class="material-symbols-outlined text-sm group-hover:-translate-x-1 transition-transform">arrow_back</span>
                             <span class="text-sm font-medium">Back to Dashboard</span>
                         </button>
 
@@ -44687,74 +44870,87 @@ const GolferCaddyBooking = {
     async loadCaddiesForCourse(courseId) {
         console.log('[GolferCaddyBooking] Loading caddies for:', courseId);
 
+        // INSTANT LOAD: Show demo caddies immediately for instant display
+        this.allCaddies = this.getDemoCaddies(courseId);
+        console.log(`[GolferCaddyBooking] Showing ${this.allCaddies.length} demo caddies instantly`);
+
+        // Optional: Try to load from database in background (non-blocking)
         try {
-            // Wait for Supabase with 3 second timeout
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Database timeout')), 3000)
-            );
+            if (window.SupabaseDB && window.SupabaseDB.ready) {
+                // 2 second timeout for background update
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Database timeout')), 2000)
+                );
 
-            const dbPromise = window.SupabaseDB?.client
-                ?.from('caddies')
-                .select('*')
-                .eq('home_club_id', courseId)
-                .order('rating', { ascending: false });
+                const dbPromise = window.SupabaseDB.client
+                    .from('caddies')
+                    .select('*')
+                    .eq('home_club_id', courseId)
+                    .order('rating', { ascending: false });
 
-            const { data, error } = await Promise.race([dbPromise, timeoutPromise]);
+                const { data, error } = await Promise.race([dbPromise, timeoutPromise]);
 
-            if (error) throw error;
-
-            this.allCaddies = data || [];
-            console.log(`[GolferCaddyBooking] Loaded ${this.allCaddies.length} caddies from database`);
-
+                if (!error && data && data.length > 0) {
+                    // Update with real database data if available
+                    this.allCaddies = data;
+                    this.applyFilters(); // Re-render with real data
+                    console.log(`[GolferCaddyBooking] Updated with ${this.allCaddies.length} caddies from database`);
+                }
+            }
         } catch (error) {
-            console.warn('[GolferCaddyBooking] Database unavailable, using demo data:', error.message);
-            // Use demo caddies for testing/offline mode
-            this.allCaddies = this.getDemoCaddies(courseId);
+            // Silent fail - demo data already displayed
+            console.log('[GolferCaddyBooking] Continuing with demo data:', error.message);
         }
 
         this.myBookings = [];
     },
 
     getDemoCaddies(courseId) {
-        // Demo caddies for instant display when database is unavailable
-        return [
-            {
-                id: `${courseId}-demo-1`,
-                caddy_number: '001',
-                name: 'Professional Caddy',
-                photo_url: '/images/caddies/caddy1.jpg',
-                home_club_id: courseId,
-                rating: 5.0,
-                experience_years: 10,
-                languages: ['English', 'Thai'],
-                availability_status: 'available',
-                specialties: ['Putting', 'Course Knowledge']
-            },
-            {
-                id: `${courseId}-demo-2`,
-                caddy_number: '002',
-                name: 'Expert Caddy',
-                photo_url: '/images/caddies/caddy2.jpg',
-                home_club_id: courseId,
-                rating: 4.8,
-                experience_years: 8,
-                languages: ['Thai', 'English'],
-                availability_status: 'available',
-                specialties: ['Distance Judgment', 'Club Selection']
-            },
-            {
-                id: `${courseId}-demo-3`,
-                caddy_number: '003',
-                name: 'Senior Caddy',
-                photo_url: '/images/caddies/caddy3.jpg',
-                home_club_id: courseId,
-                rating: 4.9,
-                experience_years: 12,
-                languages: ['English', 'Thai', 'Chinese'],
-                availability_status: 'available',
-                specialties: ['Green Reading', 'Course Knowledge']
-            }
+        // Comprehensive demo caddies for each course - instant display when database is unavailable
+        const names = ['Somchai', 'Niran', 'Kanya', 'Siriporn', 'Praew', 'Nok', 'Bee', 'Som', 'Mali', 'Ploy', 'Nong', 'Aom', 'Nui', 'Joy', 'Gift'];
+        const languageSets = [
+            ['English', 'Thai'],
+            ['Thai', 'English', 'Chinese'],
+            ['Thai', 'English', 'Japanese'],
+            ['Thai', 'English', 'Korean'],
+            ['Thai', 'English'],
+            ['Thai', 'Chinese'],
+            ['English', 'Thai', 'Chinese', 'Japanese']
         ];
+        const specialtySets = [
+            ['Championship Play', 'Course Knowledge'],
+            ['Putting Expert', 'Green Reading'],
+            ['Distance Control', 'Club Selection'],
+            ['Beginner Friendly', 'Patient Teaching'],
+            ['Ladies Golf', 'Etiquette Specialist'],
+            ['Business Golf', 'Professional Service'],
+            ['Tournament Experience', 'Mental Coaching'],
+            ['Course Strategy', 'Wind Reading']
+        ];
+        const statuses = ['available', 'available', 'available', 'available', 'booked']; // 80% available
+
+        // Generate 12-15 caddies per course
+        const caddyCount = 12 + Math.floor(Math.random() * 4);
+        const caddies = [];
+
+        for (let i = 0; i < caddyCount; i++) {
+            const num = String(i + 1).padStart(3, '0');
+            caddies.push({
+                id: `${courseId}-demo-${i + 1}`,
+                caddy_number: num,
+                name: names[i % names.length] + ' ' + (i >= names.length ? i + 1 : ''),
+                photo_url: `/images/caddies/caddy${(i % 8) + 1}.jpg`,
+                home_club_id: courseId,
+                rating: 4.5 + (Math.random() * 0.5), // 4.5-5.0
+                experience_years: 5 + Math.floor(Math.random() * 15), // 5-20 years
+                languages: languageSets[i % languageSets.length],
+                availability_status: statuses[i % statuses.length],
+                specialties: specialtySets[i % specialtySets.length],
+                specialty: specialtySets[i % specialtySets.length].join(', ')
+            });
+        }
+
+        return caddies;
     },
 
     async loadMyBookings() {
@@ -44791,86 +44987,124 @@ const GolferCaddyBooking = {
         if (!container) return;
 
         container.innerHTML = `
-            <div class="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 py-8 px-4">
+            <div class="min-h-screen relative overflow-hidden py-8 px-4" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);">
+                <!-- Animated Background Elements -->
+                <div class="absolute inset-0 overflow-hidden pointer-events-none">
+                    <div class="absolute top-20 left-10 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl animate-pulse"></div>
+                    <div class="absolute bottom-20 right-10 w-96 h-96 bg-teal-500/5 rounded-full blur-3xl animate-pulse" style="animation-delay: 1s;"></div>
+                </div>
+
                 <!-- Header -->
-                <div class="max-w-7xl mx-auto mb-6">
-                    <button onclick="GolferCaddyBooking.showCaddyBookingPage()" class="flex items-center text-gray-600 hover:text-gray-900 mb-4">
-                        <span class="material-symbols-outlined mr-2">arrow_back</span>
-                        <span>Change Course</span>
+                <div class="max-w-7xl mx-auto mb-8 relative z-10">
+                    <button onclick="GolferCaddyBooking.showCaddyBookingPage()" class="group flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/50 text-white transition-all duration-300 mb-6">
+                        <span class="material-symbols-outlined text-sm group-hover:-translate-x-1 transition-transform">arrow_back</span>
+                        <span class="text-sm font-medium">Change Course</span>
                     </button>
-                    <div class="flex items-center justify-between flex-wrap gap-4">
+                    <div class="flex items-center justify-between flex-wrap gap-6">
                         <div>
-                            <h1 class="text-3xl font-bold text-gray-900 mb-1">${courseName}</h1>
-                            <p class="text-gray-600">Select your professional caddy</p>
+                            <h1 class="text-4xl md:text-5xl font-bold text-white mb-2 tracking-tight">${courseName}</h1>
+                            <p class="text-lg text-white/60">Select your elite professional caddy</p>
                         </div>
-                        <button onclick="GolferCaddyBooking.showMyBookings()" class="btn-secondary">
-                            <span class="material-symbols-outlined text-sm">history</span>
+                        <button onclick="GolferCaddyBooking.showMyBookings()" class="group flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold shadow-lg shadow-emerald-500/20 hover:shadow-xl hover:shadow-emerald-500/30 transition-all duration-300">
+                            <span class="material-symbols-outlined text-lg">history</span>
                             <span>My Bookings</span>
                         </button>
                     </div>
                 </div>
 
-                <!-- Filters -->
-                <div class="max-w-7xl mx-auto mb-6">
-                    <div class="glass-card p-4">
+                <!-- Advanced Filters -->
+                <div class="max-w-7xl mx-auto mb-8 relative z-10">
+                    <div class="relative overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 p-6">
+                        <!-- Filter Header -->
+                        <div class="flex items-center gap-3 mb-6">
+                            <div class="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-emerald-400">tune</span>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-semibold text-white">Advanced Filters</h3>
+                                <p class="text-sm text-white/50">Find your perfect caddy match</p>
+                            </div>
+                        </div>
+
+                        <!-- Filter Grid -->
                         <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
                             <!-- Availability Filter -->
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Availability</label>
-                                <select id="caddyAvailabilityFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500">
-                                    <option value="all">All Caddies</option>
-                                    <option value="available" selected>Available</option>
-                                    <option value="booked">Booked</option>
+                            <div class="group">
+                                <label class="flex items-center gap-2 text-sm font-medium text-white/70 mb-2">
+                                    <span class="material-symbols-outlined text-base text-emerald-400">check_circle</span>
+                                    Availability
+                                </label>
+                                <select id="caddyAvailabilityFilter" class="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-emerald-500/50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-white backdrop-blur-sm transition-all duration-300 cursor-pointer">
+                                    <option value="all" class="bg-slate-800">All Caddies</option>
+                                    <option value="available" selected class="bg-slate-800">Available Now</option>
+                                    <option value="booked" class="bg-slate-800">Currently Booked</option>
                                 </select>
                             </div>
 
                             <!-- Rating Filter -->
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Min Rating</label>
-                                <select id="caddyRatingFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500">
-                                    <option value="0">Any Rating</option>
-                                    <option value="4.5">4.5+ Stars</option>
-                                    <option value="4.7">4.7+ Stars</option>
-                                    <option value="4.8">4.8+ Stars</option>
-                                    <option value="4.9">4.9+ Stars</option>
+                            <div class="group">
+                                <label class="flex items-center gap-2 text-sm font-medium text-white/70 mb-2">
+                                    <span class="material-symbols-outlined text-base text-yellow-400" style="font-variation-settings: 'FILL' 1;">star</span>
+                                    Minimum Rating
+                                </label>
+                                <select id="caddyRatingFilter" class="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-emerald-500/50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-white backdrop-blur-sm transition-all duration-300 cursor-pointer">
+                                    <option value="0" class="bg-slate-800">Any Rating</option>
+                                    <option value="4.5" class="bg-slate-800">4.5+ Stars</option>
+                                    <option value="4.7" class="bg-slate-800">4.7+ Stars</option>
+                                    <option value="4.8" class="bg-slate-800">4.8+ Stars</option>
+                                    <option value="4.9" class="bg-slate-800">4.9+ Stars</option>
                                 </select>
                             </div>
 
                             <!-- Experience Filter -->
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Experience</label>
-                                <select id="caddyExperienceFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500">
-                                    <option value="0">Any Experience</option>
-                                    <option value="5">5+ Years</option>
-                                    <option value="10">10+ Years</option>
-                                    <option value="15">15+ Years</option>
+                            <div class="group">
+                                <label class="flex items-center gap-2 text-sm font-medium text-white/70 mb-2">
+                                    <span class="material-symbols-outlined text-base text-blue-400">workspace_premium</span>
+                                    Experience Level
+                                </label>
+                                <select id="caddyExperienceFilter" class="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-emerald-500/50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-white backdrop-blur-sm transition-all duration-300 cursor-pointer">
+                                    <option value="0" class="bg-slate-800">Any Experience</option>
+                                    <option value="5" class="bg-slate-800">5+ Years</option>
+                                    <option value="10" class="bg-slate-800">10+ Years</option>
+                                    <option value="15" class="bg-slate-800">15+ Years</option>
                                 </select>
                             </div>
 
                             <!-- Language Filter -->
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Language</label>
-                                <select id="caddyLanguageFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500">
-                                    <option value="all">All Languages</option>
-                                    <option value="English">English</option>
-                                    <option value="Thai">Thai</option>
-                                    <option value="Japanese">Japanese</option>
-                                    <option value="Chinese">Chinese</option>
-                                    <option value="Korean">Korean</option>
+                            <div class="group">
+                                <label class="flex items-center gap-2 text-sm font-medium text-white/70 mb-2">
+                                    <span class="material-symbols-outlined text-base text-purple-400">language</span>
+                                    Language
+                                </label>
+                                <select id="caddyLanguageFilter" class="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-emerald-500/50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-white backdrop-blur-sm transition-all duration-300 cursor-pointer">
+                                    <option value="all" class="bg-slate-800">All Languages</option>
+                                    <option value="English" class="bg-slate-800">English</option>
+                                    <option value="Thai" class="bg-slate-800">Thai</option>
+                                    <option value="Japanese" class="bg-slate-800">Japanese</option>
+                                    <option value="Chinese" class="bg-slate-800">Chinese</option>
+                                    <option value="Korean" class="bg-slate-800">Korean</option>
                                 </select>
                             </div>
 
                             <!-- Specialty Filter -->
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Specialty</label>
-                                <select id="caddySpecialtyFilter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500">
-                                    <option value="all">All Specialties</option>
-                                    <option value="Championship">Championship</option>
-                                    <option value="Beginner">Beginner Support</option>
-                                    <option value="Ladies">Ladies Golf</option>
-                                    <option value="Business">Business Golf</option>
+                            <div class="group">
+                                <label class="flex items-center gap-2 text-sm font-medium text-white/70 mb-2">
+                                    <span class="material-symbols-outlined text-base text-pink-400">military_tech</span>
+                                    Specialty
+                                </label>
+                                <select id="caddySpecialtyFilter" class="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-emerald-500/50 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-white backdrop-blur-sm transition-all duration-300 cursor-pointer">
+                                    <option value="all" class="bg-slate-800">All Specialties</option>
+                                    <option value="Championship" class="bg-slate-800">Championship</option>
+                                    <option value="Beginner" class="bg-slate-800">Beginner Support</option>
+                                    <option value="Ladies" class="bg-slate-800">Ladies Golf</option>
+                                    <option value="Business" class="bg-slate-800">Business Golf</option>
                                 </select>
                             </div>
+                        </div>
+
+                        <!-- Filter Shine Effect -->
+                        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none">
+                            <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/3 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                         </div>
                     </div>
                 </div>
@@ -44922,9 +45156,12 @@ const GolferCaddyBooking = {
 
         if (caddies.length === 0) {
             grid.innerHTML = `
-                <div class="col-span-full text-center py-12">
-                    <span class="material-symbols-outlined text-6xl text-gray-300 mb-4">person_search</span>
-                    <p class="text-gray-600">No caddies match your filters. Try adjusting your search criteria.</p>
+                <div class="col-span-full flex flex-col items-center justify-center py-20">
+                    <div class="w-20 h-20 rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 flex items-center justify-center mb-6">
+                        <span class="material-symbols-outlined text-5xl text-white/30">person_search</span>
+                    </div>
+                    <h3 class="text-2xl font-semibold text-white mb-2">No Caddies Found</h3>
+                    <p class="text-white/50 max-w-md text-center">No caddies match your current filters. Try adjusting your search criteria to see more results.</p>
                 </div>
             `;
             return;
@@ -44937,71 +45174,119 @@ const GolferCaddyBooking = {
         const isAvailable = caddy.availability_status === 'available';
         const languagesList = Array.isArray(caddy.languages) ? caddy.languages.join(', ') : 'Thai, English';
         const photoUrl = caddy.photo_url || 'images/caddies/default.jpg';
+        const specialtiesList = Array.isArray(caddy.specialties) ? caddy.specialties : [];
 
         return `
-            <div class="glass-card card-hover overflow-hidden">
-                <!-- Caddy Photo -->
-                <div class="h-48 bg-gradient-to-br from-emerald-100 to-teal-100 flex items-center justify-center relative">
+            <div class="group relative overflow-hidden rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 hover:border-emerald-500/50 transition-all duration-500 hover:scale-[1.02] hover:shadow-2xl hover:shadow-emerald-500/20">
+                <!-- Gradient Overlay -->
+                <div class="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+
+                <!-- Photo Container -->
+                <div class="relative h-56 overflow-hidden">
                     ${caddy.photo_url ? `
-                        <img src="${photoUrl}" alt="${caddy.name}" class="w-full h-full object-cover">
+                        <img src="${photoUrl}" alt="${caddy.name}" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700">
+                        <div class="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent"></div>
                     ` : `
-                        <span class="material-symbols-outlined text-6xl text-emerald-600">person</span>
+                        <div class="w-full h-full bg-gradient-to-br from-emerald-500/20 to-teal-600/20 flex items-center justify-center">
+                            <span class="material-symbols-outlined text-8xl text-emerald-400/50">person</span>
+                        </div>
                     `}
-                    <div class="absolute top-3 right-3">
-                        <span class="px-3 py-1 rounded-full text-xs font-medium ${isAvailable ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
-                            ${isAvailable ? '✓ Available' : '✗ Booked'}
-                        </span>
+
+                    <!-- Status Badge -->
+                    <div class="absolute top-4 right-4">
+                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-xl ${isAvailable ? 'bg-emerald-500/90 border border-emerald-400/50' : 'bg-red-500/90 border border-red-400/50'}">
+                            <div class="w-1.5 h-1.5 rounded-full ${isAvailable ? 'bg-emerald-200' : 'bg-red-200'} animate-pulse"></div>
+                            <span class="text-xs font-semibold text-white">${isAvailable ? 'Available' : 'Booked'}</span>
+                        </div>
+                    </div>
+
+                    <!-- Rating Badge -->
+                    <div class="absolute top-4 left-4">
+                        <div class="flex items-center gap-1 px-3 py-1.5 rounded-full bg-yellow-500/90 backdrop-blur-xl border border-yellow-400/50">
+                            <span class="material-symbols-outlined text-sm text-white" style="font-variation-settings: 'FILL' 1;">star</span>
+                            <span class="text-sm font-bold text-white">${caddy.rating?.toFixed(1) || '4.9'}</span>
+                        </div>
+                    </div>
+
+                    <!-- Caddy Number -->
+                    <div class="absolute bottom-4 left-4">
+                        <div class="px-3 py-1 rounded-lg bg-white/10 backdrop-blur-xl border border-white/20">
+                            <span class="text-xs font-mono font-semibold text-white">#${caddy.caddy_number}</span>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Caddy Info -->
-                <div class="p-4">
-                    <div class="flex items-start justify-between mb-2">
-                        <div class="flex-1">
-                            <h3 class="text-lg font-bold text-gray-900">${caddy.name}</h3>
-                            <p class="text-sm text-gray-600">#${caddy.caddy_number}</p>
-                        </div>
-                        <div class="flex items-center">
-                            <span class="material-symbols-outlined text-yellow-500 text-sm mr-1">star</span>
-                            <span class="font-bold text-gray-900">${caddy.rating}</span>
-                        </div>
-                    </div>
+                <!-- Content -->
+                <div class="relative p-5">
+                    <!-- Name -->
+                    <h3 class="text-xl font-bold text-white mb-3 group-hover:text-emerald-300 transition-colors duration-300">
+                        ${caddy.name}
+                    </h3>
 
-                    <div class="space-y-2 mb-4">
-                        <div class="flex items-center text-sm text-gray-600">
-                            <span class="material-symbols-outlined text-sm mr-2">workspace_premium</span>
-                            <span>${caddy.experience_years} years experience</span>
-                        </div>
-                        <div class="flex items-center text-sm text-gray-600">
-                            <span class="material-symbols-outlined text-sm mr-2">translate</span>
-                            <span>${languagesList}</span>
-                        </div>
-                        ${caddy.specialty ? `
-                            <div class="flex items-center text-sm text-gray-600">
-                                <span class="material-symbols-outlined text-sm mr-2">military_tech</span>
-                                <span>${caddy.specialty}</span>
+                    <!-- Stats Grid -->
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-sm text-emerald-400">workspace_premium</span>
                             </div>
-                        ` : ''}
-                        <div class="flex items-center text-sm text-gray-600">
-                            <span class="material-symbols-outlined text-sm mr-2">golf_course</span>
-                            <span>${caddy.total_rounds || 0} rounds · ${caddy.total_reviews || 0} reviews</span>
+                            <div>
+                                <div class="text-xs text-white/50">Experience</div>
+                                <div class="text-sm font-semibold text-white">${caddy.experience_years}+ years</div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 rounded-lg bg-teal-500/10 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-sm text-teal-400">translate</span>
+                            </div>
+                            <div>
+                                <div class="text-xs text-white/50">Languages</div>
+                                <div class="text-sm font-semibold text-white">${Array.isArray(caddy.languages) ? caddy.languages.length : 2}</div>
+                            </div>
                         </div>
                     </div>
 
+                    <!-- Specialties -->
+                    ${specialtiesList.length > 0 ? `
+                        <div class="flex flex-wrap gap-2 mb-4">
+                            ${specialtiesList.slice(0, 2).map(spec => `
+                                <span class="px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300">
+                                    ${spec}
+                                </span>
+                            `).join('')}
+                            ${specialtiesList.length > 2 ? `<span class="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-xs text-white/60">+${specialtiesList.length - 2}</span>` : ''}
+                        </div>
+                    ` : ''}
+
+                    <!-- Actions -->
                     <div class="flex gap-2">
-                        <button onclick="GolferCaddyBooking.viewCaddyProfile('${caddy.id}')" class="flex-1 btn-secondary text-sm py-2">
-                            <span>View Profile</span>
+                        <button
+                            onclick="GolferCaddyBooking.viewCaddyProfile('${caddy.id}')"
+                            class="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white text-sm font-medium transition-all duration-300"
+                        >
+                            View Profile
                         </button>
                         ${isAvailable ? `
-                            <button onclick="GolferCaddyBooking.bookCaddy('${caddy.id}')" class="flex-1 btn-primary text-sm py-2">
-                                <span>Book Now</span>
+                            <button
+                                onclick="GolferCaddyBooking.bookCaddy('${caddy.id}')"
+                                class="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-sm font-semibold shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 transition-all duration-300"
+                            >
+                                Book Now
                             </button>
                         ` : `
-                            <button onclick="GolferCaddyBooking.joinWaitlist('${caddy.id}')" class="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-medium py-2 rounded-lg transition-all text-sm">
-                                <span>Join Waitlist</span>
+                            <button
+                                onclick="GolferCaddyBooking.joinWaitlist('${caddy.id}')"
+                                class="flex-1 px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold shadow-lg shadow-orange-500/20 transition-all duration-300"
+                            >
+                                Waitlist
                             </button>
                         `}
                     </div>
+                </div>
+
+                <!-- Shine Effect -->
+                <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none">
+                    <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                 </div>
             </div>
         `;

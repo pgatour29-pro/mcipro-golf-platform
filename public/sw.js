@@ -9,6 +9,7 @@ const CACHE_NAME = CACHE_VERSION;
 const NEVER_CACHE = [
     '/index.html',
     '/',
+    '/chat/', // Chat files not deployed - prevent caching errors
 ];
 
 // API endpoints
@@ -98,10 +99,15 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Chat files: NEVER cache
+    // Chat files: NEVER cache, fail silently on 404
     if (url.pathname.startsWith('/chat/')) {
-        console.log('[ServiceWorker] Chat file - bypassing cache:', url.pathname);
-        event.respondWith(fetch(request, { cache: 'no-store' }));
+        console.log('[ServiceWorker] Chat file - skipping (not deployed):', url.pathname);
+        event.respondWith(
+            fetch(request, { cache: 'no-store' }).catch(() => {
+                // Return empty response for chat files to prevent console errors
+                return new Response('', { status: 404, statusText: 'Chat system not deployed' });
+            })
+        );
         return;
     }
 

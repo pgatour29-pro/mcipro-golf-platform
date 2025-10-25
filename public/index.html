@@ -45037,7 +45037,20 @@ const GolferCaddiBooking = {
 
     async loadMyBookings() {
         try {
-            if (!window.currentUserId) return;
+            // Get user ID from AppState.currentUser
+            const currentUser = AppState?.currentUser;
+            if (!currentUser) {
+                console.log('[GolferCaddiBooking] No current user found');
+                return;
+            }
+
+            const userId = currentUser.userId || currentUser.lineUserId || currentUser.id;
+            if (!userId) {
+                console.log('[GolferCaddiBooking] User ID not available');
+                return;
+            }
+
+            console.log('[GolferCaddiBooking] Loading bookings for user:', userId);
 
             const { data, error } = await window.SupabaseDB.client
                 .from('caddi_bookings')
@@ -45050,13 +45063,13 @@ const GolferCaddiBooking = {
                         rating
                     )
                 `)
-                .eq('golfer_id', window.currentUserId)
+                .eq('golfer_id', userId)
                 .order('booking_date', { ascending: false });
 
             if (error) throw error;
 
             this.myBookings = data || [];
-            console.log(`[GolferCaddiBooking] Loaded ${this.myBookings.length} bookings`);
+            console.log(`[GolferCaddiBooking] Loaded ${this.myBookings.length} bookings for ${currentUser.name}`);
 
         } catch (error) {
             console.error('[GolferCaddiBooking] Error loading bookings:', error);
@@ -45617,22 +45630,29 @@ const GolferCaddiBooking = {
             return;
         }
 
-        if (!window.currentUserId) {
+        // Get current user from AppState
+        const currentUser = AppState?.currentUser;
+        if (!currentUser) {
             NotificationManager.show('Please login to book a caddi', 'error');
             return;
         }
+
+        const userId = currentUser.userId || currentUser.lineUserId || currentUser.id;
+        const userName = currentUser.name || currentUser.displayName || 'Guest';
 
         const caddi = this.allCaddies.find(c => c.id === caddiId);
         if (!caddi) return;
 
         try {
+            console.log('[GolferCaddiBooking] Creating booking for user:', userId);
+
             // Create booking in database
             const { data, error } = await window.SupabaseDB.client
                 .from('caddi_bookings')
                 .insert({
                     caddi_id: caddiId,
-                    golfer_id: window.currentUserId,
-                    golfer_name: window.currentUserProfile?.full_name || 'Guest',
+                    golfer_id: userId,
+                    golfer_name: userName,
                     booking_date: date,
                     tee_time: time,
                     holes: holes,

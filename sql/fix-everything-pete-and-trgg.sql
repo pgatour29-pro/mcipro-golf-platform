@@ -20,7 +20,7 @@ SET
     email = COALESCE(email, 'pete@example.com'),
     role = 'golfer',
     home_club = 'Pattana Golf Resort & Spa',
-    home_course_name = 'Pattana Golf Club',
+    home_course_name = 'Pattaya CC Golf',
     society_name = 'Travellers Rest Golf Group',
     profile_data = jsonb_build_object(
         'personalInfo', jsonb_build_object(
@@ -30,8 +30,8 @@ SET
             'phone', COALESCE(profile_data->'personalInfo'->>'phone', '')
         ),
         'golfInfo', jsonb_build_object(
-            'handicap', '1',
-            'homeClub', 'Pattana Golf Resort & Spa',
+            'handicap', '2',
+            'homeClub', 'Pattaya CC Golf',
             'clubAffiliation', 'Travellers Rest Golf Group'
         )
     ),

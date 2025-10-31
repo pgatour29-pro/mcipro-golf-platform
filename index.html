@@ -35873,25 +35873,20 @@ class LiveScorecardSystem {
             }
     
             // Save to Supabase database
+            // FIXED: Match actual rounds table schema
             const { data: round, error } = await window.SupabaseDB.client
                 .from('rounds')
                 .insert({
-                    user_id: player.lineUserId,  // FIX: Changed from golfer_id to user_id
-                    course_id: courseId,
-                    course_name: courseName,
-                    type: roundType,
-                    society_event_id: eventId,
-                    started_at: new Date().toISOString(),
-                    completed_at: new Date().toISOString(),
-                    status: 'completed',
-                    total_gross: totalGross,
-                    total_stableford: totalStableford,
-                    handicap_used: player.handicap,
-                    tee_marker: teeMarker,
-                    scoring_formats: this.scoringFormats,
-                    format_scores: formatScores,
-                    posted_formats: this.postedFormats || this.scoringFormats,
-                    scramble_config: scrambleConfig
+                    user_id: player.lineUserId,
+                    course_id: courseId || null,
+                    played_at: new Date().toISOString(),
+                    holes_played: holesPlayed,
+                    tee_used: teeMarker,
+                    total_score: totalGross,
+                    adjusted_gross_score: totalGross,  // Can adjust with handicap later if needed
+                    is_tournament: !this.isPrivateRound && !!eventId,
+                    tournament_name: eventId ? (this.eventName || null) : null,
+                    notes: `Formats: ${this.scoringFormats.join(', ')}. Stableford: ${totalStableford}. Handicap: ${player.handicap}`
                 })
                 .select()
                 .single();

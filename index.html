@@ -988,7 +988,7 @@
             border-top-right-radius: 24px;
             transform: translateY(100%);
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            z-index: 999;
+            z-index: 1100; /* above bottom-nav */
             box-shadow: 0 -8px 40px rgba(0,0,0,0.12);
             max-height: 70vh;
             overflow-y: auto;
@@ -1062,7 +1062,7 @@
             right: 0;
             bottom: 0;
             background: rgba(0,0,0,0.4);
-            z-index: 998;
+            z-index: 1099; /* just under drawer */
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.3s ease;
@@ -5381,8 +5381,15 @@
 
         // Tab Management System
         class TabManager {
+            static _lastSwitch = { time: 0, dash: null, tab: null };
+
             static showTab(dashboardId, tabName, event = null) {
                 try {
+                    const now = Date.now();
+                    if (this._lastSwitch && this._lastSwitch.dash === dashboardId && this._lastSwitch.tab === tabName && (now - this._lastSwitch.time) < 150) {
+                        return; // debounce rapid double-taps
+                    }
+                    this._lastSwitch = { time: now, dash: dashboardId, tab: tabName };
                     console.log(`TabManager: Switching to ${tabName} in ${dashboardId}`);
 
                     // Update tab button states
@@ -7645,6 +7652,19 @@ if ('serviceWorker' in navigator && !(location.search.includes('code=') && locat
                                         console.error('[INIT] Push init failed:', pushErr);
                                     }
 
+                                    // Attempt to create Supabase session from LINE id_token (if not already signed in)
+                                    try {
+                                        const { data: { session } } = await window.SupabaseDB.client.auth.getSession();
+                                        if (!session?.user) {
+                                            const idToken = (typeof liff.getIDToken === 'function') ? liff.getIDToken() : null;
+                                            if (idToken && window.SupabaseDB?.signInWithLineIdToken) {
+                                                await window.SupabaseDB.signInWithLineIdToken(idToken, 'line'); // provider slug must match Supabase config
+                                            }
+                                        }
+                                    } catch (authErr) {
+                                        console.warn('[INIT] Supabase auth via LINE token failed or not configured:', authErr);
+                                    }
+
                                     LineAuthentication.redirectToDashboard();
                                     LoadingManager.hide();
                                 }).catch(async (err) => {
@@ -9080,7 +9100,20 @@ if ('serviceWorker' in navigator && !(location.search.includes('code=') && locat
 
         // Tab-specific functions (will be expanded in later phases)
         function showGolferTab(tabName, event) {
+            // Ensure the golfer dashboard is visible before switching tabs
+            try {
+                const golferScreen = document.getElementById('golferDashboard');
+                if (!golferScreen || !golferScreen.classList.contains('active')) {
+                    if (typeof ScreenManager !== 'undefined' && ScreenManager.showScreen) {
+                        ScreenManager.showScreen('golferDashboard');
+                    }
+                }
+            } catch {}
+
             TabManager.showTab('golferDashboard', tabName, event);
+
+            // Close mobile drawer if open to avoid overlay blocking taps
+            try { if (window.BottomNav && typeof BottomNav.closeDrawer === 'function') BottomNav.closeDrawer(); } catch {}
 
             // Update Today's Tee Time when showing overview
             if (tabName === 'overview' && typeof TodaysTeeTimeManager !== 'undefined') {
@@ -9119,11 +9152,33 @@ if ('serviceWorker' in navigator && !(location.search.includes('code=') && locat
         }
 
         function showCaddyTab(tabName, event) {
+            // Ensure the caddie dashboard is visible before switching tabs
+            try {
+                const caddieScreen = document.getElementById('caddieDashboard');
+                if (!caddieScreen || !caddieScreen.classList.contains('active')) {
+                    if (typeof ScreenManager !== 'undefined' && ScreenManager.showScreen) {
+                        ScreenManager.showScreen('caddieDashboard');
+                    }
+                }
+            } catch {}
+
             TabManager.showTab('caddieDashboard', tabName, event);
+            try { if (window.BottomNav && typeof BottomNav.closeDrawer === 'function') BottomNav.closeDrawer(); } catch {}
         }
 
         function showManagerTab(tabName, event) {
+            // Ensure the manager dashboard is visible before switching tabs
+            try {
+                const managerScreen = document.getElementById('managerDashboard');
+                if (!managerScreen || !managerScreen.classList.contains('active')) {
+                    if (typeof ScreenManager !== 'undefined' && ScreenManager.showScreen) {
+                        ScreenManager.showScreen('managerDashboard');
+                    }
+                }
+            } catch {}
+
             TabManager.showTab('managerDashboard', tabName, event);
+            try { if (window.BottomNav && typeof BottomNav.closeDrawer === 'function') BottomNav.closeDrawer(); } catch {}
 
             // Initialize radar map when weather tab is shown
             if (tabName === 'weather' && typeof WeatherIntegration !== 'undefined') {
@@ -10055,11 +10110,25 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         function showProshopTab(tabName, event) {
+            try {
+                const el = document.getElementById('proshopDashboard');
+                if (!el || !el.classList.contains('active')) {
+                    if (typeof ScreenManager?.showScreen === 'function') ScreenManager.showScreen('proshopDashboard');
+                }
+            } catch {}
             TabManager.showTab('proshopDashboard', tabName, event);
+            try { if (window.BottomNav && typeof BottomNav.closeDrawer === 'function') BottomNav.closeDrawer(); } catch {}
         }
 
         function showMaintenanceTab(tabName, event) {
+            try {
+                const el = document.getElementById('maintenanceDashboard');
+                if (!el || !el.classList.contains('active')) {
+                    if (typeof ScreenManager?.showScreen === 'function') ScreenManager.showScreen('maintenanceDashboard');
+                }
+            } catch {}
             TabManager.showTab('maintenanceDashboard', tabName, event);
+            try { if (window.BottomNav && typeof BottomNav.closeDrawer === 'function') BottomNav.closeDrawer(); } catch {}
         }
 
         // ===== GOLFER DASHBOARD FUNCTIONS =====
@@ -19868,11 +19937,16 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <span class="material-symbols-outlined text-base md:text-sm">emergency</span>
                         </button>
 
-                        <!-- Chat Button - Icon only on mobile -->
-                        <button onclick="window.openProfessionalChat()" class="btn-primary relative p-2" style="background: #10b981;" title="Chat">
-                            <span class="material-symbols-outlined text-base md:text-sm">chat</span>
-                            <span id="chatBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center font-medium" style="display: none;">0</span>
-                        </button>
+                         <!-- Chat Button - Icon only on mobile -->
+                         <button onclick="window.openProfessionalChat()" class="btn-primary relative p-2" style="background: #10b981;" title="Chat">
+                             <span class="material-symbols-outlined text-base md:text-sm">chat</span>
+                             <span id="chatBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center font-medium" style="display: none;">0</span>
+                         </button>
+
+                         <!-- Debug Auth Button (shown only when debug enabled) -->
+                         <button id="debugAuthBtn" onclick="DebugAuth.show()" class="btn-secondary p-2" title="Auth Status" style="display: none;">
+                             <span class="material-symbols-outlined text-base md:text-sm">bug_report</span>
+                         </button>
 
                         <!-- Language Selector - Desktop: inline buttons, Mobile: dropdown -->
                         <div class="relative language-selector-container">
@@ -20007,7 +20081,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         </div>
                     </button>
 
-                    <button onclick="showGolferTab('booking', event); setTimeout(() => { document.getElementById('caddieSearchInput')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300);" class="card-hover metric-card text-center group">
+                    <button onclick="goToCaddieBooking()" class="card-hover metric-card text-center group">
                         <div class="w-10 h-10 md:w-12 md:h-12 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-2 group-hover:bg-teal-200 transition-colors">
                             <span class="material-symbols-outlined text-xl md:text-2xl text-teal-600">person</span>
                         </div>
@@ -22618,7 +22692,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 <span class="material-symbols-outlined">calendar_month</span>
                 <span data-i18n="golfer.schedule">Schedule</span>
             </button>
-            <button class="bottom-nav-item" onclick="BottomNav.toggleDrawer()">
+            <button id="bottomMoreBtn" class="bottom-nav-item" onclick="BottomNav.toggleDrawer(); event?.stopPropagation?.(); return false;">
                 <span class="material-symbols-outlined">apps</span>
                 <span>More</span>
             </button>
@@ -22665,6 +22739,21 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     <span data-i18n="golfer.societyevents">Society Events</span>
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- Debug Auth Overlay/Modal -->
+    <div id="debugAuthOverlay" class="debug-auth-overlay" onclick="DebugAuth.hide()"></div>
+    <div id="debugAuthModal" class="debug-auth-modal">
+        <div class="debug-auth-header">
+            <div class="font-semibold">Authentication Status</div>
+            <div class="debug-auth-actions">
+                <button class="btn-secondary px-3 py-1" onclick="DebugAuth.copy()">Copy</button>
+                <button class="btn-primary px-3 py-1" onclick="DebugAuth.hide()">Close</button>
+            </div>
+        </div>
+        <div class="debug-auth-body">
+            <div id="debugAuthContent" class="space-y-3"></div>
         </div>
     </div>
 
@@ -29430,9 +29519,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         const { data: dbRounds, error } = await window.SupabaseDB.client
                             .from('rounds')
                             .select('*')
-                            // Removed .eq('golfer_id', userId) - let RLS policy handle filtering
-                            // RLS automatically returns: own rounds + shared rounds + organizer rounds
-                            .order('completed_at', { ascending: false });
+                            // Let RLS filter visibility; order by available timestamp fields
+                            .order('completed_at', { ascending: false, nullsFirst: false })
+                            .order('played_at', { ascending: false, nullsFirst: false })
+                            .order('started_at', { ascending: false, nullsFirst: false });
 
                         if (error) {
                             console.error('[Round History] Error loading from database:', error);
@@ -29440,20 +29530,20 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             // Convert database format to display format
                             const convertedRounds = dbRounds.map(round => ({
                                 id: round.id,
-                                course: round.course_name,
+                                course: round.course_name || round.course || '-',
                                 courseId: round.course_id,
-                                tee: round.tee_marker,
-                                score: round.total_gross,
-                                holes: 18, // Database rounds are always 18 holes
-                                date: round.completed_at?.split('T')[0] || round.started_at?.split('T')[0],
+                                tee: round.tee_marker || round.tee_used,
+                                score: round.total_gross ?? round.total_score ?? round.score ?? 0,
+                                holes: round.holes || round.holes_played || 18, // default to 18 if not present
+                                date: (round.completed_at || round.started_at || round.played_at || '').split('T')[0] || new Date().toISOString().split('T')[0],
                                 courseRating: round.course_rating || 72.0,
                                 slopeRating: round.slope_rating || 113,
                                 notes: round.notes || '',
                                 differential: null, // Will calculate below
-                                timestamp: round.completed_at,
+                                timestamp: round.completed_at || round.played_at || round.started_at,
                                 source: 'database',
-                                type: round.type,
-                                stableford: round.total_stableford,
+                                type: round.type || (round.is_tournament ? 'society' : 'practice'),
+                                stableford: round.total_stableford ?? round.stableford ?? null,
                                 handicapUsed: round.handicap_used
                             }));
 
@@ -29593,15 +29683,16 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     if (holesError) throw holesError;
 
                     // Populate modal with round summary
-                    document.getElementById('roundDetail_course').textContent = round.course_name || '-';
-                    document.getElementById('roundDetail_date').textContent = new Date(round.completed_at).toLocaleDateString('en-US', {
+                    document.getElementById('roundDetail_course').textContent = (round.course_name || round.course || '-');
+                    const dateStr = (round.completed_at || round.played_at || round.started_at);
+                    document.getElementById('roundDetail_date').textContent = dateStr ? new Date(dateStr).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
                         year: 'numeric'
-                    });
-                    document.getElementById('roundDetail_tee').textContent = round.tee_marker || '-';
-                    document.getElementById('roundDetail_gross').textContent = round.total_gross || '-';
-                    document.getElementById('roundDetail_stableford').textContent = round.total_stableford || 'N/A';
+                    }) : '-';
+                    document.getElementById('roundDetail_tee').textContent = round.tee_marker || round.tee_used || '-';
+                    document.getElementById('roundDetail_gross').textContent = (round.total_gross ?? round.total_score ?? '-');
+                    document.getElementById('roundDetail_stableford').textContent = (round.total_stableford ?? round.stableford ?? 'N/A');
                     document.getElementById('roundDetail_handicap').textContent = round.handicap_used !== null ? Number(round.handicap_used).toFixed(1) : '-';
 
                     // Populate hole-by-hole table
@@ -32137,6 +32228,13 @@ const AdminSystem = {
 
 // Admin tab switching
 function showAdminTab(tabName) {
+    try {
+        const el = document.getElementById('adminDashboard');
+        if (!el || !el.classList.contains('active')) {
+            if (typeof ScreenManager?.showScreen === 'function') ScreenManager.showScreen('adminDashboard');
+        }
+    } catch {}
+    try { if (window.BottomNav && typeof BottomNav.closeDrawer === 'function') BottomNav.closeDrawer(); } catch {}
     // Hide all admin tabs
     document.querySelectorAll('.admin-tab-content').forEach(tab => {
         tab.classList.remove('active');
@@ -32553,7 +32651,7 @@ class SocietyGolfSupabase {
         const { data: eventsData, error: eventsError } = await window.SupabaseDB.client
             .from('society_events')
             .select('*')
-            .order('date', { ascending: true });
+            .order('event_date', { ascending: true });
 
         if (eventsError) {
             console.error('[SocietyGolf] Error fetching events:', eventsError);
@@ -36114,26 +36212,77 @@ class LiveScorecardSystem {
                 return null;
             }
     
-            // Save to Supabase database
-            // FIXED: Match actual rounds table schema
-            const { data: round, error } = await window.SupabaseDB.client
-                .from('rounds')
-                .insert({
-                    user_id: player.lineUserId,
-                    course_id: courseId || null,
-                    played_at: new Date().toISOString(),
-                    holes_played: holesPlayed,
-                    tee_used: teeMarker,
-                    total_score: totalGross,
-                    adjusted_gross_score: totalGross,  // Can adjust with handicap later if needed
-                    is_tournament: !this.isPrivateRound && !!eventId,
-                    tournament_name: eventId ? (this.eventName || null) : null,
-                    notes: `Formats: ${this.scoringFormats.join(', ')}. Stableford: ${totalStableford}. Handicap: ${player.handicap}`
-                })
-                .select()
-                .single();
-    
-            if (error) {
+            // Save to Supabase database with session-aware insert and fallback
+            let round, error;
+            try {
+                const { data: sessionData } = await window.SupabaseDB.client.auth.getSession();
+                const hasSession = !!sessionData?.session?.user;
+
+                if (hasSession) {
+                    const supaUserId = sessionData.session.user.id;
+                    // Try canonical schema insert first
+                    const canonicalInsert = await window.SupabaseDB.client
+                        .from('rounds')
+                        .insert({
+                            golfer_id: supaUserId,
+                            course_id: courseId || null,
+                            course_name: this.courseData?.name || null,
+                            type: this.roundType || (this.isPrivateRound ? 'private' : (this.eventId ? 'society' : 'private')),
+                            society_event_id: this.eventId || null,
+                            started_at: new Date().toISOString(),
+                            completed_at: new Date().toISOString(),
+                            status: 'completed',
+                            total_gross: totalGross,
+                            total_net: null,
+                            total_stableford: totalStableford,
+                            handicap_used: player.handicap,
+                            tee_marker: teeMarker
+                        })
+                        .select()
+                        .single();
+
+                    round = canonicalInsert.data;
+                    error = canonicalInsert.error;
+
+                    // If canonical failed due to missing columns, fallback to legacy schema
+                    if (error) {
+                        console.warn('[LiveScorecard] Canonical insert failed, falling back to legacy schema:', error);
+                    }
+                }
+
+                // If canonical-only mode is enabled, abort on canonical failures or missing session
+                const canonicalOnly = !!(window.AppConfig && window.AppConfig.canonicalRoundsOnly);
+                if (canonicalOnly && !round) {
+                    throw new Error('Canonical rounds-only mode is enabled but canonical insert/session failed. Ensure MIGRATE_ROUNDS_TO_CANONICAL and hardened RLS are applied, and a Supabase session exists.');
+                }
+
+                if (!round) {
+                    const legacyInsert = await window.SupabaseDB.client
+                        .from('rounds')
+                        .insert({
+                            user_id: player.lineUserId,
+                            course_id: courseId || null,
+                            played_at: new Date().toISOString(),
+                            holes_played: holesPlayed,
+                            tee_used: teeMarker,
+                            total_score: totalGross,
+                            adjusted_gross_score: totalGross,
+                            is_tournament: !this.isPrivateRound && !!eventId,
+                            tournament_name: eventId ? (this.eventName || null) : null,
+                            notes: `Formats: ${this.scoringFormats.join(', ')}. Stableford: ${totalStableford}. Handicap: ${player.handicap}`
+                        })
+                        .select()
+                        .single();
+
+                    round = legacyInsert.data;
+                    error = legacyInsert.error;
+                }
+            } catch (e) {
+                console.error('[LiveScorecard] Unexpected error during saveRoundToHistory:', e);
+                error = e;
+            }
+
+            if (error || !round) {
                 console.error('[LiveScorecard] Error saving to round history:', error);
                 alert(`ERROR saving round to history for ${player.name}:
 
@@ -42585,8 +42734,55 @@ This action cannot be undone.`);
                         font-size: 12px;
                         display: inline-block;
                         margin-left: 10px;
+        }
+
+        // Navigate directly to the Caddie Booking module within the Booking tab
+        function goToCaddieBooking() {
+            try {
+                // Switch to booking tab
+                showGolferTab('booking', null);
+
+                // Kick booking init explicitly to avoid race conditions
+                try { if (typeof initializeBookingSystem === 'function') initializeBookingSystem(); } catch {}
+
+                // Wait for caddieSearchInput to exist, then scroll/focus (max ~1.5s)
+                let attempts = 0;
+                const tryFocus = () => {
+                    const el = document.getElementById('caddieSearchInput');
+                    if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        if (typeof el.focus === 'function') el.focus();
+                    } else if (attempts < 15) {
+                        attempts += 1;
+                        setTimeout(tryFocus, 100);
                     }
-                </style>
+                };
+                setTimeout(tryFocus, 200);
+            } catch (e) {
+                console.warn('[Navigation] Failed to navigate to caddie booking:', e);
+            }
+        }
+
+        /* Debug Auth Panel */
+        .debug-auth-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+            display: none; z-index: 2000;
+        }
+        .debug-auth-modal {
+            position: fixed; left: 50%; top: 10%; transform: translateX(-50%);
+            width: 90%; max-width: 700px; background: #fff; border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden; z-index: 2001;
+            display: none;
+        }
+        .debug-auth-header { padding: 12px 16px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; }
+        .debug-auth-body { padding: 16px; max-height: 70vh; overflow: auto; }
+        .debug-auth-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .debug-auth-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; }
+        .debug-auth-kv { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
+        .debug-auth-kv div { display: flex; justify-content: space-between; padding: 2px 0; }
+        .debug-auth-actions { display: flex; gap: 8px; }
+        @media (max-width: 768px) { .debug-auth-grid { grid-template-columns: 1fr; } }
+    </style>
             </head>
             <body>
                 <div class="header">
@@ -46854,6 +47050,13 @@ window.GolferEventsSystem = new GolferEventsManager();
 
 // Tab switching functions
 function showOrganizerTab(tabName) {
+    try {
+        const el = document.getElementById('societyOrganizerDashboard');
+        if (!el || !el.classList.contains('active')) {
+            if (typeof ScreenManager?.showScreen === 'function') ScreenManager.showScreen('societyOrganizerDashboard');
+        }
+    } catch {}
+    try { if (window.BottomNav && typeof BottomNav.closeDrawer === 'function') BottomNav.closeDrawer(); } catch {}
     // Hide all tabs
     document.querySelectorAll('.organizer-tab-content').forEach(tab => {
         tab.style.display = 'none';
@@ -48153,7 +48356,125 @@ showOrganizerTab = function(tabName) {
         // Make BottomNav globally available
         window.BottomNav = BottomNav;
 
+        // Ensure 'More' button works on touch devices (defensive binding)
+        setTimeout(() => {
+            try {
+                const moreBtn = document.getElementById('bottomMoreBtn');
+                if (moreBtn) {
+                    const handler = (e) => { e?.preventDefault?.(); e?.stopPropagation?.(); BottomNav.toggleDrawer(); return false; };
+                    moreBtn.addEventListener('click', handler, { passive: false });
+                    moreBtn.addEventListener('touchstart', handler, { passive: false });
+                }
+            } catch (e) { console.warn('[BottomNav] More button binding failed:', e); }
+        }, 0);
+
         console.log('[BottomNav] Bottom navigation system loaded');
+    </script>
+
+    <!-- Debug Auth Status Script -->
+    <script>
+        window.DebugAuth = {
+            async show() {
+                const overlay = document.getElementById('debugAuthOverlay');
+                const modal = document.getElementById('debugAuthModal');
+                const content = document.getElementById('debugAuthContent');
+
+                const info = await this.collect();
+                content.innerHTML = this.render(info);
+                if (overlay) overlay.style.display = 'block';
+                if (modal) modal.style.display = 'block';
+            },
+            hide() {
+                const overlay = document.getElementById('debugAuthOverlay');
+                const modal = document.getElementById('debugAuthModal');
+                if (overlay) overlay.style.display = 'none';
+                if (modal) modal.style.display = 'none';
+            },
+            copy() {
+                const el = document.getElementById('debugAuthContent');
+                const text = el ? el.innerText : '';
+                navigator.clipboard?.writeText(text).then(() => {
+                    window.NotificationManager?.show?.('Auth status copied to clipboard', 'success');
+                }).catch(()=>{});
+            },
+            async collect() {
+                const info = { liff: {}, supabase: {}, app: {} };
+                try {
+                    info.app.version = (window.AppVersion || 'n/a');
+                    info.app.time = new Date().toISOString();
+                    if (typeof liff !== 'undefined') {
+                        info.liff.available = true;
+                        info.liff.isLoggedIn = !!liff.isLoggedIn?.();
+                        info.liff.idTokenPresent = !!liff.getIDToken?.();
+                        try {
+                            if (info.liff.isLoggedIn) {
+                                const profile = await liff.getProfile();
+                                info.liff.userId = profile?.userId || 'n/a';
+                                info.liff.displayName = profile?.displayName || 'n/a';
+                            }
+                        } catch {}
+                    } else {
+                        info.liff.available = false;
+                    }
+
+                    if (window.SupabaseDB?.client) {
+                        info.supabase.available = true;
+                        const { data: { session } } = await window.SupabaseDB.client.auth.getSession();
+                        info.supabase.hasSession = !!session?.user;
+                        info.supabase.userId = session?.user?.id || 'n/a';
+                        info.supabase.expiresAt = session?.expires_at || 'n/a';
+                    } else {
+                        info.supabase.available = false;
+                    }
+                } catch (e) {
+                    info.error = String(e);
+                }
+                return info;
+            },
+            render(info) {
+                return `
+                    <div class="debug-auth-grid">
+                      <div class="debug-auth-card">
+                        <div class="font-medium mb-2">LIFF</div>
+                        <div class="debug-auth-kv">
+                          <div><span>available</span><span>${info.liff.available}</span></div>
+                          <div><span>isLoggedIn</span><span>${info.liff.isLoggedIn ?? 'n/a'}</span></div>
+                          <div><span>idTokenPresent</span><span>${info.liff.idTokenPresent ?? 'n/a'}</span></div>
+                          <div><span>userId</span><span>${info.liff.userId ?? 'n/a'}</span></div>
+                          <div><span>displayName</span><span>${info.liff.displayName ?? 'n/a'}</span></div>
+                        </div>
+                      </div>
+                      <div class="debug-auth-card">
+                        <div class="font-medium mb-2">Supabase</div>
+                        <div class="debug-auth-kv">
+                          <div><span>available</span><span>${info.supabase.available}</span></div>
+                          <div><span>hasSession</span><span>${info.supabase.hasSession ?? 'n/a'}</span></div>
+                          <div><span>userId</span><span>${info.supabase.userId ?? 'n/a'}</span></div>
+                          <div><span>expiresAt</span><span>${info.supabase.expiresAt ?? 'n/a'}</span></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="debug-auth-card mt-3">
+                      <div class="font-medium mb-2">App</div>
+                      <div class="debug-auth-kv">
+                        <div><span>time</span><span>${info.app.time}</span></div>
+                        <div><span>version</span><span>${info.app.version}</span></div>
+                      </div>
+                      ${info.error ? `<div class="text-red-600 text-sm mt-2">${info.error}</div>` : ''}
+                    `;
+            }
+        };
+
+        // Show debug button if enabled by hash or localStorage
+        (function () {
+            try {
+                const debugEnabled = (location.hash.includes('debug') || localStorage.getItem('mcipro_debug') === '1');
+                if (debugEnabled) {
+                    const btn = document.getElementById('debugAuthBtn');
+                    if (btn) btn.style.display = 'inline-flex';
+                }
+            } catch {}
+        })();
     </script>
 
 </body>

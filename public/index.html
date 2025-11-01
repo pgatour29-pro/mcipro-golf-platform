@@ -9122,6 +9122,32 @@ if ('serviceWorker' in navigator && !(location.search.includes('code=') && locat
             TabManager.showTab('caddieDashboard', tabName, event);
         }
 
+        function goToCaddieBooking() {
+            try {
+                // Switch to booking tab
+                showGolferTab('booking', null);
+
+                // Kick booking init explicitly to avoid race conditions
+                try { if (typeof initializeBookingSystem === 'function') initializeBookingSystem(); } catch {}
+
+                // Wait for caddieSearchInput to exist, then scroll/focus (max ~1.5s)
+                let attempts = 0;
+                const tryFocus = () => {
+                    const el = document.getElementById('caddieSearchInput');
+                    if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        if (typeof el.focus === 'function') el.focus();
+                    } else if (attempts < 15) {
+                        attempts += 1;
+                        setTimeout(tryFocus, 100);
+                    }
+                };
+                setTimeout(tryFocus, 200);
+            } catch (e) {
+                console.warn('[Navigation] Failed to navigate to caddie booking:', e);
+            }
+        }
+
         function showManagerTab(tabName, event) {
             TabManager.showTab('managerDashboard', tabName, event);
 
@@ -20007,7 +20033,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         </div>
                     </button>
 
-                    <button onclick="showGolferTab('booking', event); setTimeout(() => { document.getElementById('caddieSearchInput')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300);" class="card-hover metric-card text-center group">
+                    <button onclick="goToCaddieBooking()" class="card-hover metric-card text-center group">
                         <div class="w-10 h-10 md:w-12 md:h-12 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-2 group-hover:bg-teal-200 transition-colors">
                             <span class="material-symbols-outlined text-xl md:text-2xl text-teal-600">person</span>
                         </div>

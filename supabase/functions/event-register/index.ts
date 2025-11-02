@@ -73,10 +73,10 @@ Deno.serve(async (req) => {
       auth: { persistSession: false }
     });
 
-    // Map LINE user ID to internal UUID via user_profiles table
+    // Map LINE user ID to internal UUID via profiles table
     const { data: profile, error: profileError } = await admin
-      .from('user_profiles')
-      .select('id, profile_data')
+      .from('profiles')
+      .select('id, name')
       .eq('line_user_id', line_user_id)
       .maybeSingle();
 
@@ -89,8 +89,6 @@ Deno.serve(async (req) => {
     }
 
     const user_uuid = profile.id;
-    const profileData = profile.profile_data || {};
-    const userName = `${profileData?.personalInfo?.firstName || ''} ${profileData?.personalInfo?.lastName || ''}`.trim() || 'User';
 
     // Verify event exists
     const { data: event, error: eventError } = await admin
@@ -107,50 +105,37 @@ Deno.serve(async (req) => {
       return json({ error: 'Event not found' }, 404);
     }
 
-    // Get user's handicap from profile
-    const handicap = profileData?.golfInfo?.handicap ? parseFloat(profileData.golfInfo.handicap) : 0;
-
     // Check if already registered
     const { data: existing } = await admin
       .from('event_registrations')
       .select('id')
       .eq('event_id', event_id)
-      .eq('player_id', user_uuid)
+      .eq('user_id', user_uuid)
       .maybeSingle();
 
     if (existing) {
       return json({ error: 'Already registered for this event' }, 409);
     }
 
-    // Validate payment status (map 'pending' to 'unpaid' to match DB constraint)
-    const statusMap: Record<string, string> = {
-      'pending': 'unpaid',
-      'unpaid': 'unpaid',
-      'paid': 'paid',
-      'partial': 'partial'
-    };
-    const final_status = statusMap[payment_status || ''] || 'unpaid';
+    // Validate payment status
+    const allowed = new Set(['unpaid', 'pending', 'paid', 'partial', 'refunded', 'comped']);
+    const final_status = allowed.has(payment_status || '') ? payment_status : 'pending';
 
-    // Generate unique ID for registration
-    const regId = crypto.randomUUID();
-
-    // Insert registration (player_id is TEXT type, needs string conversion)
+    // Insert registration
     const payload = {
-      id: regId,
       event_id,
       user_id: user_uuid,
-      player_id: String(user_uuid),
-      player_name: userName,
-      handicap: handicap,  // Fixed: database column is 'handicap' not 'handicap_index'
       want_transport: !!want_transport,
       want_competition: !!want_competition,
       total_fee: Number(total_fee) || 0,
       payment_status: final_status
     };
 
-    const { error } = await admin
+    const { data, error } = await admin
       .from('event_registrations')
-      .insert(payload);
+      .insert(payload)
+      .select('id, created_at')
+      .single();
 
     if (error) {
       console.error('[EventRegister] Insert error:', error);
@@ -158,28 +143,23 @@ Deno.serve(async (req) => {
     }
 
     console.log('[EventRegister] Success:', {
-      registrationId: regId,
+      registrationId: data.id,
       lineUserId: line_user_id,
       userUuid: user_uuid,
       eventId: event_id,
-      profileName: userName,
+      profileName: profile.name,
       eventName: event.name
     });
 
     return json({
       ok: true,
-      id: regId,
-      message: `Successfully registered ${userName} for ${event.name}`
+      id: data.id,
+      created_at: data.created_at,
+      message: `Successfully registered ${profile.name} for ${event.name}`
     }, 201);
 
   } catch (error) {
-    console.error('[EventRegister] CRITICAL ERROR:', error);
-    console.error('[EventRegister] Error message:', error?.message);
-    console.error('[EventRegister] Error stack:', error?.stack);
-    return json({
-      error: String(error?.message ?? error),
-      details: error?.stack || 'No stack trace',
-      version: 'v7-FIXED'
-    }, 500);
+    console.error('[EventRegister] Error:', error);
+    return json({ error: String(error?.message ?? error) }, 500);
   }
 });

@@ -7657,9 +7657,9 @@ if ('serviceWorker' in navigator && !(location.search.includes('code=') && locat
 
                                     // Initialize native push notifications
                                     try {
-                                        const { data: { user } } = await window.SupabaseDB.client.auth.getUser();
-                                        if (window.NativePush && user?.id) {
-                                            await window.NativePush.init(user.id);
+                                        const userId = AppState.currentUser?.profileId;
+                                        if (window.NativePush && userId) {
+                                            await window.NativePush.init(userId);
                                         }
                                     } catch (pushErr) {
                                         console.error('[INIT] Push init failed:', pushErr);
@@ -29003,7 +29003,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 try {
                     // Load all organizer profiles from database
                     const { data, error } = await window.SupabaseDB.client
-                        .from('user_profiles')
+                        .from('profiles')
                         .select('*')
                         .eq('role', 'organizer')
                         .order('society_name');
@@ -29032,7 +29032,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         const { count, error } = await window.SupabaseDB.client
                             .from('society_events')
                             .select('*', { count: 'exact', head: true })
-                            .eq('organizer_id', society.line_user_id);
+                            .eq('organizer_id', society.id);
 
                         society.eventCount = count || 0;
                     } catch (e) {
@@ -29474,7 +29474,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             .select('*')
                             // Removed .eq('golfer_id', userId) - let RLS policy handle filtering
                             // RLS automatically returns: own rounds + shared rounds + organizer rounds
-                            .order('completed_at', { ascending: false });
+                            .order('created_at', { ascending: false });
 
                         if (error) {
                             console.error('[Round History] Error loading from database:', error);
@@ -29757,7 +29757,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         .select('*')
                         .eq('golfer_id', userId)
                         .not('handicap_used', 'is', null)
-                        .order('completed_at', { ascending: true });
+                        .order('created_at', { ascending: true });
 
                     if (error) throw error;
 
@@ -29983,7 +29983,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             .select('*')
                             // Removed .eq('golfer_id', userId) - let RLS policy handle filtering
                             // RLS automatically returns: own rounds + shared rounds + organizer rounds
-                            .order('completed_at', { ascending: false });
+                            .order('created_at', { ascending: false });
 
                         if (error) {
                             console.error('[Round History] Error loading from database:', error);
@@ -32773,19 +32773,19 @@ class SocietyGolfSupabase {
             totalFee
         });
 
-        // Get Supabase Auth user UUID (NOT LINE ID!)
-        const { data: { user } } = await window.SupabaseDB.client.auth.getUser();
-        if (!user || !user.id) {
+        // Get user UUID from AppState (set during LINE OAuth login)
+        const userId = AppState.currentUser?.profileId;
+        if (!userId) {
             throw new Error('Not authenticated - please log in');
         }
 
-        console.log('[SocietyGolf] Using Supabase Auth UUID:', user.id.substring(0, 8) + '...');
+        console.log('[SocietyGolf] Using profile UUID:', userId.substring(0, 8) + '...');
 
         const { data, error } = await window.SupabaseDB.client
             .from('event_registrations')
             .insert([{
                 event_id: eventId,
-                user_id: user.id,  // Supabase Auth UUID
+                user_id: userId,  // Profile UUID from AppState
                 want_transport: playerData.wantTransport || false,
                 want_competition: playerData.wantCompetition || false,
                 total_fee: totalFee,

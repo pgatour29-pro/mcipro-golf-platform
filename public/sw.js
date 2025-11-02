@@ -1,7 +1,7 @@
 // SERVICE WORKER - Offline-First Caching for MciPro Golf Platform
 // DEPLOYMENT VERSION: 2025-10-21-CACHE-FIX
 
-const BUILD_TIMESTAMP = '2025-11-02T21:15:00Z'; // FINAL FIX - All UUID/payment_status issues resolved
+const BUILD_TIMESTAMP = '2025-11-02T21:30:00Z'; // FIX: Use AppState.profileId instead of auth.getUser()
 const CACHE_VERSION = `mcipro-v${BUILD_TIMESTAMP}`;
 const CACHE_NAME = CACHE_VERSION;
 

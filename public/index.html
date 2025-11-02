@@ -32781,25 +32781,32 @@ class SocietyGolfSupabase {
 
         console.log('[SocietyGolf] Using profile UUID:', userId.substring(0, 8) + '...');
 
-        const { data, error } = await window.SupabaseDB.client
-            .from('event_registrations')
-            .insert([{
-                event_id: eventId,
-                user_id: userId,  // Profile UUID from AppState
-                want_transport: playerData.wantTransport || false,
-                want_competition: playerData.wantCompetition || false,
-                total_fee: totalFee,
-                payment_status: 'pending'
-            }])
-            .select()
-            .single();
+        // Use Edge Function to bypass RLS (LINE OAuth doesn't create Supabase Auth sessions)
+        const response = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/event-register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                profileId: userId,
+                eventId: eventId,
+                wantTransport: playerData.wantTransport || false,
+                wantCompetition: playerData.wantCompetition || false,
+                totalFee: totalFee,
+                paymentStatus: 'pending'
+            })
+        });
 
-        if (error) {
+        const result = await response.json();
+
+        if (!response.ok || !result.ok) {
+            const error = new Error(result.error || 'Registration failed');
             console.error('[SocietyGolf] Error registering player:', error);
             throw error;
         }
 
-        return data;
+        console.log('[SocietyGolf] ✅ Registration successful:', result);
+        return result;
     }
 
     async checkSocietyMembership(playerId, societyName) {

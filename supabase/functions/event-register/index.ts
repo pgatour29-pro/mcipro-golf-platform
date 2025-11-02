@@ -173,7 +173,13 @@ Deno.serve(async (req) => {
     }, 201);
 
   } catch (error) {
-    console.error('[EventRegister] Error:', error);
-    return json({ error: String(error?.message ?? error) }, 500);
+    console.error('[EventRegister] CRITICAL ERROR:', error);
+    console.error('[EventRegister] Error message:', error?.message);
+    console.error('[EventRegister] Error stack:', error?.stack);
+    return json({
+      error: String(error?.message ?? error),
+      details: error?.stack || 'No stack trace',
+      version: 'v5-debug'
+    }, 500);
   }
 });

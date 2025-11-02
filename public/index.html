@@ -5646,7 +5646,7 @@
 
                     // Use direct LINE OAuth instead of LIFF
                     const LINE_CHANNEL_ID = '2008228481'; // Your LINE Login channel ID
-                    const redirectUri = 'https://mycaddipro.com/';
+                    const redirectUri = window.location.origin + '/';
                     const state = Math.random().toString(36).substring(7);
 
                     // Store state for verification in BOTH localStorage AND sessionStorage for redundancy
@@ -7520,8 +7520,14 @@
                 try {
                     console.warn('🎯🎯🎯 INSIDE IF BLOCK - PROCESSING OAUTH 🎯🎯🎯');
 
-                    // DUPLICATE CHECK REMOVED - OAuth exchange is idempotent, edge function handles duplicates
-                    console.warn('🚀🚀🚀 STARTING OAUTH EXCHANGE (duplicate check disabled) 🚀🚀🚀');
+                    // DEDUPLICATION: Prevent processing the same code twice (e.g., on page refresh)
+                    const usedCode = sessionStorage.getItem('__line_code_used');
+                    if (usedCode === code) {
+                        console.log('[LINE OAuth] Code already used, skipping duplicate processing');
+                        return;
+                    }
+
+                    console.warn('🚀🚀🚀 STARTING OAUTH EXCHANGE 🚀🚀🚀');
                     console.log('[LINE OAuth] Callback received, exchanging code for profile');
 
                     try {
@@ -7550,6 +7556,10 @@
                     const data = JSON.parse(raw || '{}');
                     if (data.profile) {
                         await LineAuthentication.setUserFromLineProfile(data.profile);
+
+                        // Mark code as used to prevent duplicate processing
+                        sessionStorage.setItem('__line_code_used', code);
+
                         // Clear state from both storages
                         localStorage.removeItem('line_oauth_state');
                         sessionStorage.removeItem('line_oauth_state');

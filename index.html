@@ -46312,14 +46312,25 @@ class GolferEventsManager {
             // Filter to ONLY upcoming events (past events go to History tab)
             const now = new Date();
             now.setHours(0, 0, 0, 0);
-            const upcoming = data.filter(r => new Date(r.society_events.date) >= now);
+
+            console.log('[DEBUG loadMyRegistrations] Filtering upcoming events. Total:', data.length);
+            console.log('[DEBUG loadMyRegistrations] Current date for comparison:', now);
+            data.forEach((r, i) => {
+                console.log(`[DEBUG] Event ${i + 1}: date=${r.society_events.date}, title=${r.society_events.title}, isPast=${new Date(r.society_events.date) < now}`);
+            });
+
+            // TEMPORARILY SHOW ALL REGISTRATIONS (not just upcoming) for debugging
+            const upcoming = data; // TODO: Re-enable filter after confirming data displays
+            // const upcoming = data.filter(r => new Date(r.society_events.date) >= now);
+            console.log('[DEBUG loadMyRegistrations] Events to display:', upcoming.length);
 
             if (upcoming.length === 0) {
+                console.log('[DEBUG loadMyRegistrations] No events to display');
                 container.innerHTML = `
                     <div class="text-center py-12">
                         <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">confirmation_number</span>
-                        <h3 class="text-lg font-bold text-gray-900 mb-2">No Upcoming Registrations</h3>
-                        <p class="text-gray-600 mb-4">You haven't registered for any upcoming events</p>
+                        <h3 class="text-lg font-bold text-gray-900 mb-2">No Registrations</h3>
+                        <p class="text-gray-600 mb-4">You haven't registered for any events</p>
                         <button onclick="GolferEventsSystem.showEventsView('browse')" class="btn-primary">
                             Browse Events
                         </button>
@@ -46328,6 +46339,7 @@ class GolferEventsManager {
                 return;
             }
 
+            console.log('[DEBUG loadMyRegistrations] Rendering', upcoming.length, 'registration cards');
             let html = `
                 <div class="space-y-3">
                     ${upcoming.map(reg => this.renderMyRegistrationCard(reg)).join('')}
@@ -46335,6 +46347,7 @@ class GolferEventsManager {
             `;
 
             container.innerHTML = html;
+            console.log('[DEBUG loadMyRegistrations] ========== COMPLETE ==========');
         } catch (error) {
             console.error('[GolferEventsSystem] Error loading registrations:', error);
             container.innerHTML = `

@@ -1,7 +1,7 @@
 // SERVICE WORKER - Offline-First Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-02-FILTER-REGISTRATIONS
+// DEPLOYMENT VERSION: 2025-11-02-CLEAN-OAUTH-AND-FILTERS
 
-const BUILD_TIMESTAMP = '2025-11-02T14:30:00Z'; // UPDATE THIS ON EVERY DEPLOYMENT
+const BUILD_TIMESTAMP = '2025-11-02T15:45:00Z'; // UPDATE THIS ON EVERY DEPLOYMENT
 const CACHE_VERSION = `mcipro-v${BUILD_TIMESTAMP}`;
 const CACHE_NAME = CACHE_VERSION;
 
@@ -43,23 +43,22 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
     console.log('[ServiceWorker] Activating version:', BUILD_TIMESTAMP);
 
-    event.waitUntil(
-        caches.keys()
-            .then((cacheNames) => {
-                return Promise.all(
-                    cacheNames
-                        .filter((name) => name.startsWith('mcipro-') && name !== CACHE_NAME)
-                        .map((name) => {
-                            console.log('[ServiceWorker] Deleting old cache:', name);
-                            return caches.delete(name);
-                        })
-                );
-            })
-            .then(() => {
-                console.log('[ServiceWorker] Activated - All old caches cleared');
-                return self.clients.claim();
-            })
-    );
+    event.waitUntil((async () => {
+        // Clean up old caches
+        const cacheNames = await caches.keys();
+        await Promise.all(
+            cacheNames
+                .filter((name) => name.startsWith('mcipro-') && name !== CACHE_NAME)
+                .map((name) => {
+                    console.log('[ServiceWorker] Deleting old cache:', name);
+                    return caches.delete(name);
+                })
+        );
+
+        console.log('[ServiceWorker] Activated - All old caches cleared');
+        // Only call claim() here, inside activate event's waitUntil
+        await self.clients.claim();
+    })());
 });
 
 // =====================================================

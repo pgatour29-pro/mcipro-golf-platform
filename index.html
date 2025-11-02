@@ -7503,32 +7503,24 @@
 
         // Application Initialization
         document.addEventListener('DOMContentLoaded', async function() {
-            console.warn('🔥🔥🔥 DOMContentLoaded FIRED 🔥🔥🔥');
-
             // Handle LINE OAuth callback
             const urlParams = new URLSearchParams(window.location.search);
             const code = urlParams.get('code');
             const state = urlParams.get('state');
             const storedState = localStorage.getItem('line_oauth_state');
 
-            // DEBUG: Log OAuth callback detection
-            console.warn('🔥 [LINE OAuth DEBUG] Checking callback...');
-            console.log('[LINE OAuth DEBUG] Checking callback...');
-            console.warn('[LINE OAuth DEBUG] code:', code ? 'present' : 'missing', 'VALUE:', code);
-            console.warn('[LINE OAuth DEBUG] state from URL:', state);
-            console.warn('[LINE OAuth DEBUG] storedState from localStorage:', storedState);
-            console.warn('[LINE OAuth DEBUG] states match:', state === storedState);
-            console.warn('[LINE OAuth DEBUG] condition (code && state === storedState):', !!(code && state === storedState));
-            console.warn('[LINE OAuth DEBUG] sessionStorage __line_code_used:', sessionStorage.getItem('__line_code_used'));
+            // Clean OAuth validation
+            const currentCode = code;
+            const usedCode = sessionStorage.getItem('__line_code_used');
+            const statesMatch = state === storedState;
+            const codeUnused = usedCode !== currentCode;
 
-            console.warn('🔥🔥🔥 ABOUT TO CHECK IF CONDITION 🔥🔥🔥');
-            if (code && state === storedState) {
+            if (currentCode && statesMatch && codeUnused) {
                 try {
-                    console.warn('🎯🎯🎯 INSIDE IF BLOCK - PROCESSING OAUTH 🎯🎯🎯');
-
-                    // DUPLICATE CHECK REMOVED - OAuth exchange is idempotent, edge function handles duplicates
-                    console.warn('🚀🚀🚀 STARTING OAUTH EXCHANGE (duplicate check disabled) 🚀🚀🚀');
                     console.log('[LINE OAuth] Callback received, exchanging code for profile');
+
+                    // Mark code as used immediately to prevent double-processing
+                    sessionStorage.setItem('__line_code_used', currentCode);
 
                     try {
                         LoadingManager.show('Completing LINE login...');
@@ -7537,7 +7529,6 @@
                         // Continue anyway
                     }
 
-                    console.warn('💫 About to call fetch to line-oauth-exchange...');
                     // Call Supabase Edge Function to exchange code for profile
                     const res = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-oauth-exchange', {
                         method: 'POST',
@@ -7545,13 +7536,8 @@
                         body: JSON.stringify({ code, state, redirectUri: 'https://mycaddipro.com/' })
                     });
 
-                    console.warn('✅ FETCH COMPLETED - Got response object:', res);
-                    console.warn('✅ Response status:', res.status);
-                    console.warn('✅ Response ok:', res.ok);
-
                     const raw = await res.clone().text();
-                    console.warn('✅ Response text extracted, length:', raw.length);
-                    console.log('[exchange] status', res.status, raw);
+                    console.log('[LINE OAuth] Exchange response:', res.status);
                     const data = JSON.parse(raw || '{}');
                     if (data.profile) {
                         await LineAuthentication.setUserFromLineProfile(data.profile);
@@ -19565,7 +19551,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
 <body>
     <script>
-    console.log('%c🚀 PAGE VERSION: 2025-11-02-DEBUG-MY-REGISTRATIONS', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-11-02-CLEAN-OAUTH-AND-FILTERS', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
     // IMMEDIATE OAuth detection - runs before DOMContentLoaded
@@ -46226,6 +46212,31 @@ class GolferEventsManager {
     // MY REGISTRATIONS
     // ======================
 
+    filterRegistrations(regs, mode) {
+        const now = new Date().toISOString();
+        if (mode === 'all') return regs;
+        if (mode === 'upcoming') {
+            return regs.filter(r => {
+                const eventTime = r.society_events?.date || r.society_events?.start_time || r.created_at;
+                return eventTime >= now;
+            });
+        }
+        // Past
+        return regs.filter(r => {
+            const eventTime = r.society_events?.end_time || r.society_events?.date || r.society_events?.start_time || r.created_at;
+            return eventTime < now;
+        });
+    }
+
+    sortRegistrations(regs, mode) {
+        return [...regs].sort((a, b) => {
+            const aTime = a.society_events?.start_time || a.society_events?.date || a.created_at;
+            const bTime = b.society_events?.start_time || b.society_events?.date || b.created_at;
+            // Past events: newest first (DESC), Upcoming: soonest first (ASC)
+            return mode === 'past' ? (bTime > aTime ? 1 : -1) : (aTime > bTime ? 1 : -1);
+        });
+    }
+
     async loadMyRegistrations() {
         const container = document.getElementById('myRegistrationsList');
 
@@ -46329,24 +46340,11 @@ class GolferEventsManager {
             // Update button states
             this.updateFilterButtons(filterMode);
 
-            // Apply filter based on mode
-            const now = new Date().toISOString();
-            let filtered = data;
+            // Apply filter and sort
+            const filtered = this.filterRegistrations(data, filterMode);
+            const sorted = this.sortRegistrations(filtered, filterMode);
 
-            if (filterMode === 'upcoming') {
-                filtered = data.filter(r => {
-                    const eventDate = r.society_events.date || r.created_at;
-                    return eventDate >= now;
-                });
-            } else if (filterMode === 'past') {
-                filtered = data.filter(r => {
-                    const eventDate = r.society_events.date || r.created_at;
-                    return eventDate < now;
-                });
-            }
-            // 'all' mode shows everything (no filter)
-
-            if (filtered.length === 0) {
+            if (sorted.length === 0) {
                 const emptyMessage = filterMode === 'upcoming' ? 'No upcoming events' :
                                    filterMode === 'past' ? 'No past events' :
                                    "You haven't registered for any events";
@@ -46365,7 +46363,7 @@ class GolferEventsManager {
 
             let html = `
                 <div class="space-y-3">
-                    ${filtered.map(reg => this.renderMyRegistrationCard(reg)).join('')}
+                    ${sorted.map(reg => this.renderMyRegistrationCard(reg)).join('')}
                 </div>
             `;
 

@@ -134,11 +134,12 @@ Deno.serve(async (req) => {
     // Generate unique ID for registration
     const regId = crypto.randomUUID();
 
-    // Insert registration
+    // Insert registration (player_id is TEXT type, needs string conversion)
     const payload = {
       id: regId,
       event_id,
-      player_id: user_uuid,
+      user_id: user_uuid,
+      player_id: String(user_uuid),
       player_name: userName,
       handicap_index: handicap,
       want_transport: !!want_transport,

@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
       event_id,
       player_id: user_uuid,
       player_name: userName,
-      handicap,
+      handicap_index: handicap,
       want_transport: !!want_transport,
       want_competition: !!want_competition,
       total_fee: Number(total_fee) || 0,

@@ -102,9 +102,10 @@ Deno.serve(async (req) => {
       return json({ ok: false, where: "duplicate", detail: "Already registered for this event" }, 409);
     }
 
-    // Validate payment status
-    const allowed = new Set(['unpaid', 'paid', 'partial']);
-    const finalStatus = allowed.has(payment_status) ? payment_status : 'unpaid';
+    // Validate payment status - match database CHECK constraint
+    // Database allows: 'pending', 'paid', 'failed', 'refunded'
+    const allowed = new Set(['pending', 'paid', 'failed', 'refunded']);
+    const finalStatus = allowed.has(payment_status) ? payment_status : 'pending';
 
     // Insert registration
     const payload = {

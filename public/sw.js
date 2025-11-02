@@ -1,7 +1,7 @@
 // SERVICE WORKER - Offline-First Caching for MciPro Golf Platform
 // DEPLOYMENT VERSION: 2025-10-21-CACHE-FIX
 
-const BUILD_TIMESTAMP = '2025-11-02T21:45:00Z'; // Edge Function for event registration (bypasses RLS)
+const BUILD_TIMESTAMP = '2025-11-02T22:00:00Z'; // Added forceUpdate=1 parameter for cache clearing
 const CACHE_VERSION = `mcipro-v${BUILD_TIMESTAMP}`;
 const CACHE_NAME = CACHE_VERSION;
 

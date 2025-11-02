@@ -7591,6 +7591,39 @@
                 }
             });
 
+            // Force update service worker if requested via URL parameter
+            if (window.location.search.includes('forceUpdate=1')) {
+                console.log('[FORCE UPDATE] Unregistering all service workers...');
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.getRegistrations().then(registrations => {
+                        if (registrations.length === 0) {
+                            console.log('[FORCE UPDATE] No service workers to unregister');
+                        } else {
+                            registrations.forEach(reg => {
+                                console.log('[FORCE UPDATE] Unregistering:', reg.scope);
+                                reg.unregister();
+                            });
+                            console.log('[FORCE UPDATE] All service workers unregistered');
+                        }
+                        // Clear all caches
+                        caches.keys().then(cacheNames => {
+                            return Promise.all(
+                                cacheNames.map(cacheName => {
+                                    console.log('[FORCE UPDATE] Deleting cache:', cacheName);
+                                    return caches.delete(cacheName);
+                                })
+                            );
+                        }).then(() => {
+                            console.log('[FORCE UPDATE] All caches cleared. Reloading in 2 seconds...');
+                            setTimeout(() => {
+                                window.location.href = window.location.origin + window.location.pathname;
+                            }, 2000);
+                        });
+                    });
+                }
+                return;
+            }
+
             // Clear cache if requested via URL parameter
             if (window.location.search.includes('clearCache=1')) {
                 console.log('[Dashboard] Clearing localStorage cache...');

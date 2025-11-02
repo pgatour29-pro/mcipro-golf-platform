@@ -142,13 +142,26 @@ Deno.serve(async (req) => {
       payment_status: final_status
     };
 
+    console.log('[EventRegister] About to insert payload:', JSON.stringify(payload, null, 2));
+
     const { error } = await admin
       .from('event_registrations')
       .insert(payload);
 
     if (error) {
-      console.error('[EventRegister] Insert error:', error);
-      return json({ error: `Database error: ${error.message}` }, 500);
+      console.error('[EventRegister] Insert error:', JSON.stringify({
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        payload: payload
+      }, null, 2));
+      return json({
+        error: `Database error: ${error.message}`,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      }, 500);
     }
 
     console.log('[EventRegister] Success:', {

@@ -46190,6 +46190,8 @@ class GolferEventsManager {
         const container = document.getElementById('myRegistrationsList');
         const playerId = AppState.currentUser?.lineUserId;
 
+        console.log('[DEBUG loadMyRegistrations] Player ID:', playerId);
+
         if (!playerId) {
             container.innerHTML = `
                 <div class="text-center py-12">
@@ -46210,9 +46212,16 @@ class GolferEventsManager {
                 .eq('player_id', playerId)
                 .order('created_at', { ascending: false });
 
+            console.log('[DEBUG loadMyRegistrations] Query result:', {
+                count: regData?.length,
+                regData,
+                regError
+            });
+
             if (regError) throw regError;
 
             if (!regData || regData.length === 0) {
+                console.log('[DEBUG loadMyRegistrations] No registrations found - showing empty state');
                 container.innerHTML = `
                     <div class="text-center py-12">
                         <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">confirmation_number</span>
@@ -46228,12 +46237,19 @@ class GolferEventsManager {
 
             // Get unique event IDs
             const eventIds = [...new Set(regData.map(r => r.event_id))];
+            console.log('[DEBUG loadMyRegistrations] Event IDs:', eventIds);
 
             // Get events data
             const { data: eventsData, error: eventsError } = await window.SupabaseDB.client
                 .from('society_events')
                 .select('*')
                 .in('id', eventIds);
+
+            console.log('[DEBUG loadMyRegistrations] Events data:', {
+                count: eventsData?.length,
+                eventsData,
+                eventsError
+            });
 
             if (eventsError) throw eventsError;
 

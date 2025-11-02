@@ -232,7 +232,6 @@ class SocietyGolfSupabase {
         const { data, error } = await SupabaseManager.client
             .from('event_registrations')
             .insert([{
-                id: this.generateId(),
                 event_id: eventId,
                 player_name: playerData.name,
                 player_id: playerData.playerId,
@@ -325,7 +324,6 @@ class SocietyGolfSupabase {
         const { data, error } = await SupabaseManager.client
             .from('event_waitlist')
             .insert([{
-                id: this.generateId(),
                 event_id: eventId,
                 player_name: playerData.name,
                 player_id: playerData.playerId,

@@ -13,8 +13,10 @@ const redirectUri = 'https://mycaddipro.com/'; // Hardcoded, matches LINE regist
 **Status:** ✅ **FIXED**
 ```javascript
 // index.html:32777-32788
-const { data: { user } } = await window.SupabaseDB.client.auth.getUser();
-if (!user || !user.id) {
+// CRITICAL: LINE OAuth doesn't create Supabase Auth sessions
+// Use profileId from AppState instead of auth.getUser()
+const userId = AppState.currentUser?.profileId;
+if (!userId) {
     throw new Error('Not authenticated - please log in');
 }
 
@@ -22,7 +24,7 @@ const { data, error } = await window.SupabaseDB.client
     .from('event_registrations')
     .insert([{
         event_id: eventId,
-        user_id: user.id,  // ✅ Supabase Auth UUID (NOT LINE ID!)
+        user_id: userId,  // ✅ Profile UUID from AppState (NOT LINE ID!)
         want_transport: playerData.wantTransport || false,
         want_competition: playerData.wantCompetition || false,
         total_fee: totalFee,
@@ -95,11 +97,17 @@ Open DevTools Console and check:
 
 ```javascript
 // Should see in console:
-[ServiceWorker] Loaded - Version: 2025-11-02T21:15:00Z
+[ServiceWorker] Loaded - Version: 2025-11-02T21:30:00Z
 [ServiceWorker] Activated - All old caches cleared
 ```
 
 **If you see an older timestamp, the cache clear failed. Repeat steps 1-11.**
+
+**Important:** You should NOT see these errors after cache clear:
+- ❌ "Not authenticated - please log in" during event registration
+- ❌ `organizer_id=eq.Utrgg...` (LINE ID instead of UUID)
+- ❌ `order=completed_at.desc` 400 errors
+- ❌ Parse error in chat-system-full.js:931
 
 ---
 
@@ -156,13 +164,17 @@ This will show:
 |-----|--------|----------|
 | LINE OAuth redirect_uri | ✅ Complete | index.html:5649 |
 | OAuth code deduplication | ✅ Complete | index.html:7523-7528 |
-| UUID architecture | ✅ Complete | index.html:32777-32788 |
+| UUID via AppState.profileId | ✅ Complete | index.html:32777 |
+| Push notifications profileId | ✅ Complete | index.html:7660 |
 | payment_status = 'pending' | ✅ Complete | index.html:32792 |
 | user_id column | ✅ Complete | index.html:32788 |
 | player_name removed | ✅ Complete | index.html:32784-32792 |
+| Society selector table | ✅ Complete | index.html:29006 (profiles) |
+| Society organizer_id UUID | ✅ Complete | index.html:29035 (society.id) |
+| Rounds order by created_at | ✅ Complete | index.html:29477,29760,29986 |
 | No columns= in source | ✅ Verified | grep results |
 | No parse errors in source | ✅ Verified | chat-system-full.js:1-204 |
-| Service worker updated | ✅ Complete | sw.js:4 (2025-11-02T21:15:00Z) |
+| Service worker updated | ✅ Complete | sw.js:4 (2025-11-02T21:30:00Z) |
 
 **All code fixes are complete.** The ONLY remaining step is **complete cache clear** by the user.
 
@@ -170,13 +182,12 @@ This will show:
 
 ## 🚨 If Issues Persist After Cache Clear
 
-1. **Check service worker version** in Console - must be `2025-11-02T21:15:00Z`
+1. **Check service worker version** in Console - must be `2025-11-02T21:30:00Z`
 2. **Check Network tab** - requests should show UUIDs, not LINE IDs
-3. **Check database error messages** - may need to run diagnostic SQL
-4. **Verify LINE OAuth edge function** creates Supabase Auth session
-5. **Check `auth.getUser()`** returns valid user with UUID
+3. **Check AppState** - `AppState.currentUser.profileId` should be a valid UUID
+4. **Check database error messages** - may need to run diagnostic SQL
 
-If `auth.getUser()` returns null, the LINE OAuth edge function is not creating a session properly. This would be a backend issue, not a frontend issue.
+**Note:** LINE OAuth does NOT create Supabase Auth sessions. The code now uses `AppState.currentUser.profileId` instead of `auth.getUser()`. This is the correct architecture for LINE-based authentication.
 
 ---
 
@@ -209,6 +220,18 @@ If `auth.getUser()` returns null, the LINE OAuth edge function is not creating a
 
 ---
 
-**Last Updated:** 2025-11-02T21:15:00Z
-**Service Worker Version:** 2025-11-02T21:15:00Z
-**Status:** All fixes complete, cache clear required
+### 7. Society Selector Table Name
+**Status:** ✅ **FIXED**
+- Changed from `user_profiles` to `profiles` (index.html:29006)
+- Using `society.id` (UUID) instead of `society.line_user_id` (index.html:29035)
+
+### 8. Rounds Table Ordering
+**Status:** ✅ **FIXED**
+- Changed from `completed_at` to `created_at` (3 locations)
+- Fixes 400 errors when loading round history
+
+---
+
+**Last Updated:** 2025-11-02T21:30:00Z
+**Service Worker Version:** 2025-11-02T21:30:00Z
+**Status:** All critical fixes complete, cache clear required

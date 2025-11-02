@@ -21517,6 +21517,25 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
                     <!-- My Registrations View -->
                     <div id="eventsViewMyEventsContent" class="events-view-content" style="display: none;">
+                        <!-- Filter Toggle -->
+                        <div class="flex gap-2 mb-4 p-2 bg-gray-50 rounded-lg">
+                            <button onclick="GolferEventsSystem.setRegistrationFilter('upcoming')"
+                                    id="regFilterUpcoming"
+                                    class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                                Upcoming
+                            </button>
+                            <button onclick="GolferEventsSystem.setRegistrationFilter('past')"
+                                    id="regFilterPast"
+                                    class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                                Past
+                            </button>
+                            <button onclick="GolferEventsSystem.setRegistrationFilter('all')"
+                                    id="regFilterAll"
+                                    class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                                All
+                            </button>
+                        </div>
+
                         <div id="myRegistrationsList" class="space-y-4">
                             <p class="text-center py-12 text-gray-500">Loading your registrations...</p>
                         </div>
@@ -45066,8 +45085,6 @@ class GolferEventsManager {
     }
 
     showEventsView(view) {
-        console.log('[DEBUG showEventsView] ========== CALLED with view:', view, '==========');
-
         // Hide all views
         document.getElementById('eventsViewBrowseContent').style.display = 'none';
         document.getElementById('eventsViewCalendarContent').style.display = 'none';
@@ -45082,7 +45099,6 @@ class GolferEventsManager {
 
         // Show selected view
         this.currentView = view;
-        console.log('[DEBUG showEventsView] About to process view:', view);
         if (view === 'browse') {
             document.getElementById('eventsViewBrowseContent').style.display = 'block';
             document.getElementById('eventsViewBrowse').classList.add('active', 'border-green-500', 'text-green-600');
@@ -45093,19 +45109,37 @@ class GolferEventsManager {
             document.getElementById('eventsViewCalendar').classList.remove('border-transparent', 'text-gray-600');
             this.renderCalendar();
         } else if (view === 'myevents') {
-            console.log('[DEBUG showEventsView] Handling myevents view');
             document.getElementById('eventsViewMyEventsContent').style.display = 'block';
             document.getElementById('eventsViewMyEvents').classList.add('active', 'border-green-500', 'text-green-600');
             document.getElementById('eventsViewMyEvents').classList.remove('border-transparent', 'text-gray-600');
-            console.log('[DEBUG showEventsView] About to call loadMyRegistrations()');
             this.loadMyRegistrations();
-            console.log('[DEBUG showEventsView] loadMyRegistrations() called');
         } else if (view === 'history') {
             document.getElementById('eventsViewHistoryContent').style.display = 'block';
             document.getElementById('eventsViewHistory').classList.add('active', 'border-green-500', 'text-green-600');
             document.getElementById('eventsViewHistory').classList.remove('border-transparent', 'text-gray-600');
             this.loadMyHistory();
         }
+    }
+
+    setRegistrationFilter(mode) {
+        const FILTER_KEY = 'mcipro_reg_filter';
+        localStorage.setItem(FILTER_KEY, mode);
+        this.updateFilterButtons(mode);
+        this.loadMyRegistrations();
+    }
+
+    updateFilterButtons(activeMode) {
+        const modes = ['upcoming', 'past', 'all'];
+        modes.forEach(mode => {
+            const btn = document.getElementById(`regFilter${mode.charAt(0).toUpperCase() + mode.slice(1)}`);
+            if (btn) {
+                if (mode === activeMode) {
+                    btn.className = 'flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors bg-green-500 text-white';
+                } else {
+                    btn.className = 'flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors bg-white text-gray-700 hover:bg-gray-100';
+                }
+            }
+        });
     }
 
     async loadEvents(showLoading = true) {
@@ -46193,10 +46227,7 @@ class GolferEventsManager {
     // ======================
 
     async loadMyRegistrations() {
-        console.log('[DEBUG loadMyRegistrations] ========== START ==========');
-
         const container = document.getElementById('myRegistrationsList');
-        console.log('[DEBUG loadMyRegistrations] Container element:', container);
 
         // Get player ID with fallback
         let playerId;
@@ -46205,12 +46236,9 @@ class GolferEventsManager {
                        localStorage.getItem('line_user_id') ||
                        (JSON.parse(localStorage.getItem(`profile_${localStorage.getItem('line_user_id')}`))?.uniqueId);
         } catch (err) {
-            console.error('[DEBUG loadMyRegistrations] Error getting player ID:', err);
+            console.error('[GolferEventsSystem] Error getting player ID:', err);
             playerId = null;
         }
-
-        console.log('[DEBUG loadMyRegistrations] AppState.currentUser:', AppState.currentUser);
-        console.log('[DEBUG loadMyRegistrations] Player ID:', playerId);
 
         if (!playerId) {
             container.innerHTML = `
@@ -46232,16 +46260,9 @@ class GolferEventsManager {
                 .eq('player_id', playerId)
                 .order('created_at', { ascending: false });
 
-            console.log('[DEBUG loadMyRegistrations] Query result:', {
-                count: regData?.length,
-                regData,
-                regError
-            });
-
             if (regError) throw regError;
 
             if (!regData || regData.length === 0) {
-                console.log('[DEBUG loadMyRegistrations] No registrations found - showing empty state');
                 container.innerHTML = `
                     <div class="text-center py-12">
                         <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">confirmation_number</span>
@@ -46257,19 +46278,12 @@ class GolferEventsManager {
 
             // Get unique event IDs
             const eventIds = [...new Set(regData.map(r => r.event_id))];
-            console.log('[DEBUG loadMyRegistrations] Event IDs:', eventIds);
 
             // Get events data
             const { data: eventsData, error: eventsError } = await window.SupabaseDB.client
                 .from('society_events')
                 .select('*')
                 .in('id', eventIds);
-
-            console.log('[DEBUG loadMyRegistrations] Events data:', {
-                count: eventsData?.length,
-                eventsData,
-                eventsError
-            });
 
             if (eventsError) throw eventsError;
 
@@ -46308,29 +46322,39 @@ class GolferEventsManager {
                 };
             }).filter(r => r !== null);
 
+            // Get filter mode from localStorage (default to 'all')
+            const FILTER_KEY = 'mcipro_reg_filter';
+            const filterMode = localStorage.getItem(FILTER_KEY) || 'all';
 
-            // Filter to ONLY upcoming events (past events go to History tab)
-            const now = new Date();
-            now.setHours(0, 0, 0, 0);
+            // Update button states
+            this.updateFilterButtons(filterMode);
 
-            console.log('[DEBUG loadMyRegistrations] Filtering upcoming events. Total:', data.length);
-            console.log('[DEBUG loadMyRegistrations] Current date for comparison:', now);
-            data.forEach((r, i) => {
-                console.log(`[DEBUG] Event ${i + 1}: date=${r.society_events.date}, title=${r.society_events.title}, isPast=${new Date(r.society_events.date) < now}`);
-            });
+            // Apply filter based on mode
+            const now = new Date().toISOString();
+            let filtered = data;
 
-            // TEMPORARILY SHOW ALL REGISTRATIONS (not just upcoming) for debugging
-            const upcoming = data; // TODO: Re-enable filter after confirming data displays
-            // const upcoming = data.filter(r => new Date(r.society_events.date) >= now);
-            console.log('[DEBUG loadMyRegistrations] Events to display:', upcoming.length);
+            if (filterMode === 'upcoming') {
+                filtered = data.filter(r => {
+                    const eventDate = r.society_events.date || r.created_at;
+                    return eventDate >= now;
+                });
+            } else if (filterMode === 'past') {
+                filtered = data.filter(r => {
+                    const eventDate = r.society_events.date || r.created_at;
+                    return eventDate < now;
+                });
+            }
+            // 'all' mode shows everything (no filter)
 
-            if (upcoming.length === 0) {
-                console.log('[DEBUG loadMyRegistrations] No events to display');
+            if (filtered.length === 0) {
+                const emptyMessage = filterMode === 'upcoming' ? 'No upcoming events' :
+                                   filterMode === 'past' ? 'No past events' :
+                                   "You haven't registered for any events";
                 container.innerHTML = `
                     <div class="text-center py-12">
                         <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">confirmation_number</span>
                         <h3 class="text-lg font-bold text-gray-900 mb-2">No Registrations</h3>
-                        <p class="text-gray-600 mb-4">You haven't registered for any events</p>
+                        <p class="text-gray-600 mb-4">${emptyMessage}</p>
                         <button onclick="GolferEventsSystem.showEventsView('browse')" class="btn-primary">
                             Browse Events
                         </button>
@@ -46339,15 +46363,13 @@ class GolferEventsManager {
                 return;
             }
 
-            console.log('[DEBUG loadMyRegistrations] Rendering', upcoming.length, 'registration cards');
             let html = `
                 <div class="space-y-3">
-                    ${upcoming.map(reg => this.renderMyRegistrationCard(reg)).join('')}
+                    ${filtered.map(reg => this.renderMyRegistrationCard(reg)).join('')}
                 </div>
             `;
 
             container.innerHTML = html;
-            console.log('[DEBUG loadMyRegistrations] ========== COMPLETE ==========');
         } catch (error) {
             console.error('[GolferEventsSystem] Error loading registrations:', error);
             container.innerHTML = `

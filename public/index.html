@@ -32773,11 +32773,19 @@ class SocietyGolfSupabase {
             totalFee
         });
 
+        // Get Supabase Auth user UUID (NOT LINE ID!)
+        const { data: { user } } = await window.SupabaseDB.client.auth.getUser();
+        if (!user || !user.id) {
+            throw new Error('Not authenticated - please log in');
+        }
+
+        console.log('[SocietyGolf] Using Supabase Auth UUID:', user.id.substring(0, 8) + '...');
+
         const { data, error } = await window.SupabaseDB.client
             .from('event_registrations')
             .insert([{
                 event_id: eventId,
-                user_id: AppState.currentUser?.profileId || playerData.playerId,
+                user_id: user.id,  // Supabase Auth UUID
                 want_transport: playerData.wantTransport || false,
                 want_competition: playerData.wantCompetition || false,
                 total_fee: totalFee,

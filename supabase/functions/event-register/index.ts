@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
       user_id: user_uuid,
       player_id: String(user_uuid),
       player_name: userName,
-      handicap_index: handicap,
+      handicap: handicap,  // Fixed: database column is 'handicap' not 'handicap_index'
       want_transport: !!want_transport,
       want_competition: !!want_competition,
       total_fee: Number(total_fee) || 0,
@@ -179,7 +179,7 @@ Deno.serve(async (req) => {
     return json({
       error: String(error?.message ?? error),
       details: error?.stack || 'No stack trace',
-      version: 'v5-debug'
+      version: 'v7-FIXED'
     }, 500);
   }
 });

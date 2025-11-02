@@ -5649,9 +5649,10 @@
                     const redirectUri = window.location.href.split('#')[0].split('?')[0];
                     const state = Math.random().toString(36).substring(7);
 
-                    // Store state for verification in BOTH localStorage AND sessionStorage for redundancy
+                    // Store state AND redirectUri for verification in BOTH localStorage AND sessionStorage for redundancy
                     localStorage.setItem('line_oauth_state', state);
                     sessionStorage.setItem('line_oauth_state', state);
+                    localStorage.setItem('line_oauth_redirect', redirectUri);
 
                     // Build LINE OAuth URL
                     const authUrl = new URL('https://access.line.me/oauth2/v2.1/authorize');
@@ -7538,12 +7539,15 @@
                     }
 
                     console.warn('💫 About to call fetch to line-oauth-exchange...');
+                    // Get the SAME redirectUri that was used to start OAuth
+                    const redirectUri = localStorage.getItem('line_oauth_redirect') || 'https://mycaddipro.com/';
+                    console.log('[LINE OAuth] Using redirectUri:', redirectUri);
+
                     // Call Supabase Edge Function to exchange code for profile
-                    const callbackRedirectUri = window.location.href.split('#')[0].split('?')[0];
                     const res = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-oauth-exchange', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ code, state, redirectUri: callbackRedirectUri })
+                        body: JSON.stringify({ code, state, redirectUri })
                     });
 
                     console.warn('✅ FETCH COMPLETED - Got response object:', res);
@@ -7560,9 +7564,10 @@
                         // Mark code as used to prevent duplicate processing
                         sessionStorage.setItem('__line_code_used', code);
 
-                        // Clear state from both storages
+                        // Clear state and redirectUri from both storages
                         localStorage.removeItem('line_oauth_state');
                         sessionStorage.removeItem('line_oauth_state');
+                        localStorage.removeItem('line_oauth_redirect');
 
                         // Clean URL without reloading (remove ?code= and ?state= params)
                         const cleanUrl = window.location.origin + window.location.pathname;

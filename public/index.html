@@ -9123,28 +9123,48 @@ if ('serviceWorker' in navigator && !(location.search.includes('code=') && locat
         }
 
         function goToCaddieBooking() {
+            console.log('[CaddyCube] 🎯 goToCaddieBooking() called');
             try {
                 // Switch to booking tab
+                console.log('[CaddyCube] Switching to booking tab...');
                 showGolferTab('booking', null);
 
                 // Kick booking init explicitly to avoid race conditions
+                console.log('[CaddyCube] Initializing booking system...');
                 try { if (typeof initializeBookingSystem === 'function') initializeBookingSystem(); } catch {}
 
-                // Wait for caddieSearchInput to exist, then scroll/focus (max ~1.5s)
+                // Wait for caddieSearchInput to exist, show section, then scroll/focus (max ~1.5s)
                 let attempts = 0;
                 const tryFocus = () => {
                     const el = document.getElementById('caddieSearchInput');
-                    if (el) {
-                        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        if (typeof el.focus === 'function') el.focus();
+                    const section = document.getElementById('caddieSelectionSection');
+                    console.log(`[CaddyCube] Attempt ${attempts + 1}/15 - Element found:`, !!el, '| Section found:', !!section);
+
+                    if (el && section) {
+                        // Show the caddie selection section first (it's hidden by default)
+                        console.log('[CaddyCube] Showing caddie selection section...');
+                        section.style.display = 'block';
+
+                        // Small delay to ensure section is rendered
+                        setTimeout(() => {
+                            console.log('[CaddyCube] ✅ Scrolling to caddieSearchInput...');
+                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            if (typeof el.focus === 'function') {
+                                el.focus();
+                                console.log('[CaddyCube] ✅ Focused on caddy search input');
+                            }
+                        }, 100);
                     } else if (attempts < 15) {
                         attempts += 1;
                         setTimeout(tryFocus, 100);
+                    } else {
+                        console.warn('[CaddyCube] ❌ Failed to find caddieSearchInput after 15 attempts');
                     }
                 };
+                console.log('[CaddyCube] Starting search for caddieSearchInput...');
                 setTimeout(tryFocus, 200);
             } catch (e) {
-                console.warn('[Navigation] Failed to navigate to caddie booking:', e);
+                console.error('[CaddyCube] ❌ Error in goToCaddieBooking:', e);
             }
         }
 

@@ -29041,19 +29041,34 @@ Total Rounds: ${ningCaddy.totalRounds}`;
             async loadSocieties() {
                 try {
                     // Load all organizer profiles from database
-                    const { data, error } = await window.SupabaseDB.client
+                    // Note: role column might not exist, society_name might be in profile_data JSONB
+                    let query = window.SupabaseDB.client
                         .from('profiles')
-                        .select('*')
-                        .eq('role', 'organizer')
-                        .order('society_name');
+                        .select('*');
+
+                    // Try to filter by role if column exists (graceful fallback)
+                    const { data, error } = await query;
 
                     if (error) {
                         console.error('[SocietySelectorSystem] Database error:', error);
                         throw error;
                     }
 
-                    console.log('[SocietySelectorSystem] Loaded', data?.length || 0, 'societies');
-                    this.societies = data || [];
+                    // Filter organizers client-side (more reliable than DB column)
+                    const organizers = (data || []).filter(p => {
+                        // Check if profile has organizer role in profile_data
+                        return p.profile_data?.organizationInfo?.societyName || p.society_name;
+                    });
+
+                    // Sort by society name (handle both direct column and JSONB)
+                    organizers.sort((a, b) => {
+                        const nameA = a.society_name || a.profile_data?.organizationInfo?.societyName || '';
+                        const nameB = b.society_name || b.profile_data?.organizationInfo?.societyName || '';
+                        return nameA.localeCompare(nameB);
+                    });
+
+                    console.log('[SocietySelectorSystem] Loaded', organizers.length, 'societies');
+                    this.societies = organizers;
 
                     // Count events per society
                     await this.enrichSocietiesWithCounts();
@@ -32820,27 +32835,20 @@ class SocietyGolfSupabase {
 
         console.log('[SocietyGolf] Using LINE id_token for authentication');
 
-        // Use Edge Function to bypass RLS (validates id_token server-side)
-        const response = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/event-register', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${window.SUPABASE_ANON_KEY}`
-            },
-            body: JSON.stringify({
+        // Use Edge Function via Supabase client (auto-injects auth headers)
+        const { data: result, error: fxErr } = await window.SupabaseDB.client.functions.invoke('event-register', {
+            body: {
                 id_token: id_token,
                 event_id: eventId,
                 want_transport: playerData.wantTransport || false,
                 want_competition: playerData.wantCompetition || false,
                 total_fee: totalFee,
                 payment_status: 'pending'
-            })
+            }
         });
 
-        const result = await response.json();
-
-        if (!response.ok || !result.ok) {
-            const error = new Error(result.error || 'Registration failed');
+        if (fxErr || !result?.ok) {
+            const error = new Error(fxErr?.message ?? result?.error ?? 'Registration failed');
             console.error('[SocietyGolf] Error registering player:', error);
             throw error;
         }

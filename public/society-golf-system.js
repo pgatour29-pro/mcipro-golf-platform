@@ -238,27 +238,20 @@ class SocietyGolfSupabase {
 
         console.log('[SocietyGolf] Using LINE id_token for authentication');
 
-        // Use Edge Function to bypass RLS (validates id_token server-side)
-        const response = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/event-register', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${window.SUPABASE_ANON_KEY}`
-            },
-            body: JSON.stringify({
+        // Use Edge Function via Supabase client (auto-injects auth headers)
+        const { data: result, error: fxErr } = await SupabaseManager.client.functions.invoke('event-register', {
+            body: {
                 id_token: id_token,
                 event_id: eventId,
                 want_transport: playerData.wantTransport || false,
                 want_competition: playerData.wantCompetition || false,
                 total_fee: playerData.totalFee || 0,
                 payment_status: 'pending'
-            })
+            }
         });
 
-        const result = await response.json();
-
-        if (!response.ok || !result.ok) {
-            const error = new Error(result.error || 'Registration failed');
+        if (fxErr || !result?.ok) {
+            const error = new Error(fxErr?.message ?? result?.error ?? 'Registration failed');
             console.error('[SocietyGolf] Error registering player:', error);
             throw error;
         }

@@ -1,7 +1,7 @@
 // SERVICE WORKER - Offline-First Caching for MciPro Golf Platform
 // DEPLOYMENT VERSION: 2025-10-21-CACHE-FIX
 
-const BUILD_TIMESTAMP = '2025-11-02T22:45:00Z'; // Added Authorization header for Edge Function (401 fix)
+const BUILD_TIMESTAMP = '2025-11-02T23:00:00Z'; // Fixed Edge Function to use supabase.functions.invoke() + profiles query
 const CACHE_VERSION = `mcipro-v${BUILD_TIMESTAMP}`;
 const CACHE_NAME = CACHE_VERSION;
 

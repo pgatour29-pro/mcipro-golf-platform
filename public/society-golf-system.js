@@ -229,24 +229,41 @@ class SocietyGolfSupabase {
 
     async registerPlayer(eventId, playerData) {
         await this.waitForSupabase();
-        const { data, error } = await SupabaseManager.client
-            .from('event_registrations')
-            .insert([{
-                event_id: eventId,
-                player_name: playerData.name,
-                player_id: playerData.playerId,
-                want_transport: playerData.wantTransport || false,
-                want_competition: playerData.wantCompetition || false
-            }])
-            .select()
-            .single();
 
-        if (error) {
+        // Get LINE id_token for secure authentication
+        const id_token = sessionStorage.getItem('__line_id_token');
+        if (!id_token) {
+            throw new Error('Not authenticated - please log in with LINE');
+        }
+
+        console.log('[SocietyGolf] Using LINE id_token for authentication');
+
+        // Use Edge Function to bypass RLS (validates id_token server-side)
+        const response = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/event-register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                id_token: id_token,
+                event_id: eventId,
+                want_transport: playerData.wantTransport || false,
+                want_competition: playerData.wantCompetition || false,
+                total_fee: playerData.totalFee || 0,
+                payment_status: 'pending'
+            })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.ok) {
+            const error = new Error(result.error || 'Registration failed');
             console.error('[SocietyGolf] Error registering player:', error);
             throw error;
         }
 
-        return data;
+        console.log('[SocietyGolf] ✅ Registration successful:', result);
+        return result;
     }
 
     async updateRegistration(regId, updates) {

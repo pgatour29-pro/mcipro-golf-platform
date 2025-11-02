@@ -5649,8 +5649,9 @@
                     const redirectUri = window.location.href.split('#')[0].split('?')[0];
                     const state = Math.random().toString(36).substring(7);
 
-                    // Store state for verification
+                    // Store state for verification in BOTH localStorage AND sessionStorage for redundancy
                     localStorage.setItem('line_oauth_state', state);
+                    sessionStorage.setItem('line_oauth_state', state);
 
                     // Build LINE OAuth URL
                     const authUrl = new URL('https://access.line.me/oauth2/v2.1/authorize');
@@ -5661,9 +5662,12 @@
                     authUrl.searchParams.set('scope', 'profile openid email');
 
                     console.log('[LINE OAuth] Redirecting to:', authUrl.toString());
+                    console.log('[LINE OAuth] State saved:', state);
 
-                    // Redirect to LINE OAuth
-                    window.location.href = authUrl.toString();
+                    // Small delay to ensure storage persistence before redirect
+                    setTimeout(() => {
+                        window.location.href = authUrl.toString();
+                    }, 100);
                 } catch (error) {
                     console.error('LINE login failed:', error);
                     NotificationManager.show('LINE login failed. Please try again.', 'error');
@@ -7496,14 +7500,17 @@
             const urlParams = new URLSearchParams(window.location.search);
             const code = urlParams.get('code');
             const state = urlParams.get('state');
-            const storedState = localStorage.getItem('line_oauth_state');
+            // Try sessionStorage first (more reliable), fallback to localStorage
+            const storedState = sessionStorage.getItem('line_oauth_state') || localStorage.getItem('line_oauth_state');
 
             // DEBUG: Log OAuth callback detection
             console.warn('🔥 [LINE OAuth DEBUG] Checking callback...');
             console.log('[LINE OAuth DEBUG] Checking callback...');
             console.warn('[LINE OAuth DEBUG] code:', code ? 'present' : 'missing', 'VALUE:', code);
             console.warn('[LINE OAuth DEBUG] state from URL:', state);
-            console.warn('[LINE OAuth DEBUG] storedState from localStorage:', storedState);
+            console.warn('[LINE OAuth DEBUG] storedState from sessionStorage:', sessionStorage.getItem('line_oauth_state'));
+            console.warn('[LINE OAuth DEBUG] storedState from localStorage:', localStorage.getItem('line_oauth_state'));
+            console.warn('[LINE OAuth DEBUG] final storedState:', storedState);
             console.warn('[LINE OAuth DEBUG] states match:', state === storedState);
             console.warn('[LINE OAuth DEBUG] condition (code && state === storedState):', !!(code && state === storedState));
             console.warn('[LINE OAuth DEBUG] sessionStorage __line_code_used:', sessionStorage.getItem('__line_code_used'));
@@ -7543,7 +7550,9 @@
                     const data = JSON.parse(raw || '{}');
                     if (data.profile) {
                         await LineAuthentication.setUserFromLineProfile(data.profile);
+                        // Clear state from both storages
                         localStorage.removeItem('line_oauth_state');
+                        sessionStorage.removeItem('line_oauth_state');
 
                         // Clean URL without reloading (remove ?code= and ?state= params)
                         const cleanUrl = window.location.origin + window.location.pathname;
@@ -19509,14 +19518,17 @@ Total Rounds: ${ningCaddy.totalRounds}`;
         const urlParams = new URLSearchParams(window.location.search);
         const code = urlParams.get('code');
         const state = urlParams.get('state');
-        const storedState = localStorage.getItem('line_oauth_state');
+        // Try sessionStorage first, fallback to localStorage
+        const storedState = sessionStorage.getItem('line_oauth_state') || localStorage.getItem('line_oauth_state');
 
         console.log('%c[IMMEDIATE CHECK] OAuth Callback Detection', 'background: #ff6600; color: #fff; font-weight: bold; padding: 5px;');
         const usedCode = sessionStorage.getItem('__line_code_used');
         console.log('[IMMEDIATE] URL:', window.location.href);
         console.log('[IMMEDIATE] code:', code ? `PRESENT (${code.substring(0, 10)}...)` : 'MISSING');
         console.log('[IMMEDIATE] state from URL:', state);
-        console.log('[IMMEDIATE] storedState from localStorage:', storedState);
+        console.log('[IMMEDIATE] storedState from sessionStorage:', sessionStorage.getItem('line_oauth_state'));
+        console.log('[IMMEDIATE] storedState from localStorage:', localStorage.getItem('line_oauth_state'));
+        console.log('[IMMEDIATE] final storedState:', storedState);
         console.log('[IMMEDIATE] states match:', state === storedState);
         console.log('[IMMEDIATE] sessionStorage __line_code_used:', usedCode ? `${usedCode.substring(0, 10)}...` : 'null');
         console.log('[IMMEDIATE] code === usedCode:', code === usedCode);

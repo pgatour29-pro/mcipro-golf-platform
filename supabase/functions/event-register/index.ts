@@ -122,9 +122,14 @@ Deno.serve(async (req) => {
       return json({ error: 'Already registered for this event' }, 409);
     }
 
-    // Validate payment status
-    const allowed = new Set(['unpaid', 'paid', 'partial']);
-    const final_status = allowed.has(payment_status || '') ? payment_status : 'unpaid';
+    // Validate payment status (map 'pending' to 'unpaid' to match DB constraint)
+    const statusMap: Record<string, string> = {
+      'pending': 'unpaid',
+      'unpaid': 'unpaid',
+      'paid': 'paid',
+      'partial': 'partial'
+    };
+    const final_status = statusMap[payment_status || ''] || 'unpaid';
 
     // Generate unique ID for registration
     const regId = crypto.randomUUID();

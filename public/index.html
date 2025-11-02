@@ -7557,6 +7557,12 @@
                     if (data.profile) {
                         await LineAuthentication.setUserFromLineProfile(data.profile);
 
+                        // Store id_token for Edge Function authentication
+                        if (data.token && data.token.id_token) {
+                            sessionStorage.setItem('__line_id_token', data.token.id_token);
+                            console.log('[LINE OAuth] id_token stored for API auth');
+                        }
+
                         // Mark code as used to prevent duplicate processing
                         sessionStorage.setItem('__line_code_used', code);
 
@@ -32806,27 +32812,27 @@ class SocietyGolfSupabase {
             totalFee
         });
 
-        // Get user UUID from AppState (set during LINE OAuth login)
-        const userId = AppState.currentUser?.profileId;
-        if (!userId) {
-            throw new Error('Not authenticated - please log in');
+        // Get LINE id_token for secure authentication
+        const id_token = sessionStorage.getItem('__line_id_token');
+        if (!id_token) {
+            throw new Error('Not authenticated - please log in with LINE');
         }
 
-        console.log('[SocietyGolf] Using profile UUID:', userId.substring(0, 8) + '...');
+        console.log('[SocietyGolf] Using LINE id_token for authentication');
 
-        // Use Edge Function to bypass RLS (LINE OAuth doesn't create Supabase Auth sessions)
+        // Use Edge Function to bypass RLS (validates id_token server-side)
         const response = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/event-register', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                profileId: userId,
-                eventId: eventId,
-                wantTransport: playerData.wantTransport || false,
-                wantCompetition: playerData.wantCompetition || false,
-                totalFee: totalFee,
-                paymentStatus: 'pending'
+                id_token: id_token,
+                event_id: eventId,
+                want_transport: playerData.wantTransport || false,
+                want_competition: playerData.wantCompetition || false,
+                total_fee: totalFee,
+                payment_status: 'pending'
             })
         });
 

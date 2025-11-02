@@ -401,7 +401,15 @@ async function queryContactsServer(q) {
       .abortSignal(searchAbortCtrl.signal);
     if (error) throw error;
 
-// Already in correct format - no transformation needed    return (data || [])      .filter(u => !!u.id && !!u.line_user_id)      .map(u => ({        id: u.id,        display_name: u.display_name || u.username || 'User',        username: u.username || u.line_user_id,        line_user_id: u.line_user_id      }));
+    // Already in correct format - no transformation needed
+    return (data || [])
+      .filter(u => !!u.id && !!u.line_user_id)
+      .map(u => ({
+        id: u.id,
+        display_name: u.display_name || u.username || 'User',
+        username: u.username || u.line_user_id,
+        line_user_id: u.line_user_id
+      }));
   } catch {
     return null;
   }
@@ -1125,7 +1133,16 @@ export async function initChat() {
     return;
   }
 
-// Users are already in correct format from profiles table (no transformation needed)  const transformedUsers = (allUsers || [])    .filter(u => !!u.id && !!u.line_user_id)  // Only include valid profiles    .map(u => ({      id: u.id,      display_name: u.display_name || u.username || 'User',      username: u.username || u.line_user_id,      line_user_id: u.line_user_id    }));  console.log('[Chat] Loaded', transformedUsers.length, 'contacts from profiles table');
+  // Users are already in correct format from profiles table (no transformation needed)
+  const transformedUsers = (allUsers || [])
+    .filter(u => !!u.id && !!u.line_user_id)  // Only include valid profiles
+    .map(u => ({
+      id: u.id,
+      display_name: u.display_name || u.username || 'User',
+      username: u.username || u.line_user_id,
+      line_user_id: u.line_user_id
+    }));
+  console.log('[Chat] Loaded', transformedUsers.length, 'contacts from profiles table');
 
   // Store in state for search functionality and caching
   state.users = transformedUsers;

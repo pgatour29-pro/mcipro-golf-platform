@@ -220,7 +220,6 @@ class SocietyGolfSupabase {
             eventId: r.event_id,
             playerName: r.player_name,
             playerId: r.player_id,
-            handicap: r.handicap,
             partnerPrefs: r.partner_prefs || [],
             wantTransport: r.want_transport,
             wantCompetition: r.want_competition,
@@ -238,7 +237,6 @@ class SocietyGolfSupabase {
                 event_id: eventId,
                 player_name: playerData.name,
                 player_id: playerData.playerId,
-                handicap: playerData.handicap,
                 partner_prefs: [],
                 want_transport: playerData.wantTransport || false,
                 want_competition: playerData.wantCompetition || false
@@ -308,7 +306,6 @@ class SocietyGolfSupabase {
             eventId: w.event_id,
             playerName: w.player_name,
             playerId: w.player_id,
-            handicap: w.handicap,
             wantTransport: w.want_transport,
             wantCompetition: w.want_competition,
             position: w.position,
@@ -335,7 +332,6 @@ class SocietyGolfSupabase {
                 event_id: eventId,
                 player_name: playerData.name,
                 player_id: playerData.playerId,
-                handicap: playerData.handicap,
                 want_transport: playerData.wantTransport || false,
                 want_competition: playerData.wantCompetition || false,
                 position: position

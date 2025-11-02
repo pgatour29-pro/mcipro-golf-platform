@@ -220,7 +220,6 @@ class SocietyGolfSupabase {
             eventId: r.event_id,
             playerName: r.player_name,
             playerId: r.player_id,
-            partnerPrefs: r.partner_prefs || [],
             wantTransport: r.want_transport,
             wantCompetition: r.want_competition,
             pairedGroup: r.paired_group,
@@ -237,7 +236,6 @@ class SocietyGolfSupabase {
                 event_id: eventId,
                 player_name: playerData.name,
                 player_id: playerData.playerId,
-                partner_prefs: [],
                 want_transport: playerData.wantTransport || false,
                 want_competition: playerData.wantCompetition || false
             }])
@@ -255,7 +253,6 @@ class SocietyGolfSupabase {
     async updateRegistration(regId, updates) {
         await this.waitForSupabase();
         const dbUpdates = {};
-        if (updates.partnerPrefs !== undefined) dbUpdates.partner_prefs = updates.partnerPrefs;
         if (updates.pairedGroup !== undefined) dbUpdates.paired_group = updates.pairedGroup;
         if (updates.wantTransport !== undefined) dbUpdates.want_transport = updates.wantTransport;
         if (updates.wantCompetition !== undefined) dbUpdates.want_competition = updates.wantCompetition;

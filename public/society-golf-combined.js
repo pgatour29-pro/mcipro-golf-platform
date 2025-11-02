@@ -185,7 +185,6 @@ class SocietyGolfSupabase {
             eventId: r.event_id,
             playerName: r.player_name,
             playerId: r.player_id,
-            partnerPrefs: r.partner_prefs || [],
             wantTransport: r.want_transport,
             wantCompetition: r.want_competition,
             pairedGroup: r.paired_group,
@@ -202,7 +201,6 @@ class SocietyGolfSupabase {
                 event_id: eventId,
                 player_name: playerData.name,
                 player_id: playerData.playerId,
-                partner_prefs: [],
                 want_transport: playerData.wantTransport || false,
                 want_competition: playerData.wantCompetition || false
             }])
@@ -220,7 +218,6 @@ class SocietyGolfSupabase {
     async updateRegistration(regId, updates) {
         await this.waitForSupabase();
         const dbUpdates = {};
-        if (updates.partnerPrefs !== undefined) dbUpdates.partner_prefs = updates.partnerPrefs;
         if (updates.pairedGroup !== undefined) dbUpdates.paired_group = updates.pairedGroup;
         if (updates.wantTransport !== undefined) dbUpdates.want_transport = updates.wantTransport;
         if (updates.wantCompetition !== undefined) dbUpdates.want_competition = updates.wantCompetition;
@@ -763,10 +760,8 @@ class SocietyOrganizerManager {
         tbody.innerHTML = registrations.map(reg => `
             <tr class="border-t">
                 <td class="px-4 py-2">${reg.playerName}</td>
-                <td class="px-4 py-2">${Math.round(reg.handicap)}</td>
                 <td class="px-4 py-2 text-center">${reg.wantTransport ? '✓' : '-'}</td>
                 <td class="px-4 py-2 text-center">${reg.wantCompetition ? '✓' : '-'}</td>
-                <td class="px-4 py-2 text-center">${(reg.partnerPrefs || []).length}</td>
                 <td class="px-4 py-2 text-center">
                     <button onclick="SocietyOrganizerSystem.removeRegistration('${reg.id}')" class="text-xs text-red-600 hover:underline">
                         Remove
@@ -842,13 +837,11 @@ class SocietyOrganizerManager {
     }
 
     generateRosterCSV(registrations) {
-        const headers = ['Name', 'Handicap', 'Transport', 'Competition', 'Partner Preferences'];
+        const headers = ['Name', 'Transport', 'Competition'];
         const rows = registrations.map(r => [
             r.playerName,
-            Math.round(r.handicap),
             r.wantTransport ? 'Yes' : 'No',
-            r.wantCompetition ? 'Yes' : 'No',
-            (r.partnerPrefs || []).length
+            r.wantCompetition ? 'Yes' : 'No'
         ]);
 
         return [headers, ...rows].map(row => row.join(',')).join('\n');

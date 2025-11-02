@@ -89,7 +89,6 @@ Deno.serve(async (req) => {
 
     const profileData = profile?.profile_data || {};
     const userName = `${profileData?.personalInfo?.firstName || ''} ${profileData?.personalInfo?.lastName || ''}`.trim() || name;
-    const handicap = profileData?.golfInfo?.handicap ? parseFloat(profileData.golfInfo.handicap) : 0;
 
     // Check if already registered
     const { data: existing } = await supaAdmin
@@ -113,7 +112,6 @@ Deno.serve(async (req) => {
       event_id,
       player_id: line_user_id,  // TEXT column - use LINE user ID directly
       player_name: userName,
-      handicap,
       want_transport: !!want_transport,
       want_competition: !!want_competition,
       total_fee: Number(total_fee) || 0,

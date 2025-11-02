@@ -9125,207 +9125,28 @@ if ('serviceWorker' in navigator && !(location.search.includes('code=') && locat
 
         function goToCaddieBooking() {
             console.log('[CaddyCube] 🎯 goToCaddieBooking() called');
-            try {
-                // Show standalone caddy booking interface using CaddySystem
-                showStandaloneCaddyBooking();
-            } catch (e) {
-                console.error('[CaddyCube] ❌ Error in goToCaddieBooking:', e);
-                showGolferTab('booking', null);
-            }
-        }
 
-        function showStandaloneCaddyBooking() {
-            const container = document.getElementById('golferDashboard');
-            if (!container) {
-                console.error('[CaddyCube] golferDashboard container not found');
-                return;
-            }
+            // Go to the booking tab
+            showGolferTab('booking', null);
 
-            // Get unique golf courses from CaddySystem
-            const uniqueCourses = new Set(CaddySystem.allCaddys.map(c => c.homeClub));
-            const courses = Array.from(uniqueCourses).map(homeClub => {
-                return GolfCourseDatabase.getCourseById(homeClub);
-            }).filter(c => c); // Remove nulls
+            // Show the professional caddy selection section
+            setTimeout(() => {
+                const caddieSection = document.getElementById('caddieSelectionSection');
+                if (caddieSection) {
+                    caddieSection.style.display = 'block';
+                    caddieSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-            container.innerHTML = `
-                <div class="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 py-8 px-4">
-                    <!-- Header -->
-                    <div class="max-w-7xl mx-auto mb-8">
-                        <button onclick="showMainDashboard()" class="flex items-center text-gray-600 hover:text-gray-900 mb-4">
-                            <span class="material-symbols-outlined mr-2">arrow_back</span>
-                            <span>Back to Dashboard</span>
-                        </button>
-                        <h1 class="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
-                            <span class="material-symbols-outlined text-4xl align-middle mr-3">person_pin</span>
-                            Book a Professional Caddy
-                        </h1>
-                        <p class="text-gray-600">Select a golf course to view available caddies</p>
-                    </div>
+                    // Focus on caddy search input
+                    const searchInput = document.getElementById('caddieSearchInput');
+                    if (searchInput) {
+                        searchInput.focus();
+                    }
 
-                    <!-- Course Selection Grid -->
-                    <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        ${courses.map(course => `
-                            <div class="glass-card card-hover p-6 cursor-pointer" onclick="showCaddiesForCourse('${course.id}', '${course.name.replace(/'/g, "\\'")}')">
-                                <h3 class="text-xl font-bold text-gray-900 mb-2">${course.name}</h3>
-                                <p class="text-gray-600 text-sm mb-4">${course.description || course.location || ''}</p>
-                                <div class="flex items-center justify-between text-sm">
-                                    <span class="text-emerald-600 font-semibold">
-                                        ${CaddySystem.allCaddys.filter(c => c.homeClub === course.id && c.availability === 'available').length} Available
-                                    </span>
-                                    <span class="text-gray-500">
-                                        ${CaddySystem.allCaddys.filter(c => c.homeClub === course.id).length} Total Caddies
-                                    </span>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
-        }
-
-        function showCaddiesForCourse(courseId, courseName) {
-            const container = document.getElementById('golferDashboard');
-            if (!container) return;
-
-            // Filter caddies for this course
-            const caddies = CaddySystem.allCaddys.filter(c => c.homeClub === courseId);
-
-            container.innerHTML = `
-                <div class="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 py-8 px-4">
-                    <!-- Header -->
-                    <div class="max-w-7xl mx-auto mb-8">
-                        <button onclick="showStandaloneCaddyBooking()" class="flex items-center text-gray-600 hover:text-gray-900 mb-4">
-                            <span class="material-symbols-outlined mr-2">arrow_back</span>
-                            <span>Back to Courses</span>
-                        </button>
-                        <h1 class="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
-                            <span class="material-symbols-outlined text-4xl align-middle mr-3">person_pin</span>
-                            ${courseName} - Caddies
-                        </h1>
-                        <p class="text-gray-600">${caddies.filter(c => c.availability === 'available').length} caddies available</p>
-                    </div>
-
-                    <!-- Caddies Grid -->
-                    <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        ${caddies.map(caddy => `
-                            <div class="glass-card p-6 ${caddy.availability === 'booked' ? 'opacity-60' : ''}">
-                                <div class="flex items-start justify-between mb-4">
-                                    <div class="flex items-center">
-                                        <span class="text-4xl mr-3">${caddy.avatar || '👤'}</span>
-                                        <div>
-                                            <h3 class="text-lg font-bold text-gray-900">${caddy.name}</h3>
-                                            <p class="text-sm text-gray-600">${caddy.specialty}</p>
-                                        </div>
-                                    </div>
-                                    <div class="flex items-center text-amber-500">
-                                        <span class="material-symbols-outlined text-sm">star</span>
-                                        <span class="ml-1 font-semibold">${caddy.rating}</span>
-                                    </div>
-                                </div>
-
-                                <div class="space-y-2 mb-4 text-sm">
-                                    <div class="flex items-center text-gray-600">
-                                        <span class="material-symbols-outlined text-sm mr-2">military_tech</span>
-                                        <span>${caddy.experience} years experience</span>
-                                    </div>
-                                    <div class="flex items-center text-gray-600">
-                                        <span class="material-symbols-outlined text-sm mr-2">language</span>
-                                        <span>${caddy.languages.join(', ')}</span>
-                                    </div>
-                                    <div class="flex items-center text-gray-600">
-                                        <span class="material-symbols-outlined text-sm mr-2">golf_course</span>
-                                        <span>${caddy.totalRounds.toLocaleString()} rounds</span>
-                                    </div>
-                                </div>
-
-                                ${caddy.availability === 'available' ? `
-                                    <button onclick="bookCaddyStandalone('${caddy.id}', '${courseId}')" class="w-full btn-primary py-3">
-                                        Book Caddy
-                                    </button>
-                                ` : `
-                                    <div class="w-full bg-gray-300 text-gray-600 font-medium py-3 rounded-lg text-center">
-                                        Currently Booked
-                                    </div>
-                                `}
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
-        }
-
-        function bookCaddyStandalone(caddyId, courseId) {
-            const caddy = CaddySystem.allCaddys.find(c => c.id === caddyId);
-            if (!caddy) {
-                NotificationManager.show('Caddy not found', 'error');
-                return;
-            }
-
-            // Show booking confirmation modal
-            const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-            modal.innerHTML = `
-                <div class="bg-white rounded-2xl p-8 max-w-md mx-4 shadow-2xl">
-                    <h3 class="text-2xl font-bold text-gray-900 mb-4">Confirm Caddy Booking</h3>
-                    <div class="mb-6">
-                        <p class="text-gray-700 mb-2">
-                            <strong>Caddy:</strong> ${caddy.name}
-                        </p>
-                        <p class="text-gray-700 mb-2">
-                            <strong>Specialty:</strong> ${caddy.specialty}
-                        </p>
-                        <p class="text-gray-700 mb-2">
-                            <strong>Rating:</strong> ⭐ ${caddy.rating}
-                        </p>
-                    </div>
-                    <div class="flex gap-3">
-                        <button onclick="this.closest('.fixed').remove()" class="flex-1 btn-secondary py-3">
-                            Cancel
-                        </button>
-                        <button onclick="confirmCaddyBookingStandalone('${caddyId}', '${courseId}')" class="flex-1 btn-primary py-3">
-                            Confirm Booking
-                        </button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        }
-
-        async function confirmCaddyBookingStandalone(caddyId, courseId) {
-            try {
-                // Close modal
-                document.querySelectorAll('.fixed.inset-0').forEach(m => m.remove());
-
-                const caddy = CaddySystem.allCaddys.find(c => c.id === caddyId);
-                const golferInfo = await getGolferInfo();
-
-                // Create booking in database
-                const booking = {
-                    golfer_id: golferInfo.id,
-                    caddie_id: caddyId,
-                    course_id: courseId,
-                    booking_date: new Date().toISOString(),
-                    status: 'confirmed'
-                };
-
-                const { data, error } = await supabase
-                    .from('caddy_bookings')
-                    .insert([booking]);
-
-                if (error) throw error;
-
-                NotificationManager.show(`Successfully booked ${caddy.name}!`, 'success');
-
-                // Update caddy availability locally
-                caddy.availability = 'booked';
-
-                // Refresh the view
-                showCaddiesForCourse(courseId, GolfCourseDatabase.getCourseById(courseId)?.name || 'Golf Course');
-
-            } catch (error) {
-                console.error('Error booking caddy:', error);
-                NotificationManager.show('Failed to book caddy. Please try again.', 'error');
-            }
+                    console.log('[CaddyCube] ✅ Caddy section shown and scrolled into view');
+                } else {
+                    console.error('[CaddyCube] ❌ caddieSelectionSection not found');
+                }
+            }, 300);
         }
 
         function showMainDashboard() {

@@ -18049,16 +18049,37 @@ document.addEventListener('DOMContentLoaded', function() {
                             errorMessage += 'Location information unavailable.';
                             break;
                         case error.TIMEOUT:
-                            errorMessage += 'Location request timed out.';
-                            break;
+                            errorMessage += 'Trying again with lower accuracy...';
+                            // Retry with lower accuracy for faster response
+                            navigator.geolocation.getCurrentPosition(
+                                (pos) => {
+                                    GPSNavigationSystem.currentPosition = {
+                                        lat: pos.coords.latitude,
+                                        lng: pos.coords.longitude,
+                                        accuracy: pos.coords.accuracy,
+                                        timestamp: new Date()
+                                    };
+                                    updateLocationDisplay();
+                                    detectCurrentHole();
+                                    calculateDistances();
+                                    if (googleMap) {
+                                        updatePlayerLocation(GPSNavigationSystem.currentPosition);
+                                        googleMap.setView([pos.coords.latitude, pos.coords.longitude], 17);
+                                    }
+                                    NotificationManager.show('📍 Location found (±' + Math.round(pos.coords.accuracy) + 'm)', 'success');
+                                },
+                                () => NotificationManager.show('Unable to get location', 'error'),
+                                { enableHighAccuracy: false, timeout: 30000, maximumAge: 300000 }
+                            );
+                            return;
                     }
                     NotificationManager.show(errorMessage, 'error');
                     console.error('GPS Error:', error);
                 },
                 {
                     enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 0  // Always get fresh location, never use cache
+                    timeout: 30000,
+                    maximumAge: 60000  // Allow 60-second cached location
                 }
             );
         }
@@ -31107,6 +31128,28 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     }
                 },
                 (error) => {
+                    if (error.code === 3) { // TIMEOUT
+                        // Retry with lower accuracy
+                        navigator.geolocation.getCurrentPosition(
+                            (pos) => {
+                                const accuracy = Math.round(pos.coords.accuracy);
+                                NotificationManager.show(`📍 Location found (±${accuracy}m)`, 'success');
+                                const locationStatus = document.getElementById('locationStatus');
+                                if (locationStatus) locationStatus.textContent = `📍 ${accuracy}m`;
+                                if (CaddyTrackingSystem.isTracking) {
+                                    CaddyTrackingSystem.updateHoleProgression();
+                                }
+                            },
+                            () => {
+                                NotificationManager.show('❌ GPS Error: Unable to get location', 'error');
+                                const locationStatus = document.getElementById('locationStatus');
+                                if (locationStatus) locationStatus.textContent = '❌ GPS Error';
+                            },
+                            { enableHighAccuracy: false, timeout: 30000, maximumAge: 300000 }
+                        );
+                        return;
+                    }
+
                     const errorMessage = error.code === 1 ? 'Please allow location access' :
                                        error.code === 2 ? 'Location unavailable' : 'Location request timed out';
                     NotificationManager.show(`❌ GPS Error: ${errorMessage}`, 'error');
@@ -31118,7 +31161,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 },
                 {
                     enableHighAccuracy: true,
-                    timeout: 15000,
+                    timeout: 30000,
                     maximumAge: 30000
                 }
             );

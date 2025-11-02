@@ -73,10 +73,10 @@ Deno.serve(async (req) => {
       auth: { persistSession: false }
     });
 
-    // Map LINE user ID to internal UUID via profiles table
+    // Map LINE user ID to internal UUID via user_profiles table
     const { data: profile, error: profileError } = await admin
-      .from('profiles')
-      .select('id, name')
+      .from('user_profiles')
+      .select('id, profile_data')
       .eq('line_user_id', line_user_id)
       .maybeSingle();
 
@@ -89,6 +89,8 @@ Deno.serve(async (req) => {
     }
 
     const user_uuid = profile.id;
+    const profileData = profile.profile_data || {};
+    const userName = `${profileData?.personalInfo?.firstName || ''} ${profileData?.personalInfo?.lastName || ''}`.trim() || 'User';
 
     // Verify event exists
     const { data: event, error: eventError } = await admin
@@ -105,12 +107,15 @@ Deno.serve(async (req) => {
       return json({ error: 'Event not found' }, 404);
     }
 
+    // Get user's handicap from profile
+    const handicap = profileData?.golfInfo?.handicap ? parseFloat(profileData.golfInfo.handicap) : 0;
+
     // Check if already registered
     const { data: existing } = await admin
       .from('event_registrations')
       .select('id')
       .eq('event_id', event_id)
-      .eq('user_id', user_uuid)
+      .eq('player_id', user_uuid)
       .maybeSingle();
 
     if (existing) {
@@ -118,24 +123,28 @@ Deno.serve(async (req) => {
     }
 
     // Validate payment status
-    const allowed = new Set(['unpaid', 'pending', 'paid', 'partial', 'refunded', 'comped']);
-    const final_status = allowed.has(payment_status || '') ? payment_status : 'pending';
+    const allowed = new Set(['unpaid', 'paid', 'partial']);
+    const final_status = allowed.has(payment_status || '') ? payment_status : 'unpaid';
+
+    // Generate unique ID for registration
+    const regId = crypto.randomUUID();
 
     // Insert registration
     const payload = {
+      id: regId,
       event_id,
-      user_id: user_uuid,
+      player_id: user_uuid,
+      player_name: userName,
+      handicap,
       want_transport: !!want_transport,
       want_competition: !!want_competition,
       total_fee: Number(total_fee) || 0,
       payment_status: final_status
     };
 
-    const { data, error } = await admin
+    const { error } = await admin
       .from('event_registrations')
-      .insert(payload)
-      .select('id, created_at')
-      .single();
+      .insert(payload);
 
     if (error) {
       console.error('[EventRegister] Insert error:', error);
@@ -143,19 +152,18 @@ Deno.serve(async (req) => {
     }
 
     console.log('[EventRegister] Success:', {
-      registrationId: data.id,
+      registrationId: regId,
       lineUserId: line_user_id,
       userUuid: user_uuid,
       eventId: event_id,
-      profileName: profile.name,
+      profileName: userName,
       eventName: event.name
     });
 
     return json({
       ok: true,
-      id: data.id,
-      created_at: data.created_at,
-      message: `Successfully registered ${profile.name} for ${event.name}`
+      id: regId,
+      message: `Successfully registered ${userName} for ${event.name}`
     }, 201);
 
   } catch (error) {

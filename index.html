@@ -32991,21 +32991,37 @@ class SocietyGolfSupabase {
             return [];
         }
 
-        // PERFORMANCE OPTIMIZATION: Run all 3 queries in PARALLEL
+        // PERFORMANCE OPTIMIZATION: Run all queries in PARALLEL
         const eventIds = eventsData.map(e => e.id);
         const organizerIds = [...new Set(eventsData.map(e => e.organizer_id).filter(id => id))];
         const playerId = AppState.currentUser?.lineUserId;
+
+        // Build registration count query using PostgreSQL window functions
+        // This returns ONE row per event_id with the count, instead of ALL registration rows
+        const regCountQuery = `
+            event_id,
+            count:count()
+        `.trim();
 
         const [
             regCountsResult,
             societyProfilesResult,
             userRegsResult
         ] = await Promise.all([
-            // Query 1: Get registration counts
-            window.SupabaseDB.client
-                .from('event_registrations')
-                .select('event_id')
-                .in('event_id', eventIds),
+            // Query 1: Get registration counts using COUNT(*) aggregation - MUCH FASTER!
+            // This returns only the counts, not all registration rows
+            window.SupabaseDB.client.rpc('count_event_registrations', { event_ids: eventIds })
+                .then(result => {
+                    // If RPC doesn't exist, fallback to loading all rows (slower)
+                    if (result.error && result.error.message?.includes('function') && result.error.message?.includes('does not exist')) {
+                        console.warn('[SocietyGolf] RPC function not available, using fallback query');
+                        return window.SupabaseDB.client
+                            .from('event_registrations')
+                            .select('event_id')
+                            .in('event_id', eventIds);
+                    }
+                    return result;
+                }),
 
             // Query 2: Get society profiles
             window.SupabaseDB.client
@@ -33013,7 +33029,7 @@ class SocietyGolfSupabase {
                 .select('organizer_id, society_name, society_logo')
                 .in('organizer_id', organizerIds),
 
-            // Query 3: Get user's registrations (if logged in)
+            // Query 3: Get user's registrations (if logged in) - only need event IDs
             playerId ? window.SupabaseDB.client
                 .from('event_registrations')
                 .select('event_id')
@@ -33021,12 +33037,21 @@ class SocietyGolfSupabase {
                 .in('event_id', eventIds) : Promise.resolve({ data: [] })
         ]);
 
-        // Count registrations per event
+        // Build registration count map
         const regCountMap = {};
         if (regCountsResult.data) {
-            regCountsResult.data.forEach(r => {
-                regCountMap[r.event_id] = (regCountMap[r.event_id] || 0) + 1;
-            });
+            // Check if data is aggregated (from RPC) or raw rows (from fallback)
+            if (regCountsResult.data.length > 0 && 'count' in regCountsResult.data[0]) {
+                // Aggregated data from RPC: [{event_id: 'abc', count: 5}, ...]
+                regCountsResult.data.forEach(r => {
+                    regCountMap[r.event_id] = r.count;
+                });
+            } else {
+                // Raw rows from fallback: [{event_id: 'abc'}, {event_id: 'abc'}, ...]
+                regCountsResult.data.forEach(r => {
+                    regCountMap[r.event_id] = (regCountMap[r.event_id] || 0) + 1;
+                });
+            }
         }
 
         // Create map of organizer_id to society profile
@@ -33533,12 +33558,23 @@ class SocietyGolfSupabase {
     async getOrganizerEventsWithStats(organizerId) {
         await this.waitForSupabase();
 
-        // Get all events for this organizer
-        const { data: events, error: eventsError } = await window.SupabaseDB.client
+        // Check if this organizer is Travellers Rest Golf Group
+        const profile = await this.getSocietyProfile(organizerId);
+        const isTravellers = profile?.societyName === 'Travellers Rest Golf Group';
+
+        console.log('[SocietyGolfDB] Organizer:', organizerId, 'Society:', profile?.societyName, 'Is Travellers:', isTravellers);
+
+        // Special case: Travellers Rest Golf Group sees ALL events
+        let query = window.SupabaseDB.client
             .from('society_events')
-            .select('*')
-            .eq('organizer_id', organizerId)
-            .order('date', { ascending: true });
+            .select('*');
+
+        // Only filter by organizer_id if NOT Travellers
+        if (!isTravellers) {
+            query = query.eq('organizer_id', organizerId);
+        }
+
+        const { data: events, error: eventsError } = await query.order('event_date', { ascending: true });
 
         if (eventsError) {
             console.error('[SocietyGolfDB] Error loading events:', eventsError);
@@ -33618,20 +33654,20 @@ class SocietyGolfSupabase {
             // Convert snake_case to camelCase
             const camelEvent = {
                 id: event.id,
-                name: event.name,
-                date: event.date,
+                name: event.title || event.name,
+                date: event.event_date || event.date,
                 startTime: event.start_time,
-                cutoff: event.cutoff,
-                maxPlayers: event.max_players,
+                cutoff: event.registration_close_date || event.cutoff,
+                maxPlayers: event.max_participants || event.max_players,
                 courseName: event.course_name,
-                eventFormat: event.event_format,
-                baseFee: event.base_fee || 0,
+                eventFormat: event.format || event.event_format,
+                baseFee: event.entry_fee || event.base_fee || 0,
                 cartFee: event.cart_fee || 0,
                 caddyFee: event.caddy_fee || 0,
                 transportFee: event.transport_fee || 0,
                 competitionFee: event.competition_fee || 0,
                 autoWaitlist: event.auto_waitlist,
-                notes: event.notes,
+                notes: event.description || event.notes,
                 organizerId: event.organizer_id,
                 organizerName: event.organizer_name,
                 societyName: society?.society_name || event.organizer_name,
@@ -36448,6 +36484,16 @@ class LiveScorecardSystem {
             const roundType = this.roundType || 'practice';
             const eventId = this.eventId;
             const scorecardId = this.scorecards[player.id];
+
+            // Log round info for debugging
+            console.log(`[LiveScorecard] Saving round for ${player.name}:`, {
+                roundType,
+                eventId,
+                courseName,
+                holesPlayed,
+                totalGross: 0, // Will calculate below
+                handicap: player.handicap
+            });
     
             // Calculate scores for ALL selected formats
             const formatScores = {};
@@ -36539,11 +36585,10 @@ class LiveScorecardSystem {
                 };
             }
     
-            // Only save for players with LINE IDs
+            // Verify player has LINE ID (should always be true for current user)
             if (!player.lineUserId || player.lineUserId.trim() === '') {
-                console.warn(`[LiveScorecard] Cannot save history for ${player.name} - no LINE ID`);
-                console.log(`[LiveScorecard] Skipping database save for ${player.name} - no LINE ID`);
-                return null;
+                console.error(`[LiveScorecard] CRITICAL: Cannot save round - player missing LINE ID:`, player);
+                throw new Error(`Cannot save round: Player "${player.name}" is not logged in with LINE`);
             }
     
             // Save to Supabase database with session-aware insert and fallback
@@ -36618,15 +36663,20 @@ class LiveScorecardSystem {
 
             if (error || !round) {
                 console.error('[LiveScorecard] Error saving to round history:', error);
-                alert(`ERROR saving round to history for ${player.name}:
-
-${error.message}
-
-Please screenshot this and contact support.`);
-                return null;
+                throw new Error(`Failed to save round: ${error?.message || 'Unknown error'}`);
             }
 
-            console.log(`[LiveScorecard] ✅ Saved round to database for ${player.name}. Round ID: ${round.id}`);
+            // Log success with full details
+            console.log(`[LiveScorecard] ✅ ROUND SAVED SUCCESSFULLY:`, {
+                player: player.name,
+                roundId: round.id,
+                type: round.type || roundType,
+                societyEventId: round.society_event_id || eventId,
+                course: courseName,
+                totalGross,
+                totalStableford,
+                holesPlayed
+            });
 
             // Save hole-by-hole data including scramble tracking
             const holeInserts = [];
@@ -36686,57 +36736,89 @@ Please screenshot this and contact support.`);
 
     async distributeRoundScores() {
         try {
-            // Get all player LINE IDs
-            const playerIds = this.players
-                .filter(p => p.lineUserId && p.lineUserId.trim() !== '')
-                .map(p => p.lineUserId);
-    
-            if (playerIds.length === 0) {
-                console.log('[LiveScorecard] No players with LINE IDs to distribute to');
+            // FIXED: Save ONE round for the CURRENT user only
+            // Other players in the group can create their own rounds separately
+            const currentUser = AppState.currentUser;
+            if (!currentUser || !currentUser.lineUserId) {
+                console.error('[LiveScorecard] Cannot save round - no current user');
+                NotificationManager.show('Please log in to save round history', 'warning');
                 return;
             }
-    
-            // Save round for each player and distribute
-            const roundIds = [];
-            for (const player of this.players) {
-                const roundId = await this.saveRoundToHistory(player);
+
+            // Find current user in players list
+            const currentPlayer = this.players.find(p => p.lineUserId === currentUser.lineUserId);
+            if (!currentPlayer) {
+                console.warn('[LiveScorecard] Current user not in players list, using first player');
+                // Fallback: create player object for current user
+                const fallbackPlayer = {
+                    id: currentUser.lineUserId,
+                    lineUserId: currentUser.lineUserId,
+                    name: currentUser.name || 'Me',
+                    handicap: currentUser.handicap || currentUser.profile_data?.golfInfo?.handicap || 0
+                };
+
+                const roundId = await this.saveRoundToHistory(fallbackPlayer);
                 if (roundId) {
-                    roundIds.push(roundId);
-    
-                    // Distribute this round to all players
-                    const { error } = await window.SupabaseDB.client.rpc(
-                        'distribute_round_to_players',
-                        {
-                            p_round_id: roundId,
-                            p_player_ids: playerIds
-                        }
-                    );
-    
-                    if (error) {
-                        console.error(`[LiveScorecard] Error distributing round ${roundId}:`, error);
+                    console.log(`[LiveScorecard] ✅ Saved round ${roundId} for current user`);
+
+                    // If society event, notify about organizer visibility
+                    if (!this.isPrivateRound && this.eventId) {
+                        NotificationManager.show('Round saved and posted to event organizer!', 'success');
                     } else {
-                        console.log(`[LiveScorecard] ✅ Distributed round ${roundId} to ${playerIds.length} players`);
+                        NotificationManager.show('Round saved to your history!', 'success');
+                    }
+                }
+            } else {
+                // Save round for current user
+                const roundId = await this.saveRoundToHistory(currentPlayer);
+                if (roundId) {
+                    console.log(`[LiveScorecard] ✅ Saved round ${roundId} for ${currentPlayer.name}`);
+
+                    // Get all player LINE IDs for sharing
+                    const playerIds = this.players
+                        .filter(p => p.lineUserId && p.lineUserId.trim() !== '')
+                        .map(p => p.lineUserId);
+
+                    // Distribute this round to all players in group
+                    if (playerIds.length > 1) {
+                        const { error } = await window.SupabaseDB.client.rpc(
+                            'distribute_round_to_players',
+                            {
+                                p_round_id: roundId,
+                                p_player_ids: playerIds
+                            }
+                        );
+
+                        if (error) {
+                            console.error(`[LiveScorecard] Error distributing round ${roundId}:`, error);
+                        } else {
+                            console.log(`[LiveScorecard] ✅ Shared round ${roundId} with ${playerIds.length} players`);
+                        }
+                    }
+
+                    // Notify success with different message for society events
+                    if (!this.isPrivateRound && this.eventId) {
+                        const { data: event } = await window.SupabaseDB.client
+                            .from('society_events')
+                            .select('organizer_id, title')
+                            .eq('id', this.eventId)
+                            .single();
+
+                        if (event) {
+                            console.log(`[LiveScorecard] ✅ Round visible to organizer: ${event.organizer_id}`);
+                            NotificationManager.show(`Round saved and posted to "${event.title}" leaderboard!`, 'success');
+                        } else {
+                            NotificationManager.show('Round saved and posted to event organizer!', 'success');
+                        }
+                    } else {
+                        NotificationManager.show(`Round saved! Shared with ${playerIds.length} player${playerIds.length !== 1 ? 's' : ''}`, 'success');
                     }
                 }
             }
-    
-            // Mark as posted to organizer if society event
-            if (!this.isPrivateRound && this.eventId && roundIds.length > 0) {
-                const { data: event } = await window.SupabaseDB.client
-                    .from('society_events')
-                    .select('organizer_id')
-                    .eq('id', this.eventId)
-                    .single();
-    
-                if (event) {
-                    console.log(`[LiveScorecard] ✅ Round visible to organizer: ${event.organizer_id}`);
-                }
-            }
-    
-            NotificationManager.show(`Scores shared with ${playerIds.length} player${playerIds.length !== 1 ? 's' : ''}!`, 'success');
-    
+
         } catch (error) {
             console.error('[LiveScorecard] Error distributing scores:', error);
+            NotificationManager.show('Error saving round: ' + error.message, 'error');
         }
     }
 
@@ -48092,6 +48174,11 @@ class OrganizerScoringSystem {
         if (!this.currentEventId) return;
 
         try {
+            // Load player profiles first if not cached
+            if (!this.playerProfileCache) {
+                await this.loadPlayerProfiles();
+            }
+
             // Fetch all rounds for this event
             const { data: rounds, error } = await window.SupabaseDB.client
                 .from('rounds')
@@ -48104,11 +48191,13 @@ class OrganizerScoringSystem {
                 return;
             }
 
+            console.log(`[OrganizerScoring] Loaded ${rounds?.length || 0} rounds for event ${this.currentEventId}`);
+
             this.leaderboardData = rounds || [];
             this.renderLeaderboard();
             this.updateStats();
 
-            console.log(`[OrganizerScoring] Loaded ${rounds.length} scores`);
+            console.log(`[OrganizerScoring] ✅ Leaderboard updated with ${rounds?.length || 0} scores`);
         } catch (error) {
             console.error('[OrganizerScoring] Error in refreshScores:', error);
         }
@@ -48188,9 +48277,42 @@ class OrganizerScoringSystem {
     }
 
     getPlayerName(golferId) {
-        // Try to get player name from cache or return ID
-        // In a real implementation, you'd have a player name lookup
-        return golferId ? golferId.substring(0, 20) + '...' : 'Unknown';
+        // Try to find player in cached profiles
+        if (!golferId) return 'Unknown';
+
+        // Check if we have cached profiles
+        if (this.playerProfileCache && this.playerProfileCache[golferId]) {
+            return this.playerProfileCache[golferId];
+        }
+
+        // Return truncated ID as fallback
+        return golferId.substring(0, 15) + '...';
+    }
+
+    async loadPlayerProfiles() {
+        // Load all golfer profiles for name lookup
+        try {
+            const { data: profiles, error } = await window.SupabaseDB.client
+                .from('golfer_profiles')
+                .select('line_user_id, name');
+
+            if (error) {
+                console.error('[OrganizerScoring] Error loading profiles:', error);
+                return;
+            }
+
+            // Create cache map: lineUserId -> name
+            this.playerProfileCache = {};
+            for (const profile of profiles) {
+                if (profile.line_user_id && profile.name) {
+                    this.playerProfileCache[profile.line_user_id] = profile.name;
+                }
+            }
+
+            console.log(`[OrganizerScoring] Loaded ${profiles.length} player profiles for name lookup`);
+        } catch (error) {
+            console.error('[OrganizerScoring] Failed to load player profiles:', error);
+        }
     }
 
     updateStats() {

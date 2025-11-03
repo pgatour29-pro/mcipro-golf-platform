@@ -46523,12 +46523,14 @@ class GolferEventsManager {
             const eventIds = [...new Set(regData.map(r => r.event_id))];
 
             // Get events data
+            console.log('[GolferEventsSystem] Loading events for IDs:', eventIds);
             const { data: eventsData, error: eventsError } = await window.SupabaseDB.client
                 .from('society_events')
                 .select('*')
                 .in('id', eventIds);
 
             if (eventsError) throw eventsError;
+            console.log('[GolferEventsSystem] Events loaded:', eventsData);
 
             // Get society profiles for organizers
             const organizerIds = [...new Set(eventsData.map(e => e.organizer_id).filter(id => id))];
@@ -46553,9 +46555,20 @@ class GolferEventsManager {
             // Combine data
             const data = regData.map(reg => {
                 const event = eventsMap[reg.event_id];
-                if (!event) return null;
+                if (!event) {
+                    console.warn('[GolferEventsSystem] No event found for registration:', reg.event_id, reg);
+                    return null;
+                }
 
                 const society = societyMap[event.organizer_id];
+                console.log('[GolferEventsSystem] Mapping registration:', {
+                    regId: reg.id,
+                    eventId: reg.event_id,
+                    eventName: event.name,
+                    eventDate: event.date,
+                    courseName: event.course_name,
+                    handicap: reg.handicap
+                });
                 return {
                     ...reg,
                     society_events: {

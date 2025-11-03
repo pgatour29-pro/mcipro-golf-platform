@@ -4111,6 +4111,52 @@
             };
         }
 
+        // NUCLEAR REFRESH - Emergency cache clear and reload
+        async function nuclearRefresh() {
+            try {
+                console.log('[NUCLEAR] Starting complete cache clear...');
+
+                // Unregister all service workers
+                const regs = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(regs.map(r => r.unregister()));
+                console.log('[NUCLEAR] Service workers unregistered');
+
+                // Wipe all CacheStorage
+                if (window.caches) {
+                    const names = await caches.keys();
+                    await Promise.all(names.map(n => caches.delete(n)));
+                    console.log('[NUCLEAR] All caches deleted');
+                }
+
+                // Wipe storage that might hold stale data
+                localStorage.clear();
+                sessionStorage.clear();
+                console.log('[NUCLEAR] Storage cleared');
+
+                // Wipe IndexedDB
+                if (indexedDB.databases) {
+                    const dbs = await indexedDB.databases();
+                    await Promise.all(
+                        dbs.map(db => new Promise((res) => {
+                            const req = indexedDB.deleteDatabase(db.name);
+                            req.onsuccess = req.onerror = req.onblocked = () => res();
+                        }))
+                    );
+                    console.log('[NUCLEAR] IndexedDB cleared');
+                }
+
+                console.log('[NUCLEAR] ✅ Complete refresh initiated');
+                // Reload from network
+                location.replace(location.href.split('#')[0]);
+            } catch (e) {
+                console.error('[NUCLEAR] Refresh failed:', e);
+                location.reload();
+            }
+        }
+
+        // Expose nuclear refresh globally for debugging
+        window.nuclearRefresh = nuclearRefresh;
+
         // Create debounced versions of all filter/search functions
         let debouncedFilterCaddys, debouncedFilterCourses, debouncedSearchContacts, debouncedFilterNewChatContacts, debouncedFilterBrowseGroups;
 
@@ -7647,17 +7693,60 @@
                 // Initialize OTP input handlers
                 OTPAuthentication.setupOTPInputHandlers();
 
-                // PERFORMANCE: Register Service Worker for offline-first caching
-if ('serviceWorker' in navigator && !(location.search.includes('code=') && location.search.includes('state='))) {
-    navigator.serviceWorker.register('/sw.js')
-                        .then((registration) => {
-                            console.log('[ServiceWorker] Registered successfully:', registration.scope);
-                            console.log('[ServiceWorker] 🚀 Offline-first caching enabled');
+                // PERFORMANCE: Register Service Worker with auto-update
+                (function registerSW() {
+                    if (!('serviceWorker' in navigator)) return;
+                    // Skip during OAuth flow
+                    if (location.search.includes('code=') && location.search.includes('state=')) return;
+
+                    const buildId = window.__BUILD_ID__;
+
+                    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                        .then(reg => {
+                            console.log('[ServiceWorker] Registered successfully:', reg.scope);
+
+                            // If there's a waiting worker, skip waiting
+                            if (reg.waiting) {
+                                reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                            }
+
+                            // Listen for updates
+                            reg.addEventListener('updatefound', () => {
+                                const sw = reg.installing;
+                                if (!sw) return;
+
+                                sw.addEventListener('statechange', () => {
+                                    if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+                                        // New SW installed, reload to pick up new assets
+                                        console.log('[ServiceWorker] New version installed, reloading...');
+                                        location.reload();
+                                    }
+                                });
+                            });
                         })
-                        .catch((error) => {
+                        .catch(error => {
                             console.error('[ServiceWorker] Registration failed:', error);
                         });
-                }
+
+                    // Listen for SW activation messages
+                    navigator.serviceWorker.addEventListener('message', ev => {
+                        if (ev.data?.type === 'SW_ACTIVATED') {
+                            console.log('[ServiceWorker] SW activated version:', ev.data.version);
+                        }
+                    });
+
+                    // Failsafe: if a new build id is present in HTML, force reload once
+                    const key = 'mc_build_seen';
+                    const last = localStorage.getItem(key);
+                    if (last && last !== buildId) {
+                        console.log('[BUILD] New build detected, forcing reload');
+                        // One-time hard reload
+                        localStorage.setItem(key, buildId);
+                        location.replace(location.href.split('#')[0]);
+                    } else {
+                        localStorage.setItem(key, buildId);
+                    }
+                })();
 
                 // Initialize production cloud synchronization system
                 SimpleCloudSync.initialize();
@@ -19602,7 +19691,11 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
 <body>
     <script>
+    // BUILD ID - Injected at deploy time for cache busting
+    window.__BUILD_ID__ = 'f13e3c2b';
+
     console.log('%c🚀 PAGE VERSION: 2025-11-03-NAV-FIX', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
     // IMMEDIATE OAuth detection - runs before DOMContentLoaded

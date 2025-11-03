@@ -1,192 +1,61 @@
-// SERVICE WORKER - Offline-First Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-03-NAV-FIX
+// SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
+// DEPLOYMENT VERSION: 2025-11-03-PRODUCTION-HYGIENE
 
-const BUILD_TIMESTAMP = '2025-11-03T02:00:00Z'; // UPDATE THIS ON EVERY DEPLOYMENT
-const CACHE_VERSION = `mcipro-v${BUILD_TIMESTAMP}`;
-const CACHE_NAME = CACHE_VERSION;
+const SW_VERSION = 'f13e3c2b'; // Git SHA - updated on every deploy
 
-// NEVER cache these - always fetch fresh from network
-const NEVER_CACHE = [
-    '/index.html',
-    '/',
-];
-
-// API endpoints
-const API_CACHE_PATTERNS = [
-    /supabase\.co/,
-    /api\.openweathermap\.org/,
-];
-
-// Static resources to cache
-const STATIC_CACHE_PATTERNS = [
-    /\.js$/,
-    /\.css$/,
-    /\.png$/,
-    /\.jpg$/,
-    /\.svg$/,
-    /\.woff2?$/
-];
-
-// =====================================================
-// INSTALL
-// =====================================================
-
-self.addEventListener('install', (event) => {
-    console.log('[ServiceWorker] Installing version:', BUILD_TIMESTAMP);
-    self.skipWaiting(); // Activate immediately
+self.addEventListener('install', event => {
+    console.log('[ServiceWorker] Installing version:', SW_VERSION);
+    // Optional pre-cache can go here
+    self.skipWaiting(); // Let this install finish quickly
 });
 
-// =====================================================
-// ACTIVATE - Clean up old caches
-// =====================================================
-
-self.addEventListener('activate', (event) => {
-    console.log('[ServiceWorker] Activating version:', BUILD_TIMESTAMP);
+self.addEventListener('activate', event => {
+    console.log('[ServiceWorker] Activating version:', SW_VERSION);
 
     event.waitUntil((async () => {
-        // Clean up old caches
+        // Clean old caches if you named them with versions
         const cacheNames = await caches.keys();
         await Promise.all(
             cacheNames
-                .filter((name) => name.startsWith('mcipro-') && name !== CACHE_NAME)
-                .map((name) => {
+                .filter(name => name.startsWith('mcipro-') && !name.includes(SW_VERSION))
+                .map(name => {
                     console.log('[ServiceWorker] Deleting old cache:', name);
                     return caches.delete(name);
                 })
         );
 
-        console.log('[ServiceWorker] Activated - All old caches cleared');
-        // Only call claim() here, inside activate event's waitUntil
+        // ONLY call claim() here, inside activate event's waitUntil
         await self.clients.claim();
+
+        // Tell all tabs there is a new SW
+        const allClients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+        for (const client of allClients) {
+            client.postMessage({ type: 'SW_ACTIVATED', version: SW_VERSION });
+        }
+
+        console.log('[ServiceWorker] Activated version:', SW_VERSION);
     })());
 });
 
-// =====================================================
-// FETCH
-// =====================================================
-
-self.addEventListener('fetch', (event) => {
+// Fetch strategy: HTML always fresh, let browser handle asset caching based on headers
+self.addEventListener('fetch', event => {
     const { request } = event;
-    const url = new URL(request.url);
 
-    // Skip OAuth and Supabase
-    if (
-        url.search.includes('code=') ||
-        url.search.includes('state=') ||
-        url.pathname.includes('/functions/v1/') ||
-        url.hostname.endsWith('.supabase.co') ||
-        url.hostname.includes('realtime.supabase')
-    ) {
-        return;
-    }
-
-    // Skip non-GET requests
-    if (request.method !== 'GET') {
-        return;
-    }
-
-    // NEVER cache HTML files - ALWAYS fetch fresh
-    const isHTML = url.pathname.endsWith('.html') || 
-                   url.pathname === '/' ||
-                   url.pathname.endsWith('/') ||
-                   url.search.length > 0;
-
-    if (isHTML) {
-        console.log('[ServiceWorker] HTML - ALWAYS FRESH:', url.pathname);
+    // Always network for HTML navigation
+    if (request.mode === 'navigate') {
         event.respondWith(fetch(request, { cache: 'no-store' }));
         return;
     }
 
-    // Chat files: NEVER cache
-    if (url.pathname.startsWith('/chat/')) {
-        console.log('[ServiceWorker] Chat file - bypassing cache:', url.pathname);
-        event.respondWith(fetch(request, { cache: 'no-store' }));
-        return;
-    }
-
-    // Static resources: Cache first
-    if (STATIC_CACHE_PATTERNS.some(pattern => pattern.test(url.pathname))) {
-        event.respondWith(cacheFirst(request));
-        return;
-    }
-
-    // Everything else: Network first
-    event.respondWith(networkFirst(request));
+    // For all other requests, let the browser handle caching based on Cache-Control headers from Vercel
+    // This respects the immutable + max-age headers we set in vercel.json
 });
 
-// =====================================================
-// CACHE STRATEGIES
-// =====================================================
-
-async function cacheFirst(request) {
-    const cache = await caches.open(CACHE_NAME);
-    const cachedResponse = await cache.match(request);
-
-    if (cachedResponse) {
-        console.log('[ServiceWorker] Serving from cache:', request.url);
-        
-        // Update in background
-        fetch(request).then((response) => {
-            if (response && response.status === 200) {
-                cache.put(request, response.clone());
-            }
-        }).catch(() => {});
-
-        return cachedResponse;
-    }
-
-    // Fetch from network
-    try {
-        const response = await fetch(request);
-        if (response && response.status === 200) {
-            cache.put(request, response.clone());
-        }
-        return response;
-    } catch (error) {
-        console.error('[ServiceWorker] Fetch failed:', request.url);
-        throw error;
-    }
-}
-
-async function networkFirst(request) {
-    const cache = await caches.open(CACHE_NAME);
-
-    try {
-        const response = await fetch(request);
-        if (response && response.status === 200) {
-            cache.put(request, response.clone());
-        }
-        return response;
-    } catch (error) {
-        const cachedResponse = await cache.match(request);
-        if (cachedResponse) {
-            console.log('[ServiceWorker] Network failed, using cache:', request.url);
-            return cachedResponse;
-        }
-        throw error;
-    }
-}
-
-// =====================================================
-// MESSAGE HANDLER
-// =====================================================
-
-self.addEventListener('message', (event) => {
+self.addEventListener('message', event => {
     if (event.data && event.data.type === 'SKIP_WAITING') {
         console.log('[ServiceWorker] Force update requested');
         self.skipWaiting();
     }
-
-    if (event.data && event.data.type === 'CLEAR_CACHE') {
-        console.log('[ServiceWorker] Cache clear requested');
-        event.waitUntil(
-            caches.keys().then(cacheNames => {
-                return Promise.all(
-                    cacheNames.map(cacheName => caches.delete(cacheName))
-                );
-            })
-        );
-    }
 });
 
-console.log('[ServiceWorker] Loaded - Version:', BUILD_TIMESTAMP);
+console.log('[ServiceWorker] Loaded - Version:', SW_VERSION);

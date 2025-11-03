@@ -19802,7 +19802,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 <body>
     <script>
     // BUILD ID - Injected at deploy time for cache busting
-    window.__BUILD_ID__ = '1d33db71';
+    window.__BUILD_ID__ = 'a0ebe733';
 
     console.log('%c🚀 PAGE VERSION: 2025-11-03-ENTERPRISE-HEADER', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
@@ -46725,12 +46725,31 @@ class GolferEventsManager {
         const event = reg.society_events;
         if (!event) return '';
 
-        const date = new Date(event.date);
-        const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+        // Defensive programming for date handling
+        let dateStr = 'Date TBD';
+        if (event.date) {
+            try {
+                const date = new Date(event.date);
+                if (!isNaN(date.getTime())) {
+                    dateStr = date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+                }
+            } catch (e) {
+                console.error('[GolferEventsSystem] Invalid date format:', event.date, e);
+            }
+        }
+
+        // Get event name with fallback
+        const eventName = event.name || event.event_name || 'Untitled Event';
 
         // Get society name from profile or fallback to organizer_name
         const societyName = event.society_profiles?.society_name || event.organizer_name || 'Society Golf';
         const societyLogo = event.society_profiles?.society_logo || '';
+
+        // Defensive handicap handling
+        let handicapDisplay = 'N/A';
+        if (reg.handicap !== null && reg.handicap !== undefined && !isNaN(reg.handicap)) {
+            handicapDisplay = Math.round(reg.handicap).toString();
+        }
 
         // Check if before cutoff time for editing
         const now = new Date();
@@ -46743,7 +46762,7 @@ class GolferEventsManager {
                     <div class="flex items-center flex-1">
                         ${societyLogo ? `<img src="${societyLogo}" class="w-10 h-10 rounded-full mr-3 object-cover border-2 border-gray-200">` : ''}
                         <div class="flex-1">
-                            <h4 class="font-bold text-gray-900">${event.name}</h4>
+                            <h4 class="font-bold text-gray-900">${eventName}</h4>
                             <p class="text-sm text-gray-600">${societyName}</p>
                         </div>
                     </div>
@@ -46766,7 +46785,7 @@ class GolferEventsManager {
                     </div>
                     <div class="flex items-center text-gray-700">
                         <span class="material-symbols-outlined text-sm mr-2">person</span>
-                        HCP: ${Math.round(reg.handicap)}
+                        HCP: ${handicapDisplay}
                         ${reg.want_transport ? ' • 🚐 Transport' : ''}
                         ${reg.want_competition ? ' • 🏆 Competition' : ''}
                     </div>

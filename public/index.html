@@ -46565,9 +46565,15 @@ class GolferEventsManager {
                     regId: reg.id,
                     eventId: reg.event_id,
                     eventName: event.name,
+                    eventTitle: event.title,
                     eventDate: event.date,
+                    event_date: event.event_date,
+                    start_date: event.start_date,
                     courseName: event.course_name,
-                    handicap: reg.handicap
+                    location: event.location,
+                    venue: event.venue,
+                    handicap: reg.handicap,
+                    allEventFields: Object.keys(event)
                 });
                 return {
                     ...reg,
@@ -46747,19 +46753,20 @@ class GolferEventsManager {
 
         // Defensive programming for date handling
         let dateStr = 'Date TBD';
-        if (event.date) {
+        const eventDate = event.event_date || event.date || event.start_date;
+        if (eventDate) {
             try {
-                const date = new Date(event.date);
+                const date = new Date(eventDate);
                 if (!isNaN(date.getTime())) {
                     dateStr = date.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
                 }
             } catch (e) {
-                console.error('[GolferEventsSystem] Invalid date format:', event.date, e);
+                console.error('[GolferEventsSystem] Invalid date format:', eventDate, e);
             }
         }
 
-        // Get event name with fallback
-        const eventName = event.name || event.event_name || 'Untitled Event';
+        // Get event name with fallback - database has 'title' not 'name'
+        const eventName = event.title || event.name || event.event_name || 'Untitled Event';
 
         // Get society name from profile or fallback to organizer_name
         const societyName = event.society_profiles?.society_name || event.organizer_name || 'Society Golf';
@@ -46801,7 +46808,7 @@ class GolferEventsManager {
                     </div>
                     <div class="flex items-center text-gray-700">
                         <span class="material-symbols-outlined text-sm mr-2">golf_course</span>
-                        ${event.course_name || 'TBD'}
+                        ${event.location || event.venue || event.course_name || 'TBD'}
                     </div>
                     <div class="flex items-center text-gray-700">
                         <span class="material-symbols-outlined text-sm mr-2">person</span>

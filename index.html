@@ -19804,7 +19804,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     // BUILD ID - Injected at deploy time for cache busting
     window.__BUILD_ID__ = '2955f9ae';
 
-    console.log('%c🚀 PAGE VERSION: 2025-11-03-ENTERPRISE-HEADER', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-11-03-KHAO-KHEOW-FIX', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
@@ -21836,9 +21836,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                     <option value="crystal_bay">Crystal Bay Golf Club</option>
                                     <option value="eastern_star">Eastern Star Golf Course</option>
                                     <option value="grand_prix">Grand Prix Golf Club</option>
-                                    <option value="khao_kheow_ab">Khao Kheow A+B</option>
-                                    <option value="khao_kheow_ac">Khao Kheow A+C</option>
-                                    <option value="khao_kheow_bc">Khao Kheow B+C</option>
+                                    <option value="khao_kheow">Khao Kheow Country Club</option>
                                     <option value="laem_chabang">Laem Chabang International Country Club</option>
                                     <option value="mountain_shadow">Mountain Shadow Golf Club</option>
                                     <option value="pattana_golf">Pattana Golf Resort & Spa</option>
@@ -21856,6 +21854,42 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 </button>
                             </div>
                             <p class="text-xs text-gray-500 mt-1" data-i18n="scorecard.course.data.note">Course data loads only when you start round</p>
+                        </div>
+
+                        <!-- Khao Kheow Course Picker -->
+                        <div id="khaoKheowPicker" class="mb-4" style="display: none;">
+                            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                                <h3 class="text-sm font-semibold text-green-800 mb-3 flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-lg">golf_course</span>
+                                    Select Your 18-Hole Combination
+                                </h3>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <!-- Front 9 Selection -->
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-2">Front 9 (Holes 1-9)</label>
+                                        <select id="khaoKheowFront9" class="w-full rounded-lg border border-green-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                            <option value="">-- Select --</option>
+                                            <option value="A">Course A</option>
+                                            <option value="B">Course B</option>
+                                            <option value="C">Course C</option>
+                                        </select>
+                                    </div>
+                                    <!-- Back 9 Selection -->
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-2">Back 9 (Holes 10-18)</label>
+                                        <select id="khaoKheowBack9" class="w-full rounded-lg border border-green-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                            <option value="">-- Select --</option>
+                                            <option value="A">Course A</option>
+                                            <option value="B">Course B</option>
+                                            <option value="C">Course C</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <p class="text-xs text-green-700 mt-2 flex items-start gap-1">
+                                    <span class="material-symbols-outlined text-sm mt-0.5">info</span>
+                                    <span>Course B has different stroke indices depending on which course it's paired with</span>
+                                </p>
+                            </div>
                         </div>
 
                         <!-- Tee Markers -->
@@ -35101,6 +35135,19 @@ class LiveScorecardSystem {
 
         // Check for pending offline data on init
         setTimeout(() => this.syncOfflineData(), 2000);
+
+        // Khao Kheow course picker - show/hide based on course selection
+        const courseSelect = document.getElementById('scorecardCourseSelect');
+        const khaoKheowPicker = document.getElementById('khaoKheowPicker');
+        if (courseSelect && khaoKheowPicker) {
+            courseSelect.addEventListener('change', () => {
+                if (courseSelect.value === 'khao_kheow') {
+                    khaoKheowPicker.style.display = 'block';
+                } else {
+                    khaoKheowPicker.style.display = 'none';
+                }
+            });
+        }
     }
 
     async loadEvents() {
@@ -35144,6 +35191,83 @@ class LiveScorecardSystem {
 
     // Course dropdown is now static HTML - no need to load from database!
     // Only load course data when user starts a round
+
+    async loadKhaoKheowCombination(teeMarker = 'white') {
+        console.log('[LiveScorecard] Loading Khao Kheow combination...');
+
+        // Get selected courses
+        const front9 = document.getElementById('khaoKheowFront9').value;
+        const back9 = document.getElementById('khaoKheowBack9').value;
+
+        if (!front9 || !back9) {
+            console.warn('[LiveScorecard] Front 9 or Back 9 not selected');
+            this.courseData = null;
+            return;
+        }
+
+        console.log(`[LiveScorecard] Selected: Front 9 = ${front9}, Back 9 = ${back9}`);
+
+        // Determine which course IDs to load
+        // Course B has different indices depending on pairing
+        const front9CourseId = front9 === 'A' ? 'khao_kheow_a' :
+                              front9 === 'C' ? 'khao_kheow_c' :
+                              (back9 === 'A' ? 'khao_kheow_b_with_a' : 'khao_kheow_b_with_c');
+
+        const back9CourseId = back9 === 'A' ? 'khao_kheow_a' :
+                             back9 === 'C' ? 'khao_kheow_c' :
+                             (front9 === 'A' ? 'khao_kheow_b_with_a' : 'khao_kheow_b_with_c');
+
+        console.log(`[LiveScorecard] Loading courses: ${front9CourseId} + ${back9CourseId}`);
+
+        try {
+            // Load both 9-hole courses in parallel
+            const [front9Result, back9Result] = await Promise.all([
+                window.SupabaseDB.client
+                    .from('course_holes')
+                    .select('hole_number, par, stroke_index, yardage, tee_marker')
+                    .eq('course_id', front9CourseId)
+                    .eq('tee_marker', teeMarker.toLowerCase())
+                    .order('hole_number'),
+                window.SupabaseDB.client
+                    .from('course_holes')
+                    .select('hole_number, par, stroke_index, yardage, tee_marker')
+                    .eq('course_id', back9CourseId)
+                    .eq('tee_marker', teeMarker.toLowerCase())
+                    .order('hole_number')
+            ]);
+
+            const front9Holes = front9Result.data || [];
+            const back9Holes = back9Result.data || [];
+
+            if (front9Holes.length === 0 || back9Holes.length === 0) {
+                console.error('[LiveScorecard] Failed to load holes for Khao Kheow combination');
+                this.courseData = null;
+                return;
+            }
+
+            // Combine into 18 holes
+            // Front 9 holes stay as holes 1-9
+            // Back 9 holes become holes 10-18
+            const combinedHoles = [
+                ...front9Holes.map(h => ({ ...h, hole_number: h.hole_number })),
+                ...back9Holes.map(h => ({ ...h, hole_number: h.hole_number + 9 }))
+            ];
+
+            // Create combined course data
+            this.courseData = {
+                id: 'khao_kheow',
+                name: `Khao Kheow Country Club (${front9}+${back9})`,
+                scorecard_url: null,
+                holes: combinedHoles
+            };
+
+            console.log(`[LiveScorecard] ✅ Khao Kheow ${front9}+${back9} loaded successfully (${combinedHoles.length} holes)`);
+
+        } catch (error) {
+            console.error('[LiveScorecard] Error loading Khao Kheow combination:', error);
+            this.courseData = null;
+        }
+    }
 
     async loadCourseData(courseId, teeMarker = 'white') {
         
@@ -35587,11 +35711,20 @@ class LiveScorecardSystem {
         // Set flag to skip scramble panel on first render (performance)
         this._initialRender = true;
 
-        // Load course data from database with selected tee marker
-        await this.loadCourseData(courseId, teeMarker);
-        if (!this.courseData) {
-            NotificationManager.show('Error loading course data', 'error');
-            return;
+        // Khao Kheow: Handle 9-hole course combination
+        if (courseId === 'khao_kheow') {
+            await this.loadKhaoKheowCombination(teeMarker);
+            if (!this.courseData) {
+                NotificationManager.show('Please select both Front 9 and Back 9 courses', 'error');
+                return;
+            }
+        } else {
+            // Load course data from database with selected tee marker
+            await this.loadCourseData(courseId, teeMarker);
+            if (!this.courseData) {
+                NotificationManager.show('Error loading course data', 'error');
+                return;
+            }
         }
 
         // Collect all selected formats (supports multiple simultaneous formats)
@@ -36609,42 +36742,36 @@ class LiveScorecardSystem {
                 throw new Error(`Cannot save round: Player "${player.name}" is not logged in with LINE`);
             }
     
-            // Save to Supabase database with session-aware insert and fallback
+            // Save to Supabase database using LINE user ID
             let round, error;
             try {
-                const { data: sessionData } = await window.SupabaseDB.client.auth.getSession();
-                const hasSession = !!sessionData?.session?.user;
+                // FIXED: Use LINE user ID (TEXT) instead of Supabase UUID
+                const canonicalInsert = await window.SupabaseDB.client
+                    .from('rounds')
+                    .insert({
+                        golfer_id: player.lineUserId, // FIXED: Use LINE user ID directly
+                        course_id: courseId || null,
+                        course_name: this.courseData?.name || null,
+                        type: this.roundType || (this.isPrivateRound ? 'private' : (this.eventId ? 'society' : 'private')),
+                        society_event_id: this.eventId || null,
+                        started_at: new Date().toISOString(),
+                        completed_at: new Date().toISOString(),
+                        status: 'completed',
+                        total_gross: totalGross,
+                        total_net: null,
+                        total_stableford: totalStableford,
+                        handicap_used: player.handicap,
+                        tee_marker: teeMarker
+                    })
+                    .select()
+                    .single();
 
-                if (hasSession) {
-                    const supaUserId = sessionData.session.user.id;
-                    // Try canonical schema insert first
-                    const canonicalInsert = await window.SupabaseDB.client
-                        .from('rounds')
-                        .insert({
-                            golfer_id: supaUserId,
-                            course_id: courseId || null,
-                            course_name: this.courseData?.name || null,
-                            type: this.roundType || (this.isPrivateRound ? 'private' : (this.eventId ? 'society' : 'private')),
-                            society_event_id: this.eventId || null,
-                            started_at: new Date().toISOString(),
-                            completed_at: new Date().toISOString(),
-                            status: 'completed',
-                            total_gross: totalGross,
-                            total_net: null,
-                            total_stableford: totalStableford,
-                            handicap_used: player.handicap,
-                            tee_marker: teeMarker
-                        })
-                        .select()
-                        .single();
+                round = canonicalInsert.data;
+                error = canonicalInsert.error;
 
-                    round = canonicalInsert.data;
-                    error = canonicalInsert.error;
-
-                    // If canonical failed due to missing columns, fallback to legacy schema
-                    if (error) {
-                        console.warn('[LiveScorecard] Canonical insert failed, falling back to legacy schema:', error);
-                    }
+                // If canonical failed due to missing columns, fallback to legacy schema
+                if (error) {
+                    console.warn('[LiveScorecard] Canonical insert failed, falling back to legacy schema:', error);
                 }
 
                 // If canonical-only mode is enabled, abort on canonical failures or missing session
@@ -36657,7 +36784,7 @@ class LiveScorecardSystem {
                     const legacyInsert = await window.SupabaseDB.client
                         .from('rounds')
                         .insert({
-                            user_id: player.lineUserId,
+                            golfer_id: player.lineUserId, // FIXED: Use golfer_id (TEXT) instead of user_id (UUID)
                             course_id: courseId || null,
                             played_at: new Date().toISOString(),
                             holes_played: holesPlayed,

@@ -32748,7 +32748,7 @@ class SocietyGolfSupabase {
         let query = window.SupabaseDB.client
             .from('society_events')
             .select('*')
-            .order('date', { ascending: true });
+            .order('event_date', { ascending: true }); // FIXED: use event_date column
 
         // Filter by organizer if provided
         if (organizerId) {
@@ -36440,12 +36440,21 @@ class LiveScorecardSystem {
 
 
     async completeRound() {
+        console.log('[LiveScorecard] ========================================');
         console.log('[LiveScorecard] END ROUND CLICKED');
+        console.log('[LiveScorecard] Current state:', {
+            players: this.players.length,
+            roundType: this.roundType,
+            eventId: this.eventId,
+            isPrivateRound: this.isPrivateRound,
+            currentUser: AppState.currentUser?.lineUserId
+        });
+        console.log('[LiveScorecard] ========================================');
 
         // JUST SHOW THE SCORECARD - NOTHING ELSE
         try {
             this.showFinalizedScorecard();
-            NotificationManager.show('Round completed!', 'success');
+            NotificationManager.show('Round completed! Saving to history...', 'success');
         } catch (error) {
             // Remove loading indicator on error
             const loadingIndicator = document.getElementById('endRoundLoadingIndicator');
@@ -36457,9 +36466,18 @@ class LiveScorecardSystem {
             console.error('[LiveScorecard] ERROR:', error);
         }
 
-        // Do database stuff in background (don't wait, don't care if it fails)
-        setTimeout(() => {
-            this.distributeRoundScores().catch(err => console.error('Background save failed:', err));
+        // Do database stuff in background with COMPREHENSIVE error handling
+        setTimeout(async () => {
+            try {
+                console.log('[LiveScorecard] Starting background save...');
+                await this.distributeRoundScores();
+                console.log('[LiveScorecard] ✅ Background save completed successfully');
+            } catch (err) {
+                console.error('[LiveScorecard] ❌ CRITICAL ERROR in background save:', err);
+                console.error('[LiveScorecard] Error stack:', err.stack);
+                NotificationManager.show('ERROR: Failed to save round - ' + err.message, 'error', 10000);
+                alert(`FAILED TO SAVE ROUND TO DATABASE:\n\n${err.message}\n\nPlease screenshot this error and the console (F12)`);
+            }
         }, 1000);
     }
 
@@ -48122,7 +48140,7 @@ class OrganizerScoringSystem {
                 .from('society_events')
                 .select('*')
                 .eq('organizer_id', userId)
-                .order('date', { ascending: false })
+                .order('event_date', { ascending: false }) // FIXED: use event_date column
                 .limit(50);
 
             if (error) {

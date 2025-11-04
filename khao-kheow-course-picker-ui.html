@@ -1,0 +1,269 @@
+<!-- =====================================================
+     KHAO KHEOW COURSE PICKER - UI COMPONENT
+     Simple dropdown to select Front 9 + Back 9
+     ===================================================== -->
+
+<!-- ADD THIS to course selection area when "Khao Kheow" is selected -->
+
+<div id="khaoKheowCoursePicker" class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg" style="display: none;">
+    <div class="text-center mb-3">
+        <span class="material-symbols-outlined text-blue-600">golf_course</span>
+        <h3 class="text-lg font-semibold text-gray-800">Select Your 18-Hole Combination</h3>
+        <p class="text-sm text-gray-600">Khao Kheow has 3 courses (A, B, C) - choose your front and back 9</p>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+        <!-- Front 9 Selection -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+                Front 9 Holes
+            </label>
+            <select id="khaoKheowFront9" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                <option value="">Select...</option>
+                <option value="A">Course A</option>
+                <option value="B">Course B</option>
+                <option value="C">Course C</option>
+            </select>
+        </div>
+
+        <!-- Back 9 Selection -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+                Back 9 Holes
+            </label>
+            <select id="khaoKheowBack9" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                <option value="">Select...</option>
+                <option value="A">Course A</option>
+                <option value="B">Course B</option>
+                <option value="C">Course C</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Selected Combination Display -->
+    <div id="khaoKheowSelectedCombo" class="mt-3 p-3 bg-white border border-green-300 rounded-lg" style="display: none;">
+        <div class="flex items-center justify-between">
+            <div>
+                <span class="text-sm text-gray-600">Playing:</span>
+                <span id="khaoKheowComboName" class="ml-2 font-semibold text-green-700"></span>
+            </div>
+            <button onclick="confirmKhaoKheowSelection()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                Confirm Selection
+            </button>
+        </div>
+    </div>
+
+    <!-- Error/Warning Messages -->
+    <div id="khaoKheowPickerError" class="mt-3 p-3 bg-yellow-50 border border-yellow-300 rounded-lg text-sm text-yellow-800" style="display: none;">
+        <span class="material-symbols-outlined text-yellow-600 text-lg align-middle">warning</span>
+        <span id="khaoKheowPickerErrorText" class="ml-2"></span>
+    </div>
+</div>
+
+<script>
+// =====================================================
+// KHAO KHEOW COURSE SELECTION LOGIC
+// =====================================================
+
+class KhaoKheowCoursePicker {
+    constructor() {
+        this.front9 = null;
+        this.back9 = null;
+        this.selectedCourseId = null;
+        this.init();
+    }
+
+    init() {
+        // Listen for dropdown changes
+        const front9Select = document.getElementById('khaoKheowFront9');
+        const back9Select = document.getElementById('khaoKheowBack9');
+
+        if (front9Select) {
+            front9Select.addEventListener('change', () => this.onSelectionChange());
+        }
+        if (back9Select) {
+            back9Select.addEventListener('change', () => this.onSelectionChange());
+        }
+    }
+
+    onSelectionChange() {
+        const front9 = document.getElementById('khaoKheowFront9').value;
+        const back9 = document.getElementById('khaoKheowBack9').value;
+
+        this.front9 = front9;
+        this.back9 = back9;
+
+        // Validate selection
+        if (!front9 || !back9) {
+            this.hideComboDisplay();
+            return;
+        }
+
+        // Check for invalid combinations
+        if (front9 === back9) {
+            this.showError(`Cannot play the same course twice (${front9} + ${front9}). Please select different courses.`);
+            this.hideComboDisplay();
+            return;
+        }
+
+        // Valid combination - show it
+        this.hideError();
+        this.showComboDisplay(front9, back9);
+    }
+
+    showComboDisplay(front9, back9) {
+        const comboDisplay = document.getElementById('khaoKheowSelectedCombo');
+        const comboName = document.getElementById('khaoKheowComboName');
+
+        comboName.textContent = `Course ${front9} (Front 9) + Course ${back9} (Back 9)`;
+        comboDisplay.style.display = 'block';
+    }
+
+    hideComboDisplay() {
+        const comboDisplay = document.getElementById('khaoKheowSelectedCombo');
+        comboDisplay.style.display = 'none';
+    }
+
+    showError(message) {
+        const errorDiv = document.getElementById('khaoKheowPickerError');
+        const errorText = document.getElementById('khaoKheowPickerErrorText');
+        errorText.textContent = message;
+        errorDiv.style.display = 'block';
+    }
+
+    hideError() {
+        const errorDiv = document.getElementById('khaoKheowPickerError');
+        errorDiv.style.display = 'none';
+    }
+
+    // Determine which database course_id to use
+    getCourseIds(front9, back9) {
+        const mapping = {
+            // Front 9 mappings
+            'A': 'khao_kheow_a',
+            'C': 'khao_kheow_c',
+
+            // Back 9 mappings (B depends on pairing)
+            'B_with_A': 'khao_kheow_b_with_a',
+            'B_with_C': 'khao_kheow_b_with_c'
+        };
+
+        let frontCourseId, backCourseId;
+
+        // Determine front 9 course_id
+        if (front9 === 'A') {
+            frontCourseId = mapping['A'];
+        } else if (front9 === 'C') {
+            frontCourseId = mapping['C'];
+        } else if (front9 === 'B') {
+            // B changes based on what's paired with it
+            if (back9 === 'A') {
+                frontCourseId = mapping['B_with_A'];
+            } else if (back9 === 'C') {
+                frontCourseId = mapping['B_with_C'];
+            }
+        }
+
+        // Determine back 9 course_id
+        if (back9 === 'A') {
+            backCourseId = mapping['A'];
+        } else if (back9 === 'C') {
+            backCourseId = mapping['C'];
+        } else if (back9 === 'B') {
+            // B changes based on what's paired with it
+            if (front9 === 'A') {
+                backCourseId = mapping['B_with_A'];
+            } else if (front9 === 'C') {
+                backCourseId = mapping['B_with_C'];
+            }
+        }
+
+        return { frontCourseId, backCourseId };
+    }
+
+    getSelection() {
+        if (!this.front9 || !this.back9) {
+            return null;
+        }
+
+        if (this.front9 === this.back9) {
+            return null;
+        }
+
+        const { frontCourseId, backCourseId } = this.getCourseIds(this.front9, this.back9);
+
+        return {
+            front9: this.front9,
+            back9: this.back9,
+            frontCourseId: frontCourseId,
+            backCourseId: backCourseId,
+            displayName: `Khao Kheow ${this.front9}+${this.back9}`
+        };
+    }
+}
+
+// Global instance
+let khaoKheowPicker = null;
+
+// Initialize picker when page loads
+document.addEventListener('DOMContentLoaded', () => {
+    khaoKheowPicker = new KhaoKheowCoursePicker();
+});
+
+// Called when user confirms selection
+function confirmKhaoKheowSelection() {
+    if (!khaoKheowPicker) {
+        console.error('Khao Kheow picker not initialized');
+        return;
+    }
+
+    const selection = khaoKheowPicker.getSelection();
+    if (!selection) {
+        NotificationManager.show('Please select both front and back 9', 'warning');
+        return;
+    }
+
+    console.log('[KhaoKheow] Selected combination:', selection);
+
+    // Pass this to the scorecard system
+    // The scorecard will load:
+    // - Holes 1-9 from selection.frontCourseId
+    // - Holes 10-18 from selection.backCourseId (renumbered as 10-18)
+
+    if (typeof startKhaoKheowRound === 'function') {
+        startKhaoKheowRound(selection);
+    } else {
+        console.error('startKhaoKheowRound function not found');
+    }
+}
+
+// Show/hide picker based on course selection
+function showKhaoKheowPicker() {
+    const picker = document.getElementById('khaoKheowCoursePicker');
+    if (picker) {
+        picker.style.display = 'block';
+    }
+}
+
+function hideKhaoKheowPicker() {
+    const picker = document.getElementById('khaoKheowCoursePicker');
+    if (picker) {
+        picker.style.display = 'none';
+    }
+}
+</script>
+
+<style>
+#khaoKheowCoursePicker select {
+    cursor: pointer;
+    font-size: 16px;
+}
+
+#khaoKheowCoursePicker select:hover {
+    border-color: #3b82f6;
+}
+
+#khaoKheowCoursePicker button:active {
+    transform: scale(0.98);
+}
+</style>

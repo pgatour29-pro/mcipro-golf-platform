@@ -28419,6 +28419,61 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     </div>
 
 
+    <!-- Edit User Modal -->
+    <div id="editUserModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" style="display: none;">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
+            <div class="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-500">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-xl font-bold text-white">Edit User Profile</h3>
+                        <p class="text-sm text-blue-100 mt-1" id="editUserName">Loading...</p>
+                    </div>
+                    <button onclick="SocietyOrganizerSystem.closeEditUserModal()" class="text-white hover:bg-white/20 rounded-lg p-2">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-6 space-y-4">
+                <input type="hidden" id="editUserId">
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Full Name *</label>
+                    <input type="text" id="editUserFullName"
+                           placeholder="Enter full name"
+                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Handicap *</label>
+                    <input type="number" id="editUserHandicap"
+                           placeholder="Enter handicap (0-54)"
+                           min="0" max="54" step="0.1"
+                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Home Club</label>
+                    <input type="text" id="editUserHomeClub"
+                           placeholder="Enter home club"
+                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="p-6 border-t border-gray-200 bg-gray-50">
+                <div class="flex gap-3 justify-end">
+                    <button onclick="SocietyOrganizerSystem.closeEditUserModal()" class="px-6 py-3 text-gray-700 bg-gray-200 rounded-xl font-semibold hover:bg-gray-300 transition-colors">
+                        Cancel
+                    </button>
+                    <button onclick="SocietyOrganizerSystem.saveUserEdits()" class="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors flex items-center gap-2">
+                        <span class="material-symbols-outlined text-sm">save</span>
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Society Organizer PIN Verification Modal -->
     <div id="societyOrganizerPinModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" style="display: none;">
         <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4">
@@ -41195,8 +41250,83 @@ class SocietyOrganizerManager {
     }
 
     async editMember(golferId) {
-        // Future enhancement: Show edit modal
-        NotificationManager.show('Edit member feature coming soon', 'info');
+        try {
+            // Fetch user profile
+            const profile = await window.SupabaseDB.getUserProfile(golferId);
+
+            if (!profile) {
+                NotificationManager.show('User profile not found', 'error');
+                return;
+            }
+
+            // Populate modal
+            document.getElementById('editUserId').value = golferId;
+            document.getElementById('editUserName').textContent = profile.name;
+            document.getElementById('editUserFullName').value = profile.name || '';
+
+            const handicap = profile.profile_data?.golfInfo?.handicap || 36;
+            document.getElementById('editUserHandicap').value = handicap;
+
+            const homeClub = profile.profile_data?.golfInfo?.homeClub || '';
+            document.getElementById('editUserHomeClub').value = homeClub;
+
+            // Show modal
+            document.getElementById('editUserModal').style.display = 'flex';
+        } catch (error) {
+            console.error('[EditMember] Error loading profile:', error);
+            NotificationManager.show('Failed to load user profile', 'error');
+        }
+    }
+
+    closeEditUserModal() {
+        document.getElementById('editUserModal').style.display = 'none';
+    }
+
+    async saveUserEdits() {
+        try {
+            const golferId = document.getElementById('editUserId').value;
+            const name = document.getElementById('editUserFullName').value.trim();
+            const handicap = parseFloat(document.getElementById('editUserHandicap').value);
+            const homeClub = document.getElementById('editUserHomeClub').value.trim();
+
+            if (!name) {
+                NotificationManager.show('Name is required', 'error');
+                return;
+            }
+
+            if (isNaN(handicap) || handicap < 0 || handicap > 54) {
+                NotificationManager.show('Handicap must be between 0 and 54', 'error');
+                return;
+            }
+
+            // Fetch existing profile
+            const existingProfile = await window.SupabaseDB.getUserProfile(golferId);
+
+            // Update profile
+            const updatedProfile = {
+                ...existingProfile,
+                name: name,
+                profile_data: {
+                    ...(existingProfile.profile_data || {}),
+                    golfInfo: {
+                        ...(existingProfile.profile_data?.golfInfo || {}),
+                        handicap: handicap.toString(),
+                        homeClub: homeClub
+                    }
+                }
+            };
+
+            await window.SupabaseDB.saveUserProfile(updatedProfile);
+
+            NotificationManager.show(`✅ ${name} updated successfully`, 'success');
+            this.closeEditUserModal();
+
+            // Refresh player directory
+            await this.loadPlayerDirectory();
+        } catch (error) {
+            console.error('[SaveUserEdits] Error:', error);
+            NotificationManager.show('Failed to save user edits', 'error');
+        }
     }
 
     // =====================================================

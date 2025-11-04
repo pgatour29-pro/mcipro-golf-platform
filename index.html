@@ -26697,6 +26697,17 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </div>
                 </div>
 
+                <!-- Search Field -->
+                <div class="mb-6">
+                    <div class="relative">
+                        <span class="material-symbols-outlined absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">search</span>
+                        <input type="text" id="eventsSearchInput"
+                            placeholder="Search events by name, course, or date..."
+                            oninput="SocietyOrganizerSystem.filterEvents(this.value)"
+                            class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent">
+                    </div>
+                </div>
+
                 <!-- Event Form (Hidden by default) -->
                 <div id="eventFormContainer" class="mb-6" style="display: none;">
                     <div class="bg-white rounded-2xl shadow-lg border p-6">
@@ -27118,6 +27129,16 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 <!-- Event Selector -->
                 <div class="metric-card mb-6">
                     <label class="block text-sm font-medium text-gray-700 mb-2">Select Event</label>
+
+                    <!-- Search Field -->
+                    <div class="relative mb-3">
+                        <span class="material-symbols-outlined absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">search</span>
+                        <input type="text" id="scoringEventsSearchInput"
+                            placeholder="Search events..."
+                            oninput="OrganizerScoringSystem.filterEventDropdown(this.value)"
+                            class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent">
+                    </div>
+
                     <select id="organizerScoringEventSelect" onchange="OrganizerScoringSystem.loadEventScores(this.value)" class="w-full rounded-lg border px-3 py-2">
                         <option value="">-- Select an event --</option>
                     </select>
@@ -32812,8 +32833,7 @@ class SocietyGolfSupabase {
 
         let query = window.SupabaseDB.client
             .from('society_events')
-            .select('*')
-            .order('event_date', { ascending: true }); // FIXED: use event_date column
+            .select('*');
 
         // Filter by organizer if provided
         if (organizerId) {
@@ -33042,8 +33062,7 @@ class SocietyGolfSupabase {
         // Get all events first
         const { data: eventsData, error: eventsError } = await window.SupabaseDB.client
             .from('society_events')
-            .select('*')
-            .order('event_date', { ascending: true });
+            .select('*');
 
         if (eventsError) {
             console.error('[SocietyGolf] Error fetching events:', eventsError);
@@ -33639,7 +33658,7 @@ class SocietyGolfSupabase {
             query = query.eq('organizer_id', organizerId);
         }
 
-        const { data: events, error: eventsError } = await query.order('event_date', { ascending: true });
+        const { data: events, error: eventsError } = await query;
 
         if (eventsError) {
             console.error('[SocietyGolfDB] Error loading events:', eventsError);
@@ -41685,6 +41704,38 @@ This action cannot be undone.`);
         container.innerHTML = this.events.map(event => this.renderEventCard(event)).join('');
     }
 
+    filterEvents(searchText) {
+        const container = document.getElementById('eventsListContainer');
+        const emptyState = document.getElementById('eventsEmptyState');
+
+        if (!this.events || this.events.length === 0) {
+            container.innerHTML = '';
+            emptyState.style.display = 'block';
+            return;
+        }
+
+        const search = searchText.toLowerCase().trim();
+        const filteredEvents = search === ''
+            ? this.events
+            : this.events.filter(event => {
+                const title = (event.title || '').toLowerCase();
+                const course = (event.course || '').toLowerCase();
+                const eventDate = event.date ? new Date(event.date).toLocaleDateString().toLowerCase() : '';
+
+                return title.includes(search) ||
+                       course.includes(search) ||
+                       eventDate.includes(search);
+            });
+
+        if (filteredEvents.length === 0) {
+            container.innerHTML = '<div class="col-span-2 text-center py-8 text-gray-500">No events match your search</div>';
+            emptyState.style.display = 'none';
+        } else {
+            container.innerHTML = filteredEvents.map(event => this.renderEventCard(event)).join('');
+            emptyState.style.display = 'none';
+        }
+    }
+
     renderEventCard(event) {
         const eventDate = event.date ? new Date(event.date).toLocaleDateString() : '-';
 
@@ -48334,6 +48385,7 @@ class OrganizerScoringSystem {
         this.leaderboardData = [];
         this.pointAllocation = {};
         this.refreshInterval = null;
+        this.allEvents = []; // Store all events for filtering
     }
 
     async init() {
@@ -48347,35 +48399,70 @@ class OrganizerScoringSystem {
             const userId = AppState.currentUser?.lineUserId;
             if (!userId) return;
 
-            // Load organizer's events
-            const { data: events, error } = await window.SupabaseDB.client
+            // Load ALL events (filtering by organizer_id causes 400 error)
+            const { data: allEvents, error } = await window.SupabaseDB.client
                 .from('society_events')
                 .select('*')
-                .eq('organizer_id', userId)
-                .order('event_date', { ascending: false }) // FIXED: use event_date column
-                .limit(50);
+                .limit(100);
 
             if (error) {
                 console.error('[OrganizerScoring] Error loading events:', error);
                 return;
             }
 
-            const select = document.getElementById('organizerScoringEventSelect');
-            if (!select) return;
+            // Filter events in JavaScript where organizer_id matches OR user is Travellers (sees all)
+            const isTravellers = AppState.currentUser?.organizationInfo?.societyName === 'Travellers Rest Golf Group';
+            const events = isTravellers ? allEvents : allEvents.filter(e => e.organizer_id === userId);
 
-            select.innerHTML = '<option value="">-- Select an event --</option>';
-            events.forEach(event => {
-                const option = document.createElement('option');
-                option.value = event.id;
-                const date = new Date(event.date).toLocaleDateString();
-                option.textContent = `${event.title} - ${date} (${event.course})`;
-                select.appendChild(option);
-            });
+            // Store events for filtering
+            this.allEvents = events;
 
-            console.log(`[OrganizerScoring] Loaded ${events.length} events`);
+            // Render dropdown
+            this.renderEventDropdown(events);
+
+            console.log(`[OrganizerScoring] Loaded ${events.length} events (filtered from ${allEvents.length})`);
         } catch (error) {
             console.error('[OrganizerScoring] Error in loadEvents:', error);
         }
+    }
+
+    renderEventDropdown(events) {
+        const select = document.getElementById('organizerScoringEventSelect');
+        if (!select) return;
+
+        const currentValue = select.value; // Preserve current selection
+        select.innerHTML = '<option value="">-- Select an event --</option>';
+
+        events.forEach(event => {
+            const option = document.createElement('option');
+            option.value = event.id;
+            const date = new Date(event.event_date).toLocaleDateString();
+            option.textContent = `${event.title} - ${date} (${event.course})`;
+            select.appendChild(option);
+        });
+
+        // Restore selection if it still exists
+        if (currentValue && events.some(e => e.id === currentValue)) {
+            select.value = currentValue;
+        }
+    }
+
+    filterEventDropdown(searchText) {
+        const search = searchText.toLowerCase().trim();
+
+        const filteredEvents = search === ''
+            ? this.allEvents
+            : this.allEvents.filter(event => {
+                const title = (event.title || '').toLowerCase();
+                const course = (event.course || '').toLowerCase();
+                const eventDate = event.event_date ? new Date(event.event_date).toLocaleDateString().toLowerCase() : '';
+
+                return title.includes(search) ||
+                       course.includes(search) ||
+                       eventDate.includes(search);
+            });
+
+        this.renderEventDropdown(filteredEvents);
     }
 
     async loadEventScores(eventId) {

@@ -38350,18 +38350,20 @@ class LiveScorecardSystem {
             const skinsResults = engine.calculateSkins(allPlayerData, this.courseData.holes, true, pointsConfig.skins.perHole);
 
             // For each player who won skins, calculate what others owe
+            // Each loser pays FULL amount (not split among losers)
             for (const player of this.players) {
                 const holesWon = skinsResults.skinsWon[player.id] || 0;
                 if (holesWon > 0) {
                     const totalPoints = holesWon * pointsConfig.skins.perHole;
-                    const pointsPerPerson = totalPoints / (this.players.length - 1);
+                    // Each other player owes the FULL total (not divided)
+                    const pointsPerPerson = totalPoints;
 
                     for (const other of this.players) {
                         if (other.id !== player.id) {
                             settlements.skins.push({
                                 from: other.name,
                                 to: player.name,
-                                amount: Math.round(pointsPerPerson),
+                                amount: pointsPerPerson,
                                 reason: `Skins (${holesWon} holes)`,
                                 holesWon: holesWon
                             });
@@ -38414,7 +38416,8 @@ class LiveScorecardSystem {
 
                 if (winners.length === 1 && losers.length > 0) {
                     const winner = winners[0].player;
-                    const pointsPerLoser = format.config.overall / losers.length;
+                    // Each loser pays FULL amount to winner (not divided)
+                    const pointsPerLoser = format.config.overall;
 
                     for (const loser of losers) {
                         const targetArray = format.name === 'stableford' ? settlements.stableford
@@ -38424,7 +38427,7 @@ class LiveScorecardSystem {
                         targetArray.push({
                             from: loser.player.name,
                             to: winner.name,
-                            amount: Math.round(pointsPerLoser),
+                            amount: pointsPerLoser,
                             reason: format.label,
                             winnerScore: best,
                             loserScore: loser.score

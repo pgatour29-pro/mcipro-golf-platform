@@ -334,9 +334,9 @@ class SupabaseClient {
                 golfInfo: {
                     ...(profile.golfInfo || {}),
                     // Ensure homeClub is in JSONB for UI compatibility
-                    homeClub: profile.home_course_name || profile.homeCourseName || profile.golfInfo?.homeClub || profile.home_club || profile.homeClub || '',
-                    homeCourseId: cleanUUID(profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId),
-                    handicap: profile.handicap || profile.golfInfo?.handicap || null
+                    homeClub: profile.home_course_name || profile.homeCourseName || profile.golfInfo?.homeClub || profile.profile_data?.golfInfo?.homeClub || profile.home_club || profile.homeClub || '',
+                    homeCourseId: cleanUUID(profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId || profile.profile_data?.golfInfo?.homeCourseId),
+                    handicap: profile.handicap || profile.golfInfo?.handicap || profile.profile_data?.golfInfo?.handicap || null
                 },
                 organizationInfo: {
                     ...(profile.organizationInfo || {}),
@@ -350,7 +350,7 @@ class SupabaseClient {
                 media: profile.media || {},
                 privacy: profile.privacy || {},
                 // Store any additional fields
-                handicap: profile.handicap || profile.golfInfo?.handicap || null,
+                handicap: profile.handicap || profile.golfInfo?.handicap || profile.profile_data?.golfInfo?.handicap || null,
                 username: profile.username || null,
                 userId: profile.userId || profile.lineUserId,
                 linePictureUrl: profile.linePictureUrl || null

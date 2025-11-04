@@ -27367,6 +27367,55 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </div>
                 </div>
 
+                <!-- Search & Filters -->
+                <div class="bg-white rounded-xl shadow-sm border p-4 mb-4">
+                    <div class="flex flex-col md:flex-row gap-4">
+                        <!-- Search Input -->
+                        <div class="flex-1 relative">
+                            <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">search</span>
+                            <input
+                                type="text"
+                                id="playerDirectorySearch"
+                                placeholder="Search by name, member #, or home club..."
+                                class="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                oninput="SocietyOrganizerSystem.filterPlayerDirectory()"
+                            />
+                            <button
+                                id="playerDirectorySearchClear"
+                                onclick="SocietyOrganizerSystem.clearPlayerDirectorySearch()"
+                                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                style="display: none;"
+                            >
+                                <span class="material-symbols-outlined text-sm">close</span>
+                            </button>
+                        </div>
+
+                        <!-- Handicap Filter -->
+                        <div class="flex items-center gap-2">
+                            <label class="text-sm text-gray-600 whitespace-nowrap">Handicap:</label>
+                            <select
+                                id="playerDirectoryHandicapFilter"
+                                class="px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                onchange="SocietyOrganizerSystem.filterPlayerDirectory()"
+                            >
+                                <option value="all">All Handicaps</option>
+                                <option value="0-9">0-9 (Low)</option>
+                                <option value="10-18">10-18 (Mid)</option>
+                                <option value="19-28">19-28 (High)</option>
+                                <option value="29-54">29-54 (Very High)</option>
+                            </select>
+                        </div>
+
+                        <!-- Results Count -->
+                        <div class="flex items-center px-4 py-2 bg-gray-50 rounded-lg">
+                            <span class="text-sm text-gray-600">
+                                <span id="playerDirectoryResultCount" class="font-semibold text-green-600">0</span>
+                                <span class="ml-1">players</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Player Directory Table -->
                 <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
                     <div class="overflow-x-auto">
@@ -41269,12 +41318,74 @@ class SocietyOrganizerManager {
                 };
             });
 
+            // Store full member list for filtering
+            this.allMembers = enrichedMembers;
+
             this.renderPlayerDirectory(enrichedMembers);
             this.updatePlayerDirectoryStats(enrichedMembers);
+            this.updateResultCount(enrichedMembers.length);
 
         } catch (error) {
             console.error('[PlayerDirectory] Error loading:', error);
             DevMode.showNotification('Failed to load player directory', 'error');
+        }
+    }
+
+    filterPlayerDirectory() {
+        if (!this.allMembers || this.allMembers.length === 0) return;
+
+        const searchInput = document.getElementById('playerDirectorySearch');
+        const handicapFilter = document.getElementById('playerDirectoryHandicapFilter');
+        const clearBtn = document.getElementById('playerDirectorySearchClear');
+
+        const searchTerm = searchInput.value.toLowerCase().trim();
+        const handicapRange = handicapFilter.value;
+
+        // Show/hide clear button
+        if (clearBtn) {
+            clearBtn.style.display = searchTerm ? 'block' : 'none';
+        }
+
+        // Filter members
+        let filtered = this.allMembers.filter(member => {
+            // Search filter
+            const matchesSearch = !searchTerm ||
+                member.playerName.toLowerCase().includes(searchTerm) ||
+                member.member_number?.toString().includes(searchTerm) ||
+                member.homeClub?.toLowerCase().includes(searchTerm) ||
+                member.golfer_id?.toLowerCase().includes(searchTerm);
+
+            // Handicap filter
+            let matchesHandicap = true;
+            if (handicapRange !== 'all') {
+                const [min, max] = handicapRange.split('-').map(Number);
+                const handicap = member.handicap || 36;
+                matchesHandicap = handicap >= min && handicap <= max;
+            }
+
+            return matchesSearch && matchesHandicap;
+        });
+
+        this.renderPlayerDirectory(filtered);
+        this.updateResultCount(filtered.length);
+    }
+
+    clearPlayerDirectorySearch() {
+        const searchInput = document.getElementById('playerDirectorySearch');
+        const handicapFilter = document.getElementById('playerDirectoryHandicapFilter');
+        const clearBtn = document.getElementById('playerDirectorySearchClear');
+
+        if (searchInput) searchInput.value = '';
+        if (handicapFilter) handicapFilter.value = 'all';
+        if (clearBtn) clearBtn.style.display = 'none';
+
+        this.filterPlayerDirectory();
+    }
+
+    updateResultCount(count) {
+        const countEl = document.getElementById('playerDirectoryResultCount');
+        if (countEl) {
+            countEl.textContent = count;
         }
     }
 
@@ -41283,11 +41394,15 @@ class SocietyOrganizerManager {
         if (!tbody) return;
 
         if (!members || members.length === 0) {
+            // Check if this is due to filtering or genuinely no members
+            const isFiltering = this.allMembers && this.allMembers.length > 0;
+
             tbody.innerHTML = `
                 <tr>
                     <td colspan="7" class="px-6 py-12 text-center text-gray-500">
-                        <span class="material-symbols-outlined text-5xl text-gray-300">group_off</span>
-                        <p class="mt-2">No members yet. Click "Add Player" to get started.</p>
+                        <span class="material-symbols-outlined text-5xl text-gray-300">${isFiltering ? 'search_off' : 'group_off'}</span>
+                        <p class="mt-2">${isFiltering ? 'No players match your search criteria.' : 'No members yet. Click "Add Player" to get started.'}</p>
+                        ${isFiltering ? '<button onclick="SocietyOrganizerSystem.clearPlayerDirectorySearch()" class="mt-3 text-green-600 hover:text-green-700 font-medium">Clear filters</button>' : ''}
                     </td>
                 </tr>
             `;

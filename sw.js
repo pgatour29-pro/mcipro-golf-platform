@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
 // DEPLOYMENT VERSION: 2025-11-04-HANDICAP-WHS-INTEGRATION
 
-const SW_VERSION = '441fb06d'; // Git SHA - updated on every deploy
+const SW_VERSION = '8766ab1e'; // Git SHA - updated on every deploy
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

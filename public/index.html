@@ -22010,6 +22010,28 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <p class="text-xs text-gray-500 mt-1">💰 Points awarded per hole (e.g., 100 points/hole = 1,800 total)</p>
                         </div>
 
+                        <!-- Nassau Method -->
+                        <div class="mb-4" id="nassauMethodSection" style="display: none;">
+                            <div class="p-4 bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-blue-200 rounded-lg">
+                                <div class="flex items-center gap-2 mb-3">
+                                    <span class="material-symbols-outlined text-blue-600">format_list_numbered</span>
+                                    <label class="text-sm font-semibold text-gray-900">Nassau Scoring Method</label>
+                                </div>
+
+                                <div class="flex gap-2">
+                                    <label class="flex-1 flex items-center justify-center p-2 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-blue-400">
+                                        <input type="radio" name="nassauMethod" value="stroke" checked class="mr-2">
+                                        <span class="text-xs font-medium">Stroke Play (Net)</span>
+                                    </label>
+                                    <label class="flex-1 flex items-center justify-center p-2 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-blue-400">
+                                        <input type="radio" name="nassauMethod" value="stableford" class="mr-2">
+                                        <span class="text-xs font-medium">Stableford Points</span>
+                                    </label>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-2">🇹🇭 Thailand style: Use Stableford points for front, back, and total</p>
+                            </div>
+                        </div>
+
                         <!-- Match Play Configuration -->
                         <div class="mb-4" id="matchPlayConfig" style="display: none;">
                             <div class="p-4 bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-200 rounded-lg">
@@ -37337,6 +37359,9 @@ class LiveScorecardSystem {
             });
 
             // Save hole-by-hole data including scramble tracking
+            // CRITICAL: Calculate proper shot allocation ONCE for this player
+            const shotAllocation = this.GolfScoringEngine.allocHandicapShots(this.courseData.holes || [], player.handicap);
+
             const holeInserts = [];
             for (let holeNum = 1; holeNum <= 18; holeNum++) {
                 const grossScore = this.scoresCache[player.id]?.[holeNum];
@@ -37346,8 +37371,8 @@ class LiveScorecardSystem {
                 const par = holeData?.par || 4;
                 const strokeIndex = holeData?.stroke_index || holeNum;
 
-                // Calculate net score and stableford
-                const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
+                // Calculate net score and stableford using proper shot allocation
+                const shotsReceived = shotAllocation[holeNum] || 0;
                 const netScore = grossScore - shotsReceived;
                 const stablefordPoints = Math.max(0, (par - netScore) + 2);
 
@@ -38138,22 +38163,46 @@ class LiveScorecardSystem {
         // Add rows for each selected format
         const engine = LiveScorecardSystem.GolfScoringEngine;
 
-        // Pre-calculate Nassau net scores (for use in table and summary)
+        // CRITICAL: Calculate proper shot allocation ONCE for this player
+        // This correctly handles plus handicaps, fractional handicaps, and handicaps > 18
+        const shotAllocation = engine.allocHandicapShots(this.courseData?.holes || [], player.handicap);
+
+        // Pre-calculate Nassau scores (for use in table and summary)
+        // Supports both Stroke Play (net strokes) and Stableford (points)
         let frontNineNet = 0, backNineNet = 0, totalNet = 0;
+        let frontNineNassauPoints = 0, backNineNassauPoints = 0, totalNassauPoints = 0;
+        let nassauMethod = 'stroke'; // default
         if (this.scoringFormats.includes('nassau')) {
+            // Check Nassau method selection
+            const nassauMethodRadio = document.querySelector('input[name="nassauMethod"]:checked');
+            nassauMethod = nassauMethodRadio?.value || 'stroke';
+
             for (let i = 1; i <= 18; i++) {
                 const scoreValue = this.scoresCache[player.id]?.[i];
                 if (typeof scoreValue === 'number') {
                     const hole = this.courseData?.holes?.find(h => h.hole_number === i);
-                    const strokeIndex = hole?.stroke_index || i;
-                    const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
+                    const par = hole?.par || 4;
+                    const shotsReceived = shotAllocation[i] || 0;
                     const netScore = scoreValue - shotsReceived;
 
-                    if (i <= 9) frontNineNet += netScore;
-                    else backNineNet += netScore;
+                    if (nassauMethod === 'stableford') {
+                        // Calculate Stableford points
+                        const points = engine.stablefordPointsForHole(netScore, par, engine.defaultStableford);
+                        if (i <= 9) frontNineNassauPoints += points;
+                        else backNineNassauPoints += points;
+                    } else {
+                        // Calculate net strokes (stroke play)
+                        if (i <= 9) frontNineNet += netScore;
+                        else backNineNet += netScore;
+                    }
                 }
             }
-            totalNet = frontNineNet + backNineNet;
+
+            if (nassauMethod === 'stableford') {
+                totalNassauPoints = frontNineNassauPoints + backNineNassauPoints;
+            } else {
+                totalNet = frontNineNet + backNineNet;
+            }
         }
 
         // Pre-calculate Skins results (for use in table and summary)
@@ -38202,9 +38251,8 @@ class LiveScorecardSystem {
                 if (typeof scoreValue === 'number') {
                     const hole = this.courseData?.holes?.find(h => h.hole_number === i);
                     const par = hole?.par || 4;
-                    const strokeIndex = hole?.stroke_index || i;
 
-                    const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
+                    const shotsReceived = shotAllocation[i] || 0;
                     const netScore = scoreValue - shotsReceived;
                     points = engine.stablefordPointsForHole(netScore, par, pointsMap);
 
@@ -38227,10 +38275,7 @@ class LiveScorecardSystem {
                 let netScore = '-';
 
                 if (typeof scoreValue === 'number') {
-                    const hole = this.courseData?.holes?.find(h => h.hole_number === i);
-                    const strokeIndex = hole?.stroke_index || i;
-
-                    const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
+                    const shotsReceived = shotAllocation[i] || 0;
                     netScore = scoreValue - shotsReceived;
                 }
 
@@ -38355,20 +38400,35 @@ class LiveScorecardSystem {
                     <div class="font-bold text-lg">${frontNinePoints + backNinePoints}</div>
                 </div>
             ` : ''}
-            ${this.scoringFormats.includes('nassau') ? `
-                <div class="bg-blue-200 p-2 rounded">
-                    <div class="text-xs text-gray-600">Nassau Net Total</div>
-                    <div class="font-bold text-lg">${totalNet || '-'}</div>
-                </div>
-                <div class="bg-blue-100 p-2 rounded">
-                    <div class="text-xs text-gray-600">Nassau Front 9</div>
-                    <div class="font-bold">${frontNineNet || '-'}</div>
-                </div>
-                <div class="bg-blue-100 p-2 rounded">
-                    <div class="text-xs text-gray-600">Nassau Back 9</div>
-                    <div class="font-bold">${backNineNet || '-'}</div>
-                </div>
-            ` : ''}
+            ${this.scoringFormats.includes('nassau') ? (
+                nassauMethod === 'stableford' ? `
+                    <div class="bg-blue-200 p-2 rounded">
+                        <div class="text-xs text-gray-600">Nassau Points Total 🇹🇭</div>
+                        <div class="font-bold text-lg">${totalNassauPoints || '-'}</div>
+                    </div>
+                    <div class="bg-blue-100 p-2 rounded">
+                        <div class="text-xs text-gray-600">Nassau Front 9 Pts</div>
+                        <div class="font-bold">${frontNineNassauPoints || '-'}</div>
+                    </div>
+                    <div class="bg-blue-100 p-2 rounded">
+                        <div class="text-xs text-gray-600">Nassau Back 9 Pts</div>
+                        <div class="font-bold">${backNineNassauPoints || '-'}</div>
+                    </div>
+                ` : `
+                    <div class="bg-blue-200 p-2 rounded">
+                        <div class="text-xs text-gray-600">Nassau Net Total</div>
+                        <div class="font-bold text-lg">${totalNet || '-'}</div>
+                    </div>
+                    <div class="bg-blue-100 p-2 rounded">
+                        <div class="text-xs text-gray-600">Nassau Front 9</div>
+                        <div class="font-bold">${frontNineNet || '-'}</div>
+                    </div>
+                    <div class="bg-blue-100 p-2 rounded">
+                        <div class="text-xs text-gray-600">Nassau Back 9</div>
+                        <div class="font-bold">${backNineNet || '-'}</div>
+                    </div>
+                `
+            ) : ''}
             ${this.scoringFormats.includes('skins') ? `
                 <div class="bg-orange-200 p-2 rounded">
                     <div class="text-xs text-gray-600">Skins Won</div>
@@ -38842,14 +38902,16 @@ class LiveScorecardSystem {
             const isNassau = this.scoringFormats.includes('nassau');
             const pointsMap = isModified ? engine.modifiedStablefordPoints : engine.defaultStableford;
 
+            // CRITICAL: Calculate proper shot allocation ONCE for this player
+            const shotAllocation = engine.allocHandicapShots(this.courseData?.holes || [], player.handicap);
+
             // Calculate totals
             for (let i = 1; i <= 18; i++) {
                 const scoreValue = this.scoresCache[player.id]?.[i];
                 if (typeof scoreValue === 'number') {
                     const hole = this.courseData?.holes?.find(h => h.hole_number === i);
                     const par = hole?.par || 4;
-                    const strokeIndex = hole?.stroke_index || i;
-                    const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
+                    const shotsReceived = shotAllocation[i] || 0;
                     const netScore = scoreValue - shotsReceived;
 
                     if (i <= 9) {
@@ -41070,6 +41132,16 @@ window.toggleFormatCheckbox = function(label, event) {
             skinsSection.style.display = 'block';
         } else {
             skinsSection.style.display = 'none';
+        }
+    }
+
+    // Show/hide Nassau method selection
+    const nassauSection = document.getElementById('nassauMethodSection');
+    if (nassauSection) {
+        if (selectedFormats.includes('nassau')) {
+            nassauSection.style.display = 'block';
+        } else {
+            nassauSection.style.display = 'none';
         }
     }
 

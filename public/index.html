@@ -19804,7 +19804,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     // BUILD ID - Injected at deploy time for cache busting
     window.__BUILD_ID__ = '2955f9ae';
 
-    console.log('%c🚀 PAGE VERSION: 2025-11-03-KHAO-KHEOW-FIX', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-11-04-HANDICAP-WHS-INTEGRATION', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
@@ -36851,7 +36851,9 @@ class LiveScorecardSystem {
                         total_net: null,
                         total_stableford: totalStableford,
                         handicap_used: player.handicap,
-                        tee_marker: teeMarker
+                        tee_marker: teeMarker,
+                        course_rating: 72.0, // Thai course default
+                        slope_rating: 113    // Thai course default
                     })
                     .select()
                     .single();
@@ -36881,6 +36883,9 @@ class LiveScorecardSystem {
                             tee_used: teeMarker,
                             total_score: totalGross,
                             adjusted_gross_score: totalGross,
+                            handicap_used: player.handicap,
+                            course_rating: 72.0, // Thai course default
+                            slope_rating: 113,    // Thai course default
                             is_tournament: !this.isPrivateRound && !!eventId,
                             tournament_name: eventId ? (this.eventName || null) : null,
                             notes: `Formats: ${this.scoringFormats.join(', ')}. Stableford: ${totalStableford}. Handicap: ${player.handicap}`
@@ -37033,12 +37038,13 @@ class LiveScorecardSystem {
 
                     // Notify success with different message for society events
                     if (!this.isPrivateRound && this.eventId) {
-                        console.log(`[LiveScorecard] ✅ Round visible to organizer: ${organizerId}`);
                         const { data: event } = await window.SupabaseDB.client
                             .from('society_events')
-                            .select('title')
+                            .select('title, organizer_id')
                             .eq('id', this.eventId)
                             .single();
+
+                        console.log(`[LiveScorecard] ✅ Round visible to organizer: ${event?.organizer_id || 'unknown'}`);
 
                         if (event?.title) {
                             NotificationManager.show(`Round saved and posted to "${event.title}" leaderboard!`, 'success');
@@ -37049,6 +37055,14 @@ class LiveScorecardSystem {
                         NotificationManager.show(`Round saved! Shared with ${playerIds.length} player${playerIds.length !== 1 ? 's' : ''}`, 'success');
                     }
                 }
+            }
+
+            // Update handicap statistics and progression chart
+            if (window.GolfScoreSystem) {
+                console.log('[LiveScorecard] Updating handicap statistics...');
+                await window.GolfScoreSystem.updateStatistics();
+                await window.GolfScoreSystem.renderHandicapProgression();
+                console.log('[LiveScorecard] ✅ Handicap statistics updated');
             }
 
         } catch (error) {

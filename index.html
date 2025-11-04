@@ -34556,18 +34556,28 @@ class SocietyGolfSupabase {
 
     async getSocietyMembers(societyName, organizerId = null) {
         await this.waitForSupabase();
-        let query = window.SupabaseDB.client
-            .from('society_members')
-            .select('*')
-            .eq('society_name', societyName)
-            .eq('status', 'active')
-            .order('joined_at', { ascending: false });
 
-        if (organizerId) {
-            query = query.eq('organizer_id', organizerId);
+        // First, get the society_id from society_profiles
+        const { data: societyData, error: societyError } = await window.SupabaseDB.client
+            .from('society_profiles')
+            .select('id')
+            .eq('society_name', societyName)
+            .single();
+
+        if (societyError || !societyData) {
+            console.error('[SocietyGolfDB] Error loading society:', societyError);
+            return [];
         }
 
-        const { data, error } = await query;
+        const societyId = societyData.id;
+
+        // Now query society_members by society_id
+        const { data, error } = await window.SupabaseDB.client
+            .from('society_members')
+            .select('*')
+            .eq('society_id', societyId)
+            .eq('status', 'active')
+            .order('joined_at', { ascending: false });
 
         if (error) {
             console.error('[SocietyGolfDB] Error loading society members:', error);

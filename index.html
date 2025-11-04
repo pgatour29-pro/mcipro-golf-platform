@@ -41515,13 +41515,40 @@ class SocietyOrganizerManager {
             }
 
             // Fetch user profile
-            const profile = await window.SupabaseDB.getUserProfile(golferId);
+            let profile = await window.SupabaseDB.getUserProfile(golferId);
             console.log('[EditMember] Profile loaded:', profile ? 'Success' : 'Not found');
 
+            // If no profile exists, create a basic one from society_members data
             if (!profile) {
-                console.error('[EditMember] Profile not found for ID:', golferId);
-                DevMode.showNotification(`User profile not found for ${golferId}`, 'error');
-                return;
+                console.log('[EditMember] No user profile found, checking society_members...');
+
+                // Get society_members data
+                const { data: memberData } = await window.SupabaseDB.client
+                    .from('society_members')
+                    .select('*')
+                    .eq('golfer_id', golferId)
+                    .single();
+
+                if (memberData) {
+                    console.log('[EditMember] Found society member data:', memberData);
+
+                    // Create minimal profile structure from society_members
+                    profile = {
+                        line_user_id: golferId,
+                        name: memberData.player_name || memberData.notes?.split(',')[0]?.replace('Imported from TRGG JSON - ', '') || 'Unknown Player',
+                        profile_data: {
+                            golfInfo: {
+                                handicap: memberData.handicap || '36',
+                                homeClub: memberData.home_club || ''
+                            }
+                        }
+                    };
+                    console.log('[EditMember] Created profile from society_members:', profile);
+                } else {
+                    console.error('[EditMember] No data found in user_profiles or society_members for:', golferId);
+                    DevMode.showNotification(`Player data not found for ${golferId}`, 'error');
+                    return;
+                }
             }
 
             // Populate modal
@@ -41540,7 +41567,7 @@ class SocietyOrganizerManager {
             document.getElementById('editUserModal').style.display = 'flex';
         } catch (error) {
             console.error('[EditMember] Error:', error);
-            DevMode.showNotification('Failed to load user profile: ' + error.message, 'error');
+            DevMode.showNotification('Failed to load player data: ' + error.message, 'error');
         }
     }
 
@@ -41565,24 +41592,60 @@ class SocietyOrganizerManager {
                 return;
             }
 
+            console.log('[SaveUserEdits] Saving:', { golferId, name, handicap, homeClub });
+
             // Fetch existing profile
             const existingProfile = await window.SupabaseDB.getUserProfile(golferId);
 
-            // Update profile
-            const updatedProfile = {
-                ...existingProfile,
-                name: name,
-                profile_data: {
-                    ...(existingProfile.profile_data || {}),
-                    golfInfo: {
-                        ...(existingProfile.profile_data?.golfInfo || {}),
-                        handicap: handicap.toString(),
-                        homeClub: homeClub
+            if (existingProfile) {
+                // Profile exists - update it
+                console.log('[SaveUserEdits] Updating existing user_profile');
+                const updatedProfile = {
+                    ...existingProfile,
+                    name: name,
+                    profile_data: {
+                        ...(existingProfile.profile_data || {}),
+                        golfInfo: {
+                            ...(existingProfile.profile_data?.golfInfo || {}),
+                            handicap: handicap.toString(),
+                            homeClub: homeClub
+                        }
                     }
-                }
-            };
+                };
 
-            await window.SupabaseDB.saveUserProfile(updatedProfile);
+                await window.SupabaseDB.saveUserProfile(updatedProfile);
+            } else {
+                // No profile exists - create new user_profile
+                console.log('[SaveUserEdits] Creating new user_profile');
+                const newProfile = {
+                    line_user_id: golferId,
+                    name: name,
+                    profile_data: {
+                        golfInfo: {
+                            handicap: handicap.toString(),
+                            homeClub: homeClub
+                        }
+                    }
+                };
+
+                await window.SupabaseDB.saveUserProfile(newProfile);
+            }
+
+            // Also update society_members table to keep data in sync
+            console.log('[SaveUserEdits] Updating society_members');
+            const { error: updateError } = await window.SupabaseDB.client
+                .from('society_members')
+                .update({
+                    player_name: name,
+                    handicap: handicap.toString(),
+                    home_club: homeClub,
+                    notes: `Imported from TRGG JSON - ${name}, Handicap: ${handicap}`
+                })
+                .eq('golfer_id', golferId);
+
+            if (updateError) {
+                console.error('[SaveUserEdits] Error updating society_members:', updateError);
+            }
 
             DevMode.showNotification(`${name} updated successfully`, 'success');
             this.closeEditUserModal();
@@ -41591,7 +41654,7 @@ class SocietyOrganizerManager {
             await this.loadPlayerDirectory();
         } catch (error) {
             console.error('[SaveUserEdits] Error:', error);
-            DevMode.showNotification('Failed to save user edits', 'error');
+            DevMode.showNotification('Failed to save user edits: ' + error.message, 'error');
         }
     }
 

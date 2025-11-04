@@ -41308,10 +41308,22 @@ class SocietyOrganizerManager {
                 const profile = profiles.find(p => p.line_user_id === member.golfer_id);
                 const golfInfo = profile?.profile_data?.golfInfo || {};
 
+                // Parse notes as fallback if no profile exists
+                let fallbackName = 'Unknown';
+                let fallbackHandicap = 36;
+
+                if (!profile && member.notes) {
+                    const notesMatch = member.notes.match(/Imported from TRGG JSON - (.+?), Handicap: (.+?)$/);
+                    if (notesMatch) {
+                        fallbackName = notesMatch[1];
+                        fallbackHandicap = parseFloat(notesMatch[2]);
+                    }
+                }
+
                 return {
                     ...member,
-                    playerName: profile?.name || 'Unknown',
-                    handicap: golfInfo.handicap ? parseFloat(golfInfo.handicap) : 36,
+                    playerName: profile?.name || fallbackName,
+                    handicap: golfInfo.handicap ? parseFloat(golfInfo.handicap) : fallbackHandicap,
                     homeClub: golfInfo.homeClub || '',
                     email: profile?.email || '',
                     phone: profile?.phone || ''
@@ -41654,18 +41666,30 @@ class SocietyOrganizerManager {
                 if (memberData) {
                     console.log('[EditMember] Found society member data:', memberData);
 
+                    // Parse notes field: "Imported from TRGG JSON - Jones, Rocky, Handicap: 2.1"
+                    let parsedName = 'Unknown Player';
+                    let parsedHandicap = '36';
+
+                    if (memberData.notes) {
+                        const notesMatch = memberData.notes.match(/Imported from TRGG JSON - (.+?), Handicap: (.+?)$/);
+                        if (notesMatch) {
+                            parsedName = notesMatch[1];
+                            parsedHandicap = notesMatch[2];
+                        }
+                    }
+
                     // Create minimal profile structure from society_members
                     profile = {
                         line_user_id: golferId,
-                        name: memberData.player_name || memberData.notes?.split(',')[0]?.replace('Imported from TRGG JSON - ', '') || 'Unknown Player',
+                        name: parsedName,
                         profile_data: {
                             golfInfo: {
-                                handicap: memberData.handicap || '36',
-                                homeClub: memberData.home_club || ''
+                                handicap: parsedHandicap,
+                                homeClub: ''
                             }
                         }
                     };
-                    console.log('[EditMember] Created profile from society_members:', profile);
+                    console.log('[EditMember] Created profile from society_members notes:', profile);
                 } else {
                     console.error('[EditMember] No data found in user_profiles or society_members for:', golferId);
                     DevMode.showNotification(`Player data not found for ${golferId}`, 'error');
@@ -41753,26 +41777,18 @@ class SocietyOrganizerManager {
                 await window.SupabaseDB.saveUserProfile(newProfile);
             }
 
-            // Also update society_members table to keep data in sync
-            console.log('[SaveUserEdits] Updating society_members');
-            const { error: updateError } = await window.SupabaseDB.client
-                .from('society_members')
-                .update({
-                    player_name: name,
-                    handicap: handicap.toString(),
-                    home_club: homeClub,
-                    notes: `Imported from TRGG JSON - ${name}, Handicap: ${handicap}`
-                })
-                .eq('golfer_id', golferId);
-
-            if (updateError) {
-                console.error('[SaveUserEdits] Error updating society_members:', updateError);
-            }
+            // Invalidate profile cache to force fresh data
+            console.log('[SaveUserEdits] Invalidating profile cache for:', golferId);
+            localStorage.removeItem(`profile_${golferId}`);
+            localStorage.removeItem('mcipro_profiles_by_ids_cache');
+            localStorage.removeItem('mcipro_profiles_by_ids_cache_time');
+            localStorage.removeItem('mcipro_all_profiles_cache');
+            localStorage.removeItem('mcipro_all_profiles_cache_time');
 
             DevMode.showNotification(`${name} updated successfully`, 'success');
             this.closeEditUserModal();
 
-            // Refresh player directory
+            // Refresh player directory with fresh data
             await this.loadPlayerDirectory();
         } catch (error) {
             console.error('[SaveUserEdits] Error:', error);

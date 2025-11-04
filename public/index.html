@@ -37454,7 +37454,7 @@ class LiveScorecardSystem {
                     .insert({
                         golfer_id: player.lineUserId, // FIXED: Use LINE user ID directly
                         course_id: courseId || null,
-                        course_name: this.courseData?.name || null,
+                        course_name: courseName, // FIX: Use local variable instead of this.courseData?.name
                         type: this.roundType || (this.isPrivateRound ? 'private' : (this.eventId ? 'society' : 'private')),
                         society_event_id: this.eventId || null,
                         organizer_id: organizerId,
@@ -37497,6 +37497,7 @@ class LiveScorecardSystem {
                         .insert({
                             golfer_id: player.lineUserId, // FIXED: Use golfer_id (TEXT) instead of user_id (UUID)
                             course_id: courseId || null,
+                            course_name: courseName, // FIX: Add course_name for legacy schema
                             played_at: new Date().toISOString(),
                             holes_played: holesPlayed,
                             tee_used: teeMarker,
@@ -38234,8 +38235,359 @@ class LiveScorecardSystem {
             deleteBtn.style.display = 'none'; // Hide delete for society/tournament rounds
         }
 
+        // Add Points Settlement Matrix (if points are configured)
+        this.renderPointsSettlement();
+
         // Show modal
         document.getElementById('finalizedScorecardModal').classList.remove('hidden');
+    }
+
+    calculatePointsSettlement() {
+        // Calculate who owes whom for each format
+        const settlements = {
+            nassau: [],
+            skins: [],
+            matchPlay: [],
+            stableford: [],
+            strokePlay: []
+        };
+
+        const engine = LiveScorecardSystem.GolfScoringEngine;
+
+        // Get points config
+        const pointsConfig = {
+            nassau: this.scoringFormats.includes('nassau') ? {
+                front9: parseInt(document.getElementById('nassauFront9Points')?.value || '100'),
+                back9: parseInt(document.getElementById('nassauBack9Points')?.value || '100'),
+                total: parseInt(document.getElementById('nassauTotalPoints')?.value || '200')
+            } : null,
+            skins: this.scoringFormats.includes('skins') ? {
+                perHole: parseInt(document.getElementById('skinsValueInput')?.value || '100')
+            } : null,
+            matchPlay: this.scoringFormats.includes('matchplay') ? {
+                overall: parseInt(document.getElementById('matchPlayPoints')?.value || '100')
+            } : null,
+            stableford: (this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford')) ? {
+                overall: parseInt(document.getElementById('stablefordPoints')?.value || '100')
+            } : null,
+            strokePlay: this.scoringFormats.includes('strokeplay') ? {
+                overall: parseInt(document.getElementById('strokePlayPoints')?.value || '100')
+            } : null
+        };
+
+        // NASSAU: Calculate winners for each segment
+        if (pointsConfig.nassau && this.players.length > 1) {
+            const nassauMethod = document.querySelector('input[name="nassauMethod"]:checked')?.value || 'stroke';
+
+            for (const segment of ['front9', 'back9', 'total']) {
+                const segmentScores = [];
+
+                for (const player of this.players) {
+                    const scoresArray = [];
+                    for (let hole = 1; hole <= 18; hole++) {
+                        const score = this.scoresCache[player.id]?.[hole];
+                        if (score) {
+                            scoresArray.push({ hole_number: hole, gross_score: score });
+                        }
+                    }
+
+                    const nassauData = engine.calculateNassau(scoresArray, this.courseData.holes, player.handicap, nassauMethod);
+                    let segmentScore;
+                    if (segment === 'front9') segmentScore = nassauData.front9;
+                    else if (segment === 'back9') segmentScore = nassauData.back9;
+                    else segmentScore = nassauData.total;
+
+                    segmentScores.push({ player, score: segmentScore });
+                }
+
+                // Find winner(s)
+                const isStableford = nassauMethod === 'stableford';
+                const best = isStableford
+                    ? Math.max(...segmentScores.map(s => s.score))
+                    : Math.min(...segmentScores.map(s => s.score));
+
+                const winners = segmentScores.filter(s => s.score === best);
+                const losers = segmentScores.filter(s => s.score !== best);
+
+                if (winners.length === 1 && losers.length > 0) {
+                    const winner = winners[0].player;
+                    const pointsPerLoser = segment === 'front9' ? pointsConfig.nassau.front9
+                                         : segment === 'back9' ? pointsConfig.nassau.back9
+                                         : pointsConfig.nassau.total;
+
+                    for (const loser of losers) {
+                        settlements.nassau.push({
+                            from: loser.player.name,
+                            to: winner.name,
+                            amount: pointsPerLoser,
+                            reason: `Nassau ${segment === 'front9' ? 'Front 9' : segment === 'back9' ? 'Back 9' : 'Total'}`,
+                            winnerScore: best,
+                            loserScore: loser.score
+                        });
+                    }
+                }
+            }
+        }
+
+        // SKINS: Calculate per-hole winners
+        if (pointsConfig.skins && this.players.length > 1) {
+            const allPlayerData = this.players.map(player => {
+                const scoresArray = [];
+                for (let hole = 1; hole <= 18; hole++) {
+                    const score = this.scoresCache[player.id]?.[hole];
+                    if (score) {
+                        scoresArray.push({ hole_number: hole, gross_score: score });
+                    }
+                }
+                return {
+                    playerId: player.id,
+                    playerName: player.name,
+                    scores: scoresArray,
+                    handicap: player.handicap
+                };
+            });
+
+            const skinsResults = engine.calculateSkins(allPlayerData, this.courseData.holes, true, pointsConfig.skins.perHole);
+
+            // For each player who won skins, calculate what others owe
+            for (const player of this.players) {
+                const holesWon = skinsResults.skinsWon[player.id] || 0;
+                if (holesWon > 0) {
+                    const totalPoints = holesWon * pointsConfig.skins.perHole;
+                    const pointsPerPerson = totalPoints / (this.players.length - 1);
+
+                    for (const other of this.players) {
+                        if (other.id !== player.id) {
+                            settlements.skins.push({
+                                from: other.name,
+                                to: player.name,
+                                amount: Math.round(pointsPerPerson),
+                                reason: `Skins (${holesWon} holes)`,
+                                holesWon: holesWon
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // STABLEFORD/STROKE PLAY/MATCH PLAY: Winner takes all
+        const singleWinnerFormats = [
+            { name: 'stableford', config: pointsConfig.stableford, label: 'Stableford' },
+            { name: 'strokeplay', config: pointsConfig.strokePlay, label: 'Stroke Play' },
+            { name: 'matchplay', config: pointsConfig.matchPlay, label: 'Match Play' }
+        ];
+
+        for (const format of singleWinnerFormats) {
+            if (format.config && this.players.length > 1) {
+                const playerScores = [];
+
+                for (const player of this.players) {
+                    const scoresArray = [];
+                    let totalGross = 0;
+                    for (let hole = 1; hole <= 18; hole++) {
+                        const score = this.scoresCache[player.id]?.[hole];
+                        if (score) {
+                            totalGross += score;
+                            scoresArray.push({ hole_number: hole, gross_score: score });
+                        }
+                    }
+
+                    let finalScore;
+                    if (format.name === 'stableford') {
+                        finalScore = engine.calculateStablefordTotal(scoresArray, this.courseData.holes, player.handicap, true);
+                    } else {
+                        finalScore = totalGross;
+                    }
+
+                    playerScores.push({ player, score: finalScore });
+                }
+
+                // Find winner
+                const isStableford = format.name === 'stableford';
+                const best = isStableford
+                    ? Math.max(...playerScores.map(s => s.score))
+                    : Math.min(...playerScores.map(s => s.score));
+
+                const winners = playerScores.filter(s => s.score === best);
+                const losers = playerScores.filter(s => s.score !== best);
+
+                if (winners.length === 1 && losers.length > 0) {
+                    const winner = winners[0].player;
+                    const pointsPerLoser = format.config.overall / losers.length;
+
+                    for (const loser of losers) {
+                        const targetArray = format.name === 'stableford' ? settlements.stableford
+                                          : format.name === 'strokeplay' ? settlements.strokePlay
+                                          : settlements.matchPlay;
+
+                        targetArray.push({
+                            from: loser.player.name,
+                            to: winner.name,
+                            amount: Math.round(pointsPerLoser),
+                            reason: format.label,
+                            winnerScore: best,
+                            loserScore: loser.score
+                        });
+                    }
+                }
+            }
+        }
+
+        return settlements;
+    }
+
+    renderPointsSettlement() {
+        const settlements = this.calculatePointsSettlement();
+        const hasSettlements = Object.values(settlements).some(arr => arr.length > 0);
+
+        if (!hasSettlements) return;
+
+        // Calculate net settlements (who owes who overall)
+        const netSettlements = {};
+
+        for (const player of this.players) {
+            netSettlements[player.name] = {};
+            for (const other of this.players) {
+                if (player.name !== other.name) {
+                    netSettlements[player.name][other.name] = 0;
+                }
+            }
+        }
+
+        // Add up all transactions
+        for (const formatSettlements of Object.values(settlements)) {
+            for (const transaction of formatSettlements) {
+                netSettlements[transaction.from][transaction.to] += transaction.amount;
+            }
+        }
+
+        // Create settlement panel
+        const container = document.getElementById('finalScorecard_playersContainer');
+        const settlementPanel = document.createElement('div');
+        settlementPanel.className = 'mt-6 p-6 bg-gradient-to-r from-purple-50 to-pink-50 border-4 border-purple-500 rounded-lg print:break-inside-avoid';
+
+        let html = `
+            <div class="flex items-center gap-3 mb-4">
+                <span class="material-symbols-outlined text-3xl text-purple-600">payments</span>
+                <h3 class="text-2xl font-bold text-gray-900">💰 Points Settlement</h3>
+            </div>
+            <p class="text-sm text-gray-600 mb-4">Final breakdown of who owes what to whom</p>
+        `;
+
+        // Net Settlement Matrix
+        html += `
+            <div class="bg-white rounded-lg p-4 mb-4 border-2 border-purple-300">
+                <h4 class="font-bold text-lg text-purple-900 mb-3">📊 Net Settlement (Simplified)</h4>
+                <div class="space-y-2">
+        `;
+
+        let hasTransactions = false;
+        for (const from of Object.keys(netSettlements)) {
+            for (const to of Object.keys(netSettlements[from])) {
+                const amount = netSettlements[from][to];
+                if (amount > 0) {
+                    hasTransactions = true;
+                    html += `
+                        <div class="flex items-center justify-between p-3 bg-purple-50 rounded-lg border border-purple-200">
+                            <div class="flex items-center gap-2">
+                                <span class="font-bold text-purple-900">${from}</span>
+                                <span class="material-symbols-outlined text-purple-600">arrow_forward</span>
+                                <span class="font-bold text-purple-900">${to}</span>
+                            </div>
+                            <div class="text-2xl font-bold text-purple-700">${amount} pts</div>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        if (!hasTransactions) {
+            html += `<p class="text-center text-gray-500 py-4">All players tied - no points owed</p>`;
+        }
+
+        html += `
+                </div>
+            </div>
+        `;
+
+        // Detailed Breakdown by Format
+        html += `
+            <div class="bg-white rounded-lg p-4 border-2 border-purple-300">
+                <h4 class="font-bold text-lg text-purple-900 mb-3">📋 Detailed Breakdown by Format</h4>
+        `;
+
+        // Nassau
+        if (settlements.nassau.length > 0) {
+            html += `
+                <div class="mb-4">
+                    <h5 class="font-semibold text-blue-900 mb-2">Nassau</h5>
+                    <div class="space-y-1 text-sm">
+            `;
+            for (const tx of settlements.nassau) {
+                html += `
+                    <div class="flex justify-between items-center py-1 border-b border-gray-200">
+                        <span>${tx.from} → ${tx.to}</span>
+                        <span class="font-semibold">${tx.amount} pts (${tx.reason})</span>
+                    </div>
+                `;
+            }
+            html += `</div></div>`;
+        }
+
+        // Skins
+        if (settlements.skins.length > 0) {
+            html += `
+                <div class="mb-4">
+                    <h5 class="font-semibold text-orange-900 mb-2">Skins</h5>
+                    <div class="space-y-1 text-sm">
+            `;
+            for (const tx of settlements.skins) {
+                html += `
+                    <div class="flex justify-between items-center py-1 border-b border-gray-200">
+                        <span>${tx.from} → ${tx.to}</span>
+                        <span class="font-semibold">${tx.amount} pts (${tx.holesWon} holes)</span>
+                    </div>
+                `;
+            }
+            html += `</div></div>`;
+        }
+
+        // Other formats
+        const otherFormats = [
+            { key: 'stableford', label: 'Stableford', color: 'green' },
+            { key: 'strokePlay', label: 'Stroke Play', color: 'blue' },
+            { key: 'matchPlay', label: 'Match Play', color: 'yellow' }
+        ];
+
+        for (const format of otherFormats) {
+            if (settlements[format.key].length > 0) {
+                html += `
+                    <div class="mb-4">
+                        <h5 class="font-semibold text-${format.color}-900 mb-2">${format.label}</h5>
+                        <div class="space-y-1 text-sm">
+                `;
+                for (const tx of settlements[format.key]) {
+                    html += `
+                        <div class="flex justify-between items-center py-1 border-b border-gray-200">
+                            <span>${tx.from} → ${tx.to}</span>
+                            <span class="font-semibold">${tx.amount} pts</span>
+                        </div>
+                    `;
+                }
+                html += `</div></div>`;
+            }
+        }
+
+        html += `
+                </div>
+                <div class="mt-4 p-3 bg-yellow-50 border border-yellow-300 rounded-lg text-center text-xs text-gray-700">
+                    🇹🇭 Points are used instead of money to comply with Thailand gambling laws
+                </div>
+        `;
+
+        settlementPanel.innerHTML = html;
+        container.appendChild(settlementPanel);
     }
 
     renderPlayerFinalizedScorecard(player) {

@@ -48345,17 +48345,20 @@ class OrganizerScoringSystem {
             const userId = AppState.currentUser?.lineUserId;
             if (!userId) return;
 
-            // Load organizer's events
-            const { data: events, error } = await window.SupabaseDB.client
+            // Load ALL events (filtering by organizer_id causes 400 error)
+            const { data: allEvents, error } = await window.SupabaseDB.client
                 .from('society_events')
                 .select('*')
-                .eq('organizer_id', userId)
-                .limit(50);
+                .limit(100);
 
             if (error) {
                 console.error('[OrganizerScoring] Error loading events:', error);
                 return;
             }
+
+            // Filter events in JavaScript where organizer_id matches OR user is Travellers (sees all)
+            const isTravellers = AppState.currentUser?.profile_data?.organizationInfo?.societyName === 'Travellers Rest Golf Group';
+            const events = isTravellers ? allEvents : allEvents.filter(e => e.organizer_id === userId);
 
             const select = document.getElementById('organizerScoringEventSelect');
             if (!select) return;
@@ -48369,7 +48372,7 @@ class OrganizerScoringSystem {
                 select.appendChild(option);
             });
 
-            console.log(`[OrganizerScoring] Loaded ${events.length} events`);
+            console.log(`[OrganizerScoring] Loaded ${events.length} events (filtered from ${allEvents.length})`);
         } catch (error) {
             console.error('[OrganizerScoring] Error in loadEvents:', error);
         }

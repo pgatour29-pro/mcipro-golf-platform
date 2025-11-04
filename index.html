@@ -35060,19 +35060,47 @@ class LiveScorecardSystem {
         // Allocate handicap shots across holes by stroke index
         allocHandicapShots(courseHoles, handicap) {
             const shots = {};
-            if (!handicap || handicap <= 0) return shots;
 
-            // Sort by stroke index
-            const holesSorted = [...courseHoles].sort((a, b) =>
-                (a.stroke_index || a.hole) - (b.stroke_index || b.hole)
-            );
+            // Parse handicap - support both numeric and string formats ("+1.5" or -1.5)
+            let handicapValue = 0;
+            let isPlus = false;
 
-            let remaining = Math.round(handicap);
+            if (typeof handicap === 'string') {
+                if (handicap.startsWith('+')) {
+                    isPlus = true;
+                    handicapValue = parseFloat(handicap.substring(1));
+                } else {
+                    handicapValue = parseFloat(handicap);
+                    if (handicapValue < 0) {
+                        isPlus = true;
+                        handicapValue = Math.abs(handicapValue);
+                    }
+                }
+            } else {
+                handicapValue = parseFloat(handicap) || 0;
+                if (handicapValue < 0) {
+                    isPlus = true;
+                    handicapValue = Math.abs(handicapValue);
+                }
+            }
+
+            if (handicapValue === 0) return shots;
+
+            // For PLUS handicaps: allocate on EASIEST holes (highest stroke index: 18, 17, 16...)
+            // For regular handicaps: allocate on HARDEST holes (lowest stroke index: 1, 2, 3...)
+            const holesSorted = [...courseHoles].sort((a, b) => {
+                const siA = a.stroke_index || a.hole;
+                const siB = b.stroke_index || b.hole;
+                return isPlus ? siB - siA : siA - siB; // Reverse sort for plus handicaps
+            });
+
+            let remaining = Math.round(handicapValue);
             while (remaining > 0) {
                 for (const h of holesSorted) {
                     if (remaining <= 0) break;
                     const holeNum = h.hole || h.hole_number || h.number;
-                    shots[holeNum] = (shots[holeNum] || 0) + 1;
+                    // For plus handicaps, store as NEGATIVE to indicate penalty strokes
+                    shots[holeNum] = (shots[holeNum] || 0) + (isPlus ? -1 : 1);
                     remaining--;
                 }
             }
@@ -35080,7 +35108,9 @@ class LiveScorecardSystem {
         },
 
         // Calculate net strokes for a hole
+        // bonusShots: positive = help (regular handicap), negative = penalty (plus handicap)
         netStrokesForHole(grossStrokes, bonusShots) {
+            // For plus handicaps, bonusShots will be negative, so subtracting adds to the score
             return Math.max(1, grossStrokes - bonusShots);
         },
 

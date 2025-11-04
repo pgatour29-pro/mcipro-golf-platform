@@ -80,7 +80,7 @@ class SupabaseClient {
             teeTime: booking.tee_time,
             status: booking.status,
             players: booking.players,
-            caddyNumber: booking.caddy_number,
+            caddiNumber: booking.caddy_number,
             currentHole: booking.current_hole,
             lastHoleUpdate: booking.last_hole_update,
             notes: booking.notes,
@@ -105,7 +105,7 @@ class SupabaseClient {
             caddieId: booking.caddie_id,
             caddieName: booking.caddie_name,
             caddieStatus: booking.caddie_status,
-            caddyConfirmationRequired: booking.caddy_confirmation_required,
+            caddiConfirmationRequired: booking.caddi_confirmation_required,
 
             // Service fields
             serviceName: booking.service_name,
@@ -144,7 +144,7 @@ class SupabaseClient {
             tee_time: booking.teeTime || booking.tee_time || booking.slotTime,
             status: booking.status || 'pending',
             players: booking.players || 1,
-            caddy_number: booking.caddyNumber || booking.caddy_number,
+            caddy_number: booking.caddiNumber || booking.caddy_number,
             current_hole: booking.currentHole || booking.current_hole,
             last_hole_update: booking.lastHoleUpdate || booking.last_hole_update,
             notes: booking.notes || '',
@@ -169,7 +169,7 @@ class SupabaseClient {
             caddie_id: booking.caddieId || booking.caddie_id,
             caddie_name: booking.caddieName || booking.caddie_name,
             caddie_status: booking.caddieStatus || booking.caddie_status,
-            caddy_confirmation_required: booking.caddyConfirmationRequired || booking.caddy_confirmation_required || false,
+            caddi_confirmation_required: booking.caddiConfirmationRequired || booking.caddi_confirmation_required || false,
 
             // Service-specific fields
             service_name: booking.serviceName || booking.service_name,
@@ -302,24 +302,30 @@ class SupabaseClient {
     }
 
     async saveUserProfile(profile) {
+        // Helper function to convert empty strings to null for UUID fields
+        const cleanUUID = (value) => {
+            if (!value || value === '') return null;
+            return value;
+        };
+
         // Normalize profile fields (handle both lineUserId and line_user_id)
         const normalizedProfile = {
             line_user_id: profile.line_user_id || profile.lineUserId,
             name: profile.name,
             role: profile.role,
-            caddy_number: profile.caddy_number || profile.caddyNumber,
+            caddy_number: profile.caddy_number || profile.caddiNumber,
             phone: profile.phone,
             email: profile.email,
             home_club: profile.home_club || profile.homeClub,
             language: profile.language || 'en',
 
             // ===== NEW: Society Affiliation Fields =====
-            society_id: profile.society_id || profile.societyId || null,
+            society_id: cleanUUID(profile.society_id || profile.societyId),
             society_name: profile.society_name || profile.societyName || profile.organizationInfo?.societyName || '',
             member_since: profile.member_since || profile.memberSince || null,
 
             // ===== NEW: Home Course Fields =====
-            home_course_id: profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId || '',
+            home_course_id: cleanUUID(profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId),
             home_course_name: profile.home_course_name || profile.homeCourseName || profile.golfInfo?.homeClub || '',
 
             // ===== NEW: Store FULL profile data in JSONB column =====
@@ -329,14 +335,14 @@ class SupabaseClient {
                     ...(profile.golfInfo || {}),
                     // Ensure homeClub is in JSONB for UI compatibility
                     homeClub: profile.home_course_name || profile.homeCourseName || profile.golfInfo?.homeClub || profile.home_club || profile.homeClub || '',
-                    homeCourseId: profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId || '',
+                    homeCourseId: cleanUUID(profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId),
                     handicap: profile.handicap || profile.golfInfo?.handicap || null
                 },
                 organizationInfo: {
                     ...(profile.organizationInfo || {}),
                     // Ensure society data is in JSONB for UI compatibility
                     societyName: profile.society_name || profile.societyName || profile.organizationInfo?.societyName || '',
-                    societyId: profile.society_id || profile.societyId || profile.organizationInfo?.societyId || null
+                    societyId: cleanUUID(profile.society_id || profile.societyId || profile.organizationInfo?.societyId)
                 },
                 professionalInfo: profile.professionalInfo || {},
                 skills: profile.skills || {},
@@ -503,7 +509,7 @@ class SupabaseClient {
                 tee_time: booking.teeTime || booking.tee_time || booking.slotTime,
                 status: booking.status || 'pending',
                 players: booking.players || 1,
-                caddy_number: booking.caddyNumber || booking.caddy_number,
+                caddy_number: booking.caddiNumber || booking.caddy_number,
                 current_hole: booking.currentHole || booking.current_hole,
                 last_hole_update: booking.lastHoleUpdate || booking.last_hole_update,
                 notes: booking.notes || '',
@@ -524,7 +530,7 @@ class SupabaseClient {
                 caddie_id: booking.caddieId || booking.caddie_id,
                 caddie_name: booking.caddieName || booking.caddie_name,
                 caddie_status: booking.caddieStatus || booking.caddie_status,
-                caddy_confirmation_required: booking.caddyConfirmationRequired || booking.caddy_confirmation_required || false,
+                caddi_confirmation_required: booking.caddiConfirmationRequired || booking.caddi_confirmation_required || false,
                 service_name: booking.serviceName || booking.service_name,
                 service: booking.service,
                 source: booking.source,
@@ -553,11 +559,11 @@ class SupabaseClient {
     // GPS POSITIONS (Real-time tracking)
     // =====================================================
 
-    async updateGPSPosition(caddyNumber, position) {
+    async updateGPSPosition(caddiNumber, position) {
         const { data, error } = await this.client
             .from('gps_positions')
             .upsert({
-                caddy_number: caddyNumber,
+                caddy_number: caddiNumber,
                 current_hole: position.currentHole,
                 latitude: position.lat,
                 longitude: position.lng,
@@ -585,7 +591,7 @@ class SupabaseClient {
             return {};
         }
 
-        // Convert to object keyed by caddy_number
+        // Convert to object keyed by caddi_number
         const positions = {};
         data.forEach(pos => {
             positions[pos.caddy_number] = {

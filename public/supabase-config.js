@@ -302,6 +302,12 @@ class SupabaseClient {
     }
 
     async saveUserProfile(profile) {
+        // Helper function to convert empty strings to null for UUID fields
+        const cleanUUID = (value) => {
+            if (!value || value === '') return null;
+            return value;
+        };
+
         // Normalize profile fields (handle both lineUserId and line_user_id)
         const normalizedProfile = {
             line_user_id: profile.line_user_id || profile.lineUserId,
@@ -314,12 +320,12 @@ class SupabaseClient {
             language: profile.language || 'en',
 
             // ===== NEW: Society Affiliation Fields =====
-            society_id: profile.society_id || profile.societyId || null,
+            society_id: cleanUUID(profile.society_id || profile.societyId),
             society_name: profile.society_name || profile.societyName || profile.organizationInfo?.societyName || '',
             member_since: profile.member_since || profile.memberSince || null,
 
             // ===== NEW: Home Course Fields =====
-            home_course_id: profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId || '',
+            home_course_id: cleanUUID(profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId),
             home_course_name: profile.home_course_name || profile.homeCourseName || profile.golfInfo?.homeClub || '',
 
             // ===== NEW: Store FULL profile data in JSONB column =====
@@ -329,14 +335,14 @@ class SupabaseClient {
                     ...(profile.golfInfo || {}),
                     // Ensure homeClub is in JSONB for UI compatibility
                     homeClub: profile.home_course_name || profile.homeCourseName || profile.golfInfo?.homeClub || profile.home_club || profile.homeClub || '',
-                    homeCourseId: profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId || '',
+                    homeCourseId: cleanUUID(profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId),
                     handicap: profile.handicap || profile.golfInfo?.handicap || null
                 },
                 organizationInfo: {
                     ...(profile.organizationInfo || {}),
                     // Ensure society data is in JSONB for UI compatibility
                     societyName: profile.society_name || profile.societyName || profile.organizationInfo?.societyName || '',
-                    societyId: profile.society_id || profile.societyId || profile.organizationInfo?.societyId || null
+                    societyId: cleanUUID(profile.society_id || profile.societyId || profile.organizationInfo?.societyId)
                 },
                 professionalInfo: profile.professionalInfo || {},
                 skills: profile.skills || {},

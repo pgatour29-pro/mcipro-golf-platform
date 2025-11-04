@@ -19804,7 +19804,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     // BUILD ID - Injected at deploy time for cache busting
     window.__BUILD_ID__ = '2955f9ae';
 
-    console.log('%c🚀 PAGE VERSION: 2025-11-03-ENTERPRISE-HEADER', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-11-03-KHAO-KHEOW-FIX', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
@@ -21836,9 +21836,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                     <option value="crystal_bay">Crystal Bay Golf Club</option>
                                     <option value="eastern_star">Eastern Star Golf Course</option>
                                     <option value="grand_prix">Grand Prix Golf Club</option>
-                                    <option value="khao_kheow_ab">Khao Kheow A+B</option>
-                                    <option value="khao_kheow_ac">Khao Kheow A+C</option>
-                                    <option value="khao_kheow_bc">Khao Kheow B+C</option>
+                                    <option value="khao_kheow">Khao Kheow Country Club</option>
                                     <option value="laem_chabang">Laem Chabang International Country Club</option>
                                     <option value="mountain_shadow">Mountain Shadow Golf Club</option>
                                     <option value="pattana_golf">Pattana Golf Resort & Spa</option>
@@ -21856,6 +21854,42 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 </button>
                             </div>
                             <p class="text-xs text-gray-500 mt-1" data-i18n="scorecard.course.data.note">Course data loads only when you start round</p>
+                        </div>
+
+                        <!-- Khao Kheow Course Picker -->
+                        <div id="khaoKheowPicker" class="mb-4" style="display: none;">
+                            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                                <h3 class="text-sm font-semibold text-green-800 mb-3 flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-lg">golf_course</span>
+                                    Select Your 18-Hole Combination
+                                </h3>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <!-- Front 9 Selection -->
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-2">Front 9 (Holes 1-9)</label>
+                                        <select id="khaoKheowFront9" class="w-full rounded-lg border border-green-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                            <option value="">-- Select --</option>
+                                            <option value="A">Course A</option>
+                                            <option value="B">Course B</option>
+                                            <option value="C">Course C</option>
+                                        </select>
+                                    </div>
+                                    <!-- Back 9 Selection -->
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-2">Back 9 (Holes 10-18)</label>
+                                        <select id="khaoKheowBack9" class="w-full rounded-lg border border-green-300 px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                            <option value="">-- Select --</option>
+                                            <option value="A">Course A</option>
+                                            <option value="B">Course B</option>
+                                            <option value="C">Course C</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <p class="text-xs text-green-700 mt-2 flex items-start gap-1">
+                                    <span class="material-symbols-outlined text-sm mt-0.5">info</span>
+                                    <span>Course B has different stroke indices depending on which course it's paired with</span>
+                                </p>
+                            </div>
                         </div>
 
                         <!-- Tee Markers -->
@@ -29672,9 +29706,56 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 return Math.round(differential * 10) / 10; // Round to 1 decimal place
             },
 
+            // Load ALL rounds (localStorage + database)
+            async getAllRounds() {
+                let allRounds = [...this.scores]; // Start with localStorage scores
+
+                // Load from database if user is logged in
+                const userId = AppState.currentUser?.lineUserId;
+                if (userId && window.SupabaseDB) {
+                    try {
+                        const { data: dbRounds, error } = await window.SupabaseDB.client
+                            .from('rounds')
+                            .select('*')
+                            .eq('golfer_id', userId)
+                            .order('completed_at', { ascending: false });
+
+                        if (!error && dbRounds) {
+                            // Convert database rounds to same format
+                            const convertedRounds = dbRounds.map(round => ({
+                                id: round.id,
+                                course: round.course_name || '-',
+                                courseId: round.course_id,
+                                tee: round.tee_marker,
+                                score: round.total_gross,
+                                holes: 18,
+                                courseRating: round.course_rating || 72.0,
+                                slopeRating: round.slope_rating || 113,
+                                date: (round.completed_at || '').split('T')[0],
+                                differential: null,
+                                timestamp: round.completed_at,
+                                source: 'database'
+                            }));
+
+                            // Calculate differentials
+                            convertedRounds.forEach(round => {
+                                round.differential = this.calculateDifferential(round);
+                            });
+
+                            allRounds = allRounds.concat(convertedRounds);
+                        }
+                    } catch (error) {
+                        console.error('[GolfScoreSystem] Error loading database rounds:', error);
+                    }
+                }
+
+                return allRounds;
+            },
+
             // WHS Handicap Index Calculation
-            calculateHandicapIndex() {
-                const validScores = this.scores.filter(s => s.holes === 18 && s.differential !== null);
+            async calculateHandicapIndex() {
+                const allRounds = await this.getAllRounds();
+                const validScores = allRounds.filter(s => s.holes === 18 && s.differential !== null);
 
                 if (validScores.length < 3) {
                     return null; // Need at least 3 scores for WHS
@@ -29706,16 +29787,20 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 return Math.round(handicapIndex * 10) / 10; // Round to 1 decimal place
             },
 
-            updateStatistics() {
-                if (this.scores.length === 0) return;
+            async updateStatistics() {
+                // Get ALL rounds from both sources
+                const allRounds = await this.getAllRounds();
+                if (allRounds.length === 0) return;
 
                 // Calculate WHS Handicap Index
-                const whsHandicap = this.calculateHandicapIndex();
+                const whsHandicap = await this.calculateHandicapIndex();
                 const handicapElements = document.querySelectorAll('.user-handicap');
+                const validScores = allRounds.filter(s => s.holes === 18);
+
                 handicapElements.forEach(el => {
                     if (whsHandicap !== null) {
                         el.textContent = whsHandicap.toFixed(1);
-                        el.setAttribute('title', `WHS Handicap Index (${this.scores.filter(s => s.holes === 18).length} qualifying rounds)`);
+                        el.setAttribute('title', `WHS Handicap Index (${validScores.length} qualifying rounds)`);
                     } else {
                         el.textContent = 'N/A';
                         el.setAttribute('title', 'Need at least 3 eighteen-hole rounds for WHS handicap');
@@ -29723,7 +29808,6 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 });
 
                 // Calculate average score (only for 18-hole rounds)
-                const validScores = this.scores.filter(s => s.holes === 18);
                 const avgScoreElements = document.querySelectorAll('#golfer-stats .metric-value');
 
                 if (validScores.length > 0) {
@@ -34607,7 +34691,7 @@ class LiveScorecardSystem {
 
             // Sort by stroke index
             const holesSorted = [...courseHoles].sort((a, b) =>
-                (a.strokeIndex || a.hole) - (b.strokeIndex || b.hole)
+                (a.stroke_index || a.hole) - (b.stroke_index || b.hole)
             );
 
             let remaining = Math.round(handicap);
@@ -34908,7 +34992,7 @@ class LiveScorecardSystem {
                 if (!hole) continue;
 
                 const par = hole.par;
-                const strokeIndex = hole.strokeIndex || hole.stroke_index || holeNum;
+                const strokeIndex = hole.stroke_index || hole.strokeIndex || holeNum;
 
                 // Get both players' scores for each team
                 const team1Player1 = team1Data[0];
@@ -35101,6 +35185,19 @@ class LiveScorecardSystem {
 
         // Check for pending offline data on init
         setTimeout(() => this.syncOfflineData(), 2000);
+
+        // Khao Kheow course picker - show/hide based on course selection
+        const courseSelect = document.getElementById('scorecardCourseSelect');
+        const khaoKheowPicker = document.getElementById('khaoKheowPicker');
+        if (courseSelect && khaoKheowPicker) {
+            courseSelect.addEventListener('change', () => {
+                if (courseSelect.value === 'khao_kheow') {
+                    khaoKheowPicker.style.display = 'block';
+                } else {
+                    khaoKheowPicker.style.display = 'none';
+                }
+            });
+        }
     }
 
     async loadEvents() {
@@ -35145,19 +35242,123 @@ class LiveScorecardSystem {
     // Course dropdown is now static HTML - no need to load from database!
     // Only load course data when user starts a round
 
+    async loadKhaoKheowCombination(teeMarker = 'white') {
+        console.log('[LiveScorecard] Loading Khao Kheow combination...');
+
+        // Get selected courses
+        const front9 = document.getElementById('khaoKheowFront9').value;
+        const back9 = document.getElementById('khaoKheowBack9').value;
+
+        if (!front9 || !back9) {
+            console.warn('[LiveScorecard] Front 9 or Back 9 not selected');
+            this.courseData = null;
+            return;
+        }
+
+        console.log(`[LiveScorecard] Selected: Front 9 = ${front9}, Back 9 = ${back9}`);
+
+        // Determine which course IDs to load
+        // Course B has different indices depending on pairing
+        const front9CourseId = front9 === 'A' ? 'khao_kheow_a' :
+                              front9 === 'C' ? 'khao_kheow_c' :
+                              (back9 === 'A' ? 'khao_kheow_b_with_a' : 'khao_kheow_b_with_c');
+
+        const back9CourseId = back9 === 'A' ? 'khao_kheow_a' :
+                             back9 === 'C' ? 'khao_kheow_c' :
+                             (front9 === 'A' ? 'khao_kheow_b_with_a' : 'khao_kheow_b_with_c');
+
+        console.log(`[LiveScorecard] Loading courses: ${front9CourseId} + ${back9CourseId}`);
+
+        try {
+            // Load both 9-hole courses in parallel
+            const [front9Result, back9Result] = await Promise.all([
+                window.SupabaseDB.client
+                    .from('course_holes')
+                    .select('hole_number, par, stroke_index, yardage, tee_marker')
+                    .eq('course_id', front9CourseId)
+                    .eq('tee_marker', teeMarker.toLowerCase())
+                    .order('hole_number'),
+                window.SupabaseDB.client
+                    .from('course_holes')
+                    .select('hole_number, par, stroke_index, yardage, tee_marker')
+                    .eq('course_id', back9CourseId)
+                    .eq('tee_marker', teeMarker.toLowerCase())
+                    .order('hole_number')
+            ]);
+
+            const front9Holes = front9Result.data || [];
+            const back9Holes = back9Result.data || [];
+
+            if (front9Holes.length === 0 || back9Holes.length === 0) {
+                console.error('[LiveScorecard] Failed to load holes for Khao Kheow combination');
+                this.courseData = null;
+                return;
+            }
+
+            // Combine into 18 holes
+            // Front 9 holes stay as holes 1-9
+            // Back 9 holes become holes 10-18
+            const combinedHoles = [
+                ...front9Holes.map(h => ({ ...h, hole_number: h.hole_number })),
+                ...back9Holes.map(h => ({ ...h, hole_number: h.hole_number + 9 }))
+            ];
+
+            // Create combined course data
+            // Use front9 course_id for database foreign key compliance
+            this.courseData = {
+                id: front9CourseId,
+                name: `Khao Kheow Country Club (${front9}+${back9})`,
+                scorecard_url: null,
+                holes: combinedHoles
+            };
+
+            console.log(`[LiveScorecard] ✅ Khao Kheow ${front9}+${back9} loaded successfully (${combinedHoles.length} holes)`);
+            console.log(`[LiveScorecard] First 4 holes:`, combinedHoles.slice(0, 4).map(h => ({
+                hole: h.hole_number,
+                par: h.par,
+                index: h.stroke_index,
+                tee: h.tee_marker
+            })));
+
+        } catch (error) {
+            console.error('[LiveScorecard] Error loading Khao Kheow combination:', error);
+            this.courseData = null;
+        }
+    }
+
     async loadCourseData(courseId, teeMarker = 'white') {
         
         console.log(`[LiveScorecard] Loading course data for: ${courseId}, tee: ${teeMarker}`);
 
         // Course cache versions - increment to force refresh
         const COURSE_CACHE_VERSIONS = {
-            'bangpakong': 3  // v3: Clean scorecard image + Par 72 with all 5 tees
+            'bangpakong': 5,  // v5: correct stroke indices from database
+            'bangpra_international': 3,  // v3: correct stroke indices from database
+            'burapha_east': 3,
+            'burapha_west': 3,
+            'crystal_bay': 2,
+            'eastern_star': 2,
+            'grand_prix': 3,
+            'laem_chabang': 2,
+            'mountain_shadow': 3,
+            'pattana_golf': 2,
+            'pattavia': 3,
+            'pattaya_country_club': 3,
+            'pleasant_valley': 4,  // v4: CORRECT stroke indices from scorecard (hole 1 = 9, hole 9 = 4)
+            'plutaluang': 3,
+            'royal_lakeside': 3,
+            'siam_cc_old': 3,
+            'siam_plantation': 3,
+            'khao_kheow_a': 2,
+            'khao_kheow_b_with_a': 2,
+            'khao_kheow_b_with_c': 2,
+            'khao_kheow_c': 2
         };
 
         // Cache course data (tee marker handled in query, not cache key)
         const cacheKey = `mcipro_course_${courseId}`;
         const cacheVersionKey = `mcipro_course_version_${courseId}`;
-        const expectedVersion = COURSE_CACHE_VERSIONS[courseId] || 1;
+        const expectedVersion = COURSE_CACHE_VERSIONS[courseId] || 2;
 
         try {
             const cached = localStorage.getItem(cacheKey);
@@ -35244,11 +35445,11 @@ class LiveScorecardSystem {
                 name: course.name,
                 scorecardUrl: course.scorecard_url,
                 holes: holes.map(h => ({
-                    number: h.hole_number,
+                    hole_number: h.hole_number,
                     par: h.par,
-                    strokeIndex: h.stroke_index,
+                    stroke_index: h.stroke_index,
                     yardage: h.yardage || 0,
-                    teeMarker: h.tee_marker
+                    tee_marker: h.tee_marker
                 }))
             };
 
@@ -35587,11 +35788,20 @@ class LiveScorecardSystem {
         // Set flag to skip scramble panel on first render (performance)
         this._initialRender = true;
 
-        // Load course data from database with selected tee marker
-        await this.loadCourseData(courseId, teeMarker);
-        if (!this.courseData) {
-            NotificationManager.show('Error loading course data', 'error');
-            return;
+        // Khao Kheow: Handle 9-hole course combination
+        if (courseId === 'khao_kheow') {
+            await this.loadKhaoKheowCombination(teeMarker);
+            if (!this.courseData) {
+                NotificationManager.show('Please select both Front 9 and Back 9 courses', 'error');
+                return;
+            }
+        } else {
+            // Load course data from database with selected tee marker
+            await this.loadCourseData(courseId, teeMarker);
+            if (!this.courseData) {
+                NotificationManager.show('Error loading course data', 'error');
+                return;
+            }
         }
 
         // Collect all selected formats (supports multiple simultaneous formats)
@@ -35771,13 +35981,13 @@ class LiveScorecardSystem {
         // Get current hole data for the selected tee marker
         // Try to find hole with matching tee marker first, then fall back to any tee marker
         let holeData = this.courseData?.holes?.find(h =>
-            h.number === this.currentHole &&
-            h.teeMarker?.toLowerCase() === this.selectedTeeMarker?.toLowerCase()
+            h.hole_number === this.currentHole &&
+            h.tee_marker?.toLowerCase() === this.selectedTeeMarker?.toLowerCase()
         );
 
         // If no match with tee marker, try to find any hole with this number
         if (!holeData) {
-            holeData = this.courseData?.holes?.find(h => h.number === this.currentHole);
+            holeData = this.courseData?.holes?.find(h => h.hole_number === this.currentHole);
         }
 
         // Debug logging
@@ -35787,7 +35997,7 @@ class LiveScorecardSystem {
         }
 
         const par = holeData?.par || 4;
-        const strokeIndex = holeData?.strokeIndex || this.currentHole;
+        const strokeIndex = holeData?.stroke_index || this.currentHole;
         const yardage = holeData?.yardage || 0;
 
         // Update hole header with yardage
@@ -36036,7 +36246,7 @@ class LiveScorecardSystem {
                 // Get hole data
                 const holeData = this.courseData?.holes?.[this.currentHole - 1];
                 const par = holeData?.par || 4;
-                const strokeIndex = holeData?.strokeIndex || this.currentHole;
+                const strokeIndex = holeData?.stroke_index || this.currentHole;
 
                 // Save to database if online
                 if (scorecardId && !scorecardId.startsWith('local_')) {
@@ -36091,7 +36301,7 @@ class LiveScorecardSystem {
         // Get hole data from courseData
         const holeData = this.courseData?.holes?.[this.currentHole - 1];
         const par = holeData?.par || 4;
-        const strokeIndex = holeData?.strokeIndex || this.currentHole;
+        const strokeIndex = holeData?.stroke_index || this.currentHole;
 
         // ===== INSTANT UI UPDATE (Optimistic) =====
         // Store score in local cache immediately
@@ -36496,17 +36706,29 @@ class LiveScorecardSystem {
     
             // Get course and event info
             const courseName = this.courseData?.name || 'Unknown Course';
-            const courseId = document.getElementById('scorecardCourseSelect')?.value || '';
+            const courseId = this.courseData?.id || document.getElementById('scorecardCourseSelect')?.value || '';
             const teeMarker = document.querySelector('input[name="teeMarker"]:checked')?.value || 'white';
             // FIX: Use this.roundType which is properly set (practice, private, society)
             const roundType = this.roundType || 'practice';
             const eventId = this.eventId;
             const scorecardId = this.scorecards[player.id];
 
+            // Get organizer_id for society events
+            let organizerId = null;
+            if (eventId) {
+                const { data: event } = await window.SupabaseDB.client
+                    .from('society_events')
+                    .select('organizer_id')
+                    .eq('id', eventId)
+                    .single();
+                organizerId = event?.organizer_id || null;
+            }
+
             // Log round info for debugging
             console.log(`[LiveScorecard] Saving round for ${player.name}:`, {
                 roundType,
                 eventId,
+                organizerId,
                 courseName,
                 holesPlayed,
                 totalGross: 0, // Will calculate below
@@ -36609,42 +36831,37 @@ class LiveScorecardSystem {
                 throw new Error(`Cannot save round: Player "${player.name}" is not logged in with LINE`);
             }
     
-            // Save to Supabase database with session-aware insert and fallback
+            // Save to Supabase database using LINE user ID
             let round, error;
             try {
-                const { data: sessionData } = await window.SupabaseDB.client.auth.getSession();
-                const hasSession = !!sessionData?.session?.user;
+                // FIXED: Use LINE user ID (TEXT) instead of Supabase UUID
+                const canonicalInsert = await window.SupabaseDB.client
+                    .from('rounds')
+                    .insert({
+                        golfer_id: player.lineUserId, // FIXED: Use LINE user ID directly
+                        course_id: courseId || null,
+                        course_name: this.courseData?.name || null,
+                        type: this.roundType || (this.isPrivateRound ? 'private' : (this.eventId ? 'society' : 'private')),
+                        society_event_id: this.eventId || null,
+                        organizer_id: organizerId,
+                        started_at: new Date().toISOString(),
+                        completed_at: new Date().toISOString(),
+                        status: 'completed',
+                        total_gross: totalGross,
+                        total_net: null,
+                        total_stableford: totalStableford,
+                        handicap_used: player.handicap,
+                        tee_marker: teeMarker
+                    })
+                    .select()
+                    .single();
 
-                if (hasSession) {
-                    const supaUserId = sessionData.session.user.id;
-                    // Try canonical schema insert first
-                    const canonicalInsert = await window.SupabaseDB.client
-                        .from('rounds')
-                        .insert({
-                            golfer_id: supaUserId,
-                            course_id: courseId || null,
-                            course_name: this.courseData?.name || null,
-                            type: this.roundType || (this.isPrivateRound ? 'private' : (this.eventId ? 'society' : 'private')),
-                            society_event_id: this.eventId || null,
-                            started_at: new Date().toISOString(),
-                            completed_at: new Date().toISOString(),
-                            status: 'completed',
-                            total_gross: totalGross,
-                            total_net: null,
-                            total_stableford: totalStableford,
-                            handicap_used: player.handicap,
-                            tee_marker: teeMarker
-                        })
-                        .select()
-                        .single();
+                round = canonicalInsert.data;
+                error = canonicalInsert.error;
 
-                    round = canonicalInsert.data;
-                    error = canonicalInsert.error;
-
-                    // If canonical failed due to missing columns, fallback to legacy schema
-                    if (error) {
-                        console.warn('[LiveScorecard] Canonical insert failed, falling back to legacy schema:', error);
-                    }
+                // If canonical failed due to missing columns, fallback to legacy schema
+                if (error) {
+                    console.warn('[LiveScorecard] Canonical insert failed, falling back to legacy schema:', error);
                 }
 
                 // If canonical-only mode is enabled, abort on canonical failures or missing session
@@ -36657,7 +36874,7 @@ class LiveScorecardSystem {
                     const legacyInsert = await window.SupabaseDB.client
                         .from('rounds')
                         .insert({
-                            user_id: player.lineUserId,
+                            golfer_id: player.lineUserId, // FIXED: Use golfer_id (TEXT) instead of user_id (UUID)
                             course_id: courseId || null,
                             played_at: new Date().toISOString(),
                             holes_played: holesPlayed,
@@ -36704,7 +36921,7 @@ class LiveScorecardSystem {
 
                 const holeData = this.courseData.holes?.[holeNum - 1];
                 const par = holeData?.par || 4;
-                const strokeIndex = holeData?.strokeIndex || holeNum;
+                const strokeIndex = holeData?.stroke_index || holeNum;
 
                 // Calculate net score and stableford
                 const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
@@ -36816,14 +37033,14 @@ class LiveScorecardSystem {
 
                     // Notify success with different message for society events
                     if (!this.isPrivateRound && this.eventId) {
+                        console.log(`[LiveScorecard] ✅ Round visible to organizer: ${organizerId}`);
                         const { data: event } = await window.SupabaseDB.client
                             .from('society_events')
-                            .select('organizer_id, title')
+                            .select('title')
                             .eq('id', this.eventId)
                             .single();
 
-                        if (event) {
-                            console.log(`[LiveScorecard] ✅ Round visible to organizer: ${event.organizer_id}`);
+                        if (event?.title) {
                             NotificationManager.show(`Round saved and posted to "${event.title}" leaderboard!`, 'success');
                         } else {
                             NotificationManager.show('Round saved and posted to event organizer!', 'success');
@@ -37201,7 +37418,7 @@ class LiveScorecardSystem {
             // Calculate course par
             let coursePar = 0;
             for (let i = 1; i <= 18; i++) {
-                const hole = this.courseData?.holes?.find(h => h.number === i);
+                const hole = this.courseData?.holes?.find(h => h.hole_number === i);
                 coursePar += hole?.par || 4;
             }
 
@@ -37424,7 +37641,7 @@ class LiveScorecardSystem {
         tableHTML += `<tr class="bg-blue-50"><td class="border border-gray-300 px-2 py-2 font-semibold">Par</td>`;
         let frontNinePar = 0, backNinePar = 0;
         for (let i = 1; i <= 18; i++) {
-            const hole = this.courseData?.holes?.find(h => h.number === i);
+            const hole = this.courseData?.holes?.find(h => h.hole_number === i);
             const par = hole?.par || 4;
             if (i <= 9) frontNinePar += par;
             else backNinePar += par;
@@ -37435,8 +37652,8 @@ class LiveScorecardSystem {
         // Stroke Index row
         tableHTML += `<tr class="bg-gray-50"><td class="border border-gray-300 px-2 py-2 font-semibold text-xs">Index</td>`;
         for (let i = 1; i <= 18; i++) {
-            const hole = this.courseData?.holes?.find(h => h.number === i);
-            const index = hole?.strokeIndex || i;
+            const hole = this.courseData?.holes?.find(h => h.hole_number === i);
+            const index = hole?.stroke_index || i;
             tableHTML += `<td class="border border-gray-300 px-1 py-2 text-center text-xs">${index}</td>`;
         }
         tableHTML += `<td class="border border-gray-300 px-2 py-2"></td></tr>`;
@@ -37456,7 +37673,7 @@ class LiveScorecardSystem {
             }
 
             // Style score with circles/squares based on par
-            const hole = this.courseData?.holes?.find(h => h.number === i);
+            const hole = this.courseData?.holes?.find(h => h.hole_number === i);
             const par = hole?.par || 4;
             let cellClass = 'border border-gray-300 px-1 py-2 text-center font-bold';
             let scoreHTML = score;
@@ -37495,8 +37712,8 @@ class LiveScorecardSystem {
             for (let i = 1; i <= 18; i++) {
                 const scoreValue = this.scoresCache[player.id]?.[i];
                 if (typeof scoreValue === 'number') {
-                    const hole = this.courseData?.holes?.find(h => h.number === i);
-                    const strokeIndex = hole?.strokeIndex || i;
+                    const hole = this.courseData?.holes?.find(h => h.hole_number === i);
+                    const strokeIndex = hole?.stroke_index || i;
                     const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
                     const netScore = scoreValue - shotsReceived;
 
@@ -37551,9 +37768,9 @@ class LiveScorecardSystem {
                 let points = '-';
 
                 if (typeof scoreValue === 'number') {
-                    const hole = this.courseData?.holes?.find(h => h.number === i);
+                    const hole = this.courseData?.holes?.find(h => h.hole_number === i);
                     const par = hole?.par || 4;
-                    const strokeIndex = hole?.strokeIndex || i;
+                    const strokeIndex = hole?.stroke_index || i;
 
                     const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
                     const netScore = scoreValue - shotsReceived;
@@ -37578,8 +37795,8 @@ class LiveScorecardSystem {
                 let netScore = '-';
 
                 if (typeof scoreValue === 'number') {
-                    const hole = this.courseData?.holes?.find(h => h.number === i);
-                    const strokeIndex = hole?.strokeIndex || i;
+                    const hole = this.courseData?.holes?.find(h => h.hole_number === i);
+                    const strokeIndex = hole?.stroke_index || i;
 
                     const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
                     netScore = scoreValue - shotsReceived;
@@ -37788,9 +38005,9 @@ class LiveScorecardSystem {
 
             // Calculate Stableford points for team's best score WITH handicap
             if (teamScore !== null) {
-                const hole = this.courseData?.holes?.find(h => h.number === holeNum);
+                const hole = this.courseData?.holes?.find(h => h.hole_number === holeNum);
                 const par = hole?.par || 4;
-                const strokeIndex = hole?.strokeIndex || holeNum;
+                const strokeIndex = hole?.stroke_index || holeNum;
 
                 // Calculate handicap strokes for this hole
                 const fullStrokes = Math.floor(teamPlayingHandicap / 18);
@@ -37859,7 +38076,7 @@ class LiveScorecardSystem {
         tableHTML += `<tr class="bg-green-50"><td class="border border-green-400 px-2 py-2 font-semibold">Par</td>`;
         let frontNinePar = 0, backNinePar = 0;
         for (let i = 1; i <= 18; i++) {
-            const hole = this.courseData?.holes?.find(h => h.number === i);
+            const hole = this.courseData?.holes?.find(h => h.hole_number === i);
             const par = hole?.par || 4;
             if (i <= 9) frontNinePar += par;
             else backNinePar += par;
@@ -37874,7 +38091,7 @@ class LiveScorecardSystem {
             const score = teamScores[i];
 
             // Style score with circles/squares based on par
-            const hole = this.courseData?.holes?.find(h => h.number === i);
+            const hole = this.courseData?.holes?.find(h => h.hole_number === i);
             const par = hole?.par || 4;
             let cellClass = 'border border-green-400 px-1 py-2 text-center font-bold';
             let scoreHTML = (score !== null && score !== undefined) ? score : '-';
@@ -37911,8 +38128,8 @@ class LiveScorecardSystem {
             let netScore = '-';
 
             if (score !== null && score !== undefined) {
-                const hole = this.courseData?.holes?.find(h => h.number === i);
-                const strokeIndex = hole?.strokeIndex || i;
+                const hole = this.courseData?.holes?.find(h => h.hole_number === i);
+                const strokeIndex = hole?.stroke_index || i;
 
                 // Calculate handicap strokes for this hole
                 const fullStrokes = Math.floor(teamPlayingHandicap / 18);
@@ -38197,9 +38414,9 @@ class LiveScorecardSystem {
             for (let i = 1; i <= 18; i++) {
                 const scoreValue = this.scoresCache[player.id]?.[i];
                 if (typeof scoreValue === 'number') {
-                    const hole = this.courseData?.holes?.find(h => h.number === i);
+                    const hole = this.courseData?.holes?.find(h => h.hole_number === i);
                     const par = hole?.par || 4;
-                    const strokeIndex = hole?.strokeIndex || i;
+                    const strokeIndex = hole?.stroke_index || i;
                     const shotsReceived = player.handicap >= strokeIndex ? 1 : 0;
                     const netScore = scoreValue - shotsReceived;
 
@@ -38243,7 +38460,7 @@ class LiveScorecardSystem {
                 for (let i = 1; i <= 9; i++) {
                     const scoreValue = this.scoresCache[player.id]?.[i];
                     if (typeof scoreValue === 'number') {
-                        const hole = this.courseData?.holes?.find(h => h.number === i);
+                        const hole = this.courseData?.holes?.find(h => h.hole_number === i);
                         const par = hole?.par || 4;
                         const diff = scoreValue - par;
                         let indicator = '';
@@ -38264,7 +38481,7 @@ class LiveScorecardSystem {
                 for (let i = 10; i <= 18; i++) {
                     const scoreValue = this.scoresCache[player.id]?.[i];
                     if (typeof scoreValue === 'number') {
-                        const hole = this.courseData?.holes?.find(h => h.number === i);
+                        const hole = this.courseData?.holes?.find(h => h.hole_number === i);
                         const par = hole?.par || 4;
                         const diff = scoreValue - par;
                         let indicator = '';
@@ -40088,9 +40305,9 @@ layout: "text_based"
 
             for (let i = 0; i < 18; i++) {
                 courseData.holes.push({
-                    number: i + 1,
+                    hole_number: i + 1,
                     par: parValues[i] || 4,
-                    strokeIndex: handicapValues[i] || (i + 1),
+                    stroke_index: handicapValues[i] || (i + 1),
                     yardage: 0  // Can be filled manually in review screen
                 });
             }
@@ -40123,9 +40340,9 @@ layout: "text_based"
         // Initialize 18 holes with defaults
         for (let i = 1; i <= 18; i++) {
             courseData.holes.push({
-                number: i,
+                hole_number: i,
                 par: 4,
-                strokeIndex: i,
+                stroke_index: i,
                 yardage: 0
             });
         }
@@ -40217,12 +40434,12 @@ layout: "text_based"
 
         if (handicapValues.length >= 18) {
             handicapValues.slice(0, 18).forEach((idx, index) => {
-                courseData.holes[index].strokeIndex = idx;
+                courseData.holes[index].stroke_index = idx;
             });
         } else if (handicapValues.length >= 9) {
             handicapValues.forEach((idx, index) => {
                 if (index < 9) {
-                    courseData.holes[index].strokeIndex = idx;
+                    courseData.holes[index].stroke_index = idx;
                 }
             });
         }
@@ -40252,19 +40469,19 @@ layout: "text_based"
         const tbody = document.getElementById('reviewHolesTable');
         tbody.innerHTML = courseData.holes.map((hole, index) => `
             <tr class="${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}">
-                <td class="px-4 py-2 font-medium">${hole.number}</td>
+                <td class="px-4 py-2 font-medium">${hole.hole_number}</td>
                 <td class="px-4 py-2">
-                    <select id="reviewPar${hole.number}" class="w-20 rounded border px-2 py-1">
+                    <select id="reviewPar${hole.hole_number}" class="w-20 rounded border px-2 py-1">
                         <option value="3" ${hole.par === 3 ? 'selected' : ''}>3</option>
                         <option value="4" ${hole.par === 4 ? 'selected' : ''}>4</option>
                         <option value="5" ${hole.par === 5 ? 'selected' : ''}>5</option>
                     </select>
                 </td>
                 <td class="px-4 py-2">
-                    <input type="number" id="reviewIndex${hole.number}" value="${hole.strokeIndex}" min="1" max="18" class="w-20 rounded border px-2 py-1">
+                    <input type="number" id="reviewIndex${hole.hole_number}" value="${hole.stroke_index}" min="1" max="18" class="w-20 rounded border px-2 py-1">
                 </td>
                 <td class="px-4 py-2">
-                    <input type="number" id="reviewYardage${hole.number}" value="${hole.yardage}" min="0" max="700" class="w-24 rounded border px-2 py-1">
+                    <input type="number" id="reviewYardage${hole.hole_number}" value="${hole.yardage}" min="0" max="700" class="w-24 rounded border px-2 py-1">
                 </td>
             </tr>
         `).join('');
@@ -40316,9 +40533,9 @@ layout: "text_based"
             // Insert holes
             const holeRecords = holes.map(h => ({
                 course_id: courseId,
-                hole_number: h.number,
+                hole_number: h.hole_number,
                 par: h.par,
-                stroke_index: h.strokeIndex,
+                stroke_index: h.stroke_index,
                 yardage: h.yardage,
                 tee_marker: teeMarker
             }));
@@ -40363,9 +40580,9 @@ layout: "text_based"
         // Initialize 18 holes with defaults
         for (let i = 1; i <= 18; i++) {
             courseData.holes.push({
-                number: i,
+                hole_number: i,
                 par: 4,
-                strokeIndex: i,
+                stroke_index: i,
                 yardage: 0
             });
         }

@@ -5393,12 +5393,28 @@
                     'managerDashboard': () => this.initManagerDashboard(),
                     'proshopDashboard': () => this.initProshopDashboard(),
                     'maintenanceDashboard': () => this.initMaintenanceDashboard(),
-                    'societyOrganizerDashboard': () => this.initSocietyOrganizerDashboard()
+                    'societyOrganizerDashboard': () => this.initSocietyOrganizerDashboard(),
+                    'adminDashboard': () => this.initAdminDashboard()
                 };
 
                 const initFunction = initMap[screenId];
                 if (initFunction) {
                     initFunction();
+                }
+            }
+
+            static initAdminDashboard() {
+                console.log('[ScreenManager] Initializing Admin Dashboard');
+
+                // Initialize with overview tab
+                showAdminTab('overview');
+
+                // Auto-load users and societies
+                if (typeof AdminSystem !== 'undefined') {
+                    setTimeout(() => {
+                        AdminSystem.loadUsersTable();
+                        AdminSystem.loadSocietiesTable();
+                    }, 100);
                 }
             }
 
@@ -32483,7 +32499,18 @@ const AdminSystem = {
 
     loadCoursesList() {
         const container = document.getElementById('admin-courses-list');
-        const courses = GolfCourses.courses || [];
+        const courses = (typeof GolfCourses !== 'undefined' && GolfCourses.courses) ? GolfCourses.courses : [];
+
+        if (courses.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-12 text-gray-500">
+                    <span class="material-symbols-outlined text-5xl text-gray-300">golf_course</span>
+                    <p class="text-sm mt-2">No courses available</p>
+                    <p class="text-xs mt-1">Course management coming soon</p>
+                </div>
+            `;
+            return;
+        }
 
         container.innerHTML = courses.map(course => `
             <div class="border border-gray-200 rounded-lg p-4">

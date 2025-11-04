@@ -22109,6 +22109,64 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                     • Example: If both teams have 4 (best ball tied), then 5 beats 6 (second ball)<br>
                                     • Can use stroke or stableford scoring</span>
                                 </div>
+
+                                <!-- Team Selection Interface -->
+                                <div id="matchPlayTeamSelection" class="hidden mt-3 p-3 bg-white border-2 border-orange-300 rounded-lg">
+                                    <div class="flex items-center gap-2 mb-3">
+                                        <span class="material-symbols-outlined text-orange-600">groups</span>
+                                        <h4 class="font-semibold text-gray-900">Assign Teams</h4>
+                                    </div>
+                                    <p class="text-xs text-gray-600 mb-3">⚠️ You must add 4 players to the round and assign them to teams before starting</p>
+
+                                    <!-- Team A -->
+                                    <div class="mb-3 p-2 bg-blue-50 border border-blue-300 rounded">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <span class="material-symbols-outlined text-blue-600 text-sm">flag</span>
+                                            <label class="text-sm font-bold text-blue-900">Team A</label>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label class="block text-xs text-gray-600 mb-1">Player 1</label>
+                                                <select id="teamA_player1" class="w-full text-sm rounded border-2 border-blue-400 px-2 py-1" onchange="LiveScorecardSystem.instance.validateTeamSelection()">
+                                                    <option value="">Select Player</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs text-gray-600 mb-1">Player 2</label>
+                                                <select id="teamA_player2" class="w-full text-sm rounded border-2 border-blue-400 px-2 py-1" onchange="LiveScorecardSystem.instance.validateTeamSelection()">
+                                                    <option value="">Select Player</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Team B -->
+                                    <div class="mb-2 p-2 bg-red-50 border border-red-300 rounded">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <span class="material-symbols-outlined text-red-600 text-sm">flag</span>
+                                            <label class="text-sm font-bold text-red-900">Team B</label>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label class="block text-xs text-gray-600 mb-1">Player 1</label>
+                                                <select id="teamB_player1" class="w-full text-sm rounded border-2 border-red-400 px-2 py-1" onchange="LiveScorecardSystem.instance.validateTeamSelection()">
+                                                    <option value="">Select Player</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs text-gray-600 mb-1">Player 2</label>
+                                                <select id="teamB_player2" class="w-full text-sm rounded border-2 border-red-400 px-2 py-1" onchange="LiveScorecardSystem.instance.validateTeamSelection()">
+                                                    <option value="">Select Player</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div id="teamSelectionError" class="hidden mt-2 p-2 bg-red-100 border border-red-400 rounded text-xs text-red-700"></div>
+                                    <div id="teamSelectionSuccess" class="hidden mt-2 p-2 bg-green-100 border border-green-400 rounded text-xs text-green-700">
+                                        ✅ Teams configured correctly
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -35152,6 +35210,7 @@ class LiveScorecardSystem {
         this.autoAdvanceTimeout = null; // FIX: Store timeout to prevent race condition
         this.courseData = null; // Store loaded course data
         this.availableCourses = []; // List of courses from database
+        this.matchPlayTeams = null; // Team assignments for 2-man team Match Play: { teamA: [id1, id2], teamB: [id3, id4] }
     }
 
     // FORCE CACHE CLEAR: Remove all old course caches with tee markers in key
@@ -36341,11 +36400,163 @@ class LiveScorecardSystem {
         if (window.calculateScrambleHcp) {
             window.calculateScrambleHcp();
         }
+
+        // Populate team dropdowns if Match Play teams mode is active
+        const matchPlayType = document.querySelector('input[name="matchPlayType"]:checked')?.value;
+        if (matchPlayType === 'teams') {
+            this.populateTeamDropdowns();
+        }
     }
 
     removePlayer(index) {
         this.players.splice(index, 1);
         this.renderPlayersList();
+
+        // Repopulate team dropdowns if Match Play teams mode is active
+        const matchPlayType = document.querySelector('input[name="matchPlayType"]:checked')?.value;
+        if (matchPlayType === 'teams') {
+            this.populateTeamDropdowns();
+        }
+    }
+
+    // =====================================================
+    // MATCH PLAY TEAM MANAGEMENT
+    // =====================================================
+
+    populateTeamDropdowns() {
+        const dropdowns = [
+            document.getElementById('teamA_player1'),
+            document.getElementById('teamA_player2'),
+            document.getElementById('teamB_player1'),
+            document.getElementById('teamB_player2')
+        ];
+
+        // Store current selections
+        const currentSelections = dropdowns.map(dropdown => dropdown?.value || '');
+
+        // Clear and repopulate all dropdowns
+        dropdowns.forEach((dropdown, dropdownIndex) => {
+            if (!dropdown) return;
+
+            // Keep "Select Player" option
+            dropdown.innerHTML = '<option value="">Select Player</option>';
+
+            // Add all players
+            this.players.forEach(player => {
+                const option = document.createElement('option');
+                option.value = player.id;
+                option.textContent = `${player.name} (HCP ${player.handicap})`;
+                dropdown.appendChild(option);
+            });
+
+            // Restore previous selection if still valid
+            if (currentSelections[dropdownIndex] && this.players.find(p => p.id === currentSelections[dropdownIndex])) {
+                dropdown.value = currentSelections[dropdownIndex];
+            }
+        });
+
+        // Validate after populating
+        this.validateTeamSelection();
+    }
+
+    validateTeamSelection() {
+        const teamA1 = document.getElementById('teamA_player1')?.value;
+        const teamA2 = document.getElementById('teamA_player2')?.value;
+        const teamB1 = document.getElementById('teamB_player1')?.value;
+        const teamB2 = document.getElementById('teamB_player2')?.value;
+
+        const errorDiv = document.getElementById('teamSelectionError');
+        const successDiv = document.getElementById('teamSelectionSuccess');
+
+        // Check if all 4 positions are filled
+        if (!teamA1 || !teamA2 || !teamB1 || !teamB2) {
+            errorDiv.classList.add('hidden');
+            successDiv.classList.add('hidden');
+            this.matchPlayTeams = null;
+            return false;
+        }
+
+        // Check for duplicates
+        const selections = [teamA1, teamA2, teamB1, teamB2];
+        const uniqueSelections = new Set(selections);
+
+        if (uniqueSelections.size !== 4) {
+            errorDiv.textContent = '❌ Each player can only be assigned to one position';
+            errorDiv.classList.remove('hidden');
+            successDiv.classList.add('hidden');
+            this.matchPlayTeams = null;
+            return false;
+        }
+
+        // Validation passed - store team configuration
+        this.matchPlayTeams = {
+            teamA: [teamA1, teamA2],
+            teamB: [teamB1, teamB2]
+        };
+
+        errorDiv.classList.add('hidden');
+        successDiv.classList.remove('hidden');
+        return true;
+    }
+
+    getMatchPlayTeamConfig() {
+        // Returns team configuration if Match Play is in teams mode and teams are configured
+        const matchPlayType = document.querySelector('input[name="matchPlayType"]:checked')?.value;
+
+        if (matchPlayType !== 'teams' || !this.matchPlayTeams) {
+            return null;
+        }
+
+        // Build team data structure for calculateTeamMatchPlay()
+        const teamAData = this.matchPlayTeams.teamA.map(playerId => {
+            const player = this.players.find(p => p.id === playerId);
+            if (!player) return null;
+
+            const scoresArray = [];
+            for (let hole = 1; hole <= 18; hole++) {
+                const score = this.scoresCache[player.id]?.[hole];
+                if (score) {
+                    scoresArray.push({ hole_number: hole, gross_score: score });
+                }
+            }
+
+            return {
+                playerId: player.id,
+                playerName: player.name,
+                scores: scoresArray,
+                handicap: player.handicap
+            };
+        }).filter(p => p !== null);
+
+        const teamBData = this.matchPlayTeams.teamB.map(playerId => {
+            const player = this.players.find(p => p.id === playerId);
+            if (!player) return null;
+
+            const scoresArray = [];
+            for (let hole = 1; hole <= 18; hole++) {
+                const score = this.scoresCache[player.id]?.[hole];
+                if (score) {
+                    scoresArray.push({ hole_number: hole, gross_score: score });
+                }
+            }
+
+            return {
+                playerId: player.id,
+                playerName: player.name,
+                scores: scoresArray,
+                handicap: player.handicap
+            };
+        }).filter(p => p !== null);
+
+        // Validate we have 2 players per team
+        if (teamAData.length !== 2 || teamBData.length !== 2) {
+            return null;
+        }
+
+        return {
+            teamA: teamAData,
+            teamB: teamBData
+        };
     }
 
     async startRound() {
@@ -36399,6 +36610,27 @@ class LiveScorecardSystem {
         if (this.scoringFormats.length === 0) {
             NotificationManager.show('Please select at least one scoring format', 'error');
             return;
+        }
+
+        // Validate Match Play team configuration if teams mode is selected
+        if (this.scoringFormats.includes('matchplay')) {
+            const matchPlayType = document.querySelector('input[name="matchPlayType"]:checked')?.value;
+
+            if (matchPlayType === 'teams') {
+                // Ensure exactly 4 players for 2-man teams
+                if (this.players.length !== 4) {
+                    NotificationManager.show('2-Man Team Match Play requires exactly 4 players', 'error');
+                    return;
+                }
+
+                // Validate teams are configured
+                if (!this.validateTeamSelection()) {
+                    NotificationManager.show('Please assign all 4 players to teams (Team A and Team B)', 'error');
+                    return;
+                }
+
+                console.log('[LiveScorecard] Team Match Play validated:', this.matchPlayTeams);
+            }
         }
 
         // Initialize scramble configuration if scramble format is selected
@@ -38373,11 +38605,102 @@ class LiveScorecardSystem {
             }
         }
 
-        // STABLEFORD/STROKE PLAY/MATCH PLAY: Winner takes all
+        // MATCH PLAY: Handle team mode separately from individual mode
+        if (pointsConfig.matchPlay && this.players.length > 1) {
+            const teamConfig = this.getMatchPlayTeamConfig();
+
+            if (teamConfig) {
+                // 2-MAN TEAM MATCH PLAY: Calculate settlement based on team result
+                const teamResults = engine.calculateTeamMatchPlay(
+                    teamConfig.teamA,
+                    teamConfig.teamB,
+                    this.courseData.holes,
+                    true,
+                    false
+                );
+
+                // Determine winning team
+                if (teamResults.overall > 0) {
+                    // Team A wins
+                    const teamAPlayers = this.matchPlayTeams.teamA.map(id => this.players.find(p => p.id === id));
+                    const teamBPlayers = this.matchPlayTeams.teamB.map(id => this.players.find(p => p.id === id));
+
+                    // Each Team B player owes EACH Team A player the full amount (per-player betting)
+                    for (const loser of teamBPlayers) {
+                        for (const winner of teamAPlayers) {
+                            settlements.matchPlay.push({
+                                from: loser.name,
+                                to: winner.name,
+                                amount: pointsConfig.matchPlay.overall,
+                                reason: 'Match Play (Team A wins)',
+                                teamResult: `Team A: +${teamResults.overall} holes`
+                            });
+                        }
+                    }
+                } else if (teamResults.overall < 0) {
+                    // Team B wins
+                    const teamAPlayers = this.matchPlayTeams.teamA.map(id => this.players.find(p => p.id === id));
+                    const teamBPlayers = this.matchPlayTeams.teamB.map(id => this.players.find(p => p.id === id));
+
+                    // Each Team A player owes EACH Team B player the full amount (per-player betting)
+                    for (const loser of teamAPlayers) {
+                        for (const winner of teamBPlayers) {
+                            settlements.matchPlay.push({
+                                from: loser.name,
+                                to: winner.name,
+                                amount: pointsConfig.matchPlay.overall,
+                                reason: 'Match Play (Team B wins)',
+                                teamResult: `Team B: +${Math.abs(teamResults.overall)} holes`
+                            });
+                        }
+                    }
+                }
+                // If overall === 0, match is tied, no settlement
+            } else {
+                // INDIVIDUAL MATCH PLAY: Original logic (vs field - not commonly used but keeping for compatibility)
+                const playerScores = [];
+
+                for (const player of this.players) {
+                    const scoresArray = [];
+                    let totalGross = 0;
+                    for (let hole = 1; hole <= 18; hole++) {
+                        const score = this.scoresCache[player.id]?.[hole];
+                        if (score) {
+                            totalGross += score;
+                            scoresArray.push({ hole_number: hole, gross_score: score });
+                        }
+                    }
+
+                    playerScores.push({ player, score: totalGross });
+                }
+
+                // Find winner (lowest gross score)
+                const best = Math.min(...playerScores.map(s => s.score));
+                const winners = playerScores.filter(s => s.score === best);
+                const losers = playerScores.filter(s => s.score !== best);
+
+                if (winners.length === 1 && losers.length > 0) {
+                    const winner = winners[0].player;
+                    const pointsPerLoser = pointsConfig.matchPlay.overall;
+
+                    for (const loser of losers) {
+                        settlements.matchPlay.push({
+                            from: loser.player.name,
+                            to: winner.name,
+                            amount: pointsPerLoser,
+                            reason: 'Match Play',
+                            winnerScore: best,
+                            loserScore: loser.score
+                        });
+                    }
+                }
+            }
+        }
+
+        // STABLEFORD/STROKE PLAY: Winner takes all
         const singleWinnerFormats = [
             { name: 'stableford', config: pointsConfig.stableford, label: 'Stableford' },
-            { name: 'strokeplay', config: pointsConfig.strokePlay, label: 'Stroke Play' },
-            { name: 'matchplay', config: pointsConfig.matchPlay, label: 'Match Play' }
+            { name: 'strokeplay', config: pointsConfig.strokePlay, label: 'Stroke Play' }
         ];
 
         for (const format of singleWinnerFormats) {
@@ -38421,8 +38744,7 @@ class LiveScorecardSystem {
 
                     for (const loser of losers) {
                         const targetArray = format.name === 'stableford' ? settlements.stableford
-                                          : format.name === 'strokeplay' ? settlements.strokePlay
-                                          : settlements.matchPlay;
+                                          : settlements.strokePlay;
 
                         targetArray.push({
                             from: loser.player.name,
@@ -40195,34 +40517,90 @@ class LiveScorecardSystem {
 
         // Calculate Match Play across all players
         if (this.scoringFormats.includes('matchplay') && this.courseData && this.courseData.holes) {
-            const allPlayerData = this.players.map(player => {
-                const playerScores = this.scoresCache[player.id] || {};
-                const scoresArray = Object.entries(playerScores).map(([hole, score]) => ({
-                    hole_number: parseInt(hole),
-                    gross_score: score
-                }));
+            const teamConfig = this.getMatchPlayTeamConfig();
 
-                return {
-                    playerId: player.id,
-                    playerName: player.name,
-                    scores: scoresArray,
-                    handicap: player.handicap
-                };
-            });
+            if (teamConfig) {
+                // 2-MAN TEAM MATCH PLAY
+                const teamResults = engine.calculateTeamMatchPlay(
+                    teamConfig.teamA,
+                    teamConfig.teamB,
+                    this.courseData.holes,
+                    true,  // useNet
+                    false  // useStableford (use stroke play for now - can be made configurable later)
+                );
 
-            const matchResults = engine.calculateMatchPlay(allPlayerData, this.courseData.holes, true);
+                // Assign results to players based on their team
+                leaderboard.forEach(entry => {
+                    const isTeamA = this.matchPlayTeams.teamA.includes(entry.player_id);
+                    const isTeamB = this.matchPlayTeams.teamB.includes(entry.player_id);
 
-            // Add match play data to each player's leaderboard entry
-            leaderboard.forEach(entry => {
-                entry.matchplay = matchResults[entry.player_id] || {
-                    status: 'All Square',
-                    holesUp: 0,
-                    holesDown: 0,
-                    holesHalved: 0,
-                    netHoles: 0,
-                    matchFinished: false
-                };
-            });
+                    if (isTeamA) {
+                        // Team A player
+                        entry.matchplay = {
+                            team: 'A',
+                            teamScore: teamResults.overall,
+                            front9: teamResults.front9,
+                            back9: teamResults.back9,
+                            status: teamResults.overall > 0 ? `${Math.abs(teamResults.overall)} UP`
+                                  : teamResults.overall < 0 ? `${Math.abs(teamResults.overall)} DOWN`
+                                  : 'All Square',
+                            netHoles: teamResults.overall,
+                            holesUp: teamResults.overall > 0 ? teamResults.overall : 0,
+                            holesDown: teamResults.overall < 0 ? Math.abs(teamResults.overall) : 0,
+                            holesHalved: 0,  // Not tracked in team format
+                            matchFinished: false,
+                            holeResults: teamResults.holeResults
+                        };
+                    } else if (isTeamB) {
+                        // Team B player (invert the score)
+                        entry.matchplay = {
+                            team: 'B',
+                            teamScore: -teamResults.overall,
+                            front9: -teamResults.front9,
+                            back9: -teamResults.back9,
+                            status: teamResults.overall < 0 ? `${Math.abs(teamResults.overall)} UP`
+                                  : teamResults.overall > 0 ? `${Math.abs(teamResults.overall)} DOWN`
+                                  : 'All Square',
+                            netHoles: -teamResults.overall,
+                            holesUp: teamResults.overall < 0 ? Math.abs(teamResults.overall) : 0,
+                            holesDown: teamResults.overall > 0 ? teamResults.overall : 0,
+                            holesHalved: 0,
+                            matchFinished: false,
+                            holeResults: teamResults.holeResults
+                        };
+                    }
+                });
+            } else {
+                // INDIVIDUAL MATCH PLAY (vs field)
+                const allPlayerData = this.players.map(player => {
+                    const playerScores = this.scoresCache[player.id] || {};
+                    const scoresArray = Object.entries(playerScores).map(([hole, score]) => ({
+                        hole_number: parseInt(hole),
+                        gross_score: score
+                    }));
+
+                    return {
+                        playerId: player.id,
+                        playerName: player.name,
+                        scores: scoresArray,
+                        handicap: player.handicap
+                    };
+                });
+
+                const matchResults = engine.calculateMatchPlay(allPlayerData, this.courseData.holes, true);
+
+                // Add match play data to each player's leaderboard entry
+                leaderboard.forEach(entry => {
+                    entry.matchplay = matchResults[entry.player_id] || {
+                        status: 'All Square',
+                        holesUp: 0,
+                        holesDown: 0,
+                        holesHalved: 0,
+                        netHoles: 0,
+                        matchFinished: false
+                    };
+                });
+            }
         }
 
         // Attach points configuration to leaderboard for display
@@ -40605,13 +40983,16 @@ class LiveScorecardSystem {
 
                         // Special rendering for Match Play format
             if (format === 'matchplay') {
+                // Check if team mode is active
+                const isTeamMode = sortedLeaderboard.some(entry => entry.matchplay?.team);
+
                 // Sort by net holes (holes up)
                 sortedLeaderboard.sort((a, b) => (b.matchplay?.netHoles || 0) - (a.matchplay?.netHoles || 0));
 
                 return `
                     <div class="mb-6 ${formatIndex > 0 ? 'mt-6 pt-6 border-t-4 border-gray-300' : ''}">
                         <h3 class="text-lg font-bold text-gray-900 mb-3 bg-gradient-to-r from-purple-100 to-purple-50 px-4 py-2 rounded-lg border-l-4 border-purple-500">
-                            ${formatName} Leaderboard
+                            ${formatName} Leaderboard ${isTeamMode ? '(2-Man Teams)' : '(Individual)'}
                         </h3>
 
                         <!-- Match Play Table -->
@@ -40620,10 +41001,11 @@ class LiveScorecardSystem {
                                 <thead class="border-b-2 border-gray-300">
                                     <tr class="text-left">
                                         <th class="py-2 px-2">Pos</th>
+                                        ${isTeamMode ? '<th class="py-2 px-2 text-center bg-orange-50">Team</th>' : ''}
                                         <th class="py-2 px-2">Player</th>
                                         <th class="py-2 px-2">Thru</th>
                                         <th class="py-2 px-2 text-center bg-green-50">Won</th>
-                                        <th class="py-2 px-2 text-center bg-gray-50">Halved</th>
+                                        ${!isTeamMode ? '<th class="py-2 px-2 text-center bg-gray-50">Halved</th>' : ''}
                                         <th class="py-2 px-2 text-center bg-red-50">Lost</th>
                                         <th class="py-2 px-2 text-center bg-purple-50 font-bold">Status</th>
                                     </tr>
@@ -40638,6 +41020,11 @@ class LiveScorecardSystem {
                                         const isDown = matchData.netHoles < 0;
                                         const isSquare = matchData.netHoles === 0;
                                         const isFinished = matchData.matchFinished;
+                                        const team = matchData.team || '';
+                                        const teamBadge = team === 'A' ? '<span class="inline-block px-2 py-1 bg-blue-500 text-white text-xs font-bold rounded">A</span>'
+                                                        : team === 'B' ? '<span class="inline-block px-2 py-1 bg-red-500 text-white text-xs font-bold rounded">B</span>'
+                                                        : '';
+                                        const teamBg = team === 'A' ? 'bg-blue-50' : team === 'B' ? 'bg-red-50' : '';
 
                                         let statusColor = 'text-gray-700';
                                         let statusBg = '';
@@ -40651,12 +41038,13 @@ class LiveScorecardSystem {
                                         }
 
                                         return `
-                                            <tr class="border-b border-gray-200 ${statusBg}">
+                                            <tr class="border-b border-gray-200 ${isTeamMode ? teamBg : statusBg}">
                                                 <td class="py-2 px-2 font-bold">${index + 1}</td>
+                                                ${isTeamMode ? `<td class="py-2 px-2 text-center">${teamBadge}</td>` : ''}
                                                 <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
                                                 <td class="py-2 px-2">${thru}</td>
                                                 <td class="py-2 px-2 text-center text-green-700 font-semibold">${matchData.holesUp || 0}</td>
-                                                <td class="py-2 px-2 text-center text-gray-600">${matchData.holesHalved || 0}</td>
+                                                ${!isTeamMode ? `<td class="py-2 px-2 text-center text-gray-600">${matchData.holesHalved || 0}</td>` : ''}
                                                 <td class="py-2 px-2 text-center text-red-700 font-semibold">${matchData.holesDown || 0}</td>
                                                 <td class="py-2 px-2 text-center ${statusColor}">
                                                     ${status}
@@ -42096,13 +42484,21 @@ window.updateMatchPlayType = function() {
 
     const individualDiv = document.getElementById('matchPlayIndividual');
     const teamsDiv = document.getElementById('matchPlayTeams');
+    const teamSelectionDiv = document.getElementById('matchPlayTeamSelection');
 
     if (selected === 'teams') {
         individualDiv.classList.add('hidden');
         teamsDiv.classList.remove('hidden');
+        teamSelectionDiv.classList.remove('hidden');
+
+        // Populate team dropdowns if LiveScorecardSystem instance exists
+        if (LiveScorecardSystem.instance) {
+            LiveScorecardSystem.instance.populateTeamDropdowns();
+        }
     } else {
         individualDiv.classList.remove('hidden');
         teamsDiv.classList.add('hidden');
+        teamSelectionDiv.classList.add('hidden');
     }
 
     // Update radio button styling

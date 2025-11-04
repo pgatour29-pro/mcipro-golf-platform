@@ -35208,24 +35208,44 @@ class LiveScorecardSystem {
         },
 
         // Calculate Nassau scoring (front 9, back 9, overall)
-        calculateNassau(playerScores, courseHoles) {
+        // Supports both stroke play (net) and Stableford
+        calculateNassau(playerScores, courseHoles, handicap = 0, method = 'stroke') {
+            const shotAllocation = this.allocHandicapShots(courseHoles, handicap);
+
             let front9 = 0, back9 = 0;
 
             for (const scoreEntry of playerScores) {
                 const hole = scoreEntry.hole_number || scoreEntry.hole;
-                const strokes = scoreEntry.gross_score || scoreEntry.strokes;
+                const grossStrokes = scoreEntry.gross_score || scoreEntry.strokes;
+
+                if (!grossStrokes) continue;
+
+                const holeData = courseHoles.find(h => (h.hole || h.hole_number || h.number) === hole);
+                const par = holeData?.par || 4;
+                const shotsReceived = shotAllocation[hole] || 0;
+                const netStrokes = this.netStrokesForHole(grossStrokes, shotsReceived);
+
+                let value;
+                if (method === 'stableford') {
+                    // Calculate Stableford points
+                    value = this.stablefordPointsForHole(netStrokes, par, this.defaultStableford);
+                } else {
+                    // Use net strokes
+                    value = netStrokes;
+                }
 
                 if (hole <= 9) {
-                    front9 += strokes;
+                    front9 += value;
                 } else if (hole <= 18) {
-                    back9 += strokes;
+                    back9 += value;
                 }
             }
 
             return {
                 front9,
                 back9,
-                total: front9 + back9
+                total: front9 + back9,
+                method  // Store which method was used
             };
         },
 
@@ -37235,11 +37255,9 @@ class LiveScorecardSystem {
                         break;
     
                     case 'nassau':
-                        const nassauResult = engine.calculateNassau([{
-                            player_id: player.id,
-                            scores: scoresArray
-                        }], this.courseData.holes);
-                        formatScores.nassau = nassauResult[0] || { front: 0, back: 0, total: 0 };
+                        const nassauMethodRadio2 = document.querySelector('input[name="nassauMethod"]:checked');
+                        const nassauMethod2 = nassauMethodRadio2?.value || 'stroke';
+                        formatScores.nassau = engine.calculateNassau(scoresArray, this.courseData.holes, player.handicap, nassauMethod2);
                         break;
     
                     case 'skins':
@@ -39477,7 +39495,10 @@ class LiveScorecardSystem {
 
                         case 'nassau':
                             // Nassau: front 9, back 9, total
-                            totalNassau = engine.calculateNassau(scoresArray, this.courseData.holes);
+                            // Check Nassau method selection (stroke or stableford)
+                            const nassauMethodRadio = document.querySelector('input[name="nassauMethod"]:checked');
+                            const nassauMethod = nassauMethodRadio?.value || 'stroke';
+                            totalNassau = engine.calculateNassau(scoresArray, this.courseData.holes, player.handicap, nassauMethod);
                             break;
 
                         case 'strokeplay':
@@ -40043,7 +40064,9 @@ class LiveScorecardSystem {
     getNassauWinner(leaderboard, segment) {
         if (leaderboard.length === 0) return 'No scores yet';
 
-        let best = Infinity;
+        // Check if Nassau is using Stableford (higher is better) or Stroke (lower is better)
+        const isStableford = leaderboard[0]?.nassau?.method === 'stableford';
+        let best = isStableford ? -Infinity : Infinity;
         let winners = [];
 
         for (const entry of leaderboard) {
@@ -40058,17 +40081,30 @@ class LiveScorecardSystem {
 
             if (!score || score === '-') continue;
 
-            if (score < best) {
-                best = score;
-                winners = [entry.player_name];
-            } else if (score === best) {
-                winners.push(entry.player_name);
+            // Comparison logic depends on method
+            if (isStableford) {
+                // Stableford: higher is better
+                if (score > best) {
+                    best = score;
+                    winners = [entry.player_name];
+                } else if (score === best) {
+                    winners.push(entry.player_name);
+                }
+            } else {
+                // Stroke play: lower is better
+                if (score < best) {
+                    best = score;
+                    winners = [entry.player_name];
+                } else if (score === best) {
+                    winners.push(entry.player_name);
+                }
             }
         }
 
+        const label = isStableford ? 'pts' : '';
         if (winners.length === 0) return 'No scores yet';
-        if (winners.length === 1) return `${winners[0]} (${best})`;
-        return `Tied: ${winners.join(', ')} (${best})`;
+        if (winners.length === 1) return `${winners[0]} (${best}${label})`;
+        return `Tied: ${winners.join(', ')} (${best}${label})`;
     }
 
     renderEventLeaderboard(leaderboard) {

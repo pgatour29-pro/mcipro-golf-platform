@@ -28511,10 +28511,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Handicap *</label>
-                    <input type="number" id="editUserHandicap"
-                           placeholder="Enter handicap (0-54)"
-                           min="0" max="54" step="0.1"
+                    <input type="text" id="editUserHandicap"
+                           placeholder="Enter handicap (+5 to 54)"
                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    <p class="mt-1 text-xs text-gray-500">Use + for plus handicaps (e.g., +1.5 for scratch or better)</p>
                 </div>
 
                 <div>
@@ -41310,20 +41310,20 @@ class SocietyOrganizerManager {
 
                 // Parse notes as fallback if no profile exists
                 let fallbackName = 'Unknown';
-                let fallbackHandicap = 36;
+                let fallbackHandicap = '36';
 
                 if (!profile && member.notes) {
                     const notesMatch = member.notes.match(/Imported from TRGG JSON - (.+?), Handicap: (.+?)$/);
                     if (notesMatch) {
                         fallbackName = notesMatch[1];
-                        fallbackHandicap = parseFloat(notesMatch[2]);
+                        fallbackHandicap = notesMatch[2]; // Keep as string to preserve "+" sign
                     }
                 }
 
                 return {
                     ...member,
                     playerName: profile?.name || fallbackName,
-                    handicap: golfInfo.handicap ? parseFloat(golfInfo.handicap) : fallbackHandicap,
+                    handicap: golfInfo.handicap || fallbackHandicap, // Store as string to preserve "+" for plus handicaps
                     homeClub: golfInfo.homeClub || '',
                     email: profile?.email || '',
                     phone: profile?.phone || ''
@@ -41371,8 +41371,17 @@ class SocietyOrganizerManager {
             let matchesHandicap = true;
             if (handicapRange !== 'all') {
                 const [min, max] = handicapRange.split('-').map(Number);
-                const handicap = member.handicap || 36;
-                matchesHandicap = handicap >= min && handicap <= max;
+                const handicapStr = String(member.handicap || '36');
+                // Parse handicap: "+1.5" becomes -1.5, "18.5" stays 18.5
+                let handicapValue;
+                if (handicapStr.startsWith('+')) {
+                    handicapValue = -parseFloat(handicapStr.substring(1));
+                } else {
+                    handicapValue = parseFloat(handicapStr) || 36;
+                }
+                // For filter ranges, treat plus handicaps as very low (they're better players)
+                // So +1.5 = -1.5, which won't match ranges like "10-18" (as intended)
+                matchesHandicap = handicapValue >= min && handicapValue <= max;
             }
 
             return matchesSearch && matchesHandicap;
@@ -41453,7 +41462,7 @@ class SocietyOrganizerManager {
                             </div>
                         </div>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${Math.round(member.handicap)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">${member.handicap}</td>
                     <td class="px-6 py-4 text-sm text-gray-600">${member.homeClub || '-'}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${joinedDate}</td>
                     <td class="px-6 py-4 whitespace-nowrap">
@@ -41494,10 +41503,18 @@ class SocietyOrganizerManager {
         const monthlyJoins = members.filter(m => new Date(m.joined_at) >= thisMonth).length;
         document.getElementById('playerDirMonthlyJoins').textContent = monthlyJoins;
 
-        // Average handicap
+        // Average handicap (convert handicaps to numbers for calculation)
         if (members.length > 0) {
-            const avgHandicap = members.reduce((sum, m) => sum + m.handicap, 0) / members.length;
-            document.getElementById('playerDirAvgHandicap').textContent = avgHandicap.toFixed(1);
+            const handicapValues = members.map(m => {
+                const h = String(m.handicap);
+                // Handle plus handicaps: "+1.5" becomes -1.5 for averaging
+                if (h.startsWith('+')) {
+                    return -parseFloat(h.substring(1));
+                }
+                return parseFloat(h) || 0;
+            });
+            const avgHandicap = handicapValues.reduce((sum, h) => sum + h, 0) / members.length;
+            document.getElementById('playerDirAvgHandicap').textContent = avgHandicap >= 0 ? avgHandicap.toFixed(1) : `+${Math.abs(avgHandicap).toFixed(1)}`;
         } else {
             document.getElementById('playerDirAvgHandicap').textContent = '-';
         }
@@ -41725,7 +41742,7 @@ class SocietyOrganizerManager {
         try {
             const golferId = document.getElementById('editUserId').value;
             const name = document.getElementById('editUserFullName').value.trim();
-            const handicap = parseFloat(document.getElementById('editUserHandicap').value);
+            const handicapInput = document.getElementById('editUserHandicap').value.trim();
             const homeClub = document.getElementById('editUserHomeClub').value.trim();
 
             if (!name) {
@@ -41733,10 +41750,28 @@ class SocietyOrganizerManager {
                 return;
             }
 
-            if (isNaN(handicap) || handicap < 0 || handicap > 54) {
+            // Validate handicap (supports +5 to 54)
+            const handicapMatch = handicapInput.match(/^(\+)?(\d+\.?\d*)$/);
+            if (!handicapMatch) {
+                DevMode.showNotification('Invalid handicap format. Use numbers like 18 or +1.5', 'error');
+                return;
+            }
+
+            const isPlus = handicapMatch[1] === '+';
+            const handicapValue = parseFloat(handicapMatch[2]);
+
+            // Validate range: +5 to 54
+            if (isPlus && (handicapValue < 0 || handicapValue > 5)) {
+                DevMode.showNotification('Plus handicaps must be between +0 and +5', 'error');
+                return;
+            }
+            if (!isPlus && (handicapValue < 0 || handicapValue > 54)) {
                 DevMode.showNotification('Handicap must be between 0 and 54', 'error');
                 return;
             }
+
+            // Store as string to preserve the "+" sign
+            const handicap = isPlus ? `+${handicapValue}` : handicapValue.toString();
 
             console.log('[SaveUserEdits] Saving:', { golferId, name, handicap, homeClub });
 
@@ -41753,7 +41788,7 @@ class SocietyOrganizerManager {
                         ...(existingProfile.profile_data || {}),
                         golfInfo: {
                             ...(existingProfile.profile_data?.golfInfo || {}),
-                            handicap: handicap.toString(),
+                            handicap: handicap, // Already a string (e.g., "+1.5" or "18")
                             homeClub: homeClub
                         }
                     }
@@ -41768,7 +41803,7 @@ class SocietyOrganizerManager {
                     name: name,
                     profile_data: {
                         golfInfo: {
-                            handicap: handicap.toString(),
+                            handicap: handicap, // Already a string (e.g., "+1.5" or "18")
                             homeClub: homeClub
                         }
                     }

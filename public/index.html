@@ -30442,9 +30442,9 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
                     console.log('[HandicapProgression] Found', rounds?.length || 0, 'rounds with handicap data');
 
-                    if (!rounds || rounds.length < 2) {
-                        // Need at least 2 rounds to show progression
-                        console.log('[HandicapProgression] Not enough rounds (need at least 2), hiding card');
+                    if (!rounds || rounds.length < 1) {
+                        // Need at least 1 round to show stats
+                        console.log('[HandicapProgression] No rounds found, hiding card');
                         card.style.display = 'none';
                         return;
                     }
@@ -30455,18 +30455,27 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     card.style.display = 'block';
 
                     // Calculate handicap changes
-                    const handicapData = rounds.map((round, index) => {
-                        const prevHandicap = index > 0 ? rounds[index - 1].handicap_used : round.handicap_used;
-                        const change = index > 0 ? round.handicap_used - prevHandicap : 0;
+                    const handicapData = rounds
+                        .map((round, index) => {
+                            const prevHandicap = index > 0 ? rounds[index - 1].handicap_used : round.handicap_used;
+                            const change = index > 0 ? round.handicap_used - prevHandicap : 0;
 
-                        return {
-                            date: new Date(round.completed_at),
-                            course: round.course_name,
-                            score: round.total_gross,
-                            handicap: round.handicap_used,
-                            change: change
-                        };
-                    });
+                            // FIX: Handle null timestamps - fall back to started_at or played_at
+                            let dateValue = round.completed_at || round.started_at || round.played_at;
+                            if (!dateValue) {
+                                console.warn('[HandicapProgression] Round missing date:', round.id);
+                                return null; // Skip rounds with no date
+                            }
+
+                            return {
+                                date: new Date(dateValue),
+                                course: round.course_name,
+                                score: round.total_gross,
+                                handicap: round.handicap_used,
+                                change: change
+                            };
+                        })
+                        .filter(d => d !== null); // Remove rounds with invalid dates
 
                     // Find min/max for chart scaling
                     const handicaps = handicapData.map(d => d.handicap);

@@ -36663,10 +36663,22 @@ class LiveScorecardSystem {
             const eventId = this.eventId;
             const scorecardId = this.scorecards[player.id];
 
+            // Get organizer_id for society events
+            let organizerId = null;
+            if (eventId) {
+                const { data: event } = await window.SupabaseDB.client
+                    .from('society_events')
+                    .select('organizer_id')
+                    .eq('id', eventId)
+                    .single();
+                organizerId = event?.organizer_id || null;
+            }
+
             // Log round info for debugging
             console.log(`[LiveScorecard] Saving round for ${player.name}:`, {
                 roundType,
                 eventId,
+                organizerId,
                 courseName,
                 holesPlayed,
                 totalGross: 0, // Will calculate below
@@ -36781,6 +36793,7 @@ class LiveScorecardSystem {
                         course_name: this.courseData?.name || null,
                         type: this.roundType || (this.isPrivateRound ? 'private' : (this.eventId ? 'society' : 'private')),
                         society_event_id: this.eventId || null,
+                        organizer_id: organizerId,
                         started_at: new Date().toISOString(),
                         completed_at: new Date().toISOString(),
                         status: 'completed',
@@ -36970,14 +36983,14 @@ class LiveScorecardSystem {
 
                     // Notify success with different message for society events
                     if (!this.isPrivateRound && this.eventId) {
+                        console.log(`[LiveScorecard] ✅ Round visible to organizer: ${organizerId}`);
                         const { data: event } = await window.SupabaseDB.client
                             .from('society_events')
-                            .select('organizer_id, title')
+                            .select('title')
                             .eq('id', this.eventId)
                             .single();
 
-                        if (event) {
-                            console.log(`[LiveScorecard] ✅ Round visible to organizer: ${event.organizer_id}`);
+                        if (event?.title) {
                             NotificationManager.show(`Round saved and posted to "${event.title}" leaderboard!`, 'success');
                         } else {
                             NotificationManager.show('Round saved and posted to event organizer!', 'success');

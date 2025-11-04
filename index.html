@@ -29706,9 +29706,56 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 return Math.round(differential * 10) / 10; // Round to 1 decimal place
             },
 
+            // Load ALL rounds (localStorage + database)
+            async getAllRounds() {
+                let allRounds = [...this.scores]; // Start with localStorage scores
+
+                // Load from database if user is logged in
+                const userId = AppState.currentUser?.lineUserId;
+                if (userId && window.SupabaseDB) {
+                    try {
+                        const { data: dbRounds, error } = await window.SupabaseDB.client
+                            .from('rounds')
+                            .select('*')
+                            .eq('golfer_id', userId)
+                            .order('completed_at', { ascending: false });
+
+                        if (!error && dbRounds) {
+                            // Convert database rounds to same format
+                            const convertedRounds = dbRounds.map(round => ({
+                                id: round.id,
+                                course: round.course_name || '-',
+                                courseId: round.course_id,
+                                tee: round.tee_marker,
+                                score: round.total_gross,
+                                holes: 18,
+                                courseRating: round.course_rating || 72.0,
+                                slopeRating: round.slope_rating || 113,
+                                date: (round.completed_at || '').split('T')[0],
+                                differential: null,
+                                timestamp: round.completed_at,
+                                source: 'database'
+                            }));
+
+                            // Calculate differentials
+                            convertedRounds.forEach(round => {
+                                round.differential = this.calculateDifferential(round);
+                            });
+
+                            allRounds = allRounds.concat(convertedRounds);
+                        }
+                    } catch (error) {
+                        console.error('[GolfScoreSystem] Error loading database rounds:', error);
+                    }
+                }
+
+                return allRounds;
+            },
+
             // WHS Handicap Index Calculation
-            calculateHandicapIndex() {
-                const validScores = this.scores.filter(s => s.holes === 18 && s.differential !== null);
+            async calculateHandicapIndex() {
+                const allRounds = await this.getAllRounds();
+                const validScores = allRounds.filter(s => s.holes === 18 && s.differential !== null);
 
                 if (validScores.length < 3) {
                     return null; // Need at least 3 scores for WHS
@@ -29740,16 +29787,20 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 return Math.round(handicapIndex * 10) / 10; // Round to 1 decimal place
             },
 
-            updateStatistics() {
-                if (this.scores.length === 0) return;
+            async updateStatistics() {
+                // Get ALL rounds from both sources
+                const allRounds = await this.getAllRounds();
+                if (allRounds.length === 0) return;
 
                 // Calculate WHS Handicap Index
-                const whsHandicap = this.calculateHandicapIndex();
+                const whsHandicap = await this.calculateHandicapIndex();
                 const handicapElements = document.querySelectorAll('.user-handicap');
+                const validScores = allRounds.filter(s => s.holes === 18);
+
                 handicapElements.forEach(el => {
                     if (whsHandicap !== null) {
                         el.textContent = whsHandicap.toFixed(1);
-                        el.setAttribute('title', `WHS Handicap Index (${this.scores.filter(s => s.holes === 18).length} qualifying rounds)`);
+                        el.setAttribute('title', `WHS Handicap Index (${validScores.length} qualifying rounds)`);
                     } else {
                         el.textContent = 'N/A';
                         el.setAttribute('title', 'Need at least 3 eighteen-hole rounds for WHS handicap');
@@ -29757,7 +29808,6 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 });
 
                 // Calculate average score (only for 18-hole rounds)
-                const validScores = this.scores.filter(s => s.holes === 18);
                 const avgScoreElements = document.querySelectorAll('#golfer-stats .metric-value');
 
                 if (validScores.length > 0) {

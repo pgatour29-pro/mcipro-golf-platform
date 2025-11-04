@@ -20212,10 +20212,6 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 <span class="material-symbols-outlined">emergency</span>
                             </button>
 
-                            <!-- Debug Auth Button (shown only when debug enabled) -->
-                            <button id="debugAuthBtn" onclick="DebugAuth.show()" class="header-btn header-btn-neutral" title="Auth Status" style="display: none;">
-                                <span class="material-symbols-outlined">bug_report</span>
-                            </button>
                         </div>
 
                         <!-- Language & Account Group -->
@@ -23059,21 +23055,6 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </button>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <!-- Debug Auth Overlay/Modal -->
-    <div id="debugAuthOverlay" class="debug-auth-overlay" onclick="DebugAuth.hide()"></div>
-    <div id="debugAuthModal" class="debug-auth-modal">
-        <div class="debug-auth-header">
-            <div class="font-semibold">Authentication Status</div>
-            <div class="debug-auth-actions">
-                <button class="btn-secondary px-3 py-1" onclick="DebugAuth.copy()">Copy</button>
-                <button class="btn-primary px-3 py-1" onclick="DebugAuth.hide()">Close</button>
-            </div>
-        </div>
-        <div class="debug-auth-body">
-            <div id="debugAuthContent" class="space-y-3"></div>
         </div>
     </div>
 
@@ -49089,112 +49070,6 @@ showOrganizerTab = function(tabName) {
 
         console.log('[Chat] Professional chat module loaded');
 
-    </script>
-
-    <!-- Debug Auth Status Script -->
-    <script>
-        window.DebugAuth = {
-            async show() {
-                const overlay = document.getElementById('debugAuthOverlay');
-                const modal = document.getElementById('debugAuthModal');
-                const content = document.getElementById('debugAuthContent');
-
-                const info = await this.collect();
-                content.innerHTML = this.render(info);
-                if (overlay) overlay.style.display = 'block';
-                if (modal) modal.style.display = 'block';
-            },
-            hide() {
-                const overlay = document.getElementById('debugAuthOverlay');
-                const modal = document.getElementById('debugAuthModal');
-                if (overlay) overlay.style.display = 'none';
-                if (modal) modal.style.display = 'none';
-            },
-            copy() {
-                const el = document.getElementById('debugAuthContent');
-                const text = el ? el.innerText : '';
-                navigator.clipboard?.writeText(text).then(() => {
-                    window.NotificationManager?.show?.('Auth status copied to clipboard', 'success');
-                }).catch(()=>{});
-            },
-            async collect() {
-                const info = { liff: {}, supabase: {}, app: {} };
-                try {
-                    info.app.version = (window.AppVersion || 'n/a');
-                    info.app.time = new Date().toISOString();
-                    if (typeof liff !== 'undefined') {
-                        info.liff.available = true;
-                        info.liff.isLoggedIn = !!liff.isLoggedIn?.();
-                        info.liff.idTokenPresent = !!liff.getIDToken?.();
-                        try {
-                            if (info.liff.isLoggedIn) {
-                                const profile = await liff.getProfile();
-                                info.liff.userId = profile?.userId || 'n/a';
-                                info.liff.displayName = profile?.displayName || 'n/a';
-                            }
-                        } catch {}
-                    } else {
-                        info.liff.available = false;
-                    }
-
-                    if (window.SupabaseDB?.client) {
-                        info.supabase.available = true;
-                        const { data: { session } } = await window.SupabaseDB.client.auth.getSession();
-                        info.supabase.hasSession = !!session?.user;
-                        info.supabase.userId = session?.user?.id || 'n/a';
-                        info.supabase.expiresAt = session?.expires_at || 'n/a';
-                    } else {
-                        info.supabase.available = false;
-                    }
-                } catch (e) {
-                    info.error = String(e);
-                }
-                return info;
-            },
-            render(info) {
-                return `
-                    <div class="debug-auth-grid">
-                      <div class="debug-auth-card">
-                        <div class="font-medium mb-2">LIFF</div>
-                        <div class="debug-auth-kv">
-                          <div><span>available</span><span>${info.liff.available}</span></div>
-                          <div><span>isLoggedIn</span><span>${info.liff.isLoggedIn ?? 'n/a'}</span></div>
-                          <div><span>idTokenPresent</span><span>${info.liff.idTokenPresent ?? 'n/a'}</span></div>
-                          <div><span>userId</span><span>${info.liff.userId ?? 'n/a'}</span></div>
-                          <div><span>displayName</span><span>${info.liff.displayName ?? 'n/a'}</span></div>
-                        </div>
-                      </div>
-                      <div class="debug-auth-card">
-                        <div class="font-medium mb-2">Supabase</div>
-                        <div class="debug-auth-kv">
-                          <div><span>available</span><span>${info.supabase.available}</span></div>
-                          <div><span>hasSession</span><span>${info.supabase.hasSession ?? 'n/a'}</span></div>
-                          <div><span>userId</span><span>${info.supabase.userId ?? 'n/a'}</span></div>
-                          <div><span>expiresAt</span><span>${info.supabase.expiresAt ?? 'n/a'}</span></div>
-                        </div>
-                      </div>
-                    </div>
-                    <div class="debug-auth-card mt-3">
-                      <div class="font-medium mb-2">App</div>
-                      <div class="debug-auth-kv">
-                        <div><span>time</span><span>${info.app.time}</span></div>
-                        <div><span>version</span><span>${info.app.version}</span></div>
-                      </div>
-                      ${info.error ? `<div class="text-red-600 text-sm mt-2">${info.error}</div>` : ''}
-                    `;
-            }
-        };
-
-        // Show debug button if enabled by hash or localStorage
-        (function () {
-            try {
-                const debugEnabled = (location.hash.includes('debug') || localStorage.getItem('mcipro_debug') === '1');
-                if (debugEnabled) {
-                    const btn = document.getElementById('debugAuthBtn');
-                    if (btn) btn.style.display = 'inline-flex';
-                }
-            } catch {}
-        })();
     </script>
 
     <!-- Mobile Drawer + Overlay -->

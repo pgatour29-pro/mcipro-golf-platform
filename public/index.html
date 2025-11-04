@@ -41505,11 +41505,22 @@ class SocietyOrganizerManager {
 
     async editMember(golferId) {
         try {
+            console.log('[EditMember] Loading profile for:', golferId);
+
+            // Wait for Supabase to be ready
+            if (!window.SupabaseDB || !window.SupabaseDB.client) {
+                console.error('[EditMember] Supabase not ready');
+                DevMode.showNotification('Database not ready, please try again', 'error');
+                return;
+            }
+
             // Fetch user profile
             const profile = await window.SupabaseDB.getUserProfile(golferId);
+            console.log('[EditMember] Profile loaded:', profile ? 'Success' : 'Not found');
 
             if (!profile) {
-                DevMode.showNotification('User profile not found', 'error');
+                console.error('[EditMember] Profile not found for ID:', golferId);
+                DevMode.showNotification(`User profile not found for ${golferId}`, 'error');
                 return;
             }
 
@@ -41524,11 +41535,12 @@ class SocietyOrganizerManager {
             const homeClub = profile.profile_data?.golfInfo?.homeClub || '';
             document.getElementById('editUserHomeClub').value = homeClub;
 
+            console.log('[EditMember] Modal populated, showing now');
             // Show modal
             document.getElementById('editUserModal').style.display = 'flex';
         } catch (error) {
-            console.error('[EditMember] Error loading profile:', error);
-            DevMode.showNotification('Failed to load user profile', 'error');
+            console.error('[EditMember] Error:', error);
+            DevMode.showNotification('Failed to load user profile: ' + error.message, 'error');
         }
     }
 

@@ -39463,6 +39463,7 @@ class LiveScorecardSystem {
             }));
 
             let totalGross = 0;
+            let totalNet = 0;
             let totalStableford = 0;
             let totalModifiedStableford = 0;
             let totalNassau = null;
@@ -39471,6 +39472,18 @@ class LiveScorecardSystem {
             // Calculate gross total
             for (const s of scoresArray) {
                 totalGross += s.gross_score;
+            }
+
+            // Calculate net total (needed for stroke play and other formats)
+            if (this.courseData && this.courseData.holes) {
+                const shotAllocation = engine.allocHandicapShots(this.courseData.holes, player.handicap);
+                for (const s of scoresArray) {
+                    const shotsReceived = shotAllocation[s.hole_number] || 0;
+                    const netScore = engine.netStrokesForHole(s.gross_score, shotsReceived);
+                    totalNet += netScore;
+                }
+            } else {
+                totalNet = totalGross; // Fallback if no course data
             }
 
             // Calculate ALL selected formats simultaneously
@@ -39532,6 +39545,7 @@ class LiveScorecardSystem {
                 handicap: player.handicap,
                 holes_played: holesPlayed,
                 total_gross: totalGross,
+                total_net: totalNet,
                 total_stableford: totalStableford,
                 total_modified_stableford: totalModifiedStableford,
                 nassau: totalNassau,

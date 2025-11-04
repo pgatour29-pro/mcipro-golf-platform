@@ -30155,24 +30155,37 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             console.error('[Round History] Error loading from database:', error);
                         } else if (dbRounds && dbRounds.length > 0) {
                             // Convert database format to display format
-                            const convertedRounds = dbRounds.map(round => ({
-                                id: round.id,
-                                course: round.course_name || round.course || '-',
-                                courseId: round.course_id,
-                                tee: round.tee_marker || round.tee_used,
-                                score: round.total_gross ?? round.total_score ?? round.score ?? 0,
-                                holes: round.holes || round.holes_played || 18, // default to 18 if not present
-                                date: (round.completed_at || round.started_at || round.played_at || '').split('T')[0] || new Date().toISOString().split('T')[0],
-                                courseRating: round.course_rating || 72.0,
-                                slopeRating: round.slope_rating || 113,
-                                notes: round.notes || '',
-                                differential: null, // Will calculate below
-                                timestamp: round.completed_at || round.played_at || round.started_at,
-                                source: 'database',
-                                type: round.type || (round.is_tournament ? 'society' : 'practice'),
-                                stableford: round.total_stableford ?? round.stableford ?? null,
-                                handicapUsed: round.handicap_used
-                            }));
+                            const convertedRounds = dbRounds.map(round => {
+                                // FIX: Handle null timestamps - use first valid date or skip
+                                let dateValue = round.completed_at || round.started_at || round.played_at;
+                                let dateString;
+                                if (dateValue) {
+                                    dateString = dateValue.split('T')[0];
+                                } else {
+                                    // Use today as fallback
+                                    dateString = new Date().toISOString().split('T')[0];
+                                    console.warn('[Round History] Round missing date, using today:', round.id);
+                                }
+
+                                return {
+                                    id: round.id,
+                                    course: round.course_name || round.course || '-',
+                                    courseId: round.course_id,
+                                    tee: round.tee_marker || round.tee_used,
+                                    score: round.total_gross ?? round.total_score ?? round.score ?? 0,
+                                    holes: round.holes || round.holes_played || 18, // default to 18 if not present
+                                    date: dateString,
+                                    courseRating: round.course_rating || 72.0,
+                                    slopeRating: round.slope_rating || 113,
+                                    notes: round.notes || '',
+                                    differential: null, // Will calculate below
+                                    timestamp: dateValue, // Store the valid timestamp
+                                    source: 'database',
+                                    type: round.type || (round.is_tournament ? 'society' : 'practice'),
+                                    stableford: round.total_stableford ?? round.stableford ?? null,
+                                    handicapUsed: round.handicap_used
+                                };
+                            });
 
                             // Calculate differentials for database rounds
                             convertedRounds.forEach(round => {
@@ -30229,9 +30242,26 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 // Use current handicap from profile instead of calculating
                 const currentHandicap = AppState.currentUser?.profile_data?.golfInfo?.handicap || AppState.currentUser?.handicap;
 
+                // FIX: Display plus handicaps correctly (keep "+" prefix)
+                let handicapDisplay = '-';
+                if (currentHandicap !== null && currentHandicap !== undefined) {
+                    if (typeof currentHandicap === 'string' && currentHandicap.startsWith('+')) {
+                        // Already has + prefix
+                        handicapDisplay = currentHandicap;
+                    } else {
+                        const numericHandicap = Number(currentHandicap);
+                        if (numericHandicap < 0) {
+                            // Negative number = plus handicap
+                            handicapDisplay = `+${Math.abs(numericHandicap).toFixed(1)}`;
+                        } else {
+                            handicapDisplay = numericHandicap.toFixed(1);
+                        }
+                    }
+                }
+
                 document.getElementById('rounds-total-count').textContent = totalRounds;
                 document.getElementById('rounds-avg-score').textContent = avgScore;
-                document.getElementById('rounds-handicap').textContent = currentHandicap !== null && currentHandicap !== undefined ? Number(currentHandicap).toFixed(1) : '-';
+                document.getElementById('rounds-handicap').textContent = handicapDisplay;
                 document.getElementById('rounds-best-score').textContent = bestScore;
 
                 // Populate table
@@ -30240,11 +30270,23 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     const diff = score.score - par;
                     const diffDisplay = diff === 0 ? 'E' : (diff > 0 ? `+${diff}` : diff);
                     const scoreColor = diff <= 0 ? 'text-green-600' : (diff <= 5 ? 'text-orange-600' : 'text-red-600');
-                    const formattedDate = new Date(score.date || score.timestamp).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric'
-                    });
+
+                    // FIX: Handle null dates properly - avoid Jan 1, 1970
+                    let formattedDate;
+                    const dateValue = score.date || score.timestamp;
+                    if (dateValue) {
+                        try {
+                            formattedDate = new Date(dateValue).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                            });
+                        } catch (e) {
+                            formattedDate = 'Invalid Date';
+                        }
+                    } else {
+                        formattedDate = 'Unknown Date';
+                    }
 
                     // Show source badge
                     const sourceBadge = score.source === 'database'

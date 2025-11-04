@@ -34558,11 +34558,18 @@ class SocietyGolfSupabase {
         await this.waitForSupabase();
 
         // First, get the society_id from society_profiles
-        const { data: societyData, error: societyError } = await window.SupabaseDB.client
+        // Filter by both society_name AND organizer_id to avoid duplicates
+        let query = window.SupabaseDB.client
             .from('society_profiles')
             .select('id')
-            .eq('society_name', societyName)
-            .single();
+            .eq('society_name', societyName);
+
+        // Add organizer_id filter if provided
+        if (organizerId) {
+            query = query.eq('organizer_id', organizerId);
+        }
+
+        const { data: societyData, error: societyError } = await query.single();
 
         if (societyError || !societyData) {
             console.error('[SocietyGolfDB] Error loading society:', societyError);

@@ -33828,7 +33828,7 @@ class SocietyGolfSupabase {
                                 id: m.golfer_id,
                                 name: profile.name,
                                 username: profile.name,
-                                handicap: golfInfo.handicap ? parseFloat(golfInfo.handicap) : 36,
+                                handicap: golfInfo.handicap !== undefined ? window.LiveScorecardManager.GolfScoringEngine.parseHandicap(golfInfo.handicap) : 36,
                                 homeClub: golfInfo.homeClub || '',
                                 profileData: profile.profile_data,
                                 isSocietyMember: true,
@@ -33861,7 +33861,7 @@ class SocietyGolfSupabase {
                             id: p.line_user_id,
                             name: p.name,
                             username: p.name,
-                            handicap: golfInfo.handicap ? parseFloat(golfInfo.handicap) : 36,
+                            handicap: golfInfo.handicap !== undefined ? window.LiveScorecardManager.GolfScoringEngine.parseHandicap(golfInfo.handicap) : 36,
                             homeClub: golfInfo.homeClub || '',
                             profileData: p.profile_data,
                             isSocietyMember: false
@@ -35055,6 +35055,21 @@ class LiveScorecardSystem {
             eagle: 4,
             albatross: 5,
             condor: 6
+        },
+
+        // HELPER: Parse handicap string to number
+        // "+1.5" -> -1.5 (plus handicap = negative number for calculations)
+        // "18" -> 18 (regular handicap = positive)
+        // 2.5 -> 2.5 (already numeric)
+        parseHandicap(handicap) {
+            if (typeof handicap === 'string') {
+                if (handicap.startsWith('+')) {
+                    // Plus handicap: "+1.5" becomes -1.5
+                    return -parseFloat(handicap.substring(1));
+                }
+                return parseFloat(handicap) || 0;
+            }
+            return parseFloat(handicap) || 0;
         },
 
         // Allocate handicap shots across holes by stroke index
@@ -39313,7 +39328,8 @@ class LiveScorecardSystem {
         if (!this.players || this.players.length === 0) return 0;
 
         // CRITICAL FIX: Convert handicaps to numbers to prevent string concatenation
-        const totalHcp = this.players.reduce((sum, p) => sum + (parseFloat(p.handicap) || 0), 0);
+        // Use parseHandicap to correctly handle plus handicaps ("+1.5" -> -1.5)
+        const totalHcp = this.players.reduce((sum, p) => sum + this.GolfScoringEngine.parseHandicap(p.handicap), 0);
         const teamSize = this.players.length;
 
         let multiplier;
@@ -41177,7 +41193,8 @@ window.calculateScrambleHcp = function() {
 
     const method = document.querySelector('input[name="scrambleHcpMethod"]:checked')?.value;
     // CRITICAL FIX: Convert handicaps to numbers to avoid string concatenation bug
-    const handicaps = players.map(p => parseFloat(p.handicap) || 0);
+    // Use parseHandicap to correctly handle plus handicaps ("+1.5" -> -1.5)
+    const handicaps = players.map(p => window.LiveScorecardManager.GolfScoringEngine.parseHandicap(p.handicap));
     const sortedHandicaps = [...handicaps].sort((a, b) => a - b);
     let teamHcp = 0;
     let details = '';

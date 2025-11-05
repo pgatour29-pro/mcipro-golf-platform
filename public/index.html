@@ -38113,7 +38113,10 @@ class LiveScorecardSystem {
             const holeInserts = [];
             for (let holeNum = 1; holeNum <= 18; holeNum++) {
                 const grossScore = this.scoresCache[player.id]?.[holeNum];
-                if (!grossScore) continue; // Skip holes with no score
+                if (!grossScore) {
+                    console.log(`[LiveScorecard] No score for hole ${holeNum}, skipping...`);
+                    continue; // Skip holes with no score
+                }
 
                 const holeData = this.courseData.holes?.[holeNum - 1];
                 const par = holeData?.par || 4;
@@ -38144,17 +38147,31 @@ class LiveScorecardSystem {
                 });
             }
 
+            console.log(`[LiveScorecard] Prepared ${holeInserts.length} holes for insert`);
+            console.log(`[LiveScorecard] Scores cache keys:`, Object.keys(this.scoresCache));
+            console.log(`[LiveScorecard] Player ID being saved:`, player.id);
+            console.log(`[LiveScorecard] Scores for this player:`, this.scoresCache[player.id]);
+
             // Insert all holes at once
             if (holeInserts.length > 0) {
+                console.log(`[LiveScorecard] Inserting ${holeInserts.length} holes to round_holes table...`);
                 const { error: holesError } = await window.SupabaseDB.client
                     .from('round_holes')
                     .insert(holeInserts);
 
                 if (holesError) {
-                    console.error('[LiveScorecard] Error saving hole details:', holesError);
+                    console.error('[LiveScorecard] ❌ ERROR saving hole details:', holesError);
+                    console.error('[LiveScorecard] Failed hole inserts:', JSON.stringify(holeInserts, null, 2));
+                    // Don't throw - let round save succeed even if holes fail
+                    NotificationManager.show('Warning: Round saved but hole-by-hole details may be incomplete', 'warning');
                 } else {
-                    console.log(`[LiveScorecard] ✅ Saved ${holeInserts.length} hole details with scramble tracking`);
+                    console.log(`[LiveScorecard] ✅ Successfully saved ${holeInserts.length} hole details with scramble tracking`);
                 }
+            } else {
+                console.warn('[LiveScorecard] ⚠️  WARNING: No holes to insert! scoresCache may be empty.');
+                console.warn('[LiveScorecard] scoresCache:', this.scoresCache);
+                console.warn('[LiveScorecard] player.id:', player.id);
+                NotificationManager.show('Warning: Round saved but no hole-by-hole data found', 'warning');
             }
 
             return round.id;

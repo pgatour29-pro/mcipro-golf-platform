@@ -41126,13 +41126,40 @@ class LiveScorecardSystem {
                                     const thru = holesPlayed === 18 ? 'F' : holesPlayed === 0 ? '-' : holesPlayed.toString();
                                     const displayScore = getDisplayScore(entry) || 0;
 
+                                    // Calculate net score correctly for plus handicaps
+                                    const parsedHandicap = LiveScorecardSystem.GolfScoringEngine.parseHandicap(entry.handicap || 0);
+
+                                    // When no holes played, show starting position (handicap relative to par)
+                                    // When holes played, show actual total_net calculated with shot allocation
+                                    let netDisplay;
+                                    if (holesPlayed === 0) {
+                                        // Starting position: regular handicaps show negative, plus handicaps show positive
+                                        // Round to match how shots are allocated (Math.round is used in allocHandicapShots)
+                                        const roundedHandicap = Math.round(parsedHandicap);
+                                        if (roundedHandicap === 0) {
+                                            netDisplay = 'E';
+                                        } else if (roundedHandicap > 0) {
+                                            netDisplay = `+${roundedHandicap}`;
+                                        } else {
+                                            netDisplay = roundedHandicap;
+                                        }
+                                    } else {
+                                        // Use properly calculated total_net from getGroupLeaderboard()
+                                        const netScore = entry.total_net || (displayScore - parsedHandicap);
+                                        const par = (this.courseData?.par || 72) * (holesPlayed / 18); // Pro-rated par
+                                        const netToPar = netScore - par;
+                                        netDisplay = netToPar === 0 ? 'E'
+                                                   : netToPar > 0 ? `+${netToPar}`
+                                                   : netToPar;
+                                    }
+
                                     return `
                                         <tr class="border-b border-gray-200">
                                             <td class="py-2 px-2 font-bold">${index + 1}</td>
                                             <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
                                             <td class="py-2 px-2">${thru}</td>
                                             <td class="py-2 px-2 font-bold text-lg text-center">${displayScore}</td>
-                                            <td class="py-2 px-2 font-bold text-lg text-center bg-blue-50">${displayScore - (entry.handicap || 0)}</td>
+                                            <td class="py-2 px-2 font-bold text-lg text-center bg-blue-50">${netDisplay}</td>
                                         </tr>
                                     `;
                                 }).join('')}

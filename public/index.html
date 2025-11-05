@@ -48861,18 +48861,39 @@ class GolferEventsManager {
     // ======================
 
     filterRegistrations(regs, mode) {
-        const now = new Date().toISOString();
+        // Get today's date at midnight (start of day) for comparison
+        // Events stay in "Upcoming" until AFTER midnight on the event date
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayDateString = today.toISOString().split('T')[0]; // YYYY-MM-DD
+
         if (mode === 'all') return regs;
+
         if (mode === 'upcoming') {
             return regs.filter(r => {
                 const eventTime = r.society_events?.event_date || r.society_events?.start_date || r.society_events?.date || r.society_events?.start_time || r.created_at;
-                return eventTime >= now;
+                if (!eventTime) return false;
+
+                // Extract date portion only (YYYY-MM-DD) for comparison
+                const eventDateString = eventTime.split('T')[0];
+
+                // Event is upcoming if its date is >= today
+                // This keeps today's events in "Upcoming" until after midnight
+                return eventDateString >= todayDateString;
             });
         }
+
         // Past
         return regs.filter(r => {
             const eventTime = r.society_events?.end_date || r.society_events?.event_date || r.society_events?.start_date || r.society_events?.end_time || r.society_events?.date || r.society_events?.start_time || r.created_at;
-            return eventTime < now;
+            if (!eventTime) return false;
+
+            // Extract date portion only (YYYY-MM-DD) for comparison
+            const eventDateString = eventTime.split('T')[0];
+
+            // Event is past if its date is < today
+            // This means events only move to "Past" AFTER midnight on the event date
+            return eventDateString < todayDateString;
         });
     }
 

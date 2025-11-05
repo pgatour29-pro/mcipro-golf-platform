@@ -1,7 +1,7 @@
 // Full chat UI glue (vanilla JS) wired to Supabase helpers
-import { openOrCreateDM, listRooms, fetchMessages, sendMessage, subscribeToConversation, markRead, typing, subscribeTyping, getUnreadCount, updateUnreadBadge, deleteRoom, archiveRoom, unarchiveRoom, isRoomArchived } from './chat-database-functions.js';
-import { getSupabaseClient } from './supabaseClient.js';
-import { ensureSupabaseSessionWithLIFF } from './auth-bridge-v2.js';
+import { openOrCreateDM, listRooms, fetchMessages, sendMessage, subscribeToConversation, markRead, typing, subscribeTyping, getUnreadCount, updateUnreadBadge, deleteRoom, archiveRoom, unarchiveRoom, isRoomArchived } from './chat-database-functions.js?v=549d6d27';
+import { getSupabaseClient } from './supabaseClient.js?v=549d6d27';
+import { ensureSupabaseSessionWithLIFF } from './auth-bridge-v2.js?v=549d6d27';
 
 const state = {
   currentConversationId: null,

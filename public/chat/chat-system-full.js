@@ -266,31 +266,37 @@ async function openConversation(conversationId) {
 
   // CRITICAL FIX: AWAIT subscription to ensure it's ready before messages arrive
   state.channels[conversationId] = await subscribeToConversation(conversationId, async (m) => {
-    console.log('[Chat] Real-time message received:', m.id);
+    console.log('[Chat] 📨 Real-time message received:', m.id, 'from:', m.sender_id, 'room:', conversationId);
     if (state.currentConversationId === conversationId) {
+      console.log('[Chat] 📨 Message is for current conversation');
+
       // Set-based deduplication (faster than DOM queries)
       if (seenMessageIds.has(m.id)) {
-        console.log('[Chat] Message already displayed (Set dedup)');
+        console.log('[Chat] ⚠️ Message already displayed (Set dedup)');
         return;
       }
 
       // OPTIMISTIC RENDERING CLEANUP: Remove any temp messages from this sender with same content
       if (m.sender_id === cachedUserId) {
+        console.log('[Chat] 🧹 Cleaning up optimistic message for sender:', m.sender_id);
         const tempMessages = listEl.querySelectorAll('[data-temp-id]');
+        console.log('[Chat] 🧹 Found', tempMessages.length, 'temp messages');
         for (const tempEl of tempMessages) {
           const tempContent = tempEl.querySelector('.bubble')?.textContent;
           if (tempContent === m.content) {
-            console.log('[Chat] Removing optimistic temp message, replaced by real:', m.id);
+            console.log('[Chat] 🧹 Removing optimistic temp message, replaced by real:', m.id);
             tempEl.remove();
             break; // Only remove one
           }
         }
       }
 
+      console.log('[Chat] 🎨 Rendering real message:', m.id);
       rememberId(m.id); // Track with memory cap
       const wrapper = renderMessage(m, cachedUserId);
       listEl.appendChild(wrapper);
       smartScrollToBottom(listEl); // Only scroll if user is near bottom
+      console.log('[Chat] ✅ Real message rendered successfully');
 
       // Mark as read immediately if we're viewing this conversation
       if (m.sender_id !== cachedUserId) {
@@ -349,12 +355,27 @@ async function openConversation(conversationId) {
 }
 
 async function sendCurrent() {
+  console.log('[Chat] 📤 sendCurrent called');
   const input = document.querySelector('#composer');
   const body = input.value.trim();
-  if (!body || !state.currentConversationId) return;
+
+  if (!body) {
+    console.warn('[Chat] ⚠️ No message body, ignoring');
+    return;
+  }
+
+  if (!state.currentConversationId) {
+    console.error('[Chat] ❌ No conversation selected!');
+    return;
+  }
+
+  console.log('[Chat] 📤 Sending message to room:', state.currentConversationId, 'body:', body);
 
   const listEl = document.querySelector('#messages');
-  if (!listEl) return;
+  if (!listEl) {
+    console.error('[Chat] ❌ #messages element not found');
+    return;
+  }
 
   // OPTIMISTIC RENDERING: Show message immediately
   const tempId = `temp-${Date.now()}-${Math.random()}`;
@@ -365,6 +386,8 @@ async function sendCurrent() {
     content: body,
     created_at: new Date().toISOString()
   };
+
+  console.log('[Chat] 🎨 Rendering optimistic message:', tempId);
 
   // Render optimistically
   const wrapper = renderMessage(optimisticMessage, cachedUserId);
@@ -377,12 +400,14 @@ async function sendCurrent() {
 
   try {
     // Send to database
+    console.log('[Chat] 💾 Calling sendMessage API...');
     await sendMessage(state.currentConversationId, body);
+    console.log('[Chat] ✅ Message sent successfully to database');
 
     // Remove temp message when real one arrives (realtime subscription will add it)
     // The dedup logic will prevent the realtime message from being added twice
   } catch (error) {
-    console.error('[Chat] Send failed:', error);
+    console.error('[Chat] ❌ Send failed:', error);
 
     // Remove optimistic message on error
     const tempEl = document.querySelector(`[data-temp-id="${tempId}"]`);
@@ -1531,9 +1556,11 @@ export async function subscribeGlobalMessages() {
 
   const onRealtimeInsert = (payload) => {
     const message = payload.new;
+    console.log('[Chat] 🌍 Global subscription received message:', message.id, 'from:', message.sender, 'to room:', message.room_id);
 
     // Only process messages from others
     if (message.sender !== cachedUserId) {
+      console.log('[Chat] 🌍 Message is from another user, processing...');
       const normalizedMsg = {
         id: message.id,
         room_id: message.room_id,
@@ -1542,7 +1569,10 @@ export async function subscribeGlobalMessages() {
         created_at: message.created_at
       };
       const added = processIncomingMessage(normalizedMsg);
+      console.log('[Chat] 🌍 Message processed, added:', added);
       if (added) state.lastRealtimeAt = Date.now(); // Track freshness
+    } else {
+      console.log('[Chat] 🌍 Message is from self, ignoring (handled by room subscription)');
     }
   };
 

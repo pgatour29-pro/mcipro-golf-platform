@@ -1,5 +1,5 @@
 // MciPro Chat Database Functions - FIXED VERSION
-import { getSupabaseClient } from './supabaseClient.js?v=209bbf69';
+import { getSupabaseClient } from './supabaseClient.js?v=ed791498';
 
 export async function openOrCreateDM(targetUserId) {
   const supabase = await getSupabaseClient();
@@ -205,7 +205,22 @@ export async function markRead(conversationId) {
   // Update all messages in this room as read by storing the timestamp
   const now = new Date().toISOString();
 
-  // Store last read time in localStorage for this user/room combination
+  // Update last_read_at in database (for unread count queries)
+  try {
+    const { error } = await supabase
+      .from('chat_room_members')
+      .update({ last_read_at: now })
+      .eq('room_id', conversationId)
+      .eq('user_id', user.id);
+
+    if (error) {
+      console.warn('[Chat] Failed to update last_read_at:', error);
+    }
+  } catch (err) {
+    console.warn('[Chat] Error updating last_read_at:', err);
+  }
+
+  // Store last read time in localStorage for this user/room combination (backup)
   const readKey = `chat_read_${user.id}_${conversationId}`;
   localStorage.setItem(readKey, now);
 
@@ -282,6 +297,13 @@ const unreadCountCache = {
   TTL: 30000 // 30 seconds
 };
 
+// Circuit breaker for batch unread RPC errors
+const unreadRPCCircuit = {
+  disabledUntil: 0,
+  failCount: 0,
+  baseBackoffMs: 300000 // 5 minutes
+};
+
 /**
  * Get total unread message count across all rooms - OPTIMIZED
  * Uses single RPC call + 30-second caching to eliminate N+1 queries
@@ -308,15 +330,31 @@ export async function getTotalUnreadCount() {
     }
   }
 
+  // If RPC recently failed, use fallback without hitting server (circuit open)
+  if (Date.now() < unreadRPCCircuit.disabledUntil) {
+    return getTotalUnreadCountFallback();
+  }
+
   // Use RPC function to get batch unread counts
-  const { data, error } = await supabase.rpc('get_batch_unread_counts', {
-    p_user_id: user.id,
-    p_last_read_map: lastReadMap
-  });
+  let data, error;
+  try {
+    ({ data, error } = await supabase.rpc('get_batch_unread_counts', {
+      p_user_id: user.id,
+      p_last_read_map: lastReadMap
+    }));
+  } catch (e) {
+    error = e;
+  }
 
   if (error) {
-    console.error('[Chat] Error getting batch unread counts:', error);
-    // Fallback to old method if RPC fails
+    // Throttle noisy console logs; only log first failure per window
+    if (unreadRPCCircuit.failCount === 0 || Date.now() > unreadRPCCircuit.disabledUntil) {
+      console.warn('[Chat] get_batch_unread_counts RPC failed — using fallback');
+    }
+    // Exponential backoff window before next RPC attempt
+    unreadRPCCircuit.failCount = Math.min(unreadRPCCircuit.failCount + 1, 5);
+    const backoff = unreadRPCCircuit.baseBackoffMs * Math.pow(2, unreadRPCCircuit.failCount - 1);
+    unreadRPCCircuit.disabledUntil = Date.now() + Math.min(backoff, 60 * 60 * 1000); // cap at 1 hour
     return getTotalUnreadCountFallback();
   }
 
@@ -327,6 +365,9 @@ export async function getTotalUnreadCount() {
   unreadCountCache.timestamp = now;
 
   console.log('[Chat] Batch unread count:', totalUnread, '(cached for 30s)');
+  // Reset circuit on success
+  unreadRPCCircuit.failCount = 0;
+  unreadRPCCircuit.disabledUntil = 0;
   return totalUnread;
 }
 

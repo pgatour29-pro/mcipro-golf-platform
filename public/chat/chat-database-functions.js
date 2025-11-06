@@ -1,5 +1,5 @@
 // MciPro Chat Database Functions - FIXED VERSION
-import { getSupabaseClient } from './supabaseClient.js?v=49b1a57c';
+import { getSupabaseClient } from './supabaseClient.js?v=279e885e';
 
 export async function openOrCreateDM(targetUserId) {
   const supabase = await getSupabaseClient();

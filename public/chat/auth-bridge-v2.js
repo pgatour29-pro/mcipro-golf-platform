@@ -2,7 +2,7 @@
 // Automatically creates anonymous Supabase session and links it to LINE user ID
 // FORCE DEPLOY: 2025-10-20T16:30:00Z
 
-import { getSupabaseClient } from './supabaseClient.js?v=49b1a57c';
+import { getSupabaseClient } from './supabaseClient.js?v=279e885e';
 
 /**
  * Ensures a Supabase session exists for the current LINE user

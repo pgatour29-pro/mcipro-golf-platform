@@ -530,7 +530,7 @@ function createRoomListItem(room, userId) {
     if (deleteBtn && /�/.test(deleteBtn.textContent)) {
       deleteBtn.textContent = 'Delete';
     }
-  } catch {}
+  } catch (e) { /* ignore */ }
 
   li.appendChild(nameSpan);
   li.appendChild(rightContainer);
@@ -624,7 +624,7 @@ async function refreshSidebar(forceFetch = false) {
     try {
       arrow.textContent = state.privateExpanded ? '▾' : '▸';
       label.textContent = `Private (${archivedRooms.length})`;
-    } catch {}
+    } catch (e) { /* ignore */ }
 
     privateFolderHeader.onclick = () => {
       state.privateExpanded = !state.privateExpanded;
@@ -943,7 +943,7 @@ function openGroupBuilderModal() {
   document.body.appendChild(m);
 
   // Ensure close button renders correctly
-  try { m.querySelector('[data-close]')?.textContent = '×'; } catch {}
+  try { m.querySelector('[data-close]')?.textContent = '×'; } catch (e) { /* ignore */ }
 
   m.addEventListener('click', (e) => {
     if (e.target.dataset.close !== undefined || e.target === m) m.remove();
@@ -1537,7 +1537,7 @@ export async function subscribeGlobalMessages() {
           }, delay);
         } else {
           console.error('[Chat] ❌ Max retries reached - falling back to polling mode');
-          try { startPollingFallback(); } catch {}
+          try { startPollingFallback(); } catch (e) { /* ignore */ }
         }
       }
     });
@@ -1829,7 +1829,7 @@ function startPollingFallback() {
       } else {
         stopPollingFallback();
       }
-    } catch {}
+    } catch (e) { /* ignore */ }
   }, state.pollingIntervalMs || 10000);
 }
 

@@ -278,7 +278,7 @@ async function openConversation(conversationId) {
       if (m.sender_id === cachedUserId) {
         const tempMessages = listEl.querySelectorAll('[data-temp-id]');
         for (const tempEl of tempMessages) {
-          const tempContent = tempEl.querySelector('.message-bubble')?.textContent;
+          const tempContent = tempEl.querySelector('.bubble')?.textContent;
           if (tempContent === m.content) {
             console.log('[Chat] Removing optimistic temp message, replaced by real:', m.id);
             tempEl.remove();

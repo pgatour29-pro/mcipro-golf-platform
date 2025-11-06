@@ -1710,7 +1710,6 @@ export async function subscribeGlobalMessages() {
    *
    * Returns: Supabase Realtime channel (or existing one)
    */
-  console.time('[Chat] ⚡ Realtime join');
 
   const supabase = await getSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -1723,7 +1722,6 @@ export async function subscribeGlobalMessages() {
   // SINGLETON GUARD: If already joined, keep existing subscription
   if (state.globalSub && state.globalSub.state === 'joined') {
     console.log('[Chat] Global subscription already active — skip');
-    console.timeEnd('[Chat] ⚡ Realtime join');
     return state.globalSub;
   }
 
@@ -1737,6 +1735,7 @@ export async function subscribeGlobalMessages() {
   }
 
   console.log('[Chat] Setting up global message subscription with backfill');
+  console.time('[Chat] ⚡ Realtime join');
 
   const onRealtimeInsert = (payload) => {
     const message = payload.new;

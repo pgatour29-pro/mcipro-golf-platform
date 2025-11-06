@@ -22107,6 +22107,44 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             </div>
                         </div>
 
+                        <!-- Plutaluang Course Picker -->
+                        <div id="plutaluangPicker" class="mb-4" style="display: none;">
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <h3 class="text-sm font-semibold text-blue-800 mb-3 flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-lg">golf_course</span>
+                                    Select Your 18-Hole Combination
+                                </h3>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <!-- Front 9 Selection -->
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-2">Front 9 (Holes 1-9)</label>
+                                        <select id="plutaluangFront9" class="w-full rounded-lg border border-blue-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                            <option value="">-- Select --</option>
+                                            <option value="East">East Course</option>
+                                            <option value="South">South Course</option>
+                                            <option value="West">West Course</option>
+                                            <option value="North">North Course</option>
+                                        </select>
+                                    </div>
+                                    <!-- Back 9 Selection -->
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-2">Back 9 (Holes 10-18)</label>
+                                        <select id="plutaluangBack9" class="w-full rounded-lg border border-blue-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                            <option value="">-- Select --</option>
+                                            <option value="East">East Course</option>
+                                            <option value="South">South Course</option>
+                                            <option value="West">West Course</option>
+                                            <option value="North">North Course</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <p class="text-xs text-blue-700 mt-2 flex items-start gap-1">
+                                    <span class="material-symbols-outlined text-sm mt-0.5">info</span>
+                                    <span>Plutaluang Navy Golf Course has 4 nine-hole courses. Select any two to create your 18-hole round.</span>
+                                </p>
+                            </div>
+                        </div>
+
                         <!-- Tee Markers -->
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="scorecard.teemarkers">Tee Markers</label>
@@ -35930,15 +35968,21 @@ class LiveScorecardSystem {
         // Check for pending offline data on init
         setTimeout(() => this.syncOfflineData(), 2000);
 
-        // Khao Kheow course picker - show/hide based on course selection
+        // Khao Kheow & Plutaluang course pickers - show/hide based on course selection
         const courseSelect = document.getElementById('scorecardCourseSelect');
         const khaoKheowPicker = document.getElementById('khaoKheowPicker');
-        if (courseSelect && khaoKheowPicker) {
+        const plutaluangPicker = document.getElementById('plutaluangPicker');
+        if (courseSelect && khaoKheowPicker && plutaluangPicker) {
             courseSelect.addEventListener('change', () => {
                 if (courseSelect.value === 'khao_kheow') {
                     khaoKheowPicker.style.display = 'block';
+                    plutaluangPicker.style.display = 'none';
+                } else if (courseSelect.value === 'plutaluang') {
+                    khaoKheowPicker.style.display = 'none';
+                    plutaluangPicker.style.display = 'block';
                 } else {
                     khaoKheowPicker.style.display = 'none';
+                    plutaluangPicker.style.display = 'none';
                 }
             });
         }
@@ -36094,6 +36138,115 @@ class LiveScorecardSystem {
 
         } catch (error) {
             console.error('[LiveScorecard] Error loading Khao Kheow combination:', error);
+            this.courseData = null;
+        }
+    }
+
+    async loadPlutaluangCombination(teeMarker = 'white') {
+        console.log('[LiveScorecard] Loading Plutaluang combination...');
+
+        // Get selected courses
+        const front9 = document.getElementById('plutaluangFront9').value;
+        const back9 = document.getElementById('plutaluangBack9').value;
+
+        if (!front9 || !back9) {
+            console.warn('[LiveScorecard] Front 9 or Back 9 not selected');
+            this.courseData = null;
+            return;
+        }
+
+        console.log(`[LiveScorecard] Selected: Front 9 = ${front9}, Back 9 = ${back9}`);
+
+        try {
+            // First, get the course_nine IDs for both selected courses
+            const { data: courseNines, error: courseNineError } = await window.SupabaseDB.client
+                .from('course_nine')
+                .select('id, nine_name')
+                .eq('course_name', 'Plutaluang Navy Golf Course')
+                .in('nine_name', [front9, back9]);
+
+            if (courseNineError || !courseNines || courseNines.length !== 2) {
+                console.error('[LiveScorecard] Error loading Plutaluang course_nine:', courseNineError);
+                this.courseData = null;
+                return;
+            }
+
+            // Map nine_name to course_nine_id
+            const front9Id = courseNines.find(c => c.nine_name === front9)?.id;
+            const back9Id = courseNines.find(c => c.nine_name === back9)?.id;
+
+            if (!front9Id || !back9Id) {
+                console.error('[LiveScorecard] Could not find course IDs for selected nines');
+                this.courseData = null;
+                return;
+            }
+
+            console.log(`[LiveScorecard] Loading course IDs: Front=${front9Id}, Back=${back9Id}`);
+
+            // Load both 9-hole courses in parallel
+            const [front9Result, back9Result] = await Promise.all([
+                window.SupabaseDB.client
+                    .from('nine_hole')
+                    .select('hole, par, hcp, blue, white, yellow, red')
+                    .eq('course_nine_id', front9Id)
+                    .order('hole'),
+                window.SupabaseDB.client
+                    .from('nine_hole')
+                    .select('hole, par, hcp, blue, white, yellow, red')
+                    .eq('course_nine_id', back9Id)
+                    .order('hole')
+            ]);
+
+            const front9Holes = front9Result.data || [];
+            const back9Holes = back9Result.data || [];
+
+            if (front9Holes.length === 0 || back9Holes.length === 0) {
+                console.error('[LiveScorecard] Failed to load holes for Plutaluang combination');
+                this.courseData = null;
+                return;
+            }
+
+            // Map tee marker to column name
+            const teeColumn = teeMarker.toLowerCase(); // 'blue', 'white', 'yellow', or 'red'
+
+            // Convert nine_hole format to course_holes format
+            // nine_hole: {hole, par, hcp, blue, white, yellow, red}
+            // course_holes: {hole_number, par, stroke_index, yardage, tee_marker}
+            const mapHole = (hole, holeNumber) => ({
+                hole_number: holeNumber,
+                par: hole.par,
+                stroke_index: hole.hcp,
+                yardage: hole[teeColumn] || hole.white, // Fall back to white if tee not found
+                tee_marker: teeMarker.toLowerCase()
+            });
+
+            // Combine into 18 holes
+            // Front 9 holes stay as holes 1-9
+            // Back 9 holes become holes 10-18
+            const combinedHoles = [
+                ...front9Holes.map((h, idx) => mapHole(h, idx + 1)),
+                ...back9Holes.map((h, idx) => mapHole(h, idx + 10))
+            ];
+
+            // Create combined course data
+            this.courseData = {
+                id: 'plutaluang',
+                name: `Plutaluang Navy Golf Course (${front9}+${back9})`,
+                scorecard_url: null,
+                holes: combinedHoles
+            };
+
+            console.log(`[LiveScorecard] ✅ Plutaluang ${front9}+${back9} loaded successfully (${combinedHoles.length} holes)`);
+            console.log(`[LiveScorecard] First 4 holes:`, combinedHoles.slice(0, 4).map(h => ({
+                hole: h.hole_number,
+                par: h.par,
+                index: h.stroke_index,
+                yardage: h.yardage,
+                tee: h.tee_marker
+            })));
+
+        } catch (error) {
+            console.error('[LiveScorecard] Error loading Plutaluang combination:', error);
             this.courseData = null;
         }
     }
@@ -36712,11 +36865,17 @@ class LiveScorecardSystem {
         // Set flag to skip scramble panel on first render (performance)
         this._initialRender = true;
 
-        // Khao Kheow: Handle 9-hole course combination
+        // Khao Kheow & Plutaluang: Handle 9-hole course combinations
         if (courseId === 'khao_kheow') {
             await this.loadKhaoKheowCombination(teeMarker);
             if (!this.courseData) {
                 NotificationManager.show('Please select both Front 9 and Back 9 courses', 'error');
+                return;
+            }
+        } else if (courseId === 'plutaluang') {
+            await this.loadPlutaluangCombination(teeMarker);
+            if (!this.courseData) {
+                NotificationManager.show('Please select both Front 9 and Back 9 courses for Plutaluang', 'error');
                 return;
             }
         } else {

@@ -547,8 +547,15 @@ function createRoomListItem(room, userId) {
     nameSpan.innerHTML = `<span style="margin-right: 0.5rem;">👥</span>${escapeHTML(room.title)}`;
     nameSpan.style.cssText = 'flex: 1; font-weight: 500;';
   } else {
-    nameSpan.textContent = room.title || 'Direct Message';
-    nameSpan.style.cssText = 'flex: 1;';
+    // For DM, extract partner's name from room title (dm:UUID1:UUID2)
+    let displayName = 'Direct Message';
+    if (room.title && room.title.startsWith('dm:')) {
+      const parts = room.title.split(':');
+      const partnerId = parts[1] === userId ? parts[2] : parts[1];
+      const partner = state.users?.find(u => u.id === partnerId);
+      displayName = partner?.display_name || partner?.username || 'Direct Message';
+    }
+    nameSpan.textContent = displayName;
   }
 
   // Container for badges and buttons
@@ -863,8 +870,15 @@ async function addRoomToSidebar(roomId) {
       nameSpan.innerHTML = `<span style="margin-right: 0.5rem;">👥</span>${escapeHTML(room.title)}`;
       nameSpan.style.cssText = 'flex: 1; font-weight: 500;';
     } else {
-      nameSpan.textContent = room.title || 'Direct Message';
-      nameSpan.style.cssText = 'flex: 1;';
+      // For DM, extract partner's name from room title (dm:UUID1:UUID2)
+      let displayName = 'Direct Message';
+      if (room.title && room.title.startsWith('dm:') && cachedUserId) {
+        const parts = room.title.split(':');
+        const partnerId = parts[1] === cachedUserId ? parts[2] : parts[1];
+        const partner = state.users?.find(u => u.id === partnerId);
+        displayName = partner?.display_name || partner?.username || 'Direct Message';
+      }
+      nameSpan.textContent = displayName;
     }
 
     // Unread badge (show "1" since we just received a message)

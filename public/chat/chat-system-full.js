@@ -445,16 +445,6 @@ function createRoomListItem(room, userId) {
   const rightContainer = document.createElement('div');
   rightContainer.style.cssText = 'display: flex; align-items: center; gap: 0.5rem;';
 
-  // Normalize labels and button text (fix mojibake)
-  try {
-    if (room.type === 'group') {
-      nameSpan.textContent = `Group: ${room.title || 'Untitled'}`;
-      nameSpan.style.cssText = 'flex: 1; font-weight: 500;';
-    }
-    archiveBtn.textContent = isArchived ? 'Unarchive' : 'Archive';
-    deleteBtn.textContent = 'Delete';
-  } catch {}
-
   // Unread badge
   const badge = document.createElement('span');
   badge.id = `contact-badge-${room.id}`;
@@ -524,6 +514,23 @@ function createRoomListItem(room, userId) {
   rightContainer.appendChild(badge);
   rightContainer.appendChild(archiveBtn);
   rightContainer.appendChild(deleteBtn);
+
+  // Normalize labels and button text (fix mojibake / icon issues)
+  // This runs AFTER the buttons are created to avoid reference errors.
+  try {
+    if (room.type === 'group') {
+      // If emojis don't render well, fall back to plain text label
+      nameSpan.textContent = `Group: ${room.title || 'Untitled'}`;
+      nameSpan.style.cssText = 'flex: 1; font-weight: 500;';
+    }
+    // Optionally normalize button text if emoji fonts are broken
+    if (archiveBtn && /�/.test(archiveBtn.textContent)) {
+      archiveBtn.textContent = isArchived ? 'Unarchive' : 'Archive';
+    }
+    if (deleteBtn && /�/.test(deleteBtn.textContent)) {
+      deleteBtn.textContent = 'Delete';
+    }
+  } catch {}
 
   li.appendChild(nameSpan);
   li.appendChild(rightContainer);
@@ -1064,6 +1071,11 @@ export async function initChat() {
   const supabase = await getSupabaseClient();
   const sidebar = document.querySelector('#conversations');
 
+  if (!sidebar) {
+    console.error('[Chat] ❌ Chat sidebar element #conversations not found. Abort init.');
+    return;
+  }
+
   // OPTIMIZATION 1: Show skeleton UI immediately (perceived performance)
   sidebar.innerHTML = `
     <div style="padding: 1rem;">
@@ -1256,14 +1268,22 @@ export async function initChat() {
   });
 
   // OPTIMIZATION 5: Wire up event listeners immediately (don't block on data)
-  document.querySelector('#sendBtn').onclick = sendCurrent;
+  const sendBtn = document.querySelector('#sendBtn');
+  if (sendBtn) {
+    sendBtn.onclick = sendCurrent;
+  } else {
+    console.warn('[Chat] ⚠️ #sendBtn not found');
+  }
   const composer = document.querySelector('#composer');
+  if (!composer) {
+    console.warn('[Chat] ⚠️ #composer not found');
+  }
 
   // Store event listener references for cleanup (MEMORY LEAK FIX)
   eventListeners.composer.input = () => {
     if (state.currentConversationId) typing(state.currentConversationId);
   };
-  composer.addEventListener('input', eventListeners.composer.input);
+  if (composer) composer.addEventListener('input', eventListeners.composer.input);
 
   // Enter key to send
   eventListeners.composer.keypress = (e) => {
@@ -1272,7 +1292,7 @@ export async function initChat() {
       sendCurrent();
     }
   };
-  composer.addEventListener('keypress', eventListeners.composer.keypress);
+  if (composer) composer.addEventListener('keypress', eventListeners.composer.keypress);
 
   // Wire up contacts search
   eventListeners.search = (e) => doSearch(e.target.value);

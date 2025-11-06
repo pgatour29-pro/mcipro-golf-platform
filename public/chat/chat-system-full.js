@@ -943,7 +943,8 @@ function openGroupBuilderModal() {
   document.body.appendChild(m);
 
   // Ensure close button renders correctly
-  try { m.querySelector('[data-close]')?.textContent = '×'; } catch (e) { /* ignore */ }
+  const closeBtn = m.querySelector('[data-close]');
+  if (closeBtn) closeBtn.textContent = '×';
 
   m.addEventListener('click', (e) => {
     if (e.target.dataset.close !== undefined || e.target === m) m.remove();

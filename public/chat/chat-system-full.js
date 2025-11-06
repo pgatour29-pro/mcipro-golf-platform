@@ -1294,12 +1294,12 @@ export async function initChat() {
       .eq('status', 'approved')
       .limit(20), // Limit to 20 most recent rooms for speed
 
-    // Load ALL REAL users from profiles table
+    // Load contacts from profiles table
     supabase
       .from('profiles')
       .select('id, display_name, username, line_user_id')
       .neq('id', user.id)
-      .order('display_name')
+      .order('display_name').limit(100) // Limit to 100 contacts for fast load
   ]);
 
   const { data: userRooms, error: roomsError} = roomsResult;

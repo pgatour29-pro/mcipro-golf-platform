@@ -3,13 +3,14 @@
  * Provides access to the global Supabase client initialized in supabase-config.js
  */
 
-export function getSupabaseClient() {
-    // Return the global supabase client
-    if (typeof window.supabase !== 'undefined') {
-        return window.supabase;
+export async function getSupabaseClient() {
+    // Wait for SupabaseDB to be initialized
+    if (typeof window.SupabaseDB !== 'undefined') {
+        await window.SupabaseDB.waitForReady();
+        return window.SupabaseDB.client;
     }
 
-    console.error('[supabaseClient] Global supabase client not found!');
+    console.error('[supabaseClient] Global SupabaseDB not found!');
     throw new Error('Supabase client not initialized');
 }
 

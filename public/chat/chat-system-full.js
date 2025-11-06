@@ -274,6 +274,19 @@ async function openConversation(conversationId) {
         return;
       }
 
+      // OPTIMISTIC RENDERING CLEANUP: Remove any temp messages from this sender with same content
+      if (m.sender_id === cachedUserId) {
+        const tempMessages = listEl.querySelectorAll('[data-temp-id]');
+        for (const tempEl of tempMessages) {
+          const tempContent = tempEl.querySelector('.message-bubble')?.textContent;
+          if (tempContent === m.content) {
+            console.log('[Chat] Removing optimistic temp message, replaced by real:', m.id);
+            tempEl.remove();
+            break; // Only remove one
+          }
+        }
+      }
+
       rememberId(m.id); // Track with memory cap
       const wrapper = renderMessage(m, cachedUserId);
       listEl.appendChild(wrapper);
@@ -340,11 +353,44 @@ async function sendCurrent() {
   const body = input.value.trim();
   if (!body || !state.currentConversationId) return;
 
+  const listEl = document.querySelector('#messages');
+  if (!listEl) return;
+
+  // OPTIMISTIC RENDERING: Show message immediately
+  const tempId = `temp-${Date.now()}-${Math.random()}`;
+  const optimisticMessage = {
+    id: tempId,
+    room_id: state.currentConversationId,
+    sender_id: cachedUserId,
+    content: body,
+    created_at: new Date().toISOString()
+  };
+
+  // Render optimistically
+  const wrapper = renderMessage(optimisticMessage, cachedUserId);
+  wrapper.setAttribute('data-temp-id', tempId); // Mark as temporary
+  listEl.appendChild(wrapper);
+  smartScrollToBottom(listEl);
+
+  // Clear input immediately for better UX
+  input.value = '';
+
   try {
+    // Send to database
     await sendMessage(state.currentConversationId, body);
-    input.value = '';
+
+    // Remove temp message when real one arrives (realtime subscription will add it)
+    // The dedup logic will prevent the realtime message from being added twice
   } catch (error) {
     console.error('[Chat] Send failed:', error);
+
+    // Remove optimistic message on error
+    const tempEl = document.querySelector(`[data-temp-id="${tempId}"]`);
+    if (tempEl) tempEl.remove();
+
+    // Restore input
+    input.value = body;
+
     alert('❌ Message failed to send: ' + (error.message || 'Unknown error'));
   }
 }

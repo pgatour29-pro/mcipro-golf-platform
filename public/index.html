@@ -35945,24 +35945,42 @@ class LiveScorecardSystem {
     }
 
     async loadEvents() {
-        // Load today's events for event selector
+        // Load events for event selector (7 days past to 30 days future)
         const events = await window.SocietyGolfDB.getAllPublicEvents();
 
-        // FIX: Use local date in YYYY-MM-DD format (avoid timezone issues)
+        // CRITICAL FIX: Show events from 7 days ago to 30 days in future
+        // This allows golfers to select events even if created for future/past dates
         const today = new Date();
-        const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        today.setHours(0, 0, 0, 0); // Reset to midnight for accurate comparison
 
-        console.log('[LiveScorecard] Today\'s date:', localToday);
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(today.getDate() - 7);
+
+        const thirtyDaysFromNow = new Date(today);
+        thirtyDaysFromNow.setDate(today.getDate() + 30);
+
+        console.log('[LiveScorecard] Date range:', {
+            from: sevenDaysAgo.toISOString().split('T')[0],
+            to: thirtyDaysFromNow.toISOString().split('T')[0]
+        });
         console.log('[LiveScorecard] All events:', events.map(e => ({ name: e.name, date: e.date })));
 
-        // Filter for today's events (compare date strings)
-        const todaysEvents = events.filter(e => {
-            // Handle both date-only strings and timestamps
-            const eventDate = e.date ? e.date.split('T')[0] : null;
-            return eventDate === localToday;
+        // Filter for events within date range
+        const relevantEvents = events.filter(e => {
+            if (!e.date) return false;
+
+            // Parse event date (handle both date-only strings and timestamps)
+            const eventDateStr = e.date.split('T')[0];
+            const eventDate = new Date(eventDateStr);
+            eventDate.setHours(0, 0, 0, 0);
+
+            return eventDate >= sevenDaysAgo && eventDate <= thirtyDaysFromNow;
         });
 
-        console.log('[LiveScorecard] Today\'s events:', todaysEvents);
+        // Sort by date (soonest first)
+        relevantEvents.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        console.log('[LiveScorecard] Relevant events:', relevantEvents.length);
 
         const select = document.getElementById('scorecardEventSelect');
 
@@ -35972,15 +35990,25 @@ class LiveScorecardSystem {
             select.remove(2);
         }
 
-        // Add today's events
-        todaysEvents.forEach(event => {
+        // Add relevant events with date labels
+        relevantEvents.forEach(event => {
             const option = document.createElement('option');
             option.value = event.id;
-            option.textContent = `${event.name} - ${event.societyName}`;
+
+            // Format date for display
+            const eventDate = new Date(event.date);
+            const dateStr = eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+            // Mark today's events with indicator
+            const todayStr = today.toISOString().split('T')[0];
+            const eventDateStr = event.date.split('T')[0];
+            const isToday = eventDateStr === todayStr;
+
+            option.textContent = `${isToday ? '🔴 TODAY: ' : ''}${dateStr} - ${event.name}${event.societyName ? ' (' + event.societyName + ')' : ''}`;
             select.appendChild(option);
         });
 
-        console.log('[LiveScorecard] Loaded', todaysEvents.length, 'events for today');
+        console.log('[LiveScorecard] Loaded', relevantEvents.length, 'events (7 days past to 30 days future)');
     }
 
     // Course dropdown is now static HTML - no need to load from database!

@@ -1342,20 +1342,26 @@ export async function initChat() {
   // OPTIMIZATION 5: Wire up event listeners immediately (don't block on data)
   const sendBtn = document.querySelector('#sendBtn');
   if (sendBtn) {
+    console.log('[Chat] ✅ #sendBtn found, attaching onclick handler');
     sendBtn.onclick = sendCurrent;
+    console.log('[Chat] ✅ onclick handler attached, testing:', typeof sendBtn.onclick);
   } else {
     console.warn('[Chat] ⚠️ #sendBtn not found');
   }
   const composer = document.querySelector('#composer');
   if (!composer) {
     console.warn('[Chat] ⚠️ #composer not found');
+  } else {
+    console.log('[Chat] ✅ #composer found');
   }
 
   // CRITICAL FIX: Remove old event listeners before adding new ones (prevents duplicate sends)
   if (composer && eventListeners.composer.input) {
+    console.log('[Chat] 🧹 Removing old input listener');
     composer.removeEventListener('input', eventListeners.composer.input);
   }
   if (composer && eventListeners.composer.keypress) {
+    console.log('[Chat] 🧹 Removing old keypress listener');
     composer.removeEventListener('keypress', eventListeners.composer.keypress);
   }
 
@@ -1363,16 +1369,24 @@ export async function initChat() {
   eventListeners.composer.input = () => {
     if (state.currentConversationId) typing(state.currentConversationId);
   };
-  if (composer) composer.addEventListener('input', eventListeners.composer.input);
+  if (composer) {
+    composer.addEventListener('input', eventListeners.composer.input);
+    console.log('[Chat] ✅ Input listener attached');
+  }
 
   // Enter key to send
   eventListeners.composer.keypress = (e) => {
+    console.log('[Chat] ⌨️ Keypress event:', e.key, 'shiftKey:', e.shiftKey);
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      console.log('[Chat] ⌨️ Enter pressed, calling sendCurrent()');
       sendCurrent();
     }
   };
-  if (composer) composer.addEventListener('keypress', eventListeners.composer.keypress);
+  if (composer) {
+    composer.addEventListener('keypress', eventListeners.composer.keypress);
+    console.log('[Chat] ✅ Keypress listener attached');
+  }
 
   // Wire up contacts search
   eventListeners.search = (e) => doSearch(e.target.value);

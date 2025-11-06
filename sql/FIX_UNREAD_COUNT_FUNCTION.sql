@@ -1,8 +1,9 @@
 -- Fix get_batch_unread_counts to match frontend expectations
 -- The frontend passes p_user_id and p_last_read_map (localStorage data)
 
--- Drop incorrect version
+-- Drop all existing versions (both signatures)
 DROP FUNCTION IF EXISTS public.get_batch_unread_counts(UUID[]);
+DROP FUNCTION IF EXISTS public.get_batch_unread_counts(UUID, JSONB);
 
 -- Create function matching frontend signature
 CREATE OR REPLACE FUNCTION public.get_batch_unread_counts(

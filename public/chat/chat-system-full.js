@@ -1326,6 +1326,14 @@ export async function initChat() {
     console.warn('[Chat] ⚠️ #composer not found');
   }
 
+  // CRITICAL FIX: Remove old event listeners before adding new ones (prevents duplicate sends)
+  if (composer && eventListeners.composer.input) {
+    composer.removeEventListener('input', eventListeners.composer.input);
+  }
+  if (composer && eventListeners.composer.keypress) {
+    composer.removeEventListener('keypress', eventListeners.composer.keypress);
+  }
+
   // Store event listener references for cleanup (MEMORY LEAK FIX)
   eventListeners.composer.input = () => {
     if (state.currentConversationId) typing(state.currentConversationId);

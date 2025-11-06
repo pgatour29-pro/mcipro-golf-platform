@@ -3,6 +3,17 @@ import { openOrCreateDM, listRooms, fetchMessages, sendMessage, subscribeToConve
 import { getSupabaseClient } from './supabaseClient.js?v=209bbf69';
 import { ensureSupabaseSessionWithLIFF } from './auth-bridge-v2.js?v=209bbf69';
 
+/**
+ * Chat System Integration Notes (sanity checklist)
+ * - Mount requirements: the following elements must exist in the DOM before calling initChat():
+ *   #conversations (UL for sidebar), #messages (container), #composer (textarea/input), #sendBtn (button)
+ *   Optional: #contactsSearch, #openGroupBuilder, #typing, #professionalChatContainer
+ * - Lifecycle: call initChat() after the chat pane DOM is rendered and user is authenticated.
+ *   Call subscribeGlobalMessages() once after login to start realtime; call teardownChat() on logout/app switch.
+ * - Idempotency: initChat() safely removes prior UI listeners before binding new ones to avoid duplicates.
+ * - Mobile: lifecycle handlers and keepalive start automatically at module load (when window exists).
+ * - Realtime: switching conversations cleans up previous room channels to prevent duplicate events.
+ */
 const state = {
   currentConversationId: null,
   currentUserId: null, // Store current user ID
@@ -27,6 +38,9 @@ const state = {
   pollingIntervalMs: 10000, // Poll every 10s in fallback
 };
 
+// LocalStorage keys
+const LAST_ROOM_KEY = 'chat:lastRoomId';
+
 // UI element references (cached for performance)
 const ui = {
   contactsSearch: null,
@@ -37,7 +51,9 @@ const ui = {
 const eventListeners = {
   composer: {
     input: null,
-    keypress: null
+    keypress: null,
+    focus: null,
+    blur: null
   },
   search: null,
   groupBtn: null,
@@ -212,6 +228,8 @@ async function openConversation(conversationId) {
   console.log('[Chat] Opening conversation:', conversationId);
 
   const supabase = await getSupabaseClient();
+  // Clean up previously opened conversation channel (prevents duplicate subscriptions)
+  const previousConversationId = state.currentConversationId;
   state.currentConversationId = conversationId;
 
   // CRITICAL FIX: Retry if DOM elements not ready yet
@@ -254,7 +272,7 @@ async function openConversation(conversationId) {
 
   listEl.scrollTop = listEl.scrollHeight;
 
-  // Clean up old channel (CRITICAL: properly delete from map to prevent memory leaks)
+  // Clean up any existing channel for this room (CRITICAL: properly delete from map to prevent leaks)
   if (state.channels[conversationId]) {
     try {
       await supabase.removeChannel(state.channels[conversationId]);
@@ -262,6 +280,16 @@ async function openConversation(conversationId) {
       console.warn('[Chat] Error removing old channel:', err);
     }
     delete state.channels[conversationId]; // MEMORY LEAK FIX: Actually delete the reference
+  }
+
+  // Also clean up previously active room channel if it's different
+  if (previousConversationId && previousConversationId !== conversationId && state.channels[previousConversationId]) {
+    try {
+      await supabase.removeChannel(state.channels[previousConversationId]);
+    } catch (err) {
+      console.warn('[Chat] Error removing previous room channel:', err);
+    }
+    delete state.channels[previousConversationId];
   }
 
   // CRITICAL FIX: AWAIT subscription to ensure it's ready before messages arrive
@@ -352,6 +380,17 @@ async function openConversation(conversationId) {
   });
 
   console.log('[Chat] ✅ Conversation opened and subscribed');
+
+  // Persist last opened conversation for next session
+  try {
+    localStorage.setItem(LAST_ROOM_KEY, conversationId);
+  } catch (e) { /* ignore storage errors */ }
+
+  // Gently focus composer for faster reply on mobile
+  try {
+    const composer = document.querySelector('#composer');
+    if (composer) setTimeout(() => composer.focus(), 0);
+  } catch (e) { /* ignore */ }
 }
 
 async function sendCurrent() {
@@ -575,6 +614,13 @@ function createRoomListItem(room, userId) {
           state.currentConversationId = null;
           document.querySelector('#messages').innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">Select a chat to start messaging</div>';
         }
+        // If this was the stored last room, clear the preference
+        try {
+          const lastId = localStorage.getItem(LAST_ROOM_KEY);
+          if (lastId && lastId === String(room.id)) {
+            localStorage.removeItem(LAST_ROOM_KEY);
+          }
+        } catch (e) { /* ignore storage errors */ }
       } catch (error) {
         console.error('[Chat] Delete failed:', error);
         alert('Failed to delete/leave chat: ' + error.message);
@@ -1132,13 +1178,65 @@ async function approveMember(roomId, userId) {
   }
 }
 
+// Remove previously attached UI listeners to avoid duplicate bindings on re-init
+function removeUIEventListeners() {
+  const composer = document.querySelector('#composer');
+  if (composer && eventListeners.composer.input) {
+    composer.removeEventListener('input', eventListeners.composer.input);
+  }
+  if (composer && eventListeners.composer.keypress) {
+    composer.removeEventListener('keypress', eventListeners.composer.keypress);
+  }
+  if (composer && eventListeners.composer.focus) {
+    composer.removeEventListener('focus', eventListeners.composer.focus);
+  }
+  if (composer && eventListeners.composer.blur) {
+    composer.removeEventListener('blur', eventListeners.composer.blur);
+  }
+  if (composer && eventListeners.composer.focus) {
+    composer.removeEventListener('focus', eventListeners.composer.focus);
+  }
+  if (composer && eventListeners.composer.blur) {
+    composer.removeEventListener('blur', eventListeners.composer.blur);
+  }
+  if (composer && eventListeners.composer.focus) {
+    composer.removeEventListener('focus', eventListeners.composer.focus);
+  }
+  if (composer && eventListeners.composer.blur) {
+    composer.removeEventListener('blur', eventListeners.composer.blur);
+  }
+  if (ui.contactsSearch && eventListeners.search) {
+    ui.contactsSearch.removeEventListener('input', eventListeners.search);
+  }
+  if (ui.openGroupBtn && eventListeners.groupBtn) {
+    ui.openGroupBtn.removeEventListener('click', eventListeners.groupBtn);
+  }
+}
+
+/**
+ * Initialize the chat UI for the current authenticated user.
+ *
+ * Requirements (DOM must exist before calling):
+ * - #conversations (sidebar <ul>), #messages (message list container)
+ * - #composer (input/textarea), #sendBtn (send button)
+ * Optional:
+ * - #contactsSearch, #openGroupBuilder, #typing, #professionalChatContainer
+ *
+ * Behavior:
+ * - Ensures Supabase session (via ensureSupabaseSessionWithLIFF when needed)
+ * - Loads rooms and contacts, renders sidebar, binds UI events (idempotent)
+ * - Does NOT start global realtime; call subscribeGlobalMessages() once after login
+ *
+ * Returns: void (async)
+ */
 export async function initChat() {
   // Show version indicator (visible on mobile)
   console.log('[Chat] ⚡ VERSION: 2025-10-15-INSTANT-LOAD-FIX');
   const startTime = performance.now();
 
-  // Initialize UI element references
+  // Initialize UI element references and clear any stale listeners from prior init
   initUIRefs();
+  removeUIEventListeners();
 
   const supabase = await getSupabaseClient();
   const sidebar = document.querySelector('#conversations');
@@ -1388,6 +1486,30 @@ export async function initChat() {
     console.log('[Chat] ✅ Keypress listener attached');
   }
 
+  // Composer focus/blur: mobile keyboard guard to keep messages visible
+  eventListeners.composer.focus = () => {
+    const listEl = document.querySelector('#messages');
+    if (!listEl) return;
+    try {
+      const vh = window.visualViewport?.height || window.innerHeight;
+      const kb = Math.max(0, window.innerHeight - vh);
+      listEl.style.paddingBottom = kb ? `${kb + 16}px` : '16px';
+    } catch (e) {
+      listEl.style.paddingBottom = '16px';
+    }
+    // Scroll near bottom to keep the latest message visible
+    smartScrollToBottom(listEl);
+  };
+  eventListeners.composer.blur = () => {
+    const listEl = document.querySelector('#messages');
+    if (!listEl) return;
+    listEl.style.paddingBottom = '';
+  };
+  if (composer) {
+    composer.addEventListener('focus', eventListeners.composer.focus);
+    composer.addEventListener('blur', eventListeners.composer.blur);
+  }
+
   // Wire up contacts search
   eventListeners.search = (e) => doSearch(e.target.value);
   ui.contactsSearch?.addEventListener('input', eventListeners.search);
@@ -1409,6 +1531,30 @@ export async function initChat() {
       console.error('[Chat] Failed to load unread badges:', error);
     }
   }, 0);
+
+  // Preference: auto-open last conversation if still accessible
+  setTimeout(() => {
+    try {
+      const lastId = localStorage.getItem(LAST_ROOM_KEY);
+      if (!lastId) return;
+
+      // Verify membership using cachedRooms
+      const inRooms = Array.isArray(state.cachedRooms)
+        && state.cachedRooms.some(m => String(m.room_id) === String(lastId));
+      if (!inRooms) return;
+
+      // Optionally update the header with the room title
+      try {
+        const membership = state.cachedRooms.find(m => String(m.room_id) === String(lastId));
+        const title = membership?.chat_rooms?.title || 'Conversation';
+        if (typeof window.chatShowConversation === 'function') {
+          window.chatShowConversation(title);
+        }
+      } catch (e) { /* ignore */ }
+
+      openConversation(lastId);
+    } catch (e) { /* ignore */ }
+  }, 50);
 }
 
 /**
@@ -1540,6 +1686,16 @@ async function backfillMissedMessages(reason = 'auto') {
  * Subscribe to all messages globally with reconnect + backfill hardening (SINGLETON)
  */
 export async function subscribeGlobalMessages() {
+  /**
+   * Start global realtime subscription for chat messages (singleton).
+   *
+   * Behavior:
+   * - If already joined, returns existing channel
+   * - Handles CHANNEL_ERROR with exponential backoff; falls back to polling
+   * - Triggers adaptive backfill on subscribe/online/pageshow events
+   *
+   * Returns: Supabase Realtime channel (or existing one)
+   */
   console.time('[Chat] ⚡ Realtime join');
 
   const supabase = await getSupabaseClient();
@@ -1664,6 +1820,14 @@ async function restartRealtime() {
  * MEMORY LEAK FIX: Also removes all event listeners
  */
 export async function teardownChat() {
+  /**
+   * Completely tear down chat state and listeners (use on logout/switch account).
+   *
+   * Cleans:
+   * - Global realtime channel, per-room channels, typing channels
+   * - All UI event listeners (#composer, #sendBtn, search, group builder)
+   * - Lifecycle listeners (visibility, focus, online, pagehide/pageshow)
+   */
   console.log('[Chat] Tearing down all subscriptions and event listeners');
 
   // Unsubscribe global
@@ -1734,6 +1898,8 @@ export async function teardownChat() {
   // Clear event listener references
   eventListeners.composer.input = null;
   eventListeners.composer.keypress = null;
+  eventListeners.composer.focus = null;
+  eventListeners.composer.blur = null;
   eventListeners.search = null;
   eventListeners.groupBtn = null;
   eventListeners.lifecycle = {

@@ -350,6 +350,7 @@ export async function getTotalUnreadCount() {
     // Throttle noisy console logs; only log first failure per window
     if (unreadRPCCircuit.failCount === 0 || Date.now() > unreadRPCCircuit.disabledUntil) {
       console.warn('[Chat] get_batch_unread_counts RPC failed — using fallback');
+      console.warn('[Chat] Error details:', error);
     }
     // Exponential backoff window before next RPC attempt
     unreadRPCCircuit.failCount = Math.min(unreadRPCCircuit.failCount + 1, 5);

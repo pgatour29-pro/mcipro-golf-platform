@@ -22328,8 +22328,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                     <option value="" data-i18n="scorecard.select.course">-- Select Course --</option>
                                     <option value="bangpakong">Bangpakong Riverside Country Club</option>
                                     <option value="bangpra_international">Bangpra International Golf Club</option>
-                                    <option value="burapha_east">Burapha Golf Club - East Course</option>
-                                    <option value="burapha_west">Burapha Golf Club - West Course</option>
+                                    <option value="burapha">Burapha Golf Club</option>
                                     <option value="crystal_bay">Crystal Bay Golf Club</option>
                                     <option value="eastern_star">Eastern Star Golf Course</option>
                                     <option value="grand_prix">Grand Prix Golf Club</option>
@@ -22423,6 +22422,44 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 <p class="text-xs text-blue-700 mt-2 flex items-start gap-1">
                                     <span class="material-symbols-outlined text-sm mt-0.5">info</span>
                                     <span>Plutaluang Navy Golf Course has 4 nine-hole courses. Select any two to create your 18-hole round.</span>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Burapha Course Picker -->
+                        <div id="buraphaPicker" class="mb-4" style="display: none;">
+                            <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                                <h3 class="text-sm font-semibold text-purple-800 mb-3 flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-lg">golf_course</span>
+                                    Select Your 18-Hole Combination
+                                </h3>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <!-- Front 9 Selection -->
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-2">Front 9 (Holes 1-9)</label>
+                                        <select id="buraphaFront9" class="w-full rounded-lg border border-purple-300 px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
+                                            <option value="">-- Select --</option>
+                                            <option value="A">Nine A (East Front)</option>
+                                            <option value="B">Nine B (East Back)</option>
+                                            <option value="C">Nine C (West Front)</option>
+                                            <option value="D">Nine D (West Back)</option>
+                                        </select>
+                                    </div>
+                                    <!-- Back 9 Selection -->
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-2">Back 9 (Holes 10-18)</label>
+                                        <select id="buraphaBack9" class="w-full rounded-lg border border-purple-300 px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
+                                            <option value="">-- Select --</option>
+                                            <option value="A">Nine A (East Front)</option>
+                                            <option value="B">Nine B (East Back)</option>
+                                            <option value="C">Nine C (West Front)</option>
+                                            <option value="D">Nine D (West Back)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <p class="text-xs text-purple-700 mt-2 flex items-start gap-1">
+                                    <span class="material-symbols-outlined text-sm mt-0.5">info</span>
+                                    <span>Burapha Golf Club has 4 nine-hole courses. Select any two to create your 18-hole round.</span>
                                 </p>
                             </div>
                         </div>
@@ -36250,21 +36287,29 @@ class LiveScorecardSystem {
         // Check for pending offline data on init
         setTimeout(() => this.syncOfflineData(), 2000);
 
-        // Khao Kheow & Plutaluang course pickers - show/hide based on course selection
+        // Khao Kheow, Plutaluang & Burapha course pickers - show/hide based on course selection
         const courseSelect = document.getElementById('scorecardCourseSelect');
         const khaoKheowPicker = document.getElementById('khaoKheowPicker');
         const plutaluangPicker = document.getElementById('plutaluangPicker');
-        if (courseSelect && khaoKheowPicker && plutaluangPicker) {
+        const buraphaPicker = document.getElementById('buraphaPicker');
+        if (courseSelect && khaoKheowPicker && plutaluangPicker && buraphaPicker) {
             courseSelect.addEventListener('change', () => {
                 if (courseSelect.value === 'khao_kheow') {
                     khaoKheowPicker.style.display = 'block';
                     plutaluangPicker.style.display = 'none';
+                    buraphaPicker.style.display = 'none';
                 } else if (courseSelect.value === 'plutaluang') {
                     khaoKheowPicker.style.display = 'none';
                     plutaluangPicker.style.display = 'block';
+                    buraphaPicker.style.display = 'none';
+                } else if (courseSelect.value === 'burapha') {
+                    khaoKheowPicker.style.display = 'none';
+                    plutaluangPicker.style.display = 'none';
+                    buraphaPicker.style.display = 'block';
                 } else {
                     khaoKheowPicker.style.display = 'none';
                     plutaluangPicker.style.display = 'none';
+                    buraphaPicker.style.display = 'none';
                 }
             });
         }
@@ -36534,6 +36579,116 @@ class LiveScorecardSystem {
         }
     }
 
+    async loadBuraphaCombination(teeMarker = 'white') {
+        console.log('[LiveScorecard] Loading Burapha combination...');
+
+        // Get selected courses
+        const front9 = document.getElementById('buraphaFront9').value;
+        const back9 = document.getElementById('buraphaBack9').value;
+
+        if (!front9 || !back9) {
+            console.warn('[LiveScorecard] Front 9 or Back 9 not selected');
+            this.courseData = null;
+            return;
+        }
+
+        console.log(`[LiveScorecard] Selected: Front 9 = ${front9}, Back 9 = ${back9}`);
+
+        try {
+            // First, get the course_nine IDs for both selected courses
+            const { data: courseNines, error: courseNineError } = await window.SupabaseDB.client
+                .from('course_nine')
+                .select('id, nine_name')
+                .eq('course_name', 'Burapha Golf Club')
+                .in('nine_name', [front9, back9]);
+
+            if (courseNineError || !courseNines || courseNines.length !== 2) {
+                console.error('[LiveScorecard] Error loading Burapha course_nine:', courseNineError);
+                this.courseData = null;
+                return;
+            }
+
+            // Map nine_name to course_nine_id
+            const front9Id = courseNines.find(c => c.nine_name === front9)?.id;
+            const back9Id = courseNines.find(c => c.nine_name === back9)?.id;
+
+            if (!front9Id || !back9Id) {
+                console.error('[LiveScorecard] Could not find course IDs for selected nines');
+                this.courseData = null;
+                return;
+            }
+
+            console.log(`[LiveScorecard] Loading course IDs: Front=${front9Id}, Back=${back9Id}`);
+
+            // Load both 9-hole courses in parallel
+            const [front9Result, back9Result] = await Promise.all([
+                window.SupabaseDB.client
+                    .from('nine_hole')
+                    .select('hole, par, hcp, blue, white, yellow, red')
+                    .eq('course_nine_id', front9Id)
+                    .order('hole'),
+                window.SupabaseDB.client
+                    .from('nine_hole')
+                    .select('hole, par, hcp, blue, white, yellow, red')
+                    .eq('course_nine_id', back9Id)
+                    .order('hole')
+            ]);
+
+            const front9Holes = front9Result.data || [];
+            const back9Holes = back9Result.data || [];
+
+            if (front9Holes.length === 0 || back9Holes.length === 0) {
+                console.error('[LiveScorecard] Failed to load holes for Burapha combination');
+                this.courseData = null;
+                return;
+            }
+
+            // Map tee marker to column name
+            const teeColumn = teeMarker.toLowerCase(); // 'blue', 'white', 'yellow', or 'red'
+
+            // Convert nine_hole format to course_holes format
+            // nine_hole: {hole, par, hcp, blue, white, yellow, red}
+            // course_holes: {hole_number, par, stroke_index, yardage, tee_marker}
+            const mapHole = (hole, holeNumber) => ({
+                hole_number: holeNumber,
+                par: hole.par,
+                stroke_index: hole.hcp,
+                yardage: hole[teeColumn] || hole.white, // Fall back to white if tee not found
+                tee_marker: teeMarker.toLowerCase()
+            });
+
+            // Combine into 18 holes
+            // Front 9 holes stay as holes 1-9
+            // Back 9 holes become holes 10-18
+            const combinedHoles = [
+                ...front9Holes.map((h, idx) => mapHole(h, idx + 1)),
+                ...back9Holes.map((h, idx) => mapHole(h, idx + 10))
+            ];
+
+            // Create combined course data
+            this.courseData = {
+                id: 'burapha',
+                name: `Burapha Golf Club (${front9}+${back9})`,
+                scorecard_url: null,
+                holes: combinedHoles
+            };
+
+            console.log(`[LiveScorecard] ✅ Burapha ${front9}+${back9} loaded successfully (${combinedHoles.length} holes)`);
+            console.log(`[LiveScorecard] First 4 holes:`, combinedHoles.slice(0, 4).map(h => ({
+                hole: h.hole_number,
+                par: h.par,
+                index: h.stroke_index,
+                yardage: h.yardage,
+                tee: h.tee_marker
+            })));
+
+        } catch (error) {
+            console.error('[LiveScorecard] Error loading Burapha combination:', error);
+            this.courseData = null;
+        }
+    }
+
+
     async loadCourseData(courseId, teeMarker = 'white') {
         
         console.log(`[LiveScorecard] Loading course data for: ${courseId}, tee: ${teeMarker}`);
@@ -36544,6 +36699,7 @@ class LiveScorecardSystem {
             'bangpra_international': 3,  // v3: correct stroke indices from database
             'burapha_east': 3,
             'burapha_west': 3,
+            'burapha': 1,  // v1: initial 4-nine setup (A, B, C, D)
             'crystal_bay': 2,
             'eastern_star': 2,
             'grand_prix': 3,
@@ -37159,6 +37315,12 @@ class LiveScorecardSystem {
             await this.loadPlutaluangCombination(teeMarker);
             if (!this.courseData) {
                 NotificationManager.show('Please select both Front 9 and Back 9 courses for Plutaluang', 'error');
+                return;
+            }
+        } else if (courseId === 'burapha') {
+            await this.loadBuraphaCombination(teeMarker);
+            if (!this.courseData) {
+                NotificationManager.show('Please select both Front 9 and Back 9 courses for Burapha', 'error');
                 return;
             }
         } else {

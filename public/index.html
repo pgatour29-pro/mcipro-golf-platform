@@ -35454,21 +35454,53 @@ class SocietyGolfSupabase {
     async getEventScorecards(eventId) {
         await this.waitForSupabase();
 
-        const { data, error } = await window.SupabaseDB.client
-            .from('scorecards')
+        // FIXED: Query rounds table where scores are actually saved
+        console.log('[SocietyGolf] Fetching event rounds for event:', eventId);
+
+        const { data: rounds, error } = await window.SupabaseDB.client
+            .from('rounds')
             .select(`
                 *,
-                scores (*)
+                round_holes (*)
             `)
-            .eq('event_id', eventId)
-            .order('total_net', { ascending: true });
+            .eq('society_event_id', eventId)
+            .eq('status', 'completed')
+            .order('total_gross', { ascending: true });
 
         if (error) {
-            console.error('[SocietyGolf] Error fetching scorecards:', error);
+            console.error('[SocietyGolf] Error fetching rounds:', error);
             return [];
         }
 
-        return data || [];
+        if (!rounds || rounds.length === 0) {
+            console.log('[SocietyGolf] No completed rounds found for event:', eventId);
+            return [];
+        }
+
+        // Convert rounds format to scorecards format for compatibility
+        const scorecards = rounds.map(round => ({
+            id: round.id,
+            event_id: round.society_event_id,
+            player_id: round.golfer_id,
+            status: round.status,
+            total_gross: round.total_gross || 0,
+            total_net: round.total_net || 0,
+            total_stableford: round.total_stableford || 0,
+            handicap: round.handicap_used || 0,
+            tee_marker: round.tee_marker || 'white',
+            scores: (round.round_holes || []).map(hole => ({
+                hole_number: hole.hole_number,
+                par: hole.par,
+                stroke_index: hole.stroke_index,
+                gross_score: hole.gross_score,
+                net_score: hole.net_score,
+                stableford_points: hole.stableford_points,
+                handicap_strokes: hole.handicap_strokes
+            }))
+        }));
+
+        console.log(`[SocietyGolf] Found ${scorecards.length} completed rounds for event ${eventId}`);
+        return scorecards;
     }
 
     async saveScore(scorecardId, holeNumber, grossScore, par, strokeIndex, handicap) {

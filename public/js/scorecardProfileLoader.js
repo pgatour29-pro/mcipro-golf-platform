@@ -61,18 +61,33 @@ class ScorecardProfileLoader {
         let currentSection = null;
         let currentTee = null;
 
-        for (let line of lines) {
-            line = line.trim();
+        for (let i = 0; i < lines.length; i++) {
+            const originalLine = lines[i];
+            const line = originalLine.trim();
 
             // Skip comments and empty lines
             if (line.startsWith('#') || line === '') continue;
 
-            // Parse key-value pairs
-            if (line.includes(':')) {
+            // Check if we're starting a top-level section
+            if (line === 'tees:') {
+                currentSection = 'tees';
+                currentTee = null;
+                continue;
+            } else if (line === 'regions:' || line === 'extraction:' || line === 'notes:') {
+                // Save any pending tee
+                if (currentTee && currentSection === 'tees') {
+                    profile.tees.push(currentTee);
+                    currentTee = null;
+                }
+                currentSection = line.replace(':', '');
+                continue;
+            }
+
+            // Parse top-level key-value pairs
+            if (!currentSection && line.includes(':')) {
                 const [key, ...valueParts] = line.split(':');
                 const value = valueParts.join(':').trim().replace(/['"]/g, '');
 
-                // Top-level fields
                 if (key === 'course_name') profile.course_name = value;
                 else if (key === 'course_id') profile.course_id = value;
                 else if (key === 'version') profile.version = parseInt(value);
@@ -80,13 +95,54 @@ class ScorecardProfileLoader {
                 else if (key === 'country') profile.country = value;
                 else if (key === 'course_rating') profile.course_rating = parseFloat(value);
                 else if (key === 'slope_rating') profile.slope_rating = parseInt(value);
+            }
 
-                // Section markers
-                else if (key === 'regions') currentSection = 'regions';
-                else if (key === 'tees') currentSection = 'tees';
-                else if (key === 'extraction') currentSection = 'extraction';
+            // Parse tees section
+            if (currentSection === 'tees') {
+                // Check for list item (starts with -)
+                if (line.startsWith('- ')) {
+                    // Save previous tee if exists
+                    if (currentTee) {
+                        profile.tees.push(currentTee);
+                    }
+
+                    // Start new tee
+                    currentTee = {
+                        name: '',
+                        color: '',
+                        course_rating: 72.0,
+                        slope_rating: 113
+                    };
+
+                    // Parse the first property on the same line as the dash
+                    const inlineContent = line.substring(2).trim();
+                    if (inlineContent.includes(':')) {
+                        const [key, ...valueParts] = inlineContent.split(':');
+                        const value = valueParts.join(':').trim().replace(/['"]/g, '');
+                        if (key === 'name') currentTee.name = value;
+                        else if (key === 'color') currentTee.color = value;
+                        else if (key === 'course_rating') currentTee.course_rating = parseFloat(value);
+                        else if (key === 'slope_rating') currentTee.slope_rating = parseInt(value);
+                    }
+                } else if (currentTee && line.includes(':')) {
+                    // Parse properties of current tee
+                    const [key, ...valueParts] = line.split(':');
+                    const value = valueParts.join(':').trim().replace(/['"]/g, '');
+
+                    if (key === 'name') currentTee.name = value;
+                    else if (key === 'color') currentTee.color = value;
+                    else if (key === 'course_rating') currentTee.course_rating = parseFloat(value);
+                    else if (key === 'slope_rating') currentTee.slope_rating = parseInt(value);
+                }
             }
         }
+
+        // Save any pending tee at end of file
+        if (currentTee && currentSection === 'tees') {
+            profile.tees.push(currentTee);
+        }
+
+        console.log('[ScorecardProfileLoader] Parsed YAML for', profile.course_id, '- found', profile.tees.length, 'tees');
 
         return profile;
     }
@@ -166,12 +222,20 @@ class ScorecardProfileLoader {
     async getTeeOptions(courseId) {
         const profile = await this.loadProfile(courseId);
 
-        // Default tees if not specified in profile
-        return profile.tees || [
-            { name: 'Championship', color: 'Black', course_rating: 73.5, slope_rating: 135 },
-            { name: 'Men', color: 'Blue', course_rating: 72.0, slope_rating: 130 },
-            { name: 'Regular', color: 'White', course_rating: 70.5, slope_rating: 125 }
-        ];
+        // Default tees if not specified in profile or array is empty
+        const hasTees = profile.tees && Array.isArray(profile.tees) && profile.tees.length > 0;
+
+        if (!hasTees) {
+            console.log('[ScorecardProfileLoader] No tees found for', courseId, '- using defaults');
+            return [
+                { name: 'Championship', color: 'Black', course_rating: 73.5, slope_rating: 135 },
+                { name: 'Men', color: 'Blue', course_rating: 72.0, slope_rating: 130 },
+                { name: 'Regular', color: 'White', course_rating: 70.5, slope_rating: 125 }
+            ];
+        }
+
+        console.log('[ScorecardProfileLoader] ✅ Loaded', profile.tees.length, 'tees for', courseId);
+        return profile.tees;
     }
 
     /**

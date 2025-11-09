@@ -23066,6 +23066,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 </p>
                             </div>
                         </div>
+<!-- Greenwood Course Picker -->                        <div id="greenwoodPicker" class="mb-4" style="display: none;">                            <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">                                <h3 class="text-sm font-semibold text-amber-800 mb-3 flex items-center gap-2">                                    <span class="material-symbols-outlined text-lg">golf_course</span>                                    Select Your 18-Hole Combination                                </h3>                                <div class="grid grid-cols-2 gap-3">                                    <!-- Front 9 Selection -->                                    <div>                                        <label class="block text-xs font-medium text-gray-700 mb-2">Front 9 (Holes 1-9)</label>                                        <select id="greenwoodFront9" class="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500">                                            <option value="">-- Select --</option>                                            <option value="A">Course A</option>                                            <option value="B">Course B</option>                                            <option value="C">Course C</option>                                        </select>                                    </div>                                    <!-- Back 9 Selection -->                                    <div>                                        <label class="block text-xs font-medium text-gray-700 mb-2">Back 9 (Holes 10-18)</label>                                        <select id="greenwoodBack9" class="w-full rounded-lg border border-amber-300 px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500">                                            <option value="">-- Select --</option>                                            <option value="A">Course A</option>                                            <option value="B">Course B</option>                                            <option value="C">Course C</option>                                        </select>                                    </div>                                </div>                                <p class="text-xs text-amber-700 mt-2 flex items-start gap-1">                                    <span class="material-symbols-outlined text-sm mt-0.5">info</span>                                    <span>Greenwood Golf & Resort has 3 nine-hole courses. Select any two to create your 18-hole round.</span>                                </p>                            </div>                        </div>
 
                         <!-- Tee Markers -->
                         <div class="mb-4">
@@ -37049,28 +37050,38 @@ class LiveScorecardSystem {
         // Check for pending offline data on init
         setTimeout(() => this.syncOfflineData(), 2000);
 
-        // Khao Kheow, Plutaluang & Burapha course pickers - show/hide based on course selection
+        // Khao Kheow, Plutaluang, Burapha Khao Kheow, Plutaluang & Burapha Greenwood course pickers - show/hide based on course selection
         const courseSelect = document.getElementById('scorecardCourseSelect');
         const khaoKheowPicker = document.getElementById('khaoKheowPicker');
         const plutaluangPicker = document.getElementById('plutaluangPicker');
         const buraphaPicker = document.getElementById('buraphaPicker');
-        if (courseSelect && khaoKheowPicker && plutaluangPicker && buraphaPicker) {
+        const greenwoodPicker = document.getElementById('greenwoodPicker');
+        if (courseSelect && khaoKheowPicker && plutaluangPicker && buraphaPicker && greenwoodPicker) {
             courseSelect.addEventListener('change', () => {
                 if (courseSelect.value === 'khao_kheow') {
                     khaoKheowPicker.style.display = 'block';
                     plutaluangPicker.style.display = 'none';
                     buraphaPicker.style.display = 'none';
+                    greenwoodPicker.style.display = 'none';
                 } else if (courseSelect.value === 'plutaluang') {
                     khaoKheowPicker.style.display = 'none';
                     plutaluangPicker.style.display = 'block';
                     buraphaPicker.style.display = 'none';
+                    greenwoodPicker.style.display = 'none';
                 } else if (courseSelect.value === 'burapha') {
                     khaoKheowPicker.style.display = 'none';
                     plutaluangPicker.style.display = 'none';
                     buraphaPicker.style.display = 'block';
+                    greenwoodPicker.style.display = 'none';
+                } else if (courseSelect.value === 'greenwood') {
+                    khaoKheowPicker.style.display = 'none';
+                    plutaluangPicker.style.display = 'none';
+                    buraphaPicker.style.display = 'none';
+                    greenwoodPicker.style.display = 'block';
                 } else {
                     khaoKheowPicker.style.display = 'none';
                     plutaluangPicker.style.display = 'none';
+                    greenwoodPicker.style.display = 'none';
                     buraphaPicker.style.display = 'none';
                 }
             });
@@ -37449,6 +37460,7 @@ class LiveScorecardSystem {
             this.courseData = null;
         }
     }
+async loadGreenwoodCombination(teeMarker = 'white') {        console.log('[LiveScorecard] Loading Greenwood combination...');        // Get selected courses        const front9 = document.getElementById('greenwoodFront9').value;        const back9 = document.getElementById('greenwoodBack9').value;        if (!front9 || !back9) {            console.warn('[LiveScorecard] Front 9 or Back 9 not selected');            this.courseData = null;            return;        }        console.log(`[LiveScorecard] Selected: Front 9 = ${front9}, Back 9 = ${back9}`);        // Simple mapping: A, B, or C        const front9CourseId = `greenwood_${front9.toLowerCase()}`;        const back9CourseId = `greenwood_${back9.toLowerCase()}`;        console.log(`[LiveScorecard] Loading courses: ${front9CourseId} + ${back9CourseId}`);        try {            // Load both 9-hole courses in parallel            const [front9Result, back9Result] = await Promise.all([                window.SupabaseDB.client                    .from('course_holes')                    .select('hole_number, par, stroke_index, yardage, tee_marker')                    .eq('course_id', front9CourseId)                    .eq('tee_marker', teeMarker.toLowerCase())                    .order('hole_number'),                window.SupabaseDB.client                    .from('course_holes')                    .select('hole_number, par, stroke_index, yardage, tee_marker')                    .eq('course_id', back9CourseId)                    .eq('tee_marker', teeMarker.toLowerCase())                    .order('hole_number')            ]);            const front9Holes = front9Result.data || [];            const back9Holes = back9Result.data || [];            if (front9Holes.length === 0 || back9Holes.length === 0) {                console.error('[LiveScorecard] Failed to load holes for Greenwood combination');                this.courseData = null;                return;            }            // Combine into 18 holes            const combinedHoles = [                ...front9Holes.map(h => ({ ...h, hole_number: h.hole_number })),                ...back9Holes.map(h => ({ ...h, hole_number: h.hole_number + 9 }))            ];            // Create combined course data            this.courseData = {                id: front9CourseId,                name: `Greenwood Golf & Resort (${front9}+${back9})`,                scorecard_url: null,                holes: combinedHoles            };            console.log(`[LiveScorecard] ✅ Greenwood ${front9}+${back9} loaded successfully (${combinedHoles.length} holes)`);        } catch (error) {            console.error('[LiveScorecard] Error loading Greenwood combination:', error);            this.courseData = null;        }    }
 
 
     async loadCourseData(courseId, teeMarker = 'white') {
@@ -37479,6 +37491,12 @@ class LiveScorecardSystem {
             'khao_kheow_b_with_a': 2,
             'khao_kheow_b_with_c': 2,
             'khao_kheow_c': 2
+            'greenwood': 1,  // v1: initial 3-nine setup (A, B, C)
+            'greenwood_a': 1,
+            'greenwood_b': 1,
+            'greenwood_c': 1,
+            'hermes': 1,  // v1: initial setup
+            'phoenix': 1  // v1: initial setup
         };
 
         // Cache course data (tee marker handled in query, not cache key)
@@ -38083,6 +38101,12 @@ class LiveScorecardSystem {
             await this.loadBuraphaCombination(teeMarker);
             if (!this.courseData) {
                 NotificationManager.show('Please select both Front 9 and Back 9 courses for Burapha', 'error');
+                return;
+            }
+        } else if (courseId === 'greenwood') {
+            await this.loadGreenwoodCombination(teeMarker);
+            if (!this.courseData) {
+                NotificationManager.show('Please select both Front 9 and Back 9 courses for Greenwood', 'error');
                 return;
             }
         } else {

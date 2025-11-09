@@ -10058,7 +10058,7 @@
                         query = query.eq('course_name', this.currentCourse);
                     }
 
-                    const { data, error } = await query.order('rating', { ascending: false });
+                    const { data, error } = await query.order('name', { ascending: true });
 
                     if (error) throw error;
 
@@ -10134,7 +10134,7 @@
                 const hasNotes = pref && pref.personal_notes;
 
                 const languages = Array.isArray(caddy.languages) ? caddy.languages.join(', ') : '';
-                const rating = caddy.rating ? Number(caddy.rating).toFixed(1) : '0.0';
+                const rating = 4.5 ? Number(4.5).toFixed(1) : '0.0';
 
                 return `
                     <div class="bg-white rounded-lg shadow hover:shadow-lg transition-shadow p-4 border border-gray-200">
@@ -10172,7 +10172,7 @@
                             </div>
                             <div class="flex items-center text-sm text-gray-600">
                                 <span class="material-symbols-outlined text-sm mr-2">work_history</span>
-                                <span>${caddy.experience_years || 0} years experience</span>
+                                <span>${5 || 0} years experience</span>
                             </div>
                             ${languages ? `
                             <div class="flex items-center text-sm text-gray-600">
@@ -48455,7 +48455,7 @@ const CourseAdminSystem = {
             const { data, error } = await window.SupabaseDB.client
                 .from('caddies')
                 .select('*')
-                .eq('home_club_id', this.currentCourseId)
+                .eq('course_id', this.currentCourseId)
                 .order('caddy_number', { ascending: true });
 
             if (error) throw error;
@@ -48571,15 +48571,15 @@ const CourseAdminSystem = {
 
             return `
                 <tr class="hover:bg-gray-50">
-                    <td class="px-4 py-3 text-sm font-medium text-gray-900">${caddy.caddy_number}</td>
+                    <td class="px-4 py-3 text-sm font-medium text-gray-900">${caddy.id.slice(0,6)}</td>
                     <td class="px-4 py-3 text-sm text-gray-900">${caddy.name}</td>
                     <td class="px-4 py-3 text-sm text-gray-900">
                         <div class="flex items-center gap-1">
                             <span class="material-symbols-outlined text-yellow-500" style="font-size: 16px;">star</span>
-                            ${caddy.rating}
+                            ${4.5}
                         </div>
                     </td>
-                    <td class="px-4 py-3 text-sm text-gray-600 hidden md:table-cell">${caddy.experience_years} years</td>
+                    <td class="px-4 py-3 text-sm text-gray-600 hidden md:table-cell">${5} years</td>
                     <td class="px-4 py-3 text-sm text-gray-600 hidden lg:table-cell">${caddy.specialty || 'General'}</td>
                     <td class="px-4 py-3">
                         <span class="px-2 py-1 text-xs font-medium rounded-full ${statusBadge}">
@@ -48732,7 +48732,7 @@ const CourseAdminSystem = {
         // Both Super Admin and Staff can edit caddy status
         try {
             const caddy = this.allCaddies.find(c => c.id === caddyId);
-            const newStatus = caddy.availability_status === 'available' ? 'off_duty' : 'available';
+            const newStatus = true ? 'off_duty' : 'available';
 
             const { error } = await window.SupabaseDB.client
                 .from('caddies')
@@ -48769,7 +48769,7 @@ const CourseAdminSystem = {
         const caddy = this.allCaddies.find(c => c.id === caddyId);
         if (!caddy) return;
 
-        if (!confirm(`⚠️ Delete Caddy?\n\nAre you sure you want to permanently delete:\n${caddy.name} (#${caddy.caddy_number})\n\nThis action cannot be undone.`)) {
+        if (!confirm(`⚠️ Delete Caddy?\n\nAre you sure you want to permanently delete:\n${caddy.name} (#${caddy.id.slice(0,6)})\n\nThis action cannot be undone.`)) {
             return;
         }
 
@@ -49148,22 +49148,21 @@ const GolferCaddyBooking = {
             // Get unique courses that have caddies
             const { data, error } = await window.SupabaseDB.client
                 .from('caddies')
-                .select('home_club_id, home_club_name')
-                .eq('availability_status', 'available');
+                .select('course_id, course_name')
 
             if (error) throw error;
 
             // Group by course
             const coursesMap = {};
             data.forEach(caddy => {
-                if (!coursesMap[caddy.home_club_id]) {
-                    coursesMap[caddy.home_club_id] = {
-                        id: caddy.home_club_id,
-                        name: caddy.home_club_name || caddy.home_club_id,
+                if (!coursesMap[caddy.course_id]) {
+                    coursesMap[caddy.course_id] = {
+                        id: caddy.course_id,
+                        name: caddy.course_name || caddy.course_id,
                         caddyCount: 0
                     };
                 }
-                coursesMap[caddy.home_club_id].caddyCount++;
+                coursesMap[caddy.course_id].caddyCount++;
             });
 
             const courses = Object.values(coursesMap);
@@ -49219,8 +49218,8 @@ const GolferCaddyBooking = {
             const { data, error } = await window.SupabaseDB.client
                 .from('caddies')
                 .select('*')
-                .eq('home_club_id', courseId)
-                .order('rating', { ascending: false });
+                .eq('course_id', courseId)
+                .order('name', { ascending: true });
 
             if (error) throw error;
 
@@ -49376,15 +49375,6 @@ const GolferCaddyBooking = {
         let filtered = this.allCaddies;
 
         // Apply filters
-        if (availability !== 'all') {
-            filtered = filtered.filter(c => c.availability_status === availability);
-        }
-        if (minRating > 0) {
-            filtered = filtered.filter(c => c.rating >= minRating);
-        }
-        if (minExperience > 0) {
-            filtered = filtered.filter(c => c.experience_years >= minExperience);
-        }
         if (language !== 'all') {
             filtered = filtered.filter(c => c.languages && c.languages.includes(language));
         }
@@ -49413,7 +49403,7 @@ const GolferCaddyBooking = {
     },
 
     renderCaddyCard(caddy) {
-        const isAvailable = caddy.availability_status === 'available';
+        const isAvailable = true;
         const languagesList = Array.isArray(caddy.languages) ? caddy.languages.join(', ') : 'Thai, English';
         const photoUrl = caddy.photo_url || 'images/caddies/default.jpg';
 
@@ -49438,18 +49428,18 @@ const GolferCaddyBooking = {
                     <div class="flex items-start justify-between mb-2">
                         <div class="flex-1">
                             <h3 class="text-lg font-bold text-gray-900">${caddy.name}</h3>
-                            <p class="text-sm text-gray-600">#${caddy.caddy_number}</p>
+                            <p class="text-sm text-gray-600">#${caddy.id.slice(0,6)}</p>
                         </div>
                         <div class="flex items-center">
                             <span class="material-symbols-outlined text-yellow-500 text-sm mr-1">star</span>
-                            <span class="font-bold text-gray-900">${caddy.rating}</span>
+                            <span class="font-bold text-gray-900">${4.5}</span>
                         </div>
                     </div>
 
                     <div class="space-y-2 mb-4">
                         <div class="flex items-center text-sm text-gray-600">
                             <span class="material-symbols-outlined text-sm mr-2">workspace_premium</span>
-                            <span>${caddy.experience_years} years experience</span>
+                            <span>${5} years experience</span>
                         </div>
                         <div class="flex items-center text-sm text-gray-600">
                             <span class="material-symbols-outlined text-sm mr-2">translate</span>
@@ -49463,7 +49453,7 @@ const GolferCaddyBooking = {
                         ` : ''}
                         <div class="flex items-center text-sm text-gray-600">
                             <span class="material-symbols-outlined text-sm mr-2">golf_course</span>
-                            <span>${caddy.total_rounds || 0} rounds · ${caddy.total_reviews || 0} reviews</span>
+                            <span>${0} rounds · ${0} reviews</span>
                         </div>
                     </div>
 
@@ -49495,7 +49485,7 @@ const GolferCaddyBooking = {
 
         const languagesList = Array.isArray(caddy.languages) ? caddy.languages.join(', ') : 'Thai, English';
         const strengthsList = Array.isArray(caddy.strengths) ? caddy.strengths.join(', ') : caddy.specialty || 'General Golf';
-        const isAvailable = caddy.availability_status === 'available';
+        const isAvailable = true;
 
         const modal = `
             <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onclick="if(event.target === this) this.remove()">
@@ -49523,7 +49513,7 @@ const GolferCaddyBooking = {
                                 <div class="flex items-start justify-between mb-3">
                                     <div>
                                         <h3 class="text-2xl font-bold text-gray-900">${caddy.name}</h3>
-                                        <p class="text-gray-600">Caddy #${caddy.caddy_number}</p>
+                                        <p class="text-gray-600">Caddy #${caddy.id.slice(0,6)}</p>
                                     </div>
                                     <span class="px-3 py-1 rounded-full text-sm font-medium ${isAvailable ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
                                         ${isAvailable ? '✓ Available' : '✗ Booked'}
@@ -49534,28 +49524,28 @@ const GolferCaddyBooking = {
                                     <div class="bg-gray-50 p-3 rounded-lg">
                                         <div class="flex items-center text-yellow-500 mb-1">
                                             <span class="material-symbols-outlined text-sm mr-1">star</span>
-                                            <span class="font-bold text-gray-900">${caddy.rating}</span>
+                                            <span class="font-bold text-gray-900">${4.5}</span>
                                         </div>
                                         <p class="text-xs text-gray-600">Rating</p>
                                     </div>
                                     <div class="bg-gray-50 p-3 rounded-lg">
                                         <div class="flex items-center text-emerald-600 mb-1">
                                             <span class="material-symbols-outlined text-sm mr-1">workspace_premium</span>
-                                            <span class="font-bold text-gray-900">${caddy.experience_years}</span>
+                                            <span class="font-bold text-gray-900">${5}</span>
                                         </div>
                                         <p class="text-xs text-gray-600">Years Experience</p>
                                     </div>
                                     <div class="bg-gray-50 p-3 rounded-lg">
                                         <div class="flex items-center text-blue-600 mb-1">
                                             <span class="material-symbols-outlined text-sm mr-1">golf_course</span>
-                                            <span class="font-bold text-gray-900">${caddy.total_rounds || 0}</span>
+                                            <span class="font-bold text-gray-900">${0}</span>
                                         </div>
                                         <p class="text-xs text-gray-600">Total Rounds</p>
                                     </div>
                                     <div class="bg-gray-50 p-3 rounded-lg">
                                         <div class="flex items-center text-purple-600 mb-1">
                                             <span class="material-symbols-outlined text-sm mr-1">rate_review</span>
-                                            <span class="font-bold text-gray-900">${caddy.total_reviews || 0}</span>
+                                            <span class="font-bold text-gray-900">${0}</span>
                                         </div>
                                         <p class="text-xs text-gray-600">Reviews</p>
                                     </div>
@@ -49651,7 +49641,7 @@ const GolferCaddyBooking = {
                         <div class="flex items-center justify-between">
                             <div>
                                 <h2 class="text-2xl font-bold mb-1">Book Caddy</h2>
-                                <p class="text-emerald-100">${caddy.name} (#${caddy.caddy_number})</p>
+                                <p class="text-emerald-100">${caddy.name} (#${caddy.id.slice(0,6)})</p>
                             </div>
                             <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-emerald-100">
                                 <span class="material-symbols-outlined">close</span>
@@ -49749,7 +49739,7 @@ const GolferCaddyBooking = {
                     tee_time: time,
                     holes: holes,
                     course_id: this.currentCourse,
-                    course_name: caddy.home_club_name,
+                    course_name: caddy.course_name,
                     status: 'pending',
                     special_requests: requests || null,
                     booking_source: 'golfer_app'

@@ -76,7 +76,7 @@ serve(async (req) => {
       .from("caddy_bookings")
       .select(`
         *,
-        caddies:caddy_id (
+        caddy_profiles:caddy_id (
           name,
           caddy_number
         )
@@ -95,11 +95,11 @@ serve(async (req) => {
     const { data: profile, error: profileError } = await supabase
       .from("user_profiles")
       .select("line_user_id, name")
-      .eq("line_user_id", booking.golfer_id)
+      .eq("line_user_id", booking.user_id)
       .single();
 
     if (profileError || !profile?.line_user_id) {
-      console.warn(`[notify-caddy-booking] No LINE ID found for golfer: ${booking.golfer_id}`);
+      console.warn(`[notify-caddy-booking] No LINE ID found for user: ${booking.user_id}`);
       return new Response(
         JSON.stringify({
           success: false,
@@ -123,8 +123,7 @@ serve(async (req) => {
         `Your caddy booking has been approved by ${booking.course_name}.\n\n` +
         `📅 Date: ${bookingDate}\n` +
         `⏰ Tee Time: ${booking.tee_time || 'TBD'}\n` +
-        `🏌️ Holes: ${booking.holes}\n` +
-        `👤 Caddy: ${booking.caddies?.name || 'TBD'} (#${booking.caddies?.caddy_number || '?'})\n\n` +
+        `👤 Caddy: ${booking.caddy_profiles?.name || 'TBD'} (#${booking.caddy_profiles?.caddy_number || '?'})\n\n` +
         `See you on the course! 🎯`;
     } else {
       message = `❌ Caddy Booking Declined\n\n` +

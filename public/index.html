@@ -48770,9 +48770,9 @@ const CourseAdminSystem = {
                 .from('caddy_bookings')
                 .select(`
                     *,
-                    caddies (caddy_number, name)
+                    caddy_profiles:caddy_id (caddy_number, name)
                 `)
-                .eq('course_id', this.currentCourseId)
+                .eq('course_name', this.currentCourseId)
                 .eq('booking_date', today)
                 .in('status', ['pending', 'confirmed'])
                 .order('tee_time', { ascending: true, nullsFirst: false });
@@ -48914,10 +48914,10 @@ const CourseAdminSystem = {
                         ${booking.tee_time || 'Not set'}
                     </td>
                     <td class="px-4 py-3 text-sm text-gray-900">
-                        ${booking.caddies?.name || 'Unknown'} (#${booking.caddies?.caddy_number || '?'})
+                        ${booking.caddy_profiles?.name || 'Unknown'} (#${booking.caddy_profiles?.caddy_number || '?'})
                     </td>
                     <td class="px-4 py-3 text-sm text-gray-900">${booking.golfer_name || 'Walk-in'}</td>
-                    <td class="px-4 py-3 text-sm text-gray-600">${booking.holes} holes</td>
+                    <td class="px-4 py-3 text-sm text-gray-600">-</td>
                     <td class="px-4 py-3">
                         <span class="px-2 py-1 text-xs font-medium rounded-full ${statusBadge}">
                             ${booking.status}
@@ -49277,11 +49277,11 @@ const CourseAdminSystem = {
                             <div class="grid grid-cols-2 gap-3 text-sm">
                                 <div>
                                     <span class="text-gray-600">Name:</span>
-                                    <span class="font-medium text-gray-900 ml-2">${booking.caddies?.name || 'Unknown'}</span>
+                                    <span class="font-medium text-gray-900 ml-2">${booking.caddy_profiles?.name || 'Unknown'}</span>
                                 </div>
                                 <div>
                                     <span class="text-gray-600">Number:</span>
-                                    <span class="font-medium text-gray-900 ml-2">#${booking.caddies?.caddy_number || '?'}</span>
+                                    <span class="font-medium text-gray-900 ml-2">#${booking.caddy_profiles?.caddy_number || '?'}</span>
                                 </div>
                             </div>
                         </div>
@@ -49302,8 +49302,8 @@ const CourseAdminSystem = {
                                     <span class="font-medium text-gray-900 ml-2">${booking.tee_time || 'Not set'}</span>
                                 </div>
                                 <div>
-                                    <span class="text-gray-600">Holes:</span>
-                                    <span class="font-medium text-gray-900 ml-2">${booking.holes} holes</span>
+                                    <span class="text-gray-600">Course:</span>
+                                    <span class="font-medium text-gray-900 ml-2">${booking.course_name}</span>
                                 </div>
                                 <div>
                                     <span class="text-gray-600">Source:</span>
@@ -49666,22 +49666,24 @@ const GolferCaddyBooking = {
         try {
             // Get unique courses that have caddies
             const { data, error } = await window.SupabaseDB.client
-                .from('caddies')
-                .select('course_id, course_name')
+                .from('caddy_profiles')
+                .select('course_name')
+                .eq('is_active', true)
 
             if (error) throw error;
 
-            // Group by course
+            // Group by course name
             const coursesMap = {};
             data.forEach(caddy => {
-                if (!coursesMap[caddy.course_id]) {
-                    coursesMap[caddy.course_id] = {
-                        id: caddy.course_id,
-                        name: caddy.course_name || caddy.course_id,
+                const courseName = caddy.course_name;
+                if (!coursesMap[courseName]) {
+                    coursesMap[courseName] = {
+                        id: courseName,
+                        name: courseName,
                         caddyCount: 0
                     };
                 }
-                coursesMap[caddy.course_id].caddyCount++;
+                coursesMap[courseName].caddyCount++;
             });
 
             const courses = Object.values(coursesMap);
@@ -49735,9 +49737,10 @@ const GolferCaddyBooking = {
             console.log('[GolferCaddyBooking] Loading caddies for:', courseId);
 
             const { data, error } = await window.SupabaseDB.client
-                .from('caddies')
+                .from('caddy_profiles')
                 .select('*')
-                .eq('course_id', courseId)
+                .eq('course_name', courseId)
+                .eq('is_active', true)
                 .order('name', { ascending: true });
 
             if (error) throw error;
@@ -49753,20 +49756,19 @@ const GolferCaddyBooking = {
 
     async loadMyBookings() {
         try {
-            if (!window.currentUserId) return;
+            const userId = AppState.currentUser?.lineUserId || window.currentUserId;
+            if (!userId) return;
 
             const { data, error } = await window.SupabaseDB.client
                 .from('caddy_bookings')
                 .select(`
                     *,
-                    caddies:caddy_id (
+                    caddy_profiles:caddy_id (
                         name,
-                        caddy_number,
-                        photo_url,
-                        rating
+                        photo_url
                     )
                 `)
-                .eq('golfer_id', window.currentUserId)
+                .eq('user_id', userId)
                 .order('booking_date', { ascending: false });
 
             if (error) throw error;
@@ -50247,21 +50249,16 @@ const GolferCaddyBooking = {
         if (!caddy) return;
 
         try {
-            // Create booking in database
+            // Create booking in database (matching actual schema)
             const { data, error } = await window.SupabaseDB.client
                 .from('caddy_bookings')
                 .insert({
+                    user_id: AppState.currentUser?.lineUserId || window.currentUserId,
                     caddy_id: caddyId,
-                    golfer_id: window.currentUserId,
-                    golfer_name: window.currentUserProfile?.full_name || 'Guest',
+                    course_name: caddy.course_name,
                     booking_date: date,
                     tee_time: time,
-                    holes: holes,
-                    course_id: this.currentCourse,
-                    course_name: caddy.course_name,
-                    status: 'pending',
-                    special_requests: requests || null,
-                    booking_source: 'golfer_app'
+                    status: 'pending'
                 })
                 .select();
 
@@ -50357,21 +50354,21 @@ const GolferCaddyBooking = {
                         <div class="flex-1">
                             <div class="flex items-center gap-4 mb-3">
                                 <div class="w-16 h-16 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                    ${booking.caddies?.photo_url ? `
-                                        <img src="${booking.caddies.photo_url}" alt="${booking.caddies?.name}" class="w-full h-full object-cover rounded-lg">
+                                    ${booking.caddy_profiles?.photo_url ? `
+                                        <img src="${booking.caddy_profiles.photo_url}" alt="${booking.caddy_profiles?.name}" class="w-full h-full object-cover rounded-lg">
                                     ` : `
                                         <span class="material-symbols-outlined text-3xl text-emerald-600">person</span>
                                     `}
                                 </div>
                                 <div class="flex-1">
-                                    <h3 class="text-lg font-bold text-gray-900">${booking.caddies?.name || 'Caddy'} (#${booking.caddies?.caddy_number || '---'})</h3>
+                                    <h3 class="text-lg font-bold text-gray-900">${booking.caddy_profiles?.name || 'Caddy'}</h3>
                                     <p class="text-sm text-gray-600">${booking.course_name}</p>
                                 </div>
                                 <span class="px-3 py-1 rounded-full text-xs font-medium ${statusColor}">
                                     ${booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
                                 </span>
                             </div>
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                                 <div class="flex items-center text-gray-600">
                                     <span class="material-symbols-outlined text-sm mr-2">calendar_today</span>
                                     <span>${new Date(booking.booking_date).toLocaleDateString()}</span>
@@ -50382,18 +50379,9 @@ const GolferCaddyBooking = {
                                 </div>
                                 <div class="flex items-center text-gray-600">
                                     <span class="material-symbols-outlined text-sm mr-2">golf_course</span>
-                                    <span>${booking.holes} Holes</span>
-                                </div>
-                                <div class="flex items-center text-gray-600">
-                                    <span class="material-symbols-outlined text-sm mr-2">star</span>
-                                    <span>${booking.caddies?.rating || 'N/A'}</span>
+                                    <span>${booking.course_name}</span>
                                 </div>
                             </div>
-                            ${booking.special_requests ? `
-                                <div class="mt-3 p-3 bg-gray-50 rounded-lg">
-                                    <p class="text-sm text-gray-700"><strong>Special Requests:</strong> ${booking.special_requests}</p>
-                                </div>
-                            ` : ''}
                         </div>
                         ${booking.status === 'pending' ? `
                             <div class="flex gap-2">

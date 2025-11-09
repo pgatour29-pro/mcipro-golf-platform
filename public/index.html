@@ -37460,7 +37460,75 @@ class LiveScorecardSystem {
             this.courseData = null;
         }
     }
-async loadGreenwoodCombination(teeMarker = 'white') {        console.log('[LiveScorecard] Loading Greenwood combination...');        // Get selected courses        const front9 = document.getElementById('greenwoodFront9').value;        const back9 = document.getElementById('greenwoodBack9').value;        if (!front9 || !back9) {            console.warn('[LiveScorecard] Front 9 or Back 9 not selected');            this.courseData = null;            return;        }        console.log(`[LiveScorecard] Selected: Front 9 = ${front9}, Back 9 = ${back9}`);        // Simple mapping: A, B, or C        const front9CourseId = `greenwood_${front9.toLowerCase()}`;        const back9CourseId = `greenwood_${back9.toLowerCase()}`;        console.log(`[LiveScorecard] Loading courses: ${front9CourseId} + ${back9CourseId}`);        try {            // Load both 9-hole courses in parallel            const [front9Result, back9Result] = await Promise.all([                window.SupabaseDB.client                    .from('course_holes')                    .select('hole_number, par, stroke_index, yardage, tee_marker')                    .eq('course_id', front9CourseId)                    .eq('tee_marker', teeMarker.toLowerCase())                    .order('hole_number'),                window.SupabaseDB.client                    .from('course_holes')                    .select('hole_number, par, stroke_index, yardage, tee_marker')                    .eq('course_id', back9CourseId)                    .eq('tee_marker', teeMarker.toLowerCase())                    .order('hole_number')            ]);            const front9Holes = front9Result.data || [];            const back9Holes = back9Result.data || [];            if (front9Holes.length === 0 || back9Holes.length === 0) {                console.error('[LiveScorecard] Failed to load holes for Greenwood combination');                this.courseData = null;                return;            }            // Combine into 18 holes            const combinedHoles = [                ...front9Holes.map(h => ({ ...h, hole_number: h.hole_number })),                ...back9Holes.map(h => ({ ...h, hole_number: h.hole_number + 9 }))            ];            // Create combined course data            this.courseData = {                id: front9CourseId,                name: `Greenwood Golf & Resort (${front9}+${back9})`,                scorecard_url: null,                holes: combinedHoles            };            console.log(`[LiveScorecard] ✅ Greenwood ${front9}+${back9} loaded successfully (${combinedHoles.length} holes)`);        } catch (error) {            console.error('[LiveScorecard] Error loading Greenwood combination:', error);            this.courseData = null;        }    }
+
+    async loadGreenwoodCombination(teeMarker = 'white') {
+        console.log('[LiveScorecard] Loading Greenwood combination...');
+
+        // Get selected courses
+        const front9 = document.getElementById('greenwoodFront9').value;
+        const back9 = document.getElementById('greenwoodBack9').value;
+
+        if (!front9 || !back9) {
+            console.warn('[LiveScorecard] Front 9 or Back 9 not selected');
+            this.courseData = null;
+            return;
+        }
+
+        console.log(`[LiveScorecard] Selected: Front 9 = ${front9}, Back 9 = ${back9}`);
+
+        // Simple mapping: A, B, or C
+        const front9CourseId = `greenwood_${front9.toLowerCase()}`;
+        const back9CourseId = `greenwood_${back9.toLowerCase()}`;
+
+        console.log(`[LiveScorecard] Loading courses: ${front9CourseId} + ${back9CourseId}`);
+
+        try {
+            // Load both 9-hole courses in parallel
+            const [front9Result, back9Result] = await Promise.all([
+                window.SupabaseDB.client
+                    .from('course_holes')
+                    .select('hole_number, par, stroke_index, yardage, tee_marker')
+                    .eq('course_id', front9CourseId)
+                    .eq('tee_marker', teeMarker.toLowerCase())
+                    .order('hole_number'),
+                window.SupabaseDB.client
+                    .from('course_holes')
+                    .select('hole_number, par, stroke_index, yardage, tee_marker')
+                    .eq('course_id', back9CourseId)
+                    .eq('tee_marker', teeMarker.toLowerCase())
+                    .order('hole_number')
+            ]);
+
+            const front9Holes = front9Result.data || [];
+            const back9Holes = back9Result.data || [];
+
+            if (front9Holes.length === 0 || back9Holes.length === 0) {
+                console.error('[LiveScorecard] Failed to load holes for Greenwood combination');
+                this.courseData = null;
+                return;
+            }
+
+            // Combine into 18 holes
+            const combinedHoles = [
+                ...front9Holes.map(h => ({ ...h, hole_number: h.hole_number })),
+                ...back9Holes.map(h => ({ ...h, hole_number: h.hole_number + 9 }))
+            ];
+
+            // Create combined course data
+            this.courseData = {
+                id: front9CourseId,
+                name: `Greenwood Golf & Resort (${front9}+${back9})`,
+                scorecard_url: null,
+                holes: combinedHoles
+            };
+
+            console.log(`[LiveScorecard] ✅ Greenwood ${front9}+${back9} loaded successfully (${combinedHoles.length} holes)`);
+
+        } catch (error) {
+            console.error('[LiveScorecard] Error loading Greenwood combination:', error);
+            this.courseData = null;
+        }
+    }
 
 
     async loadCourseData(courseId, teeMarker = 'white') {

@@ -23071,18 +23071,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <!-- Tee Markers -->
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="scorecard.teemarkers">Tee Markers</label>
-                            <div class="flex flex-wrap gap-3">
-                                <label class="flex items-center cursor-pointer">
-                                    <input type="radio" name="teeMarker" value="red" class="mr-2">
-                                    <span class="px-4 py-2 border-2 border-red-500 text-red-700 rounded-lg font-medium" data-i18n="scorecard.red">Red</span>
-                                </label>
+                            <div id="teeMarkerContainer" class="flex flex-wrap gap-3">
                                 <label class="flex items-center cursor-pointer">
                                     <input type="radio" name="teeMarker" value="white" checked class="mr-2">
                                     <span class="px-4 py-2 border-2 border-gray-400 text-gray-700 rounded-lg font-medium" data-i18n="scorecard.white">White</span>
-                                </label>
-                                <label class="flex items-center cursor-pointer">
-                                    <input type="radio" name="teeMarker" value="yellow" class="mr-2">
-                                    <span class="px-4 py-2 border-2 border-yellow-500 text-yellow-700 rounded-lg font-medium" data-i18n="scorecard.yellow">Yellow</span>
                                 </label>
                                 <label class="flex items-center cursor-pointer">
                                     <input type="radio" name="teeMarker" value="blue" class="mr-2">
@@ -23093,6 +23085,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                     <span class="px-4 py-2 border-2 border-black text-black rounded-lg font-medium" data-i18n="scorecard.black">Black</span>
                                 </label>
                             </div>
+                            <p class="text-xs text-gray-500 mt-1">Available tees for selected course</p>
                         </div>
 
                         <!-- Scoring Format -->
@@ -37057,6 +37050,83 @@ class LiveScorecardSystem {
         }
     };
 
+    async loadTeeMarkersForCourse(courseId) {
+        console.log('[LiveScorecard] Loading tee markers for:', courseId);
+        const teeMarkerContainer = document.getElementById('teeMarkerContainer');
+
+        if (!teeMarkerContainer) {
+            console.error('[LiveScorecard] Tee marker container not found');
+            return;
+        }
+
+        if (!courseId) {
+            console.log('[LiveScorecard] No course selected, using default tees');
+            // Reset to default tees
+            teeMarkerContainer.innerHTML = `
+                <label class="flex items-center cursor-pointer">
+                    <input type="radio" name="teeMarker" value="white" checked class="mr-2">
+                    <span class="px-4 py-2 border-2 border-gray-400 text-gray-700 rounded-lg font-medium" data-i18n="scorecard.white">White</span>
+                </label>
+                <label class="flex items-center cursor-pointer">
+                    <input type="radio" name="teeMarker" value="blue" class="mr-2">
+                    <span class="px-4 py-2 border-2 border-blue-500 text-blue-700 rounded-lg font-medium" data-i18n="scorecard.blue">Blue</span>
+                </label>
+                <label class="flex items-center cursor-pointer">
+                    <input type="radio" name="teeMarker" value="black" class="mr-2">
+                    <span class="px-4 py-2 border-2 border-black text-black rounded-lg font-medium" data-i18n="scorecard.black">Black</span>
+                </label>
+            `;
+            return;
+        }
+
+        try {
+            if (!window.scorecardProfileLoader) {
+                console.error('[LiveScorecard] scorecardProfileLoader not initialized');
+                return;
+            }
+
+            const tees = await window.scorecardProfileLoader.getTeeOptions(courseId);
+            console.log('[LiveScorecard] Got tees for', courseId, ':', tees);
+
+            if (!tees || tees.length === 0) {
+                console.warn('[LiveScorecard] No tees found for', courseId);
+                return;
+            }
+
+            // Color mapping for tee markers
+            const colorMap = {
+                'Black': { border: 'border-black', text: 'text-black', bg: 'bg-gray-900' },
+                'Blue': { border: 'border-blue-500', text: 'text-blue-700', bg: 'bg-blue-500' },
+                'White': { border: 'border-gray-400', text: 'text-gray-700', bg: 'bg-white' },
+                'Yellow': { border: 'border-yellow-400', text: 'text-yellow-700', bg: 'bg-yellow-400' },
+                'Red': { border: 'border-red-500', text: 'text-red-700', bg: 'bg-red-500' },
+                'Gold': { border: 'border-yellow-500', text: 'text-yellow-800', bg: 'bg-yellow-500' },
+                'Silver': { border: 'border-gray-300', text: 'text-gray-600', bg: 'bg-gray-300' }
+            };
+
+            // Clear existing tee markers
+            teeMarkerContainer.innerHTML = '';
+
+            // Generate radio buttons for each tee
+            tees.forEach((tee, index) => {
+                const colors = colorMap[tee.color] || { border: 'border-gray-400', text: 'text-gray-700', bg: 'bg-gray-400' };
+                const isChecked = index === tees.findIndex(t => t.color === 'White') || (index === 0 && !tees.find(t => t.color === 'White'));
+
+                const label = document.createElement('label');
+                label.className = 'flex items-center cursor-pointer';
+                label.innerHTML = `
+                    <input type="radio" name="teeMarker" value="${tee.color.toLowerCase()}" ${isChecked ? 'checked' : ''} class="mr-2">
+                    <span class="px-4 py-2 border-2 ${colors.border} ${colors.text} rounded-lg font-medium">${tee.color}</span>
+                `;
+                teeMarkerContainer.appendChild(label);
+            });
+
+            console.log('[LiveScorecard] ✅ Populated', tees.length, 'tee markers');
+        } catch (error) {
+            console.error('[LiveScorecard] Error loading tee markers:', error);
+        }
+    }
+
     async init() {
         console.log('[LiveScorecard] Initializing...');
 
@@ -37085,7 +37155,8 @@ class LiveScorecardSystem {
         const buraphaPicker = document.getElementById('buraphaPicker');
         const greenwoodPicker = document.getElementById('greenwoodPicker');
         if (courseSelect && khaoKheowPicker && plutaluangPicker && buraphaPicker && greenwoodPicker) {
-            courseSelect.addEventListener('change', () => {
+            courseSelect.addEventListener('change', async () => {
+                // Handle course-specific pickers
                 if (courseSelect.value === 'khao_kheow') {
                     khaoKheowPicker.style.display = 'block';
                     plutaluangPicker.style.display = 'none';
@@ -37112,7 +37183,15 @@ class LiveScorecardSystem {
                     greenwoodPicker.style.display = 'none';
                     buraphaPicker.style.display = 'none';
                 }
+
+                // Load tee markers dynamically based on selected course
+                await this.loadTeeMarkersForCourse(courseSelect.value);
             });
+
+            // Load initial tee markers for the default selected course
+            if (courseSelect.value) {
+                await this.loadTeeMarkersForCourse(courseSelect.value);
+            }
         }
     }
 

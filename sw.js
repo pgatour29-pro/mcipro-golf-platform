@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
 // DEPLOYMENT VERSION: 2025-11-05-ORGANIZER-ROUND-HISTORY
 
-const SW_VERSION = '3624a8df'; // Git SHA - updated on every deploy
+const SW_VERSION = '75e51a70'; // Git SHA - updated on every deploy
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

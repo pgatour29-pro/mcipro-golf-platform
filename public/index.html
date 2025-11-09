@@ -32173,6 +32173,12 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
             // Populate course dropdown
             await populateCourseDropdown();
+
+            // If a course is already selected, trigger handleCourseChange
+            const courseSelect = document.getElementById('courseSelect');
+            if (courseSelect.value) {
+                await handleCourseChange();
+            }
         }
 
         async function populateCourseDropdown() {
@@ -32226,21 +32232,37 @@ Total Rounds: ${ningCaddy.totalRounds}`;
             }
 
             courseName.style.display = 'none';
-            courseName.value = window.scorecardProfileLoader.getCourseDisplayName(courseId);
 
-            // Load tee options
-            const tees = await window.scorecardProfileLoader.getTeeOptions(courseId);
-            teeMarker.innerHTML = '<option value="">Select tee marker...</option>';
-            teeMarker.disabled = false;
+            try {
+                if (!window.scorecardProfileLoader) {
+                    console.error('[handleCourseChange] scorecardProfileLoader not initialized');
+                    teeMarker.innerHTML = '<option value="">Error: Loader not ready</option>';
+                    return;
+                }
 
-            tees.forEach(tee => {
-                const option = document.createElement('option');
-                option.value = tee.color;
-                option.textContent = `${tee.color} Tees (${tee.name}) - CR: ${tee.course_rating}, SR: ${tee.slope_rating}`;
-                option.dataset.courseRating = tee.course_rating;
-                option.dataset.slopeRating = tee.slope_rating;
-                teeMarker.appendChild(option);
-            });
+                courseName.value = window.scorecardProfileLoader.getCourseDisplayName(courseId);
+
+                // Load tee options
+                console.log('[handleCourseChange] Loading tees for:', courseId);
+                const tees = await window.scorecardProfileLoader.getTeeOptions(courseId);
+                console.log('[handleCourseChange] Got tees:', tees);
+
+                teeMarker.innerHTML = '<option value="">Select tee marker...</option>';
+                teeMarker.disabled = false;
+
+                tees.forEach(tee => {
+                    const option = document.createElement('option');
+                    option.value = tee.color;
+                    option.textContent = `${tee.color} Tees (${tee.name}) - CR: ${tee.course_rating}, SR: ${tee.slope_rating}`;
+                    option.dataset.courseRating = tee.course_rating;
+                    option.dataset.slopeRating = tee.slope_rating;
+                    teeMarker.appendChild(option);
+                });
+                console.log('[handleCourseChange] ✅ Populated', tees.length, 'tee options');
+            } catch (error) {
+                console.error('[handleCourseChange] Error loading tees:', error);
+                teeMarker.innerHTML = '<option value="">Error loading tees</option>';
+            }
         }
 
         function handleTeeChange() {

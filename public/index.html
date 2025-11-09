@@ -31520,19 +31520,14 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 return div;
             },
 
-            // Load round history table from DATABASE
-            async loadRoundHistoryTable() {
-                const tbody = document.getElementById('round-history-table');
-                if (!tbody) return;
-
+            // Helper: Load ALL rounds with proper data conversion (shared by loadRoundHistoryTable and filterRoundHistory)
+            async getAllRoundsWithConversion() {
                 const userId = AppState.currentUser?.lineUserId;
                 let allRounds = [];
 
                 // Load from Supabase database (Live Scorecard rounds)
                 if (userId && window.SupabaseDB) {
                     try {
-                        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500"><span class="material-symbols-outlined animate-spin">refresh</span> Loading rounds...</td></tr>';
-
                         const { data: dbRounds, error } = await window.SupabaseDB.client
                             .from('rounds')
                             .select('*')
@@ -31615,6 +31610,19 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
                 // Sort by date (newest first)
                 uniqueRounds.sort((a, b) => new Date(b.date || b.timestamp) - new Date(a.date || a.timestamp));
+
+                return uniqueRounds;
+            },
+
+            // Load round history table from DATABASE
+            async loadRoundHistoryTable() {
+                const tbody = document.getElementById('round-history-table');
+                if (!tbody) return;
+
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500"><span class="material-symbols-outlined animate-spin">refresh</span> Loading rounds...</td></tr>';
+
+                // Use shared data loading function
+                const uniqueRounds = await this.getAllRoundsWithConversion();
 
                 if (uniqueRounds.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-500">No rounds recorded yet. Play a round or click "Add Round" to get started!</td></tr>';
@@ -32104,52 +32112,8 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 // Show loading state
                 tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-500">Loading...</td></tr>';
 
-                // Get all rounds (database + localStorage)
-                let allRounds = [];
-                const userId = AppState.currentUser?.lineUserId;
-
-                // Load from database
-                if (userId && window.SupabaseDB) {
-                    try {
-                        const { data: dbRounds, error } = await window.SupabaseDB.client
-                            .from('rounds')
-                            .select('*')
-                            // Removed .eq('golfer_id', userId) - let RLS policy handle filtering
-                            // RLS automatically returns: own rounds + shared rounds + organizer rounds
-                            .order('completed_at', { ascending: false });
-
-                        if (error) {
-                            console.error('[Round History] Error loading from database:', error);
-                        } else if (dbRounds && dbRounds.length > 0) {
-                            // Convert database format
-                            const convertedRounds = dbRounds.map(round => ({
-                                id: round.id,
-                                course: round.course_name,
-                                courseId: round.course_id,
-                                tee: round.tee_marker,
-                                score: round.total_gross,
-                                holes: 18,
-                                date: round.completed_at,
-                                timestamp: round.completed_at,
-                                differential: null,
-                                source: 'database',
-                                type: round.type
-                            }));
-                            allRounds = allRounds.concat(convertedRounds);
-                        }
-                    } catch (error) {
-                        console.error('[Round History] Database query failed:', error);
-                    }
-                }
-
-                // Load from localStorage
-                const localRounds = this.scores.map(score => ({
-                    ...score,
-                    source: 'localStorage',
-                    courseId: score.courseId || null,
-                    tee: score.tee || null
-                }));
-                allRounds = allRounds.concat(localRounds);
+                // Use shared data loading function for consistency
+                const allRounds = await this.getAllRoundsWithConversion();
 
                 // Apply filters
                 let filteredScores = [...allRounds];
@@ -32174,15 +32138,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     );
                 }
 
-                // Remove duplicates (same ID from database and localStorage)
-                const uniqueRounds = [];
-                const seenIds = new Set();
-                for (const round of filteredScores) {
-                    if (!seenIds.has(round.id)) {
-                        uniqueRounds.push(round);
-                        seenIds.add(round.id);
-                    }
-                }
+                const uniqueRounds = filteredScores; // Already de-duped by getAllRoundsWithConversion()
 
                 // Render filtered results
                 if (uniqueRounds.length === 0) {

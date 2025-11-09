@@ -726,6 +726,38 @@ class SupabaseClient {
         return channel;
     }
 
+    subscribeToCaddyBookings(callback) {
+        const channel = this.client
+            .channel('caddy-bookings-changes')
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'caddy_bookings' },
+                (payload) => {
+                    console.log('[Supabase Realtime] Caddy booking changed:', payload);
+                    callback(payload);
+                }
+            )
+            .subscribe();
+
+        console.log('[Supabase Realtime] ✅ Subscribed to caddy_bookings changes');
+        return channel;
+    }
+
+    subscribeToCaddies(callback) {
+        const channel = this.client
+            .channel('caddies-changes')
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'caddies' },
+                (payload) => {
+                    console.log('[Supabase Realtime] Caddy availability changed:', payload);
+                    callback(payload);
+                }
+            )
+            .subscribe();
+
+        console.log('[Supabase Realtime] ✅ Subscribed to caddies changes');
+        return channel;
+    }
+
     // =====================================================
     // EMERGENCY ALERTS (Cross-Device Sync)
     // =====================================================

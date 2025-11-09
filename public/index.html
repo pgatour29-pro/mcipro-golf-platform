@@ -4665,6 +4665,18 @@
                     }
                 });
 
+                // Subscribe to caddy bookings changes via WebSocket
+                window.SupabaseDB.subscribeToCaddyBookings((payload) => {
+                    console.log('[SimpleCloudSync] 🔄 Caddy booking update via WebSocket:', payload.eventType);
+                    this.handleRealtimeCaddyBookingChange(payload);
+                });
+
+                // Subscribe to caddy availability changes via WebSocket
+                window.SupabaseDB.subscribeToCaddies((payload) => {
+                    console.log('[SimpleCloudSync] 🔄 Caddy availability update via WebSocket:', payload.eventType);
+                    this.handleRealtimeCaddyChange(payload);
+                });
+
                 // Fallback: Light sync every 5 minutes as safety net
                 setInterval(() => {
                     console.log('[SimpleCloudSync] Safety sync (5min fallback)');
@@ -4867,6 +4879,79 @@
 
                     default:
                         console.warn('[SimpleCloudSync] ⚠️ Unknown event type:', eventType);
+                }
+            }
+
+            static handleRealtimeCaddyBookingChange(payload) {
+                const { eventType, new: newRecord, old: oldRecord } = payload;
+
+                console.log('[Caddy Booking Realtime] Event:', eventType, newRecord);
+
+                // Notify CourseAdminSystem to reload bookings if active
+                if (window.CourseAdminSystem && window.CourseAdminSystem.currentCourseId) {
+                    if (newRecord && newRecord.course_id === window.CourseAdminSystem.currentCourseId) {
+                        console.log('[Caddy Booking Realtime] Reloading admin bookings...');
+                        window.CourseAdminSystem.loadBookings();
+                    }
+                }
+
+                // Notify GolferCaddyBooking to reload if user is viewing bookings
+                if (window.GolferCaddyBooking && window.currentUserId) {
+                    if (newRecord && newRecord.golfer_id === window.currentUserId) {
+                        console.log('[Caddy Booking Realtime] Reloading golfer bookings...');
+                        window.GolferCaddyBooking.loadMyBookings().then(() => {
+                            // Check if showing bookings list
+                            const bookingsList = document.getElementById('bookingsList');
+                            if (bookingsList) {
+                                window.GolferCaddyBooking.renderBookingsList();
+                            }
+                        });
+                    }
+                }
+
+                // Show notification for golfer when booking is approved/denied
+                if (eventType === 'UPDATE' && newRecord && oldRecord) {
+                    if (newRecord.golfer_id === window.currentUserId) {
+                        if (oldRecord.status === 'pending' && newRecord.status === 'confirmed') {
+                            if (typeof NotificationManager !== 'undefined') {
+                                NotificationManager.show('Your caddy booking has been approved!', 'success', 5000);
+                            }
+                        } else if (oldRecord.status === 'pending' && newRecord.status === 'cancelled') {
+                            if (typeof NotificationManager !== 'undefined') {
+                                NotificationManager.show('Your caddy booking was denied', 'error', 5000);
+                            }
+                        }
+                    }
+                }
+            }
+
+            static handleRealtimeCaddyChange(payload) {
+                const { eventType, new: newRecord, old: oldRecord } = payload;
+
+                console.log('[Caddy Realtime] Event:', eventType, newRecord);
+
+                // Notify CourseAdminSystem to reload caddies if active
+                if (window.CourseAdminSystem && window.CourseAdminSystem.currentCourseId) {
+                    if (newRecord && newRecord.course_id === window.CourseAdminSystem.currentCourseId) {
+                        console.log('[Caddy Realtime] Reloading admin caddies...');
+                        window.CourseAdminSystem.loadCaddies();
+                    }
+                }
+
+                // Notify GolferCaddyBooking to reload caddies if viewing caddy list
+                if (window.GolferCaddyBooking && window.GolferCaddyBooking.currentCourse) {
+                    if (newRecord && newRecord.course_id === window.GolferCaddyBooking.currentCourse) {
+                        console.log('[Caddy Realtime] Reloading golfer caddy list...');
+                        window.GolferCaddyBooking.loadCaddiesForCourse(newRecord.course_id).then(() => {
+                            window.GolferCaddyBooking.renderCaddyList();
+                        });
+                    }
+                }
+
+                // Notify CaddyOrganizerSystem if active (for golfer caddy organizer view)
+                if (window.CaddyOrganizerSystem && typeof window.CaddyOrganizerSystem.loadCaddies === 'function') {
+                    console.log('[Caddy Realtime] Reloading caddy organizer...');
+                    window.CaddyOrganizerSystem.loadCaddies();
                 }
             }
 
@@ -48841,12 +48926,21 @@ const CourseAdminSystem = {
                     <td class="px-4 py-3 text-sm">
                         ${booking.status === 'pending' ? `
                             <button onclick="CourseAdminSystem.confirmBooking('${booking.id}')"
-                                class="text-green-600 hover:text-green-800 mr-2">
-                                Confirm
+                                class="text-green-600 hover:text-green-800 font-medium mr-2"
+                                title="Approve this booking">
+                                <span class="material-symbols-outlined text-sm align-middle">check_circle</span>
+                                Approve
+                            </button>
+                            <button onclick="CourseAdminSystem.denyBooking('${booking.id}')"
+                                class="text-red-600 hover:text-red-800 font-medium mr-2"
+                                title="Deny this booking">
+                                <span class="material-symbols-outlined text-sm align-middle">cancel</span>
+                                Deny
                             </button>
                         ` : ''}
                         <button onclick="CourseAdminSystem.viewBookingDetails('${booking.id}')"
-                            class="text-blue-600 hover:text-blue-800">
+                            class="text-blue-600 hover:text-blue-800 font-medium">
+                            <span class="material-symbols-outlined text-sm align-middle">visibility</span>
                             Details
                         </button>
                     </td>
@@ -49000,6 +49094,11 @@ const CourseAdminSystem = {
 
     async confirmBooking(bookingId) {
         try {
+            // Show loading state
+            const button = event.target.closest('button');
+            button.disabled = true;
+            button.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">progress_activity</span> Approving...';
+
             const { error } = await window.SupabaseDB.client
                 .from('caddy_bookings')
                 .update({
@@ -49011,7 +49110,29 @@ const CourseAdminSystem = {
 
             if (error) throw error;
 
-            console.log(`[CourseAdmin] Confirmed booking ${bookingId}`);
+            console.log(`[CourseAdmin] ✅ Confirmed booking ${bookingId}`);
+
+            // Send LINE notification to golfer
+            try {
+                const { data, error: notifyError } = await window.SupabaseDB.client.functions.invoke('notify-caddy-booking', {
+                    body: { bookingId, action: 'approved' }
+                });
+
+                if (notifyError) {
+                    console.warn('[CourseAdmin] LINE notification failed:', notifyError);
+                } else {
+                    console.log('[CourseAdmin] ✅ LINE notification sent:', data);
+                }
+            } catch (notifyError) {
+                console.warn('[CourseAdmin] Failed to send LINE notification:', notifyError);
+            }
+
+            // Show success notification
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.show('Booking approved & golfer notified!', 'success');
+            }
+
+            // Reload data
             await Promise.all([
                 this.loadBookings(),
                 this.loadStats()
@@ -49019,7 +49140,73 @@ const CourseAdminSystem = {
 
         } catch (error) {
             console.error('[CourseAdmin] Error confirming booking:', error);
-            alert('Failed to confirm booking');
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.show('Failed to approve booking', 'error');
+            } else {
+                alert('Failed to approve booking');
+            }
+        }
+    },
+
+    async denyBooking(bookingId) {
+        // Confirm denial
+        if (!confirm('Are you sure you want to deny this booking request?')) {
+            return;
+        }
+
+        try {
+            // Show loading state
+            const button = event.target.closest('button');
+            button.disabled = true;
+            button.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">progress_activity</span> Denying...';
+
+            const { error } = await window.SupabaseDB.client
+                .from('caddy_bookings')
+                .update({
+                    status: 'cancelled',
+                    cancelled_at: new Date().toISOString(),
+                    cancelled_by: this.currentCourseId,
+                    cancellation_reason: 'Denied by course admin'
+                })
+                .eq('id', bookingId);
+
+            if (error) throw error;
+
+            console.log(`[CourseAdmin] ❌ Denied booking ${bookingId}`);
+
+            // Send LINE notification to golfer
+            try {
+                const { data, error: notifyError } = await window.SupabaseDB.client.functions.invoke('notify-caddy-booking', {
+                    body: { bookingId, action: 'denied' }
+                });
+
+                if (notifyError) {
+                    console.warn('[CourseAdmin] LINE notification failed:', notifyError);
+                } else {
+                    console.log('[CourseAdmin] ✅ LINE notification sent:', data);
+                }
+            } catch (notifyError) {
+                console.warn('[CourseAdmin] Failed to send LINE notification:', notifyError);
+            }
+
+            // Show success notification
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.show('Booking denied & golfer notified', 'success');
+            }
+
+            // Reload data
+            await Promise.all([
+                this.loadBookings(),
+                this.loadStats()
+            ]);
+
+        } catch (error) {
+            console.error('[CourseAdmin] Error denying booking:', error);
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.show('Failed to deny booking', 'error');
+            } else {
+                alert('Failed to deny booking');
+            }
         }
     },
 
@@ -49027,7 +49214,134 @@ const CourseAdminSystem = {
         const booking = this.todaysBookings.find(b => b.id === bookingId);
         if (!booking) return;
 
-        alert(`Booking Details:\n\nCaddy: ${booking.caddies?.name}\nGolfer: ${booking.golfer_name}\nTee Time: ${booking.tee_time}\nHoles: ${booking.holes}\nStatus: ${booking.status}\nSpecial Requests: ${booking.special_requests || 'None'}`);
+        const statusColors = {
+            'pending': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+            'confirmed': 'bg-green-100 text-green-800 border-green-300',
+            'completed': 'bg-blue-100 text-blue-800 border-blue-300',
+            'cancelled': 'bg-red-100 text-red-800 border-red-300'
+        };
+
+        const statusBadge = statusColors[booking.status] || 'bg-gray-100 text-gray-800 border-gray-300';
+
+        const modal = `
+            <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onclick="if(event.target === this) this.remove()">
+                <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                    <!-- Header -->
+                    <div class="sticky top-0 bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-6 flex items-center justify-between rounded-t-2xl">
+                        <div>
+                            <h2 class="text-2xl font-bold mb-1">Booking Details</h2>
+                            <p class="text-emerald-100">Booking #${booking.id.slice(0,8)}</p>
+                        </div>
+                        <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-emerald-100">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+
+                    <!-- Content -->
+                    <div class="p-6 space-y-6">
+                        <!-- Status -->
+                        <div class="flex items-center justify-between p-4 rounded-lg border-2 ${statusBadge}">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined">info</span>
+                                <span class="font-bold text-sm uppercase tracking-wide">${booking.status}</span>
+                            </div>
+                            ${booking.confirmed_at ? `
+                                <span class="text-xs">Confirmed ${new Date(booking.confirmed_at).toLocaleString()}</span>
+                            ` : ''}
+                        </div>
+
+                        <!-- Golfer Info -->
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <h3 class="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                                <span class="material-symbols-outlined text-blue-600">person</span>
+                                Golfer Information
+                            </h3>
+                            <div class="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                    <span class="text-gray-600">Name:</span>
+                                    <span class="font-medium text-gray-900 ml-2">${booking.golfer_name || 'Walk-in'}</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-600">Golfer ID:</span>
+                                    <span class="font-medium text-gray-900 ml-2">#${booking.golfer_id?.slice(0,8) || 'N/A'}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Caddy Info -->
+                        <div class="bg-emerald-50 rounded-lg p-4 border border-emerald-200">
+                            <h3 class="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                                <span class="material-symbols-outlined text-emerald-600">person_pin</span>
+                                Caddy Assignment
+                            </h3>
+                            <div class="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                    <span class="text-gray-600">Name:</span>
+                                    <span class="font-medium text-gray-900 ml-2">${booking.caddies?.name || 'Unknown'}</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-600">Number:</span>
+                                    <span class="font-medium text-gray-900 ml-2">#${booking.caddies?.caddy_number || '?'}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Booking Details -->
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <h3 class="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                                <span class="material-symbols-outlined text-purple-600">event</span>
+                                Booking Details
+                            </h3>
+                            <div class="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                    <span class="text-gray-600">Date:</span>
+                                    <span class="font-medium text-gray-900 ml-2">${new Date(booking.booking_date).toLocaleDateString()}</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-600">Tee Time:</span>
+                                    <span class="font-medium text-gray-900 ml-2">${booking.tee_time || 'Not set'}</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-600">Holes:</span>
+                                    <span class="font-medium text-gray-900 ml-2">${booking.holes} holes</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-600">Source:</span>
+                                    <span class="font-medium text-gray-900 ml-2">${booking.booking_source || 'golfer_app'}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Special Requests -->
+                        ${booking.special_requests ? `
+                            <div class="bg-orange-50 rounded-lg p-4 border border-orange-200">
+                                <h3 class="font-bold text-gray-900 mb-2 flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-orange-600">notes</span>
+                                    Special Requests
+                                </h3>
+                                <p class="text-sm text-gray-700">${booking.special_requests}</p>
+                            </div>
+                        ` : ''}
+
+                        <!-- Actions -->
+                        ${booking.status === 'pending' ? `
+                            <div class="flex gap-3 pt-4 border-t">
+                                <button onclick="CourseAdminSystem.confirmBooking('${booking.id}'); this.closest('.fixed').remove();" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2">
+                                    <span class="material-symbols-outlined">check_circle</span>
+                                    <span>Approve Booking</span>
+                                </button>
+                                <button onclick="CourseAdminSystem.denyBooking('${booking.id}'); this.closest('.fixed').remove();" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2">
+                                    <span class="material-symbols-outlined">cancel</span>
+                                    <span>Deny Booking</span>
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modal);
     },
 
     async approveWaitlist(requestId) {

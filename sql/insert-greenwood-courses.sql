@@ -9,15 +9,14 @@
 -- STEP 1: Create course entries in courses table
 -- =====================================================================
 
-INSERT INTO courses (id, name, location, country)
+INSERT INTO courses (id, name, location)
 VALUES
-    ('greenwood_a', 'Greenwood Golf & Resort - Course A', 'Phrao, Chiang Mai', 'Thailand'),
-    ('greenwood_b', 'Greenwood Golf & Resort - Course B', 'Phrao, Chiang Mai', 'Thailand'),
-    ('greenwood_c', 'Greenwood Golf & Resort - Course C', 'Phrao, Chiang Mai', 'Thailand')
+    ('greenwood_a', 'Greenwood Golf & Resort - Course A', 'Phrao, Chiang Mai'),
+    ('greenwood_b', 'Greenwood Golf & Resort - Course B', 'Phrao, Chiang Mai'),
+    ('greenwood_c', 'Greenwood Golf & Resort - Course C', 'Phrao, Chiang Mai')
 ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
-    location = EXCLUDED.location,
-    country = EXCLUDED.country;
+    location = EXCLUDED.location;
 
 -- =====================================================================
 -- STEP 2: Clean up old course holes

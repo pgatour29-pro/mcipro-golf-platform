@@ -31320,6 +31320,42 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 localStorage.setItem('mcipro_golf_scores', JSON.stringify(this.scores));
                 this.updateStatistics();
                 this.refreshRecentRounds();
+
+                // Auto-sync to database for real-time cross-device availability (non-blocking)
+                this.syncScoreToDatabase(newScore).catch(err => {
+                    console.warn('[Round History] Background sync to database failed (non-critical):', err);
+                });
+            },
+
+            // Sync localStorage round to database for cross-device availability
+            async syncScoreToDatabase(score) {
+                const userId = AppState.currentUser?.lineUserId;
+                if (!userId || !window.SupabaseDB) return;
+
+                try {
+                    const { error } = await window.SupabaseDB.client
+                        .from('rounds')
+                        .insert({
+                            golfer_id: userId,
+                            course_name: score.course,
+                            course_id: score.courseId,
+                            tee_marker: score.tee,
+                            total_gross: score.score,
+                            holes: score.holes,
+                            course_rating: score.courseRating,
+                            slope_rating: score.slopeRating,
+                            completed_at: score.date,
+                            notes: score.notes,
+                            type: 'practice', // Manual entries are practice rounds
+                            created_at: score.timestamp
+                        });
+
+                    if (error) throw error;
+                    console.log('[Round History] ✅ Auto-synced manual round to database');
+                } catch (error) {
+                    // Non-blocking error - localStorage still has the data
+                    throw error;
+                }
             },
 
             // WHS Score Differential Calculation
@@ -31591,11 +31627,14 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     }
                 }
 
-                // NOTE: localStorage loading removed to ensure consistency between desktop and mobile
-                // All rounds now loaded exclusively from database (single source of truth)
-                // If you need to migrate old localStorage rounds, use: GolfScoreSystem.migrateLocalStorageToDatabase()
+                // Load from localStorage (backwards compatibility - will be auto-synced to database)
+                const localRounds = this.scores.map(score => ({
+                    ...score,
+                    source: 'localStorage'
+                }));
+                allRounds = allRounds.concat(localRounds);
 
-                // Remove duplicates (database might have duplicates from different queries)
+                // Remove duplicates (prefer database version)
                 const uniqueRounds = [];
                 const seenIds = new Set();
                 for (const round of allRounds) {
@@ -31608,7 +31647,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 // Sort by date (newest first)
                 uniqueRounds.sort((a, b) => new Date(b.date || b.timestamp) - new Date(a.date || a.timestamp));
 
-                console.log(`[Round History] ✅ Loaded ${uniqueRounds.length} unique rounds (database only)`);
+                console.log(`[Round History] ✅ Loaded ${uniqueRounds.length} unique rounds (${uniqueRounds.filter(r => r.source === 'database').length} from DB, ${uniqueRounds.filter(r => r.source === 'localStorage').length} from localStorage)`);
                 return uniqueRounds;
             },
 
@@ -31728,7 +31767,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     `;
                 }).join('');
 
-                console.log(`[Round History] Displayed ${uniqueRounds.length} total rounds (database only - consistent across all devices)`);
+                console.log(`[Round History] Displayed ${uniqueRounds.length} total rounds (${uniqueRounds.filter(r => r.source === 'database').length} from DB, ${uniqueRounds.filter(r => r.source === 'localStorage').length} from localStorage)`);
             },
 
             // View round details (for database rounds)
@@ -32195,7 +32234,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     `;
                 }).join('');
 
-                console.log(`[Round History] Filtered ${uniqueRounds.length} rounds (database only - consistent across all devices)`);
+                console.log(`[Round History] Filtered ${uniqueRounds.length} rounds (${uniqueRounds.filter(r => r.source === 'database').length} from DB, ${uniqueRounds.filter(r => r.source === 'localStorage').length} from localStorage)`);
             }
         };
 

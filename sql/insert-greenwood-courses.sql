@@ -25,8 +25,9 @@ ON CONFLICT (id) DO UPDATE SET
 DELETE FROM course_holes WHERE course_id IN ('greenwood_a', 'greenwood_b', 'greenwood_c');
 
 -- =====================================================================
--- COURSE A (9 holes)
+-- COURSE A (9 holes) - ODD STROKE INDICES for Front 9
 -- Par: 4, 4, 3, 5, 4, 4, 3, 5, 4 = 36
+-- Indices: 9, 13, 17, 1, 7, 11, 15, 3, 5 (odd numbers 1-17)
 -- =====================================================================
 
 INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
@@ -75,8 +76,9 @@ INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, te
 ('greenwood_a', 9, 4, 5, 310, 'red');
 
 -- =====================================================================
--- COURSE B (9 holes)
+-- COURSE B (9 holes) - EVEN STROKE INDICES for Back 9
 -- Par: 4, 5, 3, 4, 4, 4, 3, 5, 4 = 36
+-- Indices: 10, 2, 16, 8, 12, 6, 18, 4, 14 (even numbers 2-18)
 -- =====================================================================
 
 INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
@@ -125,8 +127,9 @@ INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, te
 ('greenwood_b', 9, 4, 14, 295, 'red');
 
 -- =====================================================================
--- COURSE C (9 holes)
+-- COURSE C (9 holes) - ODD STROKE INDICES (alternative front 9)
 -- Par: 4, 4, 5, 3, 4, 4, 5, 3, 4 = 36
+-- Indices: 11, 15, 5, 17, 9, 13, 3, 1, 7 (odd numbers 1-17, different order)
 -- =====================================================================
 
 INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
@@ -138,7 +141,7 @@ INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, te
 ('greenwood_c', 5, 4, 9, 400, 'blue'),
 ('greenwood_c', 6, 4, 13, 375, 'blue'),
 ('greenwood_c', 7, 5, 3, 535, 'blue'),
-('greenwood_c', 8, 3, 15, 175, 'blue'),
+('greenwood_c', 8, 3, 1, 175, 'blue'),
 ('greenwood_c', 9, 4, 7, 390, 'blue'),
 
 -- White Tees
@@ -149,7 +152,7 @@ INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, te
 ('greenwood_c', 5, 4, 9, 370, 'white'),
 ('greenwood_c', 6, 4, 13, 345, 'white'),
 ('greenwood_c', 7, 5, 3, 505, 'white'),
-('greenwood_c', 8, 3, 15, 155, 'white'),
+('greenwood_c', 8, 3, 1, 155, 'white'),
 ('greenwood_c', 9, 4, 7, 360, 'white'),
 
 -- Yellow Tees
@@ -160,7 +163,7 @@ INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, te
 ('greenwood_c', 5, 4, 9, 340, 'yellow'),
 ('greenwood_c', 6, 4, 13, 315, 'yellow'),
 ('greenwood_c', 7, 5, 3, 475, 'yellow'),
-('greenwood_c', 8, 3, 15, 135, 'yellow'),
+('greenwood_c', 8, 3, 1, 135, 'yellow'),
 ('greenwood_c', 9, 4, 7, 330, 'yellow'),
 
 -- Red Tees
@@ -171,7 +174,7 @@ INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, te
 ('greenwood_c', 5, 4, 9, 310, 'red'),
 ('greenwood_c', 6, 4, 13, 285, 'red'),
 ('greenwood_c', 7, 5, 3, 445, 'red'),
-('greenwood_c', 8, 3, 15, 115, 'red'),
+('greenwood_c', 8, 3, 1, 115, 'red'),
 ('greenwood_c', 9, 4, 7, 300, 'red');
 
 -- =====================================================================

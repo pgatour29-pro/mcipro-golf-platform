@@ -36600,6 +36600,14 @@ class SocietyGolfSupabase {
 
         const societyId = societyData.id;
 
+        console.log(`[SocietyGolfDB] 🔍 Searching society members:`, {
+            societyName,
+            societyId,
+            searchTerm,
+            offset,
+            limit
+        });
+
         // Two-step approach to handle search without foreign key JOIN:
         // 1. If searching by name: find matching profiles first, get IDs, then query members
         // 2. If no search or searching by member #: query members directly, then get profiles
@@ -36683,6 +36691,8 @@ class SocietyGolfSupabase {
             return { members: [], totalCount: 0, hasMore: false };
         }
 
+        console.log(`[SocietyGolfDB] 📊 Total matching members: ${totalCount}`);
+
         // Apply pagination
         memberQuery = memberQuery
             .range(offset, offset + limit - 1)
@@ -36695,6 +36705,8 @@ class SocietyGolfSupabase {
             return { members: [], totalCount: 0, hasMore: false };
         }
 
+        console.log(`[SocietyGolfDB] 📄 Retrieved ${members?.length || 0} members for this page`);
+
         // Step 3: Get profile data for this page of members
         if (members && members.length > 0) {
             const memberIds = members.map(m => m.golfer_id);
@@ -36704,13 +36716,18 @@ class SocietyGolfSupabase {
                 .in('line_user_id', memberIds);
 
             if (!profileError && profiles) {
+                console.log(`[SocietyGolfDB] 👤 Retrieved ${profiles.length} profiles:`, profiles.map(p => p.name));
                 // Attach profile data to each member
                 members.forEach(member => {
                     const profile = profiles.find(p => p.line_user_id === member.golfer_id);
                     if (profile) {
                         member.user_profiles = profile;
+                    } else {
+                        console.warn(`[SocietyGolfDB] ⚠️ No profile found for member ${member.golfer_id}`);
                     }
                 });
+            } else if (profileError) {
+                console.error('[SocietyGolfDB] Error loading profiles:', profileError);
             }
         }
 

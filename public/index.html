@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -6956,39 +6956,121 @@
 
                     LoadingManager.show('Creating your profile...');
 
-                    // Insert into Supabase using SECURITY DEFINER function
+                    // Check localStorage quota before proceeding
+                    if ('storage' in navigator && 'estimate' in navigator.storage) {
+                        try {
+                            const estimate = await navigator.storage.estimate();
+                            const usage = estimate.usage || 0;
+                            const quota = estimate.quota || 0;
+                            const available = quota - usage;
+                            const profileSize = JSON.stringify(newProfile).length * 2; // UTF-16 overhead
+
+                            console.log(`[LINE] Storage check: ${(usage/1024/1024).toFixed(2)}MB used, ${(available/1024/1024).toFixed(2)}MB available`);
+
+                            if (profileSize > available) {
+                                throw new Error('QUOTA_EXCEEDED');
+                            }
+                        } catch (quotaError) {
+                            if (quotaError.message === 'QUOTA_EXCEEDED') {
+                                throw quotaError;
+                            }
+                            console.warn('[LINE] Could not check storage quota:', quotaError);
+                        }
+                    }
+
+                    // Insert into Supabase using SECURITY DEFINER function with timeout
                     await window.SupabaseDB.waitForReady();
 
+                    // Helper function to add timeout to promises
+                    const withTimeout = (promise, ms) => {
+                        return Promise.race([
+                            promise,
+                            new Promise((_, reject) =>
+                                setTimeout(() => reject(new Error('TIMEOUT')), ms)
+                            )
+                        ]);
+                    };
+
                     let data, error;
-                    try {
-                        const result = await window.SupabaseDB.client
-                            .rpc('create_user_profile', {
-                                p_line_user_id: lineUserId,
-                                p_name: profile.displayName || 'Golfer',
-                                p_role: 'golfer',
-                                p_profile_data: newProfile.profile_data
-                            });
+                    let attempt = 0;
+                    const maxAttempts = 3;
+                    const timeoutMs = 10000; // 10 seconds
 
-                        data = result.data;
-                        error = result.error;
+                    while (attempt < maxAttempts) {
+                        try {
+                            attempt++;
+                            console.log(`[LINE] Profile creation attempt ${attempt}/${maxAttempts}`);
 
-                        if (!error) {
-                            console.log('[LINE] ✅ Profile created via RPC function');
+                            try {
+                                const result = await withTimeout(
+                                    window.SupabaseDB.client
+                                        .rpc('create_user_profile', {
+                                            p_line_user_id: lineUserId,
+                                            p_name: profile.displayName || 'Golfer',
+                                            p_role: 'golfer',
+                                            p_profile_data: newProfile.profile_data
+                                        }),
+                                    timeoutMs
+                                );
+
+                                data = result.data;
+                                error = result.error;
+
+                                if (!error) {
+                                    console.log('[LINE] ✅ Profile created via RPC function');
+                                    break; // Success, exit retry loop
+                                }
+                            } catch (rpcError) {
+                                console.warn('[LINE] RPC function not available, trying direct INSERT:', rpcError);
+                                const result = await withTimeout(
+                                    window.SupabaseDB.client
+                                        .from('user_profiles')
+                                        .insert([newProfile])
+                                        .select()
+                                        .single(),
+                                    timeoutMs
+                                );
+
+                                data = result.data;
+                                error = result.error;
+
+                                if (!error) {
+                                    console.log('[LINE] ✅ Profile created via direct INSERT');
+                                    break; // Success, exit retry loop
+                                }
+                            }
+
+                            // If we got an error, throw it to trigger retry logic
+                            if (error) {
+                                throw error;
+                            }
+
+                        } catch (attemptError) {
+                            console.error(`[LINE] Attempt ${attempt} failed:`, attemptError);
+
+                            // Don't retry on certain errors
+                            if (attemptError.code === '23505' || // Duplicate key
+                                attemptError.code === '42501' || // Insufficient privilege (RLS)
+                                attemptError.message === 'QUOTA_EXCEEDED') {
+                                error = attemptError;
+                                break; // Exit retry loop
+                            }
+
+                            // On last attempt, save the error
+                            if (attempt >= maxAttempts) {
+                                error = attemptError;
+                                break;
+                            }
+
+                            // Wait before retrying (exponential backoff: 1s, 2s, 4s)
+                            const delayMs = Math.pow(2, attempt - 1) * 1000;
+                            console.log(`[LINE] Retrying in ${delayMs}ms...`);
+                            await new Promise(resolve => setTimeout(resolve, delayMs));
                         }
-                    } catch (rpcError) {
-                        console.warn('[LINE] RPC function not available, trying direct INSERT:', rpcError);
-                        const result = await window.SupabaseDB.client
-                            .from('user_profiles')
-                            .insert([newProfile])
-                            .select()
-                            .single();
-
-                        data = result.data;
-                        error = result.error;
                     }
 
                     if (error) {
-                        console.error('[LINE] Failed to create profile:', error);
+                        console.error('[LINE] Failed to create profile after all attempts:', error);
                         throw error;
                     }
 
@@ -7013,7 +7095,7 @@
                         profileData: data
                     };
 
-                    // Save to localStorage
+                    // Save to localStorage (already checked quota above)
                     const profileKey = UserIDSystem.getProfileKey('golfer', lineUserId);
                     localStorage.setItem(profileKey, JSON.stringify(newProfile.profile_data));
 
@@ -7035,6 +7117,16 @@
                     };
 
                     console.log('[LINE] ✅ New user auto-logged in:', AppState.currentUser);
+
+                    // Clear service worker cache to ensure fresh profile data is loaded
+                    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                        navigator.serviceWorker.controller.postMessage({
+                            type: 'CLEAR_PROFILE_CACHE',
+                            lineUserId: lineUserId
+                        });
+                        console.log('[LINE] ✅ Requested service worker cache clear');
+                    }
+
                     NotificationManager.show(`Welcome ${profile.displayName}!`, 'success');
                     LoadingManager.hide();
 
@@ -7043,7 +7135,25 @@
 
                 } catch (error) {
                     console.error('[LINE] Profile creation failed:', error);
-                    NotificationManager.show('Failed to create profile. Please try again.', 'error');
+
+                    // Provide specific, actionable error messages
+                    let errorMessage = 'Failed to create profile. Please try again.';
+
+                    if (error.message === 'TIMEOUT') {
+                        errorMessage = 'Connection timeout. Please check your internet connection and try again.';
+                    } else if (error.message === 'QUOTA_EXCEEDED') {
+                        errorMessage = 'Device storage full. Please clear some browser data and try again.';
+                    } else if (error.code === '23505') {
+                        errorMessage = 'Profile already exists. Please try logging in instead.';
+                    } else if (error.code === '42501' || error.code === 'PGRST301' || error.message?.includes('permission') || error.message?.includes('JWT')) {
+                        errorMessage = 'Permission denied. Please log out of LINE and try again.';
+                    } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
+                        errorMessage = 'Network error. Please check your connection and try again.';
+                    } else if (error.message && error.message !== 'Failed to create profile') {
+                        errorMessage = `Failed to create profile: ${error.message}`;
+                    }
+
+                    NotificationManager.show(errorMessage, 'error');
                     LoadingManager.hide();
                 }
             }

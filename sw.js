@@ -55,6 +55,19 @@ self.addEventListener('message', event => {
     if (event.data && event.data.type === 'SKIP_WAITING') {
         console.log('[ServiceWorker] Force update requested');
         self.skipWaiting();
+    } else if (event.data && event.data.type === 'CLEAR_PROFILE_CACHE') {
+        console.log('[ServiceWorker] Clearing profile cache for user:', event.data.lineUserId);
+        event.waitUntil((async () => {
+            // Clear all caches to ensure fresh profile data
+            const cacheNames = await caches.keys();
+            await Promise.all(
+                cacheNames.map(name => {
+                    console.log('[ServiceWorker] Deleting cache:', name);
+                    return caches.delete(name);
+                })
+            );
+            console.log('[ServiceWorker] All caches cleared after profile creation');
+        })());
     }
 });
 

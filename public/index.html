@@ -29470,13 +29470,12 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             </button>
                         </div>
 
-                        <!-- Handicap Filter -->
-                        <div class="flex items-center gap-2">
+                        <!-- Handicap Filter (TODO: Implement server-side filtering) -->
+                        <div class="flex items-center gap-2" style="display: none;">
                             <label class="text-sm text-gray-600 whitespace-nowrap">Handicap:</label>
                             <select
                                 id="playerDirectoryHandicapFilter"
                                 class="px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                                onchange="SocietyOrganizerSystem.filterPlayerDirectory()"
                             >
                                 <option value="all">All Handicaps</option>
                                 <option value="0-9">0-9 (Low)</option>
@@ -29520,6 +29519,15 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+
+                    <!-- Load More Button -->
+                    <div id="playerDirectoryLoadMoreContainer" class="mt-6 text-center" style="display: none;">
+                        <button id="playerDirectoryLoadMore"
+                                onclick="window.SocietyOrganizerSystem.loadMorePlayers()"
+                                class="px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors">
+                            Load More
+                        </button>
                     </div>
                 </div>
             </div>
@@ -36568,6 +36576,88 @@ class SocietyGolfSupabase {
         }
 
         return data || [];
+    }
+
+    async searchSocietyMembers(societyName, organizerId, searchTerm = '', offset = 0, limit = 50) {
+        await this.waitForSupabase();
+
+        // Get society_id first
+        let query = window.SupabaseDB.client
+            .from('society_profiles')
+            .select('id')
+            .eq('society_name', societyName);
+
+        if (organizerId) {
+            query = query.eq('organizer_id', organizerId);
+        }
+
+        const { data: societyData, error: societyError } = await query.single();
+
+        if (societyError || !societyData) {
+            console.error('[SocietyGolfDB] Error loading society:', societyError);
+            return { members: [], totalCount: 0, hasMore: false };
+        }
+
+        const societyId = societyData.id;
+
+        // Build flexible search query with JOIN to user_profiles
+        // Supports: word-order independent, partial word matching
+        let memberQuery = window.SupabaseDB.client
+            .from('society_members')
+            .select(`
+                *,
+                user_profiles!society_members_golfer_id_fkey (
+                    line_user_id,
+                    name,
+                    email,
+                    phone,
+                    profile_data
+                )
+            `, { count: 'exact' })
+            .eq('society_id', societyId)
+            .eq('status', 'active');
+
+        // If search term provided, apply flexible matching
+        if (searchTerm && searchTerm.trim()) {
+            const searchLower = searchTerm.toLowerCase().trim();
+
+            // Split search term into words for order-independent matching
+            const searchWords = searchLower.split(/\s+/).filter(w => w.length > 0);
+
+            if (searchWords.length === 1) {
+                // Single word search: match in name, member_number, or golfer_id
+                const word = searchWords[0];
+                memberQuery = memberQuery.or(`user_profiles.name.ilike.%${word}%,member_number.cs.${searchTerm},golfer_id.ilike.%${word}%`);
+            } else if (searchWords.length > 1) {
+                // Multiple word search: ALL words must appear in name (order-independent)
+                // E.g., "Park Pete" and "Pete Park" both match "Pete Park"
+                searchWords.forEach(word => {
+                    memberQuery = memberQuery.ilike('user_profiles.name', `%${word}%`);
+                });
+            }
+        }
+
+        // Get total count for pagination
+        const { count: totalCount } = await memberQuery;
+
+        // Apply pagination
+        memberQuery = memberQuery
+            .range(offset, offset + limit - 1)
+            .order('joined_at', { ascending: false });
+
+        const { data, error } = await memberQuery;
+
+        if (error) {
+            console.error('[SocietyGolfDB] Error searching society members:', error);
+            return { members: [], totalCount: 0, hasMore: false };
+        }
+
+        const members = data || [];
+        const hasMore = (offset + members.length) < totalCount;
+
+        console.log(`[SocietyGolfDB] Search results: ${members.length} members (${offset}-${offset + members.length} of ${totalCount})`);
+
+        return { members, totalCount, hasMore };
     }
 
     async addSocietyMember(societyName, organizerId, golferId, memberData = {}) {
@@ -44879,6 +44969,15 @@ class SocietyOrganizerManager {
         this.currentRosterEvent = null;
         this.societyProfile = null;
         this.tempLogoData = null;
+
+        // Player directory pagination state
+        this.playerDirectoryOffset = 0;
+        this.playerDirectoryLimit = 50;
+        this.playerDirectoryHasMore = false;
+        this.playerDirectoryTotalCount = 0;
+        this.playerDirectoryCurrentMembers = [];
+        this.playerDirectorySearchTerm = '';
+        this.playerDirectorySearchDebounce = null;
     }
 
     async init() {
@@ -44945,7 +45044,7 @@ class SocietyOrganizerManager {
     // PLAYER DIRECTORY MANAGEMENT
     // ============================================
 
-    async loadPlayerDirectory() {
+    async loadPlayerDirectory(append = false) {
         try {
             if (!this.societyProfile) {
                 console.error('[PlayerDirectory] No society profile loaded');
@@ -44955,18 +45054,29 @@ class SocietyOrganizerManager {
             const societyName = this.societyProfile.societyName;
             const organizerId = AppState.selectedSociety?.organizerId || AppState.currentUser?.lineUserId;
 
-            console.log('[PlayerDirectory] Loading members for:', societyName);
+            console.log('[PlayerDirectory] Loading members for:', societyName, 'append:', append);
 
-            // Get all society members
-            const members = await SocietyGolfDB.getSocietyMembers(societyName, organizerId);
+            // If not appending, reset pagination
+            if (!append) {
+                this.playerDirectoryOffset = 0;
+                this.playerDirectoryCurrentMembers = [];
+                this.showPlayerDirectoryLoading();
+            } else {
+                this.showPlayerDirectoryLoadingMore();
+            }
 
-            // Get full profile data for each member
-            const memberIds = members.map(m => m.golfer_id);
-            const profiles = await window.SupabaseDB.getProfilesByIds(memberIds);
+            // Use new server-side search with pagination
+            const { members, totalCount, hasMore } = await SocietyGolfDB.searchSocietyMembers(
+                societyName,
+                organizerId,
+                this.playerDirectorySearchTerm,
+                this.playerDirectoryOffset,
+                this.playerDirectoryLimit
+            );
 
-            // Merge member data with profile data
+            // Enrich members with profile data
             const enrichedMembers = members.map(member => {
-                const profile = profiles.find(p => p.line_user_id === member.golfer_id);
+                const profile = member.user_profiles;
                 const golfInfo = profile?.profile_data?.golfInfo || {};
 
                 // Parse notes as fallback if no profile exists
@@ -44977,26 +45087,38 @@ class SocietyOrganizerManager {
                     const notesMatch = member.notes.match(/Imported from TRGG JSON - (.+?), Handicap: (.+?)$/);
                     if (notesMatch) {
                         fallbackName = notesMatch[1];
-                        fallbackHandicap = notesMatch[2]; // Keep as string to preserve "+" sign
+                        fallbackHandicap = notesMatch[2];
                     }
                 }
 
                 return {
                     ...member,
                     playerName: profile?.name || fallbackName,
-                    handicap: golfInfo.handicap || fallbackHandicap, // Store as string to preserve "+" for plus handicaps
+                    handicap: golfInfo.handicap || fallbackHandicap,
                     homeClub: golfInfo.homeClub || '',
                     email: profile?.email || '',
                     phone: profile?.phone || ''
                 };
             });
 
-            // Store full member list for filtering
-            this.allMembers = enrichedMembers;
+            // Append or replace current members
+            if (append) {
+                this.playerDirectoryCurrentMembers = [...this.playerDirectoryCurrentMembers, ...enrichedMembers];
+            } else {
+                this.playerDirectoryCurrentMembers = enrichedMembers;
+            }
 
-            this.renderPlayerDirectory(enrichedMembers);
-            this.updatePlayerDirectoryStats(enrichedMembers);
-            this.updateResultCount(enrichedMembers.length);
+            // Update pagination state
+            this.playerDirectoryOffset += enrichedMembers.length;
+            this.playerDirectoryHasMore = hasMore;
+            this.playerDirectoryTotalCount = totalCount;
+
+            console.log(`[PlayerDirectory] Loaded ${enrichedMembers.length} members, Total: ${totalCount}, HasMore: ${hasMore}`);
+
+            this.renderPlayerDirectory(this.playerDirectoryCurrentMembers);
+            this.updatePlayerDirectoryStats();
+            this.updateResultCount(this.playerDirectoryCurrentMembers.length, totalCount);
+            this.updateLoadMoreButton();
 
         } catch (error) {
             console.error('[PlayerDirectory] Error loading:', error);
@@ -45005,69 +45127,94 @@ class SocietyOrganizerManager {
     }
 
     filterPlayerDirectory() {
-        if (!this.allMembers || this.allMembers.length === 0) return;
-
         const searchInput = document.getElementById('playerDirectorySearch');
-        const handicapFilter = document.getElementById('playerDirectoryHandicapFilter');
         const clearBtn = document.getElementById('playerDirectorySearchClear');
 
-        const searchTerm = searchInput.value.toLowerCase().trim();
-        const handicapRange = handicapFilter.value;
+        const searchTerm = searchInput?.value?.trim() || '';
 
         // Show/hide clear button
         if (clearBtn) {
             clearBtn.style.display = searchTerm ? 'block' : 'none';
         }
 
-        // Filter members
-        let filtered = this.allMembers.filter(member => {
-            // Search filter
-            const matchesSearch = !searchTerm ||
-                member.playerName.toLowerCase().includes(searchTerm) ||
-                member.member_number?.toString().includes(searchTerm) ||
-                member.homeClub?.toLowerCase().includes(searchTerm) ||
-                member.golfer_id?.toLowerCase().includes(searchTerm);
+        // Update search term
+        this.playerDirectorySearchTerm = searchTerm;
 
-            // Handicap filter
-            let matchesHandicap = true;
-            if (handicapRange !== 'all') {
-                const [min, max] = handicapRange.split('-').map(Number);
-                const handicapStr = String(member.handicap || '36');
-                // Parse handicap: "+1.5" becomes -1.5, "18.5" stays 18.5
-                let handicapValue;
-                if (handicapStr.startsWith('+')) {
-                    handicapValue = -parseFloat(handicapStr.substring(1));
-                } else {
-                    handicapValue = parseFloat(handicapStr) || 36;
-                }
-                // For filter ranges, treat plus handicaps as very low (they're better players)
-                // So +1.5 = -1.5, which won't match ranges like "10-18" (as intended)
-                matchesHandicap = handicapValue >= min && handicapValue <= max;
-            }
+        // Clear previous debounce timeout
+        if (this.playerDirectorySearchDebounce) {
+            clearTimeout(this.playerDirectorySearchDebounce);
+        }
 
-            return matchesSearch && matchesHandicap;
-        });
-
-        this.renderPlayerDirectory(filtered);
-        this.updateResultCount(filtered.length);
+        // Debounce search - wait 300ms after user stops typing
+        this.playerDirectorySearchDebounce = setTimeout(() => {
+            console.log('[PlayerDirectory] Search triggered:', searchTerm);
+            this.loadPlayerDirectory(false); // false = start fresh, don't append
+        }, 300);
     }
 
     clearPlayerDirectorySearch() {
         const searchInput = document.getElementById('playerDirectorySearch');
-        const handicapFilter = document.getElementById('playerDirectoryHandicapFilter');
         const clearBtn = document.getElementById('playerDirectorySearchClear');
 
         if (searchInput) searchInput.value = '';
-        if (handicapFilter) handicapFilter.value = 'all';
         if (clearBtn) clearBtn.style.display = 'none';
 
-        this.filterPlayerDirectory();
+        this.playerDirectorySearchTerm = '';
+        this.loadPlayerDirectory(false);
     }
 
-    updateResultCount(count) {
+    async loadMorePlayers() {
+        if (!this.playerDirectoryHasMore) return;
+        await this.loadPlayerDirectory(true); // true = append to existing
+    }
+
+    showPlayerDirectoryLoading() {
+        const tbody = document.getElementById('playerDirectoryTable');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="py-8 text-center text-gray-500">
+                        <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mb-2"></div>
+                        <div>Searching...</div>
+                    </td>
+                </tr>
+            `;
+        }
+    }
+
+    showPlayerDirectoryLoadingMore() {
+        const loadMoreBtn = document.getElementById('playerDirectoryLoadMore');
+        if (loadMoreBtn) {
+            loadMoreBtn.disabled = true;
+            loadMoreBtn.innerHTML = '<span class="material-symbols-outlined animate-spin">refresh</span> Loading...';
+        }
+    }
+
+    updateLoadMoreButton() {
+        const loadMoreBtn = document.getElementById('playerDirectoryLoadMore');
+        const loadMoreContainer = document.getElementById('playerDirectoryLoadMoreContainer');
+
+        if (!loadMoreContainer) return;
+
+        if (this.playerDirectoryHasMore) {
+            loadMoreContainer.style.display = 'block';
+            if (loadMoreBtn) {
+                loadMoreBtn.disabled = false;
+                loadMoreBtn.innerHTML = 'Load More';
+            }
+        } else {
+            loadMoreContainer.style.display = 'none';
+        }
+    }
+
+    updateResultCount(currentCount, totalCount) {
         const countEl = document.getElementById('playerDirectoryResultCount');
         if (countEl) {
-            countEl.textContent = count;
+            if (totalCount !== undefined && totalCount !== currentCount) {
+                countEl.textContent = `${currentCount} of ${totalCount}`;
+            } else {
+                countEl.textContent = currentCount;
+            }
         }
     }
 
@@ -45076,15 +45223,15 @@ class SocietyOrganizerManager {
         if (!tbody) return;
 
         if (!members || members.length === 0) {
-            // Check if this is due to filtering or genuinely no members
-            const isFiltering = this.allMembers && this.allMembers.length > 0;
+            // Check if this is due to searching or genuinely no members
+            const isSearching = this.playerDirectorySearchTerm && this.playerDirectorySearchTerm.length > 0;
 
             tbody.innerHTML = `
                 <tr>
                     <td colspan="7" class="px-6 py-12 text-center text-gray-500">
-                        <span class="material-symbols-outlined text-5xl text-gray-300">${isFiltering ? 'search_off' : 'group_off'}</span>
-                        <p class="mt-2">${isFiltering ? 'No players match your search criteria.' : 'No members yet. Click "Add Player" to get started.'}</p>
-                        ${isFiltering ? '<button onclick="SocietyOrganizerSystem.clearPlayerDirectorySearch()" class="mt-3 text-green-600 hover:text-green-700 font-medium">Clear filters</button>' : ''}
+                        <span class="material-symbols-outlined text-5xl text-gray-300">${isSearching ? 'search_off' : 'group_off'}</span>
+                        <p class="mt-2">${isSearching ? 'No players match your search criteria.' : 'No members yet. Click "Add Player" to get started.'}</p>
+                        ${isSearching ? '<button onclick="window.SocietyOrganizerSystem.clearPlayerDirectorySearch()" class="mt-3 text-green-600 hover:text-green-700 font-medium">Clear search</button>' : ''}
                     </td>
                 </tr>
             `;
@@ -45150,22 +45297,27 @@ class SocietyOrganizerManager {
         }).join('');
     }
 
-    updatePlayerDirectoryStats(members) {
-        // Total members
-        document.getElementById('playerDirTotalMembers').textContent = members.length;
+    updatePlayerDirectoryStats() {
+        // Use totalCount from pagination state for total members
+        const totalMembers = this.playerDirectoryTotalCount || 0;
+        document.getElementById('playerDirTotalMembers').textContent = totalMembers;
 
-        // Active members
-        const activeCount = members.filter(m => m.status === 'active').length;
-        document.getElementById('playerDirActiveMembers').textContent = activeCount;
+        // For other stats, use current loaded members as approximation
+        // Note: These are based on visible/loaded members only, not all members
+        const members = this.playerDirectoryCurrentMembers || [];
 
-        // Monthly joins
-        const thisMonth = new Date();
-        thisMonth.setDate(1);
-        const monthlyJoins = members.filter(m => new Date(m.joined_at) >= thisMonth).length;
-        document.getElementById('playerDirMonthlyJoins').textContent = monthlyJoins;
-
-        // Average handicap (convert handicaps to numbers for calculation)
         if (members.length > 0) {
+            // Active members (from current page only)
+            const activeCount = members.filter(m => m.status === 'active').length;
+            document.getElementById('playerDirActiveMembers').textContent = activeCount;
+
+            // Monthly joins (from current page only)
+            const thisMonth = new Date();
+            thisMonth.setDate(1);
+            const monthlyJoins = members.filter(m => new Date(m.joined_at) >= thisMonth).length;
+            document.getElementById('playerDirMonthlyJoins').textContent = monthlyJoins;
+
+            // Average handicap (from current page only)
             const handicapValues = members.map(m => {
                 const h = String(m.handicap);
                 // Handle plus handicaps: "+1.5" becomes -1.5 for averaging
@@ -45177,6 +45329,8 @@ class SocietyOrganizerManager {
             const avgHandicap = handicapValues.reduce((sum, h) => sum + h, 0) / members.length;
             document.getElementById('playerDirAvgHandicap').textContent = avgHandicap >= 0 ? avgHandicap.toFixed(1) : `+${Math.abs(avgHandicap).toFixed(1)}`;
         } else {
+            document.getElementById('playerDirActiveMembers').textContent = '0';
+            document.getElementById('playerDirMonthlyJoins').textContent = '0';
             document.getElementById('playerDirAvgHandicap').textContent = '-';
         }
     }

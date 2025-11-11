@@ -45445,9 +45445,32 @@ class SocietyOrganizerManager {
     async showAddPlayerModal() {
         // Re-use the existing manual player modal but in directory mode
         this.directoryAddMode = true;
+
+        // Update modal header for directory mode
+        const modalTitle = document.querySelector('#manualPlayerModal h3');
+        const modalSubtitle = document.getElementById('manualPlayerEventName');
+        const addToDestination = document.getElementById('addToDestination');
+
+        if (modalTitle) modalTitle.textContent = 'Add Player to Directory';
+        if (modalSubtitle) modalSubtitle.textContent = this.societyProfile?.society_name || 'Society Members';
+        if (addToDestination) addToDestination.textContent = 'Society Directory';
+
+        // Hide manual entry mode for directory (only allow adding existing users)
+        const manualModeBtn = document.getElementById('manualModeBtn');
+        if (manualModeBtn) manualModeBtn.style.display = 'none';
+
+        // Initialize search mode
+        this.setPlayerAddMode('search');
+
+        // Show modal
         document.getElementById('manualPlayerModal').style.display = 'flex';
-        document.getElementById('playerSearchInput').value = '';
-        document.getElementById('playerSearchInput').focus();
+
+        // Clear and focus search input (correct ID)
+        const searchInput = document.getElementById('manualPlayerSearchInput');
+        if (searchInput) {
+            searchInput.value = '';
+            searchInput.focus();
+        }
     }
 
     async addPlayerToDirectory(playerId, playerName, handicap) {
@@ -46982,6 +47005,16 @@ This action cannot be undone.`);
         document.getElementById('manualPlayerModal').style.display = 'none';
         this.manualPlayerDestination = null;
         this.selectedPlayer = null;
+        this.directoryAddMode = false;
+
+        // Reset modal header to event mode defaults
+        const modalTitle = document.querySelector('#manualPlayerModal h3');
+        const addToDestination = document.getElementById('addToDestination');
+        const manualModeBtn = document.getElementById('manualModeBtn');
+
+        if (modalTitle) modalTitle.textContent = 'Add Player to Event';
+        if (addToDestination) addToDestination.textContent = 'Confirmed Players';
+        if (manualModeBtn) manualModeBtn.style.display = ''; // Restore manual entry button
     }
 
     setPlayerAddMode(mode) {
@@ -47032,7 +47065,10 @@ This action cannot be undone.`);
 
         try {
             // Pass society name for dual search (platform + society members)
-            const societyName = this.currentEvent?.organizerName || null;
+            // Use societyProfile when in directory mode, otherwise use currentEvent
+            const societyName = this.directoryAddMode
+                ? (this.societyProfile?.society_name || null)
+                : (this.currentEvent?.organizerName || null);
             const players = await SocietyGolfDB.searchPlayers(searchTerm, societyName);
 
             if (players.length === 0) {

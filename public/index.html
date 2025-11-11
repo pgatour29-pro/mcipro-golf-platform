@@ -36707,53 +36707,42 @@ class SocietyGolfSupabase {
     async getEventScorecards(eventId) {
         await this.waitForSupabase();
 
-        // FIXED: Query rounds table where scores are actually saved
-        console.log('[SocietyGolf] Fetching event rounds for event:', eventId);
+        console.log('[SocietyGolf] Fetching event scorecards for event:', eventId);
 
-        const { data: rounds, error } = await window.SupabaseDB.client
-            .from('rounds')
+        // FIX: Query scorecards table (Live Scorecard system) instead of rounds table
+        // Join with user_profiles to get player names for leaderboard display
+        const { data: scorecards, error } = await window.SupabaseDB.client
+            .from('scorecards')
             .select(`
                 *,
-                round_holes (*)
+                scores (*),
+                user_profiles!scorecards_player_id_fkey (
+                    name,
+                    line_user_id
+                )
             `)
-            .eq('society_event_id', eventId)
-            .eq('status', 'completed')
+            .eq('event_id', eventId)
             .order('total_gross', { ascending: true });
 
         if (error) {
-            console.error('[SocietyGolf] Error fetching rounds:', error);
+            console.error('[SocietyGolf] Error fetching scorecards:', error);
             return [];
         }
 
-        if (!rounds || rounds.length === 0) {
-            console.log('[SocietyGolf] No completed rounds found for event:', eventId);
+        if (!scorecards || scorecards.length === 0) {
+            console.log('[SocietyGolf] No scorecards found for event:', eventId);
             return [];
         }
 
-        // Convert rounds format to scorecards format for compatibility
-        const scorecards = rounds.map(round => ({
-            id: round.id,
-            event_id: round.society_event_id,
-            player_id: round.golfer_id,
-            status: round.status,
-            total_gross: round.total_gross || 0,
-            total_net: round.total_net || 0,
-            total_stableford: round.total_stableford || 0,
-            handicap: round.handicap_used || 0,
-            tee_marker: round.tee_marker || 'white',
-            scores: (round.round_holes || []).map(hole => ({
-                hole_number: hole.hole_number,
-                par: hole.par,
-                stroke_index: hole.stroke_index,
-                gross_score: hole.gross_score,
-                net_score: hole.net_score,
-                stableford_points: hole.stableford_points,
-                handicap_strokes: hole.handicap_strokes
-            }))
+        // Add player_name to each scorecard from joined user_profiles
+        const scorecardsWithNames = scorecards.map(card => ({
+            ...card,
+            player_name: card.user_profiles?.name || 'Unknown Player',
+            scores: (card.scores || []).sort((a, b) => a.hole_number - b.hole_number)
         }));
 
-        console.log(`[SocietyGolf] Found ${scorecards.length} completed rounds for event ${eventId}`);
-        return scorecards;
+        console.log(`[SocietyGolf] Found ${scorecardsWithNames.length} scorecards for event ${eventId}`);
+        return scorecardsWithNames;
     }
 
     async saveScore(scorecardId, holeNumber, grossScore, par, strokeIndex, handicap) {
@@ -36893,6 +36882,7 @@ class SocietyGolfSupabase {
             return {
                 position: index + 1,
                 player_id: card.player_id,
+                player_name: card.player_name, // Include player name for leaderboard display
                 scorecard_id: card.id,
                 total_gross: card.total_gross || 0,
                 total_net: card.total_net || 0,

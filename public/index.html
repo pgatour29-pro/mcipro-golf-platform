@@ -6926,6 +6926,50 @@
                 console.log('[LINE] Creating new profile for:', lineUserId);
 
                 try {
+                    // Check for existing Travellers Rest Group member match
+                    let trggMatch = null;
+                    try {
+                        await window.SupabaseDB.waitForReady();
+                        console.log('[LINE] Checking for Travellers Rest Group member match...');
+
+                        const displayName = (profile.displayName || '').trim().toLowerCase();
+
+                        // Query for TRGG members
+                        const { data: trggMembers, error: trggError } = await window.SupabaseDB.client
+                            .from('user_profiles')
+                            .select('name, handicap, society_id, society_name, profile_data')
+                            .or('profile_data->>clubAffiliation.eq.Travellers Rest Group,society_name.eq.Travellers Rest Group')
+                            .limit(100);
+
+                        if (!trggError && trggMembers && trggMembers.length > 0) {
+                            console.log(`[LINE] Found ${trggMembers.length} TRGG members to match against`);
+
+                            // Try to find exact or fuzzy match
+                            for (const member of trggMembers) {
+                                const memberName = (member.name || '').trim().toLowerCase();
+
+                                // Exact match
+                                if (memberName === displayName) {
+                                    trggMatch = member;
+                                    console.log('[LINE] ✅ Found EXACT TRGG match:', member.name);
+                                    break;
+                                }
+
+                                // Fuzzy match: check if names contain each other
+                                if (displayName.length > 3 && memberName.length > 3) {
+                                    if (memberName.includes(displayName) || displayName.includes(memberName)) {
+                                        trggMatch = member;
+                                        console.log('[LINE] ✅ Found FUZZY TRGG match:', member.name);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    } catch (matchError) {
+                        console.warn('[LINE] TRGG member match check failed:', matchError);
+                        // Continue with profile creation even if match check fails
+                    }
+
                     // Create basic golfer profile
                     const newProfile = {
                         line_user_id: lineUserId,
@@ -6942,9 +6986,9 @@
                                 phone: ''
                             },
                             golfInfo: {
-                                handicap: 0,
+                                handicap: trggMatch?.handicap || 0,
                                 homeClub: '',
-                                clubAffiliation: ''
+                                clubAffiliation: trggMatch ? 'Travellers Rest Group' : ''
                             },
                             professionalInfo: {},
                             skills: {},
@@ -6953,6 +6997,18 @@
                             privacy: {}
                         }
                     };
+
+                    // If TRGG match found, also set society columns
+                    if (trggMatch) {
+                        newProfile.society_id = trggMatch.society_id || null;
+                        newProfile.society_name = trggMatch.society_name || 'Travellers Rest Group';
+                        newProfile.handicap = trggMatch.handicap || 0;
+                        console.log('[LINE] ✅ Auto-populated from TRGG:', {
+                            handicap: newProfile.handicap,
+                            society: newProfile.society_name,
+                            clubAffiliation: newProfile.profile_data.golfInfo.clubAffiliation
+                        });
+                    }
 
                     LoadingManager.show('Creating your profile...');
 
@@ -7130,8 +7186,14 @@
                     NotificationManager.show(`Welcome ${profile.displayName}!`, 'success');
                     LoadingManager.hide();
 
-                    // Redirect to dashboard
-                    this.redirectToDashboard();
+                    // Show one-time username reminder popup
+                    const hasSeenUsernameReminder = localStorage.getItem(`username_reminder_${lineUserId}`);
+                    if (!hasSeenUsernameReminder) {
+                        this.showUsernameReminderModal(lineUserId, trggMatch);
+                    } else {
+                        // Redirect to dashboard
+                        this.redirectToDashboard();
+                    }
 
                 } catch (error) {
                     console.error('[LINE] Profile creation failed:', error);
@@ -7156,6 +7218,109 @@
                     NotificationManager.show(errorMessage, 'error');
                     LoadingManager.hide();
                 }
+            }
+
+            static showUsernameReminderModal(lineUserId, trggMatch) {
+                console.log('[LINE] Showing username reminder modal');
+
+                // Build modal content
+                let message = `
+                    <div style="text-align: left;">
+                        <h3 style="margin-bottom: 15px; color: #065f46; font-size: 20px;">
+                            👋 Welcome to MciPro Golf Platform!
+                        </h3>
+                        <p style="margin-bottom: 15px; font-size: 16px;">
+                            Your profile has been created successfully!
+                        </p>
+                `;
+
+                if (trggMatch) {
+                    message += `
+                        <div style="background: #d1fae5; border: 2px solid #065f46; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+                            <p style="margin: 0 0 10px 0; font-weight: bold; color: #065f46;">
+                                ✅ Travellers Rest Group Member Detected
+                            </p>
+                            <p style="margin: 0; font-size: 14px; color: #064e3b;">
+                                We found your existing information and automatically set up:
+                            </p>
+                            <ul style="margin: 10px 0 0 20px; font-size: 14px; color: #064e3b;">
+                                <li><strong>Handicap:</strong> ${trggMatch.handicap || 0}</li>
+                                <li><strong>Society:</strong> Travellers Rest Group</li>
+                            </ul>
+                        </div>
+                    `;
+                }
+
+                message += `
+                        <div style="background: #fef3c7; border: 2px solid #d97706; border-radius: 8px; padding: 15px;">
+                            <p style="margin: 0 0 10px 0; font-weight: bold; color: #92400e;">
+                                📝 Important: Create Your Username
+                            </p>
+                            <p style="margin: 0; font-size: 14px; color: #92400e;">
+                                Please go to your profile settings and create a unique username.
+                                This will help other golfers identify you on the platform!
+                            </p>
+                        </div>
+                    </div>
+                `;
+
+                // Create modal HTML
+                const modal = document.createElement('div');
+                modal.id = 'username-reminder-modal';
+                modal.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.5);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 10000;
+                `;
+
+                modal.innerHTML = `
+                    <div style="
+                        background: white;
+                        border-radius: 12px;
+                        padding: 30px;
+                        max-width: 500px;
+                        width: 90%;
+                        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+                    ">
+                        ${message}
+                        <button id="username-reminder-ok-btn" style="
+                            width: 100%;
+                            margin-top: 20px;
+                            padding: 12px;
+                            background: #065f46;
+                            color: white;
+                            border: none;
+                            border-radius: 8px;
+                            font-size: 16px;
+                            font-weight: 600;
+                            cursor: pointer;
+                        ">
+                            Got It, Take Me to Dashboard
+                        </button>
+                    </div>
+                `;
+
+                document.body.appendChild(modal);
+
+                // Handle OK button click
+                document.getElementById('username-reminder-ok-btn').addEventListener('click', () => {
+                    // Mark as seen
+                    localStorage.setItem(`username_reminder_${lineUserId}`, 'true');
+                    console.log('[LINE] Username reminder marked as seen');
+
+                    // Remove modal
+                    modal.remove();
+
+                    // Redirect to dashboard
+                    this.redirectToDashboard();
+                });
             }
 
             static logout() {

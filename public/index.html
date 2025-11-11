@@ -36611,8 +36611,9 @@ class SocietyGolfSupabase {
             const searchLower = searchTerm.toLowerCase().trim();
             const searchWords = searchLower.split(/\s+/).filter(w => w.length > 0);
 
-            // Search user_profiles table for matching names
-            // Use OR logic for multiple words to be more flexible
+            // Try searching profiles with flexible matching:
+            // 1. Search the full phrase as-is (for "Alan Thomas" exact match)
+            // 2. For multiple words, also search where ANY word matches
             let profileQuery = window.SupabaseDB.client
                 .from('user_profiles')
                 .select('line_user_id, name');
@@ -36621,10 +36622,13 @@ class SocietyGolfSupabase {
                 // Single word: search in name
                 profileQuery = profileQuery.ilike('name', `%${searchWords[0]}%`);
             } else if (searchWords.length > 1) {
-                // Multiple words: Build OR conditions where ANY word matches
-                // This is more flexible than requiring ALL words
-                const orConditions = searchWords.map(word => `name.ilike.%${word}%`).join(',');
-                profileQuery = profileQuery.or(orConditions);
+                // Multiple words: Try both the full phrase AND individual words
+                // Build OR conditions: full phrase OR any individual word
+                const conditions = [
+                    `name.ilike.%${searchLower}%`,  // Full phrase: "alan thomas"
+                    ...searchWords.map(word => `name.ilike.%${word}%`)  // Individual words
+                ];
+                profileQuery = profileQuery.or(conditions.join(','));
             }
 
             const { data: matchingProfiles, error: profileError } = await profileQuery;

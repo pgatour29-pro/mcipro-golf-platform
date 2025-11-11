@@ -36600,64 +36600,113 @@ class SocietyGolfSupabase {
 
         const societyId = societyData.id;
 
-        // Build flexible search query with JOIN to user_profiles
-        // Supports: word-order independent, partial word matching
-        let memberQuery = window.SupabaseDB.client
-            .from('society_members')
-            .select(`
-                *,
-                user_profiles!society_members_golfer_id_fkey (
-                    line_user_id,
-                    name,
-                    email,
-                    phone,
-                    profile_data
-                )
-            `, { count: 'exact' })
-            .eq('society_id', societyId)
-            .eq('status', 'active');
+        // Two-step approach to handle search without foreign key JOIN:
+        // 1. If searching by name: find matching profiles first, get IDs, then query members
+        // 2. If no search or searching by member #: query members directly, then get profiles
 
-        // If search term provided, apply flexible matching
+        let filteredMemberIds = null;
+
+        // Step 1: If search term provided, find matching user profiles first
         if (searchTerm && searchTerm.trim()) {
             const searchLower = searchTerm.toLowerCase().trim();
-
-            // Split search term into words for order-independent matching
             const searchWords = searchLower.split(/\s+/).filter(w => w.length > 0);
 
+            // Search user_profiles table for matching names
+            let profileQuery = window.SupabaseDB.client
+                .from('user_profiles')
+                .select('line_user_id');
+
             if (searchWords.length === 1) {
-                // Single word search: match in name, member_number, or golfer_id
-                const word = searchWords[0];
-                memberQuery = memberQuery.or(`user_profiles.name.ilike.%${word}%,member_number.cs.${searchTerm},golfer_id.ilike.%${word}%`);
+                // Single word: search in name
+                profileQuery = profileQuery.ilike('name', `%${searchWords[0]}%`);
             } else if (searchWords.length > 1) {
-                // Multiple word search: ALL words must appear in name (order-independent)
-                // E.g., "Park Pete" and "Pete Park" both match "Pete Park"
+                // Multiple words: ALL words must appear in name (order-independent)
                 searchWords.forEach(word => {
-                    memberQuery = memberQuery.ilike('user_profiles.name', `%${word}%`);
+                    profileQuery = profileQuery.ilike('name', `%${word}%`);
                 });
+            }
+
+            const { data: matchingProfiles, error: profileError } = await profileQuery;
+
+            if (profileError) {
+                console.error('[SocietyGolfDB] Error searching profiles:', profileError);
+            } else if (matchingProfiles && matchingProfiles.length > 0) {
+                filteredMemberIds = matchingProfiles.map(p => p.line_user_id);
+                console.log(`[SocietyGolfDB] Found ${filteredMemberIds.length} profiles matching "${searchTerm}"`);
+            } else {
+                // No profiles matched - return empty result
+                return { members: [], totalCount: 0, hasMore: false };
             }
         }
 
-        // Get total count for pagination
-        const { count: totalCount } = await memberQuery;
+        // Step 2: Query society_members with optional ID filter
+        let countQuery = window.SupabaseDB.client
+            .from('society_members')
+            .select('*', { count: 'exact', head: true })
+            .eq('society_id', societyId)
+            .eq('status', 'active');
+
+        // If we have filtered IDs from name search, apply them
+        if (filteredMemberIds && filteredMemberIds.length > 0) {
+            countQuery = countQuery.in('golfer_id', filteredMemberIds);
+        }
+
+        // Get total count
+        const { count: totalCount, error: countError } = await countQuery;
+
+        if (countError) {
+            console.error('[SocietyGolfDB] Error getting count:', countError);
+            return { members: [], totalCount: 0, hasMore: false };
+        }
+
+        // Now get the actual page of members
+        let memberQuery = window.SupabaseDB.client
+            .from('society_members')
+            .select('*')
+            .eq('society_id', societyId)
+            .eq('status', 'active');
+
+        // Apply same filter
+        if (filteredMemberIds && filteredMemberIds.length > 0) {
+            memberQuery = memberQuery.in('golfer_id', filteredMemberIds);
+        }
 
         // Apply pagination
         memberQuery = memberQuery
             .range(offset, offset + limit - 1)
             .order('joined_at', { ascending: false });
 
-        const { data, error } = await memberQuery;
+        const { data: members, error: memberError } = await memberQuery;
 
-        if (error) {
-            console.error('[SocietyGolfDB] Error searching society members:', error);
+        if (memberError) {
+            console.error('[SocietyGolfDB] Error querying members:', memberError);
             return { members: [], totalCount: 0, hasMore: false };
         }
 
-        const members = data || [];
-        const hasMore = (offset + members.length) < totalCount;
+        // Step 3: Get profile data for this page of members
+        if (members && members.length > 0) {
+            const memberIds = members.map(m => m.golfer_id);
+            const { data: profiles, error: profileError } = await window.SupabaseDB.client
+                .from('user_profiles')
+                .select('line_user_id, name, email, phone, profile_data')
+                .in('line_user_id', memberIds);
 
-        console.log(`[SocietyGolfDB] Search results: ${members.length} members (${offset}-${offset + members.length} of ${totalCount})`);
+            if (!profileError && profiles) {
+                // Attach profile data to each member
+                members.forEach(member => {
+                    const profile = profiles.find(p => p.line_user_id === member.golfer_id);
+                    if (profile) {
+                        member.user_profiles = profile;
+                    }
+                });
+            }
+        }
 
-        return { members, totalCount, hasMore };
+        const hasMore = (offset + (members?.length || 0)) < totalCount;
+
+        console.log(`[SocietyGolfDB] Search results: ${members?.length || 0} members (${offset}-${offset + (members?.length || 0)} of ${totalCount})`);
+
+        return { members: members || [], totalCount: totalCount || 0, hasMore };
     }
 
     async addSocietyMember(societyName, organizerId, golferId, memberData = {}) {

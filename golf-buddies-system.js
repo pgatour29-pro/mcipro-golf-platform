@@ -160,7 +160,18 @@ window.GolfBuddiesSystem = {
     /**
      * Open buddies modal
      */
-    openBuddiesModal() {
+    async openBuddiesModal() {
+        // If not initialized yet but user is authenticated, try to initialize now
+        if (!this.currentUserId && AppState?.currentUser?.lineUserId) {
+            console.log('[Buddies] Initializing on modal open...');
+            const success = await this.init();
+            if (!success) {
+                console.warn('[Buddies] Cannot open modal - initialization failed');
+                NotificationManager?.show?.('Please wait for authentication to complete', 'warning');
+                return;
+            }
+        }
+
         // Guard: Ensure user is authenticated
         if (!this.currentUserId) {
             console.warn('[Buddies] Cannot open modal - not authenticated yet');
@@ -814,24 +825,30 @@ if (document.readyState === 'loading') {
 } else {
     // Auto-initialize with retry mechanism
     let retryCount = 0;
-    const maxRetries = 10; // Try for 10 seconds
+    const maxRetries = 30; // Try for 30 seconds (OAuth can be slow)
     const retryInterval = 1000; // Every 1 second
 
     const tryInit = async () => {
+        console.log(`[Buddies] Init attempt ${retryCount + 1}/${maxRetries}. AppState:`, {
+            exists: !!AppState,
+            hasCurrentUser: !!AppState?.currentUser,
+            hasLineUserId: !!AppState?.currentUser?.lineUserId,
+            lineUserId: AppState?.currentUser?.lineUserId?.substring(0, 10) + '...' || 'none'
+        });
+
         if (AppState?.currentUser?.lineUserId) {
             const success = await GolfBuddiesSystem.init();
             if (success) {
-                console.log('[Buddies] Initialization successful');
+                console.log('[Buddies] ✅ Initialization successful after', retryCount + 1, 'attempts');
                 return;
             }
         }
 
         retryCount++;
         if (retryCount < maxRetries) {
-            console.log(`[Buddies] Waiting for authentication... (${retryCount}/${maxRetries})`);
             setTimeout(tryInit, retryInterval);
         } else {
-            console.warn('[Buddies] Initialization timed out - user may need to refresh after login');
+            console.error('[Buddies] ❌ Initialization timed out after 30 seconds. Please refresh the page.');
         }
     };
 

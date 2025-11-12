@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-12-BUDDIES-NO-FK
+// DEPLOYMENT VERSION: 2025-11-12-BUDDIES-FIX-ADD-PLAYER
 
-const SW_VERSION = 'buddies-v5'; // Golf Buddies - Removed foreign key dependencies
+const SW_VERSION = 'buddies-v6'; // Golf Buddies - Fixed quick-add to use correct method
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

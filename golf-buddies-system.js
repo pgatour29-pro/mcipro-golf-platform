@@ -774,15 +774,19 @@ window.GolfBuddiesSystem = {
 
         // Check if LiveScorecardManager is available and has active round
         if (typeof LiveScorecardManager !== 'undefined' && LiveScorecardManager.players) {
-            // Find buddy profile
-            const buddy = this.buddies.find(b => b.buddy_id === buddyId);
-            const buddyProfile = buddy?.buddy?.[0];
+            try {
+                // Ensure profiles are loaded
+                if (!LiveScorecardManager.allPlayerProfiles || LiveScorecardManager.allPlayerProfiles.length === 0) {
+                    console.log('[Buddies] Loading player profiles for quick-add...');
+                    LiveScorecardManager.allPlayerProfiles = await window.SupabaseDB.getAllProfiles();
+                }
 
-            if (buddyProfile) {
-                // Add to scorecard
-                LiveScorecardManager.addPlayerById(buddyId, buddyProfile.name, buddyProfile.profile_data?.golfInfo?.handicap || 0);
-                NotificationManager?.show?.(`Added ${buddyProfile.name} to scorecard`, 'success');
+                // Use the existing selectExistingPlayer method
+                LiveScorecardManager.selectExistingPlayer(buddyId);
                 this.closeBuddiesModal();
+            } catch (error) {
+                console.error('[Buddies] Error quick-adding buddy:', error);
+                NotificationManager?.show?.('Error adding player to scorecard', 'error');
             }
         } else {
             NotificationManager?.show?.('Start a round first to add players', 'warning');

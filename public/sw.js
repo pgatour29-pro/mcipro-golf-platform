@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-12-HOLE-PAR-FIX
+// DEPLOYMENT VERSION: 2025-11-12-BUDDIES-SYSTEM
 
-const SW_VERSION = 'hole-par-fix-v1'; // Fixed hole-by-hole par display field names
+const SW_VERSION = 'buddies-v1'; // Golf Buddies & Saved Groups System
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

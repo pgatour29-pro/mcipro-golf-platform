@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-12-SOCIETY-STANDINGS-FIX
+// DEPLOYMENT VERSION: 2025-11-12-ASYNC-FIX
 
-const SW_VERSION = 'standings-v1'; // Fixed society standings query
+const SW_VERSION = 'async-fix-v1'; // Fixed async quickAddBuddy + better error logging
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

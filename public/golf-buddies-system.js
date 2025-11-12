@@ -764,7 +764,7 @@ window.GolfBuddiesSystem = {
     /**
      * Quick add buddy to current scorecard (if Live Scoring is active)
      */
-    quickAddBuddy(buddyId) {
+    async quickAddBuddy(buddyId) {
         // Guard: Ensure user is authenticated
         if (!this.currentUserId) {
             console.warn('[Buddies] Cannot quick-add buddy - not authenticated yet');

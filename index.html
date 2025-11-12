@@ -2110,6 +2110,98 @@
             window.PWAGuard.init();
         }
 
+        // ===== SCORECARD PROFILE LOADER =====
+        window.scorecardProfileLoader = {
+            profileCache: {},
+
+            async loadYAMLProfile(courseId) {
+                // Check cache first
+                if (this.profileCache[courseId]) {
+                    console.log(`[ProfileLoader] Using cached profile for: ${courseId}`);
+                    return this.profileCache[courseId];
+                }
+
+                try {
+                    console.log(`[ProfileLoader] Fetching profile: ${courseId}`);
+                    const response = await fetch(`/scorecard_profiles/${courseId}.yaml`);
+
+                    if (!response.ok) {
+                        console.warn(`[ProfileLoader] Profile not found: ${courseId}, using defaults`);
+                        return this.getDefaultProfile(courseId);
+                    }
+
+                    const yamlText = await response.text();
+                    const profile = jsyaml.load(yamlText);
+
+                    // Cache the profile
+                    this.profileCache[courseId] = profile;
+                    console.log(`[ProfileLoader] ✅ Loaded profile:`, profile);
+
+                    return profile;
+                } catch (error) {
+                    console.error(`[ProfileLoader] Error loading profile ${courseId}:`, error);
+                    return this.getDefaultProfile(courseId);
+                }
+            },
+
+            getDefaultProfile(courseId) {
+                // Return default profile with standard tees
+                return {
+                    course_id: courseId,
+                    course_name: this.getCourseDisplayName(courseId),
+                    tees: [
+                        { name: 'Championship', color: 'Black', course_rating: 74.0, slope_rating: 140 },
+                        { name: "Men's", color: 'Blue', course_rating: 72.0, slope_rating: 130 },
+                        { name: 'Regular', color: 'White', course_rating: 70.0, slope_rating: 120 },
+                        { name: 'Senior', color: 'Yellow', course_rating: 68.0, slope_rating: 115 },
+                        { name: "Ladies'", color: 'Red', course_rating: 66.0, slope_rating: 110 }
+                    ]
+                };
+            },
+
+            async getTeeOptions(courseId) {
+                const profile = await this.loadYAMLProfile(courseId);
+
+                if (!profile || !profile.tees || profile.tees.length === 0) {
+                    console.warn(`[ProfileLoader] No tees found in profile for ${courseId}, using defaults`);
+                    return this.getDefaultProfile(courseId).tees;
+                }
+
+                return profile.tees;
+            },
+
+            getCourseDisplayName(courseId) {
+                const courseNames = {
+                    'bangpakong': 'Bangpakong Riverside Country Club',
+                    'bangpra': 'Bangpra International Golf Club',
+                    'burapha_ac': 'Burapha Golf Club - A+C',
+                    'burapha_cd': 'Burapha Golf Club - C+D',
+                    'burapha_east': 'Burapha Golf Club - East Course',
+                    'crystal_bay': 'Crystal Bay Golf Club',
+                    'eastern_star': 'Eastern Star Country Club',
+                    'grand_prix': 'Grand Prix International Golf Club',
+                    'greenwood': 'Greenwood Golf Club',
+                    'hermes': 'Hermes Golf Club',
+                    'khao_kheow': 'Khao Kheow Country Club',
+                    'laem_chabang': 'Laem Chabang International Country Club',
+                    'mountain_shadow': 'Mountain Shadow Golf Club',
+                    'pattana': 'Pattana Golf Club & Resort',
+                    'pattavia': 'Pattavia Century Golf Club',
+                    'pattaya_county': 'Pattaya County Golf Club',
+                    'phoenix': 'Phoenix Gold Golf & Country Club',
+                    'pleasant_valley': 'Pleasant Valley Country Club',
+                    'plutaluang': 'Plutaluang Royal Thai Navy Golf Course',
+                    'royal_lakeside': 'Royal Lakeside Golf Club',
+                    'siam_cc_old': 'Siam Country Club - Old Course',
+                    'siam_plantation': 'Siam Plantation Golf Club'
+                };
+
+                return courseNames[courseId] || courseId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            }
+        };
+
+        console.log('[ProfileLoader] ✅ Scorecard Profile Loader initialized');
+
         // ===== GLOBAL DATA CLEANUP SYSTEM =====
         function clearAllDemoData() {
             console.log('🧹 Clearing all demo data from application...');

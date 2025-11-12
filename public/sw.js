@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-12-ADMIN-UI-FIX
+// DEPLOYMENT VERSION: 2025-11-12-TEE-MARKERS-FIX
 
-const SW_VERSION = 'admin-ui-fix-v1'; // Removed transform animations causing page jumps
+const SW_VERSION = 'tee-markers-v1'; // Fixed tee marker loading in live scoring
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

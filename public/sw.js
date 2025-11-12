@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-12-COURSE-DATA-FIX
+// DEPLOYMENT VERSION: 2025-11-12-HOLE-PAR-FIX
 
-const SW_VERSION = 'course-data-v1'; // Force cache refresh for all courses + enhanced logging
+const SW_VERSION = 'hole-par-fix-v1'; // Fixed hole-by-hole par display field names
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

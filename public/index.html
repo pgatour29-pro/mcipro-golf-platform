@@ -53642,17 +53642,6 @@ class GolferEventsManager {
             return;
         }
 
-        // TEMPORARY: Disable society standings until table structure is fixed
-        container.innerHTML = `
-            <div class="text-center py-12">
-                <span class="material-symbols-outlined text-5xl mb-3 text-yellow-400">construction</span>
-                <p class="text-gray-900 font-semibold mb-2">Season Standings Temporarily Unavailable</p>
-                <p class="text-sm text-gray-600">We're updating the database structure.</p>
-                <p class="text-sm text-gray-600 mt-2">This feature will be back soon!</p>
-            </div>
-        `;
-        return;
-
         try {
             // Populate year selector if empty
             if (!yearFilter.options.length) {
@@ -53675,10 +53664,10 @@ class GolferEventsManager {
                 </div>
             `;
 
-            // Get all societies the player is a member of [v3-SELECT-ALL]
+            // FIXED: Query society_members for society_id (not society_name)
             const { data: memberData, error: memberError } = await window.SupabaseDB.client
                 .from('society_members')
-                .select('*')
+                .select('society_id')
                 .eq('golfer_id', playerId)
                 .eq('status', 'active');
 
@@ -53705,50 +53694,39 @@ class GolferEventsManager {
                 return; // Don't throw, handle gracefully
             }
 
-            // DEBUG: Log what we actually got
-            console.log('[GolferEventsSystem] Member data received:', memberData);
-            if (memberData && memberData.length > 0) {
-                console.log('[GolferEventsSystem] First member structure:', Object.keys(memberData[0]));
-            }
-
             if (!memberData || memberData.length === 0) {
                 emptyState.style.display = 'block';
                 container.innerHTML = '';
                 return;
             }
 
-            // Get organizer_ids for these societies from society_profiles
-            const societyNames = memberData.map(m => m.society_name);
+            // Get society profiles for the societies this player is a member of
+            const societyIds = memberData.map(m => m.society_id);
             const { data: societyProfiles, error: profilesError } = await window.SupabaseDB.client
                 .from('society_profiles')
-                .select('organizer_id, society_name')
-                .in('society_name', societyNames);
+                .select('id, organizer_id, society_name')
+                .in('id', societyIds);
 
             if (profilesError) {
                 console.error('[GolferEventsSystem] Error loading society profiles:', profilesError);
+                container.innerHTML = `
+                    <div class="text-center py-12">
+                        <span class="material-symbols-outlined text-5xl mb-3 text-red-300">error</span>
+                        <p class="text-red-600 font-semibold mb-2">Error loading societies</p>
+                        <p class="text-sm text-gray-600">${profilesError.message}</p>
+                    </div>
+                `;
+                return;
             }
 
-            // Create lookup map: society_name -> organizer_id
-            const societyMap = {};
-            if (societyProfiles) {
-                societyProfiles.forEach(profile => {
-                    societyMap[profile.society_name] = profile.organizer_id;
-                });
-            }
-
-            // Enrich memberData with organizer_ids
-            const enrichedMemberData = memberData
-                .map(membership => ({
-                    ...membership,
-                    organizer_id: societyMap[membership.society_name]
-                }))
-                .filter(m => m.organizer_id); // Only keep societies with valid organizer_id
-
-            if (enrichedMemberData.length === 0) {
+            if (!societyProfiles || societyProfiles.length === 0) {
                 emptyState.style.display = 'block';
                 container.innerHTML = '';
                 return;
             }
+
+            // Use societyProfiles as our enrichedMemberData (already has organizer_id and society_name)
+            const enrichedMemberData = societyProfiles;
 
             // Get season standings for each society
             const standingsPromises = enrichedMemberData.map(async (membership) => {

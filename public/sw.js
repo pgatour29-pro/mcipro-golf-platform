@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-12-FORCE-DEPLOY
+// DEPLOYMENT VERSION: 2025-11-12-SOCIETY-FIXED-FINAL
 
-const SW_VERSION = 'society-fix-v2-force'; // Force cache bust - fixed missing organizer_id column
+const SW_VERSION = 'society-v3-WORKING'; // Fixed: Use society_id column, not society_name
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

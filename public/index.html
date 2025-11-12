@@ -36788,9 +36788,18 @@ class SocietyGolfSupabase {
             if (searchWords.length === 1) {
                 // Single word: search in name
                 profileQuery = profileQuery.ilike('name', `%${searchWords[0]}%`);
-            } else if (searchWords.length > 1) {
-                // Multiple words: Search for the full phrase
-                // This will match "Alan Thomas" when user types "Alan Thomas"
+            } else if (searchWords.length === 2) {
+                // Two words: Search for BOTH patterns (handles "First Last" and "Last, First")
+                // Example: "Rocky Jones" will match both "Rocky Jones" AND "Jones, Rocky"
+                const word1 = searchWords[0];
+                const word2 = searchWords[1];
+                // Use OR to match either:
+                // 1. "rocky jones" (original order)
+                // 2. "jones, rocky" (reversed with comma)
+                // 3. "jones rocky" (reversed without comma)
+                profileQuery = profileQuery.or(`name.ilike.%${word1} ${word2}%,name.ilike.%${word2}, ${word1}%,name.ilike.%${word2} ${word1}%`);
+            } else if (searchWords.length > 2) {
+                // Three or more words: Search for the full phrase as-is
                 profileQuery = profileQuery.ilike('name', `%${searchLower}%`);
             }
 

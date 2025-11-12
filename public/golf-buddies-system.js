@@ -239,8 +239,8 @@ window.GolfBuddiesSystem = {
     createBuddiesModal() {
         const modalHTML = `
             <!-- Buddies Modal -->
-            <div id="buddiesModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-2 sm:p-4 overflow-auto">
-                <div class="bg-white rounded-lg shadow-xl max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col mx-auto">
+            <div id="buddiesModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-start sm:items-center justify-center z-50 p-2 sm:p-4 overflow-auto" onclick="event.target.id === 'buddiesModal' && GolfBuddiesSystem.closeBuddiesModal()">
+                <div class="bg-white rounded-lg shadow-xl max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl w-full max-h-[100vh] sm:max-h-[90vh] overflow-hidden flex flex-col mx-auto mt-0 sm:my-auto" onclick="event.stopPropagation()">
                     <!-- Header -->
                     <div class="px-3 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-green-50 to-blue-50">
                         <div class="flex items-center gap-2 sm:gap-3">
@@ -286,7 +286,7 @@ window.GolfBuddiesSystem = {
                     </div>
 
                     <!-- Content -->
-                    <div class="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6">
+                    <div class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-6">
                         <!-- My Buddies Tab -->
                         <div id="buddiesContent-myBuddies" class="buddies-tab-content w-full">
                             <div id="myBuddiesList" class="space-y-3 w-full">

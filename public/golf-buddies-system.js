@@ -161,6 +161,13 @@ window.GolfBuddiesSystem = {
      * Open buddies modal
      */
     openBuddiesModal() {
+        // Guard: Ensure user is authenticated
+        if (!this.currentUserId) {
+            console.warn('[Buddies] Cannot open modal - not authenticated yet');
+            NotificationManager?.show?.('Please wait for authentication to complete', 'warning');
+            return;
+        }
+
         // Create modal if it doesn't exist
         if (!document.getElementById('buddiesModal')) {
             this.createBuddiesModal();
@@ -640,6 +647,13 @@ window.GolfBuddiesSystem = {
      * Add a buddy
      */
     async addBuddy(buddyId) {
+        // Guard: Ensure user is authenticated
+        if (!this.currentUserId) {
+            console.error('[Buddies] Cannot add buddy - not authenticated');
+            NotificationManager?.show?.('Please wait for authentication to complete', 'error');
+            return;
+        }
+
         try {
             const { error } = await window.SupabaseDB.client
                 .from('golf_buddies')
@@ -709,6 +723,13 @@ window.GolfBuddiesSystem = {
      * Quick add buddy to current scorecard (if Live Scoring is active)
      */
     quickAddBuddy(buddyId) {
+        // Guard: Ensure user is authenticated
+        if (!this.currentUserId) {
+            console.warn('[Buddies] Cannot quick-add buddy - not authenticated yet');
+            NotificationManager?.show?.('Please wait for authentication to complete', 'warning');
+            return;
+        }
+
         // Check if LiveScorecardManager is available and has active round
         if (typeof LiveScorecardManager !== 'undefined' && LiveScorecardManager.players) {
             // Find buddy profile

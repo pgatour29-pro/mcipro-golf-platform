@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-12-MOBILE-RESPONSIVE
+// DEPLOYMENT VERSION: 2025-11-12-MOBILE-SEARCH-FIX
 
-const SW_VERSION = 'mobile-v1'; // Fixed: Mobile navigation layout, buddies modal responsive, added logging
+const SW_VERSION = 'mobile-v2'; // Fixed: Add Buddy search results overflow on mobile, proper constraints
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

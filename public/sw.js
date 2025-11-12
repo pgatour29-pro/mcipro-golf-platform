@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-12-ASYNC-FIX
+// DEPLOYMENT VERSION: 2025-11-12-ERROR-LOGGING-FIX
 
-const SW_VERSION = 'async-fix-v1'; // Fixed async quickAddBuddy + better error logging
+const SW_VERSION = 'error-log-v2'; // Improved error logging and graceful error handling
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

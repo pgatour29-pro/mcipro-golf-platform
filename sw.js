@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-12-QUICK-SCORE-ENTRY
+// DEPLOYMENT VERSION: 2025-11-12-ADMIN-UI-FIX
 
-const SW_VERSION = 'qse-v1'; // Quick Score Entry + Automatic Handicap System
+const SW_VERSION = 'admin-ui-fix-v1'; // Removed transform animations causing page jumps
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

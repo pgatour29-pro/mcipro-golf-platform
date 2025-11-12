@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-05-ORGANIZER-ROUND-HISTORY
+// DEPLOYMENT VERSION: 2025-11-12-AUTOMATIC-HANDICAP-SYSTEM
 
-const SW_VERSION = 'af7778ae'; // Git SHA - updated on every deploy
+const SW_VERSION = 'handicap-v1'; // Automatic handicap adjustment system
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

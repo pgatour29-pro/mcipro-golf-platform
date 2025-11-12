@@ -53,6 +53,9 @@ window.GolfBuddiesSystem = {
      */
     async loadBuddies() {
         try {
+            const startTime = Date.now();
+            console.log('[Buddies] Loading buddies for user:', this.currentUserId);
+
             // Load buddy records
             const { data: buddyRecords, error: buddyError } = await window.SupabaseDB.client
                 .from('golf_buddies')
@@ -73,6 +76,7 @@ window.GolfBuddiesSystem = {
 
             // Get buddy IDs
             const buddyIds = buddyRecords.map(b => b.buddy_id);
+            console.log(`[Buddies] Found ${buddyIds.length} buddy records, loading profiles...`);
 
             // Load buddy profiles
             const { data: profiles, error: profileError } = await window.SupabaseDB.client
@@ -92,7 +96,8 @@ window.GolfBuddiesSystem = {
                 buddy: profiles.filter(p => p.line_user_id === record.buddy_id)
             }));
 
-            console.log(`[Buddies] Loaded ${this.buddies.length} buddies`);
+            const loadTime = Date.now() - startTime;
+            console.log(`[Buddies] ✅ Loaded ${this.buddies.length} buddies in ${loadTime}ms`);
         } catch (error) {
             console.error('[Buddies] Exception loading buddies:', error);
         }
@@ -234,54 +239,54 @@ window.GolfBuddiesSystem = {
     createBuddiesModal() {
         const modalHTML = `
             <!-- Buddies Modal -->
-            <div id="buddiesModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
-                <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div id="buddiesModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-2 sm:p-4">
+                <div class="bg-white rounded-lg shadow-xl max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col">
                     <!-- Header -->
-                    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-green-50 to-blue-50">
-                        <div class="flex items-center gap-3">
-                            <span class="material-symbols-outlined text-green-600 text-3xl">group</span>
+                    <div class="px-3 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-green-50 to-blue-50">
+                        <div class="flex items-center gap-2 sm:gap-3">
+                            <span class="material-symbols-outlined text-green-600 text-xl sm:text-3xl">group</span>
                             <div>
-                                <h2 class="text-xl font-bold text-gray-900">My Golf Buddies</h2>
-                                <p class="text-sm text-gray-600">Manage your playing partners & groups</p>
+                                <h2 class="text-lg sm:text-xl font-bold text-gray-900">My Golf Buddies</h2>
+                                <p class="text-xs sm:text-sm text-gray-600 hidden sm:block">Manage your playing partners & groups</p>
                             </div>
                         </div>
-                        <button onclick="GolfBuddiesSystem.closeBuddiesModal()" class="text-gray-400 hover:text-gray-600">
-                            <span class="material-symbols-outlined">close</span>
+                        <button onclick="GolfBuddiesSystem.closeBuddiesModal()" class="text-gray-400 hover:text-gray-600 p-1">
+                            <span class="material-symbols-outlined text-2xl sm:text-3xl">close</span>
                         </button>
                     </div>
 
                     <!-- Tabs -->
                     <div class="border-b border-gray-200">
-                        <div class="flex gap-2 px-6 overflow-x-auto">
+                        <div class="flex gap-1 sm:gap-2 px-2 sm:px-6 overflow-x-auto">
                             <button onclick="GolfBuddiesSystem.showBuddiesTab('myBuddies')"
                                     id="buddiesTab-myBuddies"
-                                    class="px-4 py-3 text-sm font-medium border-b-2 border-green-500 text-green-600 whitespace-nowrap">
+                                    class="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 border-green-500 text-green-600 whitespace-nowrap">
                                 <span class="material-symbols-outlined text-xs align-middle">people</span>
-                                My Buddies
+                                <span class="hidden xs:inline">My </span>Buddies
                             </button>
                             <button onclick="GolfBuddiesSystem.showBuddiesTab('suggestions')"
                                     id="buddiesTab-suggestions"
-                                    class="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-600 hover:text-gray-900 whitespace-nowrap">
+                                    class="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 border-transparent text-gray-600 hover:text-gray-900 whitespace-nowrap">
                                 <span class="material-symbols-outlined text-xs align-middle">auto_awesome</span>
                                 Suggestions
                             </button>
                             <button onclick="GolfBuddiesSystem.showBuddiesTab('savedGroups')"
                                     id="buddiesTab-savedGroups"
-                                    class="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-600 hover:text-gray-900 whitespace-nowrap">
+                                    class="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 border-transparent text-gray-600 hover:text-gray-900 whitespace-nowrap">
                                 <span class="material-symbols-outlined text-xs align-middle">groups_2</span>
-                                Saved Groups
+                                <span class="hidden xs:inline">Saved </span>Groups
                             </button>
                             <button onclick="GolfBuddiesSystem.showBuddiesTab('addBuddy')"
                                     id="buddiesTab-addBuddy"
-                                    class="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-600 hover:text-gray-900 whitespace-nowrap">
+                                    class="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 border-transparent text-gray-600 hover:text-gray-900 whitespace-nowrap">
                                 <span class="material-symbols-outlined text-xs align-middle">person_add</span>
-                                Add Buddy
+                                Add
                             </button>
                         </div>
                     </div>
 
                     <!-- Content -->
-                    <div class="flex-1 overflow-y-auto p-6">
+                    <div class="flex-1 overflow-y-auto p-3 sm:p-6">
                         <!-- My Buddies Tab -->
                         <div id="buddiesContent-myBuddies" class="buddies-tab-content">
                             <div id="myBuddiesList" class="space-y-3">

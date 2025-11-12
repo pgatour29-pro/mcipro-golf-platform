@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-12-SOCIETY-FIXED-FINAL
+// DEPLOYMENT VERSION: 2025-11-12-MOBILE-RESPONSIVE
 
-const SW_VERSION = 'society-v3-WORKING'; // Fixed: Use society_id column, not society_name
+const SW_VERSION = 'mobile-v1'; // Fixed: Mobile navigation layout, buddies modal responsive, added logging
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

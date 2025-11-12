@@ -788,7 +788,8 @@ window.GolfBuddiesSystem = {
 
                 // Use the existing selectExistingPlayer method
                 LiveScorecardManager.selectExistingPlayer(buddyId);
-                this.closeBuddiesModal();
+                // Modal stays open so user can add multiple players - close manually when done
+                NotificationManager?.show?.('Player added to scorecard', 'success');
             } catch (error) {
                 console.error('[Buddies] Error quick-adding buddy:', error);
                 NotificationManager?.show?.('Error adding player to scorecard', 'error');

@@ -53,25 +53,45 @@ window.GolfBuddiesSystem = {
      */
     async loadBuddies() {
         try {
-            const { data, error } = await window.SupabaseDB.client
+            // Load buddy records
+            const { data: buddyRecords, error: buddyError } = await window.SupabaseDB.client
                 .from('golf_buddies')
-                .select(`
-                    *,
-                    buddy:user_profiles!golf_buddies_buddy_id_fkey(
-                        line_user_id,
-                        name,
-                        profile_data
-                    )
-                `)
+                .select('*')
                 .eq('user_id', this.currentUserId)
                 .order('times_played_together', { ascending: false });
 
-            if (error) {
-                console.error('[Buddies] Error loading buddies:', error);
+            if (buddyError) {
+                console.error('[Buddies] Error loading buddy records:', buddyError);
                 return;
             }
 
-            this.buddies = data || [];
+            if (!buddyRecords || buddyRecords.length === 0) {
+                this.buddies = [];
+                console.log('[Buddies] No buddies found');
+                return;
+            }
+
+            // Get buddy IDs
+            const buddyIds = buddyRecords.map(b => b.buddy_id);
+
+            // Load buddy profiles
+            const { data: profiles, error: profileError } = await window.SupabaseDB.client
+                .from('user_profiles')
+                .select('line_user_id, name, profile_data')
+                .in('line_user_id', buddyIds);
+
+            if (profileError) {
+                console.error('[Buddies] Error loading buddy profiles:', profileError);
+                this.buddies = buddyRecords; // Still save records even without profiles
+                return;
+            }
+
+            // Merge buddy records with profiles
+            this.buddies = buddyRecords.map(record => ({
+                ...record,
+                buddy: profiles.filter(p => p.line_user_id === record.buddy_id)
+            }));
+
             console.log(`[Buddies] Loaded ${this.buddies.length} buddies`);
         } catch (error) {
             console.error('[Buddies] Exception loading buddies:', error);
@@ -110,14 +130,16 @@ window.GolfBuddiesSystem = {
                 .rpc('get_buddy_suggestions', { p_user_id: this.currentUserId });
 
             if (error) {
-                console.error('[Buddies] Error loading suggestions:', error);
+                console.warn('[Buddies] Suggestions unavailable (function may not be deployed):', error.message);
+                this.suggestions = [];
                 return;
             }
 
             this.suggestions = data || [];
             console.log(`[Buddies] Loaded ${this.suggestions.length} suggestions`);
         } catch (error) {
-            console.error('[Buddies] Exception loading suggestions:', error);
+            console.warn('[Buddies] Suggestions unavailable:', error.message);
+            this.suggestions = [];
         }
     },
 
@@ -133,14 +155,16 @@ window.GolfBuddiesSystem = {
                 });
 
             if (error) {
-                console.error('[Buddies] Error loading recent partners:', error);
+                console.warn('[Buddies] Recent partners unavailable (function may not be deployed):', error.message);
+                this.recentPartners = [];
                 return;
             }
 
             this.recentPartners = data || [];
             console.log(`[Buddies] Loaded ${this.recentPartners.length} recent partners`);
         } catch (error) {
-            console.error('[Buddies] Exception loading recent partners:', error);
+            console.warn('[Buddies] Recent partners unavailable:', error.message);
+            this.recentPartners = [];
         }
     },
 
@@ -675,6 +699,13 @@ window.GolfBuddiesSystem = {
                 });
 
             if (error) {
+                // Handle duplicate buddy (409 conflict)
+                if (error.code === '23505' || error.message?.includes('duplicate') || error.message?.includes('unique')) {
+                    console.warn('[Buddies] Buddy already exists');
+                    NotificationManager?.show?.('This buddy already exists in your list', 'info');
+                    return;
+                }
+
                 console.error('[Buddies] Error adding buddy:', error);
                 NotificationManager?.show?.('Error adding buddy', 'error');
                 return;

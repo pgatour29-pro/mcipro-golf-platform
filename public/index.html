@@ -38696,34 +38696,34 @@ class LiveScorecardSystem {
 
         // Course cache versions - increment to force refresh
         const COURSE_CACHE_VERSIONS = {
-            'bangpakong': 6,  // v6: force refresh to ensure correct pars displayed
-            'bangpra_international': 4,  // v4: force refresh to ensure correct pars displayed
-            'burapha_east': 4,  // v4: force refresh to ensure correct pars displayed
-            'burapha_west': 4,  // v4: force refresh to ensure correct pars displayed
-            'burapha': 2,  // v2: force refresh to ensure correct pars displayed
-            'crystal_bay': 3,  // v3: force refresh to ensure correct pars displayed
-            'eastern_star': 3,  // v3: force refresh to ensure correct pars displayed
-            'grand_prix': 4,  // v4: force refresh to ensure correct pars displayed
-            'laem_chabang': 3,  // v3: force refresh to ensure correct pars displayed
-            'mountain_shadow': 4,  // v4: force refresh to ensure correct pars displayed
-            'pattana_golf': 3,  // v3: force refresh to ensure correct pars displayed
-            'pattavia': 4,  // v4: force refresh to ensure correct pars displayed
-            'pattaya_country_club': 4,  // v4: force refresh to ensure correct pars displayed
-            'pleasant_valley': 5,  // v5: force refresh to ensure correct pars displayed
-            'plutaluang': 4,  // v4: force refresh to ensure correct pars displayed
-            'royal_lakeside': 4,  // v4: force refresh to ensure correct pars displayed
-            'siam_cc_old': 4,  // v4: force refresh to ensure correct pars displayed
-            'siam_plantation': 4,  // v4: force refresh to ensure correct pars displayed
-            'khao_kheow_a': 3,  // v3: force refresh to ensure correct pars displayed
-            'khao_kheow_b_with_a': 3,  // v3: force refresh to ensure correct pars displayed
-            'khao_kheow_b_with_c': 3,  // v3: force refresh to ensure correct pars displayed
-            'khao_kheow_c': 3,  // v3: force refresh to ensure correct pars displayed
-            'greenwood': 2,  // v2: force refresh to ensure correct pars displayed
-            'greenwood_a': 2,  // v2: force refresh to ensure correct pars displayed
-            'greenwood_b': 2,  // v2: force refresh to ensure correct pars displayed
-            'greenwood_c': 2,  // v2: force refresh to ensure correct pars displayed
-            'hermes': 2,  // v2: force refresh to ensure correct pars displayed
-            'phoenix': 2  // v2: force refresh to ensure correct pars displayed
+            'bangpakong': 7,  // v7: clear cache after tee marker fix
+            'bangpra_international': 5,  // v5: clear cache after tee marker fix
+            'burapha_east': 5,  // v5: clear cache after tee marker fix
+            'burapha_west': 5,  // v5: clear cache after tee marker fix
+            'burapha': 3,  // v3: clear cache after tee marker fix
+            'crystal_bay': 4,  // v4: clear cache after tee marker fix
+            'eastern_star': 4,  // v4: clear cache after tee marker fix
+            'grand_prix': 5,  // v5: clear cache after tee marker fix
+            'laem_chabang': 4,  // v4: clear cache after tee marker fix
+            'mountain_shadow': 5,  // v5: clear cache after tee marker fix
+            'pattana_golf': 4,  // v4: clear cache after tee marker fix
+            'pattavia': 5,  // v5: clear cache after tee marker fix
+            'pattaya_country_club': 5,  // v5: clear cache after tee marker fix
+            'pleasant_valley': 6,  // v6: clear cache after tee marker fix
+            'plutaluang': 5,  // v5: clear cache after tee marker fix
+            'royal_lakeside': 5,  // v5: clear cache after tee marker fix
+            'siam_cc_old': 5,  // v5: clear cache after tee marker fix
+            'siam_plantation': 5,  // v5: clear cache after tee marker fix
+            'khao_kheow_a': 4,  // v4: clear cache after tee marker fix
+            'khao_kheow_b_with_a': 4,  // v4: clear cache after tee marker fix
+            'khao_kheow_b_with_c': 4,  // v4: clear cache after tee marker fix
+            'khao_kheow_c': 4,  // v4: clear cache after tee marker fix
+            'greenwood': 3,  // v3: clear cache after tee marker fix
+            'greenwood_a': 3,  // v3: clear cache after tee marker fix
+            'greenwood_b': 3,  // v3: clear cache after tee marker fix
+            'greenwood_c': 3,  // v3: clear cache after tee marker fix
+            'hermes': 3,  // v3: clear cache after tee marker fix
+            'phoenix': 3  // v3: clear cache after tee marker fix
         };
 
         // Cache course data (tee marker handled in query, not cache key)
@@ -38796,7 +38796,7 @@ class LiveScorecardSystem {
 
             // Fallback: If no holes found, try without tee marker filter
             if (!holesError && (!holes || holes.length === 0)) {
-                console.log(`[LiveScorecard] No holes for tee "${teeMarker}", trying without filter...`);
+                console.log(`[LiveScorecard] ⚠️ No holes for tee "${teeMarker}", trying without filter...`);
                 queryResult = await window.SupabaseDB.client
                     .from('course_holes')
                     .select('hole_number, par, stroke_index, yardage, tee_marker')
@@ -38804,6 +38804,15 @@ class LiveScorecardSystem {
                     .order('hole_number');
                 holes = queryResult.data;
                 holesError = queryResult.error;
+
+                if (holes && holes.length > 0) {
+                    console.log(`[LiveScorecard] ✅ Loaded ${holes.length} holes without tee filter`);
+                } else {
+                    console.error(`[LiveScorecard] ❌ NO HOLES FOUND for course: ${courseId}`);
+                    console.log(`[LiveScorecard] This course may not have hole data in database`);
+                }
+            } else if (holes && holes.length > 0) {
+                console.log(`[LiveScorecard] ✅ Loaded ${holes.length} holes for tee "${teeMarker}"`);
             }
 
             
@@ -39559,11 +39568,18 @@ class LiveScorecardSystem {
 
         // Debug logging
         if (!holeData) {
-            console.warn(`[LiveScorecard] No hole data found for hole ${this.currentHole}, tee marker: ${this.selectedTeeMarker}`);
+            console.warn(`[LiveScorecard] ❌ No hole data found for hole ${this.currentHole}, tee marker: ${this.selectedTeeMarker}`);
+            console.log('[LiveScorecard] Course ID:', this.courseData?.id);
+            console.log('[LiveScorecard] Total holes loaded:', this.courseData?.holes?.length);
             console.log('[LiveScorecard] Available holes:', this.courseData?.holes);
         }
 
         const par = holeData?.par || 4;
+
+        // Warning if par defaulted to 4
+        if (!holeData || !holeData.par) {
+            console.warn(`[LiveScorecard] ⚠️ Par defaulted to 4 for hole ${this.currentHole} (no data found)`);
+        }
         const strokeIndex = holeData?.stroke_index || this.currentHole;
         const yardage = holeData?.yardage || 0;
 

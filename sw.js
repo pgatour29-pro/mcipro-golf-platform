@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-12-TEE-MARKERS-FIX
+// DEPLOYMENT VERSION: 2025-11-12-COURSE-DATA-FIX
 
-const SW_VERSION = 'tee-markers-v1'; // Fixed tee marker loading in live scoring
+const SW_VERSION = 'course-data-v1'; // Force cache refresh for all courses + enhanced logging
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

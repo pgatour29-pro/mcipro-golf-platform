@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-12-BUDDIES-SYSTEM
+// DEPLOYMENT VERSION: 2025-11-12-BUDDIES-INIT-FIX
 
-const SW_VERSION = 'buddies-v1'; // Golf Buddies & Saved Groups System
+const SW_VERSION = 'buddies-v2'; // Golf Buddies - Fixed initialization timing
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

@@ -31,8 +31,8 @@ window.GolfBuddiesSystem = {
         this.currentUserId = AppState.currentUser?.lineUserId;
 
         if (!this.currentUserId) {
-            console.warn('[Buddies] No user ID found');
-            return;
+            console.warn('[Buddies] No user ID found - will retry');
+            return false; // Indicate initialization failed
         }
 
         // Load data
@@ -45,6 +45,7 @@ window.GolfBuddiesSystem = {
         this.updateBuddiesBadge();
 
         console.log('[Buddies] ✅ Initialized');
+        return true; // Indicate initialization succeeded
     },
 
     /**
@@ -790,11 +791,30 @@ if (document.readyState === 'loading') {
         }, 1000);
     });
 } else {
-    setTimeout(() => {
-        if (AppState?.currentUser) {
-            GolfBuddiesSystem.init();
+    // Auto-initialize with retry mechanism
+    let retryCount = 0;
+    const maxRetries = 10; // Try for 10 seconds
+    const retryInterval = 1000; // Every 1 second
+
+    const tryInit = async () => {
+        if (AppState?.currentUser?.lineUserId) {
+            const success = await GolfBuddiesSystem.init();
+            if (success) {
+                console.log('[Buddies] Initialization successful');
+                return;
+            }
         }
-    }, 1000);
+
+        retryCount++;
+        if (retryCount < maxRetries) {
+            console.log(`[Buddies] Waiting for authentication... (${retryCount}/${maxRetries})`);
+            setTimeout(tryInit, retryInterval);
+        } else {
+            console.warn('[Buddies] Initialization timed out - user may need to refresh after login');
+        }
+    };
+
+    setTimeout(tryInit, 1000);
 }
 
 console.log('[Buddies] ✅ Golf Buddies System loaded');

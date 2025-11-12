@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-12-MOBILE-KEYBOARD-FIX
+// DEPLOYMENT VERSION: 2025-11-12-SEARCH-OVERFLOW-FIX
 
-const SW_VERSION = 'mobile-v4'; // Fixed: Modal viewport handling for mobile keyboard, prevent disappearing
+const SW_VERSION = 'mobile-v5'; // Fixed: Search results overflow to right, aggressive width constraints
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

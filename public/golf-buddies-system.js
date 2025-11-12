@@ -288,14 +288,14 @@ window.GolfBuddiesSystem = {
                     <!-- Content -->
                     <div class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-6">
                         <!-- My Buddies Tab -->
-                        <div id="buddiesContent-myBuddies" class="buddies-tab-content w-full">
-                            <div id="myBuddiesList" class="space-y-3 w-full">
+                        <div id="buddiesContent-myBuddies" class="buddies-tab-content w-full max-w-full overflow-x-hidden">
+                            <div id="myBuddiesList" class="space-y-3 w-full max-w-full">
                                 <!-- Populated by renderMyBuddies() -->
                             </div>
                         </div>
 
                         <!-- Suggestions Tab -->
-                        <div id="buddiesContent-suggestions" class="buddies-tab-content w-full" style="display: none;">
+                        <div id="buddiesContent-suggestions" class="buddies-tab-content w-full max-w-full overflow-x-hidden" style="display: none;">
                             <div class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                                 <div class="flex items-start gap-2">
                                     <span class="material-symbols-outlined text-blue-600">info</span>
@@ -305,13 +305,13 @@ window.GolfBuddiesSystem = {
                                     </div>
                                 </div>
                             </div>
-                            <div id="suggestionsList" class="space-y-3 w-full">
+                            <div id="suggestionsList" class="space-y-3 w-full max-w-full">
                                 <!-- Populated by renderSuggestions() -->
                             </div>
                         </div>
 
                         <!-- Saved Groups Tab -->
-                        <div id="buddiesContent-savedGroups" class="buddies-tab-content w-full" style="display: none;">
+                        <div id="buddiesContent-savedGroups" class="buddies-tab-content w-full max-w-full overflow-x-hidden" style="display: none;">
                             <div class="mb-4 flex justify-between items-center">
                                 <p class="text-sm text-gray-600">Quick-load groups of players for common rounds</p>
                                 <button onclick="GolfBuddiesSystem.createNewGroup()" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
@@ -319,20 +319,20 @@ window.GolfBuddiesSystem = {
                                     New Group
                                 </button>
                             </div>
-                            <div id="savedGroupsList" class="space-y-3 w-full">
+                            <div id="savedGroupsList" class="space-y-3 w-full max-w-full">
                                 <!-- Populated by renderSavedGroups() -->
                             </div>
                         </div>
 
                         <!-- Add Buddy Tab -->
-                        <div id="buddiesContent-addBuddy" class="buddies-tab-content w-full" style="display: none;">
-                            <div class="mb-4 w-full">
+                        <div id="buddiesContent-addBuddy" class="buddies-tab-content w-full max-w-full overflow-x-hidden" style="display: none;">
+                            <div class="mb-4 w-full max-w-full">
                                 <label class="block text-sm font-medium text-gray-700 mb-2">Search for players</label>
                                 <input type="text" id="buddySearchInput" placeholder="Search by name..."
-                                       class="w-full px-3 sm:px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 box-border"
+                                       class="w-full max-w-full px-3 sm:px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 box-border"
                                        onkeyup="GolfBuddiesSystem.searchPlayers(this.value)">
                             </div>
-                            <div id="buddySearchResults" class="space-y-2 sm:space-y-3 w-full overflow-hidden">
+                            <div id="buddySearchResults" class="space-y-2 sm:space-y-3 w-full max-w-full overflow-x-hidden">
                                 <p class="text-center text-gray-500 py-8">Start typing to search for players...</p>
                             </div>
                         </div>
@@ -487,23 +487,25 @@ window.GolfBuddiesSystem = {
                 : 'Unknown';
 
             return `
-                <div class="flex items-center justify-between gap-2 p-2 sm:p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg w-full">
-                    <div class="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                        <div class="w-8 h-8 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold text-sm sm:text-lg flex-shrink-0">
-                            ${name.charAt(0).toUpperCase()}
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <div class="font-semibold text-gray-900 text-sm sm:text-base truncate">${name}</div>
-                            <div class="text-xs sm:text-sm text-gray-600 truncate">
-                                Played: ${timesPlayed}x • Last: ${lastPlayed}
+                <div class="w-full max-w-full overflow-hidden box-border">
+                    <div class="flex items-center justify-between gap-2 p-2 sm:p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg w-full box-border">
+                        <div class="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 overflow-hidden">
+                            <div class="w-8 h-8 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold text-sm sm:text-lg flex-shrink-0">
+                                ${name.charAt(0).toUpperCase()}
+                            </div>
+                            <div class="flex-1 min-w-0 overflow-hidden">
+                                <div class="font-semibold text-gray-900 text-sm sm:text-base truncate">${name}</div>
+                                <div class="text-xs sm:text-sm text-gray-600 truncate">
+                                    Played: ${timesPlayed}x • Last: ${lastPlayed}
+                                </div>
                             </div>
                         </div>
+                        <button onclick="GolfBuddiesSystem.addBuddy('${suggestion.buddy_id}')"
+                                class="px-2 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-green-700 flex-shrink-0 whitespace-nowrap">
+                            <span class="material-symbols-outlined text-sm align-middle">add</span>
+                            <span class="hidden sm:inline ml-1">Add</span>
+                        </button>
                     </div>
-                    <button onclick="GolfBuddiesSystem.addBuddy('${suggestion.buddy_id}')"
-                            class="px-2 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg text-xs sm:text-sm font-medium hover:bg-green-700 flex-shrink-0">
-                        <span class="material-symbols-outlined text-sm align-middle">add</span>
-                        <span class="hidden sm:inline">Add</span>
-                    </button>
                 </div>
             `;
         }).join('');
@@ -657,21 +659,23 @@ window.GolfBuddiesSystem = {
                 const userId = player.line_user_id;
 
                 return `
-                    <div class="flex items-center justify-between gap-2 p-2 sm:p-4 bg-white border border-gray-200 rounded-lg hover:shadow-md transition-shadow w-full max-w-full">
-                        <div class="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center text-white font-bold text-sm sm:text-base flex-shrink-0">
-                                ${name.charAt(0).toUpperCase()}
+                    <div class="w-full max-w-full overflow-hidden box-border">
+                        <div class="flex items-center justify-between gap-2 p-2 sm:p-4 bg-white border border-gray-200 rounded-lg hover:shadow-md transition-shadow w-full box-border">
+                            <div class="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 overflow-hidden">
+                                <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center text-white font-bold text-sm sm:text-base flex-shrink-0">
+                                    ${name.charAt(0).toUpperCase()}
+                                </div>
+                                <div class="min-w-0 flex-1 overflow-hidden">
+                                    <div class="font-semibold text-gray-900 text-sm sm:text-base truncate">${name}</div>
+                                    <div class="text-xs sm:text-sm text-gray-600">HCP: ${handicap}</div>
+                                </div>
                             </div>
-                            <div class="min-w-0 flex-1">
-                                <div class="font-semibold text-gray-900 text-sm sm:text-base truncate">${name}</div>
-                                <div class="text-xs sm:text-sm text-gray-600">HCP: ${handicap}</div>
-                            </div>
+                            <button onclick="GolfBuddiesSystem.addBuddy('${userId}')"
+                                    class="px-2 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg text-xs sm:text-sm hover:bg-green-700 flex-shrink-0 whitespace-nowrap">
+                                <span class="material-symbols-outlined text-sm align-middle">add</span>
+                                <span class="hidden sm:inline ml-1">Add</span>
+                            </button>
                         </div>
-                        <button onclick="GolfBuddiesSystem.addBuddy('${userId}')"
-                                class="px-2 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg text-xs sm:text-sm hover:bg-green-700 flex-shrink-0">
-                            <span class="material-symbols-outlined text-sm align-middle">add</span>
-                            <span class="hidden sm:inline">Add</span>
-                        </button>
                     </div>
                 `;
             }).join('');

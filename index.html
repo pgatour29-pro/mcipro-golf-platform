@@ -29212,6 +29212,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <span id="leaderboardLiveIndicator" class="text-xs text-green-600 ml-2">● LIVE</span>
                         </h3>
                         <div class="flex gap-2">
+                            <button onclick="window.OrganizerScoringSystem.openQuickScoreEntry()" class="text-sm px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700">
+                                <span class="material-symbols-outlined text-sm mr-1">edit_note</span>
+                                Quick Score Entry
+                            </button>
                             <button onclick="window.OrganizerScoringSystem.exportToCSV()" class="text-sm px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700">
                                 <span class="material-symbols-outlined text-sm mr-1">download</span>
                                 Export CSV
@@ -29385,6 +29389,109 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     <button onclick="showOrganizerTab('scoring')" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
                         Go to Scoring
                     </button>
+                </div>
+            </div>
+
+            <!-- Quick Score Entry Modal -->
+            <div id="quickScoreEntryModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+                <div class="bg-white rounded-lg shadow-xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+                    <!-- Modal Header -->
+                    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-900">Quick Score Entry</h2>
+                            <p class="text-sm text-gray-600 mt-1">Enter scores for all players - saves to round history & updates handicaps</p>
+                        </div>
+                        <button onclick="window.OrganizerScoringSystem.closeQuickScoreEntry()" class="text-gray-400 hover:text-gray-600">
+                            <span class="material-symbols-outlined text-3xl">close</span>
+                        </button>
+                    </div>
+
+                    <!-- Event Info Bar -->
+                    <div class="px-6 py-3 bg-blue-50 border-b border-blue-100">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                                <span class="font-medium text-gray-700">Event:</span>
+                                <span id="qseEventName" class="ml-2 text-gray-900">-</span>
+                            </div>
+                            <div>
+                                <span class="font-medium text-gray-700">Course:</span>
+                                <span id="qseCourseName" class="ml-2 text-gray-900">-</span>
+                            </div>
+                            <div>
+                                <span class="font-medium text-gray-700">Date:</span>
+                                <span id="qseEventDate" class="ml-2 text-gray-900">-</span>
+                            </div>
+                            <div>
+                                <span class="font-medium text-gray-700">Tee:</span>
+                                <select id="qseTeeMarker" class="ml-2 border rounded px-2 py-1 text-sm">
+                                    <option value="black">Black (Championship)</option>
+                                    <option value="blue" selected>Blue (Men)</option>
+                                    <option value="white">White (Regular)</option>
+                                    <option value="yellow">Yellow (Senior)</option>
+                                    <option value="red">Red (Ladies)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Modal Body - Scrollable -->
+                    <div class="flex-1 overflow-y-auto px-6 py-4">
+                        <!-- Player Search/Filter -->
+                        <div class="mb-4 flex gap-3">
+                            <div class="flex-1 relative">
+                                <span class="material-symbols-outlined absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">search</span>
+                                <input type="text" id="qsePlayerSearch" placeholder="Search players..."
+                                    oninput="window.OrganizerScoringSystem.filterScoreEntryPlayers(this.value)"
+                                    class="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <button onclick="window.OrganizerScoringSystem.fillAllScores()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 whitespace-nowrap">
+                                <span class="material-symbols-outlined text-sm mr-1">auto_fix_high</span>
+                                Fill Par
+                            </button>
+                            <button onclick="window.OrganizerScoringSystem.clearAllScores()" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 whitespace-nowrap">
+                                <span class="material-symbols-outlined text-sm mr-1">clear_all</span>
+                                Clear All
+                            </button>
+                        </div>
+
+                        <!-- Players Table -->
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm border-collapse">
+                                <thead class="bg-gray-100 sticky top-0">
+                                    <tr>
+                                        <th class="py-2 px-3 text-left border">Player</th>
+                                        <th class="py-2 px-3 text-center border w-24">HCP</th>
+                                        <th class="py-2 px-3 text-center border w-32">Gross Score</th>
+                                        <th class="py-2 px-3 text-center border w-32">Stableford</th>
+                                        <th class="py-2 px-3 text-center border w-24">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="qsePlayersTableBody">
+                                    <tr>
+                                        <td colspan="5" class="py-8 text-center text-gray-500">Loading players...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Modal Footer -->
+                    <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
+                        <div class="text-sm text-gray-600">
+                            <span id="qseScoresEntered" class="font-bold text-green-600">0</span> scores entered
+                            <span class="mx-2">•</span>
+                            <span id="qseTotalPlayers" class="font-bold">0</span> total players
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="window.OrganizerScoringSystem.closeQuickScoreEntry()" class="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100">
+                                Cancel
+                            </button>
+                            <button onclick="window.OrganizerScoringSystem.saveAllScores()" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
+                                <span class="material-symbols-outlined text-sm mr-1">save</span>
+                                Save All Scores
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -55614,6 +55721,328 @@ class OrganizerScoringSystem {
         window.URL.revokeObjectURL(url);
 
         NotificationManager.show('CSV exported successfully!', 'success');
+    }
+
+    // ============================================================================
+    // QUICK SCORE ENTRY SYSTEM
+    // ============================================================================
+
+    async openQuickScoreEntry() {
+        if (!this.currentEventId) {
+            NotificationManager.show('Please select an event first', 'warning');
+            return;
+        }
+
+        // Get event details
+        const event = this.allEvents.find(e => e.id === this.currentEventId);
+        if (!event) {
+            NotificationManager.show('Event not found', 'error');
+            return;
+        }
+
+        // Populate event info
+        document.getElementById('qseEventName').textContent = event.title || 'Unknown Event';
+        document.getElementById('qseCourseName').textContent = event.course || 'Unknown Course';
+        document.getElementById('qseEventDate').textContent = new Date(event.event_date).toLocaleDateString();
+
+        // Store event data for later use
+        this.qseEventData = event;
+        this.qsePlayersData = [];
+        this.qseScores = {};
+
+        // Load registered players
+        await this.loadQuickScoreEntryPlayers();
+
+        // Show modal
+        document.getElementById('quickScoreEntryModal').style.display = 'flex';
+    }
+
+    closeQuickScoreEntry() {
+        document.getElementById('quickScoreEntryModal').style.display = 'none';
+        this.qsePlayersData = [];
+        this.qseScores = {};
+    }
+
+    async loadQuickScoreEntryPlayers() {
+        try {
+            // Get all registrations for this event
+            const { data: registrations, error } = await window.SupabaseDB.client
+                .from('event_registrations')
+                .select('player_id, player_name, player_handicap')
+                .eq('event_id', this.currentEventId)
+                .eq('status', 'confirmed')
+                .order('player_name');
+
+            if (error) {
+                console.error('[QuickScoreEntry] Error loading players:', error);
+                NotificationManager.show('Error loading players', 'error');
+                return;
+            }
+
+            console.log(`[QuickScoreEntry] Loaded ${registrations?.length || 0} registered players`);
+
+            // Check which players already have rounds
+            const { data: existingRounds } = await window.SupabaseDB.client
+                .from('rounds')
+                .select('golfer_id, total_gross')
+                .eq('society_event_id', this.currentEventId);
+
+            const playersWithRounds = new Set(existingRounds?.map(r => r.golfer_id) || []);
+
+            // Store player data
+            this.qsePlayersData = (registrations || []).map(reg => ({
+                player_id: reg.player_id,
+                player_name: reg.player_name,
+                handicap: reg.player_handicap || 0,
+                hasExistingRound: playersWithRounds.has(reg.player_id)
+            }));
+
+            // Initialize scores object
+            this.qseScores = {};
+            this.qsePlayersData.forEach(player => {
+                this.qseScores[player.player_id] = {
+                    gross: '',
+                    stableford: ''
+                };
+            });
+
+            // Render table
+            this.renderQuickScoreEntryTable();
+
+        } catch (error) {
+            console.error('[QuickScoreEntry] Error:', error);
+            NotificationManager.show('Error loading players', 'error');
+        }
+    }
+
+    renderQuickScoreEntryTable(filteredPlayers = null) {
+        const tbody = document.getElementById('qsePlayersTableBody');
+        const players = filteredPlayers || this.qsePlayersData;
+
+        if (!players || players.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-gray-500">No registered players found</td></tr>';
+            document.getElementById('qseTotalPlayers').textContent = '0';
+            return;
+        }
+
+        tbody.innerHTML = players.map(player => {
+            const scores = this.qseScores[player.player_id] || { gross: '', stableford: '' };
+            const hasScore = scores.gross !== '';
+            const statusIcon = player.hasExistingRound
+                ? '<span class="text-blue-600" title="Already has a round">✓</span>'
+                : hasScore
+                ? '<span class="text-green-600">✓</span>'
+                : '<span class="text-gray-300">○</span>';
+
+            return `
+                <tr class="${player.hasExistingRound ? 'bg-blue-50' : ''}" data-player-id="${player.player_id}">
+                    <td class="py-2 px-3 border">
+                        ${player.player_name}
+                        ${player.hasExistingRound ? '<span class="text-xs text-blue-600 ml-2">(Round exists)</span>' : ''}
+                    </td>
+                    <td class="py-2 px-3 border text-center">${player.handicap.toFixed(1)}</td>
+                    <td class="py-2 px-3 border">
+                        <input type="number"
+                            id="qse-gross-${player.player_id}"
+                            value="${scores.gross}"
+                            min="50" max="150"
+                            placeholder="72"
+                            oninput="window.OrganizerScoringSystem.updatePlayerScore('${player.player_id}', 'gross', this.value)"
+                            class="w-full px-2 py-1 border rounded text-center focus:ring-2 focus:ring-blue-500"
+                            ${player.hasExistingRound ? 'disabled' : ''}>
+                    </td>
+                    <td class="py-2 px-3 border">
+                        <input type="number"
+                            id="qse-stableford-${player.player_id}"
+                            value="${scores.stableford}"
+                            min="0" max="72"
+                            placeholder="36"
+                            oninput="window.OrganizerScoringSystem.updatePlayerScore('${player.player_id}', 'stableford', this.value)"
+                            class="w-full px-2 py-1 border rounded text-center focus:ring-2 focus:ring-green-500"
+                            ${player.hasExistingRound ? 'disabled' : ''}>
+                    </td>
+                    <td class="py-2 px-3 border text-center">${statusIcon}</td>
+                </tr>
+            `;
+        }).join('');
+
+        // Update stats
+        document.getElementById('qseTotalPlayers').textContent = players.length;
+        this.updateScoreEntryStats();
+    }
+
+    updatePlayerScore(playerId, field, value) {
+        if (!this.qseScores[playerId]) {
+            this.qseScores[playerId] = { gross: '', stableford: '' };
+        }
+
+        this.qseScores[playerId][field] = value;
+        this.updateScoreEntryStats();
+    }
+
+    updateScoreEntryStats() {
+        let scoresEntered = 0;
+
+        Object.values(this.qseScores).forEach(scores => {
+            if (scores.gross !== '' || scores.stableford !== '') {
+                scoresEntered++;
+            }
+        });
+
+        document.getElementById('qseScoresEntered').textContent = scoresEntered;
+    }
+
+    filterScoreEntryPlayers(searchText) {
+        const search = searchText.toLowerCase().trim();
+
+        if (search === '') {
+            this.renderQuickScoreEntryTable();
+            return;
+        }
+
+        const filtered = this.qsePlayersData.filter(player => {
+            return player.player_name.toLowerCase().includes(search);
+        });
+
+        this.renderQuickScoreEntryTable(filtered);
+    }
+
+    fillAllScores() {
+        // Fill all empty scores with par (72)
+        const coursePar = 72; // Default - could be made dynamic
+
+        this.qsePlayersData.forEach(player => {
+            if (!player.hasExistingRound && this.qseScores[player.player_id].gross === '') {
+                this.qseScores[player.player_id].gross = coursePar.toString();
+                const input = document.getElementById(`qse-gross-${player.player_id}`);
+                if (input) input.value = coursePar;
+            }
+        });
+
+        this.updateScoreEntryStats();
+        NotificationManager.show('Filled all empty scores with par', 'success');
+    }
+
+    clearAllScores() {
+        if (!confirm('Clear all entered scores?')) return;
+
+        this.qsePlayersData.forEach(player => {
+            if (!player.hasExistingRound) {
+                this.qseScores[player.player_id] = { gross: '', stableford: '' };
+                const grossInput = document.getElementById(`qse-gross-${player.player_id}`);
+                const stablefordInput = document.getElementById(`qse-stableford-${player.player_id}`);
+                if (grossInput) grossInput.value = '';
+                if (stablefordInput) stablefordInput.value = '';
+            }
+        });
+
+        this.updateScoreEntryStats();
+        NotificationManager.show('All scores cleared', 'success');
+    }
+
+    async saveAllScores() {
+        // Count how many scores are ready to save
+        const playersToSave = this.qsePlayersData.filter(player => {
+            const scores = this.qseScores[player.player_id];
+            return !player.hasExistingRound && scores && scores.gross !== '';
+        });
+
+        if (playersToSave.length === 0) {
+            NotificationManager.show('No new scores to save', 'warning');
+            return;
+        }
+
+        if (!confirm(`Save ${playersToSave.length} rounds to player histories?\n\nThis will:\n• Save rounds to database\n• Update handicaps automatically\n• Update leaderboard`)) {
+            return;
+        }
+
+        try {
+            NotificationManager.show(`Saving ${playersToSave.length} rounds...`, 'info');
+
+            const teeMarker = document.getElementById('qseTeeMarker').value;
+            const eventDate = new Date(this.qseEventData.event_date);
+            const courseId = this.qseEventData.course_id || null;
+            const courseName = this.qseEventData.course || 'Unknown Course';
+
+            // Get organizer ID for this event
+            const { data: eventData } = await window.SupabaseDB.client
+                .from('society_events')
+                .select('organizer_id')
+                .eq('id', this.currentEventId)
+                .single();
+
+            const organizerId = eventData?.organizer_id;
+
+            let successCount = 0;
+            let errorCount = 0;
+
+            // Save each round
+            for (const player of playersToSave) {
+                const scores = this.qseScores[player.player_id];
+
+                try {
+                    const roundData = {
+                        golfer_id: player.player_id,
+                        course_id: courseId,
+                        course_name: courseName,
+                        type: 'society',
+                        society_event_id: this.currentEventId,
+                        organizer_id: organizerId,
+                        started_at: eventDate.toISOString(),
+                        completed_at: new Date().toISOString(),
+                        status: 'completed',
+                        total_gross: parseInt(scores.gross) || null,
+                        total_stableford: scores.stableford !== '' ? parseInt(scores.stableford) : null,
+                        handicap_used: player.handicap,
+                        tee_marker: teeMarker,
+                        course_rating: 72.0,
+                        slope_rating: 113
+                    };
+
+                    const { data: round, error } = await window.SupabaseDB.client
+                        .from('rounds')
+                        .insert(roundData)
+                        .select()
+                        .single();
+
+                    if (error) {
+                        console.error(`[QuickScoreEntry] Error saving round for ${player.player_name}:`, error);
+                        errorCount++;
+                    } else {
+                        console.log(`[QuickScoreEntry] ✅ Saved round for ${player.player_name}`);
+                        successCount++;
+
+                        // Mark as having existing round
+                        player.hasExistingRound = true;
+                    }
+
+                } catch (err) {
+                    console.error(`[QuickScoreEntry] Exception saving ${player.player_name}:`, err);
+                    errorCount++;
+                }
+            }
+
+            // Show result
+            if (successCount > 0) {
+                NotificationManager.show(
+                    `✅ Saved ${successCount} rounds successfully!${errorCount > 0 ? ` (${errorCount} errors)` : ''}`,
+                    successCount === playersToSave.length ? 'success' : 'warning'
+                );
+
+                // Refresh leaderboard
+                await this.refreshScores();
+
+                // Re-render table to show updated status
+                this.renderQuickScoreEntryTable();
+
+            } else {
+                NotificationManager.show('Failed to save rounds - see console for details', 'error');
+            }
+
+        } catch (error) {
+            console.error('[QuickScoreEntry] Error saving scores:', error);
+            NotificationManager.show('Error saving scores', 'error');
+        }
     }
 
     destroy() {

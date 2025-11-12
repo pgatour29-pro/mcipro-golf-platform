@@ -55082,7 +55082,12 @@ class OrganizerScoringSystem {
 
         // Get today's date for comparison
         const today = new Date();
+        today.setHours(0, 0, 0, 0); // Reset time for accurate date comparison
         const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+        let todayEventId = null;
+        let nearestUpcomingEventId = null;
+        let nearestUpcomingDiff = Infinity;
 
         events.forEach(event => {
             const option = document.createElement('option');
@@ -55098,11 +55103,39 @@ class OrganizerScoringSystem {
 
             option.textContent = `${isToday ? '🔴 TODAY: ' : ''}${event.title} - ${dateStr} (${event.course})`;
             select.appendChild(option);
+
+            // Track today's event
+            if (isToday && !todayEventId) {
+                todayEventId = event.id;
+            }
+
+            // Track nearest upcoming event (within next 7 days)
+            const eventDateTime = new Date(event.event_date);
+            eventDateTime.setHours(0, 0, 0, 0);
+            const diffDays = Math.ceil((eventDateTime - today) / (1000 * 60 * 60 * 24));
+
+            if (diffDays >= 0 && diffDays <= 7 && diffDays < nearestUpcomingDiff) {
+                nearestUpcomingDiff = diffDays;
+                nearestUpcomingEventId = event.id;
+            }
         });
 
-        // Restore selection if it still exists
+        // Auto-select logic: Restore current > Today's event > Nearest upcoming > None
         if (currentValue && events.some(e => e.id === currentValue)) {
+            // Preserve existing selection
             select.value = currentValue;
+        } else if (todayEventId) {
+            // Auto-select today's event
+            select.value = todayEventId;
+            // Trigger load scores for today's event
+            this.loadEventScores(todayEventId);
+            console.log('[OrganizerScoring] Auto-selected today\'s event');
+        } else if (nearestUpcomingEventId) {
+            // Auto-select nearest upcoming event (within 7 days)
+            select.value = nearestUpcomingEventId;
+            // Trigger load scores for nearest event
+            this.loadEventScores(nearestUpcomingEventId);
+            console.log('[OrganizerScoring] Auto-selected nearest upcoming event');
         }
     }
 

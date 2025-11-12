@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-12-BUDDIES-FIX-ADD-PLAYER
+// DEPLOYMENT VERSION: 2025-11-12-SOCIETY-STANDINGS-FIX
 
-const SW_VERSION = 'buddies-v6'; // Golf Buddies - Fixed quick-add to use correct method
+const SW_VERSION = 'standings-v1'; // Fixed society standings query
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

@@ -659,21 +659,21 @@ window.GolfBuddiesSystem = {
                 const userId = player.line_user_id;
 
                 return `
-                    <div class="w-full max-w-full overflow-hidden box-border">
-                        <div class="flex items-center justify-between gap-2 p-2 sm:p-4 bg-white border border-gray-200 rounded-lg hover:shadow-md transition-shadow w-full box-border">
-                            <div class="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 overflow-hidden">
-                                <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center text-white font-bold text-sm sm:text-base flex-shrink-0">
+                    <div style="width: 100%; max-width: 100%; overflow: hidden; box-sizing: border-box;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem; background: white; border: 1px solid #e5e7eb; border-radius: 0.5rem; width: 100%; box-sizing: border-box;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 0; overflow: hidden;">
+                                <div style="width: 2rem; height: 2rem; border-radius: 50%; background: linear-gradient(135deg, #9ca3af, #4b5563); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 0.875rem; flex-shrink: 0;">
                                     ${name.charAt(0).toUpperCase()}
                                 </div>
-                                <div class="min-w-0 flex-1 overflow-hidden">
-                                    <div class="font-semibold text-gray-900 text-sm sm:text-base truncate">${name}</div>
-                                    <div class="text-xs sm:text-sm text-gray-600">HCP: ${handicap}</div>
+                                <div style="min-width: 0; flex: 1; overflow: hidden;">
+                                    <div style="font-weight: 600; color: #111827; font-size: 0.875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</div>
+                                    <div style="font-size: 0.75rem; color: #6b7280;">HCP: ${handicap}</div>
                                 </div>
                             </div>
                             <button onclick="GolfBuddiesSystem.addBuddy('${userId}')"
-                                    class="px-2 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg text-xs sm:text-sm hover:bg-green-700 flex-shrink-0 whitespace-nowrap">
-                                <span class="material-symbols-outlined text-sm align-middle">add</span>
-                                <span class="hidden sm:inline ml-1">Add</span>
+                                    style="padding: 0.375rem 0.5rem; background: #16a34a; color: white; border-radius: 0.5rem; font-size: 0.75rem; border: none; cursor: pointer; flex-shrink: 0; white-space: nowrap;">
+                                <span class="material-symbols-outlined" style="font-size: 0.875rem; vertical-align: middle;">add</span>
+                                <span style="display: none;">Add</span>
                             </button>
                         </div>
                     </div>

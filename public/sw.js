@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-12-SEARCH-OVERFLOW-FIX
+// DEPLOYMENT VERSION: 2025-11-12-INLINE-STYLES-FIX
 
-const SW_VERSION = 'mobile-v5'; // Fixed: Search results overflow to right, aggressive width constraints
+const SW_VERSION = 'mobile-v6'; // Nuclear option: inline styles to force width constraints
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

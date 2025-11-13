@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-12-INLINE-STYLES-FIX
+// DEPLOYMENT VERSION: 2025-11-13-PRIVATE-EVENTS
 
-const SW_VERSION = 'mobile-v6'; // Nuclear option: inline styles to force width constraints
+const SW_VERSION = 'private-events-v1'; // Added Private Events toggle in Society Events Browse
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

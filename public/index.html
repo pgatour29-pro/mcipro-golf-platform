@@ -23405,6 +23405,22 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         </div>
                     </div>
 
+                    <!-- Event Type Tabs (Public/Private) -->
+                    <div class="flex gap-2 mb-4 p-2 bg-gray-50 rounded-lg">
+                        <button onclick="GolferEventsSystem.setEventTypeFilter('public')"
+                                id="eventTypePublic"
+                                class="flex-1 px-4 py-2 rounded-md text-sm font-medium bg-white text-green-600 border-2 border-green-500 transition-colors">
+                            <span class="material-symbols-outlined text-sm align-middle mr-1">public</span>
+                            Public Events
+                        </button>
+                        <button onclick="GolferEventsSystem.setEventTypeFilter('private')"
+                                id="eventTypePrivate"
+                                class="flex-1 px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+                            <span class="material-symbols-outlined text-sm align-middle mr-1">lock</span>
+                            Private Events
+                        </button>
+                    </div>
+
                     <!-- Event Cards Grid -->
                     <div id="societyEventsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         <!-- Events will be rendered here -->
@@ -52015,6 +52031,7 @@ class GolferEventsManager {
         this.currentView = 'browse';
         this.calendarDate = new Date();
         this.myRegistrations = [];
+        this.currentEventType = 'public'; // Event type filter: 'public' or 'private'
 
         // Cache system for instant loading
         this.eventsCache = null;
@@ -52212,6 +52229,25 @@ class GolferEventsManager {
         });
     }
 
+    setEventTypeFilter(type) {
+        this.currentEventType = type;
+
+        // Update button states
+        const publicBtn = document.getElementById('eventTypePublic');
+        const privateBtn = document.getElementById('eventTypePrivate');
+
+        if (type === 'public') {
+            publicBtn.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium bg-white text-green-600 border-2 border-green-500 transition-colors';
+            privateBtn.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors';
+        } else {
+            publicBtn.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors';
+            privateBtn.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium bg-white text-green-600 border-2 border-green-500 transition-colors';
+        }
+
+        // Reapply filters
+        this.filterEvents();
+    }
+
     async loadEvents(showLoading = true) {
         try {
             if (showLoading) {
@@ -52286,6 +52322,15 @@ class GolferEventsManager {
         this.filteredEvents = this.allEvents.filter(event => {
             // Get society name (use societyName or fallback to organizerName)
             const eventSocietyName = event.societyName || event.organizerName;
+
+            // EVENT TYPE FILTER (public vs private events)
+            const isPrivateEvent = event.is_private || event.isPrivate || false;
+            if (this.currentEventType === 'public' && isPrivateEvent) {
+                return false;
+            }
+            if (this.currentEventType === 'private' && !isPrivateEvent) {
+                return false;
+            }
 
             // SOCIETY SUBSCRIPTION FILTER (only when NOT actively searching)
             if (!isActivelySearching && this.subscribedSocieties.length > 0) {

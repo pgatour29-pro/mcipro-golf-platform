@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
 // DEPLOYMENT VERSION: 2025-11-14-GOLFER-EVENTS-V5
 
-const SW_VERSION = 'golfer-events-v7'; // Only use columns that exist in schema
+const SW_VERSION = 'golfer-events-v8'; // Add returning:minimal to prevent columns param
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

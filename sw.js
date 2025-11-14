@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-14-UNIFIED-SYSTEM-V16
+// DEPLOYMENT VERSION: 2025-11-14-UNIFIED-SYSTEM-V17
 
-const SW_VERSION = 'unified-event-system-v16'; // Fixed UUID error - don't send organizerId for golfers
+const SW_VERSION = 'unified-event-system-v17'; // Fixed format constraint - use event_format not format
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

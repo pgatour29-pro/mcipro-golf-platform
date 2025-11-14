@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-14-UNIFIED-SYSTEM-V12
+// DEPLOYMENT VERSION: 2025-11-14-UNIFIED-SYSTEM-V13
 
-const SW_VERSION = 'unified-event-system-v12'; // Golfers use organizer event system
+const SW_VERSION = 'unified-event-system-v13'; // Fixed selectDashboard bug
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

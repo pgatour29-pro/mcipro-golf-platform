@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
 // DEPLOYMENT VERSION: 2025-11-14-GOLFER-EVENTS-V5
 
-const SW_VERSION = 'golfer-events-v9'; // Fix .select() syntax + remove Tailwind CDN
+const SW_VERSION = 'golfer-events-v10'; // REVERTED: Keep Tailwind CDN, only fix .select()
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

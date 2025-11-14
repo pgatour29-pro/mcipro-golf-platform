@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-14-GOLFER-EVENTS-V5
+// DEPLOYMENT VERSION: 2025-11-14-GOLFER-EVENTS-V6
 
-const SW_VERSION = 'golfer-events-v11'; // Fix UUID error - LINE ID vs PostgreSQL UUID
+const SW_VERSION = 'golfer-events-v12'; // Simplified insert - remove array wrapper and column list
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

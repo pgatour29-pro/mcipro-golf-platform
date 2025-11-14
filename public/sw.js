@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-14-GOLFER-EVENTS-V7
+// DEPLOYMENT VERSION: 2025-11-14-GOLFER-EVENTS-V8
 
-const SW_VERSION = 'golfer-events-v13'; // Remove event_type field - use same approach as organizers
+const SW_VERSION = 'golfer-events-v14'; // Fix format constraint - use 'stableford' not 'Individual Stableford'
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

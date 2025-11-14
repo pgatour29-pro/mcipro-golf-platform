@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-14-GOLFER-EVENTS-V10
+// DEPLOYMENT VERSION: 2025-11-14-GOLFER-EVENTS-V11
 
-const SW_VERSION = 'golfer-events-v10-status-fix'; // Fix status constraint - use draft not open
+const SW_VERSION = 'golfer-events-v11-public-fix'; // Fix public/index.html status constraint
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

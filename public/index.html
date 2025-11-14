@@ -54843,35 +54843,29 @@ class GolferEventsManager {
             submitBtn.innerHTML = '<span class="material-symbols-outlined animate-spin">refresh</span> Creating...';
             submitBtn.disabled = true;
 
-            // Create event object (use proper UUID format for PostgreSQL)
-            const newEvent = {
-                id: this.generateUUID(),
-                title: eventName,
-                event_date: eventDate,
-                start_time: eventTime || null,
-                course_name: courseName,
-                max_participants: maxPlayers ? parseInt(maxPlayers) : null,
-                entry_fee: entryFee ? parseInt(entryFee) : 0,
-                description: description || null,
-                status: 'open',
-                is_private: isPrivate,
-                creator_id: currentUser.lineUserId,
-                creator_type: 'golfer',
-                organizer_id: currentUser.lineUserId,
-                organizer_name: currentUser.displayName || currentUser.userName,
-                created_at: new Date().toISOString()
+            // Create event object using SAME structure as organizers
+            const eventData = {
+                name: eventName,
+                date: eventDate,
+                startTime: eventTime || null,
+                courseName: courseName,
+                maxPlayers: maxPlayers ? parseInt(maxPlayers) : null,
+                baseFee: entryFee ? parseInt(entryFee) : 0,
+                memberFee: entryFee ? parseInt(entryFee) : 0,
+                notes: description || null,
+                organizerId: currentUser.lineUserId,
+                organizerName: currentUser.displayName || currentUser.userName,
+                eventFormat: 'Individual Stableford',
+                // Golfer-specific fields
+                isPrivate: isPrivate,
+                creatorId: currentUser.lineUserId,
+                creatorType: 'golfer'
             };
 
-            console.log('[GolferEvents] Creating event:', newEvent);
+            console.log('[GolferEvents] Creating event:', eventData);
 
-            // Insert into database
-            const { data, error } = await window.SupabaseDB.client
-                .from('society_events')
-                .insert([newEvent])
-                .select()
-                .single();
-
-            if (error) throw error;
+            // Use the SAME method as organizers
+            await window.SocietyGolfDB.createEvent(eventData);
 
             NotificationManager.show(
                 isPrivate ? 'Private event created! Now invite your friends.' : 'Public event created successfully!',

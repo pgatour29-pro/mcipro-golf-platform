@@ -35871,31 +35871,34 @@ class SocietyGolfSupabase {
 
     async createEvent(eventData) {
         await this.waitForSupabase();
+        // Insert without returning data to avoid columns= parameter
+        const insertData = {
+            id: eventData.id || this.generateId(),
+            title: eventData.name,
+            event_date: eventData.date,
+            start_time: eventData.startTime,
+            format: eventData.eventFormat || 'Individual Stableford',
+            entry_fee: eventData.baseFee || eventData.memberFee || 0,
+            max_participants: eventData.maxPlayers,
+            organizer_id: eventData.organizerId,
+            status: 'open',
+            description: eventData.notes,
+            is_private: eventData.isPrivate || false,
+            creator_id: eventData.creatorId || null,
+            creator_type: eventData.creatorType || 'organizer',
+            event_type: 'Golf Round'
+        };
+
         const { error } = await window.SupabaseDB.client
             .from('society_events')
-            .insert([{
-                id: eventData.id || this.generateId(),
-                title: eventData.name,
-                event_date: eventData.date,
-                start_time: eventData.startTime,
-                format: eventData.eventFormat || 'Individual Stableford',
-                entry_fee: eventData.baseFee || eventData.memberFee || 0,
-                max_participants: eventData.maxPlayers,
-                organizer_id: eventData.organizerId,
-                status: 'open',
-                description: eventData.notes,
-                is_private: eventData.isPrivate || false,
-                creator_id: eventData.creatorId || null,
-                creator_type: eventData.creatorType || 'organizer',
-                event_type: 'Golf Round'
-            }]);
+            .insert([insertData], { returning: 'minimal' });
 
         if (error) {
             console.error('[SocietyGolf] Error creating event:', error);
             throw error;
         }
 
-        return { id: eventData.id || this.generateId() };
+        return { id: insertData.id };
     }
 
     async updateEvent(eventId, updates) {

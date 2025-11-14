@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-14-GOLFER-EVENTS-FIXED
+// DEPLOYMENT VERSION: 2025-11-14-GOLFER-EVENTS-V3
 
-const SW_VERSION = 'golfer-events-v2-fixed'; // Fixed database column mapping (title, event_date, entry_fee, etc)
+const SW_VERSION = 'golfer-events-v3'; // Added back public/private event tabs + fixed column mapping
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

@@ -28,7 +28,6 @@
 
     <title>MciPro - Professional Golf Course Management Platform v2.1.0</title>
 
-    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
     <script src="https://static.line-scdn.net/liff/edge/2.1/sdk.js"></script>
     <script src="js/scorecardProfileLoader.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -35871,7 +35870,6 @@ class SocietyGolfSupabase {
 
     async createEvent(eventData) {
         await this.waitForSupabase();
-        // Insert without returning data to avoid columns= parameter
         const insertData = {
             id: eventData.id || this.generateId(),
             title: eventData.name,
@@ -35889,16 +35887,17 @@ class SocietyGolfSupabase {
             event_type: 'Golf Round'
         };
 
-        const { error } = await window.SupabaseDB.client
+        const { data, error } = await window.SupabaseDB.client
             .from('society_events')
-            .insert([insertData], { returning: 'minimal' });
+            .insert([insertData])
+            .select('id,title,event_date,start_time,format,entry_fee,max_participants,organizer_id,status,description,is_private,creator_id,creator_type,event_type');
 
         if (error) {
             console.error('[SocietyGolf] Error creating event:', error);
             throw error;
         }
 
-        return { id: insertData.id };
+        return data?.[0];
     }
 
     async updateEvent(eventId, updates) {

@@ -23722,6 +23722,104 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </div>
                     <!-- End Manage Events View -->
 
+                    <!-- Invite Friends Modal -->
+                    <div id="inviteFriendsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: none;">
+                        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                            <div class="p-6">
+                                <!-- Header -->
+                                <div class="flex items-center justify-between mb-4">
+                                    <h2 class="text-2xl font-bold text-gray-900">
+                                        <span class="material-symbols-outlined text-blue-600 align-middle mr-2">person_add</span>
+                                        Invite to Private Event
+                                    </h2>
+                                    <button onclick="GolferEventsSystem.closeInviteModal()" class="p-2 hover:bg-gray-100 rounded-lg">
+                                        <span class="material-symbols-outlined">close</span>
+                                    </button>
+                                </div>
+
+                                <!-- Event Info -->
+                                <div id="inviteEventInfo" class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                                    <!-- Will be populated dynamically -->
+                                </div>
+
+                                <!-- Tab Selection: Individual or Group -->
+                                <div class="flex gap-2 mb-6 p-2 bg-gray-50 rounded-lg">
+                                    <button onclick="GolferEventsSystem.setInviteMode('individual')" id="inviteModeIndividual"
+                                            class="flex-1 px-4 py-2 rounded-md text-sm font-medium bg-white text-blue-600 border-2 border-blue-500">
+                                        <span class="material-symbols-outlined text-sm align-middle mr-1">person</span>
+                                        Individual Golfers
+                                    </button>
+                                    <button onclick="GolferEventsSystem.setInviteMode('group')" id="inviteModeGroup"
+                                            class="flex-1 px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100">
+                                        <span class="material-symbols-outlined text-sm align-middle mr-1">groups</span>
+                                        Golf Buddy Groups
+                                    </button>
+                                </div>
+
+                                <!-- Individual Invite Section -->
+                                <div id="inviteIndividualSection">
+                                    <!-- Search -->
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">Search Golfers</label>
+                                        <div class="relative">
+                                            <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">search</span>
+                                            <input type="text" id="inviteGolferSearch"
+                                                   placeholder="Search by name..."
+                                                   oninput="GolferEventsSystem.searchGolfersToInvite()"
+                                                   class="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                        </div>
+                                    </div>
+
+                                    <!-- Golfer List -->
+                                    <div id="inviteGolferList" class="space-y-2 max-h-64 overflow-y-auto mb-4">
+                                        <p class="text-sm text-gray-500 text-center py-8">Search for golfers to invite</p>
+                                    </div>
+                                </div>
+
+                                <!-- Group Invite Section -->
+                                <div id="inviteGroupSection" style="display: none;">
+                                    <div id="inviteGroupList" class="space-y-2 max-h-64 overflow-y-auto mb-4">
+                                        <p class="text-sm text-gray-500 text-center py-8">Loading your golf buddy groups...</p>
+                                    </div>
+                                </div>
+
+                                <!-- Selected Invitees -->
+                                <div id="selectedInvitees" class="mb-6" style="display: none;">
+                                    <h3 class="text-sm font-semibold text-gray-900 mb-2">Selected to Invite:</h3>
+                                    <div id="selectedInviteesList" class="flex flex-wrap gap-2">
+                                        <!-- Selected chips will appear here -->
+                                    </div>
+                                </div>
+
+                                <!-- Action Buttons -->
+                                <div class="flex gap-3">
+                                    <button onclick="GolferEventsSystem.sendInvites()" id="sendInvitesBtn"
+                                            class="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                                            disabled>
+                                        <span class="material-symbols-outlined text-sm align-middle mr-1">send</span>
+                                        Send Invites
+                                    </button>
+                                    <button onclick="GolferEventsSystem.closeInviteModal()"
+                                            class="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors">
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- End Invite Friends Modal -->
+
+                    <!-- Pending Invites/Requests Panel (in Manage Events) -->
+                    <div id="pendingRequestsPanel" style="display: none;" class="metric-card">
+                        <h3 class="text-lg font-bold text-gray-900 mb-4">
+                            <span class="material-symbols-outlined text-orange-600 align-middle mr-2">notifications_active</span>
+                            Pending Join Requests
+                        </h3>
+                        <div id="pendingRequestsList" class="space-y-3">
+                            <!-- Requests will be populated here -->
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
@@ -54822,6 +54920,13 @@ class GolferEventsManager {
             // Render the list
             this.renderMyCreatedEvents(filteredEvents);
 
+            // Load pending requests for each event
+            for (const event of filteredEvents) {
+                if (event.is_private) {
+                    await this.loadPendingRequests(event.id);
+                }
+            }
+
         } catch (error) {
             console.error('[GolferEvents] Error loading created events:', error);
             NotificationManager.show('Failed to load your events', 'error');
@@ -54938,9 +55043,428 @@ class GolferEventsManager {
         }
     }
 
-    inviteFriends(eventId) {
-        // TODO: Implement invite friends modal with search/select interface
-        NotificationManager.show('Invite friends feature coming soon! You can share the event link for now.', 'info', 4000);
+    // =====================================================
+    // INVITE SYSTEM FOR PRIVATE EVENTS
+    // =====================================================
+
+    currentInviteEvent = null;
+    inviteMode = 'individual'; // 'individual' or 'group'
+    selectedInvitees = []; // Array of {id, name, type: 'user' or 'group'}
+
+    async inviteFriends(eventId) {
+        try {
+            // Load event details
+            const { data: event, error } = await window.SupabaseDB.client
+                .from('society_events')
+                .select('*')
+                .eq('id', eventId)
+                .single();
+
+            if (error) throw error;
+
+            this.currentInviteEvent = event;
+            this.selectedInvitees = [];
+
+            // Populate event info
+            document.getElementById('inviteEventInfo').innerHTML = `
+                <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-2xl text-blue-600">event</span>
+                    <div>
+                        <h3 class="font-bold text-gray-900">${event.title}</h3>
+                        <p class="text-sm text-gray-600">${this.formatDate(event.event_date)} at ${event.course_name}</p>
+                    </div>
+                </div>
+            `;
+
+            // Show modal
+            document.getElementById('inviteFriendsModal').style.display = 'flex';
+
+            // Reset to individual mode
+            this.setInviteMode('individual');
+
+        } catch (error) {
+            console.error('[GolferEvents] Error loading event for invite:', error);
+            NotificationManager.show('Failed to load event details', 'error');
+        }
+    }
+
+    closeInviteModal() {
+        document.getElementById('inviteFriendsModal').style.display = 'none';
+        this.currentInviteEvent = null;
+        this.selectedInvitees = [];
+        document.getElementById('inviteGolferSearch').value = '';
+        document.getElementById('inviteGolferList').innerHTML = '<p class="text-sm text-gray-500 text-center py-8">Search for golfers to invite</p>';
+    }
+
+    setInviteMode(mode) {
+        this.inviteMode = mode;
+
+        // Update button states
+        const individualBtn = document.getElementById('inviteModeIndividual');
+        const groupBtn = document.getElementById('inviteModeGroup');
+
+        if (mode === 'individual') {
+            individualBtn.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium bg-white text-blue-600 border-2 border-blue-500';
+            groupBtn.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100';
+            document.getElementById('inviteIndividualSection').style.display = 'block';
+            document.getElementById('inviteGroupSection').style.display = 'none';
+        } else {
+            individualBtn.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100';
+            groupBtn.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium bg-white text-blue-600 border-2 border-blue-500';
+            document.getElementById('inviteIndividualSection').style.display = 'none';
+            document.getElementById('inviteGroupSection').style.display = 'block';
+            this.loadGolfBuddyGroups();
+        }
+    }
+
+    async searchGolfersToInvite() {
+        const searchTerm = document.getElementById('inviteGolferSearch').value.trim();
+
+        if (searchTerm.length < 2) {
+            document.getElementById('inviteGolferList').innerHTML = '<p class="text-sm text-gray-500 text-center py-8">Type at least 2 characters to search</p>';
+            return;
+        }
+
+        try {
+            // Search player profiles
+            const { data: golfers, error } = await window.SupabaseDB.client
+                .from('player_profiles')
+                .select('user_id, player_name, handicap_index')
+                .or(`player_name.ilike.%${searchTerm}%`)
+                .limit(20);
+
+            if (error) throw error;
+
+            if (!golfers || golfers.length === 0) {
+                document.getElementById('inviteGolferList').innerHTML = '<p class="text-sm text-gray-500 text-center py-4">No golfers found</p>';
+                return;
+            }
+
+            // Get already invited golfers
+            const { data: existingInvites } = await window.SupabaseDB.client
+                .from('event_invites')
+                .select('invitee_id')
+                .eq('event_id', this.currentInviteEvent.id);
+
+            const invitedIds = new Set((existingInvites || []).map(inv => inv.invitee_id));
+
+            // Render golfer list
+            document.getElementById('inviteGolferList').innerHTML = golfers.map(golfer => {
+                const isAlreadyInvited = invitedIds.has(golfer.user_id);
+                const isSelected = this.selectedInvitees.some(inv => inv.id === golfer.user_id);
+
+                return `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
+                        <div class="flex items-center gap-3">
+                            <span class="material-symbols-outlined text-gray-600">person</span>
+                            <div>
+                                <div class="font-medium text-gray-900">${golfer.player_name}</div>
+                                <div class="text-xs text-gray-500">HCP: ${golfer.handicap_index || 'N/A'}</div>
+                            </div>
+                        </div>
+                        ${isAlreadyInvited ?
+                            '<span class="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded">Already Invited</span>' :
+                            isSelected ?
+                            `<button onclick="GolferEventsSystem.toggleInvitee('${golfer.user_id}', '${golfer.player_name}')" class="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600">✓ Selected</button>` :
+                            `<button onclick="GolferEventsSystem.toggleInvitee('${golfer.user_id}', '${golfer.player_name}')" class="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">Invite</button>`
+                        }
+                    </div>
+                `;
+            }).join('');
+
+        } catch (error) {
+            console.error('[GolferEvents] Error searching golfers:', error);
+            NotificationManager.show('Search failed', 'error');
+        }
+    }
+
+    async loadGolfBuddyGroups() {
+        const currentUser = AppState.currentUser;
+        if (!currentUser) return;
+
+        try {
+            // Get user's golf buddy groups
+            const { data: groups, error } = await window.SupabaseDB.client
+                .from('golf_buddy_groups')
+                .select('*')
+                .eq('owner_id', currentUser.lineUserId);
+
+            if (error) throw error;
+
+            if (!groups || groups.length === 0) {
+                document.getElementById('inviteGroupList').innerHTML = '<p class="text-sm text-gray-500 text-center py-8">You haven\'t created any golf buddy groups yet</p>';
+                return;
+            }
+
+            // Render group list
+            document.getElementById('inviteGroupList').innerHTML = groups.map(group => {
+                const memberCount = group.members?.length || 0;
+                const isSelected = this.selectedInvitees.some(inv => inv.id === group.id);
+
+                return `
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
+                        <div class="flex items-center gap-3">
+                            <span class="material-symbols-outlined text-blue-600">groups</span>
+                            <div>
+                                <div class="font-medium text-gray-900">${group.group_name}</div>
+                                <div class="text-xs text-gray-500">${memberCount} members</div>
+                            </div>
+                        </div>
+                        ${isSelected ?
+                            `<button onclick="GolferEventsSystem.toggleGroupInvite('${group.id}', '${group.group_name}')" class="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600">✓ Selected</button>` :
+                            `<button onclick="GolferEventsSystem.toggleGroupInvite('${group.id}', '${group.group_name}')" class="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">Select Group</button>`
+                        }
+                    </div>
+                `;
+            }).join('');
+
+        } catch (error) {
+            console.error('[GolferEvents] Error loading groups:', error);
+        }
+    }
+
+    toggleInvitee(userId, name) {
+        const index = this.selectedInvitees.findIndex(inv => inv.id === userId);
+
+        if (index >= 0) {
+            this.selectedInvitees.splice(index, 1);
+        } else {
+            this.selectedInvitees.push({ id: userId, name: name, type: 'user' });
+        }
+
+        this.updateSelectedDisplay();
+        this.searchGolfersToInvite(); // Refresh list to update button states
+    }
+
+    toggleGroupInvite(groupId, groupName) {
+        const index = this.selectedInvitees.findIndex(inv => inv.id === groupId);
+
+        if (index >= 0) {
+            this.selectedInvitees.splice(index, 1);
+        } else {
+            this.selectedInvitees.push({ id: groupId, name: groupName, type: 'group' });
+        }
+
+        this.updateSelectedDisplay();
+        this.loadGolfBuddyGroups(); // Refresh list
+    }
+
+    updateSelectedDisplay() {
+        const selectedDiv = document.getElementById('selectedInvitees');
+        const sendBtn = document.getElementById('sendInvitesBtn');
+
+        if (this.selectedInvitees.length === 0) {
+            selectedDiv.style.display = 'none';
+            sendBtn.disabled = true;
+        } else {
+            selectedDiv.style.display = 'block';
+            sendBtn.disabled = false;
+
+            document.getElementById('selectedInviteesList').innerHTML = this.selectedInvitees.map(inv => `
+                <div class="flex items-center gap-2 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
+                    <span class="material-symbols-outlined text-sm">${inv.type === 'group' ? 'groups' : 'person'}</span>
+                    <span>${inv.name}</span>
+                    <button onclick="GolferEventsSystem.${inv.type === 'group' ? 'toggleGroupInvite' : 'toggleInvitee'}('${inv.id}', '${inv.name}')" class="hover:text-blue-900">
+                        <span class="material-symbols-outlined text-sm">close</span>
+                    </button>
+                </div>
+            `).join('');
+        }
+    }
+
+    async sendInvites() {
+        if (this.selectedInvitees.length === 0) return;
+
+        const currentUser = AppState.currentUser;
+        if (!currentUser) return;
+
+        try {
+            const invites = [];
+
+            // Process each selected invitee
+            for (const invitee of this.selectedInvitees) {
+                if (invitee.type === 'user') {
+                    // Individual invite
+                    invites.push({
+                        id: this.generateUUID(),
+                        event_id: this.currentInviteEvent.id,
+                        invitee_id: invitee.id,
+                        invitee_name: invitee.name,
+                        invited_by: currentUser.lineUserId,
+                        status: 'pending'
+                    });
+                } else if (invitee.type === 'group') {
+                    // Group invite - fetch all members
+                    const { data: group } = await window.SupabaseDB.client
+                        .from('golf_buddy_groups')
+                        .select('members')
+                        .eq('id', invitee.id)
+                        .single();
+
+                    if (group && group.members) {
+                        for (const member of group.members) {
+                            invites.push({
+                                id: this.generateUUID(),
+                                event_id: this.currentInviteEvent.id,
+                                invitee_id: member.userId,
+                                invitee_name: member.name,
+                                invited_by: currentUser.lineUserId,
+                                status: 'pending'
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Insert all invites
+            const { error } = await window.SupabaseDB.client
+                .from('event_invites')
+                .insert(invites);
+
+            if (error) throw error;
+
+            NotificationManager.show(`Successfully sent ${invites.length} invite(s)!`, 'success');
+            this.closeInviteModal();
+
+        } catch (error) {
+            console.error('[GolferEvents] Error sending invites:', error);
+            NotificationManager.show('Failed to send invites: ' + error.message, 'error');
+        }
+    }
+
+    // =====================================================
+    // JOIN REQUEST SYSTEM
+    // =====================================================
+
+    async requestToJoin(eventId) {
+        const currentUser = AppState.currentUser;
+        if (!currentUser) {
+            NotificationManager.show('Please log in to request to join', 'error');
+            return;
+        }
+
+        try {
+            // Check if already requested
+            const { data: existing } = await window.SupabaseDB.client
+                .from('event_invites')
+                .select('*')
+                .eq('event_id', eventId)
+                .eq('invitee_id', currentUser.lineUserId)
+                .single();
+
+            if (existing) {
+                NotificationManager.show('You already have a pending request for this event', 'info');
+                return;
+            }
+
+            // Create join request
+            const { error } = await window.SupabaseDB.client
+                .from('event_invites')
+                .insert({
+                    id: this.generateUUID(),
+                    event_id: eventId,
+                    invitee_id: currentUser.lineUserId,
+                    invitee_name: currentUser.displayName || currentUser.userName,
+                    invited_by: null, // null means it's a request, not an invite
+                    status: 'request'
+                });
+
+            if (error) throw error;
+
+            NotificationManager.show('Join request sent to event organizer!', 'success');
+
+        } catch (error) {
+            console.error('[GolferEvents] Error requesting to join:', error);
+            NotificationManager.show('Failed to send request', 'error');
+        }
+    }
+
+    async loadPendingRequests(eventId) {
+        try {
+            // Get all pending requests for this event
+            const { data: requests, error } = await window.SupabaseDB.client
+                .from('event_invites')
+                .select('*')
+                .eq('event_id', eventId)
+                .eq('status', 'request')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            if (!requests || requests.length === 0) {
+                document.getElementById('pendingRequestsPanel').style.display = 'none';
+                return;
+            }
+
+            // Show panel
+            document.getElementById('pendingRequestsPanel').style.display = 'block';
+
+            // Render requests
+            document.getElementById('pendingRequestsList').innerHTML = requests.map(req => `
+                <div class="flex items-center justify-between p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                    <div class="flex items-center gap-3">
+                        <span class="material-symbols-outlined text-orange-600">person</span>
+                        <div>
+                            <div class="font-medium text-gray-900">${req.invitee_name}</div>
+                            <div class="text-xs text-gray-500">Requested ${this.formatDate(req.created_at)}</div>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="GolferEventsSystem.approveRequest('${req.id}', '${eventId}')"
+                                class="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700">
+                            <span class="material-symbols-outlined text-sm align-middle">check</span>
+                            Approve
+                        </button>
+                        <button onclick="GolferEventsSystem.denyRequest('${req.id}', '${eventId}')"
+                                class="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700">
+                            <span class="material-symbols-outlined text-sm align-middle">close</span>
+                            Deny
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+        } catch (error) {
+            console.error('[GolferEvents] Error loading requests:', error);
+        }
+    }
+
+    async approveRequest(requestId, eventId) {
+        try {
+            // Update status to approved (pending)
+            const { error } = await window.SupabaseDB.client
+                .from('event_invites')
+                .update({ status: 'pending', updated_at: new Date().toISOString() })
+                .eq('id', requestId);
+
+            if (error) throw error;
+
+            NotificationManager.show('Request approved! Golfer can now join the event.', 'success');
+            this.loadPendingRequests(eventId);
+
+        } catch (error) {
+            console.error('[GolferEvents] Error approving request:', error);
+            NotificationManager.show('Failed to approve request', 'error');
+        }
+    }
+
+    async denyRequest(requestId, eventId) {
+        try {
+            // Delete the request
+            const { error } = await window.SupabaseDB.client
+                .from('event_invites')
+                .delete()
+                .eq('id', requestId);
+
+            if (error) throw error;
+
+            NotificationManager.show('Request denied', 'success');
+            this.loadPendingRequests(eventId);
+
+        } catch (error) {
+            console.error('[GolferEvents] Error denying request:', error);
+            NotificationManager.show('Failed to deny request', 'error');
+        }
     }
 
     generateUUID() {

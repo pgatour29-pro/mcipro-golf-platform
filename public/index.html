@@ -23563,7 +23563,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             </h2>
                             <p class="text-sm text-gray-600 mb-6">Create a public event anyone can join, or a private event for invited friends only</p>
 
-                            <form id="createEventForm" class="space-y-6" onsubmit="GolferEventsSystem.createEvent(event)">
+                            <form id="createEventForm" class="space-y-6" onsubmit="return false">
                                 <!-- Event Name -->
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-2">Event Name *</label>
@@ -55495,6 +55495,65 @@ class GolferEventsManager {
 }
 
 // Initialize global instance
+
+    async submitGolferEvent() {
+        const currentUser = AppState.currentUser;
+        if (!currentUser) {
+            NotificationManager.show('Please log in to create events', 'error');
+            return;
+        }
+
+        try {
+            // Collect form data from golfer form fields
+            const eventData = {
+                name: document.getElementById('createEventName').value.trim(),
+                date: document.getElementById('createEventDate').value,
+                startTime: document.getElementById('createEventTime').value || null,
+                courseName: document.getElementById('createEventCourse').value,
+                maxPlayers: parseInt(document.getElementById('createEventMaxPlayers').value) || null,
+                baseFee: parseFloat(document.getElementById('createEventFee').value) || 0,
+                memberFee: parseFloat(document.getElementById('createEventFee').value) || 0,
+                eventFormat: 'stableford',
+                notes: document.getElementById('createEventDescription').value.trim(),
+                organizerId: currentUser.lineUserId,
+                organizerName: currentUser.displayName || currentUser.userName,
+                isPrivate: document.querySelector('input[name="eventType"]:checked').value === 'private',
+                creatorType: 'golfer'
+            };
+
+            // Validation
+            if (!eventData.name) {
+                NotificationManager.show('Please enter an event name', 'error');
+                return;
+            }
+            if (!eventData.date) {
+                NotificationManager.show('Please select an event date', 'error');
+                return;
+            }
+            if (!eventData.courseName) {
+                NotificationManager.show('Please select a golf course', 'error');
+                return;
+            }
+
+            console.log('[GolferEvents] Creating event:', eventData);
+
+            // Use the working SocietyGolfDB method
+            await window.SocietyGolfDB.createEvent(eventData);
+
+            NotificationManager.show(
+                eventData.isPrivate ? 'Private event created successfully!' : 'Public event created successfully!',
+                'success'
+            );
+
+            // Reset form and redirect
+            document.getElementById('createEventForm').reset();
+            this.showEventsView(eventData.isPrivate ? 'manage' : 'browse');
+
+        } catch (error) {
+            console.error('[GolferEvents] Error creating event:', error);
+            NotificationManager.show('Failed to create event. Please try again.', 'error');
+        }
+    }
 window.GolferEventsSystem = new GolferEventsManager();
 
 // Global helper function to view society leaderboard from player standings

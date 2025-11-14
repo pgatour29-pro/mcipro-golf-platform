@@ -23668,7 +23668,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
                                 <!-- Action Buttons -->
                                 <div class="flex gap-3 pt-4">
-                                    <button type="submit"
+                                    <button type="button" onclick="GolferEventsSystem.submitGolferEvent()"
                                             class="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors">
                                         <span class="material-symbols-outlined text-sm align-middle mr-1">add_circle</span>
                                         Create Event
@@ -35871,7 +35871,7 @@ class SocietyGolfSupabase {
 
     async createEvent(eventData) {
         await this.waitForSupabase();
-        
+
         const insertData = {
             id: eventData.id || this.generateId(),
             title: eventData.name,
@@ -35880,13 +35880,28 @@ class SocietyGolfSupabase {
             format: eventData.eventFormat || 'stableford',
             entry_fee: eventData.baseFee || eventData.memberFee || 0,
             max_participants: eventData.maxPlayers,
-            organizer_id: this.generateId(),
             course_name: eventData.courseName,
             status: 'open',
             description: eventData.notes,
-            is_private: eventData.isPrivate || false,
-            creator_type: 'golfer'
+            is_private: eventData.isPrivate || false
         };
+
+        // Only add organizer fields if provided (for society organizers)
+        if (eventData.organizerId) {
+            insertData.organizer_id = eventData.organizerId;
+        }
+        if (eventData.organizerName) {
+            insertData.organizer_name = eventData.organizerName;
+        }
+
+        // Set creator_type based on context
+        if (eventData.creatorType) {
+            insertData.creator_type = eventData.creatorType;
+        } else if (eventData.organizerId) {
+            insertData.creator_type = 'organizer';
+        } else {
+            insertData.creator_type = 'golfer';
+        }
 
         const { data, error } = await window.SupabaseDB.client
             .from('society_events')
@@ -55501,7 +55516,7 @@ class GolferEventsManager {
         }
 
         try {
-            // Collect form data from golfer form fields
+            // Collect form data from golfer form fields - use same structure as society organizer
             const eventData = {
                 name: document.getElementById('createEventName').value.trim(),
                 date: document.getElementById('createEventDate').value,
@@ -55512,10 +55527,9 @@ class GolferEventsManager {
                 memberFee: parseFloat(document.getElementById('createEventFee').value) || 0,
                 eventFormat: 'stableford',
                 notes: document.getElementById('createEventDescription').value.trim(),
-                organizerId: currentUser.lineUserId,
-                organizerName: currentUser.displayName || currentUser.userName,
                 isPrivate: document.querySelector('input[name="eventType"]:checked').value === 'private',
                 creatorType: 'golfer'
+                // NOTE: No organizerId/organizerName for golfer events (those fields are UUID type for societies)
             };
 
             // Validation

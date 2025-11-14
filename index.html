@@ -35876,9 +35876,12 @@ class SocietyGolfSupabase {
             title: eventData.name,
             event_date: eventData.date,
             start_time: eventData.startTime,
+            course_name: eventData.courseName,
             format: eventData.eventFormat || 'stableford',
             entry_fee: eventData.baseFee || eventData.memberFee || 0,
             max_participants: eventData.maxPlayers,
+            organizer_id: eventData.organizerId || null,
+            organizer_name: eventData.organizerName || null,
             status: 'open',
             description: eventData.notes,
             is_private: eventData.isPrivate || false,
@@ -36096,6 +36099,9 @@ class SocietyGolfSupabase {
                 courseName: e.course_name,
                 eventFormat: e.format || e.event_format, // NEW: Use 'format' column
                 notes: e.description || e.notes, // NEW: Use 'description' column
+                isPrivate: e.is_private || false,
+                creatorId: e.creator_id,
+                creatorType: e.creator_type || 'organizer',
                 registeredCount: regCountMap[e.id] || 0,
                 isUserRegistered: registeredEventIds.has(e.id),
                 createdAt: e.created_at
@@ -52620,7 +52626,9 @@ class GolferEventsManager {
             }
 
             // SOCIETY SUBSCRIPTION FILTER (only when NOT actively searching)
-            if (!isActivelySearching && this.subscribedSocieties.length > 0) {
+            // IMPORTANT: Always show golfer-created events (not tied to a specific society)
+            const isGolferEvent = event.creatorType === 'golfer' || (!event.organizerId || event.organizerId.startsWith('U0'));
+            if (!isActivelySearching && this.subscribedSocieties.length > 0 && !isGolferEvent) {
                 if (!this.subscribedSocieties.includes(eventSocietyName)) {
                     return false;
                 }

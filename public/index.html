@@ -53081,12 +53081,12 @@ class GolferEventsManager {
                 `;
                 registerBtn.onclick = () => this.showRegistrationForm();
             } else if (isPrivateEvent) {
-                // Private golfer event - require approval (organizer private events use normal registration)
+                // Private golfer event - show form, but submit will create request instead of registration
                 registerBtn.innerHTML = `
                     <span class="material-symbols-outlined text-sm">lock</span>
                     Request to Join
                 `;
-                registerBtn.onclick = () => this.requestToJoinPrivateEvent();
+                registerBtn.onclick = () => this.showRegistrationForm();
             } else if (isFull) {
                 // Event is full - join waitlist
                 registerBtn.innerHTML = `
@@ -53288,7 +53288,22 @@ class GolferEventsManager {
     showRegistrationForm() {
         document.getElementById('registrationForm').style.display = 'block';
         document.getElementById('eventRegisterBtn').style.display = 'none';
-        document.getElementById('eventSubmitBtn').style.display = 'inline-flex';
+        const submitBtn = document.getElementById('eventSubmitBtn');
+        submitBtn.style.display = 'inline-flex';
+
+        // Update button text for private events
+        const isPrivateGolferEvent = this.currentEvent.creatorType === 'golfer' && this.currentEvent.isPrivate;
+        if (isPrivateGolferEvent) {
+            submitBtn.innerHTML = `
+                <span class="material-symbols-outlined text-sm">send</span>
+                Submit Request
+            `;
+        } else {
+            submitBtn.innerHTML = `
+                <span class="material-symbols-outlined text-sm">send</span>
+                Submit Registration
+            `;
+        }
 
         // Populate partner preferences
         this.populatePartnerPreferences();
@@ -53436,30 +53451,55 @@ class GolferEventsManager {
                 this.filterEvents();
 
             } else {
-                // CREATE new registration
-                const registration = {
-                    eventId: this.currentEvent.id,
-                    playerName: playerName,
-                    playerId: AppState.currentUser?.lineUserId || null,
-                    handicap: handicap,
-                    wantTransport: wantTransport,
-                    wantCompetition: wantCompetition,
-                    partnerPrefs: partnerPrefs
-                };
+                // Check if this is a private golfer event (requires approval)
+                const isPrivateGolferEvent = this.currentEvent.creatorType === 'golfer' && this.currentEvent.isPrivate;
 
-                await window.SocietyGolfDB.registerForEvent(registration);
+                if (isPrivateGolferEvent) {
+                    // CREATE join request instead of registration
+                    const { data, error } = await window.SupabaseDB.client
+                        .from('event_join_requests')
+                        .insert([{
+                            event_id: this.currentEvent.id,
+                            golfer_id: AppState.currentUser?.lineUserId || null,
+                            golfer_name: playerName,
+                            handicap: handicap,
+                            want_transport: wantTransport,
+                            want_competition: wantCompetition,
+                            partner_prefs: partnerPrefs,
+                            status: 'pending',
+                            requested_at: new Date().toISOString()
+                        }])
+                        .select();
 
-                let confirmMsg = `Successfully registered for ${this.currentEvent.name}! You will receive confirmation from the event organizer.`;
-                if (partnerPrefs.length > 0) {
-                    confirmMsg += ` Partner preferences: ${partnerPrefs.map(p => p.playerName).join(',')}`;
+                    if (error) throw error;
+
+                    NotificationManager.show(`Request sent! The event creator will review your request to join "${this.currentEvent.name}"`, 'success', 4000);
+                } else {
+                    // CREATE normal registration
+                    const registration = {
+                        eventId: this.currentEvent.id,
+                        playerName: playerName,
+                        playerId: AppState.currentUser?.lineUserId || null,
+                        handicap: handicap,
+                        wantTransport: wantTransport,
+                        wantCompetition: wantCompetition,
+                        partnerPrefs: partnerPrefs
+                    };
+
+                    await window.SocietyGolfDB.registerForEvent(registration);
+
+                    let confirmMsg = `Successfully registered for ${this.currentEvent.name}! You will receive confirmation from the event organizer.`;
+                    if (partnerPrefs.length > 0) {
+                        confirmMsg += ` Partner preferences: ${partnerPrefs.map(p => p.playerName).join(',')}`;
+                    }
+
+                    NotificationManager.show(confirmMsg, 'success', 4000);
+
+                    // Offer to book tee time and caddy
+                    setTimeout(() => {
+                        this.showBookingOffer(this.currentEvent);
+                    }, 500);
                 }
-
-                NotificationManager.show(confirmMsg, 'success', 4000);
-
-                // Offer to book tee time and caddy
-                setTimeout(() => {
-                    this.showBookingOffer(this.currentEvent);
-                }, 500);
 
                 this.closeEventDetail();
                 await this.refreshEvents();
@@ -55386,23 +55426,30 @@ class GolferEventsManager {
                 </div>
                 <div class="space-y-2">
                     ${requests.map(request => `
-                        <div class="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg p-3">
-                            <div class="flex-1">
-                                <div class="font-medium text-sm text-gray-900">${request.golfer_name}</div>
-                                <div class="text-xs text-gray-600">Handicap: ${request.handicap || 'Not specified'}</div>
-                                <div class="text-xs text-gray-500">${new Date(request.requested_at).toLocaleDateString()}</div>
-                            </div>
-                            <div class="flex gap-2">
-                                <button onclick="GolferEventsSystem.approveJoinRequest('${request.id}', '${eventId}')"
-                                        class="px-3 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition-colors">
-                                    <span class="material-symbols-outlined text-xs align-middle">check</span>
-                                    Approve
-                                </button>
-                                <button onclick="GolferEventsSystem.rejectJoinRequest('${request.id}', '${eventId}')"
-                                        class="px-3 py-1 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700 transition-colors">
-                                    <span class="material-symbols-outlined text-xs align-middle">close</span>
-                                    Reject
-                                </button>
+                        <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                            <div class="flex items-start justify-between mb-2">
+                                <div class="flex-1">
+                                    <div class="font-medium text-sm text-gray-900">${request.golfer_name}</div>
+                                    <div class="text-xs text-gray-600">Handicap: ${request.handicap || 'Not specified'}</div>
+                                    <div class="flex items-center gap-2 mt-1 text-xs">
+                                        ${request.want_transport ? '<span class="text-blue-600">🚐 Transport</span>' : ''}
+                                        ${request.want_competition ? '<span class="text-amber-600">🏆 Competition</span>' : ''}
+                                        ${request.partner_prefs && request.partner_prefs.length > 0 ? `<span class="text-purple-600">👥 ${request.partner_prefs.length} partner pref(s)</span>` : ''}
+                                    </div>
+                                    <div class="text-xs text-gray-500 mt-1">${new Date(request.requested_at).toLocaleDateString()}</div>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button onclick="GolferEventsSystem.approveJoinRequest('${request.id}', '${eventId}')"
+                                            class="px-3 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition-colors">
+                                        <span class="material-symbols-outlined text-xs align-middle">check</span>
+                                        Approve
+                                    </button>
+                                    <button onclick="GolferEventsSystem.rejectJoinRequest('${request.id}', '${eventId}')"
+                                            class="px-3 py-1 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700 transition-colors">
+                                        <span class="material-symbols-outlined text-xs align-middle">close</span>
+                                        Reject
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     `).join('')}
@@ -55425,14 +55472,14 @@ class GolferEventsManager {
 
             if (fetchError) throw fetchError;
 
-            // Create registration from the request
+            // Create registration from the request with ALL their chosen options
             await window.SocietyGolfDB.registerPlayer(eventId, {
                 name: request.golfer_name,
                 playerId: request.golfer_id,
                 handicap: request.handicap || 0,
-                wantTransport: false,
-                wantCompetition: false,
-                partnerPrefs: []
+                wantTransport: request.want_transport || false,
+                wantCompetition: request.want_competition || false,
+                partnerPrefs: request.partner_prefs || []
             });
 
             // Update request status to approved

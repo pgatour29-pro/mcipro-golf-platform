@@ -53455,6 +53455,24 @@ class GolferEventsManager {
                 const isPrivateGolferEvent = this.currentEvent.creatorType === 'golfer' && this.currentEvent.isPrivate;
 
                 if (isPrivateGolferEvent) {
+                    // Check if request already exists
+                    const { data: existingRequest, error: checkError } = await window.SupabaseDB.client
+                        .from('event_join_requests')
+                        .select('*')
+                        .eq('event_id', this.currentEvent.id)
+                        .eq('golfer_id', AppState.currentUser?.lineUserId || null)
+                        .maybeSingle();
+
+                    if (checkError && checkError.code !== 'PGRST116') {
+                        throw checkError;
+                    }
+
+                    if (existingRequest) {
+                        NotificationManager.show(`You already have a ${existingRequest.status} request for this event`, 'info', 3000);
+                        this.closeEventDetail();
+                        return;
+                    }
+
                     // CREATE join request instead of registration
                     const { data, error } = await window.SupabaseDB.client
                         .from('event_join_requests')
@@ -53471,7 +53489,16 @@ class GolferEventsManager {
                         }])
                         .select();
 
-                    if (error) throw error;
+                    if (error) {
+                        console.error('[GolferEvents] Insert error:', error);
+                        if (error.code === '23505') {
+                            // Duplicate key violation - shouldn't happen with check above, but just in case
+                            NotificationManager.show('You already have a pending request for this event', 'info', 3000);
+                        } else {
+                            throw error;
+                        }
+                        return;
+                    }
 
                     NotificationManager.show(`Request sent! The event creator will review your request to join "${this.currentEvent.name}"`, 'success', 4000);
                 } else {

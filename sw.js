@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-14-REMOVE-STATUS-V25
+// DEPLOYMENT VERSION: 2025-11-14-DEBUG-LOGGING-V26
 
-const SW_VERSION = 'remove-status-v25'; // Removed status from insert - let DB default handle it
+const SW_VERSION = 'debug-logging-v26'; // Added brutal debug logging to trace save flow
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

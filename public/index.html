@@ -35846,19 +35846,24 @@ class SocietyGolfSupabase {
         }
 
         console.log('[SocietyGolfDB] Final insertData being sent to Supabase:', insertData);
+        console.log('[DEBUG] About to call supabase.from("society_events").insert(...)');
 
         const { data, error } = await window.SupabaseDB.client
             .from('society_events')
             .insert(insertData)
             .select();
 
+        console.log('[DEBUG] Supabase response:', { data, error });
+
         if (error) {
             console.error('[SocietyGolf] Error creating event:', error);
             console.error('[SocietyGolf] Error details:', error.message, error.code, error.details, error.hint);
             console.error('[SocietyGolf] Data that was attempted:', insertData);
+            console.error('[DEBUG] supabase error inside createEvent:', error);
             throw error;
         }
 
+        console.log('[DEBUG] createEvent SUCCESS, created event:', data);
         return data?.[0];
     }
 
@@ -46898,20 +46903,22 @@ This action cannot be undone.`);
     }
 
     async saveEvent() {
-        console.log('[SocietyOrganizer] 🎯 saveEvent called');
+        console.log('[SocietyOrganizer] 🎯 saveEvent called - MODE:', this.mode);
+        console.log('[DEBUG] saveEvent() ENTER');
         try {
-            const isRecurring = document.getElementById('eventRecurring').checked;
-            const cutoffValue = document.getElementById('eventCutoff').value;
+            console.log('[DEBUG] Reading form fields...');
+            const isRecurring = document.getElementById('eventRecurring')?.checked || false;
+            const cutoffValue = document.getElementById('eventCutoff')?.value;
             const cutoffISO = cutoffValue ? cutoffValue + ':00' : null;
 
             const eventData = {
-                name: document.getElementById('eventName').value.trim(),
-                date: document.getElementById('eventDate').value,
-                departureTime: document.getElementById('eventDepartureTime').value || null,
-                startTime: document.getElementById('eventStartTime').value || null,
+                name: document.getElementById('eventName')?.value?.trim(),
+                date: document.getElementById('eventDate')?.value,
+                departureTime: document.getElementById('eventDepartureTime')?.value || null,
+                startTime: document.getElementById('eventStartTime')?.value || null,
                 cutoff: cutoffISO,
-                maxPlayers: parseInt(document.getElementById('eventMaxPlayers').value) || null,
-                courseName: document.getElementById('eventCourse').value.trim(),
+                maxPlayers: parseInt(document.getElementById('eventMaxPlayers')?.value) || null,
+                courseName: document.getElementById('eventCourse')?.value?.trim(),
                 eventFormat: document.getElementById('eventFormat')?.value || null,  // ACTUAL: format column exists
                 // NEW: Member/Non-Member pricing
                 memberFee: parseFloat(document.getElementById('eventMemberFee').value) || 0,
@@ -46955,6 +46962,7 @@ This action cannot be undone.`);
             }
 
             console.log('[SocietyOrganizer] Event data collected:', eventData);
+            console.log('[DEBUG] Form payload (raw):', eventData);
 
             // Validation
             if (!eventData.name) {
@@ -47009,7 +47017,9 @@ This action cannot be undone.`);
             } else {
                 // Create new event
                 console.log('[SocietyOrganizer] ➕ Creating new event');
-                await SocietyGolfDB.createEvent(eventData);
+                console.log('[DEBUG] About to call SocietyGolfDB.createEvent with:', eventData);
+                const result = await SocietyGolfDB.createEvent(eventData);
+                console.log('[DEBUG] createEvent returned:', result);
                 console.log('[SocietyOrganizer] ✅ Event created in database');
 
                 // If recurring, create additional events in the database

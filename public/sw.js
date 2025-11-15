@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-EVENT-EDIT-V63
+// DEPLOYMENT VERSION: 2025-11-15-EVENT-FEATURES-V64
 
-const SW_VERSION = 'event-edit-v63'; // Add edit functionality to golfer events
+const SW_VERSION = 'event-features-v64'; // Sort events, pending status, complete waitlist system
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

@@ -53059,6 +53059,44 @@ class GolferEventsManager {
             document.getElementById('regWantCompetition').checked = false;
         }
 
+        // Check if event is private golfer event or full
+        const isPrivateGolferEvent = this.currentEvent.creatorType === 'golfer' && this.currentEvent.isPrivate;
+        const isFull = this.currentEvent.maxPlayers > 0 && this.currentEvent.registeredCount >= this.currentEvent.maxPlayers;
+        const isUserRegistered = this.currentEvent.isUserRegistered;
+
+        // Update register button based on event status
+        const registerBtn = document.getElementById('eventRegisterBtn');
+
+        if (isUserRegistered) {
+            // User is already registered - keep default "Register" which will show edit options
+            registerBtn.innerHTML = `
+                <span class="material-symbols-outlined text-sm">edit</span>
+                View/Edit Registration
+            `;
+            registerBtn.onclick = () => this.showRegistrationForm();
+        } else if (isPrivateGolferEvent) {
+            // Private golfer event - require approval
+            registerBtn.innerHTML = `
+                <span class="material-symbols-outlined text-sm">lock</span>
+                Request to Join
+            `;
+            registerBtn.onclick = () => this.requestToJoinPrivateEvent();
+        } else if (isFull) {
+            // Event is full - join waitlist
+            registerBtn.innerHTML = `
+                <span class="material-symbols-outlined text-sm">schedule</span>
+                Join Waitlist
+            `;
+            registerBtn.onclick = () => this.joinEventWaitlist();
+        } else {
+            // Normal registration
+            registerBtn.innerHTML = `
+                <span class="material-symbols-outlined text-sm">person_add</span>
+                Register for Event
+            `;
+            registerBtn.onclick = () => this.showRegistrationForm();
+        }
+
         // Show modal
         document.getElementById('eventDetailModal').style.display = 'flex';
     }
@@ -53436,6 +53474,127 @@ class GolferEventsManager {
             <span class="material-symbols-outlined text-sm">send</span>
             Submit Registration
         `;
+    }
+
+    async requestToJoinPrivateEvent() {
+        console.log('[GolferEvents] Request to join private event:', this.currentEvent.id);
+
+        const currentUser = AppState.currentUser;
+        if (!currentUser || !currentUser.lineUserId) {
+            NotificationManager.show('Please log in to request to join this event', 'error');
+            return;
+        }
+
+        try {
+            // Get player name and handicap
+            const playerName = currentUser.name || prompt('Enter your name:');
+            if (!playerName) {
+                NotificationManager.show('Name is required', 'error');
+                return;
+            }
+
+            // Get handicap from profile
+            const profileKey = UserIDSystem.getProfileKey(currentUser.role, currentUser.lineUserId);
+            const profile = JSON.parse(localStorage.getItem(profileKey) || '{}');
+            const handicap = profile.golfInfo?.handicap || currentUser.handicap || parseFloat(prompt('Enter your handicap:') || '0');
+
+            // Check if already requested
+            const { data: existing, error: checkError } = await window.SupabaseDB.client
+                .from('event_join_requests')
+                .select('*')
+                .eq('event_id', this.currentEvent.id)
+                .eq('golfer_id', currentUser.lineUserId)
+                .maybeSingle();
+
+            if (checkError && checkError.code !== 'PGRST116') {
+                throw checkError;
+            }
+
+            if (existing) {
+                NotificationManager.show(`You already have a ${existing.status} request for this event`, 'info', 3000);
+                return;
+            }
+
+            // Create join request
+            const { data, error } = await window.SupabaseDB.client
+                .from('event_join_requests')
+                .insert([{
+                    event_id: this.currentEvent.id,
+                    golfer_id: currentUser.lineUserId,
+                    golfer_name: playerName,
+                    handicap: handicap,
+                    status: 'pending',
+                    requested_at: new Date().toISOString()
+                }])
+                .select();
+
+            if (error) throw error;
+
+            NotificationManager.show(`Request sent! The event creator will review your request to join "${this.currentEvent.name}"`, 'success', 4000);
+            this.closeEventDetail();
+
+        } catch (error) {
+            console.error('[GolferEvents] Error requesting to join:', error);
+            NotificationManager.show('Failed to send join request: ' + error.message, 'error');
+        }
+    }
+
+    async joinEventWaitlist() {
+        console.log('[GolferEvents] Join waitlist for event:', this.currentEvent.id);
+
+        const currentUser = AppState.currentUser;
+        if (!currentUser || !currentUser.lineUserId) {
+            NotificationManager.show('Please log in to join waitlist', 'error');
+            return;
+        }
+
+        try {
+            // Get player name and handicap
+            const playerName = currentUser.name || prompt('Enter your name:');
+            if (!playerName) {
+                NotificationManager.show('Name is required', 'error');
+                return;
+            }
+
+            // Get handicap from profile
+            const profileKey = UserIDSystem.getProfileKey(currentUser.role, currentUser.lineUserId);
+            const profile = JSON.parse(localStorage.getItem(profileKey) || '{}');
+            const handicap = profile.golfInfo?.handicap || currentUser.handicap || parseFloat(prompt('Enter your handicap:') || '0');
+
+            // Check if already on waitlist
+            const { data: existing, error: checkError } = await window.SupabaseDB.client
+                .from('event_waitlist')
+                .select('*')
+                .eq('event_id', this.currentEvent.id)
+                .eq('player_id', currentUser.lineUserId)
+                .maybeSingle();
+
+            if (checkError && checkError.code !== 'PGRST116') {
+                throw checkError;
+            }
+
+            if (existing) {
+                NotificationManager.show('You are already on the waitlist for this event', 'info', 3000);
+                return;
+            }
+
+            // Use existing SocietyGolfDB.joinWaitlist method
+            await window.SocietyGolfDB.joinWaitlist(this.currentEvent.id, {
+                name: playerName,
+                playerId: currentUser.lineUserId,
+                handicap: handicap,
+                wantTransport: false,
+                wantCompetition: false
+            });
+
+            NotificationManager.show(`Added to waitlist for "${this.currentEvent.name}"! You'll be notified if a spot opens up.`, 'success', 4000);
+            this.closeEventDetail();
+            await this.refreshEvents();
+
+        } catch (error) {
+            console.error('[GolferEvents] Error joining waitlist:', error);
+            NotificationManager.show('Failed to join waitlist: ' + error.message, 'error');
+        }
     }
 
     showBookingOffer(event) {
@@ -55098,6 +55257,13 @@ class GolferEventsManager {
                             ` : ''}
                         </div>
                     </div>
+
+                    <!-- Pending Join Requests Section (for private events) -->
+                    ${isPrivate ? `
+                    <div id="pendingRequests_${event.id}" class="mt-4 pt-4 border-t border-gray-200">
+                        <p class="text-xs text-gray-500">Loading join requests...</p>
+                    </div>
+                    ` : ''}
                 </div>
             `;
         }).join('');
@@ -55123,6 +55289,133 @@ class GolferEventsManager {
         } catch (error) {
             console.error('[GolferEvents] Error deleting event:', error);
             NotificationManager.show('Failed to delete event', 'error');
+        }
+    }
+
+    async loadPendingRequests(eventId) {
+        try {
+            const { data: requests, error } = await window.SupabaseDB.client
+                .from('event_join_requests')
+                .select('*')
+                .eq('event_id', eventId)
+                .eq('status', 'pending')
+                .order('requested_at', { ascending: true });
+
+            if (error) throw error;
+
+            const container = document.getElementById(`pendingRequests_${eventId}`);
+            if (!container) return;
+
+            if (!requests || requests.length === 0) {
+                container.innerHTML = `
+                    <div class="text-xs text-gray-500">
+                        <span class="material-symbols-outlined text-sm align-middle">check_circle</span>
+                        No pending join requests
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="mb-2">
+                    <h4 class="text-sm font-semibold text-gray-700 flex items-center gap-1">
+                        <span class="material-symbols-outlined text-sm">pending</span>
+                        Pending Join Requests (${requests.length})
+                    </h4>
+                </div>
+                <div class="space-y-2">
+                    ${requests.map(request => `
+                        <div class="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg p-3">
+                            <div class="flex-1">
+                                <div class="font-medium text-sm text-gray-900">${request.golfer_name}</div>
+                                <div class="text-xs text-gray-600">Handicap: ${request.handicap || 'Not specified'}</div>
+                                <div class="text-xs text-gray-500">${new Date(request.requested_at).toLocaleDateString()}</div>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="GolferEventsSystem.approveJoinRequest('${request.id}', '${eventId}')"
+                                        class="px-3 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 transition-colors">
+                                    <span class="material-symbols-outlined text-xs align-middle">check</span>
+                                    Approve
+                                </button>
+                                <button onclick="GolferEventsSystem.rejectJoinRequest('${request.id}', '${eventId}')"
+                                        class="px-3 py-1 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700 transition-colors">
+                                    <span class="material-symbols-outlined text-xs align-middle">close</span>
+                                    Reject
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+
+        } catch (error) {
+            console.error('[GolferEvents] Error loading pending requests:', error);
+        }
+    }
+
+    async approveJoinRequest(requestId, eventId) {
+        try {
+            // Get the request details
+            const { data: request, error: fetchError } = await window.SupabaseDB.client
+                .from('event_join_requests')
+                .select('*')
+                .eq('id', requestId)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            // Create registration from the request
+            await window.SocietyGolfDB.registerPlayer(eventId, {
+                name: request.golfer_name,
+                playerId: request.golfer_id,
+                handicap: request.handicap || 0,
+                wantTransport: false,
+                wantCompetition: false,
+                partnerPrefs: []
+            });
+
+            // Update request status to approved
+            const { error: updateError } = await window.SupabaseDB.client
+                .from('event_join_requests')
+                .update({ status: 'approved', reviewed_at: new Date().toISOString() })
+                .eq('id', requestId);
+
+            if (updateError) throw updateError;
+
+            NotificationManager.show(`${request.golfer_name} has been approved and added to the event!`, 'success');
+
+            // Reload the pending requests for this event
+            await this.loadPendingRequests(eventId);
+            await this.refreshEvents();
+
+        } catch (error) {
+            console.error('[GolferEvents] Error approving request:', error);
+            NotificationManager.show('Failed to approve request: ' + error.message, 'error');
+        }
+    }
+
+    async rejectJoinRequest(requestId, eventId) {
+        if (!confirm('Are you sure you want to reject this join request?')) {
+            return;
+        }
+
+        try {
+            // Update request status to rejected
+            const { error } = await window.SupabaseDB.client
+                .from('event_join_requests')
+                .update({ status: 'rejected', reviewed_at: new Date().toISOString() })
+                .eq('id', requestId);
+
+            if (error) throw error;
+
+            NotificationManager.show('Join request rejected', 'success');
+
+            // Reload the pending requests for this event
+            await this.loadPendingRequests(eventId);
+
+        } catch (error) {
+            console.error('[GolferEvents] Error rejecting request:', error);
+            NotificationManager.show('Failed to reject request: ' + error.message, 'error');
         }
     }
 

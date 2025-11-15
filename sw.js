@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-FIX-SHOWEVENTSVIEW-V31
+// DEPLOYMENT VERSION: 2025-11-15-FIX-EMPTY-CALENDAR-V32
 
-const SW_VERSION = 'fix-showeventsview-v31'; // Fixed showEventsView() to stop referencing deleted elements
+const SW_VERSION = 'fix-empty-calendar-v32'; // Fixed empty calendar - ensure events loaded before renderCalendar()
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

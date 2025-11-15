@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-GOLFER-EVENTS-WORKING-V37
+// DEPLOYMENT VERSION: 2025-11-15-GOLFER-EVENTS-FIX-V38
 
-const SW_VERSION = 'golfer-events-working-v37'; // Fixed golfer create/manage events functionality
+const SW_VERSION = 'golfer-events-fix-v38'; // Fixed container ID mismatch in manage events
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

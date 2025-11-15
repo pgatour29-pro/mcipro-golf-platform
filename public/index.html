@@ -35798,33 +35798,21 @@ class SocietyGolfSupabase {
 
         return data ? {
             id: data.id,
-            name: data.title,  // FIXED: Use 'title' column
-            date: data.event_date,  // FIXED: Use 'event_date' column
-            startTime: data.start_time,
-            cutoff: data.registration_close_date,  // FIXED: Use 'registration_close_date'
-            eventFormat: data.format,  // FIXED: Use 'format' column
-            // Fee structure
-            baseFee: data.entry_fee || 0,  // FIXED: Use 'entry_fee' column
+            name: data.name,
+            date: data.date,
+            cutoff: data.cutoff,
+            baseFee: data.base_fee || 0,
             cartFee: data.cart_fee || 0,
             caddyFee: data.caddy_fee || 0,
-            memberFee: data.member_fee || 0,
-            nonMemberFee: data.non_member_fee || 0,
-            otherFee: data.other_fee || 0,
             transportFee: data.transport_fee || 0,
             competitionFee: data.competition_fee || 0,
-            maxPlayers: data.max_participants,  // FIXED: Use 'max_participants'
-            autoWaitlist: data.auto_waitlist !== undefined ? data.auto_waitlist : true,
+            maxPlayers: data.max_players,
             organizerId: data.organizer_id,
+            organizerName: data.organizer_name,
             status: data.status,
             courseId: data.course_id,
-            notes: data.description,  // FIXED: Use 'description' column
-            recurring: data.recurring || false,
-            recurFrequency: data.recur_frequency,
-            recurDayOfWeek: data.recur_day_of_week,
-            recurMonthlyPattern: data.recur_monthly_pattern,
-            recurEndType: data.recur_end_type,
-            recurUntil: data.recur_until,
-            recurCount: data.recur_count,
+            courseName: data.course_name,
+            notes: data.notes,
             isPrivate: data.is_private || false,
             creatorId: data.creator_id || null,
             creatorType: data.creator_type || 'organizer'
@@ -35836,20 +35824,23 @@ class SocietyGolfSupabase {
 
         const insertData = {
             id: eventData.id || this.generateId(),
-            title: eventData.name,
-            event_date: eventData.date,
-            start_time: eventData.startTime || null,
-            event_format: eventData.eventFormat || 'stableford',
-            entry_fee: eventData.baseFee || eventData.memberFee || 0,
-            max_participants: eventData.maxPlayers || null,
-            course_name: eventData.courseName,
-            status: eventData.status || 'draft',
-            description: eventData.notes || null,
-            is_private: eventData.isPrivate || false,
+            name: eventData.name,
+            date: eventData.date,
+            cutoff: eventData.cutoff,
+            base_fee: eventData.baseFee || eventData.memberFee || 0,
+            cart_fee: eventData.cartFee || 0,
+            caddy_fee: eventData.caddyFee || 0,
+            transport_fee: eventData.transportFee || 0,
+            competition_fee: eventData.competitionFee || 0,
+            max_players: eventData.maxPlayers || null,
             organizer_id: eventData.organizerId || null,
             organizer_name: eventData.organizerName || null,
+            status: eventData.status || 'open',
+            course_name: eventData.courseName,
+            notes: eventData.notes || null,
             creator_id: eventData.creatorId || null,
-            creator_type: eventData.creatorType || 'organizer'
+            creator_type: eventData.creatorType || 'organizer',
+            is_private: eventData.isPrivate || false
         };
 
         // Override organizer fields if provided (for society organizers)
@@ -35892,25 +35883,18 @@ class SocietyGolfSupabase {
 
         await this.waitForSupabase();
         const dbUpdates = {};
-        if (updates.name !== undefined) dbUpdates.title = updates.name;  // FIXED: Use 'title' column
-        if (updates.date !== undefined) dbUpdates.event_date = updates.date;  // FIXED: Use 'event_date' column
-        if (updates.departureTime !== undefined) dbUpdates.departure_time = updates.departureTime;
-        if (updates.startTime !== undefined) dbUpdates.start_time = updates.startTime;
-        if (updates.cutoff !== undefined) dbUpdates.registration_close_date = updates.cutoff;  // FIXED: Use 'registration_close_date'
-        if (updates.eventFormat !== undefined) dbUpdates.event_format = updates.eventFormat;
-        // Fee structure
-        if (updates.memberFee !== undefined) dbUpdates.member_fee = updates.memberFee;
-        if (updates.nonMemberFee !== undefined) dbUpdates.non_member_fee = updates.nonMemberFee;
-        if (updates.otherFee !== undefined) dbUpdates.other_fee = updates.otherFee;
-        if (updates.baseFee !== undefined) dbUpdates.entry_fee = updates.baseFee;  // FIXED: Use 'entry_fee'
+        if (updates.name !== undefined) dbUpdates.name = updates.name;
+        if (updates.date !== undefined) dbUpdates.date = updates.date;
+        if (updates.cutoff !== undefined) dbUpdates.cutoff = updates.cutoff;
+        if (updates.baseFee !== undefined) dbUpdates.base_fee = updates.baseFee;
         if (updates.cartFee !== undefined) dbUpdates.cart_fee = updates.cartFee;
         if (updates.caddyFee !== undefined) dbUpdates.caddy_fee = updates.caddyFee;
         if (updates.transportFee !== undefined) dbUpdates.transport_fee = updates.transportFee;
         if (updates.competitionFee !== undefined) dbUpdates.competition_fee = updates.competitionFee;
-        if (updates.maxPlayers !== undefined) dbUpdates.max_participants = updates.maxPlayers;  // FIXED: Use 'max_participants'
-        if (updates.autoWaitlist !== undefined) dbUpdates.auto_waitlist = updates.autoWaitlist;
+        if (updates.maxPlayers !== undefined) dbUpdates.max_players = updates.maxPlayers;
         if (updates.status !== undefined) dbUpdates.status = updates.status;
-        if (updates.notes !== undefined) dbUpdates.description = updates.notes;  // FIXED: Use 'description' column
+        if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+        if (updates.courseName !== undefined) dbUpdates.course_name = updates.courseName;
         if (updates.recurring !== undefined) dbUpdates.recurring = updates.recurring;
         if (updates.recurFrequency !== undefined) dbUpdates.recur_frequency = updates.recurFrequency;
         if (updates.recurDayOfWeek !== undefined) dbUpdates.recur_day_of_week = updates.recurDayOfWeek;
@@ -36065,24 +36049,25 @@ class SocietyGolfSupabase {
             const society = societyMap[e.organizer_id];
             return {
                 id: e.id,
-                name: e.title || e.name, // NEW: Use 'title' column
-                date: e.event_date || e.date, // NEW: Use 'event_date' column
-                startTime: e.start_time,
-                cutoff: e.registration_close_date || e.cutoff, // NEW: Use 'registration_close_date'
-                baseFee: e.entry_fee || e.base_fee || 0, // NEW: Use 'entry_fee' column
+                name: e.name,
+                date: e.date,
+                cutoff: e.cutoff,
+                baseFee: e.base_fee || 0,
                 cartFee: e.cart_fee || 0,
                 caddyFee: e.caddy_fee || 0,
                 transportFee: e.transport_fee || 0,
                 competitionFee: e.competition_fee || 0,
-                maxPlayers: e.max_participants || e.max_players, // NEW: Use 'max_participants'
+                maxPlayers: e.max_players,
                 organizerId: e.organizer_id,
-                organizerName: e.organizer_name || 'Travellers Rest Golf Group',
-                societyName: society?.society_name || e.organizer_name || 'Travellers Rest Golf Group',
+                organizerName: e.organizer_name,
+                societyName: society?.society_name || e.organizer_name,
                 societyLogo: society?.society_logo || '',
-                status: e.status || 'draft',
+                status: e.status,
                 courseName: e.course_name,
-                eventFormat: e.event_format,
-                notes: e.description || e.notes, // NEW: Use 'description' column
+                notes: e.notes,
+                isPrivate: e.is_private || false,
+                creatorId: e.creator_id,
+                creatorType: e.creator_type || 'organizer',
                 registeredCount: regCountMap[e.id] || 0,
                 isUserRegistered: registeredEventIds.has(e.id),
                 createdAt: e.created_at

@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-EVENT-UPDATE-FIX-V65
+// DEPLOYMENT VERSION: 2025-11-15-PRIVATE-EVENT-AVATARS-V66
 
-const SW_VERSION = 'event-update-fix-v65'; // Fix event update by making enable_waitlist optional
+const SW_VERSION = 'private-event-avatars-v66'; // Add creator photos to private events, preserve society logos
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

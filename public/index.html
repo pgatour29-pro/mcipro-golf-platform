@@ -36002,6 +36002,7 @@ class SocietyGolfSupabase {
         // PERFORMANCE OPTIMIZATION: Run all queries in PARALLEL
         const eventIds = eventsData.map(e => e.id);
         const organizerIds = [...new Set(eventsData.map(e => e.organizer_id).filter(id => id))];
+        const creatorIds = [...new Set(eventsData.filter(e => e.creator_type === 'golfer' && e.creator_id).map(e => e.creator_id))];
         const playerId = AppState.currentUser?.lineUserId;
 
         // Build registration count query using PostgreSQL window functions
@@ -36017,7 +36018,8 @@ class SocietyGolfSupabase {
             userRegsResult,
             pendingRequestsResult,
             waitlistCountsResult,
-            userWaitlistResult
+            userWaitlistResult,
+            creatorProfilesResult
         ] = await Promise.all([
             // Query 1: Get registration counts using COUNT(*) aggregation - MUCH FASTER!
             // This returns only the counts, not all registration rows
@@ -36066,7 +36068,13 @@ class SocietyGolfSupabase {
                 .from('event_waitlist')
                 .select('event_id, position')
                 .eq('player_id', playerId)
-                .in('event_id', eventIds) : Promise.resolve({ data: [] })
+                .in('event_id', eventIds) : Promise.resolve({ data: [] }),
+
+            // Query 7: Get creator profiles for private events
+            creatorIds.length > 0 ? window.SupabaseDB.client
+                .from('user_profiles')
+                .select('line_user_id, name, profile_data')
+                .in('line_user_id', creatorIds) : Promise.resolve({ data: [] })
         ]);
 
         // Build registration count map
@@ -36091,6 +36099,17 @@ class SocietyGolfSupabase {
         if (societyProfilesResult.data) {
             societyProfilesResult.data.forEach(s => {
                 societyMap[s.organizer_id] = s;
+            });
+        }
+
+        // Create map of creator_id to user profile (for private events)
+        const creatorProfileMap = {};
+        if (creatorProfilesResult.data) {
+            creatorProfilesResult.data.forEach(c => {
+                creatorProfileMap[c.line_user_id] = {
+                    name: c.name,
+                    pictureUrl: c.profile_data?.linePictureUrl || ''
+                };
             });
         }
 
@@ -36136,6 +36155,7 @@ class SocietyGolfSupabase {
         // Map events with all data
         const mappedEvents = eventsData.map(e => {
             const society = societyMap[e.organizer_id];
+            const creatorProfile = creatorProfileMap[e.creator_id];
             return {
                 id: e.id,
                 name: e.title,                   // ACTUAL: title
@@ -36148,6 +36168,8 @@ class SocietyGolfSupabase {
                 organizerName: e.organizer_name,
                 societyName: society?.society_name || e.organizer_name,
                 societyLogo: society?.society_logo || '',
+                creatorName: creatorProfile?.name || '',
+                creatorPhoto: creatorProfile?.pictureUrl || '',
                 status: e.status,
                 courseName: e.course_name,
                 notes: e.description,            // ACTUAL: description
@@ -52924,15 +52946,25 @@ class GolferEventsManager {
 
                     <div class="flex items-start justify-between mb-2 pr-8">
                         <div class="flex items-center flex-1 pr-2">
-                            ${event.organizerId === 'trgg-pattaya' || event.organizerName === 'Travellers Rest Golf Group' ? `
-                                <img src="societylogos/trgg.jpg" alt="Travellers Rest Golf Group" class="w-10 h-10 rounded-full border-2 border-white mr-3 object-cover bg-white">
-                            ` : event.societyLogo ? `
-                                <img src="${event.societyLogo}" alt="${event.societyName}" class="w-10 h-10 rounded-full border-2 border-white mr-3 object-cover bg-white">
-                            ` : ''}
+                            ${(() => {
+                                // Show creator photo for private events
+                                if (event.isPrivate && event.creatorPhoto) {
+                                    return `<img src="${event.creatorPhoto}" alt="${event.creatorName}" class="w-10 h-10 rounded-full border-2 border-white mr-3 object-cover bg-white">`;
+                                }
+                                // Show TRGG logo for TRGG events
+                                if (event.organizerId === 'trgg-pattaya' || event.organizerName === 'Travellers Rest Golf Group') {
+                                    return `<img src="societylogos/trgg.jpg" alt="Travellers Rest Golf Group" class="w-10 h-10 rounded-full border-2 border-white mr-3 object-cover bg-white">`;
+                                }
+                                // Show society logo for other society events
+                                if (event.societyLogo) {
+                                    return `<img src="${event.societyLogo}" alt="${event.societyName}" class="w-10 h-10 rounded-full border-2 border-white mr-3 object-cover bg-white">`;
+                                }
+                                return '';
+                            })()}
                             <div class="flex-1">
                                 <h3 class="font-bold text-lg">${event.name}</h3>
                                 <div class="text-xs text-green-50 mt-1">
-                                    ${event.organizerId === 'trgg-pattaya' || event.organizerName === 'Travellers Rest Golf Group' ? 'Travellers Rest Golf Group' : event.societyName || event.organizerName || 'Society Golf'}
+                                    ${event.isPrivate && event.creatorName ? event.creatorName : event.organizerId === 'trgg-pattaya' || event.organizerName === 'Travellers Rest Golf Group' ? 'Travellers Rest Golf Group' : event.societyName || event.organizerName || 'Society Golf'}
                                 </div>
                             </div>
                         </div>

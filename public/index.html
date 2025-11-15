@@ -55195,12 +55195,14 @@ class GolferEventsManager {
             // Render the list
             this.renderMyCreatedEvents(filteredEvents);
 
-            // Load pending requests for each event
-            for (const event of filteredEvents) {
-                if (event.is_private) {
-                    await this.loadPendingRequests(event.id);
+            // Load pending requests for each event (non-blocking)
+            setTimeout(async () => {
+                for (const event of filteredEvents) {
+                    if (event.is_private) {
+                        await this.loadPendingRequests(event.id);
+                    }
                 }
-            }
+            }, 100);
 
         } catch (error) {
             console.error('[GolferEvents] Error loading created events:', error);
@@ -55337,10 +55339,33 @@ class GolferEventsManager {
                 .eq('status', 'pending')
                 .order('requested_at', { ascending: true });
 
-            if (error) throw error;
-
             const container = document.getElementById(`pendingRequests_${eventId}`);
-            if (!container) return;
+            if (!container) {
+                console.warn('[GolferEvents] Container not found for pending requests:', eventId);
+                return;
+            }
+
+            if (error) {
+                // Handle table not existing gracefully
+                if (error.code === '42P01') {
+                    container.innerHTML = `
+                        <div class="text-xs text-orange-600">
+                            <span class="material-symbols-outlined text-sm align-middle">warning</span>
+                            Database not configured (run SQL migration)
+                        </div>
+                    `;
+                    console.error('[GolferEvents] event_join_requests table does not exist');
+                } else {
+                    container.innerHTML = `
+                        <div class="text-xs text-red-600">
+                            <span class="material-symbols-outlined text-sm align-middle">error</span>
+                            Error loading requests: ${error.message}
+                        </div>
+                    `;
+                    console.error('[GolferEvents] Error loading requests:', error);
+                }
+                return;
+            }
 
             if (!requests || requests.length === 0) {
                 container.innerHTML = `

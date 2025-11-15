@@ -55278,12 +55278,17 @@ class GolferEventsManager {
             this.renderMyCreatedEvents(filteredEvents);
 
             // Load pending requests for each event (non-blocking)
+            console.log('[GolferEvents] Setting up pending requests loading for', filteredEvents.length, 'events');
             setTimeout(async () => {
+                console.log('[GolferEvents] Timeout fired - loading pending requests');
                 for (const event of filteredEvents) {
+                    console.log('[GolferEvents] Checking event:', event.id, 'is_private:', event.is_private);
                     if (event.is_private) {
+                        console.log('[GolferEvents] Calling loadPendingRequests for private event:', event.id);
                         await this.loadPendingRequests(event.id);
                     }
                 }
+                console.log('[GolferEvents] ✅ Finished loading all pending requests');
             }, 100);
 
         } catch (error) {
@@ -55413,6 +55418,7 @@ class GolferEventsManager {
     }
 
     async loadPendingRequests(eventId) {
+        console.log('[GolferEvents] 🔍 Loading pending requests for event:', eventId);
         try {
             const { data: requests, error } = await window.SupabaseDB.client
                 .from('event_join_requests')
@@ -55421,9 +55427,12 @@ class GolferEventsManager {
                 .eq('status', 'pending')
                 .order('requested_at', { ascending: true });
 
+            console.log('[GolferEvents] Query result:', { requests, error, count: requests?.length });
+
             const container = document.getElementById(`pendingRequests_${eventId}`);
+            console.log('[GolferEvents] Container found:', !!container, 'ID:', `pendingRequests_${eventId}`);
             if (!container) {
-                console.warn('[GolferEvents] Container not found for pending requests:', eventId);
+                console.warn('[GolferEvents] ❌ Container not found for pending requests:', eventId);
                 return;
             }
 

@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-USER-UPDATES-V34
+// DEPLOYMENT VERSION: 2025-11-15-BROWSE-SHOW-ALL-V35
 
-const SW_VERSION = 'user-updates-v34'; // User made changes to golfer events system
+const SW_VERSION = 'browse-show-all-v35'; // Browse events now shows ALL events, removed subscription filter
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

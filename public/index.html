@@ -55675,12 +55675,16 @@ class GolferEventsManager {
     async createGolferEvent() {
         console.log('[GolferEvents] Creating golfer event');
         try {
-            // Get current user
-            const { data: { user } } = await window.SupabaseDB.client.auth.getUser();
-            if (!user) {
+            // Get current user from AppState (same source as loadMyCreatedEvents)
+            const currentUser = AppState.currentUser;
+            if (!currentUser || !currentUser.lineUserId) {
                 NotificationManager.show('Please log in to create an event', 'error');
+                console.error('[GolferEvents] No user found in AppState');
                 return;
             }
+
+            const creatorId = currentUser.lineUserId;
+            console.log('[GolferEvents] Creating event for user:', creatorId);
 
             // Get form values - using correct field IDs
             const title = document.getElementById('golferEventTitle').value.trim();
@@ -55723,7 +55727,7 @@ class GolferEventsManager {
                 description: description,
                 is_private: isPrivate,
                 creator_type: 'golfer',
-                creator_id: user.id
+                creator_id: creatorId  // FIXED: Use same ID as loadMyCreatedEvents
             };
 
             console.log('[GolferEvents] Inserting event:', payload);
@@ -55746,7 +55750,7 @@ class GolferEventsManager {
             // Clear form
             document.getElementById('golferCreateEventForm').reset();
 
-            // Switch to Manage Events view
+            // Switch to Manage Events view (this will call loadMyCreatedEvents)
             this.showEventsView('manage');
         } catch (error) {
             console.error('[GolferEvents] Error creating event:', error);

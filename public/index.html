@@ -55537,11 +55537,18 @@ class GolferEventsManager {
         if (!currentUser) return;
 
         try {
-            // Query events created by this golfer (creator_type='golfer')
+            const creatorId = currentUser.lineUserId || currentUser.userId;
+            if (!creatorId) {
+                console.warn('[GolferEvents] No creator id available on currentUser');
+                return;
+            }
+
+            // Query events created by this golfer (creator_type='golfer' and matching creator_id)
             const { data, error } = await window.SupabaseDB.client
                 .from('society_events')
                 .select('*')
                 .eq('creator_type', 'golfer')
+                .eq('creator_id', creatorId)
                 .order('event_date', { ascending: true });
 
             if (error) throw error;

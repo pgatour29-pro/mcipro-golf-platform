@@ -34510,6 +34510,7 @@ class GolferEventsManager {
         this.currentView = 'browse';
         this.calendarDate = new Date();
         this.myRegistrations = [];
+        this.currentEventType = 'public'; // Event type filter: 'public' or 'private'
 
         // Cache system for instant loading
         this.eventsCache = null;
@@ -34573,6 +34574,8 @@ class GolferEventsManager {
         document.getElementById('eventsViewCalendarContent').style.display = 'none';
         document.getElementById('eventsViewMyEventsContent').style.display = 'none';
         document.getElementById('eventsViewHistoryContent').style.display = 'none';
+        const standingsEl = document.getElementById('eventsViewStandingsContent');
+        if (standingsEl) standingsEl.style.display = 'none';
 
         // Remove active class from all buttons
         document.querySelectorAll('.events-subtab-btn').forEach(btn => {
@@ -34601,6 +34604,13 @@ class GolferEventsManager {
             document.getElementById('eventsViewHistory').classList.add('active', 'border-green-500', 'text-green-600');
             document.getElementById('eventsViewHistory').classList.remove('border-transparent', 'text-gray-600');
             this.loadMyHistory();
+        } else if (view === 'standings') {
+            if (document.getElementById('eventsViewStandingsContent')) {
+                document.getElementById('eventsViewStandingsContent').style.display = 'block';
+                document.getElementById('eventsViewStandings').classList.add('active', 'border-green-500', 'text-green-600');
+                document.getElementById('eventsViewStandings').classList.remove('border-transparent', 'text-gray-600');
+                this.loadPlayerStandings();
+            }
         }
     }
 
@@ -34678,6 +34688,15 @@ class GolferEventsManager {
         this.filteredEvents = this.allEvents.filter(event => {
             // Get society name (use societyName or fallback to organizerName)
             const eventSocietyName = event.societyName || event.organizerName;
+
+            // EVENT TYPE FILTER (public vs private events)
+            const isPrivateEvent = event.isPrivate || false;
+            if (this.currentEventType === 'public' && isPrivateEvent) {
+                return false;
+            }
+            if (this.currentEventType === 'private' && !isPrivateEvent) {
+                return false;
+            }
 
             // SOCIETY SUBSCRIPTION FILTER (only when NOT actively searching)
             if (!isActivelySearching && this.subscribedSocieties.length > 0) {

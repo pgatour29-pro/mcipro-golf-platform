@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-GOLFER-FORM-FIX-V29
+// DEPLOYMENT VERSION: 2025-11-15-REMOVED-GOLFER-CREATE-V30
 
-const SW_VERSION = 'golfer-form-fix-v29'; // Fixed golfer event creation - uses own form with golferEvent* IDs
+const SW_VERSION = 'removed-golfer-create-v30'; // Removed golfer Create Event and Manage Events tabs/modules entirely
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

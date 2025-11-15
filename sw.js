@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-UNIFIED-SYSTEM-V28
+// DEPLOYMENT VERSION: 2025-11-15-GOLFER-FORM-FIX-V29
 
-const SW_VERSION = 'unified-system-v28'; // Golfers now use SocietyOrganizerSystem (switchToOrganizerView) as designed
+const SW_VERSION = 'golfer-form-fix-v29'; // Fixed golfer event creation - uses own form with golferEvent* IDs
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

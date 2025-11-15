@@ -55402,6 +55402,13 @@ class GolferEventsManager {
                                 <span class="hidden md:inline ml-1">Invite</span>
                             </button>
                             ` : ''}
+                            ${!isPast ? `
+                            <button onclick="GolferEventsSystem.editEvent('${event.id}')"
+                                    class="px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition-colors">
+                                <span class="material-symbols-outlined text-sm align-middle">edit</span>
+                                <span class="hidden md:inline ml-1">Edit</span>
+                            </button>
+                            ` : ''}
                             <button onclick="GolferEventsSystem.openEventDetail('${event.id}')"
                                     class="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors">
                                 <span class="material-symbols-outlined text-sm align-middle">visibility</span>
@@ -55425,6 +55432,64 @@ class GolferEventsManager {
                 </div>
             `;
         }).join('');
+    }
+
+    async editEvent(eventId) {
+        try {
+            console.log('[GolferEvents] Editing event:', eventId);
+
+            // Fetch event data
+            const { data: event, error } = await window.SupabaseDB.client
+                .from('society_events')
+                .select('*')
+                .eq('id', eventId)
+                .single();
+
+            if (error) throw error;
+
+            console.log('[GolferEvents] Loaded event for editing:', event);
+
+            // Populate form fields
+            document.getElementById('golferEventTitle').value = event.title || '';
+            document.getElementById('golferEventCourse').value = event.course_name || '';
+            document.getElementById('golferEventDate').value = event.event_date || '';
+            document.getElementById('golferEventTime').value = event.start_time || '';
+            document.getElementById('golferEventFormat').value = event.format || '';
+            document.getElementById('golferEventFee').value = event.entry_fee || 0;
+            document.getElementById('golferEventMaxParticipants').value = event.max_participants || 4;
+            document.getElementById('golferEventDescription').value = event.description || '';
+
+            // Set event type radio button
+            const eventType = event.is_private ? 'private' : 'public';
+            document.querySelector(`input[name="golferEventType"][value="${eventType}"]`).checked = true;
+
+            // Store event ID for updating
+            this.editingEventId = eventId;
+
+            // Update form heading and button text
+            const formHeading = document.querySelector('#eventsViewCreateContent h2');
+            if (formHeading) {
+                formHeading.innerHTML = `
+                    <span class="material-symbols-outlined text-green-600">edit</span>
+                    Edit Event
+                `;
+            }
+
+            const submitButton = document.querySelector('#eventsViewCreateContent button[onclick*="createGolferEvent"]');
+            if (submitButton) {
+                submitButton.innerHTML = `
+                    <span class="material-symbols-outlined text-sm align-middle mr-1">check_circle</span>
+                    Update Event
+                `;
+            }
+
+            // Switch to create view
+            this.showEventsView('create');
+
+        } catch (error) {
+            console.error('[GolferEvents] Error loading event for editing:', error);
+            NotificationManager.show('Failed to load event', 'error');
+        }
     }
 
     async deleteEvent(eventId) {
@@ -56070,7 +56135,9 @@ class GolferEventsManager {
     }
 
     async createGolferEvent() {
-        console.log('[GolferEvents] Creating golfer event');
+        const isEditMode = !!this.editingEventId;
+        console.log('[GolferEvents]', isEditMode ? 'Updating' : 'Creating', 'golfer event');
+
         try {
             // Get current user from AppState (same source as loadMyCreatedEvents)
             const currentUser = AppState.currentUser;
@@ -56081,7 +56148,7 @@ class GolferEventsManager {
             }
 
             const creatorId = currentUser.lineUserId;
-            console.log('[GolferEvents] Creating event for user:', creatorId);
+            console.log('[GolferEvents]', isEditMode ? 'Updating' : 'Creating', 'event for user:', creatorId);
 
             // Get form values - using correct field IDs
             const title = document.getElementById('golferEventTitle').value.trim();
@@ -56127,35 +56194,71 @@ class GolferEventsManager {
                 creator_id: creatorId  // FIXED: Use same ID as loadMyCreatedEvents
             };
 
-            console.log('[GolferEvents] Inserting event:', payload);
+            console.log('[GolferEvents]', isEditMode ? 'Updating' : 'Inserting', 'event:', payload);
 
-            // Insert into society_events
-            const { data, error } = await window.SupabaseDB.client
-                .from('society_events')
-                .insert([payload])
-                .select();
+            let data, error;
+            if (isEditMode) {
+                // Update existing event
+                const result = await window.SupabaseDB.client
+                    .from('society_events')
+                    .update(payload)
+                    .eq('id', this.editingEventId)
+                    .select();
+
+                data = result.data;
+                error = result.error;
+            } else {
+                // Insert new event
+                const result = await window.SupabaseDB.client
+                    .from('society_events')
+                    .insert([payload])
+                    .select();
+
+                data = result.data;
+                error = result.error;
+            }
 
             if (error) {
-                console.error('[GolferEvents] Insert error:', error);
-                NotificationManager.show('Failed to create event: ' + error.message, 'error');
+                console.error('[GolferEvents]', isEditMode ? 'Update' : 'Insert', 'error:', error);
+                NotificationManager.show(`Failed to ${isEditMode ? 'update' : 'create'} event: ` + error.message, 'error');
                 return;
             }
 
-            console.log('[GolferEvents] Event created successfully:', data);
-            NotificationManager.show('Event created successfully!', 'success');
+            console.log('[GolferEvents] Event', isEditMode ? 'updated' : 'created', 'successfully:', data);
+            NotificationManager.show(`Event ${isEditMode ? 'updated' : 'created'} successfully!`, 'success');
+
+            // Clear edit mode
+            this.editingEventId = null;
+
+            // Reset form heading and button
+            const formHeading = document.querySelector('#eventsViewCreateContent h2');
+            if (formHeading) {
+                formHeading.innerHTML = `
+                    <span class="material-symbols-outlined text-green-600">add_circle</span>
+                    Create New Golf Event
+                `;
+            }
+
+            const submitButton = document.querySelector('#eventsViewCreateContent button[onclick*="createGolferEvent"]');
+            if (submitButton) {
+                submitButton.innerHTML = `
+                    <span class="material-symbols-outlined text-sm align-middle mr-1">check_circle</span>
+                    Create Event
+                `;
+            }
 
             // Clear form
             document.getElementById('golferCreateEventForm').reset();
 
-            // Refresh ALL events so the new event appears in Browse
+            // Refresh ALL events so the updated event appears in Browse
             await this.loadEvents(false);
             this.filterEvents();
 
             // Switch to Manage Events view (this will call loadMyCreatedEvents)
             this.showEventsView('manage');
         } catch (error) {
-            console.error('[GolferEvents] Error creating event:', error);
-            NotificationManager.show('Failed to create event. Please try again.', 'error');
+            console.error('[GolferEvents] Error', this.editingEventId ? 'updating' : 'creating', 'event:', error);
+            NotificationManager.show(`Failed to ${this.editingEventId ? 'update' : 'create'} event. Please try again.`, 'error');
         }
     }
 

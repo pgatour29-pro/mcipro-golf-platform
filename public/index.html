@@ -53455,6 +53455,10 @@ class GolferEventsManager {
                 const isPrivateGolferEvent = this.currentEvent.creatorType === 'golfer' && this.currentEvent.isPrivate;
 
                 if (isPrivateGolferEvent) {
+                    console.log('[GolferEvents] Processing private event join request');
+                    console.log('[GolferEvents] Event ID:', this.currentEvent.id);
+                    console.log('[GolferEvents] Golfer ID:', AppState.currentUser?.lineUserId);
+
                     // Check if request already exists
                     const { data: existingRequest, error: checkError } = await window.SupabaseDB.client
                         .from('event_join_requests')
@@ -53463,31 +53467,41 @@ class GolferEventsManager {
                         .eq('golfer_id', AppState.currentUser?.lineUserId || null)
                         .maybeSingle();
 
+                    console.log('[GolferEvents] Existing request check:', { existingRequest, checkError });
+
                     if (checkError && checkError.code !== 'PGRST116') {
+                        console.error('[GolferEvents] Check error:', checkError);
                         throw checkError;
                     }
 
                     if (existingRequest) {
+                        console.log('[GolferEvents] Request already exists, status:', existingRequest.status);
                         NotificationManager.show(`You already have a ${existingRequest.status} request for this event`, 'info', 3000);
                         this.closeEventDetail();
                         return;
                     }
 
                     // CREATE join request instead of registration
+                    const payload = {
+                        event_id: this.currentEvent.id,
+                        golfer_id: AppState.currentUser?.lineUserId || null,
+                        golfer_name: playerName,
+                        handicap: handicap,
+                        want_transport: wantTransport,
+                        want_competition: wantCompetition,
+                        partner_prefs: partnerPrefs,
+                        status: 'pending',
+                        requested_at: new Date().toISOString()
+                    };
+
+                    console.log('[GolferEvents] Inserting join request:', payload);
+
                     const { data, error } = await window.SupabaseDB.client
                         .from('event_join_requests')
-                        .insert([{
-                            event_id: this.currentEvent.id,
-                            golfer_id: AppState.currentUser?.lineUserId || null,
-                            golfer_name: playerName,
-                            handicap: handicap,
-                            want_transport: wantTransport,
-                            want_competition: wantCompetition,
-                            partner_prefs: partnerPrefs,
-                            status: 'pending',
-                            requested_at: new Date().toISOString()
-                        }])
+                        .insert([payload])
                         .select();
+
+                    console.log('[GolferEvents] Insert result:', { data, error });
 
                     if (error) {
                         console.error('[GolferEvents] Insert error:', error);
@@ -53500,6 +53514,7 @@ class GolferEventsManager {
                         return;
                     }
 
+                    console.log('[GolferEvents] ✅ Join request created successfully:', data);
                     NotificationManager.show(`Request sent! The event creator will review your request to join "${this.currentEvent.name}"`, 'success', 4000);
                 } else {
                     // CREATE normal registration

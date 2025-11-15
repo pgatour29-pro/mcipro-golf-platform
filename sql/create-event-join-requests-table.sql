@@ -25,6 +25,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_event_join_requests_unique
 -- Add RLS (Row Level Security) policies
 ALTER TABLE event_join_requests ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Anyone can read join requests" ON event_join_requests;
+DROP POLICY IF EXISTS "Users can create join requests" ON event_join_requests;
+DROP POLICY IF EXISTS "Users can update join requests" ON event_join_requests;
+
 -- Policy: Anyone can read join requests (for event creators to see them)
 CREATE POLICY "Anyone can read join requests" ON event_join_requests
     FOR SELECT USING (true);

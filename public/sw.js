@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-14-DEBUG-LOGGING-V26
+// DEPLOYMENT VERSION: 2025-11-15-PRIVATE-EVENTS-V1
 
-const SW_VERSION = 'debug-logging-v26'; // Added brutal debug logging to trace save flow
+const SW_VERSION = 'private-events-v1'; // Golfer event creation system now fully functional
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

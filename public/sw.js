@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-MOBILE-TABS-V61
+// DEPLOYMENT VERSION: 2025-11-15-MOBILE-TABS-V62
 
-const SW_VERSION = 'mobile-tabs-v61'; // Remove max-w constraint on desktop nav to show all tabs
+const SW_VERSION = 'mobile-tabs-v62'; // Shrink desktop tabs by 40% to fit in max-w-7xl container
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

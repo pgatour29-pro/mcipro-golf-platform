@@ -53507,8 +53507,17 @@ class GolferEventsManager {
                 .eq('golfer_id', currentUser.lineUserId)
                 .maybeSingle();
 
-            if (checkError && checkError.code !== 'PGRST116') {
-                throw checkError;
+            if (checkError) {
+                // Handle specific error codes
+                if (checkError.code === '42P01') {
+                    // Table doesn't exist
+                    NotificationManager.show('Database table not created yet. Please contact administrator to run SQL migration.', 'error', 5000);
+                    console.error('[GolferEvents] event_join_requests table does not exist. Run sql/create-event-join-requests-table.sql');
+                    return;
+                } else if (checkError.code !== 'PGRST116') {
+                    // PGRST116 = no rows found, which is fine
+                    throw checkError;
+                }
             }
 
             if (existing) {
@@ -53529,14 +53538,22 @@ class GolferEventsManager {
                 }])
                 .select();
 
-            if (error) throw error;
+            if (error) {
+                // Handle table doesn't exist error on insert
+                if (error.code === '42P01') {
+                    NotificationManager.show('Database table not created yet. Please contact administrator to run SQL migration.', 'error', 5000);
+                    console.error('[GolferEvents] event_join_requests table does not exist. Run sql/create-event-join-requests-table.sql');
+                    return;
+                }
+                throw error;
+            }
 
             NotificationManager.show(`Request sent! The event creator will review your request to join "${this.currentEvent.name}"`, 'success', 4000);
             this.closeEventDetail();
 
         } catch (error) {
             console.error('[GolferEvents] Error requesting to join:', error);
-            NotificationManager.show('Failed to send join request: ' + error.message, 'error');
+            NotificationManager.show('Failed to send join request: ' + (error.message || 'Unknown error'), 'error', 5000);
         }
     }
 

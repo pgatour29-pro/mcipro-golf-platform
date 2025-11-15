@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-PRIVATE-EVENTS-V43
+// DEPLOYMENT VERSION: 2025-11-15-PRIVATE-EVENTS-V44
 
-const SW_VERSION = 'private-events-v43'; // Organizer private events use normal registration
+const SW_VERSION = 'private-events-v44'; // Better error handling for missing table
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

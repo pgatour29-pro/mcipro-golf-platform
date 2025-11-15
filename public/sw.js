@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-PRIVATE-EVENTS-V52
+// DEPLOYMENT VERSION: 2025-11-15-MOBILE-TABS-V53
 
-const SW_VERSION = 'private-events-v52'; // Fix registration count display in Manage Events cards
+const SW_VERSION = 'mobile-tabs-v53'; // Fix mobile event tabs layout - prevent stacking
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

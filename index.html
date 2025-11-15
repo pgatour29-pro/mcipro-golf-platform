@@ -35824,20 +35824,17 @@ class SocietyGolfSupabase {
 
         const insertData = {
             id: eventData.id || this.generateId(),
-            name: eventData.name,
-            date: eventData.date,
-            cutoff: eventData.cutoff,
-            base_fee: eventData.baseFee || eventData.memberFee || 0,
-            cart_fee: eventData.cartFee || 0,
-            caddy_fee: eventData.caddyFee || 0,
-            transport_fee: eventData.transportFee || 0,
-            competition_fee: eventData.competitionFee || 0,
-            max_players: eventData.maxPlayers || null,
+            title: eventData.name,                     // ACTUAL: title
+            event_date: eventData.date,                 // ACTUAL: event_date
+            start_time: eventData.startTime || null,
+            format: eventData.eventFormat || null,      // ACTUAL: format
+            entry_fee: eventData.baseFee || eventData.memberFee || 0,  // ACTUAL: entry_fee
+            max_participants: eventData.maxPlayers || null,  // ACTUAL: max_participants
             organizer_id: eventData.organizerId || null,
             organizer_name: eventData.organizerName || null,
             status: eventData.status || 'open',
             course_name: eventData.courseName,
-            notes: eventData.notes || null,
+            description: eventData.notes || null,       // ACTUAL: description
             creator_id: eventData.creatorId || null,
             creator_type: eventData.creatorType || 'organizer',
             is_private: eventData.isPrivate || false
@@ -35883,25 +35880,15 @@ class SocietyGolfSupabase {
 
         await this.waitForSupabase();
         const dbUpdates = {};
-        if (updates.name !== undefined) dbUpdates.name = updates.name;
-        if (updates.date !== undefined) dbUpdates.date = updates.date;
-        if (updates.cutoff !== undefined) dbUpdates.cutoff = updates.cutoff;
-        if (updates.baseFee !== undefined) dbUpdates.base_fee = updates.baseFee;
-        if (updates.cartFee !== undefined) dbUpdates.cart_fee = updates.cartFee;
-        if (updates.caddyFee !== undefined) dbUpdates.caddy_fee = updates.caddyFee;
-        if (updates.transportFee !== undefined) dbUpdates.transport_fee = updates.transportFee;
-        if (updates.competitionFee !== undefined) dbUpdates.competition_fee = updates.competitionFee;
-        if (updates.maxPlayers !== undefined) dbUpdates.max_players = updates.maxPlayers;
+        if (updates.name !== undefined) dbUpdates.title = updates.name;              // ACTUAL: title
+        if (updates.date !== undefined) dbUpdates.event_date = updates.date;         // ACTUAL: event_date
+        if (updates.startTime !== undefined) dbUpdates.start_time = updates.startTime;
+        if (updates.eventFormat !== undefined) dbUpdates.format = updates.eventFormat;  // ACTUAL: format
+        if (updates.baseFee !== undefined) dbUpdates.entry_fee = updates.baseFee;    // ACTUAL: entry_fee
+        if (updates.maxPlayers !== undefined) dbUpdates.max_participants = updates.maxPlayers;  // ACTUAL: max_participants
         if (updates.status !== undefined) dbUpdates.status = updates.status;
-        if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+        if (updates.notes !== undefined) dbUpdates.description = updates.notes;      // ACTUAL: description
         if (updates.courseName !== undefined) dbUpdates.course_name = updates.courseName;
-        if (updates.recurring !== undefined) dbUpdates.recurring = updates.recurring;
-        if (updates.recurFrequency !== undefined) dbUpdates.recur_frequency = updates.recurFrequency;
-        if (updates.recurDayOfWeek !== undefined) dbUpdates.recur_day_of_week = updates.recurDayOfWeek;
-        if (updates.recurMonthlyPattern !== undefined) dbUpdates.recur_monthly_pattern = updates.recurMonthlyPattern;
-        if (updates.recurEndType !== undefined) dbUpdates.recur_end_type = updates.recurEndType;
-        if (updates.recurUntil !== undefined) dbUpdates.recur_until = updates.recurUntil;
-        if (updates.recurCount !== undefined) dbUpdates.recur_count = updates.recurCount;
         if (updates.isPrivate !== undefined) dbUpdates.is_private = updates.isPrivate;
         if (updates.creatorId !== undefined) dbUpdates.creator_id = updates.creatorId;
         if (updates.creatorType !== undefined) dbUpdates.creator_type = updates.creatorType;
@@ -45741,7 +45728,7 @@ class SocietyOrganizerManager {
                     .select('*')
                     .eq('creator_id', userId)
                     .eq('creator_type', 'golfer')
-                    .order('date', { ascending: false });  // ACTUAL column: date
+                    .order('event_date', { ascending: false });  // ACTUAL: event_date
 
                 if (error) throw error;
 
@@ -45750,13 +45737,14 @@ class SocietyOrganizerManager {
                     const regs = await SocietyGolfDB.getRegistrations(e.id);
                     return {
                         id: e.id,
-                        name: e.name,               // ACTUAL column: name
-                        date: e.date,               // ACTUAL column: date
+                        name: e.title,                     // ACTUAL: title
+                        date: e.event_date,                 // ACTUAL: event_date
                         startTime: e.start_time,
                         courseName: e.course_name,
-                        maxPlayers: e.max_players,  // ACTUAL column: max_players
-                        baseFee: e.base_fee,        // ACTUAL column: base_fee
-                        notes: e.notes,             // ACTUAL column: notes
+                        maxPlayers: e.max_participants,     // ACTUAL: max_participants
+                        baseFee: e.entry_fee,               // ACTUAL: entry_fee
+                        eventFormat: e.format,              // ACTUAL: format
+                        notes: e.description,               // ACTUAL: description
                         isPrivate: e.is_private,
                         stats: {
                             registered: regs.length,
@@ -46939,6 +46927,7 @@ This action cannot be undone.`);
                 cutoff: cutoffISO,
                 maxPlayers: parseInt(document.getElementById('eventMaxPlayers').value) || null,
                 courseName: document.getElementById('eventCourse').value.trim(),
+                eventFormat: document.getElementById('eventFormat')?.value || null,  // ACTUAL: format column exists
                 // NEW: Member/Non-Member pricing
                 memberFee: parseFloat(document.getElementById('eventMemberFee').value) || 0,
                 nonMemberFee: parseFloat(document.getElementById('eventNonMemberFee').value) || 0,

@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-14-UNIFIED-SYSTEM-V17
+// DEPLOYMENT VERSION: 2025-11-14-UNIFIED-SYSTEM-V18
 
-const SW_VERSION = 'unified-event-system-v17'; // Fixed format constraint - use event_format not format
+const SW_VERSION = 'unified-event-system-v18'; // Use ACTUAL database columns from schema
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

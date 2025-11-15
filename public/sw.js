@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-REMOVED-GOLFER-CREATE-V30
+// DEPLOYMENT VERSION: 2025-11-15-FIX-SHOWEVENTSVIEW-V31
 
-const SW_VERSION = 'removed-golfer-create-v30'; // Removed golfer Create Event and Manage Events tabs/modules entirely
+const SW_VERSION = 'fix-showeventsview-v31'; // Fixed showEventsView() to stop referencing deleted elements
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

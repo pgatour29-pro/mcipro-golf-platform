@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-DEBUG-GOLFER-V27
+// DEPLOYMENT VERSION: 2025-11-15-UNIFIED-SYSTEM-V28
 
-const SW_VERSION = 'debug-golfer-v27'; // Add debug logging to GolferEventsManager.saveEvent + creatorId fix
+const SW_VERSION = 'unified-system-v28'; // Golfers now use SocietyOrganizerSystem (switchToOrganizerView) as designed
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

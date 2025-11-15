@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-14-REVERT-V23
+// DEPLOYMENT VERSION: 2025-11-14-STATUS-FIX-V24
 
-const SW_VERSION = 'database-fix-v23'; // Database column fixes only - left Tailwind CDN alone
+const SW_VERSION = 'status-fix-v24'; // Fixed status constraint: use 'upcoming' instead of 'open'
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

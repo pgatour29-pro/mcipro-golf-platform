@@ -55257,6 +55257,30 @@ class GolferEventsManager {
 
             console.log('[GolferEvents] Found', events?.length || 0, 'created events');
 
+            // Fetch registration counts for all events
+            if (events && events.length > 0) {
+                const eventIds = events.map(e => e.id);
+                const { data: registrations, error: regError } = await window.SupabaseDB.client
+                    .from('event_registrations')
+                    .select('event_id')
+                    .in('event_id', eventIds);
+
+                if (!regError && registrations) {
+                    // Count registrations per event
+                    const regCounts = {};
+                    registrations.forEach(reg => {
+                        regCounts[reg.event_id] = (regCounts[reg.event_id] || 0) + 1;
+                    });
+
+                    // Add counts to events
+                    events.forEach(event => {
+                        event.registrations = { length: regCounts[event.id] || 0 };
+                    });
+
+                    console.log('[GolferEvents] Added registration counts to events');
+                }
+            }
+
             // Filter by date
             const today = new Date();
             today.setHours(0, 0, 0, 0);

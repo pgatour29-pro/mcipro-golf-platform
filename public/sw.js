@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-PRIVATE-EVENTS-FIX-V77
+// DEPLOYMENT VERSION: 2025-11-15-TRGG-FALLBACK-V78
 
-const SW_VERSION = 'private-events-fix-v77'; // Fix private events not showing by default
+const SW_VERSION = 'trgg-fallback-v78'; // Add hardcoded TRGG fallback
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

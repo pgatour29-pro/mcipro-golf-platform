@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-LOGO-PRIORITY-FIX-V67
+// DEPLOYMENT VERSION: 2025-11-15-TRGG-DEBUG-V68
 
-const SW_VERSION = 'logo-priority-fix-v67'; // Fix society logo priority over creator photos
+const SW_VERSION = 'trgg-debug-v68'; // Debug TRGG logo display issue
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

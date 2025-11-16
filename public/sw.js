@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-ADMIN-USER-ACCESS-V79
+// DEPLOYMENT VERSION: 2025-11-16-ADMIN-EDIT-FIX-V80
 
-const SW_VERSION = 'admin-user-access-v79'; // Add SQL to fix admin user database access
+const SW_VERSION = 'admin-edit-fix-v80'; // Fix admin edit/view user field names
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

@@ -35524,28 +35524,36 @@ const AdminSystem = {
             const firstName = nameParts[0];
             const lastName = nameParts.slice(1).join(' ') || '';
 
-            // Update local data
+            // Find user in local array
             const userIndex = this.users.findIndex(u => (u.line_user_id || u.lineUserId) === userId);
-            if (userIndex !== -1) {
-                this.users[userIndex].name = fullName;
-                this.users[userIndex].first_name = firstName;
-                this.users[userIndex].last_name = lastName;
-                this.users[userIndex].username = username;
-                this.users[userIndex].society_name = society;
-                this.users[userIndex].role = role;
 
-                // Update handicap in profile_data
-                if (!this.users[userIndex].profile_data) {
-                    this.users[userIndex].profile_data = {};
-                }
-                if (!this.users[userIndex].profile_data.golfInfo) {
-                    this.users[userIndex].profile_data.golfInfo = {};
-                }
-                this.users[userIndex].profile_data.golfInfo.handicap = handicap ? parseFloat(handicap) : null;
+            if (userIndex === -1) {
+                console.error('[AdminSystem] User not found in local array:', userId);
+                DevMode.showNotification('User not found', 'error');
+                return;
             }
 
+            // Update local data
+            this.users[userIndex].name = fullName;
+            this.users[userIndex].first_name = firstName;
+            this.users[userIndex].last_name = lastName;
+            this.users[userIndex].username = username;
+            this.users[userIndex].society_name = society;
+            this.users[userIndex].role = role;
+
+            // Update handicap in profile_data
+            if (!this.users[userIndex].profile_data) {
+                this.users[userIndex].profile_data = {};
+            }
+            if (!this.users[userIndex].profile_data.golfInfo) {
+                this.users[userIndex].profile_data.golfInfo = {};
+            }
+            this.users[userIndex].profile_data.golfInfo.handicap = handicap ? parseFloat(handicap) : null;
+
+            console.log('[AdminSystem] Updating user in Supabase:', { userId, fullName, username, role, society, handicap });
+
             // Update in Supabase
-            const { error } = await window.SupabaseDB.client
+            const { data, error } = await window.SupabaseDB.client
                 .from('user_profiles')
                 .update({
                     name: fullName,
@@ -35556,16 +35564,21 @@ const AdminSystem = {
                     role: role,
                     profile_data: this.users[userIndex].profile_data
                 })
-                .eq('line_user_id', userId);
+                .eq('line_user_id', userId)
+                .select();
 
-            if (error) throw error;
+            if (error) {
+                console.error('[AdminSystem] Supabase error details:', error);
+                throw error;
+            }
 
+            console.log('[AdminSystem] Update successful:', data);
             DevMode.showNotification(`${fullName} updated successfully`, 'success');
             this.closeEditUserModal();
-            this.loadUsersTable();
+            await this.loadUsersTable();
         } catch (error) {
             console.error('[AdminSystem] Error saving user:', error);
-            DevMode.showNotification('Failed to save user', 'error');
+            DevMode.showNotification(`Failed to save user: ${error.message}`, 'error');
         }
     },
 

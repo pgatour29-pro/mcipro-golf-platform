@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-MENU-SWAP-V91
+// DEPLOYMENT VERSION: 2025-11-16-ADMIN-SAVE-FIX-V92
 
-const SW_VERSION = 'menu-swap-v91'; // Swap cube and hamburger menu items
+const SW_VERSION = 'admin-save-fix-v92'; // Fix AdminSystem.saveUserEdits 400 error
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

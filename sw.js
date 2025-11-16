@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-ADMIN-SAVE-FIX-V92
+// DEPLOYMENT VERSION: 2025-11-16-ADMIN-ERROR-LOGGING-V93
 
-const SW_VERSION = 'admin-save-fix-v92'; // Fix AdminSystem.saveUserEdits 400 error
+const SW_VERSION = 'admin-error-logging-v93'; // Enhanced error logging for admin save
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

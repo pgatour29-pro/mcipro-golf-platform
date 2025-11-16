@@ -35550,35 +35550,47 @@ const AdminSystem = {
             }
             this.users[userIndex].profile_data.golfInfo.handicap = handicap ? parseFloat(handicap) : null;
 
-            console.log('[AdminSystem] Updating user in Supabase:', { userId, fullName, username, role, society, handicap });
+            const updatePayload = {
+                name: fullName,
+                first_name: firstName,
+                last_name: lastName,
+                username: username,
+                society_name: society,
+                role: role,
+                profile_data: this.users[userIndex].profile_data
+            };
+
+            console.log('[AdminSystem] Update payload:', JSON.stringify(updatePayload, null, 2));
+            console.log('[AdminSystem] Updating user with line_user_id:', userId);
 
             // Update in Supabase
             const { data, error } = await window.SupabaseDB.client
                 .from('user_profiles')
-                .update({
-                    name: fullName,
-                    first_name: firstName,
-                    last_name: lastName,
-                    username: username,
-                    society_name: society,
-                    role: role,
-                    profile_data: this.users[userIndex].profile_data
-                })
+                .update(updatePayload)
                 .eq('line_user_id', userId)
                 .select();
 
             if (error) {
-                console.error('[AdminSystem] Supabase error details:', error);
-                throw error;
+                console.error('[AdminSystem] ❌ Supabase error:');
+                console.error('  - Message:', error.message);
+                console.error('  - Details:', error.details);
+                console.error('  - Hint:', error.hint);
+                console.error('  - Code:', error.code);
+                console.error('  - Full error:', JSON.stringify(error, null, 2));
+                DevMode.showNotification(`Database error: ${error.message || error.details || 'Unknown error'}`, 'error');
+                return;
             }
 
-            console.log('[AdminSystem] Update successful:', data);
+            console.log('[AdminSystem] ✅ Update successful:', data);
             DevMode.showNotification(`${fullName} updated successfully`, 'success');
             this.closeEditUserModal();
             await this.loadUsersTable();
         } catch (error) {
-            console.error('[AdminSystem] Error saving user:', error);
-            DevMode.showNotification(`Failed to save user: ${error.message}`, 'error');
+            console.error('[AdminSystem] ❌ Unexpected error:', error);
+            console.error('  - Type:', typeof error);
+            console.error('  - Message:', error.message);
+            console.error('  - Stack:', error.stack);
+            DevMode.showNotification(`Failed to save: ${error.message || 'Unknown error'}`, 'error');
         }
     },
 

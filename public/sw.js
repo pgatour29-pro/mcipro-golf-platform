@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-ORGANIZER-CALENDAR-FIX-V84
+// DEPLOYMENT VERSION: 2025-11-16-ORGANIZER-APPSTATE-FIX-V85
 
-const SW_VERSION = 'organizer-calendar-fix-v84'; // Fix organizer ID mapping for society profiles
+const SW_VERSION = 'organizer-appstate-fix-v85'; // Use AppState.selectedSociety.organizerId
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

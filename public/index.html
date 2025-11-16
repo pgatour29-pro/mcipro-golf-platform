@@ -36758,11 +36758,23 @@ class SocietyGolfSupabase {
 
         console.log('[SocietyGolfDB] Loading events for organizer:', organizerId);
 
-        // Get the society profile to find the actual organizer_id
-        const profile = await this.getSocietyProfile(organizerId);
-        const actualOrganizerId = profile?.organizerId || organizerId;
+        // Use AppState.selectedSociety.organizerId if available (e.g., 'trgg-pattaya')
+        // Otherwise try to get from society profile, or fall back to organizerId passed in
+        let actualOrganizerId = organizerId;
 
-        console.log('[SocietyGolfDB] User ID:', organizerId, '-> Society organizer_id:', actualOrganizerId);
+        if (typeof AppState !== 'undefined' && AppState.selectedSociety?.organizerId) {
+            actualOrganizerId = AppState.selectedSociety.organizerId;
+            console.log('[SocietyGolfDB] Using AppState.selectedSociety.organizerId:', actualOrganizerId);
+        } else {
+            // Try to get from society profile
+            const profile = await this.getSocietyProfile(organizerId);
+            if (profile?.organizerId) {
+                actualOrganizerId = profile.organizerId;
+                console.log('[SocietyGolfDB] Using society profile organizerId:', actualOrganizerId);
+            }
+        }
+
+        console.log('[SocietyGolfDB] Final organizer_id for query:', actualOrganizerId);
 
         // Filter to ONLY show events created by this specific organizer
         // Each society only sees their own events (no golfer events, no other societies)

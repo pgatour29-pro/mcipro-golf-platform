@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-ADMIN-EDIT-FIX-V80
+// DEPLOYMENT VERSION: 2025-11-16-ADMIN-USER-MGMT-V81
 
-const SW_VERSION = 'admin-edit-fix-v80'; // Fix admin edit/view user field names
+const SW_VERSION = 'admin-user-mgmt-v81'; // Admin user management: username, handicap, society, delete
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

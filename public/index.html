@@ -31307,8 +31307,16 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     <input type="text" id="adminEditUserFullName" placeholder="Enter full name" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                    <input type="email" id="adminEditUserEmail" placeholder="user@example.com" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                    <input type="text" id="adminEditUserUsername" placeholder="username" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Handicap</label>
+                    <input type="number" id="adminEditUserHandicap" placeholder="Enter handicap" step="0.1" min="-5" max="54" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Society Affiliation</label>
+                    <input type="text" id="adminEditUserSociety" placeholder="Society name (if any)" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Role</label>
@@ -31323,12 +31331,18 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 </div>
             </div>
             <div class="p-6 border-t border-gray-200 bg-gray-50">
-                <div class="flex gap-3 justify-end">
-                    <button onclick="AdminSystem.closeEditUserModal()" class="px-6 py-3 text-gray-700 bg-gray-200 rounded-xl font-semibold hover:bg-gray-300">Cancel</button>
-                    <button onclick="AdminSystem.saveUserEdits()" class="px-6 py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 flex items-center gap-2">
-                        <span class="material-symbols-outlined text-sm">save</span>
-                        Save Changes
+                <div class="flex gap-3 justify-between">
+                    <button onclick="AdminSystem.deleteUser(document.getElementById('adminEditUserId').value)" class="px-6 py-3 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 flex items-center gap-2">
+                        <span class="material-symbols-outlined text-sm">delete</span>
+                        Delete User
                     </button>
+                    <div class="flex gap-3">
+                        <button onclick="AdminSystem.closeEditUserModal()" class="px-6 py-3 text-gray-700 bg-gray-200 rounded-xl font-semibold hover:bg-gray-300">Cancel</button>
+                        <button onclick="AdminSystem.saveUserEdits()" class="px-6 py-3 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-sm">save</span>
+                            Save Changes
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -35461,7 +35475,13 @@ const AdminSystem = {
             const fullName = user.name || `${firstName} ${lastName}`.trim();
             document.getElementById('adminEditUserName').textContent = fullName;
             document.getElementById('adminEditUserFullName').value = fullName;
-            document.getElementById('adminEditUserEmail').value = user.email || '';
+            document.getElementById('adminEditUserUsername').value = user.username || '';
+
+            // Get handicap from profile_data or top-level field
+            const handicap = user.profile_data?.golfInfo?.handicap || user.profile_data?.handicap || user.handicap || '';
+            document.getElementById('adminEditUserHandicap').value = handicap;
+
+            document.getElementById('adminEditUserSociety').value = user.society_name || '';
             document.getElementById('adminEditUserRole').value = user.role || 'golfer';
 
             // Show modal
@@ -35480,7 +35500,9 @@ const AdminSystem = {
         try {
             const userId = document.getElementById('adminEditUserId').value;
             const fullName = document.getElementById('adminEditUserFullName').value.trim();
-            const email = document.getElementById('adminEditUserEmail').value.trim();
+            const username = document.getElementById('adminEditUserUsername').value.trim();
+            const handicap = document.getElementById('adminEditUserHandicap').value.trim();
+            const society = document.getElementById('adminEditUserSociety').value.trim();
             const role = document.getElementById('adminEditUserRole').value;
 
             if (!fullName) {
@@ -35498,18 +35520,36 @@ const AdminSystem = {
             if (userIndex !== -1) {
                 this.users[userIndex].name = fullName;
                 this.users[userIndex].first_name = firstName;
-                this.users[userIndex].lastName = lastName;
-                this.users[userIndex].email = email;
+                this.users[userIndex].last_name = lastName;
+                this.users[userIndex].username = username;
+                this.users[userIndex].society_name = society;
                 this.users[userIndex].role = role;
+
+                // Update handicap in profile_data
+                if (!this.users[userIndex].profile_data) {
+                    this.users[userIndex].profile_data = {};
+                }
+                if (!this.users[userIndex].profile_data.golfInfo) {
+                    this.users[userIndex].profile_data.golfInfo = {};
+                }
+                this.users[userIndex].profile_data.golfInfo.handicap = handicap ? parseFloat(handicap) : null;
             }
 
             // Update in Supabase
-            await window.SupabaseDB.saveUserProfile({
-                line_user_id: userId,
-                name: fullName,
-                email: email,
-                role: role
-            });
+            const { error } = await window.SupabaseDB.client
+                .from('user_profiles')
+                .update({
+                    name: fullName,
+                    first_name: firstName,
+                    last_name: lastName,
+                    username: username,
+                    society_name: society,
+                    role: role,
+                    profile_data: this.users[userIndex].profile_data
+                })
+                .eq('line_user_id', userId);
+
+            if (error) throw error;
 
             DevMode.showNotification(`${fullName} updated successfully`, 'success');
             this.closeEditUserModal();
@@ -35527,6 +35567,40 @@ const AdminSystem = {
             const lastName = user.last_name || user.lastName || '';
             const fullName = user.name || `${firstName} ${lastName}`.trim();
             alert(`User Details:\n\nName: ${fullName}\nRole: ${user.role}\nEmail: ${user.email || 'N/A'}\nPhone: ${user.phone || 'N/A'}`);
+        }
+    },
+
+    async deleteUser(userId) {
+        try {
+            const user = this.users.find(u => (u.line_user_id || u.lineUserId) === userId);
+            if (!user) {
+                DevMode.showNotification('User not found', 'error');
+                return;
+            }
+
+            const firstName = user.first_name || user.firstName || '';
+            const lastName = user.last_name || user.lastName || '';
+            const fullName = user.name || `${firstName} ${lastName}`.trim();
+
+            // Confirm deletion
+            if (!confirm(`Are you sure you want to delete ${fullName}?\n\nThis action cannot be undone and will remove all user data from the system.`)) {
+                return;
+            }
+
+            // Delete from Supabase
+            const { error } = await window.SupabaseDB.client
+                .from('user_profiles')
+                .delete()
+                .eq('line_user_id', userId);
+
+            if (error) throw error;
+
+            DevMode.showNotification(`${fullName} deleted successfully`, 'success');
+            this.closeEditUserModal();
+            await this.refreshData();
+        } catch (error) {
+            console.error('[AdminSystem] Error deleting user:', error);
+            DevMode.showNotification('Failed to delete user', 'error');
         }
     },
 

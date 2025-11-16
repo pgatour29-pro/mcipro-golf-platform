@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-TRGG-FALLBACK-V78
+// DEPLOYMENT VERSION: 2025-11-16-ADMIN-USER-ACCESS-V79
 
-const SW_VERSION = 'trgg-fallback-v78'; // Add hardcoded TRGG fallback
+const SW_VERSION = 'admin-user-access-v79'; // Add SQL to fix admin user database access
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

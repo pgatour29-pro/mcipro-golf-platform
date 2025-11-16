@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-COMPLETE-SCORING-SYSTEM-V99
+// DEPLOYMENT VERSION: 2025-11-16-RESULTS-VIEWER-V100
 
-const SW_VERSION = 'complete-scoring-system-v99'; // Complete scoring overhaul: tiebreakers, countback, stableford, results publishing, handicap fix
+const SW_VERSION = 'results-viewer-v100'; // Added results viewing for organizers and golfers, publish buttons on event cards
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

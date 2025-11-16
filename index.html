@@ -47620,6 +47620,9 @@ This action cannot be undone.`);
     renderEventCard(event) {
         const eventDate = event.date ? new Date(event.date).toLocaleDateString() : '-';
 
+        // Check if event is in the past
+        const isPast = event.date ? new Date(event.date) < new Date() : false;
+
         // Format departure time for display (HH:MM to 12-hour format)
         let departureTimeDisplay = '';
         if (event.departureTime) {
@@ -47857,7 +47860,7 @@ This action cannot be undone.`);
                     </div>
 
                     <!-- Additional Actions -->
-                    <div class="grid grid-cols-2 gap-2">
+                    <div class="grid grid-cols-2 gap-2 mb-2">
                         <button onclick="SocietyOrganizerSystem.openPairingsModal('${event.id}')" class="btn-secondary text-xs py-2 flex items-center justify-center gap-1">
                             <span class="material-symbols-outlined text-sm">grid_view</span>
                             <span>Pairings</span>
@@ -47867,6 +47870,23 @@ This action cannot be undone.`);
                             <span>Share Link</span>
                         </button>
                     </div>
+
+                    <!-- Results Actions -->
+                    ${event.resultsPublished ? `
+                    <div class="mb-2">
+                        <button onclick="SocietyOrganizerSystem.viewEventResults('${event.id}')" class="w-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white text-xs font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 shadow-md">
+                            <span class="material-symbols-outlined text-sm">emoji_events</span>
+                            <span>🏆 View Published Results</span>
+                        </button>
+                    </div>
+                    ` : isPast ? `
+                    <div class="mb-2">
+                        <button onclick="SocietyOrganizerSystem.publishEventResults('${event.id}')" class="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white text-xs font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 shadow-md">
+                            <span class="material-symbols-outlined text-sm">publish</span>
+                            <span>Publish Results</span>
+                        </button>
+                    </div>
+                    ` : ''}
                 </div>
             </div>
         `;
@@ -48512,6 +48532,248 @@ This action cannot be undone.`);
         } catch (error) {
             console.error('[SocietyOrganizer] Error exporting CSV:', error);
             NotificationManager.show('Failed to export registrations', 'error');
+        }
+    }
+
+    async publishEventResults(eventId) {
+        try {
+            // Find event
+            const event = this.events.find(e => e.id === eventId);
+            if (!event) {
+                NotificationManager.show('Event not found', 'error');
+                return;
+            }
+
+            // Switch to Scoring tab and load the event
+            SocietyOrganizerSystem.switchTab('scoring');
+
+            // Wait for tab to load
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            // Select the event in the dropdown
+            const dropdown = document.getElementById('organizerScoringEventSelect');
+            if (dropdown) {
+                dropdown.value = eventId;
+                // Trigger the load
+                await window.OrganizerScoringSystem.loadEventScores(eventId);
+
+                // Wait for scores to load
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                // Call publishResults
+                await window.OrganizerScoringSystem.publishResults();
+            } else {
+                NotificationManager.show('Scoring system not initialized', 'error');
+            }
+        } catch (error) {
+            console.error('[SocietyOrganizer] Error publishing results:', error);
+            NotificationManager.show('Failed to publish results: ' + error.message, 'error');
+        }
+    }
+
+    async viewEventResults(eventId) {
+        try {
+            // Fetch published results from event_results table
+            const { data: results, error } = await window.SupabaseDB.client
+                .from('event_results')
+                .select('*')
+                .eq('event_id', eventId)
+                .order('position', { ascending: true });
+
+            if (error) throw error;
+
+            if (!results || results.length === 0) {
+                NotificationManager.show('No published results found for this event', 'info');
+                return;
+            }
+
+            // Get event details
+            const event = this.events.find(e => e.id === eventId);
+
+            // Show results modal
+            this.displayResultsModal(event, results);
+
+        } catch (error) {
+            console.error('[SocietyOrganizer] Error loading results:', error);
+            NotificationManager.show('Failed to load results: ' + error.message, 'error');
+        }
+    }
+
+    displayResultsModal(event, results) {
+        // Create modal
+        const modal = document.createElement('div');
+        modal.id = 'eventResultsModal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:10000;padding:20px;';
+
+        // Group by division if divisions exist
+        const divisions = [...new Set(results.map(r => r.division).filter(d => d))];
+        const hasDivisions = divisions.length > 0;
+
+        const renderLeaderboard = (divisionResults, divisionName = null) => {
+            const top3 = divisionResults.slice(0, 3);
+            const rest = divisionResults.slice(3);
+
+            return `
+                ${divisionName ? `
+                <div class="bg-sky-600 text-white px-4 py-3 font-bold text-lg mb-3 rounded-lg">
+                    ${divisionName}
+                </div>
+                ` : ''}
+
+                <!-- Top 3 Podium -->
+                <div class="grid grid-cols-3 gap-3 mb-4">
+                    ${top3.map((r, idx) => {
+                        const colors = [
+                            { bg: 'from-amber-400 to-yellow-500', text: 'text-amber-900', icon: '🥇' },
+                            { bg: 'from-gray-300 to-gray-400', text: 'text-gray-900', icon: '🥈' },
+                            { bg: 'from-orange-300 to-orange-400', text: 'text-orange-900', icon: '🥉' }
+                        ];
+                        const color = colors[idx] || colors[2];
+
+                        return `
+                        <div class="bg-gradient-to-b ${color.bg} rounded-xl p-4 text-center shadow-lg">
+                            <div class="text-3xl mb-2">${color.icon}</div>
+                            <div class="font-bold ${color.text} text-sm mb-1">${r.position}${r.position === 1 ? 'st' : r.position === 2 ? 'nd' : 'rd'}</div>
+                            <div class="font-bold text-white text-xs mb-1">${r.player_name}</div>
+                            <div class="text-white text-lg font-bold">${r.score}</div>
+                            ${r.points_earned ? `<div class="text-xs ${color.text} font-semibold mt-1">+${r.points_earned} pts</div>` : ''}
+                        </div>
+                        `;
+                    }).join('')}
+                </div>
+
+                <!-- Rest of Field -->
+                ${rest.length > 0 ? `
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <table class="w-full text-sm">
+                        <thead class="border-b border-gray-200">
+                            <tr class="text-gray-600 text-xs">
+                                <th class="text-left py-2">Pos</th>
+                                <th class="text-left">Player</th>
+                                <th class="text-center">Score</th>
+                                <th class="text-right">Points</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rest.map(r => `
+                            <tr class="border-b border-gray-100">
+                                <td class="py-2 font-bold text-gray-700">${r.position}</td>
+                                <td class="text-gray-900">${r.player_name}</td>
+                                <td class="text-center font-semibold text-gray-900">${r.score}</td>
+                                <td class="text-right text-green-600 font-semibold">${r.points_earned || 0}</td>
+                            </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                ` : ''}
+            `;
+        };
+
+        modal.innerHTML = `
+            <div style="background:white;border-radius:24px;max-width:800px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);">
+                <!-- Header -->
+                <div class="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-5 rounded-t-3xl">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <div class="flex items-center gap-3 mb-2">
+                                <span class="text-4xl">🏆</span>
+                                <h2 class="text-2xl font-bold">Event Results</h2>
+                            </div>
+                            <p class="text-sm text-green-100">${event.name} - ${new Date(event.date).toLocaleDateString()}</p>
+                            <p class="text-xs text-green-200 mt-1">${event.courseName || ''}</p>
+                        </div>
+                        <button onclick="document.getElementById('eventResultsModal').remove();"
+                            class="text-white hover:bg-white/20 rounded-lg p-2">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Body -->
+                <div class="p-6">
+                    ${hasDivisions ?
+                        divisions.map(div => {
+                            const divResults = results.filter(r => r.division === div);
+                            return renderLeaderboard(divResults, `Division: ${div}`);
+                        }).join('<div class="my-6 border-t border-gray-200"></div>')
+                        :
+                        renderLeaderboard(results)
+                    }
+
+                    <!-- Footer Stats -->
+                    <div class="mt-6 pt-4 border-t border-gray-200 grid grid-cols-3 gap-4 text-center text-sm">
+                        <div>
+                            <div class="text-2xl font-bold text-gray-900">${results.length}</div>
+                            <div class="text-xs text-gray-600">Players</div>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-gray-900">${results[0]?.score || '-'}</div>
+                            <div class="text-xs text-gray-600">Winning Score</div>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-gray-900">${results[0]?.score_type || 'Stableford'}</div>
+                            <div class="text-xs text-gray-600">Format</div>
+                        </div>
+                    </div>
+
+                    <!-- Export Button -->
+                    <button onclick="SocietyOrganizerSystem.exportResults('${event.id}')"
+                        class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2">
+                        <span class="material-symbols-outlined">download</span>
+                        Export Results CSV
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+    }
+
+    async exportResults(eventId) {
+        try {
+            const { data: results, error } = await window.SupabaseDB.client
+                .from('event_results')
+                .select('*')
+                .eq('event_id', eventId)
+                .order('position', { ascending: true });
+
+            if (error) throw error;
+
+            const event = this.events.find(e => e.id === eventId);
+
+            // Generate CSV
+            const headers = ['Position', 'Player', 'Score', 'Points', 'Division'];
+            const rows = results.map(r => [
+                r.position,
+                r.player_name,
+                r.score,
+                r.points_earned || 0,
+                r.division || '-'
+            ]);
+
+            const csv = [
+                [`Event: ${event.name}`],
+                [`Date: ${event.date}`],
+                [`Course: ${event.courseName || ''}`],
+                [''],
+                headers,
+                ...rows
+            ].map(row => row.join(',')).join('\n');
+
+            // Download
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${event.name.replace(/[^a-z0-9]/gi, '_')}_Results.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+
+            NotificationManager.show('Results exported successfully', 'success');
+        } catch (error) {
+            console.error('[SocietyOrganizer] Error exporting results:', error);
+            NotificationManager.show('Failed to export results', 'error');
         }
     }
 
@@ -53377,6 +53639,15 @@ class GolferEventsManager {
 
                 <!-- Footer -->
                 <div class="px-4 py-3 bg-gray-50 border-t">
+                    ${event.resultsPublished ? `
+                    <div class="mb-2">
+                        <button class="w-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 shadow-md"
+                                onclick="event.stopPropagation(); GolferEventsSystem.viewEventResults('${event.id}')">
+                            <span class="material-symbols-outlined text-base">emoji_events</span>
+                            <span>🏆 View Results</span>
+                        </button>
+                    </div>
+                    ` : ''}
                     ${isUserRegistered && !isPast ? `
                     <div class="grid grid-cols-2 gap-2 mb-2">
                         <button class="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white text-sm py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1 shadow-md"
@@ -55483,6 +55754,34 @@ class GolferEventsManager {
 
         this.renderSocietyCheckboxes();
         this.filterEvents();
+    }
+
+    async viewEventResults(eventId) {
+        try {
+            // Fetch published results from event_results table
+            const { data: results, error } = await window.SupabaseDB.client
+                .from('event_results')
+                .select('*')
+                .eq('event_id', eventId)
+                .order('position', { ascending: true });
+
+            if (error) throw error;
+
+            if (!results || results.length === 0) {
+                NotificationManager.show('No published results found for this event', 'info');
+                return;
+            }
+
+            // Get event details
+            const event = this.allEvents.find(e => e.id === eventId);
+
+            // Show results modal - reuse the organizer's method
+            window.SocietyOrganizerSystem.displayResultsModal(event, results);
+
+        } catch (error) {
+            console.error('[GolferEvents] Error loading results:', error);
+            NotificationManager.show('Failed to load results: ' + error.message, 'error');
+        }
     }
 
     async openShareModal(eventId) {

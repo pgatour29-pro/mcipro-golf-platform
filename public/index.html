@@ -23339,9 +23339,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                     <span class="material-symbols-outlined" style="font-size: 18px;">add_circle</span>
                                     <span class="hidden md:inline" style="margin-left: 8px; font-size: 14px;">Create Event</span>
                                 </button>
-                                <button onclick="GolferEventsSystem.showEventsView('manage')" id="eventsViewManage" class="events-subtab-btn border-b-2 border-transparent text-gray-600 hover:text-gray-900 font-medium flex items-center" style="padding: 8px; flex-shrink: 0;" title="Manage Events">
+                                <button onclick="GolferEventsSystem.showEventsView('manage')" id="eventsViewManage" class="events-subtab-btn border-b-2 border-transparent text-gray-600 hover:text-gray-900 font-medium flex items-center relative" style="padding: 8px; flex-shrink: 0;" title="Manage Events">
                                     <span class="material-symbols-outlined" style="font-size: 18px;">edit_calendar</span>
                                     <span class="hidden md:inline" style="margin-left: 8px; font-size: 14px;">Manage Events</span>
+                                    <span id="manageEventsBadge" class="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold shadow-lg animate-pulse" style="display: none;">0</span>
                                 </button>
                                 <button onclick="GolferEventsSystem.refreshEvents()" class="hover:bg-gray-100 rounded-lg transition-colors" style="padding: 8px; flex-shrink: 0; margin-left: auto;" title="Refresh Events">
                                     <span class="material-symbols-outlined text-gray-600" style="font-size: 20px;">refresh</span>
@@ -23706,6 +23707,25 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
                     <!-- Manage Events View -->
                     <div id="eventsViewManageContent" class="events-view-content" style="display: none;">
+                        <!-- Pending Requests Alert Banner -->
+                        <div id="pendingRequestsAlert" class="mb-6 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl shadow-lg p-6 animate-pulse" style="display: none;">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-4">
+                                    <div class="bg-white bg-opacity-20 rounded-full p-3">
+                                        <span class="material-symbols-outlined text-3xl">notifications_active</span>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-xl font-bold mb-1">New Registration Requests!</h3>
+                                        <p class="text-sm opacity-90" id="pendingRequestsAlertText">You have pending join requests waiting for approval</p>
+                                    </div>
+                                </div>
+                                <div class="bg-white bg-opacity-20 rounded-lg px-6 py-3">
+                                    <div class="text-3xl font-bold" id="pendingRequestsAlertCount">0</div>
+                                    <div class="text-xs uppercase tracking-wide">Pending</div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="mb-6 flex items-center justify-between">
                             <h2 class="text-2xl font-bold text-gray-900 flex items-center gap-2">
                                 <span class="material-symbols-outlined text-green-600">edit_calendar</span>
@@ -55626,11 +55646,76 @@ class GolferEventsManager {
                     }
                 }
                 console.log('[GolferEvents] ✅ Finished loading all pending requests');
+
+                // Update notification badge after loading pending requests
+                await this.updatePendingRequestsNotifications();
             }, 100);
 
         } catch (error) {
             console.error('[GolferEvents] Error loading created events:', error);
             NotificationManager.show('Failed to load your events', 'error');
+        }
+    }
+
+    async updatePendingRequestsNotifications() {
+        try {
+            const currentUser = AppState.currentUser;
+            if (!currentUser) return;
+
+            // First get user's event IDs
+            const { data: userEvents } = await window.SupabaseDB.client
+                .from('society_events')
+                .select('id')
+                .eq('creator_id', currentUser.lineUserId)
+                .eq('creator_type', 'golfer');
+
+            const eventIds = userEvents?.map(e => e.id) || [];
+
+            if (eventIds.length === 0) {
+                console.log('[GolferEvents] No events created by user, no pending requests');
+                return;
+            }
+
+            // Count total pending requests across all user's events
+            const { data: requests, error } = await window.SupabaseDB.client
+                .from('event_join_requests')
+                .select('id, event_id')
+                .eq('status', 'pending')
+                .in('event_id', eventIds);
+
+            const count = requests?.length || 0;
+            console.log('[GolferEvents] Total pending requests:', count);
+
+            // Update badge on Manage Events tab
+            const badge = document.getElementById('manageEventsBadge');
+            if (badge) {
+                if (count > 0) {
+                    badge.textContent = count > 99 ? '99+' : count;
+                    badge.style.display = 'flex';
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
+
+            // Update alert banner in Manage Events view
+            const alert = document.getElementById('pendingRequestsAlert');
+            const alertCount = document.getElementById('pendingRequestsAlertCount');
+            const alertText = document.getElementById('pendingRequestsAlertText');
+
+            if (alert && alertCount && alertText) {
+                if (count > 0) {
+                    alertCount.textContent = count;
+                    alertText.textContent = count === 1
+                        ? '1 player waiting for approval - review and respond quickly!'
+                        : `${count} players waiting for approval - review and respond quickly!`;
+                    alert.style.display = 'block';
+                } else {
+                    alert.style.display = 'none';
+                }
+            }
+
+        } catch (error) {
+            console.error('[GolferEvents] Error updating notifications:', error);
         }
     }
 
@@ -55951,6 +56036,7 @@ class GolferEventsManager {
             // Reload the pending requests for this event
             await this.loadPendingRequests(eventId);
             await this.refreshEvents();
+            await this.updatePendingRequestsNotifications();
 
         } catch (error) {
             console.error('[GolferEvents] Error approving request:', error);
@@ -55976,6 +56062,7 @@ class GolferEventsManager {
 
             // Reload the pending requests for this event
             await this.loadPendingRequests(eventId);
+            await this.updatePendingRequestsNotifications();
 
         } catch (error) {
             console.error('[GolferEvents] Error rejecting request:', error);

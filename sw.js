@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-ADMIN-SCHEMA-FIX-V94
+// DEPLOYMENT VERSION: 2025-11-16-REGISTRATION-NOTIFICATIONS-V95
 
-const SW_VERSION = 'admin-schema-fix-v94'; // Remove non-existent columns from update
+const SW_VERSION = 'registration-notifications-v95'; // Enhanced notifications for pending registrations
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

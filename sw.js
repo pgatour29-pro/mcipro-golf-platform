@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-ACTIONABLE-NOTIFICATIONS-V96
+// DEPLOYMENT VERSION: 2025-11-16-NOTIFICATION-APPROVE-FIX-V97
 
-const SW_VERSION = 'actionable-notifications-v96'; // Show requests with approve/decline in notification
+const SW_VERSION = 'notification-approve-fix-v97'; // Fix container error when approving from notification banner
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

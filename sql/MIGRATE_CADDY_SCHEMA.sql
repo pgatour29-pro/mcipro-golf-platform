@@ -49,6 +49,23 @@ BEGIN
     END IF;
 END $$;
 
+-- Add specialty if missing
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'caddy_profiles'
+        AND column_name = 'specialty'
+    ) THEN
+        ALTER TABLE caddy_profiles
+        ADD COLUMN specialty TEXT;
+
+        RAISE NOTICE '✅ Added specialty column';
+    ELSE
+        RAISE NOTICE 'ℹ️  specialty column already exists';
+    END IF;
+END $$;
+
 -- Add personality if missing
 DO $$
 BEGIN

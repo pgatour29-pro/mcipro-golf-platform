@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-PRIVATE-EVENTS-V1
+// DEPLOYMENT VERSION: 2025-11-16-CADDY-SYSTEM-COMPLETE-V1
 
-const SW_VERSION = 'private-events-v1'; // Fixed filter bypass in cache and loadEvents() - now properly filters public/private events
+const SW_VERSION = 'caddy-system-complete-v1'; // Complete caddy booking system with admin approval workflow and notifications
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

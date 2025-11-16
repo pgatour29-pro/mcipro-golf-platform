@@ -30772,7 +30772,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 <!-- Bookings Tab -->
                 <div id="courseAdminBookingsTab" class="tab-content hidden">
                     <div class="flex flex-col md:flex-row md:items-center justify-between mb-4 md:mb-6 gap-3">
-                        <h2 class="text-xl md:text-2xl font-bold text-gray-900">Today's Bookings</h2>
+                        <div>
+                            <h2 class="text-xl md:text-2xl font-bold text-gray-900">Caddy Bookings</h2>
+                            <p class="text-sm text-gray-600 mt-1">Manage pending approvals and today's schedule</p>
+                        </div>
                         <button onclick="CourseAdminSystem.openManualBookingModal()" class="btn-primary justify-center" style="background: var(--orange-600);">
                             <span class="material-symbols-outlined text-sm">add_circle</span>
                             <span>Manual Booking</span>
@@ -30784,7 +30787,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <table class="w-full">
                                 <thead class="bg-gray-50 border-b border-gray-200">
                                     <tr>
-                                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Time</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Date/Time</th>
                                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Caddy</th>
                                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell">Golfer</th>
                                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden lg:table-cell">Holes</th>
@@ -50876,6 +50879,7 @@ const CourseAdminSystem = {
     courseName: null,
     userRole: null, // 'super_admin' or 'staff'
     allCaddies: [],
+    pendingBookings: [], // NEW: All pending bookings requiring approval
     todaysBookings: [],
     waitlistRequests: [],
 
@@ -51075,7 +51079,7 @@ const CourseAdminSystem = {
     async loadCaddies() {
         try {
             const { data, error } = await window.SupabaseDB.client
-                .from('caddies')
+                .from('caddy_profiles')
                 .select('*')
                 .eq('course_id', this.currentCourseId)
                 .order('caddy_number', { ascending: true });
@@ -51098,6 +51102,7 @@ const CourseAdminSystem = {
             // Get today's date
             const today = new Date().toISOString().split('T')[0];
 
+            // Load ALL pending bookings (any date) + today's confirmed bookings
             const { data, error } = await window.SupabaseDB.client
                 .from('caddy_bookings')
                 .select(`
@@ -51105,18 +51110,23 @@ const CourseAdminSystem = {
                     caddy_profiles:caddy_id (caddy_number, name)
                 `)
                 .eq('course_name', this.currentCourseId)
-                .eq('booking_date', today)
-                .in('status', ['pending', 'confirmed'])
+                .or(`status.eq.pending,and(booking_date.eq.${today},status.eq.confirmed)`)
+                .order('booking_date', { ascending: true })
                 .order('tee_time', { ascending: true, nullsFirst: false });
 
             if (error) throw error;
 
-            this.todaysBookings = data || [];
+            // Separate pending and today's bookings
+            const allBookings = data || [];
+            this.pendingBookings = allBookings.filter(b => b.status === 'pending');
+            this.todaysBookings = allBookings.filter(b => b.booking_date === today && b.status === 'confirmed');
+
             this.renderBookingsTable();
 
-            console.log(`[CourseAdmin] Loaded ${this.todaysBookings.length} bookings for today`);
+            console.log(`[CourseAdmin] Loaded ${this.pendingBookings.length} pending bookings, ${this.todaysBookings.length} today's confirmed`);
         } catch (error) {
             console.error('[CourseAdmin] Error loading bookings:', error);
+            this.pendingBookings = [];
             this.todaysBookings = [];
             this.renderBookingsTable();
         }
@@ -51219,18 +51229,7 @@ const CourseAdminSystem = {
     renderBookingsTable() {
         const tbody = document.getElementById('bookingsTableBody');
 
-        if (this.todaysBookings.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="6" class="px-4 py-8 text-center text-gray-500">
-                        No bookings for today
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-
-        tbody.innerHTML = this.todaysBookings.map(booking => {
+        const renderBookingRow = (booking) => {
             const statusColors = {
                 'pending': 'bg-yellow-100 text-yellow-800',
                 'confirmed': 'bg-green-100 text-green-800',
@@ -51243,13 +51242,14 @@ const CourseAdminSystem = {
             return `
                 <tr class="hover:bg-gray-50">
                     <td class="px-4 py-3 text-sm font-medium text-gray-900">
-                        ${booking.tee_time || 'Not set'}
+                        <div>${booking.booking_date || 'Not set'}</div>
+                        <div class="text-xs text-gray-600">${booking.tee_time || 'No time'}</div>
                     </td>
                     <td class="px-4 py-3 text-sm text-gray-900">
                         ${booking.caddy_profiles?.name || 'Unknown'} (#${booking.caddy_profiles?.caddy_number || '?'})
                     </td>
                     <td class="px-4 py-3 text-sm text-gray-900">${booking.golfer_name || 'Walk-in'}</td>
-                    <td class="px-4 py-3 text-sm text-gray-600">-</td>
+                    <td class="px-4 py-3 text-sm text-gray-600">${booking.holes || 18} holes</td>
                     <td class="px-4 py-3">
                         <span class="px-2 py-1 text-xs font-medium rounded-full ${statusBadge}">
                             ${booking.status}
@@ -51278,7 +51278,56 @@ const CourseAdminSystem = {
                     </td>
                 </tr>
             `;
-        }).join('');
+        };
+
+        // Build HTML with two sections: Pending and Today's Schedule
+        let html = '';
+
+        // PENDING BOOKINGS SECTION (Priority - needs admin action)
+        if (this.pendingBookings.length > 0) {
+            html += `
+                <tr class="bg-yellow-50">
+                    <td colspan="6" class="px-4 py-3">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-yellow-600">pending</span>
+                            <span class="font-semibold text-yellow-900">Pending Approval (${this.pendingBookings.length})</span>
+                        </div>
+                    </td>
+                </tr>
+            `;
+            html += this.pendingBookings.map(renderBookingRow).join('');
+        }
+
+        // TODAY'S CONFIRMED BOOKINGS SECTION
+        if (this.todaysBookings.length > 0) {
+            html += `
+                <tr class="bg-green-50">
+                    <td colspan="6" class="px-4 py-3">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-green-600">check_circle</span>
+                            <span class="font-semibold text-green-900">Today's Schedule (${this.todaysBookings.length})</span>
+                        </div>
+                    </td>
+                </tr>
+            `;
+            html += this.todaysBookings.map(renderBookingRow).join('');
+        }
+
+        // NO BOOKINGS MESSAGE
+        if (this.pendingBookings.length === 0 && this.todaysBookings.length === 0) {
+            html = `
+                <tr>
+                    <td colspan="6" class="px-4 py-8 text-center text-gray-500">
+                        <div class="flex flex-col items-center gap-2">
+                            <span class="material-symbols-outlined text-4xl text-gray-400">event_available</span>
+                            <p>No pending bookings or confirmed rounds for today</p>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        tbody.innerHTML = html;
     },
 
     renderWaitlistTable() {
@@ -51366,7 +51415,7 @@ const CourseAdminSystem = {
             const newStatus = true ? 'off_duty' : 'available';
 
             const { error } = await window.SupabaseDB.client
-                .from('caddies')
+                .from('caddy_profiles')
                 .update({ availability_status: newStatus })
                 .eq('id', caddyId);
 
@@ -51406,7 +51455,7 @@ const CourseAdminSystem = {
 
         try {
             const { error } = await window.SupabaseDB.client
-                .from('caddies')
+                .from('caddy_profiles')
                 .delete()
                 .eq('id', caddyId);
 
@@ -51722,6 +51771,107 @@ const CourseAdminSystem = {
         } catch (error) {
             console.error('[CourseAdmin] Error denying waitlist:', error);
             alert('Failed to deny waitlist request');
+        }
+    },
+
+    async confirmBooking(bookingId) {
+        // Both Super Admin and Staff can confirm caddy bookings
+        try {
+            const { error } = await window.SupabaseDB.client
+                .from('caddy_bookings')
+                .update({
+                    status: 'confirmed',
+                    confirmed_at: new Date().toISOString(),
+                    confirmed_by: window.currentUserId || this.currentCourseId,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', bookingId);
+
+            if (error) throw error;
+
+            console.log(`[CourseAdmin] ✅ Confirmed booking ${bookingId}`);
+
+            // Send LINE notification to golfer
+            try {
+                const { data, error: notifError } = await window.SupabaseDB.client.functions.invoke('notify-caddy-booking', {
+                    body: { bookingId: bookingId, action: 'approved' }
+                });
+
+                if (notifError) {
+                    console.warn('[CourseAdmin] Notification failed:', notifError);
+                } else {
+                    console.log('[CourseAdmin] ✅ Notification sent:', data);
+                }
+            } catch (notifError) {
+                console.warn('[CourseAdmin] Could not send notification:', notifError);
+            }
+
+            // Reload bookings and stats
+            await Promise.all([
+                this.loadBookings(),
+                this.loadStats()
+            ]);
+
+            // Show success notification
+            alert('✅ Booking Approved!\n\nThe caddy booking has been confirmed.\n\nGolfer will be notified via LINE.');
+
+        } catch (error) {
+            console.error('[CourseAdmin] Error confirming booking:', error);
+            alert('❌ Failed to approve booking. Please try again.');
+        }
+    },
+
+    async denyBooking(bookingId) {
+        // Both Super Admin and Staff can deny caddy bookings
+        const reason = prompt('Why are you denying this booking?\n\n(Optional - this will be sent to the golfer)');
+
+        if (reason === null) {
+            // User cancelled
+            return;
+        }
+
+        try {
+            const { error } = await window.SupabaseDB.client
+                .from('caddy_bookings')
+                .update({
+                    status: 'cancelled',
+                    cancelled_at: new Date().toISOString(),
+                    cancellation_reason: reason || 'Denied by golf course admin',
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', bookingId);
+
+            if (error) throw error;
+
+            console.log(`[CourseAdmin] ❌ Denied booking ${bookingId}`);
+
+            // Send LINE notification to golfer
+            try {
+                const { data, error: notifError } = await window.SupabaseDB.client.functions.invoke('notify-caddy-booking', {
+                    body: { bookingId: bookingId, action: 'denied' }
+                });
+
+                if (notifError) {
+                    console.warn('[CourseAdmin] Notification failed:', notifError);
+                } else {
+                    console.log('[CourseAdmin] ✅ Notification sent:', data);
+                }
+            } catch (notifError) {
+                console.warn('[CourseAdmin] Could not send notification:', notifError);
+            }
+
+            // Reload bookings and stats
+            await Promise.all([
+                this.loadBookings(),
+                this.loadStats()
+            ]);
+
+            // Show success notification
+            alert('❌ Booking Denied\n\nThe booking has been cancelled.\n\nGolfer will be notified via LINE.');
+
+        } catch (error) {
+            console.error('[CourseAdmin] Error denying booking:', error);
+            alert('❌ Failed to deny booking. Please try again.');
         }
     },
 

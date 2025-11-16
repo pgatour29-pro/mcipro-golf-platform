@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-SHOW-ALL-SOCIETIES-V87
+// DEPLOYMENT VERSION: 2025-11-16-ADD-TREASURE-HILL-V88
 
-const SW_VERSION = 'show-all-societies-v87'; // Show all society events for admin/testing
+const SW_VERSION = 'add-treasure-hill-v88'; // Add Treasure Hill Golf Course to Live Scoring
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

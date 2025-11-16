@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-ADMIN-USER-MGMT-V81
+// DEPLOYMENT VERSION: 2025-11-16-ORGANIZER-CALENDAR-FILTER-V82
 
-const SW_VERSION = 'admin-user-mgmt-v81'; // Admin user management: username, handicap, society, delete
+const SW_VERSION = 'organizer-calendar-filter-v82'; // Filter society organizer calendar to show only their events
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

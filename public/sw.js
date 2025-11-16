@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-RESULTS-VIEWER-V100
+// DEPLOYMENT VERSION: 2025-11-16-PUBLIC-EVENTS-FIX-V101
 
-const SW_VERSION = 'results-viewer-v100'; // Added results viewing for organizers and golfers, publish buttons on event cards
+const SW_VERSION = 'public-events-fix-v101'; // Fixed public/private events filter mismatch on initial load
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

@@ -1,78 +1,42 @@
-// SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-AUTO-UPDATE-V2
+// SERVICE WORKER - UNREGISTRATION VERSION
+// This version clears all caches and unregisters itself
 
-const SW_VERSION = 'auto-update-v2'; // Auto-update service worker - no more manual cache clearing needed
+const SW_VERSION = 'no-sw-v1';
 
 self.addEventListener('install', event => {
-    console.log('[ServiceWorker] Installing NEW version:', SW_VERSION);
-    // FORCE immediate activation - don't wait
+    console.log('[ServiceWorker] Installing unregistration version');
     self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
-    console.log('[ServiceWorker] Activating NEW version:', SW_VERSION);
+    console.log('[ServiceWorker] Unregistering and clearing all caches');
 
     event.waitUntil((async () => {
-        // DELETE ALL CACHES - force fresh content
+        // Delete all caches
         const cacheNames = await caches.keys();
         await Promise.all(cacheNames.map(name => {
-            console.log('[ServiceWorker] 🗑️ Deleting cache:', name);
+            console.log('[ServiceWorker] Deleting cache:', name);
             return caches.delete(name);
         }));
 
-        // Take control of all pages IMMEDIATELY
+        // Take control
         await self.clients.claim();
 
-        // Notify all tabs to reload automatically
-        const allClients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
-        for (const client of allClients) {
-            console.log('[ServiceWorker] 📢 Notifying client to reload');
-            client.postMessage({
-                type: 'SW_UPDATED',
-                version: SW_VERSION,
-                action: 'RELOAD' // Tell page to reload itself
-            });
-        }
+        // Unregister this service worker
+        const registrations = await self.registration.unregister();
+        console.log('[ServiceWorker] Unregistered:', registrations);
 
-        console.log('[ServiceWorker] ✅ Activated NEW version:', SW_VERSION);
+        // Notify clients to reload
+        const allClients = await self.clients.matchAll({ type: 'window' });
+        for (const client of allClients) {
+            client.postMessage({ type: 'SW_UNREGISTERED' });
+        }
     })());
 });
 
-// Fetch strategy: ALWAYS FRESH - no caching, always network
+// No fetch interception - let everything pass through
 self.addEventListener('fetch', event => {
-    const { request } = event;
-
-    // ALWAYS get fresh content from network - NO CACHING
-    event.respondWith(
-        fetch(request, { cache: 'no-store' })
-            .catch(() => {
-                // If network fails, show offline page
-                return new Response('Offline - please check your connection', {
-                    status: 503,
-                    headers: { 'Content-Type': 'text/plain' }
-                });
-            })
-    );
+    return;
 });
 
-self.addEventListener('message', event => {
-    if (event.data && event.data.type === 'SKIP_WAITING') {
-        console.log('[ServiceWorker] Force update requested');
-        self.skipWaiting();
-    } else if (event.data && event.data.type === 'CLEAR_PROFILE_CACHE') {
-        console.log('[ServiceWorker] Clearing profile cache for user:', event.data.lineUserId);
-        event.waitUntil((async () => {
-            // Clear all caches to ensure fresh profile data
-            const cacheNames = await caches.keys();
-            await Promise.all(
-                cacheNames.map(name => {
-                    console.log('[ServiceWorker] Deleting cache:', name);
-                    return caches.delete(name);
-                })
-            );
-            console.log('[ServiceWorker] All caches cleared after profile creation');
-        })());
-    }
-});
-
-console.log('[ServiceWorker] Loaded - Version:', SW_VERSION);
+console.log('[ServiceWorker] Unregistration version loaded');

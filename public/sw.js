@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-ADD-TREASURE-HILL-V88
+// DEPLOYMENT VERSION: 2025-11-16-PLUS-HANDICAP-FIX-V89
 
-const SW_VERSION = 'add-treasure-hill-v88'; // Add Treasure Hill Golf Course to Live Scoring
+const SW_VERSION = 'plus-handicap-fix-v89'; // Fix plus handicap input in Live Scoring
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

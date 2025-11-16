@@ -37831,6 +37831,29 @@ class SocietyGolfSupabase {
 
         const netScore = grossScore - strokesReceived;
 
+        // Calculate Thailand Stableford points
+        // Base points: Eagle=4, Birdie=3, Par=2, Bogey=1, Double+=0
+        // PLUS bonus points equal to handicap strokes received on this hole
+        const scoreToPar = netScore - par; // Negative = under par, Positive = over par
+        let stablefordPoints = 0;
+
+        if (scoreToPar <= -2) {
+            // Eagle or better
+            stablefordPoints = 4 + strokesReceived;
+        } else if (scoreToPar === -1) {
+            // Birdie
+            stablefordPoints = 3 + strokesReceived;
+        } else if (scoreToPar === 0) {
+            // Par
+            stablefordPoints = 2 + strokesReceived;
+        } else if (scoreToPar === 1) {
+            // Bogey
+            stablefordPoints = 1 + strokesReceived;
+        } else {
+            // Double bogey or worse
+            stablefordPoints = 0 + strokesReceived;
+        }
+
         const { data, error } = await window.SupabaseDB.client
             .from('scores')
             .upsert([{
@@ -37840,7 +37863,8 @@ class SocietyGolfSupabase {
                 stroke_index: strokeIndex,
                 gross_score: grossScore,
                 net_score: netScore,
-                handicap_strokes: strokesReceived
+                handicap_strokes: strokesReceived,
+                stableford: stablefordPoints
             }], {
                 onConflict: 'scorecard_id,hole_number'
             })
@@ -37911,12 +37935,14 @@ class SocietyGolfSupabase {
 
         const totalGross = scores.reduce((sum, s) => sum + (s.gross_score || 0), 0);
         const totalNet = scores.reduce((sum, s) => sum + (s.net_score || 0), 0);
+        const totalStableford = scores.reduce((sum, s) => sum + (s.stableford || 0), 0);
 
         const { error: updateError } = await window.SupabaseDB.client
             .from('scorecards')
             .update({
                 total_gross: totalGross,
                 total_net: totalNet,
+                total_stableford: totalStableford,
                 updated_at: new Date().toISOString()
             })
             .eq('id', scorecardId);
@@ -37947,27 +37973,197 @@ class SocietyGolfSupabase {
         return data;
     }
 
-    async getLeaderboard(eventId) {
+    /**
+     * Calculate countback score for tie-breaking
+     * Countback rules: Last 9 holes > Last 6 holes > Last 3 holes > Last hole
+     * @param {Array} scores - Array of hole scores (sorted by hole number)
+     * @param {string} scoringFormat - 'stableford', 'strokeplay', or 'net'
+     * @returns {Object} Countback data { last9, last6, last3, last1 }
+     */
+    calculateCountback(scores, scoringFormat = 'stableford') {
+        if (!scores || scores.length === 0) {
+            return { last9: 0, last6: 0, last3: 0, last1: 0 };
+        }
+
+        // Sort scores by hole number to ensure correct order
+        const sortedScores = [...scores].sort((a, b) => a.hole_number - b.hole_number);
+
+        // Get scores for back 9 (holes 10-18), last 6 (13-18), last 3 (16-18), last 1 (18)
+        const back9 = sortedScores.slice(9, 18); // Holes 10-18
+        const last6 = sortedScores.slice(12, 18); // Holes 13-18
+        const last3 = sortedScores.slice(15, 18); // Holes 16-18
+        const last1 = sortedScores.slice(17, 18); // Hole 18
+
+        const getScore = (holeScore) => {
+            if (scoringFormat === 'stableford') {
+                return holeScore.stableford_points || 0;
+            } else if (scoringFormat === 'net') {
+                return holeScore.net_score || holeScore.gross_score || 0;
+            } else {
+                return holeScore.gross_score || 0;
+            }
+        };
+
+        return {
+            last9: back9.reduce((sum, s) => sum + getScore(s), 0),
+            last6: last6.reduce((sum, s) => sum + getScore(s), 0),
+            last3: last3.reduce((sum, s) => sum + getScore(s), 0),
+            last1: last1.reduce((sum, s) => sum + getScore(s), 0)
+        };
+    }
+
+    /**
+     * Assign positions with proper tie handling
+     * If 2 players tie for 2nd place, positions should be: 1st, 2nd, 2nd, 4th (not 3rd)
+     * @param {Array} sortedLeaderboard - Pre-sorted leaderboard array
+     * @param {string} scoreField - Field to use for comparison (e.g., 'total_stableford', 'total_gross')
+     * @param {boolean} ascending - True for stroke play (lower is better), false for stableford (higher is better)
+     * @returns {Array} Leaderboard with assigned positions
+     */
+    assignPositions(sortedLeaderboard, scoreField, ascending = true) {
+        if (!sortedLeaderboard || sortedLeaderboard.length === 0) {
+            return [];
+        }
+
+        let currentPosition = 1;
+        let playersAtPosition = 0;
+
+        return sortedLeaderboard.map((entry, index) => {
+            if (index === 0) {
+                // First place
+                entry.position = 1;
+                entry.tied = false;
+                playersAtPosition = 1;
+            } else {
+                const prevEntry = sortedLeaderboard[index - 1];
+                const currentScore = entry[scoreField];
+                const prevScore = prevEntry[scoreField];
+
+                // Check if this score ties with previous
+                if (currentScore === prevScore) {
+                    // Same score = same position
+                    entry.position = currentPosition;
+                    entry.tied = true;
+                    prevEntry.tied = true; // Mark previous entry as tied too
+                    playersAtPosition++;
+                } else {
+                    // Different score = new position
+                    currentPosition += playersAtPosition;
+                    entry.position = currentPosition;
+                    entry.tied = false;
+                    playersAtPosition = 1;
+                }
+            }
+
+            return entry;
+        });
+    }
+
+    /**
+     * Enhanced leaderboard with proper ranking, tie-breaking, and countback
+     * @param {string} eventId - Event ID
+     * @param {Object} options - { scoringFormat: 'stableford'|'strokeplay'|'net', useCountback: true }
+     */
+    async getLeaderboard(eventId, options = {}) {
         await this.waitForSupabase();
+
+        const {
+            scoringFormat = 'stableford',
+            useCountback = true
+        } = options;
 
         const scorecards = await this.getEventScorecards(eventId);
 
-        const leaderboard = scorecards.map((card, index) => {
+        // Map scorecards to leaderboard entries with all necessary data
+        let leaderboard = scorecards.map(card => {
             const holesCompleted = (card.scores || []).filter(s => s.gross_score).length;
             const thru = holesCompleted === 18 ? 'F' : holesCompleted.toString();
 
+            // Calculate countback if enabled
+            const countback = useCountback ?
+                this.calculateCountback(card.scores, scoringFormat) :
+                { last9: 0, last6: 0, last3: 0, last1: 0 };
+
             return {
-                position: index + 1,
                 player_id: card.player_id,
-                player_name: card.player_name, // Include player name for leaderboard display
+                player_name: card.player_name,
                 scorecard_id: card.id,
                 total_gross: card.total_gross || 0,
                 total_net: card.total_net || 0,
+                total_stableford: card.total_stableford || 0,
                 holes_completed: holesCompleted,
                 thru: thru,
-                status: card.status
+                status: card.status,
+                countback: countback,
+                scores: card.scores // Keep for detailed display
             };
         });
+
+        // Sort based on scoring format
+        if (scoringFormat === 'stableford') {
+            // Stableford: Higher is better
+            leaderboard.sort((a, b) => {
+                // Primary: Total stableford points (descending)
+                if (b.total_stableford !== a.total_stableford) {
+                    return b.total_stableford - a.total_stableford;
+                }
+
+                // Tie-breaking with countback (higher is better in stableford)
+                if (useCountback) {
+                    if (b.countback.last9 !== a.countback.last9) return b.countback.last9 - a.countback.last9;
+                    if (b.countback.last6 !== a.countback.last6) return b.countback.last6 - a.countback.last6;
+                    if (b.countback.last3 !== a.countback.last3) return b.countback.last3 - a.countback.last3;
+                    if (b.countback.last1 !== a.countback.last1) return b.countback.last1 - a.countback.last1;
+                }
+
+                return 0; // Complete tie
+            });
+
+            // Assign positions
+            leaderboard = this.assignPositions(leaderboard, 'total_stableford', false);
+
+        } else if (scoringFormat === 'net') {
+            // Net: Lower is better
+            leaderboard.sort((a, b) => {
+                // Primary: Total net score (ascending)
+                if (a.total_net !== b.total_net) {
+                    return a.total_net - b.total_net;
+                }
+
+                // Tie-breaking with countback (lower is better in stroke play)
+                if (useCountback) {
+                    if (a.countback.last9 !== b.countback.last9) return a.countback.last9 - b.countback.last9;
+                    if (a.countback.last6 !== b.countback.last6) return a.countback.last6 - b.countback.last6;
+                    if (a.countback.last3 !== b.countback.last3) return a.countback.last3 - b.countback.last3;
+                    if (a.countback.last1 !== b.countback.last1) return a.countback.last1 - b.countback.last1;
+                }
+
+                return 0;
+            });
+
+            leaderboard = this.assignPositions(leaderboard, 'total_net', true);
+
+        } else {
+            // Stroke Play (Gross): Lower is better
+            leaderboard.sort((a, b) => {
+                // Primary: Total gross score (ascending)
+                if (a.total_gross !== b.total_gross) {
+                    return a.total_gross - b.total_gross;
+                }
+
+                // Tie-breaking with countback (lower is better in stroke play)
+                if (useCountback) {
+                    if (a.countback.last9 !== b.countback.last9) return a.countback.last9 - b.countback.last9;
+                    if (a.countback.last6 !== b.countback.last6) return a.countback.last6 - b.countback.last6;
+                    if (a.countback.last3 !== b.countback.last3) return a.countback.last3 - b.countback.last3;
+                    if (a.countback.last1 !== b.countback.last1) return a.countback.last1 - b.countback.last1;
+                }
+
+                return 0;
+            });
+
+            leaderboard = this.assignPositions(leaderboard, 'total_gross', true);
+        }
 
         return leaderboard;
     }

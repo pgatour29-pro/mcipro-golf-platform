@@ -36758,39 +36758,18 @@ class SocietyGolfSupabase {
 
         console.log('[SocietyGolfDB] ===== LOADING EVENTS =====');
         console.log('[SocietyGolfDB] Input organizerId:', organizerId);
-        console.log('[SocietyGolfDB] AppState.selectedSociety:', AppState.selectedSociety);
-        console.log('[SocietyGolfDB] AppState.currentUser:', AppState.currentUser);
+        console.log('[SocietyGolfDB] AppState.currentUser.role:', AppState.currentUser?.role);
 
-        // Use AppState.selectedSociety.organizerId if available (e.g., 'trgg-pattaya')
-        // Otherwise try to get from society profile, or fall back to organizerId passed in
-        let actualOrganizerId = organizerId;
-
-        if (typeof AppState !== 'undefined' && AppState.selectedSociety?.organizerId) {
-            actualOrganizerId = AppState.selectedSociety.organizerId;
-            console.log('[SocietyGolfDB] Using AppState.selectedSociety.organizerId:', actualOrganizerId);
-        } else {
-            // Try to get from society profile
-            const profile = await this.getSocietyProfile(organizerId);
-            console.log('[SocietyGolfDB] Society profile lookup result:', profile);
-            if (profile?.organizerId) {
-                actualOrganizerId = profile.organizerId;
-                console.log('[SocietyGolfDB] Using society profile organizerId:', actualOrganizerId);
-            }
-        }
-
-        console.log('[SocietyGolfDB] Final organizer_id for query:', actualOrganizerId);
-
-        // Filter to ONLY show events created by this specific organizer
-        // Each society only sees their own events (no golfer events, no other societies)
+        // Load ALL society events (exclude only golfer-created private events)
+        // This allows both admin and society organizers to see all society events
         const { data: events, error: eventsError } = await window.SupabaseDB.client
             .from('society_events')
             .select('*')
-            .eq('organizer_id', actualOrganizerId);
+            .or('creator_type.is.null,creator_type.neq.golfer');
 
         console.log('[SocietyGolfDB] Query result - events:', events?.length || 0);
-        console.log('[SocietyGolfDB] Query error:', eventsError);
         if (events && events.length > 0) {
-            console.log('[SocietyGolfDB] Sample event:', events[0]);
+            console.log('[SocietyGolfDB] Sample events:', events.slice(0, 3).map(e => ({ id: e.id, title: e.title, organizer_id: e.organizer_id })));
         }
 
         if (eventsError) {

@@ -36005,9 +36005,6 @@ class SocietyGolfSupabase {
         const creatorIds = [...new Set(eventsData.filter(e => e.creator_type === 'golfer' && e.creator_id).map(e => e.creator_id))];
         const playerId = AppState.currentUser?.lineUserId;
 
-        console.log('[SocietyGolf] organizer_ids to query:', organizerIds);
-        console.log('[SocietyGolf] creator_ids to query:', creatorIds);
-
         // Build registration count query using PostgreSQL window functions
         // This returns ONE row per event_id with the count, instead of ALL registration rows
         const regCountQuery = `
@@ -36103,10 +36100,6 @@ class SocietyGolfSupabase {
             societyProfilesResult.data.forEach(s => {
                 societyMap[s.organizer_id] = s;
             });
-            console.log('[SocietyGolf] Loaded society profiles:', societyProfilesResult.data);
-            console.log('[SocietyGolf] Society map:', societyMap);
-        } else {
-            console.warn('[SocietyGolf] No society profiles loaded!', societyProfilesResult);
         }
 
         // Create map of creator_id to user profile (for private events)
@@ -36160,24 +36153,9 @@ class SocietyGolfSupabase {
         }
 
         // Map events with all data
-        const mappedEvents = eventsData.map((e, index) => {
+        const mappedEvents = eventsData.map(e => {
             const society = societyMap[e.organizer_id];
             const creatorProfile = creatorProfileMap[e.creator_id];
-
-            // Debug logging for first 5 events to see actual values
-            if (index < 5) {
-                console.log(`[SocietyGolf] Event ${index + 1}:`, {
-                    title: e.title,
-                    organizer_id: e.organizer_id,
-                    organizer_name: e.organizer_name,
-                    creator_type: e.creator_type,
-                    creator_id: e.creator_id,
-                    is_private: e.is_private,
-                    society: society,
-                    creatorProfile: creatorProfile
-                });
-            }
-
             return {
                 id: e.id,
                 name: e.title,                   // ACTUAL: title
@@ -52492,7 +52470,7 @@ class GolferEventsManager {
         this.currentView = 'browse';
         this.calendarDate = new Date();
         this.myRegistrations = [];
-        this.currentEventType = 'public'; // Event type filter: 'public' or 'private'
+        this.currentEventType = 'all'; // Event type filter: 'all', 'public' or 'private'
         this.manageEventFilter = 'upcoming'; // Filter for manage events view
 
         // Cache system for instant loading
@@ -52739,17 +52717,9 @@ class GolferEventsManager {
     }
 
     async loadEvents(showLoading = true) {
-        console.log('[GolferEventsSystem] ========== loadEvents START v75 ==========');
         try {
-            console.log('[GolferEventsSystem] Step 1: Checking SocietyGolfDB...');
-            if (!window.SocietyGolfDB) {
-                console.error('[GolferEventsSystem] ERROR: SocietyGolfDB not found!');
-                return;
-            }
-
-            console.log('[GolferEventsSystem] Step 2: Calling getAllPublicEvents...');
+            // Load ALL society events (now includes user registration status in one call)
             const events = await window.SocietyGolfDB.getAllPublicEvents();
-            console.log('[GolferEventsSystem] Step 3: Received events:', events?.length || 0);
 
             this.allEvents = events || [];
 
@@ -52769,15 +52739,11 @@ class GolferEventsManager {
             // Update society subscriptions display
             this.updateSelectedSocietiesDisplay();
 
-            console.log(`[GolferEventsSystem] ✅ Loaded ${this.allEvents.length} events${!showLoading ? ' (background)' : ''}`);
         } catch (error) {
-            console.error('[GolferEventsSystem] !!!!! ERROR loading events:', error);
-            console.error('[GolferEventsSystem] Error stack:', error.stack);
-            alert('ERROR in loadEvents: ' + error.message);
+            console.error('[GolferEventsSystem] Error loading events:', error);
             this.allEvents = [];
             this.filteredEvents = [];
         }
-        console.log('[GolferEventsSystem] ========== loadEvents END ==========');
     }
 
     async refreshEvents() {
@@ -52826,6 +52792,7 @@ class GolferEventsManager {
             if (this.currentEventType === 'private' && !isPrivateEvent) {
                 return false;
             }
+            // If 'all', show both public and private events
 
             // SOCIETY SUBSCRIPTION FILTER - DISABLED (show ALL events)
             // if (!isActivelySearching && this.subscribedSocieties.length > 0) {
@@ -53113,16 +53080,6 @@ class GolferEventsManager {
             console.log('[GolferEvents] Available events:', this.allEvents.map(e => e.id));
             return;
         }
-        console.log('[GolferEvents] Current event data:', {
-            name: this.currentEvent.name,
-            organizerId: this.currentEvent.organizerId,
-            organizerName: this.currentEvent.organizerName,
-            societyName: this.currentEvent.societyName,
-            societyLogo: this.currentEvent.societyLogo,
-            creatorType: this.currentEvent.creatorType,
-            creatorName: this.currentEvent.creatorName,
-            creatorPhoto: this.currentEvent.creatorPhoto
-        });
 
         // Populate modal
         document.getElementById('eventDetailName').textContent = this.currentEvent.name;

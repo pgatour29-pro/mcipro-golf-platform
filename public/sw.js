@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-ERROR-CATCH-V76
+// DEPLOYMENT VERSION: 2025-11-15-PRIVATE-EVENTS-FIX-V77
 
-const SW_VERSION = 'error-catch-v76'; // Add error catching to find issue
+const SW_VERSION = 'private-events-fix-v77'; // Fix private events not showing by default
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

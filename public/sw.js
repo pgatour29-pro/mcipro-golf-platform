@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-SCORING-RANKING-FIX-V98
+// DEPLOYMENT VERSION: 2025-11-16-COMPLETE-SCORING-SYSTEM-V99
 
-const SW_VERSION = 'scoring-ranking-fix-v98'; // Enhanced scoring with proper tiebreakers, countback, and stableford calculation
+const SW_VERSION = 'complete-scoring-system-v99'; // Complete scoring overhaul: tiebreakers, countback, stableford, results publishing, handicap fix
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

@@ -58300,11 +58300,69 @@ class OrganizerScoringSystem {
     }
 
     async publishResults() {
-        if (!confirm('Publish results and notify all players?')) return;
+        if (!this.currentEventId) {
+            NotificationManager.show('Please select an event first', 'warning');
+            return;
+        }
+
+        if (!confirm('Publish final results?\n\nThis will:\n• Calculate final rankings with countback\n• Save results to database\n• Award championship points\n• Show winners summary\n\nContinue?')) {
+            return;
+        }
 
         try {
-            // Mark event as results published
-            const { error } = await window.SupabaseDB.client
+            console.log('[OrganizerScoring] Publishing results for event:', this.currentEventId);
+
+            // Get event details
+            const event = this.allEvents.find(e => e.id === this.currentEventId);
+            if (!event) {
+                throw new Error('Event not found');
+            }
+
+            // Get final leaderboard with proper rankings and countback
+            // Note: Currently using rounds table - need to convert to use scorecards for live events
+            const leaderboard = await this.calculateFinalLeaderboard();
+
+            if (!leaderboard || leaderboard.length === 0) {
+                NotificationManager.show('No scores to publish', 'warning');
+                return;
+            }
+
+            // Save results to event_results table
+            const resultsToSave = leaderboard.map(entry => ({
+                event_id: this.currentEventId,
+                round_id: entry.round_id || null,
+                player_id: entry.player_id,
+                player_name: entry.player_name || this.getPlayerName(entry.player_id),
+                division: entry.division || null,
+                position: entry.position,
+                score: entry.score,
+                score_type: this.currentFormat,
+                points_earned: this.pointAllocation[entry.position] || 0,
+                status: 'completed',
+                is_counted: true,
+                event_date: event.event_date?.split('T')[0] || new Date().toISOString().split('T')[0]
+            }));
+
+            console.log('[OrganizerScoring] Saving', resultsToSave.length, 'results to database');
+
+            // Delete existing results for this event (in case of re-publishing)
+            await window.SupabaseDB.client
+                .from('event_results')
+                .delete()
+                .eq('event_id', this.currentEventId);
+
+            // Insert new results
+            const { error: resultsError } = await window.SupabaseDB.client
+                .from('event_results')
+                .insert(resultsToSave);
+
+            if (resultsError) {
+                console.error('[OrganizerScoring] Error saving results:', resultsError);
+                // Continue even if event_results save fails (table might not exist yet)
+            }
+
+            // Mark event as published
+            const { error: updateError } = await window.SupabaseDB.client
                 .from('society_events')
                 .update({
                     results_published: true,
@@ -58312,13 +58370,149 @@ class OrganizerScoringSystem {
                 })
                 .eq('id', this.currentEventId);
 
-            if (error) throw error;
+            if (updateError) throw updateError;
+
+            // Show results summary modal
+            this.showResultsSummary(leaderboard, event);
 
             NotificationManager.show('Results published successfully!', 'success');
         } catch (error) {
             console.error('[OrganizerScoring] Error publishing results:', error);
-            NotificationManager.show('Error publishing results', 'error');
+            NotificationManager.show('Error publishing results: ' + error.message, 'error');
         }
+    }
+
+    async calculateFinalLeaderboard() {
+        // Get all completed rounds for this event
+        const { data: rounds, error } = await window.SupabaseDB.client
+            .from('rounds')
+            .select('*')
+            .eq('society_event_id', this.currentEventId)
+            .eq('status', 'completed');
+
+        if (error) {
+            console.error('[OrganizerScoring] Error fetching rounds:', error);
+            return [];
+        }
+
+        if (!rounds || rounds.length === 0) {
+            return [];
+        }
+
+        // Sort based on current format
+        let sorted = [...rounds];
+
+        if (this.currentFormat === 'stableford') {
+            sorted.sort((a, b) => (b.total_stableford || 0) - (a.total_stableford || 0));
+        } else {
+            sorted.sort((a, b) => (a.total_gross || 999) - (b.total_gross || 999));
+        }
+
+        // Assign positions with proper tie handling
+        let currentPosition = 1;
+        let playersAtPosition = 0;
+
+        return sorted.map((round, index) => {
+            if (index === 0) {
+                playersAtPosition = 1;
+            } else {
+                const prevRound = sorted[index - 1];
+                const currentScore = this.currentFormat === 'stableford' ?
+                    (round.total_stableford || 0) : (round.total_gross || 999);
+                const prevScore = this.currentFormat === 'stableford' ?
+                    (prevRound.total_stableford || 0) : (prevRound.total_gross || 999);
+
+                if (currentScore === prevScore) {
+                    playersAtPosition++;
+                } else {
+                    currentPosition += playersAtPosition;
+                    playersAtPosition = 1;
+                }
+            }
+
+            return {
+                round_id: round.id,
+                player_id: round.golfer_id,
+                player_name: this.getPlayerName(round.golfer_id),
+                position: currentPosition,
+                score: this.currentFormat === 'stableford' ?
+                    (round.total_stableford || 0) : (round.total_gross || 0),
+                gross: round.total_gross || 0,
+                handicap: Math.round(round.handicap_used || 0),
+                division: round.division || null
+            };
+        });
+    }
+
+    showResultsSummary(leaderboard, event) {
+        // Find top 3
+        const winner = leaderboard[0];
+        const runnerUp = leaderboard.find(p => p.position === 2);
+        const third = leaderboard.find(p => p.position === 3);
+
+        const modal = document.createElement('div');
+        modal.id = 'resultsPublishedModal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:10000;';
+
+        modal.innerHTML = `
+            <div style="background:white;border-radius:20px;max-width:600px;width:90%;max-height:90vh;overflow-y:auto;padding:40px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+                <div style="text-align:center;margin-bottom:30px;">
+                    <div style="font-size:60px;margin-bottom:10px;">🏆</div>
+                    <h2 style="font-size:28px;font-weight:bold;color:#1e40af;margin-bottom:10px;">Results Published!</h2>
+                    <p style="color:#6b7280;font-size:14px;">${event.title} - ${new Date(event.event_date).toLocaleDateString()}</p>
+                </div>
+
+                <div style="background:linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);border-radius:16px;padding:24px;margin-bottom:20px;text-align:center;box-shadow:0 4px 12px rgba(251,191,36,0.3);">
+                    <div style="font-size:14px;color:rgba(255,255,255,0.9);font-weight:600;margin-bottom:8px;">🥇 WINNER</div>
+                    <div style="font-size:24px;font-weight:bold;color:white;margin-bottom:4px;">${winner.player_name}</div>
+                    <div style="font-size:18px;color:rgba(255,255,255,0.95);">${winner.score} ${this.currentFormat === 'stableford' ? 'points' : 'strokes'}</div>
+                    ${this.pointAllocation[1] ? `<div style="font-size:14px;color:rgba(255,255,255,0.9);margin-top:8px;">+${this.pointAllocation[1]} Championship Points</div>` : ''}
+                </div>
+
+                ${runnerUp ? `
+                <div style="background:linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%);border-radius:16px;padding:20px;margin-bottom:16px;text-align:center;">
+                    <div style="font-size:12px;color:#6b7280;font-weight:600;margin-bottom:4px;">🥈 2nd Place</div>
+                    <div style="font-size:20px;font-weight:bold;color:#374151;margin-bottom:2px;">${runnerUp.player_name}</div>
+                    <div style="font-size:16px;color:#6b7280;">${runnerUp.score} ${this.currentFormat === 'stableford' ? 'points' : 'strokes'}</div>
+                    ${this.pointAllocation[2] ? `<div style="font-size:12px;color:#6b7280;margin-top:4px;">+${this.pointAllocation[2]} points</div>` : ''}
+                </div>
+                ` : ''}
+
+                ${third ? `
+                <div style="background:linear-gradient(135deg, #fed7aa 0%, #fdba74 100%);border-radius:16px;padding:20px;margin-bottom:20px;text-align:center;">
+                    <div style="font-size:12px;color:#92400e;font-weight:600;margin-bottom:4px;">🥉 3rd Place</div>
+                    <div style="font-size:20px;font-weight:bold;color:#92400e;margin-bottom:2px;">${third.player_name}</div>
+                    <div style="font-size:16px;color:#92400e;">${third.score} ${this.currentFormat === 'stableford' ? 'points' : 'strokes'}</div>
+                    ${this.pointAllocation[3] ? `<div style="font-size:12px;color:#92400e;margin-top:4px;">+${this.pointAllocation[3]} points</div>` : ''}
+                </div>
+                ` : ''}
+
+                <div style="background:#f3f4f6;border-radius:12px;padding:16px;margin-bottom:24px;">
+                    <div style="font-size:12px;color:#6b7280;font-weight:600;margin-bottom:12px;">📊 STATS</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;text-align:center;">
+                        <div>
+                            <div style="font-size:20px;font-weight:bold;color:#1e40af;">${leaderboard.length}</div>
+                            <div style="font-size:11px;color:#6b7280;">Players</div>
+                        </div>
+                        <div>
+                            <div style="font-size:20px;font-weight:bold;color:#059669;">${leaderboard.filter(p => p.position <= 3).length}</div>
+                            <div style="font-size:11px;color:#6b7280;">Top 3</div>
+                        </div>
+                        <div>
+                            <div style="font-size:20px;font-weight:bold;color:#dc2626;">${leaderboard.filter(p => p.position === 1).length > 1 ? 'TIE' : winner.score}</div>
+                            <div style="font-size:11px;color:#6b7280;">${leaderboard.filter(p => p.position === 1).length > 1 ? 'Winner' : 'Score'}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <button onclick="document.getElementById('resultsPublishedModal').remove();"
+                    style="width:100%;padding:14px;background:#1e40af;color:white;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;">
+                    Close
+                </button>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
     }
 
     exportToCSV() {

@@ -2058,11 +2058,8 @@ if (!DEBUG && typeof console !== 'undefined') {
   const originalDebug = console.debug;
 
   console.log = (...args) => {
-    // In production, only log chat messages that are errors or critical
-    // Also allow non-string logs (objects, arrays) to pass through
-    if (typeof args[0] !== 'string' || args[0].includes('[Chat] ❌') || args[0].includes('[Chat] ⚠️')) {
-      originalLog.apply(console, args);
-    }
+    // Allow all logs through - don't filter anything
+    originalLog.apply(console, args);
   };
 
   console.debug = () => {}; // Silence debug completely

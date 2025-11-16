@@ -371,14 +371,56 @@ CREATE INDEX IF NOT EXISTS idx_user_profiles_course_admin ON user_profiles(is_co
 CREATE INDEX IF NOT EXISTS idx_user_profiles_managed_course ON user_profiles(managed_course_id) WHERE managed_course_id IS NOT NULL;
 
 -- ============================================================================
--- STEP 7: Create/Update Helper Functions
+-- STEP 7: Fix caddy_id data type mismatch if needed
+-- ============================================================================
+
+-- Check and fix caddy_bookings.caddy_id type (TEXT -> UUID)
+DO $$
+DECLARE
+    v_caddy_id_type TEXT;
+BEGIN
+    -- Get current data type of caddy_id
+    SELECT data_type INTO v_caddy_id_type
+    FROM information_schema.columns
+    WHERE table_name = 'caddy_bookings'
+    AND column_name = 'caddy_id';
+
+    IF v_caddy_id_type = 'text' OR v_caddy_id_type = 'character varying' THEN
+        RAISE NOTICE '⚠️  caddy_id is TEXT, converting to UUID...';
+
+        -- Drop foreign key constraint if exists
+        ALTER TABLE caddy_bookings DROP CONSTRAINT IF EXISTS caddy_bookings_caddy_id_fkey;
+
+        -- Convert column type (this will fail if data is not valid UUID)
+        BEGIN
+            ALTER TABLE caddy_bookings
+            ALTER COLUMN caddy_id TYPE UUID USING caddy_id::UUID;
+
+            -- Re-add foreign key constraint
+            ALTER TABLE caddy_bookings
+            ADD CONSTRAINT caddy_bookings_caddy_id_fkey
+            FOREIGN KEY (caddy_id) REFERENCES caddy_profiles(id) ON DELETE SET NULL;
+
+            RAISE NOTICE '✅ Converted caddy_id from TEXT to UUID';
+        EXCEPTION WHEN OTHERS THEN
+            RAISE WARNING '❌ Could not convert caddy_id to UUID: %', SQLERRM;
+            RAISE NOTICE 'ℹ️  Will use type casting in queries instead';
+        END;
+    ELSE
+        RAISE NOTICE 'ℹ️  caddy_id is already UUID type';
+    END IF;
+END $$;
+
+-- ============================================================================
+-- STEP 8: Create/Update Helper Functions
 -- ============================================================================
 
 -- Function: Get pending bookings for course admin
+-- Handles both TEXT and UUID caddy_id types with casting
 CREATE OR REPLACE FUNCTION get_pending_bookings_for_course(p_course_id TEXT)
 RETURNS TABLE (
     booking_id UUID,
-    caddy_id UUID,
+    caddy_id TEXT,
     caddy_number TEXT,
     caddy_name TEXT,
     golfer_id TEXT,
@@ -389,12 +431,14 @@ RETURNS TABLE (
     special_requests TEXT,
     created_at TIMESTAMPTZ
 )
-LANGUAGE SQL
+LANGUAGE plpgsql
 STABLE
 AS $$
+BEGIN
+    RETURN QUERY
     SELECT
-        cb.id,
-        cb.caddy_id,
+        cb.id::UUID,
+        cb.caddy_id::TEXT,
         cp.caddy_number,
         cp.name,
         cb.user_id,
@@ -405,10 +449,18 @@ AS $$
         cb.special_requests,
         cb.created_at
     FROM caddy_bookings cb
-    LEFT JOIN caddy_profiles cp ON cb.caddy_id = cp.id
+    LEFT JOIN caddy_profiles cp ON (
+        CASE
+            WHEN cb.caddy_id IS NULL THEN false
+            WHEN cb.caddy_id::TEXT ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+            THEN cb.caddy_id::UUID = cp.id
+            ELSE false
+        END
+    )
     WHERE cb.course_id = p_course_id
         AND cb.status = 'pending'
     ORDER BY cb.booking_date ASC, cb.tee_time ASC, cb.created_at ASC;
+END;
 $$;
 
 -- ============================================================================

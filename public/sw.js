@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-PLUS-HANDICAP-CHECKBOX-V90
+// DEPLOYMENT VERSION: 2025-11-16-MENU-SWAP-V91
 
-const SW_VERSION = 'plus-handicap-checkbox-v90'; // Add Plus Handicap checkbox for mobile
+const SW_VERSION = 'menu-swap-v91'; // Swap cube and hamburger menu items
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

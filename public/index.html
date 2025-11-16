@@ -52851,7 +52851,7 @@ const GolferCaddyBooking = {
                                 <span class="material-symbols-outlined text-sm align-middle mr-1">calendar_today</span>
                                 Booking Date
                             </label>
-                            <input type="date" id="bookingDate" min="${today}" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500" required>
+                            <input type="date" id="bookingDate" value="${today}" min="${today}" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500" required>
                         </div>
 
                         <!-- Time Selection -->
@@ -52860,7 +52860,7 @@ const GolferCaddyBooking = {
                                 <span class="material-symbols-outlined text-sm align-middle mr-1">schedule</span>
                                 Tee Time
                             </label>
-                            <input type="time" id="bookingTime" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500" required>
+                            <input type="time" id="bookingTime" value="08:00" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500" required>
                         </div>
 
                         <!-- Holes Selection -->
@@ -52903,39 +52903,60 @@ const GolferCaddyBooking = {
     },
 
     async confirmBooking(caddyId) {
-        const date = document.getElementById('bookingDate').value;
-        const time = document.getElementById('bookingTime').value;
-        const holes = parseInt(document.getElementById('bookingHoles').value);
-        const requests = document.getElementById('bookingRequests').value;
+        console.log('[GolferCaddyBooking] confirmBooking called with caddyId:', caddyId);
+
+        const date = document.getElementById('bookingDate')?.value;
+        const time = document.getElementById('bookingTime')?.value;
+        const holes = parseInt(document.getElementById('bookingHoles')?.value);
+        const requests = document.getElementById('bookingRequests')?.value;
+
+        console.log('[GolferCaddyBooking] Form values:', { date, time, holes, requests });
 
         if (!date || !time) {
+            console.error('[GolferCaddyBooking] Missing date or time');
             NotificationManager.show('Please select date and time', 'error');
             return;
         }
 
-        if (!window.currentUserId) {
+        const userId = AppState.currentUser?.lineUserId || window.currentUserId;
+        console.log('[GolferCaddyBooking] User ID:', userId);
+
+        if (!userId) {
+            console.error('[GolferCaddyBooking] No user ID found');
             NotificationManager.show('Please login to book a caddy', 'error');
             return;
         }
 
         const caddy = this.allCaddies.find(c => c.id === caddyId);
-        if (!caddy) return;
+        if (!caddy) {
+            console.error('[GolferCaddyBooking] Caddy not found:', caddyId);
+            return;
+        }
+
+        console.log('[GolferCaddyBooking] Caddy found:', caddy.name);
 
         try {
+            console.log('[GolferCaddyBooking] Inserting booking into database...');
             // Create booking in database (matching actual schema)
             const { data, error } = await window.SupabaseDB.client
                 .from('caddy_bookings')
                 .insert({
-                    user_id: AppState.currentUser?.lineUserId || window.currentUserId,
+                    user_id: userId,
                     caddy_id: caddyId,
                     course_name: caddy.course_name,
                     booking_date: date,
                     tee_time: time,
+                    holes: holes,
                     status: 'pending'
                 })
                 .select();
 
-            if (error) throw error;
+            if (error) {
+                console.error('[GolferCaddyBooking] Database error:', error);
+                throw error;
+            }
+
+            console.log('[GolferCaddyBooking] Booking created successfully:', data);
 
             // Close modal
             document.querySelector('.fixed.inset-0')?.remove();
@@ -52948,7 +52969,7 @@ const GolferCaddyBooking = {
 
         } catch (error) {
             console.error('[GolferCaddyBooking] Error creating booking:', error);
-            NotificationManager.show('Failed to create booking. Please try again.', 'error');
+            NotificationManager.show(`Failed to create booking: ${error.message}`, 'error');
         }
     },
 

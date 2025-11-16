@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-REGISTRATION-NOTIFICATIONS-V95
+// DEPLOYMENT VERSION: 2025-11-16-ACTIONABLE-NOTIFICATIONS-V96
 
-const SW_VERSION = 'registration-notifications-v95'; // Enhanced notifications for pending registrations
+const SW_VERSION = 'actionable-notifications-v96'; // Show requests with approve/decline in notification
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

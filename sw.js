@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-PLUS-HANDICAP-FIX-V89
+// DEPLOYMENT VERSION: 2025-11-16-PLUS-HANDICAP-CHECKBOX-V90
 
-const SW_VERSION = 'plus-handicap-fix-v89'; // Fix plus handicap input in Live Scoring
+const SW_VERSION = 'plus-handicap-checkbox-v90'; // Add Plus Handicap checkbox for mobile
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

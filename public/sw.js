@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-TRGG-DEBUG-V68
+// DEPLOYMENT VERSION: 2025-11-15-CREATOR-FIX-V69
 
-const SW_VERSION = 'trgg-debug-v68'; // Debug TRGG logo display issue
+const SW_VERSION = 'creator-fix-v69'; // Fix event detail to show creator name for golfer events
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

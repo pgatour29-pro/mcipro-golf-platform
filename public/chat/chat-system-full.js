@@ -2059,7 +2059,8 @@ if (!DEBUG && typeof console !== 'undefined') {
 
   console.log = (...args) => {
     // In production, only log chat messages that are errors or critical
-    if (args[0]?.includes('[Chat] ❌') || args[0]?.includes('[Chat] ⚠️')) {
+    // Also allow non-string logs (objects, arrays) to pass through
+    if (typeof args[0] !== 'string' || args[0].includes('[Chat] ❌') || args[0].includes('[Chat] ⚠️')) {
       originalLog.apply(console, args);
     }
   };

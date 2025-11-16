@@ -36758,12 +36758,18 @@ class SocietyGolfSupabase {
 
         console.log('[SocietyGolfDB] Loading events for organizer:', organizerId);
 
+        // Get the society profile to find the actual organizer_id
+        const profile = await this.getSocietyProfile(organizerId);
+        const actualOrganizerId = profile?.organizerId || organizerId;
+
+        console.log('[SocietyGolfDB] User ID:', organizerId, '-> Society organizer_id:', actualOrganizerId);
+
         // Filter to ONLY show events created by this specific organizer
-        // This applies to ALL societies - each society only sees their own events
+        // Each society only sees their own events (no golfer events, no other societies)
         const { data: events, error: eventsError } = await window.SupabaseDB.client
             .from('society_events')
             .select('*')
-            .eq('organizer_id', organizerId);
+            .eq('organizer_id', actualOrganizerId);
 
         if (eventsError) {
             console.error('[SocietyGolfDB] Error loading events:', eventsError);

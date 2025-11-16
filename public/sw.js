@@ -1,54 +1,58 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-CADDY-BOOKING-FIX-V1
+// DEPLOYMENT VERSION: 2025-11-16-AUTO-UPDATE-V2
 
-const SW_VERSION = 'caddy-booking-fix-v1'; // Fixed goToCaddieBooking global scope issue + added debug logging
+const SW_VERSION = 'auto-update-v2'; // Auto-update service worker - no more manual cache clearing needed
 
 self.addEventListener('install', event => {
-    console.log('[ServiceWorker] Installing version:', SW_VERSION);
-    // Optional pre-cache can go here
-    self.skipWaiting(); // Let this install finish quickly
+    console.log('[ServiceWorker] Installing NEW version:', SW_VERSION);
+    // FORCE immediate activation - don't wait
+    self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
-    console.log('[ServiceWorker] Activating version:', SW_VERSION);
+    console.log('[ServiceWorker] Activating NEW version:', SW_VERSION);
 
     event.waitUntil((async () => {
-        // Clean old caches if you named them with versions
+        // DELETE ALL CACHES - force fresh content
         const cacheNames = await caches.keys();
-        await Promise.all(
-            cacheNames
-                .filter(name => name.startsWith('mcipro-') && !name.includes(SW_VERSION))
-                .map(name => {
-                    console.log('[ServiceWorker] Deleting old cache:', name);
-                    return caches.delete(name);
-                })
-        );
+        await Promise.all(cacheNames.map(name => {
+            console.log('[ServiceWorker] 🗑️ Deleting cache:', name);
+            return caches.delete(name);
+        }));
 
-        // ONLY call claim() here, inside activate event's waitUntil
+        // Take control of all pages IMMEDIATELY
         await self.clients.claim();
 
-        // Tell all tabs there is a new SW
+        // Notify all tabs to reload automatically
         const allClients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
         for (const client of allClients) {
-            client.postMessage({ type: 'SW_ACTIVATED', version: SW_VERSION });
+            console.log('[ServiceWorker] 📢 Notifying client to reload');
+            client.postMessage({
+                type: 'SW_UPDATED',
+                version: SW_VERSION,
+                action: 'RELOAD' // Tell page to reload itself
+            });
         }
 
-        console.log('[ServiceWorker] Activated version:', SW_VERSION);
+        console.log('[ServiceWorker] ✅ Activated NEW version:', SW_VERSION);
     })());
 });
 
-// Fetch strategy: HTML always fresh, let browser handle asset caching based on headers
+// Fetch strategy: ALWAYS FRESH - no caching, always network
 self.addEventListener('fetch', event => {
     const { request } = event;
 
-    // Always network for HTML navigation
-    if (request.mode === 'navigate') {
-        event.respondWith(fetch(request, { cache: 'no-store' }));
-        return;
-    }
-
-    // For all other requests, let the browser handle caching based on Cache-Control headers from Vercel
-    // This respects the immutable + max-age headers we set in vercel.json
+    // ALWAYS get fresh content from network - NO CACHING
+    event.respondWith(
+        fetch(request, { cache: 'no-store' })
+            .catch(() => {
+                // If network fails, show offline page
+                return new Response('Offline - please check your connection', {
+                    status: 503,
+                    headers: { 'Content-Type': 'text/plain' }
+                });
+            })
+    );
 });
 
 self.addEventListener('message', event => {

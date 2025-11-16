@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-15-EVENT-DATA-DEBUG-V74
+// DEPLOYMENT VERSION: 2025-11-15-ALERT-DEBUG-V75
 
-const SW_VERSION = 'event-data-debug-v74'; // Debug event data in detail modal
+const SW_VERSION = 'alert-debug-v75'; // Force alert to check code execution
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

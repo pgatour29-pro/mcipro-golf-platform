@@ -36756,26 +36756,14 @@ class SocietyGolfSupabase {
     async getOrganizerEventsWithStats(organizerId) {
         await this.waitForSupabase();
 
-        // Check if this organizer is Travellers Rest Golf Group
-        const profile = await this.getSocietyProfile(organizerId);
-        const isTravellers = profile?.societyName === 'Travellers Rest Golf Group';
+        console.log('[SocietyGolfDB] Loading events for organizer:', organizerId);
 
-        console.log('[SocietyGolfDB] Organizer:', organizerId, 'Society:', profile?.societyName, 'Is Travellers:', isTravellers);
-
-        // Special case: Travellers Rest Golf Group sees ALL events
-        let query = window.SupabaseDB.client
+        // Filter to ONLY show events created by this specific organizer
+        // This applies to ALL societies - each society only sees their own events
+        const { data: events, error: eventsError } = await window.SupabaseDB.client
             .from('society_events')
-            .select('*');
-
-        // Only filter by organizer_id if NOT Travellers
-        // Also exclude golfer-created events (only show society events)
-        if (!isTravellers) {
-            query = query
-                .eq('organizer_id', organizerId)
-                .not('creator_type', 'eq', 'golfer'); // Exclude golfer-created events
-        }
-
-        const { data: events, error: eventsError } = await query;
+            .select('*')
+            .eq('organizer_id', organizerId);
 
         if (eventsError) {
             console.error('[SocietyGolfDB] Error loading events:', eventsError);

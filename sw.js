@@ -1,7 +1,7 @@
 // SERVICE WORKER - Production-Grade Caching for MciPro Golf Platform
-// DEPLOYMENT VERSION: 2025-11-16-ORGANIZER-CALENDAR-FILTER-V82
+// DEPLOYMENT VERSION: 2025-11-16-ORGANIZER-CALENDAR-GLOBAL-V83
 
-const SW_VERSION = 'organizer-calendar-filter-v82'; // Filter society organizer calendar to show only their events
+const SW_VERSION = 'organizer-calendar-global-v83'; // Global filter: all societies see only their own events
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing version:', SW_VERSION);

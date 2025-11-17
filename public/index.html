@@ -52326,7 +52326,7 @@ const GolferCaddyBooking = {
             const userId = AppState.currentUser?.lineUserId || window.currentUserId;
             if (!userId) return;
 
-            const { data, error } = await window.SupabaseDB.client
+            const { data, error} = await window.SupabaseDB.client
                 .from('caddy_bookings')
                 .select(`
                     *,
@@ -52336,12 +52336,13 @@ const GolferCaddyBooking = {
                     )
                 `)
                 .eq('user_id', userId)
+                .neq('status', 'cancelled')
                 .order('booking_date', { ascending: false });
 
             if (error) throw error;
 
             this.myBookings = data || [];
-            console.log(`[GolferCaddyBooking] Loaded ${this.myBookings.length} bookings`);
+            console.log(`[GolferCaddyBooking] Loaded ${this.myBookings.length} active bookings`);
 
         } catch (error) {
             console.error('[GolferCaddyBooking] Error loading bookings:', error);
@@ -52914,6 +52915,17 @@ const GolferCaddyBooking = {
     async confirmBooking(caddyId) {
         console.log('[GolferCaddyBooking] confirmBooking called with caddyId:', caddyId);
 
+        // Prevent double-submission
+        const confirmBtn = event?.target?.closest('button');
+        if (confirmBtn?.disabled) {
+            console.log('[GolferCaddyBooking] Button already disabled, preventing duplicate submission');
+            return;
+        }
+        if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = '<span class="material-symbols-outlined text-sm mr-2 animate-spin">progress_activity</span><span>Processing...</span>';
+        }
+
         const date = document.getElementById('bookingDate')?.value;
         const time = document.getElementById('bookingTime')?.value;
         const holes = parseInt(document.getElementById('bookingHoles')?.value);
@@ -52924,6 +52936,7 @@ const GolferCaddyBooking = {
         if (!date || !time) {
             console.error('[GolferCaddyBooking] Missing date or time');
             NotificationManager.show('Please select date and time', 'error');
+            if (confirmBtn) confirmBtn.disabled = false;
             return;
         }
 
@@ -52933,12 +52946,14 @@ const GolferCaddyBooking = {
         if (!userId) {
             console.error('[GolferCaddyBooking] No user ID found');
             NotificationManager.show('Please login to book a caddy', 'error');
+            if (confirmBtn) confirmBtn.disabled = false;
             return;
         }
 
         const caddy = this.allCaddies.find(c => c.id === caddyId);
         if (!caddy) {
             console.error('[GolferCaddyBooking] Caddy not found:', caddyId);
+            if (confirmBtn) confirmBtn.disabled = false;
             return;
         }
 
@@ -52968,17 +52983,23 @@ const GolferCaddyBooking = {
             console.log('[GolferCaddyBooking] Booking created successfully:', data);
 
             // Close modal
-            document.querySelector('.fixed.inset-0')?.remove();
+            const modal = document.querySelector('.fixed.inset-0');
+            if (modal) modal.remove();
 
             // Show success
-            NotificationManager.show(`Booking request sent for ${caddy.name}! Awaiting confirmation from golf course.`, 'success', 5000);
+            NotificationManager.show(`✅ Booking request sent for ${caddy.name}! Awaiting confirmation from golf course.`, 'success', 5000);
 
-            // Reload bookings
+            // Reload bookings to show new booking
             await this.loadMyBookings();
+            this.renderBookingsList();
 
         } catch (error) {
             console.error('[GolferCaddyBooking] Error creating booking:', error);
             NotificationManager.show(`Failed to create booking: ${error.message}`, 'error');
+            if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = '<span class="material-symbols-outlined text-sm mr-2">check_circle</span><span>Confirm Booking</span>';
+            }
         }
     },
 

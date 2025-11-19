@@ -14,6 +14,8 @@
  * ===========================================================================
  */
 
+const BUDDIES_ENABLED = false;
+
 window.GolfBuddiesSystem = {
     buddies: [],
     savedGroups: [],
@@ -25,13 +27,18 @@ window.GolfBuddiesSystem = {
      * Initialize the system
      */
     async init() {
+        if (!BUDDIES_ENABLED) {
+            console.log('[Buddies] Disabled - skipping initialization');
+            return false;
+        }
+
         console.log('[Buddies] Initializing Golf Buddies System...');
 
         // Get current user ID
         this.currentUserId = AppState.currentUser?.lineUserId;
 
         if (!this.currentUserId) {
-            console.warn('[Buddies] No user ID found - will retry');
+            console.warn('[Buddies] No user ID found - buddies disabled or not authenticated');
             return false; // Indicate initialization failed
         }
 

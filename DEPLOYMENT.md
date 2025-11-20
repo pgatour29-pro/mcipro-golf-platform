@@ -22,7 +22,7 @@ This script automatically:
 1. Updates the service worker BUILD_TIMESTAMP
 2. Commits your changes
 3. Pushes to GitHub
-4. Triggers Netlify auto-deploy
+4. Triggers Vercel auto-deploy
 
 ---
 
@@ -44,8 +44,8 @@ git commit -m "Deploy: Your message here"
 git push origin master
 ```
 
-### 3. Netlify Auto-Deploy
-Netlify will automatically build and deploy within 1-2 minutes.
+### 3. Vercel Auto-Deploy
+Vercel will automatically deploy within 1–2 minutes.
 
 ---
 
@@ -133,7 +133,7 @@ After deploying:
 
 **For every deployment:**
 1. Run `deploy.bat` (or `deploy.sh`)
-2. Wait 1-2 minutes for Netlify
+2. Wait 1–2 minutes for Vercel
 3. Hard refresh your browser (Ctrl+Shift+R)
 4. Done! ✅
 
@@ -153,7 +153,7 @@ After deploying:
 ## 🐛 Troubleshooting
 
 ### "I still see old code after deploying"
-1. Check Netlify deploy status - make sure it succeeded
+1. Check Vercel deploy status - make sure it succeeded
 2. Verify BUILD_TIMESTAMP was updated in sw.js
 3. Unregister service worker manually (see Force Cache Clear above)
 4. Hard refresh (Ctrl+Shift+R)
@@ -203,7 +203,7 @@ Before going live with traffic:
 If you encounter deployment issues:
 1. Check this guide first
 2. Review the console logs for errors
-3. Verify Netlify build succeeded
+3. Verify Vercel deploy succeeded
 4. Check service worker version matches deployment
 
 **This deployment system is now production-ready and handles cache invalidation automatically!**

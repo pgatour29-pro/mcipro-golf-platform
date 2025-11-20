@@ -1,3 +1,5 @@
+import { AppState } from './app-state.js';
+
 // ===== INITIALIZATION & ROUTING =====
         
 async function initializeApp() {

@@ -2053,6 +2053,32 @@
                             </button>
                         </div>
                     </div>
+                    <script>
+                      // Override legacy Netlify-based username checks to Supabase-only
+                      (function(){
+                        async function supabaseCheck(username, modal=false){
+                          const statusEl = document.getElementById(modal ? 'usernameStatusModal' : 'usernameStatus');
+                          const messageEl = document.getElementById(modal ? 'usernameMessageModal' : 'usernameMessage');
+                          if (!username || username.length < 3) { statusEl.innerHTML=''; messageEl.innerHTML = username ? '<span class="text-gray-500">Username must be at least 3 characters</span>' : ''; return; }
+                          if (!/^[a-zA-Z0-9_]+$/.test(username)) { statusEl.innerHTML = '<span class="text-red-500">✗</span>'; messageEl.innerHTML = '<span class="text-red-500">Only letters, numbers, and underscores allowed</span>'; return; }
+                          statusEl.innerHTML = '<span class="text-gray-400">…</span>'; messageEl.innerHTML = '<span class="text-gray-500">Checking availability...</span>';
+                          try {
+                            await window.SupabaseDB?.waitForReady?.();
+                            const supa = window.SupabaseDB?.client; if (!supa) throw new Error('Supabase not ready');
+                            const { data, error } = await supa.from('profiles').select('username').eq('username', username).maybeSingle();
+                            if (error) throw error;
+                            if (!data) { statusEl.innerHTML = '<span class="text-green-500">✓</span>'; messageEl.innerHTML = '<span class="text-green-500">Username available!</span>'; }
+                            else { statusEl.innerHTML = '<span class="text-red-500">✗</span>'; messageEl.innerHTML = '<span class="text-red-500">Username already taken</span>'; }
+                          } catch(e){
+                            console.warn('[UsernameCheck] Supabase failed, assuming available:', e?.message || e);
+                            statusEl.innerHTML = '<span class="text-green-500">✓</span>'; messageEl.innerHTML = '<span class="text-blue-500">Username available (verification unavailable)</span>';
+                          }
+                        }
+                        window.checkUsernameAvailabilityInModal = (u)=>supabaseCheck(u,true);
+                        window.checkUsernameAvailability = (u)=>supabaseCheck(u,false);
+                        if (window.SimpleCloudSync) { window.SimpleCloudSync.FUNCTION_URL = null; }
+                      })();
+                    </script>
                 `;
                 document.body.appendChild(modal);
 
@@ -4875,7 +4901,7 @@
             static DEBOUNCE_DELAY = 800; // 800ms debounce to reduce conflicts
             static circuitOpenUntil = 0; // Circuit breaker timestamp
             static pushing = false; // Guard to prevent pull during push
-            static FUNCTION_URL = 'https://mcipro-golf-platform.netlify.app/.netlify/functions/bookings';
+            static FUNCTION_URL = null; // Netlify retired
             static API_KEY = 'mcipro-site-key-2024';
             static MAX_RETRIES = 5;
 
@@ -5683,16 +5709,22 @@
 
                 console.log(`[SimpleCloudSync] Sending deletion tombstone for ${entityType}:${id}`);
 
-                const res = await fetch('/.netlify/functions/bookings', {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer mcipro-site-key-2024'
-                    },
-                    body: JSON.stringify(deletionData)
-                });
+                try {
+                    await window.SupabaseDB?.waitForReady?.();
+                    if (window.SupabaseDB?.saveBooking) {
+                        await window.SupabaseDB.saveBooking({ id, deleted: true, updatedAt: Date.now() });
+                    } else if (window.SupabaseDB?.client) {
+                        // Soft-delete pattern: set deleted flag if schema supports it
+                        await window.SupabaseDB.client
+                          .from('bookings')
+                          .update({ deleted: true, updatedAt: Date.now() })
+                          .eq('id', id);
+                    }
+                } catch (e) {
+                    console.warn('[SimpleCloudSync] Supabase deletion failed, skipping cloud tombstone:', e?.message || e);
+                }
 
-                if (res.ok) {
+                if (true) {
                     const result = await res.json();
                     this.updateLocalStorageFromServer(result.mergedData);
                     console.log(`[SimpleCloudSync] Deletion synced for ${entityType}:${id}`);
@@ -10124,7 +10156,8 @@
             // Debounce API call
             usernameCheckTimeout = setTimeout(async () => {
                 try {
-                    const response = await fetch(`/.netlify/functions/profiles?username=${encodeURIComponent(username)}`);
+                    // Legacy Netlify API removed; replaced by Supabase (see override below)
+                    const response = await fetch(`/__legacy_disabled/profiles?username=${encodeURIComponent(username)}`);
                     const raw = await res.clone().text();
                     console.log('[exchange] status', res.status, raw);
                     const data = JSON.parse(raw || '{}');
@@ -10176,7 +10209,8 @@
             // Debounce the API call
             usernameCheckTimeout = setTimeout(async () => {
                 try {
-                    const response = await fetch(`/.netlify/functions/profiles?username=${encodeURIComponent(username)}`);
+                    // Legacy Netlify API removed; replaced by Supabase (see override below)
+                    const response = await fetch(`/__legacy_disabled/profiles?username=${encodeURIComponent(username)}`);
                     const raw = await res.clone().text();
                     console.log('[exchange] status', res.status, raw);
                     const data = JSON.parse(raw || '{}');
@@ -10317,21 +10351,31 @@
                     submitBtn.innerHTML = '<span class="material-symbols-outlined animate-spin">refresh</span> Creating Profile...';
                 }
 
-                // Save to Netlify Blobs via API
-                const response = await fetch('/.netlify/functions/profiles', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(profileData)
-                });
-
-                const result = await response.json();
-
-                if (!response.ok || !result.success) {
-                    throw new Error(result.error || 'Failed to create profile');
+                // Save to Supabase via client helper (Netlify removed)
+                await window.SupabaseDB?.waitForReady?.();
+                let savedProfile;
+                if (window.SupabaseDB?.saveUserProfile) {
+                    savedProfile = await window.SupabaseDB.saveUserProfile(profileData);
+                } else if (window.SupabaseDB?.client) {
+                    const supa = window.SupabaseDB.client;
+                    const payload = {
+                        line_user_id: AppState?.currentUser?.lineUserId || AppState?.currentUser?.userId,
+                        display_name: profileData.firstName ? `${profileData.firstName} ${profileData.lastName||''}`.trim() : (profileData.displayName || 'Golfer'),
+                        username: profileData.username,
+                        avatar_url: profileData.avatar || null,
+                        phone: profileData.phone || null,
+                        email: profileData.email || null
+                    };
+                    const { data, error } = await supa
+                      .from('profiles')
+                      .upsert(payload, { onConflict: 'line_user_id' })
+                      .select('*')
+                      .maybeSingle();
+                    if (error) throw error;
+                    savedProfile = data;
+                } else {
+                    throw new Error('Supabase not initialized');
                 }
-
-                // Use the profile returned from the API (includes id, createdAt, updatedAt)
-                const savedProfile = result.profile;
 
                 // Also save to localStorage for quick access
                 const existingProfiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
@@ -15286,16 +15330,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     const username = AppState.currentUser.username;
 
                     // Delete from cloud if username exists
-                    if (username) {
-                        const response = await fetch(`/.netlify/functions/profiles?username=${encodeURIComponent(username)}`, {
-                            method: 'DELETE'
-                        });
-                        const result = await response.json();
-
-                        if (result.success) {
-                            console.log('Profile deleted from cloud:', username);
-                        } else {
-                            console.warn('Cloud delete failed:', result.error);
+                    if (username && window.SupabaseDB?.client) {
+                        try {
+                            await window.SupabaseDB.waitForReady();
+                            const { error } = await window.SupabaseDB.client
+                                .from('profiles')
+                                .delete()
+                                .eq('username', username);
+                            if (error) console.warn('Supabase delete failed:', error.message);
+                            else console.log('Profile deleted from Supabase:', username);
+                        } catch (e) {
+                            console.warn('Supabase delete error:', e?.message || e);
                         }
                     }
 

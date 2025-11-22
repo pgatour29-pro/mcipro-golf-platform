@@ -4863,15 +4863,8 @@
                 this.startRealtimeSync();
             }
 
-            static startRealtimeSync() {
-                console.log('[SimpleCloudSync] startRealtimeSync called.');
-                // Wait for SupabaseDB to be ready
-                if (!window.SupabaseDB || !window.SupabaseDB.ready) {
-                    console.log('[SimpleCloudSync] Waiting for Supabase...');
-                    setTimeout(() => this.startRealtimeSync(), 500);
-                    return;
-                }
-
+            static async startRealtimeSync() {
+                await window.SupabaseDB.waitForReady();
                 console.log('[SimpleCloudSync] 🚀 Starting Realtime WebSocket subscriptions (0 polling)');
 
                 // Subscribe to bookings changes via WebSocket
@@ -5897,6 +5890,71 @@
                 }
             }
         });
+
+        window.SupabaseDB.subscribeToBookings = function(callback) {
+            const channel = this.client
+                .channel('bookings-changes')
+                .on('postgres_changes',
+                    { event: '*', schema: 'public', table: 'bookings' },
+                    (payload) => {
+                        console.log('[Supabase Realtime] Booking changed:', payload);
+                        callback(payload);
+                    }
+                )
+                .subscribe();
+
+            console.log('[Supabase Realtime] Subscribed to bookings changes');
+            return channel;
+        }
+
+        window.SupabaseDB.subscribeToProfiles = function(callback) {
+            const channel = this.client
+                .channel('profiles-changes')
+                .on('postgres_changes',
+                    { event: '*', schema: 'public', table: 'user_profiles' },
+                    (payload) => {
+                        console.log('[Supabase Realtime] Profile changed:', payload);
+                        callback(payload);
+                    }
+                )
+                .subscribe();
+
+            console.log('[Supabase Realtime] Subscribed to profile changes');
+            return channel;
+        }
+
+        window.SupabaseDB.subscribeToCaddyBookings = function(callback) {
+            const channel = this.client
+                .channel('caddy-bookings-changes')
+                .on('postgres_changes',
+                    { event: '*', schema: 'public', table: 'caddy_bookings' },
+                    (payload) => {
+                        console.log('[Supabase Realtime] Caddy booking changed:', payload);
+                        callback(payload);
+                    }
+                )
+                .subscribe();
+
+            console.log('[Supabase Realtime] ✅ Subscribed to caddy_bookings changes');
+            return channel;
+        }
+
+        window.SupabaseDB.subscribeToCaddies = function(callback) {
+            const channel = this.client
+                .channel('caddies-changes')
+                .on('postgres_changes',
+                    { event: '*', schema: 'public', table: 'caddies' },
+                    (payload) => {
+                        console.log('[Supabase Realtime] Caddy availability changed:', payload);
+                        callback(payload);
+                    }
+                )
+                .subscribe();
+
+            console.log('[Supabase Realtime] ✅ Subscribed to caddies changes');
+            return channel;
+        }
+
 
         // FIXED: Force sync when page becomes visible (user returns to app)
         document.addEventListener('visibilitychange', () => {
@@ -58005,5 +58063,109 @@ showOrganizerTab = function(tabName) {
             if (e.key === 'Escape') closeMobileDrawer();
         });
     </script>
+    <script>
+        function runSanityCheck() {
+            console.log('[Sanity Check] Starting scorecard saving test...');
+
+            // 1. Create a mock player
+            const mockPlayer = {
+                id: 'sanity_check_player',
+                name: 'Sanity Check Player',
+                handicap: 18,
+                lineUserId: 'sanity_check_user'
+            };
+
+            // 2. Set up the LiveScorecardManager instance
+            LiveScorecardManager.players = [mockPlayer];
+            document.getElementById('scorecardCourseSelect').value = 'burapha';
+
+            // 3. Start the round
+            LiveScorecardManager.startRound();
+
+            // 4. Simulate entering scores
+            for (let i = 1; i <= 18; i++) {
+                LiveScorecardManager.currentHole = i;
+                LiveScorecardManager.currentPlayerId = mockPlayer.id;
+                LiveScorecardManager.currentScore = '4'; // Bogey on a par 3, Par on a par 4, Birdie on a par 5
+                LiveScorecardManager.saveCurrentScore();
+            }
+
+            // 5. Save to history
+            LiveScorecardManager.saveRoundToHistory(mockPlayer);
+
+            console.log('[Sanity Check] Test complete. Check console for errors.');
+            NotificationManager.show('Sanity check complete. See console for details.', 'info');
+        }
+    </script>
+    <div style="position: fixed; bottom: 10px; right: 10px; z-index: 9999;">
+        <button onclick="runSanityCheck()" style="padding: 10px; background: #ffc107; border: none; border-radius: 5px; cursor: pointer;">
+            Run Scorecard Sanity Check
+        </button>
+    </div>
+    <script>
+    window.SupabaseDB.subscribeToBookings = function(callback) {
+        const channel = this.client
+            .channel('bookings-changes')
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'bookings' },
+                (payload) => {
+                    console.log('[Supabase Realtime] Booking changed:', payload);
+                    callback(payload);
+                }
+            )
+            .subscribe();
+
+        console.log('[Supabase Realtime] Subscribed to bookings changes');
+        return channel;
+    }
+
+    window.SupabaseDB.subscribeToProfiles = function(callback) {
+        const channel = this.client
+            .channel('profiles-changes')
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'user_profiles' },
+                (payload) => {
+                    console.log('[Supabase Realtime] Profile changed:', payload);
+                    callback(payload);
+                }
+            )
+            .subscribe();
+
+        console.log('[Supabase Realtime] Subscribed to profile changes');
+        return channel;
+    }
+
+    window.SupabaseDB.subscribeToCaddyBookings = function(callback) {
+        const channel = this.client
+            .channel('caddy-bookings-changes')
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'caddy_bookings' },
+                (payload) => {
+                    console.log('[Supabase Realtime] Caddy booking changed:', payload);
+                    callback(payload);
+                }
+            )
+            .subscribe();
+
+        console.log('[Supabase Realtime] ✅ Subscribed to caddy_bookings changes');
+        return channel;
+    }
+
+    window.SupabaseDB.subscribeToCaddies = function(callback) {
+        const channel = this.client
+            .channel('caddies-changes')
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'caddies' },
+                (payload) => {
+                    console.log('[Supabase Realtime] Caddy availability changed:', payload);
+                    callback(payload);
+                }
+            )
+            .subscribe();
+
+        console.log('[Supabase Realtime] ✅ Subscribed to caddies changes');
+        return channel;
+    }
+</script>
 </body>
 </html>

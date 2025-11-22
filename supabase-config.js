@@ -932,4 +932,4 @@ class SupabaseClient {
 // Global instance
 window.SupabaseDB = new SupabaseClient();
 
-console.log('[Supabase] Configuration loaded - waiting for library...');
+

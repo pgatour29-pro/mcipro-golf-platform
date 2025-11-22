@@ -4864,6 +4864,7 @@
             }
 
             static startRealtimeSync() {
+                console.log('[SimpleCloudSync] startRealtimeSync called.');
                 // Wait for SupabaseDB to be ready
                 if (!window.SupabaseDB || !window.SupabaseDB.ready) {
                     console.log('[SimpleCloudSync] Waiting for Supabase...');
@@ -4895,6 +4896,7 @@
                     }
                 });
 
+                console.log('[SimpleCloudSync] About to subscribe to caddy bookings. SupabaseDB object:', window.SupabaseDB);
                 // Subscribe to caddy bookings changes via WebSocket
                 window.SupabaseDB.subscribeToCaddyBookings((payload) => {
                     console.log('[SimpleCloudSync] 🔄 Caddy booking update via WebSocket:', payload.eventType);
@@ -8768,7 +8770,9 @@
         });
 
         window.addEventListener('unhandledrejection', function(event) {
-            console.error('🚨 UNHANDLED PROMISE REJECTION:', event.reason);
+            console.error('🚨 UNHANDLED PROMISE REJECTION:', event);
+            console.error('Reason:', event.reason);
+            console.error('Promise:', event.promise);
         });
 
         // Application Initialization
@@ -24525,7 +24529,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                             <span class="material-symbols-outlined">backspace</span>
                                         </button>
                                         <button onclick="LiveScorecardManager.enterDigit(0)" class="keypad-btn">0</button>
-                                        <button onclick="LiveScorecardManager.saveCurrentScore()" class="keypad-btn bg-green-100 text-green-700">
+                                        <button onclick="console.log('Save button clicked!'); LiveScorecardManager.saveCurrentScore()" class="keypad-btn bg-green-100 text-green-700">
                                             <span class="material-symbols-outlined">check</span>
                                         </button>
                                     </div>
@@ -37623,12 +37627,16 @@ class SocietyGolfSupabase {
             .single();
 
         if (error) {
-            console.error('[SocietyGolf] ❌ Error saving score:', {
+            console.error('[SocietyGolf] ❌ Error saving score:', JSON.stringify({
+                message: error.message,
+                details: error.details,
+                hint: error.hint,
+                code: error.code,
+            }, null, 2));
+
+            // Detailed log for deeper debugging
+            console.error('[SocietyGolf] Full error object:', {
                 error: error,
-                errorMessage: error.message,
-                errorDetails: error.details,
-                errorHint: error.hint,
-                errorCode: error.code,
                 tableName: 'scores',
                 attemptedOperation: 'UPSERT',
                 payloadSent: {
@@ -40107,24 +40115,30 @@ class LiveScorecardSystem {
     }
 
     async saveCurrentScore() {
+        console.log('[LiveScorecard] saveCurrentScore called.');
         if (!this.currentPlayerId || !this.currentScore) {
             NotificationManager.show('Enter a score first', 'warning');
+            console.warn('[LiveScorecard] saveCurrentScore aborted: no current player or score.');
             return;
         }
 
         const score = parseInt(this.currentScore);
         if (score < 1 || score > 15) {
             NotificationManager.show('Invalid score (1-15)', 'error');
+            console.warn(`[LiveScorecard] saveCurrentScore aborted: invalid score of ${score}.`);
             return;
         }
 
+        console.log(`[LiveScorecard] Processing score ${score} for player ${this.currentPlayerId} on hole ${this.currentHole}.`);
+
         // SCRAMBLE MODE: Apply score to ALL players
         if (this.scoringFormats.includes('scramble')) {
-            console.log(`[LiveScorecard] SCRAMBLE: Applying team score ${score} to all ${this.players.length} players`);
+            console.log(`[LiveScorecard] SCRAMBLE MODE: Applying team score ${score} to all ${this.players.length} players`);
 
             // Save score for ALL players
             for (const player of this.players) {
                 const scorecardId = this.scorecards[player.id];
+                console.log(`[LiveScorecard] Scramble save for ${player.name} with scorecardId: ${scorecardId}`);
 
                 // Update local cache
                 if (!this.scoresCache[player.id]) {
@@ -40139,6 +40153,7 @@ class LiveScorecardSystem {
 
                 // Save to database if online
                 if (scorecardId && !scorecardId.startsWith('local_')) {
+                    console.log(`[LiveScorecard] Saving scramble score to DB for ${player.name}.`);
                     window.SocietyGolfDB.saveScore(
                         scorecardId,
                         this.currentHole,
@@ -40147,10 +40162,11 @@ class LiveScorecardSystem {
                         strokeIndex,
                         player.handicap
                     ).catch(err => {
-                        console.error(`[LiveScorecard] Error saving score for ${player.name}:`, err);
+                        console.error(`[LiveScorecard] CRITICAL: Error saving scramble score for ${player.name}:`, err);
                     });
                 } else if (scorecardId && scorecardId.startsWith('local_')) {
                     // Save offline
+                    console.log(`[LiveScorecard] Saving scramble score OFFLINE for ${player.name}.`);
                     const localScores = JSON.parse(localStorage.getItem(`scores_${scorecardId}`) || '{}');
                     localScores[this.currentHole] = {
                         hole_number: this.currentHole,
@@ -40161,6 +40177,8 @@ class LiveScorecardSystem {
                         recorded_at: new Date().toISOString()
                     };
                     localStorage.setItem(`scores_${scorecardId}`, JSON.stringify(localScores));
+                } else {
+                    console.warn(`[LiveScorecard] No scorecardId found for ${player.name} in scramble mode.`);
                 }
             }
 
@@ -40186,6 +40204,7 @@ class LiveScorecardSystem {
         // NORMAL MODE: Continue with single player scoring
         const scorecardId = this.scorecards[this.currentPlayerId];
         const player = this.players.find(p => p.id === this.currentPlayerId);
+        console.log(`[LiveScorecard] NORMAL MODE save for ${player.name} with scorecardId: ${scorecardId}`);
 
         // Get hole data from courseData
         const holeData = this.courseData?.holes?.[this.currentHole - 1];
@@ -40193,6 +40212,7 @@ class LiveScorecardSystem {
         const strokeIndex = holeData?.stroke_index || this.currentHole;
 
         // ===== INSTANT UI UPDATE (Optimistic) =====
+        console.log('[LiveScorecard] Applying optimistic UI update.');
         // Store score in local cache immediately
         if (!this.scoresCache[this.currentPlayerId]) {
             this.scoresCache[this.currentPlayerId] = {};
@@ -40229,9 +40249,9 @@ class LiveScorecardSystem {
         }
 
         // ===== BACKGROUND DATABASE SAVE (Don't wait) =====
-        // Check if this is a local offline scorecard
-        if (scorecardId.startsWith('local_')) {
+        if (scorecardId && scorecardId.startsWith('local_')) {
             // OFFLINE MODE: Save score to localStorage
+            console.log(`[LiveScorecard] Saving score OFFLINE for ${player.name}.`);
             const localScores = JSON.parse(localStorage.getItem(`scores_${scorecardId}`) || '{}');
             localScores[this.currentHole] = {
                 hole_number: this.currentHole,
@@ -40243,8 +40263,9 @@ class LiveScorecardSystem {
             };
             localStorage.setItem(`scores_${scorecardId}`, JSON.stringify(localScores));
             console.log(`[LiveScorecard] Score saved OFFLINE: ${player.name} - Hole ${this.currentHole} - ${score}`);
-        } else {
+        } else if (scorecardId) {
             // ONLINE MODE: Save to Supabase
+            console.log(`[LiveScorecard] Saving score to DB for ${player.name}.`);
             window.SocietyGolfDB.saveScore(
                 scorecardId,
                 this.currentHole,
@@ -40255,9 +40276,11 @@ class LiveScorecardSystem {
             ).then(() => {
                 console.log(`[LiveScorecard] Score saved to DB: ${player.name} - Hole ${this.currentHole} - ${score}`);
             }).catch(error => {
-                console.error('[LiveScorecard] Background save failed:', error);
+                console.error('[LiveScorecard] CRITICAL: Background save failed:', error);
                 // Score still in cache, so UI works. Can retry later.
             });
+        } else {
+            console.error(`[LiveScorecard] CRITICAL: No scorecardId found for player ${player.name}. Score not saved.`);
         }
     }
 
@@ -40624,6 +40647,7 @@ class LiveScorecardSystem {
                 eventId,
                 organizerId,
                 courseName,
+                courseId, // Added for logging
                 holesPlayed,
                 totalGross: 0, // Will calculate below
                 handicap: player.handicap
@@ -43451,7 +43475,9 @@ class LiveScorecardSystem {
 
         // CRITICAL FIX: Convert handicaps to numbers to prevent string concatenation
         // Use parseHandicap to correctly handle plus handicaps ("+1.5" -> -1.5)
-        const totalHcp = this.players.reduce((sum, p) => sum + this.GolfScoringEngine.parseHandicap(p.handicap), 0);
+        console.log('[LiveScorecard] Inspecting LiveScorecardSystem in calculateTeamHandicap:', LiveScorecardSystem);
+        console.log('[LiveScorecard] Inspecting LiveScorecardSystem.GolfScoringEngine:', LiveScorecardSystem.GolfScoringEngine);
+        const totalHcp = this.players.reduce((sum, p) => sum + LiveScorecardSystem.GolfScoringEngine.parseHandicap(p.handicap), 0);
         const teamSize = this.players.length;
 
         let multiplier;
@@ -45706,7 +45732,8 @@ window.calculateScrambleHcp = function() {
 console.log('[LiveScorecard] ✅ Format checkbox handlers loaded and ready');
 
 // Initialize global instance
-window.LiveScorecardManager = new LiveScorecardSystem();
+LiveScorecardSystem.instance = new LiveScorecardSystem();
+window.LiveScorecardManager = LiveScorecardSystem.instance;
     </script>
 
     <script>
@@ -57978,6 +58005,5 @@ showOrganizerTab = function(tabName) {
             if (e.key === 'Escape') closeMobileDrawer();
         });
     </script>
-
 </body>
 </html>

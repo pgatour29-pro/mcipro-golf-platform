@@ -745,4 +745,35 @@ class SupabaseClient {
 // Global instance
 window.SupabaseDB = new SupabaseClient();
 
+// Realtime subscription: Caddy bookings
+window.SupabaseDB.subscribeToCaddyBookings = (handler) => {
+    if (!window.supabase) {
+        console.error('[SupabaseDB] Supabase client not ready.');
+        return null;
+    }
+
+    const channel = window.supabase
+        .channel('caddy_bookings_realtime')
+        .on(
+            'postgres_changes',
+            {
+                event: '*',
+                schema: 'public',
+                table: 'caddy_bookings'
+            },
+            (payload) => {
+                try {
+                    handler(payload);
+                } catch (err) {
+                    console.error('[SupabaseDB] Realtime handler error:', err);
+                }
+            }
+        )
+        .subscribe((status) => {
+            console.log('[SupabaseDB] Realtime status (caddy_bookings):', status);
+        });
+
+    return channel;
+};
+
 console.log('[Supabase] Configuration loaded - waiting for library...');

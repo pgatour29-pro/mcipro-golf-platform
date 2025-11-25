@@ -209,6 +209,28 @@ class SupabaseClient {
     }
 
     // =====================================================
+    // REALTIME SUBSCRIPTIONS
+    // =====================================================
+
+    subscribeToCaddyBookings(callback) {
+        const channel = this.client
+            .channel('caddy-bookings-changes')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'caddy_bookings' },
+                (payload) => {
+                    console.log('[Supabase Realtime] Caddy booking changed:', payload);
+                    callback(payload);
+                }
+            )
+            .subscribe((status) => {
+                console.log('[Supabase Realtime] caddy_bookings channel status:', status);
+            });
+
+        return channel;
+    }
+
+    // =====================================================
     // USER PROFILES MANAGEMENT
     // =====================================================
 

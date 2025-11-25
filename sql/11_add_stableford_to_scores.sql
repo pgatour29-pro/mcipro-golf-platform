@@ -1,0 +1,2 @@
+ALTER TABLE public.scores
+ADD COLUMN IF NOT EXISTS stableford INTEGER;

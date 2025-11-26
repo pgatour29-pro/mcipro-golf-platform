@@ -60736,93 +60736,101 @@ showOrganizerTab = function(tabName) {
 
                     async loadSocieties() {
 
-    
 
-            
+
+
 
                         try {
 
-    
 
-            
 
-                            // Load all organizer profiles from database
 
-    
 
-            
+                            // Check if user is admin (hardcoded for Pete while RLS is being configured)
+                            const currentUserId = AppState.currentUser?.lineUserId;
+                            const isAdmin = currentUserId === 'pgatour29';
 
-                            const { data, error } = await window.SupabaseDB.client
 
-    
 
-            
 
-                                .from('user_profiles')
 
-    
+                            // Load all societies from society_profiles table
 
-            
+
+
+
+
+                            let query = window.SupabaseDB.client
+
+
+
+
+
+                                .from('society_profiles')
+
+
+
+
 
                                 .select('*')
 
-    
 
-            
 
-                                .eq('role', 'organizer')
 
-    
-
-            
 
                                 .order('society_name');
 
-    
 
-            
+                            // If not admin, filter by organizer_id
+                            if (!isAdmin && currentUserId) {
+                                query = query.eq('organizer_id', currentUserId);
+                            }
 
-        
 
-    
 
-            
+
+
+
+
+
+
+                            const { data, error } = await query;
 
                             if (error) {
 
-    
 
-            
+
+
 
                                 console.error('[SocietySelectorSystem] Database error:', error);
 
-    
 
-            
+
+
 
                                 throw error;
 
-    
 
-            
+
+
 
                             }
 
-    
 
-            
 
-        
 
-    
 
-            
 
-                            console.log('[SocietySelectorSystem] Loaded', data?.length || 0, 'societies');
 
-    
 
-            
+
+
+
+                            console.log('[SocietySelectorSystem] Loaded', data?.length || 0, 'societies:', data?.map(s => s.society_name).join(', '));
+
+
+
+
 
                             this.societies = data || [];
 

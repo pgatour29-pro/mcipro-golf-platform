@@ -72,15 +72,19 @@ class SocietyOrganizerManager {
             this.loading = true;
             console.time('[SocietyOrganizer] Load events');
 
-            // Get the selected society's organizerId
-            const organizerId = AppState.selectedSociety?.organizerId ||
-                               localStorage.getItem('selectedSocietyOrganizerId') ||
-                               AppState.currentUser?.lineUserId;
+            // Get the selected society's UUID (from society_profiles.id)
+            const societyId = AppState.selectedSociety?.id || localStorage.getItem('selectedSocietyId');
 
-            console.log('[SocietyOrganizer] Loading events for organizerId:', organizerId);
+            if (!societyId) {
+                console.error('[SocietyOrganizer] No society selected');
+                this.loading = false;
+                return;
+            }
 
-            // Load only events for this specific organizer
-            this.events = await SocietyGolfDB.getOrganizerEvents(organizerId);
+            console.log('[SocietyOrganizer] Loading events for society UUID:', societyId);
+
+            // Load only events for this specific society (by UUID)
+            this.events = await SocietyGolfDB.getOrganizerEventsBySocietyId(societyId);
 
             // === OPTIMIZATION 3: Cache events ===
             this.eventsCache = this.events;

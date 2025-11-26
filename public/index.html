@@ -36960,18 +36960,18 @@ class SocietyGolfSupabase {
      * Get all events for organizer with comprehensive statistics
      * Includes registration counts, revenue, payment status, etc.
      */
-    async getOrganizerEventsWithStats(organizerId) {
+    async getOrganizerEventsWithStats(societyId) {
         await this.waitForSupabase();
 
         console.log('[SocietyGolfDB] ===== LOADING EVENTS =====');
-        console.log('[SocietyGolfDB] Input organizerId:', organizerId);
+        console.log('[SocietyGolfDB] Input society UUID:', societyId);
         console.log('[SocietyGolfDB] AppState.currentUser.role:', AppState.currentUser?.role);
 
-        // Load events for this specific organizer (filter by organizer_id)
+        // Load events for this specific society (filter by society_id UUID)
         const { data: events, error: eventsError } = await window.SupabaseDB.client
             .from('society_events')
             .select('*')
-            .eq('organizer_id', organizerId);
+            .eq('society_id', societyId);
 
         console.log('[SocietyGolfDB] Query result - events:', events?.length || 0);
         if (events && events.length > 0) {
@@ -46395,9 +46395,9 @@ class SocietyOrganizerManager {
                 }));
             } else {
                 // ORGANIZER MODE: Load society events
-                const organizerId = AppState.selectedSociety?.organizerId || userId;
-                console.log('[SocietyOrganizer] ORGANIZER MODE: Loading events for:', organizerId);
-                events = await SocietyGolfDB.getOrganizerEventsWithStats(organizerId);
+                const societyId = AppState.selectedSociety?.id || localStorage.getItem('selectedSocietyId');
+                console.log('[SocietyOrganizer] ORGANIZER MODE: Loading events for society UUID:', societyId);
+                events = await SocietyGolfDB.getOrganizerEventsWithStats(societyId);
             }
 
             // Enrich each event with payment stats
@@ -58087,13 +58087,13 @@ class SocietyCalendar {
     async loadEvents() {
         try {
             // FIXED: Load events with stats to match Events tab and show accurate registration counts
-            const organizerId = AppState.currentUser?.lineUserId;
-            if (!organizerId) {
-                console.error('[Calendar] No organizer ID');
+            const societyId = AppState.selectedSociety?.id || localStorage.getItem('selectedSocietyId');
+            if (!societyId) {
+                console.error('[Calendar] No society selected');
                 return;
             }
 
-            this.events = await window.SocietyGolfDB.getOrganizerEventsWithStats(organizerId);
+            this.events = await window.SocietyGolfDB.getOrganizerEventsWithStats(societyId);
             console.log(`[Calendar] Loaded ${this.events.length} events with stats`);
         } catch (error) {
             console.error('[Calendar] Exception loading events:', error);

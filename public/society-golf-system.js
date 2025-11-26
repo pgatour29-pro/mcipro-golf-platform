@@ -62,23 +62,23 @@ class SocietyGolfSupabase {
         }));
     }
 
-    async getOrganizerEvents(organizerId) {
+    async getOrganizerEventsBySocietyId(societyId) {
         await this.waitForSupabase();
 
-        console.log('[SocietyGolfDB] Loading events for organizerId:', organizerId);
+        console.log('[SocietyGolfDB] Loading events for society UUID:', societyId);
 
         const { data, error } = await SupabaseManager.client
             .from('society_events')
             .select('*')
-            .eq('organizer_id', organizerId)
+            .eq('society_id', societyId)
             .order('date', { ascending: true });
 
         if (error) {
-            console.error('[SocietyGolf] Error fetching organizer events:', error);
+            console.error('[SocietyGolf] Error fetching society events:', error);
             return [];
         }
 
-        console.log('[SocietyGolfDB] Found', data?.length || 0, 'events for organizer', organizerId);
+        console.log('[SocietyGolfDB] Found', data?.length || 0, 'events for society', societyId);
 
         return (data || []).map(e => ({
             id: e.id,

@@ -78,8 +78,14 @@ When you grant access, your user profile is updated with:
 ### Issue: Can't see JOA events
 **Solution:**
 1. Make sure the society profile was created (use check-joa-society.html)
-2. Verify your user profile has society_id = 'JOAGOLFPAT'
+2. Verify your user profile has society_id matching the UUID from society_profiles
 3. Check console for any errors
+
+### Issue: UUID Error "invalid input syntax for type uuid"
+**Solution:**
+This happens when trying to set `society_id = 'JOAGOLFPAT'`. The `society_id` field expects a UUID, not text.
+1. Use the updated tools which automatically fetch the correct UUID
+2. If using SQL directly, use: `society_id = (SELECT id FROM society_profiles WHERE organizer_id = 'JOAGOLFPAT')`
 
 ### Issue: Logo not displaying
 **Solution:**
@@ -105,9 +111,11 @@ CREATE TABLE society_profiles (
 ### user_profiles Table (relevant fields)
 ```sql
 role TEXT,              -- 'society_organizer'
-society_id TEXT,        -- 'JOAGOLFPAT'
+society_id UUID,        -- UUID from society_profiles.id (NOT 'JOAGOLFPAT'!)
 society_name TEXT,      -- 'JOA Golf Pattaya'
 ```
+
+**CRITICAL:** `society_id` is a UUID foreign key referencing `society_profiles(id)`, not the text `organizer_id`.
 
 ## Next Steps
 
@@ -148,4 +156,4 @@ If you encounter any issues:
 
 ---
 **Created:** 2025-11-26
-**Last Updated:** 2025-11-26
+**Last Updated:** 2025-11-26 (Fixed UUID issue)

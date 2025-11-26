@@ -224,12 +224,27 @@
                     return;
                 }
 
-                // Update to society_organizer role and associate with JOA
+                // Get JOA society UUID (not the organizer_id text!)
+                const { data: joaSociety, error: joaError } = await supabase
+                    .from('society_profiles')
+                    .select('id, organizer_id, society_name')
+                    .eq('organizer_id', 'JOAGOLFPAT')
+                    .single();
+
+                if (joaError || !joaSociety) {
+                    results.innerHTML = `<p class="error">Error: JOA Golf Pattaya society not found. Please create it first (Step 2).</p>`;
+                    if (joaError) {
+                        results.innerHTML += `<p class="error">Details: ${joaError.message}</p>`;
+                    }
+                    return;
+                }
+
+                // Update to society_organizer role and associate with JOA using UUID
                 const { data, error } = await supabase
                     .from('user_profiles')
                     .update({
                         role: 'society_organizer',
-                        society_id: 'JOAGOLFPAT',
+                        society_id: joaSociety.id,  // Use UUID, not 'JOAGOLFPAT'!
                         society_name: 'JOA Golf Pattaya',
                         updated_at: new Date().toISOString()
                     })
@@ -248,16 +263,17 @@
                 // Update localStorage
                 const localProfile = JSON.parse(localStorage.getItem('userProfile') || '{}');
                 localProfile.role = 'society_organizer';
-                localProfile.societyId = 'JOAGOLFPAT';
+                localProfile.societyId = joaSociety.id;  // Store UUID
                 localProfile.societyName = 'JOA Golf Pattaya';
                 if (!localProfile.organizationInfo) {
                     localProfile.organizationInfo = {};
                 }
-                localProfile.organizationInfo.societyId = 'JOAGOLFPAT';
+                localProfile.organizationInfo.societyId = joaSociety.id;  // Store UUID
                 localProfile.organizationInfo.societyName = 'JOA Golf Pattaya';
                 localStorage.setItem('userProfile', JSON.stringify(localProfile));
 
                 results.innerHTML += `<p class="success">✅ Local profile updated</p>`;
+                results.innerHTML += `<p class="success">Society UUID: ${joaSociety.id}</p>`;
 
             } catch (error) {
                 results.innerHTML = `<p class="error">Error: ${error.message}</p>`;
@@ -303,16 +319,22 @@
                     html += `<p class="error">❌ User role is: ${userProfile.role}</p>`;
                 }
 
-                // Check 2: User is associated with JOA
-                if (userProfile.society_id === 'JOAGOLFPAT' || userProfile.society_name?.includes('JOA')) {
-                    html += '<p class="success">✅ User is associated with JOA Golf Pattaya</p>';
+                // Check 2: User is associated with JOA (check UUID match)
+                if (societyProfile && userProfile.society_id === societyProfile.id) {
+                    html += '<p class="success">✅ User is associated with JOA Golf Pattaya (UUID match)</p>';
+                } else if (userProfile.society_name?.includes('JOA')) {
+                    html += '<p class="success">✅ User is associated with JOA Golf Pattaya (by name)</p>';
+                    if (societyProfile) {
+                        html += `<p style="color: orange;">⚠️ Warning: UUID mismatch. User society_id: ${userProfile.society_id}, JOA UUID: ${societyProfile.id}</p>`;
+                    }
                 } else {
-                    html += `<p class="error">❌ User society: ${userProfile.society_name || 'None'}</p>`;
+                    html += `<p class="error">❌ User society: ${userProfile.society_name || 'None'}, society_id: ${userProfile.society_id || 'None'}</p>`;
                 }
 
                 // Check 3: Society profile exists
                 if (societyProfile) {
                     html += '<p class="success">✅ JOA Golf Pattaya society profile exists</p>';
+                    html += `<p>Society UUID: ${societyProfile.id}</p>`;
                 } else {
                     html += '<p class="error">❌ JOA Golf Pattaya society profile NOT found</p>';
                 }

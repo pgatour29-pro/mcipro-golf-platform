@@ -23,6 +23,10 @@ class SocietyOrganizerManager {
     async init() {
         console.log('[SocietyOrganizer] Initializing...');
 
+        if (window.SocietySelector) {
+            await window.SocietySelector.init();
+        }
+
         // === OPTIMIZATION 1: Lazy Initialization ===
         // If already initialized and cache is fresh, use cached data
         if (this.initialized && this.isCacheFresh()) {

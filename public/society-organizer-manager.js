@@ -71,7 +71,16 @@ class SocietyOrganizerManager {
         try {
             this.loading = true;
             console.time('[SocietyOrganizer] Load events');
-            this.events = await SocietyGolfDB.getEvents();
+
+            // Get the selected society's organizerId
+            const organizerId = AppState.selectedSociety?.organizerId ||
+                               localStorage.getItem('selectedSocietyOrganizerId') ||
+                               AppState.currentUser?.lineUserId;
+
+            console.log('[SocietyOrganizer] Loading events for organizerId:', organizerId);
+
+            // Load only events for this specific organizer
+            this.events = await SocietyGolfDB.getOrganizerEvents(organizerId);
 
             // === OPTIMIZATION 3: Cache events ===
             this.eventsCache = this.events;
@@ -200,6 +209,14 @@ class SocietyOrganizerManager {
             // datetime-local gives us "2025-10-10T10:30" - store exactly this, no timezone
             const cutoffISO = cutoffValue ? cutoffValue + ':00' : null; // Add seconds for consistency
 
+            // Get the selected society's data
+            const organizerId = AppState.selectedSociety?.organizerId ||
+                               localStorage.getItem('selectedSocietyOrganizerId') ||
+                               AppState.currentUser?.lineUserId;
+            const organizerName = AppState.selectedSociety?.name ||
+                                 localStorage.getItem('selectedSocietyName') ||
+                                 AppState.currentUser?.name;
+
             const eventData = {
                 name: document.getElementById('eventName').value.trim(),
                 date: document.getElementById('eventDate').value,
@@ -214,8 +231,8 @@ class SocietyOrganizerManager {
                 transportFee: parseInt(document.getElementById('eventTransportFee').value) || 0,
                 competitionFee: parseInt(document.getElementById('eventCompetitionFee').value) || 0,
                 notes: document.getElementById('eventNotes').value.trim(),
-                organizerId: AppState.currentUser?.lineUserId,
-                organizerName: AppState.currentUser?.name,
+                organizerId: organizerId,
+                organizerName: organizerName,
                 autoWaitlist: document.getElementById('eventAutoWaitlist').checked,
                 recurring: document.getElementById('eventRecurring').checked
             };
@@ -850,7 +867,13 @@ class SocietyOrganizerManager {
 
     async loadSocietyProfile() {
         try {
-            const organizerId = AppState.currentUser?.lineUserId;
+            // Get the selected society's organizerId
+            const organizerId = AppState.selectedSociety?.organizerId ||
+                               localStorage.getItem('selectedSocietyOrganizerId') ||
+                               AppState.currentUser?.lineUserId;
+
+            console.log('[SocietyOrganizer] Loading profile for organizerId:', organizerId);
+
             if (!organizerId) return;
 
             const profile = await SocietyGolfDB.getSocietyProfile(organizerId);
@@ -905,7 +928,11 @@ class SocietyOrganizerManager {
 
     async saveSocietyProfile() {
         try {
-            const organizerId = AppState.currentUser?.lineUserId;
+            // Get the selected society's organizerId
+            const organizerId = AppState.selectedSociety?.organizerId ||
+                               localStorage.getItem('selectedSocietyOrganizerId') ||
+                               AppState.currentUser?.lineUserId;
+
             if (!organizerId) {
                 NotificationManager.show('User not logged in', 'error');
                 return;

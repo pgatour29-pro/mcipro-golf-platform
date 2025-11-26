@@ -62,6 +62,56 @@ class SocietyGolfSupabase {
         }));
     }
 
+    async getOrganizerEvents(organizerId) {
+        await this.waitForSupabase();
+
+        console.log('[SocietyGolfDB] Loading events for organizerId:', organizerId);
+
+        const { data, error } = await SupabaseManager.client
+            .from('society_events')
+            .select('*')
+            .eq('organizer_id', organizerId)
+            .order('date', { ascending: true });
+
+        if (error) {
+            console.error('[SocietyGolf] Error fetching organizer events:', error);
+            return [];
+        }
+
+        console.log('[SocietyGolfDB] Found', data?.length || 0, 'events for organizer', organizerId);
+
+        return (data || []).map(e => ({
+            id: e.id,
+            name: e.name,
+            date: e.date,
+            cutoff: e.cutoff,
+            startTime: e.start_time,
+            baseFee: e.base_fee || 0,
+            cartFee: e.cart_fee || 0,
+            caddyFee: e.caddy_fee || 0,
+            transportFee: e.transport_fee || 0,
+            competitionFee: e.competition_fee || 0,
+            maxPlayers: e.max_players,
+            organizerId: e.organizer_id,
+            organizerName: e.organizer_name,
+            status: e.status,
+            courseId: e.course_id,
+            courseName: e.course_name,
+            eventFormat: e.event_format,
+            notes: e.notes,
+            autoWaitlist: e.auto_waitlist,
+            recurring: e.recurring,
+            recurFrequency: e.recur_frequency,
+            recurDayOfWeek: e.recur_day_of_week,
+            recurMonthlyPattern: e.recur_monthly_pattern,
+            recurEndType: e.recur_end_type,
+            recurUntil: e.recur_until,
+            recurCount: e.recur_count,
+            createdAt: e.created_at,
+            updatedAt: e.updated_at
+        }));
+    }
+
     async getEvent(eventId) {
         await this.waitForSupabase();
         const { data, error } = await SupabaseManager.client

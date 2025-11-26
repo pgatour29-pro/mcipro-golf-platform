@@ -16,15 +16,31 @@ const SocietySelector = {
             }
 
             // Check if user is admin
-            const { data: userProfile, error: profileError } = await window.SupabaseDB.client
-                .from('user_profiles')
-                .select('id, role')
-                .eq('line_user_id', currentUserId)
-                .single();
+            let isAdmin = false;
 
-            if (profileError) throw profileError;
+            // Hardcoded admin check for Pete while RLS policies are being configured
+            if (currentUserId === 'pgatour29') {
+                isAdmin = true;
+                console.log('[SocietySelector] Recognized admin user (hardcoded)');
+            } else {
+                try {
+                    const { data: userProfile, error: profileError } = await window.SupabaseDB.client
+                        .from('user_profiles')
+                        .select('role')
+                        .eq('line_user_id', currentUserId)
+                        .single();
 
-            const isAdmin = userProfile.role === 'admin' || userProfile.role === 'super_admin';
+                    if (!profileError && userProfile) {
+                        isAdmin = userProfile.role === 'admin' || userProfile.role === 'super_admin';
+                        console.log('[SocietySelector] User role:', userProfile.role, 'isAdmin:', isAdmin);
+                    } else {
+                        console.warn('[SocietySelector] Could not fetch user role, defaulting to non-admin');
+                    }
+                } catch (roleError) {
+                    console.warn('[SocietySelector] Error fetching role:', roleError);
+                    // Continue anyway - will show societies based on organizer_id
+                }
+            }
 
             // Query society_profiles table (not 'societies')
             let query = window.SupabaseDB.client
@@ -43,6 +59,7 @@ const SocietySelector = {
             if (error) throw error;
 
             this.societies = data || [];
+            console.log('[SocietySelector] Loaded', this.societies.length, 'societies:', this.societies.map(s => s.society_name).join(', '));
 
             // If there's a previously selected society, use it
             if (selectedOrganizerId && this.societies.find(s => s.organizer_id === selectedOrganizerId)) {

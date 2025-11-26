@@ -35105,18 +35105,30 @@ const AdminSystem = {
                 nextBilling: this.getNextBillingDate()
             }));
 
-            // FIX: Load golf societies from database (user_profiles where role='organizer')
-            this.societies = this.users.filter(user => user.role === 'organizer').map(org => ({
-                id: org.line_user_id,
-                name: org.society_name || org.name,
-                organizerId: org.line_user_id,
-                memberCount: 0, // TODO: Count members per society
-                eventCount: 0,  // TODO: Count events per society
-                logo: org.profile_data?.organizationInfo?.societyLogo || null,
-                website: org.profile_data?.organizationInfo?.website || null,
-                createdAt: org.created_at
-            }));
-            console.log('[AdminSystem] Loaded', this.societies.length, 'golf societies from database');
+            // Load golf societies from society_profiles table
+            const { data: societiesData, error: societiesError } = await window.SupabaseDB.client
+                .from('society_profiles')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (societiesError) {
+                console.error('[AdminSystem] Error loading societies:', societiesError);
+                this.societies = [];
+            } else {
+                this.societies = (societiesData || []).map(soc => ({
+                    id: soc.id,
+                    name: soc.society_name,
+                    organizerId: soc.organizer_id,
+                    memberCount: 0, // TODO: Count members per society
+                    eventCount: 0,  // TODO: Count events per society
+                    logo: soc.society_logo || null,
+                    website: soc.website || null,
+                    description: soc.description || '',
+                    createdAt: soc.created_at,
+                    status: 'active' // Default status
+                }));
+                console.log('[AdminSystem] Loaded', this.societies.length, 'golf societies from society_profiles table');
+            }
         } catch (error) {
             console.error('[AdminSystem] Error loading data:', error);
             this.users = [];

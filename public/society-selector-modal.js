@@ -5,35 +5,54 @@ const SocietySelector = {
 
     async init() {
         const selectedOrganizerId = localStorage.getItem('selectedSocietyOrganizerId');
-        const organizerId = selectedOrganizerId || AppState.currentUser?.lineUserId;
+        const currentUserId = AppState.currentUser?.lineUserId;
 
-        if (!organizerId) return;
+        if (!currentUserId) return;
 
         try {
-            // Get the user profile to get the user's UUID
+            // Check if user is admin
             const { data: userProfile, error: profileError } = await supabase
                 .from('user_profiles')
-                .select('id')
-                .eq('line_user_id', organizerId)
+                .select('id, role')
+                .eq('line_user_id', currentUserId)
                 .single();
 
             if (profileError) throw profileError;
 
-            const userId = userProfile.id;
+            const isAdmin = userProfile.role === 'admin' || userProfile.role === 'super_admin';
 
-            const { data, error } = await supabase
-                .from('societies')
+            // Query society_profiles table (not 'societies')
+            let query = supabase
+                .from('society_profiles')
                 .select('*')
-                .eq('organizer_id', userId);
+                .order('society_name');
+
+            // If not admin, filter by their organizer_id
+            if (!isAdmin) {
+                query = query.eq('organizer_id', currentUserId);
+            }
+            // If admin, show ALL societies
+
+            const { data, error } = await query;
 
             if (error) throw error;
 
-            this.societies = data;
-            if (this.societies.length > 1) {
+            this.societies = data || [];
+
+            // If there's a previously selected society, use it
+            if (selectedOrganizerId && this.societies.find(s => s.organizer_id === selectedOrganizerId)) {
+                const selected = this.societies.find(s => s.organizer_id === selectedOrganizerId);
+                this.selectedSocietyId = selected.id;
+                this.selectedSociety = selected;
+                this.storeSelection();
+            } else if (this.societies.length > 1) {
+                // Show modal to choose
                 this.renderModal();
                 this.show();
             } else if (this.societies.length === 1) {
+                // Auto-select single society
                 this.selectedSocietyId = this.societies[0].id;
+                this.selectedSociety = this.societies[0];
                 this.storeSelection();
             }
         } catch (error) {
@@ -46,15 +65,29 @@ const SocietySelector = {
         if (!societyList) return;
 
         societyList.innerHTML = this.societies.map(society => `
-            <div class="flex items-center">
-                <input type="radio" name="society" value="${society.id}" id="society-${society.id}" class="h-4 w-4 text-sky-600 border-gray-300 focus:ring-sky-500">
-                <label for="society-${society.id}" class="ml-3 block text-sm font-medium text-gray-700">${society.name}</label>
+            <div class="flex items-center p-3 hover:bg-gray-50 rounded-lg cursor-pointer" onclick="document.getElementById('society-${society.id}').click()">
+                ${society.society_logo ? `<img src="${society.society_logo}" class="w-12 h-12 rounded-lg object-cover mr-3" alt="${society.society_name}">` : ''}
+                <div class="flex-1">
+                    <div class="flex items-center">
+                        <input type="radio" name="society" value="${society.id}" data-organizer-id="${society.organizer_id}" data-name="${society.society_name}" id="society-${society.id}" class="h-4 w-4 text-sky-600 border-gray-300 focus:ring-sky-500">
+                        <label for="society-${society.id}" class="ml-3 block text-sm font-semibold text-gray-900">${society.society_name}</label>
+                    </div>
+                    ${society.description ? `<p class="ml-7 text-xs text-gray-500">${society.description}</p>` : ''}
+                </div>
             </div>
         `).join('');
 
-        // Select the first society by default
-        if (this.societies.length > 0) {
-            document.getElementById(`society-${this.societies[0].id}`).checked = true;
+        // Select the first society by default (or previously selected)
+        const storedOrganizerId = localStorage.getItem('selectedSocietyOrganizerId');
+        let defaultSociety = this.societies[0];
+
+        if (storedOrganizerId) {
+            const stored = this.societies.find(s => s.organizer_id === storedOrganizerId);
+            if (stored) defaultSociety = stored;
+        }
+
+        if (defaultSociety) {
+            document.getElementById(`society-${defaultSociety.id}`)?.setAttribute('checked', 'checked');
         }
     },
 
@@ -73,10 +106,17 @@ const SocietySelector = {
             const society = this.societies.find(s => s.id === this.selectedSocietyId);
             if(society){
                 this.selectedSociety = society;
+                // Store organizer_id and name for easy access
+                AppState.selectedSociety = {
+                    id: society.id,
+                    organizerId: society.organizer_id,
+                    name: society.society_name,
+                    logo: society.society_logo
+                };
             }
             this.storeSelection();
             this.hide();
-            // Optionally, refresh the dashboard or trigger an event
+            // Refresh the dashboard
             if (window.SocietyOrganizerSystem) {
                 SocietyOrganizerSystem.init();
             }
@@ -84,12 +124,18 @@ const SocietySelector = {
     },
 
     storeSelection() {
-        if (this.selectedSocietyId) {
+        if (this.selectedSocietyId && this.selectedSociety) {
             localStorage.setItem('selectedSocietyId', this.selectedSocietyId);
-            if(this.selectedSociety){
-                localStorage.setItem('selectedSocietyName', this.selectedSociety.name);
-                localStorage.setItem('selectedSocietyOrganizerId', this.selectedSociety.organizer_id);
-            }
+            localStorage.setItem('selectedSocietyName', this.selectedSociety.society_name);
+            localStorage.setItem('selectedSocietyOrganizerId', this.selectedSociety.organizer_id);
+            console.log('[SocietySelector] Selected:', this.selectedSociety.society_name, '(' + this.selectedSociety.organizer_id + ')');
         }
     }
 };
+
+// Initialize on load if user is society organizer
+document.addEventListener('DOMContentLoaded', () => {
+    if (AppState.currentUser?.role === 'society_organizer' || AppState.currentUser?.role === 'admin') {
+        SocietySelector.init();
+    }
+});

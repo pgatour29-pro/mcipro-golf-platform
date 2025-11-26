@@ -19,9 +19,9 @@ const SocietySelector = {
             let isAdmin = false;
 
             // Hardcoded admin check for Pete while RLS policies are being configured
-            if (currentUserId === 'pgatour29') {
+            if (currentUserId === 'U2b6d976f19bca4b2f4374ae0e10ed873' || currentUserId === 'pgatour29') {
                 isAdmin = true;
-                console.log('[SocietySelector] Recognized admin user (hardcoded)');
+                console.log('[SocietySelector] Recognized admin user (hardcoded):', currentUserId);
             } else {
                 try {
                     const { data: userProfile, error: profileError } = await window.SupabaseDB.client
@@ -43,6 +43,8 @@ const SocietySelector = {
             }
 
             // Query society_profiles table (not 'societies')
+            console.log('[SocietySelector] About to query societies - isAdmin:', isAdmin, 'currentUserId:', currentUserId);
+
             let query = window.SupabaseDB.client
                 .from('society_profiles')
                 .select('*')
@@ -50,9 +52,11 @@ const SocietySelector = {
 
             // If not admin, filter by their organizer_id
             if (!isAdmin) {
+                console.log('[SocietySelector] NOT ADMIN - filtering by organizer_id:', currentUserId);
                 query = query.eq('organizer_id', currentUserId);
+            } else {
+                console.log('[SocietySelector] IS ADMIN - showing ALL societies');
             }
-            // If admin, show ALL societies
 
             const { data, error } = await query;
 

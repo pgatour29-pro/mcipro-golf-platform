@@ -10,8 +10,13 @@ const SocietySelector = {
         if (!currentUserId) return;
 
         try {
+            // Wait for Supabase to be ready
+            if (!window.SupabaseDB?.client) {
+                await window.SupabaseDB?.waitForReady?.();
+            }
+
             // Check if user is admin
-            const { data: userProfile, error: profileError } = await supabase
+            const { data: userProfile, error: profileError } = await window.SupabaseDB.client
                 .from('user_profiles')
                 .select('id, role')
                 .eq('line_user_id', currentUserId)
@@ -22,7 +27,7 @@ const SocietySelector = {
             const isAdmin = userProfile.role === 'admin' || userProfile.role === 'super_admin';
 
             // Query society_profiles table (not 'societies')
-            let query = supabase
+            let query = window.SupabaseDB.client
                 .from('society_profiles')
                 .select('*')
                 .order('society_name');

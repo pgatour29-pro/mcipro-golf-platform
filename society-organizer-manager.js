@@ -23,6 +23,17 @@ class SocietyOrganizerManager {
     async init() {
         console.log('[SocietyOrganizer] Initializing...');
 
+        // Wait for AppState.currentUser to be populated
+        const waitForUser = () => new Promise(resolve => {
+            if (AppState.currentUser?.lineUserId) {
+                resolve();
+            } else {
+                setTimeout(() => resolve(waitForUser()), 100);
+            }
+        });
+
+        await waitForUser();
+
         if (window.SocietySelector) {
             await window.SocietySelector.init();
         }

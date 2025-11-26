@@ -4,7 +4,9 @@ const SocietySelector = {
     selectedSocietyId: null,
 
     async init() {
-        const organizerId = AppState.currentUser?.lineUserId;
+        const selectedOrganizerId = localStorage.getItem('selectedSocietyOrganizerId');
+        const organizerId = selectedOrganizerId || AppState.currentUser?.lineUserId;
+
         if (!organizerId) return;
 
         try {

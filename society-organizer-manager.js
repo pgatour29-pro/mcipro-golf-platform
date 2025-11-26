@@ -854,7 +854,7 @@ class SocietyOrganizerManager {
 
     async loadSocietyProfile() {
         try {
-            const organizerId = AppState.currentUser?.lineUserId;
+            const organizerId = localStorage.getItem('selectedSocietyOrganizerId') || AppState.currentUser?.lineUserId;
             if (!organizerId) return;
 
             const profile = await SocietyGolfDB.getSocietyProfile(organizerId);

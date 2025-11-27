@@ -871,16 +871,20 @@ class SocietyOrganizerManager {
 
     async loadSocietyProfile() {
         try {
-            // Get the selected society's organizerId
+            // CRITICAL: Use ONLY the selected society's organizerId, NOT current user
             const organizerId = AppState.selectedSociety?.organizerId ||
-                               localStorage.getItem('selectedSocietyOrganizerId') ||
-                               AppState.currentUser?.lineUserId;
+                               localStorage.getItem('selectedSocietyOrganizerId');
 
             console.log('[SocietyOrganizer] Loading profile for organizerId:', organizerId);
+            console.log('[SocietyOrganizer] AppState.selectedSociety:', AppState.selectedSociety);
 
-            if (!organizerId) return;
+            if (!organizerId) {
+                console.warn('[SocietyOrganizer] No organizerId - cannot load profile');
+                return;
+            }
 
             const profile = await SocietyGolfDB.getSocietyProfile(organizerId);
+            console.log('[SocietyOrganizer] Loaded profile:', profile);
             this.societyProfile = profile;
 
             // === OPTIMIZATION 5: Cache profile ===
@@ -904,7 +908,7 @@ class SocietyOrganizerManager {
         }
     }
 
-    handleLogoUpload(event) {
+    async handleLogoUpload(event) {
         const file = event.target.files[0];
         if (!file) return;
 
@@ -920,14 +924,55 @@ class SocietyOrganizerManager {
             return;
         }
 
-        // Read file as base64
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            this.tempLogoData = e.target.result;
-            const preview = document.getElementById('societyLogoPreview');
-            preview.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover" alt="Society Logo">`;
-        };
-        reader.readAsDataURL(file);
+        try {
+            console.log('[SocietyOrganizer] Uploading logo to storage...');
+
+            // Show preview immediately while uploading
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const preview = document.getElementById('societyLogoPreview');
+                preview.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover" alt="Society Logo">`;
+            };
+            reader.readAsDataURL(file);
+
+            // Upload to Supabase storage
+            const supabase = await getSupabaseClient();
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+            const filePath = `society-logos/${fileName}`;
+
+            console.log('[SocietyOrganizer] Uploading file:', filePath);
+
+            const { data, error } = await supabase.storage
+                .from('society-logos')
+                .upload(filePath, file, {
+                    contentType: file.type,
+                    upsert: false
+                });
+
+            if (error) {
+                console.error('[SocietyOrganizer] Upload error:', error);
+                NotificationManager.show('Failed to upload logo: ' + error.message, 'error');
+                return;
+            }
+
+            console.log('[SocietyOrganizer] Upload successful:', data);
+
+            // Get public URL
+            const { data: { publicUrl } } = supabase.storage
+                .from('society-logos')
+                .getPublicUrl(filePath);
+
+            console.log('[SocietyOrganizer] Public URL:', publicUrl);
+
+            // Store the URL (not base64) to be saved to database
+            this.tempLogoData = publicUrl;
+
+            NotificationManager.show('Logo uploaded successfully', 'success');
+        } catch (error) {
+            console.error('[SocietyOrganizer] Error uploading logo:', error);
+            NotificationManager.show('Failed to upload logo', 'error');
+        }
     }
 
     async saveSocietyProfile() {

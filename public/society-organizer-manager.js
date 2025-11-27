@@ -932,13 +932,16 @@ class SocietyOrganizerManager {
 
     async saveSocietyProfile() {
         try {
-            // Get the selected society's organizerId
+            // CRITICAL: Use the selected society's organizerId, NOT current user's ID
             const organizerId = AppState.selectedSociety?.organizerId ||
-                               localStorage.getItem('selectedSocietyOrganizerId') ||
-                               AppState.currentUser?.lineUserId;
+                               localStorage.getItem('selectedSocietyOrganizerId');
+
+            console.log('[SocietyOrganizer] AppState.selectedSociety:', AppState.selectedSociety);
+            console.log('[SocietyOrganizer] Selected organizerId:', organizerId);
+            console.log('[SocietyOrganizer] Current user ID:', AppState.currentUser?.lineUserId);
 
             if (!organizerId) {
-                NotificationManager.show('User not logged in', 'error');
+                NotificationManager.show('No society selected', 'error');
                 return;
             }
 
@@ -949,6 +952,10 @@ class SocietyOrganizerManager {
                 societyLogo: this.tempLogoData || this.societyProfile?.societyLogo || null
             };
 
+            console.log('[SocietyOrganizer] Profile data to save:', profileData);
+            console.log('[SocietyOrganizer] Current societyProfile logo:', this.societyProfile?.societyLogo);
+            console.log('[SocietyOrganizer] tempLogoData:', this.tempLogoData);
+
             if (!profileData.societyName) {
                 NotificationManager.show('Please enter society name', 'error');
                 return;
@@ -956,11 +963,15 @@ class SocietyOrganizerManager {
 
             if (this.societyProfile) {
                 // Update existing profile
-                await SocietyGolfDB.updateSocietyProfile(organizerId, profileData);
+                console.log('[SocietyOrganizer] Updating profile for organizerId:', organizerId);
+                const result = await SocietyGolfDB.updateSocietyProfile(organizerId, profileData);
+                console.log('[SocietyOrganizer] Update result:', result);
                 NotificationManager.show('Profile updated successfully', 'success');
             } else {
                 // Create new profile
-                await SocietyGolfDB.createSocietyProfile(profileData);
+                console.log('[SocietyOrganizer] Creating new profile');
+                const result = await SocietyGolfDB.createSocietyProfile(profileData);
+                console.log('[SocietyOrganizer] Create result:', result);
                 NotificationManager.show('Profile created successfully', 'success');
             }
 

@@ -25,7 +25,8 @@ INSERT INTO society_events (
   auto_waitlist,
   recurring,
   created_at,
-  updated_at
+  updated_at,
+  format
 ) VALUES
 
 (
@@ -47,7 +48,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -69,7 +71,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -91,7 +94,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -113,7 +117,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -135,7 +140,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -157,7 +163,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -179,7 +186,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -201,7 +209,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -223,7 +232,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -245,7 +255,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -267,7 +278,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -289,7 +301,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -311,7 +324,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -333,7 +347,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -355,7 +370,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -377,7 +393,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -399,7 +416,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -421,7 +439,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  '2man_scramble'
 ),
 
 (
@@ -443,7 +462,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -465,7 +485,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -487,7 +508,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -509,7 +531,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -531,7 +554,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -553,7 +577,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 ),
 
 (
@@ -575,7 +600,8 @@ INSERT INTO society_events (
   true,
   false,
   NOW(),
-  NOW()
+  NOW(),
+  'strokeplay'
 );
 
 -- =====================================================

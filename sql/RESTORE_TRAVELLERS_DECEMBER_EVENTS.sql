@@ -83,7 +83,7 @@ INSERT INTO society_events (
 ('TRGG - PHOENIX', '2025-12-20', '11:20', 2650, 80, '7c0e4b72-d925-44bc-afda-38259a7ba346'::uuid, 'draft', 'PHOENIX', 'Departure: 10:20 | First Tee: 11:20 | Cart & Caddy included', 'stableford', false, NOW(), NOW()),
 
 -- Dec 21 - BURAPHA TWO MAN SCRAMBLE
-('TRGG - BURAPHA TWO MAN SCRAMBLE', '2025-12-21', '10:00', 2950, 80, '7c0e4b72-d925-44bc-afda-38259a7ba346'::uuid, 'draft', 'BURAPHA TWO MAN SCRAMBLE', 'Departure: 09:00 | First Tee: 10:00 | Cart & Caddy included | TWO MAN SCRAMBLE', 'scramble', false, NOW(), NOW()),
+('TRGG - BURAPHA TWO MAN SCRAMBLE', '2025-12-21', '10:00', 2950, 80, '7c0e4b72-d925-44bc-afda-38259a7ba346'::uuid, 'draft', 'BURAPHA TWO MAN SCRAMBLE', 'Departure: 09:00 | First Tee: 10:00 | Cart & Caddy included | TWO MAN SCRAMBLE', 'stableford',false, NOW(), NOW()),
 
 -- Dec 22 - EASTERN STAR
 ('TRGG - EASTERN STAR', '2025-12-22', '10:20', 2450, 80, '7c0e4b72-d925-44bc-afda-38259a7ba346'::uuid, 'draft', 'EASTERN STAR', 'Departure: 09:20 | First Tee: 10:20 | Cart & Caddy included', 'stableford', false, NOW(), NOW()),
@@ -95,7 +95,7 @@ INSERT INTO society_events (
 ('TRGG - GREENWOOD (2 WAY)', '2025-12-25', '10:30', 1750, 80, '7c0e4b72-d925-44bc-afda-38259a7ba346'::uuid, 'draft', 'GREENWOOD', 'Departure: 09:15 | First Tee: 10:30 | Cart & Caddy included', 'stableford', false, NOW(), NOW()),
 
 -- Dec 26 - BANGPAKONG MONTHLY MEDAL STROKE
-('TRGG - BANGPAKONG MONTHLY MEDAL STROKE', '2025-12-26', '10:15', 2250, 80, '7c0e4b72-d925-44bc-afda-38259a7ba346'::uuid, 'draft', 'BANGPAKONG MONTHLY MEDAL STROKE', 'Departure: 09:00 | First Tee: 10:15 | Cart & Caddy included | MONTHLY MEDAL STROKE', 'stroke', false, NOW(), NOW()),
+('TRGG - BANGPAKONG MONTHLY MEDAL STROKE', '2025-12-26', '10:15', 2250, 80, '7c0e4b72-d925-44bc-afda-38259a7ba346'::uuid, 'draft', 'BANGPAKONG MONTHLY MEDAL STROKE', 'Departure: 09:00 | First Tee: 10:15 | Cart & Caddy included | MONTHLY MEDAL STROKE', 'stableford',false, NOW(), NOW()),
 
 -- Dec 27 - PHOENIX
 ('TRGG - PHOENIX', '2025-12-27', '11:10', 2650, 80, '7c0e4b72-d925-44bc-afda-38259a7ba346'::uuid, 'draft', 'PHOENIX', 'Departure: 10:10 | First Tee: 11:10 | Cart & Caddy included', 'stableford', false, NOW(), NOW()),

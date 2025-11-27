@@ -15361,35 +15361,80 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             },
 
-            handlePhotoUpload(input, previewId) {
+            async handlePhotoUpload(input, previewId) {
                 const file = input.files[0];
-                if (file) {
-                    // Validate file type
-                    if (!file.type.startsWith('image/')) {
-                        alert('Please select a valid image file.');
-                        input.value = '';
-                        return;
-                    }
+                if (!file) return;
 
-                    // Validate file size (max 5MB)
-                    if (file.size > 5 * 1024 * 1024) {
-                        alert('Please select an image smaller than 5MB.');
-                        input.value = '';
-                        return;
-                    }
+                // Validate file type
+                if (!file.type.startsWith('image/')) {
+                    alert('Please select a valid image file.');
+                    input.value = '';
+                    return;
+                }
 
+                // Validate file size (max 5MB)
+                if (file.size > 5 * 1024 * 1024) {
+                    alert('Please select an image smaller than 5MB.');
+                    input.value = '';
+                    return;
+                }
+
+                try {
+                    console.log('[ProfileSystem] Uploading photo to storage...');
+
+                    // Show preview immediately while uploading (base64 for instant feedback)
                     const reader = new FileReader();
                     reader.onload = function(e) {
                         const preview = document.getElementById(previewId);
                         if (preview) {
                             preview.src = e.target.result;
-                            console.log('Profile photo uploaded successfully');
                         }
                     };
-                    reader.onerror = function() {
-                        alert('Error reading the image file. Please try again.');
-                    };
                     reader.readAsDataURL(file);
+
+                    // Upload to Supabase storage
+                    const supabase = await getSupabaseClient();
+                    const fileExt = file.name.split('.').pop();
+                    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+                    const filePath = `profile-photos/${fileName}`;
+
+                    console.log('[ProfileSystem] Uploading file:', filePath);
+
+                    const { data, error } = await supabase.storage
+                        .from('profile-photos')
+                        .upload(filePath, file, {
+                            contentType: file.type,
+                            upsert: false
+                        });
+
+                    if (error) {
+                        console.error('[ProfileSystem] Upload error:', error);
+                        alert('Failed to upload photo: ' + error.message);
+                        return;
+                    }
+
+                    console.log('[ProfileSystem] Upload successful:', data);
+
+                    // Get public URL
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('profile-photos')
+                        .getPublicUrl(filePath);
+
+                    console.log('[ProfileSystem] Public URL:', publicUrl);
+
+                    // Update preview with the public URL (replacing the base64)
+                    const preview = document.getElementById(previewId);
+                    if (preview) {
+                        preview.src = publicUrl;
+                    }
+
+                    // Store URL in a temporary variable for later saving
+                    this.tempPhotoUrl = publicUrl;
+
+                    console.log('[ProfileSystem] Photo uploaded successfully to:', publicUrl);
+                } catch (error) {
+                    console.error('[ProfileSystem] Error uploading photo:', error);
+                    alert('Error uploading photo. Please try again.');
                 }
             },
 
@@ -15602,10 +15647,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
                         localStorage.setItem('mcipro_user_profiles', JSON.stringify(profilesArray));
 
-                        // Media
-                        const profilePhoto = document.getElementById('profilePhotoPreview')?.src;
-                        if (profilePhoto && !profilePhoto.includes('/api/placeholder/')) {
-                            profile.media.profilePhoto = profilePhoto;
+                        // Media - use the uploaded URL if available, otherwise keep existing
+                        if (this.tempPhotoUrl) {
+                            profile.media.profilePhoto = this.tempPhotoUrl;
+                            console.log('[ProfileSystem] Saving uploaded photo URL:', this.tempPhotoUrl);
+                        } else {
+                            const profilePhoto = document.getElementById('profilePhotoPreview')?.src;
+                            if (profilePhoto && !profilePhoto.includes('/api/placeholder/') && !profilePhoto.startsWith('data:')) {
+                                profile.media.profilePhoto = profilePhoto;
+                            }
                         }
                     } else if (userType === 'society') {
                         // Organization Info
@@ -15630,10 +15680,15 @@ document.addEventListener('DOMContentLoaded', function() {
                         profile.preferences.cateringNeeds = document.getElementById('cateringNeeds')?.value || '';
                         profile.preferences.specialRequirements = document.getElementById('specialRequirements')?.value || '';
 
-                        // Media
-                        const societyLogo = document.getElementById('profilePhotoPreview')?.src;
-                        if (societyLogo && !societyLogo.includes('/api/placeholder/')) {
-                            profile.media.societyLogo = societyLogo;
+                        // Media - use the uploaded URL if available, otherwise keep existing
+                        if (this.tempPhotoUrl) {
+                            profile.media.societyLogo = this.tempPhotoUrl;
+                            console.log('[ProfileSystem] Saving uploaded society logo URL:', this.tempPhotoUrl);
+                        } else {
+                            const societyLogo = document.getElementById('profilePhotoPreview')?.src;
+                            if (societyLogo && !societyLogo.includes('/api/placeholder/') && !societyLogo.startsWith('data:')) {
+                                profile.media.societyLogo = societyLogo;
+                            }
                         }
                     }
 
@@ -15641,6 +15696,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log('[ProfileSystem] 📝 Saving profile to localStorage...');
                     this.saveProfile(userType, profile);
                     console.log('[ProfileSystem] ✅ Profile saved to localStorage');
+
+                    // Clear temp photo URL after saving
+                    this.tempPhotoUrl = null;
 
                     // Close modal immediately
                     console.log('[ProfileSystem] Closing modal...');

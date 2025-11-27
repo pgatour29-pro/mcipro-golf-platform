@@ -49974,11 +49974,40 @@ This action cannot be undone.`);
                 return;
             }
 
+            let logoUrl = this.societyProfile?.societyLogo || null;
+            if (this.tempLogoData) {
+                // Convert base64 to file
+                const fetchRes = await fetch(this.tempLogoData);
+                const blob = await fetchRes.blob();
+                const file = new File([blob], "logo.png", { type: "image/png" });
+
+                // Upload to Supabase Storage
+                const fileName = `society-logos/${organizerId}-${Date.now()}.png`;
+                const { data, error } = await window.SupabaseDB.client.storage
+                    .from('societies')
+                    .upload(fileName, file, {
+                        upsert: true,
+                    });
+
+                if (error) {
+                    console.error('Error uploading logo:', error);
+                    NotificationManager.show('Error uploading logo', 'error');
+                    return;
+                }
+
+                // Get public URL
+                const { data: { publicUrl } } = window.SupabaseDB.client.storage
+                    .from('societies')
+                    .getPublicUrl(fileName);
+                logoUrl = publicUrl;
+                this.tempLogoData = null; // Clear temp data
+            }
+
             const profileData = {
                 organizerId: organizerId,
                 societyName: document.getElementById('societyName').value.trim(),
                 description: document.getElementById('societyDescription').value.trim(),
-                societyLogo: this.tempLogoData || this.societyProfile?.societyLogo || null
+                societyLogo: logoUrl
             };
 
             console.log('[SocietyOrganizer] Profile data to save:', profileData);

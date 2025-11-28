@@ -23594,17 +23594,23 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
                     <!-- Public/Private Event Filter -->
                     <div class="flex gap-2 mb-4 p-2 bg-gray-50 rounded-lg">
+                        <button onclick="GolferEventsSystem.setEventTypeFilter('all')"
+                                id="eventTypeAll"
+                                class="flex-1 px-4 py-2 rounded-md text-sm font-medium bg-white text-blue-600 border-2 border-blue-500 transition-colors">
+                            <span class="material-symbols-outlined text-sm align-middle mr-1">event</span>
+                            All Events
+                        </button>
                         <button onclick="GolferEventsSystem.setEventTypeFilter('public')"
                                 id="eventTypePublic"
-                                class="flex-1 px-4 py-2 rounded-md text-sm font-medium bg-white text-green-600 border-2 border-green-500 transition-colors">
+                                class="flex-1 px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">
                             <span class="material-symbols-outlined text-sm align-middle mr-1">public</span>
-                            Public Events
+                            Public
                         </button>
                         <button onclick="GolferEventsSystem.setEventTypeFilter('private')"
                                 id="eventTypePrivate"
                                 class="flex-1 px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">
                             <span class="material-symbols-outlined text-sm align-middle mr-1">lock</span>
-                            Private Events
+                            Private
                         </button>
                     </div>
 
@@ -36998,14 +37004,26 @@ class SocietyGolfSupabase {
         await this.waitForSupabase();
 
         console.log('[SocietyGolfDB] ===== LOADING EVENTS =====');
-        console.log('[SocietyGolfDB] Input society UUID:', societyId);
+        console.log('[SocietyGolfDB] Input organizer ID:', societyId);
         console.log('[SocietyGolfDB] AppState.currentUser.role:', AppState.currentUser?.role);
 
-        // Load events for this specific society (filter by society_id UUID)
-        const { data: events, error: eventsError } = await window.SupabaseDB.client
-            .from('society_events')
-            .select('*')
-            .eq('organizer_id', societyId);
+        // SPECIAL CASE: TRGG uses title matching since organizer_id is NULL
+        let eventsQuery;
+        if (societyId === 'trgg-pattaya') {
+            console.log('[SocietyGolfDB] TRGG mode: Loading events by title prefix');
+            eventsQuery = window.SupabaseDB.client
+                .from('society_events')
+                .select('*')
+                .ilike('title', 'TRGG%');
+        } else {
+            // Load events for this specific society (filter by organizer_id)
+            eventsQuery = window.SupabaseDB.client
+                .from('society_events')
+                .select('*')
+                .eq('organizer_id', societyId);
+        }
+
+        const { data: events, error: eventsError } = await eventsQuery;
 
         console.log('[SocietyGolfDB] Query result - events:', events?.length || 0);
         if (events && events.length > 0) {
@@ -46429,9 +46447,9 @@ class SocietyOrganizerManager {
                 }));
             } else {
                 // ORGANIZER MODE: Load society events
-                const societyId = AppState.selectedSociety?.id || localStorage.getItem('selectedSocietyId');
-                console.log('[SocietyOrganizer] ORGANIZER MODE: Loading events for society UUID:', societyId);
-                events = await SocietyGolfDB.getOrganizerEventsWithStats(societyId);
+                const organizerId = AppState.selectedSociety?.organizerId || localStorage.getItem('selectedSocietyOrganizerId');
+                console.log('[SocietyOrganizer] ORGANIZER MODE: Loading events for organizer ID:', organizerId);
+                events = await SocietyGolfDB.getOrganizerEventsWithStats(organizerId);
             }
 
             // Enrich each event with payment stats
@@ -53637,7 +53655,7 @@ class GolferEventsManager {
         this.currentView = 'browse';
         this.calendarDate = new Date();
         this.myRegistrations = [];
-        this.currentEventType = 'public'; // Event type filter: 'public' or 'private' (default to public to match UI)
+        this.currentEventType = 'all'; // Event type filter: 'all', 'public' or 'private' (default to all to show both)
         this.manageEventFilter = 'upcoming'; // Filter for manage events view
 
         // Cache system for instant loading
@@ -53868,14 +53886,22 @@ class GolferEventsManager {
         this.currentEventType = type;
 
         // Update button states
+        const allBtn = document.getElementById('eventTypeAll');
         const publicBtn = document.getElementById('eventTypePublic');
         const privateBtn = document.getElementById('eventTypePrivate');
 
-        if (type === 'public') {
+        // Reset all buttons to inactive state
+        const inactiveClass = 'flex-1 px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors';
+        allBtn.className = inactiveClass;
+        publicBtn.className = inactiveClass;
+        privateBtn.className = inactiveClass;
+
+        // Set active state for selected button
+        if (type === 'all') {
+            allBtn.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium bg-white text-blue-600 border-2 border-blue-500 transition-colors';
+        } else if (type === 'public') {
             publicBtn.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium bg-white text-green-600 border-2 border-green-500 transition-colors';
-            privateBtn.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors';
-        } else {
-            publicBtn.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors';
+        } else if (type === 'private') {
             privateBtn.className = 'flex-1 px-4 py-2 rounded-md text-sm font-medium bg-white text-amber-600 border-2 border-amber-500 transition-colors';
         }
 
@@ -54110,8 +54136,8 @@ class GolferEventsManager {
                     <div class="flex items-start justify-between mb-2 pr-8">
                         <div class="flex items-center flex-1 pr-2">
                             ${(() => {
-                                // TRGG logo takes priority
-                                if (event.organizerId === 'trgg-pattaya' || event.organizerName === 'Travellers Rest Golf Group') {
+                                // TRGG logo takes priority - check by title prefix or organizer name
+                                if (event.name.startsWith('TRGG') || event.organizerId === 'trgg-pattaya' || event.organizerName === 'Travellers Rest Golf Group') {
                                     return `<img src="societylogos/trgg.jpg" alt="Travellers Rest Golf Group" class="w-10 h-10 rounded-full border-2 border-white mr-3 object-cover bg-white">`;
                                 }
                                 // Society logos (for all society events)
@@ -54127,7 +54153,7 @@ class GolferEventsManager {
                             <div class="flex-1">
                                 <h3 class="font-bold text-lg">${event.name}</h3>
                                 <div class="text-xs text-green-50 mt-1">
-                                    ${event.organizerId === 'trgg-pattaya' || event.organizerName === 'Travellers Rest Golf Group' ? 'Travellers Rest Golf Group' : event.societyName || (event.creatorType === 'golfer' && event.creatorName ? event.creatorName : event.organizerName || 'Society Golf')}
+                                    ${event.name.startsWith('TRGG') || event.organizerId === 'trgg-pattaya' || event.organizerName === 'Travellers Rest Golf Group' ? 'Travellers Rest Golf Group' : event.societyName || (event.creatorType === 'golfer' && event.creatorName ? event.creatorName : event.organizerName || 'Society Golf')}
                                 </div>
                             </div>
                         </div>
@@ -58179,13 +58205,13 @@ class SocietyCalendar {
     async loadEvents() {
         try {
             // FIXED: Load events with stats to match Events tab and show accurate registration counts
-            const societyId = AppState.selectedSociety?.id || localStorage.getItem('selectedSocietyId');
-            if (!societyId) {
+            const organizerId = AppState.selectedSociety?.organizerId || localStorage.getItem('selectedSocietyOrganizerId');
+            if (!organizerId) {
                 console.error('[Calendar] No society selected');
                 return;
             }
 
-            this.events = await window.SocietyGolfDB.getOrganizerEventsWithStats(societyId);
+            this.events = await window.SocietyGolfDB.getOrganizerEventsWithStats(organizerId);
             console.log(`[Calendar] Loaded ${this.events.length} events with stats`);
         } catch (error) {
             console.error('[Calendar] Exception loading events:', error);

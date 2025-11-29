@@ -38037,9 +38037,31 @@ class SocietyGolfSupabase {
     async saveScore(scorecardId, holeNumber, grossScore, par, strokeIndex, handicap) {
         await this.waitForSupabase();
 
+        // Ensure strokeIndex is valid (1-18), log warning if using fallback
+        if (!strokeIndex || strokeIndex < 1 || strokeIndex > 18) {
+            console.warn(`[SocietyGolf] Invalid strokeIndex ${strokeIndex} for hole ${holeNumber}, using hole number as fallback`);
+            strokeIndex = holeNumber;
+        }
+
+        // Calculate handicap strokes for this hole
+        // Formula handles all handicap ranges (0-54) and plus handicaps:
+        // - Handicap 0-18: 1 stroke on holes with SI <= handicap (hardest holes)
+        // - Handicap 19-36: 2 strokes on SI <= (handicap-18), 1 stroke on remaining holes
+        // - Handicap 37-54: 3 strokes on SI <= (handicap-36), 2 strokes on SI <= (handicap-18), etc.
+        // - Plus handicap +2: give 1 stroke on SI 17-18 (easiest holes)
+        // - Plus handicap +20: give 2 strokes on SI 15-18, 1 stroke on SI 1-14
         const playingHandicap = Math.round(handicap);
-        const strokesReceived = Math.floor(playingHandicap / 18) +
-                                (strokeIndex <= (playingHandicap % 18) ? 1 : 0);
+        const fullStrokes = Math.floor(Math.abs(playingHandicap) / 18);
+        const remainingStrokes = Math.abs(playingHandicap) % 18;
+
+        let strokesReceived;
+        if (playingHandicap >= 0) {
+            // Positive handicap: receive strokes on HARDEST holes (lowest SI)
+            strokesReceived = fullStrokes + (strokeIndex <= remainingStrokes ? 1 : 0);
+        } else {
+            // Plus handicap: give strokes on EASIEST holes (highest SI)
+            strokesReceived = -(fullStrokes + (strokeIndex > (18 - remainingStrokes) ? 1 : 0));
+        }
 
         const netScore = grossScore - strokesReceived;
 
@@ -40653,18 +40675,25 @@ class LiveScorecardSystem {
     }
 
     getHandicapStrokesOnHole(handicap, strokeIndex) {
-        // Determine if player gets a stroke on this hole
-        // Example: handicap 10 gets strokes on index 1-10
-        // handicap 18 gets strokes on all holes (index 1-18)
-        // handicap 20 gets 1 stroke on all holes + extra stroke on index 1-2
+        // Calculate handicap strokes for this hole
+        // Formula handles all handicap ranges (0-54) and plus handicaps:
+        // - Handicap 0-18: 1 stroke on holes with SI <= handicap (hardest holes)
+        // - Handicap 19-36: 2 strokes on SI <= (handicap-18), 1 stroke on remaining
+        // - Handicap 37-54: 3 strokes on SI <= (handicap-36), 2 strokes on SI <= (handicap-18), etc.
+        // - Plus handicap +2: give 1 stroke on SI 17-18 (easiest holes)
+        // - Plus handicap +20: give 2 strokes on SI 15-18, 1 stroke on SI 1-14
 
         const playingHandicap = Math.round(handicap);
-        const fullStrokes = Math.floor(playingHandicap / 18);
-        const remainingStrokes = playingHandicap % 18;
+        const fullStrokes = Math.floor(Math.abs(playingHandicap) / 18);
+        const remainingStrokes = Math.abs(playingHandicap) % 18;
 
-        let strokes = fullStrokes;
-        if (strokeIndex <= remainingStrokes) {
-            strokes += 1;
+        let strokes;
+        if (playingHandicap >= 0) {
+            // Positive handicap: receive strokes on HARDEST holes (lowest SI)
+            strokes = fullStrokes + (strokeIndex <= remainingStrokes ? 1 : 0);
+        } else {
+            // Plus handicap: give strokes on EASIEST holes (highest SI)
+            strokes = -(fullStrokes + (strokeIndex > (18 - remainingStrokes) ? 1 : 0));
         }
 
         return strokes;
@@ -43212,12 +43241,16 @@ class LiveScorecardSystem {
                 const par = hole?.par || 4;
                 const strokeIndex = hole?.stroke_index || holeNum;
 
-                // Calculate handicap strokes for this hole
-                const fullStrokes = Math.floor(teamPlayingHandicap / 18);
-                const remainingStrokes = teamPlayingHandicap % 18;
-                let strokesReceived = fullStrokes;
-                if (strokeIndex <= remainingStrokes) {
-                    strokesReceived += 1;
+                // Calculate handicap strokes for this hole (handles 0-54 range and plus handicaps)
+                const fullStrokes = Math.floor(Math.abs(teamPlayingHandicap) / 18);
+                const remainingStrokes = Math.abs(teamPlayingHandicap) % 18;
+                let strokesReceived;
+                if (teamPlayingHandicap >= 0) {
+                    // Positive: receive strokes on hardest holes
+                    strokesReceived = fullStrokes + (strokeIndex <= remainingStrokes ? 1 : 0);
+                } else {
+                    // Plus: give strokes on easiest holes
+                    strokesReceived = -(fullStrokes + (strokeIndex > (18 - remainingStrokes) ? 1 : 0));
                 }
 
                 // Calculate net score
@@ -43334,12 +43367,16 @@ class LiveScorecardSystem {
                 const hole = this.courseData?.holes?.find(h => h.hole_number === i);
                 const strokeIndex = hole?.stroke_index || i;
 
-                // Calculate handicap strokes for this hole
-                const fullStrokes = Math.floor(teamPlayingHandicap / 18);
-                const remainingStrokes = teamPlayingHandicap % 18;
-                let strokesReceived = fullStrokes;
-                if (strokeIndex <= remainingStrokes) {
-                    strokesReceived += 1;
+                // Calculate handicap strokes for this hole (handles 0-54 range and plus handicaps)
+                const fullStrokes = Math.floor(Math.abs(teamPlayingHandicap) / 18);
+                const remainingStrokes = Math.abs(teamPlayingHandicap) % 18;
+                let strokesReceived;
+                if (teamPlayingHandicap >= 0) {
+                    // Positive: receive strokes on hardest holes
+                    strokesReceived = fullStrokes + (strokeIndex <= remainingStrokes ? 1 : 0);
+                } else {
+                    // Plus: give strokes on easiest holes
+                    strokesReceived = -(fullStrokes + (strokeIndex > (18 - remainingStrokes) ? 1 : 0));
                 }
 
                 netScore = score - strokesReceived;

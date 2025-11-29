@@ -604,7 +604,7 @@ BEGIN
     -- Also calculate universal handicap for each golfer
     SELECT DISTINCT
       r.golfer_id,
-      NULL AS society_id,
+      NULL::uuid AS society_id,
       'Universal' AS society_name
     FROM public.rounds r
     WHERE r.status = 'completed'

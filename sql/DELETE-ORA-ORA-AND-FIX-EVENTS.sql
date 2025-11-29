@@ -17,11 +17,21 @@ ORDER BY society_name;
 SELECT
     sp.society_name,
     sp.id as society_uuid,
-    COUNT(se.id) as events_by_society_id,
-    COUNT(CASE WHEN se.organizer_id = sp.organizer_id THEN 1 END) as events_by_organizer_id
+    sp.organizer_id,
+    COUNT(se.id) as events_by_society_id
 FROM public.society_profiles sp
 LEFT JOIN public.society_events se ON se.society_id = sp.id
-GROUP BY sp.id, sp.society_name
+GROUP BY sp.id, sp.society_name, sp.organizer_id
+ORDER BY sp.society_name;
+
+-- Step 2b: Count events by organizer_id (TEXT comparison)
+SELECT
+    sp.society_name,
+    sp.organizer_id,
+    COUNT(se.id) as events_count
+FROM public.society_profiles sp
+LEFT JOIN public.society_events se ON se.organizer_id = sp.organizer_id
+GROUP BY sp.society_name, sp.organizer_id
 ORDER BY sp.society_name;
 
 -- Step 3: DELETE Ora Ora Golf

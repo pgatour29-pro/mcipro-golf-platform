@@ -157,7 +157,7 @@ class SocietyGolfSupabase {
 
     async createEvent(eventData) {
         await this.waitForSupabase();
-        const { data, error } = await SupabaseManager.client
+        const { data, error} = await SupabaseManager.client
             .from('society_events')
             .insert([{
                 id: eventData.id || this.generateId(),
@@ -170,8 +170,10 @@ class SocietyGolfSupabase {
                 transport_fee: eventData.transportFee || 0,
                 competition_fee: eventData.competitionFee || 0,
                 max_players: eventData.maxPlayers,
+                society_id: eventData.societyId,
                 organizer_id: eventData.organizerId,
                 organizer_name: eventData.organizerName,
+                creator_id: eventData.creatorId,
                 status: 'open',
                 course_id: eventData.courseId,
                 course_name: eventData.courseName,

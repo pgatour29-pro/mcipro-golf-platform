@@ -214,9 +214,10 @@ class SocietyOrganizerManager {
             const cutoffISO = cutoffValue ? cutoffValue + ':00' : null; // Add seconds for consistency
 
             // Get the selected society's data
+            const societyId = AppState.selectedSociety?.id ||
+                             localStorage.getItem('selectedSocietyId');
             const organizerId = AppState.selectedSociety?.organizerId ||
-                               localStorage.getItem('selectedSocietyOrganizerId') ||
-                               AppState.currentUser?.lineUserId;
+                               localStorage.getItem('selectedSocietyOrganizerId');
             const organizerName = AppState.selectedSociety?.name ||
                                  localStorage.getItem('selectedSocietyName') ||
                                  AppState.currentUser?.name;
@@ -235,8 +236,10 @@ class SocietyOrganizerManager {
                 transportFee: parseInt(document.getElementById('eventTransportFee').value) || 0,
                 competitionFee: parseInt(document.getElementById('eventCompetitionFee').value) || 0,
                 notes: document.getElementById('eventNotes').value.trim(),
+                societyId: societyId,
                 organizerId: organizerId,
                 organizerName: organizerName,
+                creatorId: AppState.currentUser?.lineUserId,
                 autoWaitlist: document.getElementById('eventAutoWaitlist').checked,
                 recurring: document.getElementById('eventRecurring').checked
             };

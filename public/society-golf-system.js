@@ -42,8 +42,10 @@ class SocietyGolfSupabase {
             transportFee: e.transport_fee || 0,
             competitionFee: e.competition_fee || 0,
             maxPlayers: e.max_players,
+            societyId: e.society_id,
             organizerId: e.organizer_id,
             organizerName: e.organizer_name,
+            creatorId: e.creator_id,
             status: e.status,
             courseId: e.course_id,
             courseName: e.course_name,
@@ -92,8 +94,10 @@ class SocietyGolfSupabase {
             transportFee: e.transport_fee || 0,
             competitionFee: e.competition_fee || 0,
             maxPlayers: e.max_players,
+            societyId: e.society_id,
             organizerId: e.organizer_id,
             organizerName: e.organizer_name,
+            creatorId: e.creator_id,
             status: e.status,
             courseId: e.course_id,
             courseName: e.course_name,
@@ -137,8 +141,10 @@ class SocietyGolfSupabase {
             transportFee: data.transport_fee || 0,
             competitionFee: data.competition_fee || 0,
             maxPlayers: data.max_players,
+            societyId: data.society_id,
             organizerId: data.organizer_id,
             organizerName: data.organizer_name,
+            creatorId: data.creator_id,
             status: data.status,
             courseId: data.course_id,
             courseName: data.course_name,
@@ -151,7 +157,8 @@ class SocietyGolfSupabase {
             recurMonthlyPattern: data.recur_monthly_pattern,
             recurEndType: data.recur_end_type,
             recurUntil: data.recur_until,
-            recurCount: data.recur_count
+            recurCount: data.recur_count,
+            createdAt: data.created_at,            updatedAt: data.updated_at
         } : null;
     }
 
@@ -248,6 +255,39 @@ class SocietyGolfSupabase {
             console.error('[SocietyGolf] Error deleting event:', error);
             throw error;
         }
+    }
+
+    async getCourses() {
+        await this.waitForSupabase();
+        const { data, error } = await SupabaseManager.client
+            .from('courses')
+            .select('*')
+            .order('name', { ascending: true });
+
+        if (error) {
+            console.error('[SocietyGolf] Error fetching courses:', error);
+            return [];
+        }
+
+        return data || [];
+    }
+
+    async getTeeMarkers(courseId) {
+        await this.waitForSupabase();
+        const { data, error } = await SupabaseManager.client
+            .from('course_holes')
+            .select('tee_marker')
+            .eq('course_id', courseId);
+
+        if (error) {
+            console.error('[SocietyGolf] Error fetching tee markers:', error);
+            return [];
+        }
+
+        // Get unique tee markers
+        const teeMarkers = [...new Set(data.map(item => item.tee_marker))];
+
+        return teeMarkers;
     }
 
     // =====================================================

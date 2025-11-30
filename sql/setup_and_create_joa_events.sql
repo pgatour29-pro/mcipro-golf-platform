@@ -1,11 +1,21 @@
 -- =====================================================
 -- SETUP AND CREATE JOA GOLF PATTAYA DECEMBER 2025
 -- =====================================================
--- Step 1: Add missing columns if they don't exist
--- Step 2: Create all 31 events for December 2025
+-- Step 1: Ensure JOA society profile exists with logo
+-- Step 2: Add missing columns if they don't exist
+-- Step 3: Create all 31 events for December 2025
 -- =====================================================
 
--- Step 1: Add departure_time column if it doesn't exist
+-- Step 1: Ensure JOA Golf Pattaya society profile exists with logo
+INSERT INTO society_profiles (organizer_id, society_name, society_logo, description, created_at, updated_at)
+VALUES ('JOAGOLFPAT', 'JOA Golf Pattaya', './societylogos/JOAgolf.jpeg', 'JOA Golf Pattaya Society - Daily golf events', NOW(), NOW())
+ON CONFLICT (organizer_id) DO UPDATE SET
+    society_name = 'JOA Golf Pattaya',
+    society_logo = './societylogos/JOAgolf.jpeg',
+    description = 'JOA Golf Pattaya Society - Daily golf events',
+    updated_at = NOW();
+
+-- Step 2: Add departure_time column if it doesn't exist
 ALTER TABLE society_events
 ADD COLUMN IF NOT EXISTS departure_time TIME;
 
@@ -110,6 +120,15 @@ BEGIN
     RAISE NOTICE '========================================';
 
 END $$;
+
+-- Verify JOA society profile with logo
+SELECT
+    organizer_id,
+    society_name,
+    society_logo,
+    description
+FROM society_profiles
+WHERE organizer_id = 'JOAGOLFPAT';
 
 -- Verify the events were created
 SELECT

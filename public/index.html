@@ -36128,17 +36128,15 @@ class SocietyGolfSupabase {
     async getEvents(organizerId = null) {
         await this.waitForSupabase();
 
-        // If no organizerId provided, use current user's LINE ID
-        if (!organizerId) {
-            organizerId = AppState.currentUser?.lineUserId;
-        }
-
         let query = window.SupabaseDB.client
             .from('society_events')
             .select('*');
 
-        // Filter by organizer if provided
-        if (organizerId) {
+        // Filter by society name if selected society exists
+        if (AppState.selectedSociety?.name) {
+            query = query.eq('organizer_name', AppState.selectedSociety.name);
+        } else if (organizerId) {
+            // Fallback to organizer_id only if it's a valid UUID
             query = query.eq('organizer_id', organizerId);
         }
 
@@ -37032,11 +37030,14 @@ class SocietyGolfSupabase {
         console.log('[SocietyGolfDB] AppState.currentUser.role:', AppState.currentUser?.role);
         console.log('[SocietyGolfDB] AppState.selectedSociety:', AppState.selectedSociety);
 
-        // Load all events for this organizer (by user LINE ID)
+        // Load all events for this society by organizer_name (since organizer_id is UUID and may be NULL)
+        const societyName = AppState.selectedSociety?.name;
+        console.log('[SocietyGolfDB] Querying events for society name:', societyName);
+
         const eventsQuery = window.SupabaseDB.client
             .from('society_events')
             .select('*')
-            .eq('organizer_id', organizerId);
+            .eq('organizer_name', societyName);
 
         const { data: events, error: eventsError } = await eventsQuery;
 

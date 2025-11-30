@@ -58171,31 +58171,33 @@ async function viewSocietyLeaderboard(organizerId, societyName, seasonYear, divi
             if (inputPin === '6789' && !userId) {
                 console.log('[SocietyAuth] Default PIN 6789 accepted without user authentication');
 
-                // Create fallback user for dashboard functionality
+                // Use the selected society's organizer ID as the user ID
                 const organizerRole = 'society_organizer';
-                const devUserKey = `dev_userId_${organizerRole}`;
-                let devUserId = localStorage.getItem(devUserKey);
+                const societyOrganizerId = AppState.selectedSociety?.organizerId || AppState.selectedSociety?.id;
 
-                if (!devUserId) {
-                    devUserId = 'fallback-' + Math.random().toString(36).substring(2, 15);
-                    localStorage.setItem(devUserKey, devUserId);
+                if (!societyOrganizerId) {
+                    this.showError('No society selected');
+                    return;
                 }
 
-                // Ensure AppState.currentUser has proper structure
+                console.log('[SocietyAuth] Using society organizer ID:', societyOrganizerId);
+
+                // Ensure AppState.currentUser has proper structure with society organizer ID
                 if (!AppState.currentUser) {
                     AppState.currentUser = {
                         role: organizerRole,
                         name: AppState.selectedSociety?.name || 'Society Organizer',
-                        lineUserId: devUserId,
-                        userId: devUserId
+                        lineUserId: societyOrganizerId,
+                        userId: societyOrganizerId
                     };
                 } else {
-                    AppState.currentUser.lineUserId = devUserId;
-                    AppState.currentUser.userId = devUserId;
+                    AppState.currentUser.lineUserId = societyOrganizerId;
+                    AppState.currentUser.userId = societyOrganizerId;
                     AppState.currentUser.role = organizerRole;
+                    AppState.currentUser.name = AppState.selectedSociety?.name || AppState.currentUser.name;
                 }
 
-                console.log('[SocietyAuth] Created fallback user with ID:', devUserId);
+                console.log('[SocietyAuth] Created user with society organizer ID:', societyOrganizerId);
 
                 sessionStorage.setItem('society_organizer_verified', 'true');
                 sessionStorage.setItem('society_organizer_role', 'admin');

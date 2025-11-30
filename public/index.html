@@ -54614,13 +54614,15 @@ class GolferEventsManager {
             document.getElementById('regPlayerName').value = AppState.currentUser.name;
         }
 
-        // Get handicap from profile golfInfo
-        const profileKey = UserIDSystem.getProfileKey(AppState.currentUser.role, AppState.currentUser.lineUserId || AppState.currentUser.userId);
-        const profile = JSON.parse(localStorage.getItem(profileKey) || '{}');
-        const handicap = profile.golfInfo?.handicap || AppState.currentUser?.handicap;
+        // Get handicap from profile golfInfo - FIXED to use correct source
+        // Priority: 1. profile_data.golfInfo.handicap, 2. localStorage profile, 3. currentUser.handicap
+        const handicap = AppState.currentUser?.profile_data?.golfInfo?.handicap ||
+                        AppState.currentUser?.handicap;
 
-        if (handicap) {
-            document.getElementById('regHandicap').value = handicap;
+        if (handicap !== null && handicap !== undefined) {
+            // Display handicap with plus sign if negative (e.g., -2.1 becomes "+2.1", 3.9 stays "3.9")
+            const displayHandicap = handicap < 0 ? '+' + Math.abs(handicap) : handicap;
+            document.getElementById('regHandicap').value = displayHandicap;
         }
 
         // Reset registration form (only if not in edit mode)
@@ -54735,7 +54737,7 @@ class GolferEventsManager {
                         </span>
                         <div>
                             <div class="font-medium text-gray-900">${reg.playerName}</div>
-                            ${reg.handicap !== null && reg.handicap !== undefined ? `<div class="text-xs text-gray-500">HCP: ${Math.round(reg.handicap)}</div>` : ''}
+                            ${reg.handicap !== null && reg.handicap !== undefined ? `<div class="text-xs text-gray-500">HCP: ${reg.handicap < 0 ? '+' + Math.abs(reg.handicap).toFixed(1) : reg.handicap.toFixed(1)}</div>` : ''}
                         </div>
                     </div>
                     <div class="flex items-center gap-2 text-xs">
@@ -54838,7 +54840,7 @@ class GolferEventsManager {
                                 ${team1.map(player => `
                                     <div class="flex items-center justify-between text-sm py-1 ${player.playerId === currentPlayerId ? 'font-bold text-green-600' : ''}">
                                         <span>${player.playerId === currentPlayerId ? '👉 ' : ''}${player.playerName}</span>
-                                        <span class="text-xs text-gray-600">HCP ${Math.round(player.handicap)}</span>
+                                        <span class="text-xs text-gray-600">HCP ${player.handicap < 0 ? '+' + Math.abs(player.handicap).toFixed(1) : player.handicap.toFixed(1)}</span>
                                     </div>
                                 `).join('')}
                             </div>
@@ -54850,7 +54852,7 @@ class GolferEventsManager {
                                 ${team2.map(player => `
                                     <div class="flex items-center justify-between text-sm py-1 ${player.playerId === currentPlayerId ? 'font-bold text-green-600' : ''}">
                                         <span>${player.playerId === currentPlayerId ? '👉 ' : ''}${player.playerName}</span>
-                                        <span class="text-xs text-gray-600">HCP ${Math.round(player.handicap)}</span>
+                                        <span class="text-xs text-gray-600">HCP ${player.handicap < 0 ? '+' + Math.abs(player.handicap).toFixed(1) : player.handicap.toFixed(1)}</span>
                                     </div>
                                 `).join('')}
                             </div>
@@ -54869,7 +54871,7 @@ class GolferEventsManager {
                             ${myGroup.map(player => `
                                 <div class="flex items-center justify-between text-sm py-1 ${player.playerId === currentPlayerId ? 'font-bold text-green-600' : ''}">
                                     <span>${player.playerId === currentPlayerId ? '👉 ' : ''}${player.playerName}</span>
-                                    <span class="text-xs text-gray-600">HCP ${Math.round(player.handicap)}</span>
+                                    <span class="text-xs text-gray-600">HCP ${player.handicap < 0 ? '+' + Math.abs(player.handicap).toFixed(1) : player.handicap.toFixed(1)}</span>
                                 </div>
                             `).join('')}
                         </div>
@@ -54987,7 +54989,7 @@ class GolferEventsManager {
                        data-name="${reg.playerName}">
                 <div class="flex-1">
                     <span class="text-sm font-medium text-gray-700">${reg.playerName}</span>
-                    ${reg.handicap !== null && reg.handicap !== undefined ? `<span class="text-xs text-gray-500 ml-2">(HCP: ${Math.round(reg.handicap)})</span>` : ''}
+                    ${reg.handicap !== null && reg.handicap !== undefined ? `<span class="text-xs text-gray-500 ml-2">(HCP: ${reg.handicap < 0 ? '+' + Math.abs(reg.handicap).toFixed(1) : reg.handicap.toFixed(1)})</span>` : ''}
                 </div>
             </label>
         `).join('');
@@ -54995,7 +54997,14 @@ class GolferEventsManager {
 
     async submitRegistration() {
         const playerName = document.getElementById('regPlayerName').value.trim();
-        const handicap = parseFloat(document.getElementById('regHandicap').value);
+        const handicapInput = document.getElementById('regHandicap').value.trim();
+
+        // Parse handicap - preserve plus sign for scratch golfers (e.g., "+2.1")
+        // Plus handicaps are for players who shoot under par
+        // Store plus handicaps as negative numbers: "+2.1" becomes -2.1, "3.9" stays 3.9
+        const isPlus = handicapInput.startsWith('+');
+        const handicap = isPlus ? -parseFloat(handicapInput.substring(1)) : parseFloat(handicapInput);
+
         const wantTransport = document.getElementById('regWantTransport').checked;
         const wantCompetition = document.getElementById('regWantCompetition').checked;
 
@@ -55008,13 +55017,13 @@ class GolferEventsManager {
             });
         });
 
-        // Validation
+        // Validation - allow plus handicaps (better than scratch)
         if (!playerName) {
             NotificationManager.show('Please enter your name', 'error');
             return;
         }
-        if (isNaN(handicap) || handicap < 0 || handicap > 54) {
-            NotificationManager.show('Please enter a valid handicap (0-54)', 'error');
+        if (isNaN(handicap) || handicap < -54 || handicap > 54) {
+            NotificationManager.show('Please enter a valid handicap (+54 to 54)', 'error');
             return;
         }
 
@@ -55388,7 +55397,11 @@ class GolferEventsManager {
 
             // Pre-fill the form with existing registration data
             document.getElementById('regPlayerName').value = regData.player_name || '';
-            document.getElementById('regHandicap').value = regData.handicap || '';
+            // Display handicap with plus sign if negative (e.g., -2.1 becomes "+2.1")
+            const displayHandicap = regData.handicap !== null && regData.handicap !== undefined
+                ? (regData.handicap < 0 ? '+' + Math.abs(regData.handicap) : regData.handicap)
+                : '';
+            document.getElementById('regHandicap').value = displayHandicap;
             document.getElementById('regWantTransport').checked = regData.want_transport || false;
             document.getElementById('regWantCompetition').checked = regData.want_competition || false;
 
@@ -57022,7 +57035,7 @@ class GolferEventsManager {
                                         <div class="flex items-center gap-2 mb-2">
                                             <span class="material-symbols-outlined text-blue-600">person</span>
                                             <span class="font-bold text-gray-900 text-lg">${req.golfer_name}</span>
-                                            <span class="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs font-medium">HCP ${req.handicap || 'N/A'}</span>
+                                            <span class="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs font-medium">HCP ${req.handicap !== null && req.handicap !== undefined ? (req.handicap < 0 ? '+' + Math.abs(req.handicap).toFixed(1) : req.handicap.toFixed(1)) : 'N/A'}</span>
                                         </div>
                                         <div class="flex items-center gap-2 text-sm text-gray-600 mb-2">
                                             <span class="material-symbols-outlined text-sm">event</span>

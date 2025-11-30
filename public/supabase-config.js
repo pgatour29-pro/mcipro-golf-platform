@@ -373,12 +373,36 @@ class SupabaseClient {
         // FIX: If profile has societyOrganizerId, look up society_id and create society_members entry
         if (profile.societyOrganizerId && profile.role === 'golfer') {
             try {
-                // Look up society by organizer_id
-                const { data: societyData, error: societyError } = await this.client
+                // Look up society by organizer_id (check both societies and society_profiles)
+                let societyData = null;
+                let societyError = null;
+
+                // First try society_profiles table
+                const profileResult = await this.client
                     .from('society_profiles')
                     .select('id, society_name')
                     .eq('organizer_id', profile.societyOrganizerId)
                     .single();
+
+                if (profileResult.data) {
+                    // Found in society_profiles, now get the corresponding societies entry
+                    const societiesResult = await this.client
+                        .from('societies')
+                        .select('id, name')
+                        .eq('id', profileResult.data.id)
+                        .single();
+
+                    if (societiesResult.data) {
+                        societyData = {
+                            id: societiesResult.data.id,
+                            society_name: societiesResult.data.name
+                        };
+                    } else {
+                        societyError = societiesResult.error;
+                    }
+                } else {
+                    societyError = profileResult.error;
+                }
 
                 if (!societyError && societyData) {
                     // Update user profile with society_id

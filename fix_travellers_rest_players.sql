@@ -14,16 +14,16 @@ DECLARE
   affected_users INT := 0;
   affected_members INT := 0;
 BEGIN
-  -- Find Travellers Rest society ID
+  -- Find Travellers Rest society ID from the societies table (not society_profiles)
   SELECT id INTO trgg_society_id
-  FROM public.society_profiles
-  WHERE society_name ILIKE '%Travellers Rest%'
-     OR organizer_id = 'trgg-pattaya'
+  FROM public.societies
+  WHERE name ILIKE '%Travellers Rest%'
+     OR name ILIKE '%trgg%'
   LIMIT 1;
 
   -- Check if society was found
   IF trgg_society_id IS NULL THEN
-    RAISE EXCEPTION 'Travellers Rest Golf Group society not found in society_profiles table!';
+    RAISE EXCEPTION 'Travellers Rest Golf Group society not found in societies table!';
   END IF;
 
   RAISE NOTICE 'Found Travellers Rest society: %', trgg_society_id;
@@ -100,8 +100,8 @@ SELECT
 FROM public.user_profiles up
 JOIN public.society_members sm ON sm.golfer_id = up.line_user_id
 WHERE sm.society_id = (
-  SELECT id FROM public.society_profiles
-  WHERE society_name ILIKE '%Travellers Rest%'
+  SELECT id FROM public.societies
+  WHERE name ILIKE '%Travellers Rest%'
   LIMIT 1
 )
 ORDER BY up.name;
@@ -112,7 +112,7 @@ SELECT
   COUNT(*) as count
 FROM public.society_members
 WHERE society_id = (
-  SELECT id FROM public.society_profiles
-  WHERE society_name ILIKE '%Travellers Rest%'
+  SELECT id FROM public.societies
+  WHERE name ILIKE '%Travellers Rest%'
   LIMIT 1
 );

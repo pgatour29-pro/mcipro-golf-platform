@@ -36128,9 +36128,9 @@ class SocietyGolfSupabase {
     async getEvents(organizerId = null) {
         await this.waitForSupabase();
 
-        // If no organizerId provided, use selected society UUID or current user
+        // If no organizerId provided, use current user's LINE ID
         if (!organizerId) {
-            organizerId = AppState.selectedSociety?.id || AppState.currentUser?.lineUserId;
+            organizerId = AppState.currentUser?.lineUserId;
         }
 
         let query = window.SupabaseDB.client
@@ -37032,28 +37032,11 @@ class SocietyGolfSupabase {
         console.log('[SocietyGolfDB] AppState.currentUser.role:', AppState.currentUser?.role);
         console.log('[SocietyGolfDB] AppState.selectedSociety:', AppState.selectedSociety);
 
-        // SPECIAL CASE: TRGG uses title matching since organizer_id might be NULL
-        // Check the society name or organizerId field (not the UUID)
-        let eventsQuery;
-        const isTRGG = AppState.selectedSociety?.organizerId === 'trgg-pattaya' ||
-                       AppState.selectedSociety?.societyName?.includes('Travellers Rest') ||
-                       AppState.selectedSociety?.name?.includes('Travellers Rest');
-
-        if (isTRGG) {
-            console.log('[SocietyGolfDB] TRGG mode: Loading events by title prefix');
-            eventsQuery = window.SupabaseDB.client
-                .from('society_events')
-                .select('*')
-                .ilike('title', 'TRGG%');
-        } else {
-            // Load events for this specific society (filter by organizer_id)
-            // IMPORTANT: Exclude TRGG events from other societies
-            eventsQuery = window.SupabaseDB.client
-                .from('society_events')
-                .select('*')
-                .eq('organizer_id', organizerId)
-                .not('title', 'ilike', 'TRGG%');
-        }
+        // Load all events for this organizer (by user LINE ID)
+        const eventsQuery = window.SupabaseDB.client
+            .from('society_events')
+            .select('*')
+            .eq('organizer_id', organizerId);
 
         const { data: events, error: eventsError } = await eventsQuery;
 
@@ -46521,8 +46504,8 @@ class SocietyOrganizerManager {
                     };
                 }));
             } else {
-                // ORGANIZER MODE: Load society events using UUID
-                const organizerId = AppState.selectedSociety?.id || AppState.currentUser?.lineUserId;
+                // ORGANIZER MODE: Load user's events using LINE ID
+                const organizerId = AppState.currentUser?.lineUserId;
                 console.log('[SocietyOrganizer] ORGANIZER MODE: Loading events for organizer ID:', organizerId);
                 events = await SocietyGolfDB.getOrganizerEventsWithStats(organizerId);
             }
@@ -47708,8 +47691,8 @@ This action cannot be undone.`);
                 baseFee: parseFloat(document.getElementById('eventMemberFee').value) || 0,
                 autoWaitlist: document.getElementById('eventAutoWaitlist').checked,
                 notes: document.getElementById('eventNotes').value.trim(),
-                organizerId: AppState.selectedSociety?.id || AppState.currentUser?.lineUserId,
-                organizerName: AppState.selectedSociety?.societyName || AppState.currentUser?.name,
+                organizerId: AppState.currentUser?.lineUserId,
+                organizerName: AppState.currentUser?.name,
                 // NEW: Divisions/Flights
                 divisions: this.collectDivisions(),
                 // Recurrence fields
@@ -58279,10 +58262,10 @@ class SocietyCalendar {
 
     async loadEvents() {
         try {
-            // FIXED: Load events with stats using society UUID
-            const organizerId = AppState.selectedSociety?.id || AppState.currentUser?.lineUserId;
+            // Load user's events using LINE ID
+            const organizerId = AppState.currentUser?.lineUserId;
             if (!organizerId) {
-                console.error('[Calendar] No society selected');
+                console.error('[Calendar] No user logged in');
                 return;
             }
 

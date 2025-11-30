@@ -391,20 +391,12 @@ class SupabaseClient {
                         .eq('line_user_id', data.line_user_id);
 
                     // Create society_members entry (if not exists)
+                    // Note: Using only columns that exist in the table (society_id, golfer_id)
                     const { error: memberError } = await this.client
                         .from('society_members')
                         .upsert({
                             society_id: societyData.id,
-                            golfer_id: data.line_user_id,
-                            joined_date: new Date().toISOString().split('T')[0],
-                            status: 'active',
-                            member_data: {
-                                name: data.name,
-                                handicap: profile.handicap || profile.golfInfo?.handicap,
-                                homeClub: profile.homeClub || profile.golfInfo?.homeClub,
-                                email: data.email,
-                                phone: data.phone
-                            }
+                            golfer_id: data.line_user_id
                         }, {
                             onConflict: 'society_id,golfer_id',
                             ignoreDuplicates: true

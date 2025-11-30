@@ -52,29 +52,14 @@ BEGIN
   RAISE NOTICE 'Updated % user profiles with society_id', affected_users;
 
   -- Step 3: Insert into society_members table (avoid duplicates)
+  -- Note: Using only columns that exist in the table
   INSERT INTO public.society_members (
     society_id,
-    golfer_id,
-    joined_date,
-    status,
-    member_data
+    golfer_id
   )
   SELECT
     trgg_society_id,
-    up.line_user_id,
-    COALESCE(
-      (up.profile_data->'golfInfo'->>'memberSince')::date,
-      up.created_at::date,
-      CURRENT_DATE
-    ) as joined_date,
-    'active' as status,
-    jsonb_build_object(
-      'name', up.name,
-      'handicap', up.profile_data->'golfInfo'->'handicap',
-      'homeClub', up.profile_data->'golfInfo'->>'homeClub',
-      'email', up.email,
-      'phone', up.phone
-    ) as member_data
+    up.line_user_id
   FROM public.user_profiles up
   WHERE
     (
@@ -88,7 +73,8 @@ BEGIN
       SELECT 1 FROM public.society_members sm
       WHERE sm.society_id = trgg_society_id
         AND sm.golfer_id = up.line_user_id
-    );
+    )
+  ON CONFLICT (society_id, golfer_id) DO NOTHING;
 
   GET DIAGNOSTICS affected_members = ROW_COUNT;
   RAISE NOTICE 'Inserted % new members into society_members table', affected_members;
@@ -111,8 +97,7 @@ SELECT
   up.society_name,
   up.profile_data->'golfInfo'->>'handicap' as handicap,
   up.profile_data->'golfInfo'->>'homeClub' as home_club,
-  sm.joined_date,
-  sm.status
+  sm.society_id
 FROM public.user_profiles up
 JOIN public.society_members sm ON sm.golfer_id = up.line_user_id
 WHERE sm.society_id = (

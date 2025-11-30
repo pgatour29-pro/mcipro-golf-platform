@@ -1,7 +1,7 @@
 // SERVICE WORKER - UNREGISTRATION VERSION
 // This version clears all caches and unregisters itself
 
-const SW_VERSION = 'scorecard-multi-player-save-v2-menu-fix';
+const SW_VERSION = 'scorecard-multi-player-save-v3-all-menus-fix';
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing unregistration version');

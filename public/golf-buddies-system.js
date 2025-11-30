@@ -14,7 +14,7 @@
  * ===========================================================================
  */
 
-const BUDDIES_ENABLED = false;
+const BUDDIES_ENABLED = true;
 
 window.GolfBuddiesSystem = {
     buddies: [],

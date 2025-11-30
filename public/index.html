@@ -21653,24 +21653,34 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 // Convert 'society' role to 'society_organizer' for internal consistency
                 const organizerRole = 'society_organizer';
 
-                // Check if user is authenticated (has LINE user ID)
-                if (!AppState.currentUser?.lineUserId) {
-                    // For development/fallback mode without LINE authentication
-                    console.log('[loginWithPin] No LINE user ID - using fallback authentication');
-                    return window.login(organizerRole);
+                // Ensure AppState.currentUser exists for fallback mode
+                if (!AppState.currentUser) {
+                    // Create a temporary user for fallback authentication
+                    const devUserKey = `dev_userId_${organizerRole}`;
+                    let devUserId = localStorage.getItem(devUserKey);
+
+                    if (!devUserId) {
+                        devUserId = 'fallback-' + Math.random().toString(36).substring(2, 15);
+                        localStorage.setItem(devUserKey, devUserId);
+                    }
+
+                    AppState.currentUser = {
+                        role: organizerRole,
+                        name: 'Fallback Organizer',
+                        lineUserId: devUserId,
+                        userId: devUserId
+                    };
+                    console.log('[loginWithPin] Created fallback user for society selector');
                 }
 
                 // Set user role to society_organizer
-                if (!AppState.currentUser) {
-                    AppState.currentUser = {};
-                }
                 AppState.currentUser.role = organizerRole;
 
-                // Open society selector with PIN verification required
+                // Open society selector with PIN verification required (ALWAYS show selector)
                 if (typeof SocietySelectorSystem !== 'undefined') {
                     console.log('[loginWithPin] Opening society selector with PIN verification');
-                    // Set flag to require PIN verification after society selection
-                    SocietySelectorSystem.requirePinVerification = true;
+                    // Set flag to require PIN verification after society selection (skip in fallback mode)
+                    SocietySelectorSystem.requirePinVerification = AppState.currentUser?.lineUserId && !AppState.currentUser.lineUserId.startsWith('fallback-');
                     await SocietySelectorSystem.init();
                     SocietySelectorSystem.openModal();
                     return true;

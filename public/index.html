@@ -58173,33 +58173,36 @@ async function viewSocietyLeaderboard(organizerId, societyName, seasonYear, divi
             }
 
             try {
-                const { data, error } = await window.SupabaseDB.client
-                    .rpc('verify_society_organizer_pin', {
-                        org_id: userId,
-                        input_pin: inputPin
-                    });
-
-                if (error) {
-                    console.error('[SocietyAuth] Error verifying PIN:', error);
-                    this.showError('Error verifying PIN. Please try again.');
-                    return;
-                }
-
-                // data will be 'super_admin', 'admin', or NULL
-                let userRole = data;
+                let userRole = null;
                 let pinVerified = false;
 
-                if (data) {
-                    // PIN exists in database and is correct
-                    pinVerified = true;
-                    console.log('[SocietyAuth] PIN verified from database - User role:', userRole);
-                } else {
-                    // No PIN in database - check if using default PIN 6789
-                    if (inputPin === '6789') {
-                        pinVerified = true;
-                        userRole = 'admin'; // Default role when using default PIN
-                        console.log('[SocietyAuth] Default PIN 6789 accepted - User role:', userRole);
+                // Check if SupabaseDB is available
+                if (window.SupabaseDB && window.SupabaseDB.client) {
+                    // Try to verify PIN from database
+                    const { data, error } = await window.SupabaseDB.client
+                        .rpc('verify_society_organizer_pin', {
+                            org_id: userId,
+                            input_pin: inputPin
+                        });
+
+                    if (error) {
+                        console.error('[SocietyAuth] Error verifying PIN:', error);
+                        // Fall through to default PIN check
                     }
+
+                    if (data) {
+                        // PIN exists in database and is correct
+                        pinVerified = true;
+                        userRole = data; // 'super_admin' or 'admin'
+                        console.log('[SocietyAuth] PIN verified from database - User role:', userRole);
+                    }
+                }
+
+                // If not verified yet, check for default PIN 6789
+                if (!pinVerified && inputPin === '6789') {
+                    pinVerified = true;
+                    userRole = 'admin'; // Default role when using default PIN
+                    console.log('[SocietyAuth] Default PIN 6789 accepted - User role:', userRole);
                 }
 
                 if (pinVerified) {
@@ -58207,8 +58210,10 @@ async function viewSocietyLeaderboard(organizerId, societyName, seasonYear, divi
                     sessionStorage.setItem('society_organizer_verified', 'true');
                     sessionStorage.setItem('society_organizer_role', userRole);
 
-                    // Update user role in society_organizer_roles table
-                    await this.updateUserRole(userId, userRole);
+                    // Update user role in society_organizer_roles table (only if DB available)
+                    if (window.SupabaseDB && window.SupabaseDB.client) {
+                        await this.updateUserRole(userId, userRole);
+                    }
 
                     this.hidePinModal();
 
@@ -58246,7 +58251,20 @@ async function viewSocietyLeaderboard(organizerId, societyName, seasonYear, divi
                 }
             } catch (error) {
                 console.error('[SocietyAuth] Exception verifying PIN:', error);
-                this.showError('Error verifying PIN. Please try again.');
+                // Check for default PIN as fallback
+                if (inputPin === '6789') {
+                    console.log('[SocietyAuth] Database error - accepting default PIN 6789');
+                    sessionStorage.setItem('society_organizer_verified', 'true');
+                    sessionStorage.setItem('society_organizer_role', 'admin');
+                    this.hidePinModal();
+
+                    if (this.pendingDashboard) {
+                        ScreenManager.showScreen(this.pendingDashboard);
+                        this.pendingDashboard = null;
+                    }
+                } else {
+                    this.showError('Error verifying PIN. Please try again.');
+                }
             }
         },
 

@@ -1,7 +1,7 @@
 // SERVICE WORKER - UNREGISTRATION VERSION
 // This version clears all caches and unregisters itself
 
-const SW_VERSION = 'default-pin-6789-v1';
+const SW_VERSION = 'default-pin-6789-v2-fallback-fix';
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing unregistration version');

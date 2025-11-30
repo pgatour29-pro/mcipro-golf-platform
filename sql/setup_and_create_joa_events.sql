@@ -27,7 +27,12 @@ ADD COLUMN IF NOT EXISTS auto_waitlist BOOLEAN DEFAULT true;
 ALTER TABLE society_events
 ADD COLUMN IF NOT EXISTS member_fee DECIMAL(10,2);
 
--- Step 2: Insert all December 2025 events
+-- Step 3: Delete any existing JOA December 2025 events to prevent duplicates
+DELETE FROM society_events
+WHERE organizer_name = 'JOA Golf Pattaya'
+  AND event_date BETWEEN '2025-12-01' AND '2025-12-31';
+
+-- Step 4: Insert all December 2025 events
 DO $$
 DECLARE
     events_created INT := 0;

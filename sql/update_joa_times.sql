@@ -1,5 +1,15 @@
 -- UPDATE existing JOA events with times instead of deleting/recreating
 
+-- Step 1: Ensure JOA society profile exists with logo
+INSERT INTO society_profiles (organizer_id, society_name, society_logo, description, created_at, updated_at)
+VALUES ('JOAGOLFPAT', 'JOA Golf Pattaya', './societylogos/JOAgolf.jpeg', 'JOA Golf Pattaya Society - Daily golf events', NOW(), NOW())
+ON CONFLICT (organizer_id) DO UPDATE SET
+    society_name = 'JOA Golf Pattaya',
+    society_logo = './societylogos/JOAgolf.jpeg',
+    description = 'JOA Golf Pattaya Society - Daily golf events',
+    updated_at = NOW();
+
+-- Step 2: Update JOA events with times
 UPDATE society_events
 SET
     departure_time = '09:00:00',
@@ -35,3 +45,12 @@ SELECT
 FROM society_events
 WHERE organizer_name = 'JOA Golf Pattaya'
   AND event_date BETWEEN '2025-12-01' AND '2025-12-31';
+
+-- Verify JOA society profile with logo
+SELECT
+    organizer_id,
+    society_name,
+    society_logo,
+    description
+FROM society_profiles
+WHERE organizer_id = 'JOAGOLFPAT';

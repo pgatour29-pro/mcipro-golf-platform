@@ -6096,6 +6096,10 @@
                     if (typeof ScheduleSystem !== 'undefined' && ScheduleSystem.renderScheduleList) {
                         ScheduleSystem.renderScheduleList();
                     }
+                    // Initialize role switcher to show "Switch to Organizer" button if applicable
+                    if (typeof RoleSwitcher !== 'undefined' && RoleSwitcher.init) {
+                        RoleSwitcher.init();
+                    }
                     return;
                 }
 
@@ -6104,6 +6108,11 @@
                 TabManager.showTab('golferDashboard', 'overview');
                 UserInterface.updateUserDisplays();
                 ProfileSystem.initializeDashboard();
+
+                // Initialize role switcher to show "Switch to Organizer" button if applicable
+                if (typeof RoleSwitcher !== 'undefined' && RoleSwitcher.init) {
+                    RoleSwitcher.init();
+                }
 
                 // CRITICAL: Render schedule immediately and repeatedly to ensure it loads
                 if (typeof ScheduleSystem !== 'undefined' && ScheduleSystem.renderScheduleList) {
@@ -7797,6 +7806,7 @@
                         'caddie': 'caddieDashboard',
                         'manager': 'managerDashboard',
                         'proshop': 'proshopDashboard',
+                        'society': 'societyOrganizerDashboard', // Support 'society' role for backwards compatibility
                         'society_organizer': 'societyOrganizerDashboard',
                         'maintenance': 'maintenanceDashboard'
                     };
@@ -21627,28 +21637,58 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
         // PIN-protected role login function
         // All staff/admin roles require PIN code before access
-        window.loginWithPin = function(role) {
+        window.loginWithPin = async function(role) {
             console.log('[loginWithPin] Requesting PIN for role:', role);
-            
+
+            // SPECIAL HANDLING FOR SOCIETY ORGANIZERS: Use database-based PIN system
+            if (role === 'society') {
+                console.log('[loginWithPin] Society organizer login - using database PIN authentication');
+
+                // Convert 'society' role to 'society_organizer' for internal consistency
+                const organizerRole = 'society_organizer';
+
+                // Check if user is authenticated (has LINE user ID)
+                if (!AppState.currentUser?.lineUserId) {
+                    // For development/fallback mode without LINE authentication
+                    console.log('[loginWithPin] No LINE user ID - using fallback authentication');
+                    return window.login(organizerRole);
+                }
+
+                // Check if organizer has a PIN set in database
+                const hasPinSet = await SocietyOrganizerAuth.checkIfPinRequired();
+
+                if (hasPinSet) {
+                    console.log('[loginWithPin] Organizer has PIN set - showing PIN modal');
+                    // Set pending dashboard and show PIN modal
+                    SocietyOrganizerAuth.pendingDashboard = 'societyOrganizerDashboard';
+                    SocietyOrganizerAuth.showPinModal(organizerRole);
+                    return true;
+                } else {
+                    console.log('[loginWithPin] Organizer has NO PIN set - allowing direct access');
+                    // No PIN required - proceed to login
+                    return window.login(organizerRole);
+                }
+            }
+
+            // FOR OTHER ROLES: Use simple PIN prompt (caddie, manager, proshop, maintenance)
             // Get role-specific display name
             const roleNames = {
                 'caddie': 'Caddy',
                 'manager': 'Manager',
                 'proshop': 'Pro Shop',
-                'maintenance': 'Maintenance',
-                'society': 'Society Organizer'
+                'maintenance': 'Maintenance'
             };
-            
+
             const roleName = roleNames[role] || role;
-            
+
             // Prompt for PIN
             const pin = prompt(`Enter PIN code for ${roleName} access:`);
-            
+
             if (!pin) {
                 console.log('[loginWithPin] PIN entry cancelled');
                 return false;
             }
-            
+
             // Validate PIN (currently using 6789 for all roles)
             // TODO: Move to database-based validation per role
             if (pin === '6789') {
@@ -22073,6 +22113,11 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 
                         <!-- Action Buttons Group -->
                         <div class="flex items-center gap-1 md:gap-2">
+                            <!-- Role Switcher: Switch to Organizer (only show if user is an organizer) -->
+                            <button id="switchToOrganizerBtn" onclick="RoleSwitcher.switchToOrganizer()" class="header-btn header-btn-neutral relative flex-shrink-0" title="Switch to Society Organizer" style="display: none;">
+                                <span class="material-symbols-outlined">groups</span>
+                            </button>
+
                             <!-- Buddies Button -->
                             <button onclick="GolfBuddiesSystem.openBuddiesModal()" class="header-btn header-btn-neutral relative flex-shrink-0" title="My Buddies">
                                 <span class="material-symbols-outlined">group</span>
@@ -29262,6 +29307,11 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <!-- Mobile Menu (Hamburger) -->
                         <button class="md:hidden btn-secondary p-2" onclick="openMobileDrawer('organizer')" aria-label="Menu">
                             <span class="material-symbols-outlined text-base">menu</span>
+                        </button>
+                        <!-- Role Switcher: Switch to Golfer -->
+                        <button onclick="RoleSwitcher.switchToGolfer()" class="btn-secondary text-xs md:text-sm" title="Switch to Golfer Profile">
+                            <span class="material-symbols-outlined text-sm">golf_course</span>
+                            <span class="hidden md:inline">My Golfer Profile</span>
                         </button>
                         <button onclick="SocietyOrganizerSystem.refreshEvents()" class="btn-secondary text-xs md:text-sm">
                             <span class="material-symbols-outlined text-sm">refresh</span>
@@ -58201,6 +58251,135 @@ async function viewSocietyLeaderboard(organizerId, societyName, seasonYear, divi
         }
     };
     console.log('[SocietyAuth] PIN Authentication System loaded (Per-Organizer)');
+
+
+// ===== ROLE SWITCHER SYSTEM (Dual-Role: Organizer + Golfer) =====
+const RoleSwitcher = {
+    /**
+     * Check if current user is a society organizer (has PIN set in database)
+     */
+    async isUserOrganizer() {
+        const userId = AppState.currentUser?.lineUserId;
+        if (!userId) return false;
+
+        try {
+            const { data, error } = await window.SupabaseDB.client
+                .rpc('organizer_has_pin', { org_id: userId });
+
+            if (error) {
+                console.error('[RoleSwitcher] Error checking organizer status:', error);
+                return false;
+            }
+
+            return data === true;
+        } catch (error) {
+            console.error('[RoleSwitcher] Exception checking organizer status:', error);
+            return false;
+        }
+    },
+
+    /**
+     * Initialize role switcher UI visibility
+     * Shows "Switch to Organizer" button if user is an organizer
+     */
+    async init() {
+        const isOrganizer = await this.isUserOrganizer();
+        const switchBtn = document.getElementById('switchToOrganizerBtn');
+
+        if (switchBtn && isOrganizer) {
+            switchBtn.style.display = 'block';
+            console.log('[RoleSwitcher] User is an organizer - showing role switcher');
+        } else {
+            console.log('[RoleSwitcher] User is not an organizer - hiding role switcher');
+        }
+    },
+
+    /**
+     * Switch from Society Organizer → Golfer Profile
+     */
+    switchToGolfer() {
+        console.log('[RoleSwitcher] Switching to Golfer profile...');
+
+        if (!AppState.currentUser) {
+            console.error('[RoleSwitcher] No current user');
+            return;
+        }
+
+        // Update user role
+        AppState.currentUser.role = 'golfer';
+
+        // Update localStorage if using profiles
+        const profiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+        const myProfile = profiles.find(p => p.lineUserId === AppState.currentUser.lineUserId);
+        if (myProfile) {
+            myProfile.role = 'golfer';
+            localStorage.setItem('mcipro_user_profiles', JSON.stringify(profiles));
+        }
+
+        // Navigate to golfer dashboard
+        ScreenManager.showScreen('golferDashboard');
+
+        // Reinitialize role switcher to show "Switch to Organizer" button
+        setTimeout(() => {
+            this.init();
+        }, 500);
+
+        NotificationManager.show('Switched to Golfer profile', 'success');
+    },
+
+    /**
+     * Switch from Golfer → Society Organizer Dashboard
+     * Requires PIN verification if organizer has PIN set
+     */
+    async switchToOrganizer() {
+        console.log('[RoleSwitcher] Switching to Society Organizer...');
+
+        if (!AppState.currentUser) {
+            console.error('[RoleSwitcher] No current user');
+            return;
+        }
+
+        // Update user role
+        AppState.currentUser.role = 'society_organizer';
+
+        // Update localStorage if using profiles
+        const profiles = JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]');
+        const myProfile = profiles.find(p => p.lineUserId === AppState.currentUser.lineUserId);
+        if (myProfile) {
+            myProfile.role = 'society_organizer';
+            localStorage.setItem('mcipro_user_profiles', JSON.stringify(profiles));
+        }
+
+        // Check if PIN is required
+        if (typeof SocietyOrganizerAuth !== 'undefined') {
+            // Check if already verified in this session
+            if (!SocietyOrganizerAuth.isVerified()) {
+                // Check if this organizer has a PIN set
+                const hasPinSet = await SocietyOrganizerAuth.checkIfPinRequired();
+                if (hasPinSet) {
+                    console.log('[RoleSwitcher] Organizer has PIN set - showing PIN modal');
+                    // Store the pending dashboard so we can redirect after PIN verification
+                    SocietyOrganizerAuth.pendingDashboard = 'societyOrganizerDashboard';
+                    SocietyOrganizerAuth.showPinModal('society_organizer');
+                    return; // Don't proceed to dashboard yet - wait for PIN verification
+                } else {
+                    console.log('[RoleSwitcher] Organizer has NO PIN set - allowing access');
+                }
+            } else {
+                console.log('[RoleSwitcher] Organizer already verified in this session');
+            }
+        }
+
+        // Navigate to society organizer dashboard
+        ScreenManager.showScreen('societyOrganizerDashboard');
+        NotificationManager.show('Switched to Society Organizer', 'success');
+    }
+};
+
+// Expose to window
+window.RoleSwitcher = RoleSwitcher;
+
+console.log('[RoleSwitcher] Dual-Role System loaded');
 
 
 // Tab switching functions

@@ -68,13 +68,12 @@ BEGIN
       OR up.profile_data->'organizationInfo'->>'societyName' ILIKE '%Traveller%Rest%'
       OR up.society_id = trgg_society_id
     )
-    -- Only insert if not already exists
+    -- Only insert if not already exists (no ON CONFLICT needed)
     AND NOT EXISTS (
       SELECT 1 FROM public.society_members sm
       WHERE sm.society_id = trgg_society_id
         AND sm.golfer_id = up.line_user_id
-    )
-  ON CONFLICT (society_id, golfer_id) DO NOTHING;
+    );
 
   GET DIAGNOSTICS affected_members = ROW_COUNT;
   RAISE NOTICE 'Inserted % new members into society_members table', affected_members;

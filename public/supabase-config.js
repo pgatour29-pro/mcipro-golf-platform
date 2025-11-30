@@ -392,15 +392,25 @@ class SupabaseClient {
 
                     // Create society_members entry (if not exists)
                     // Note: Using only columns that exist in the table (society_id, golfer_id)
-                    const { error: memberError } = await this.client
+                    // First check if already exists
+                    const { data: existingMember } = await this.client
                         .from('society_members')
-                        .upsert({
-                            society_id: societyData.id,
-                            golfer_id: data.line_user_id
-                        }, {
-                            onConflict: 'society_id,golfer_id',
-                            ignoreDuplicates: true
-                        });
+                        .select('golfer_id')
+                        .eq('society_id', societyData.id)
+                        .eq('golfer_id', data.line_user_id)
+                        .single();
+
+                    // Only insert if doesn't exist
+                    let memberError = null;
+                    if (!existingMember) {
+                        const result = await this.client
+                            .from('society_members')
+                            .insert({
+                                society_id: societyData.id,
+                                golfer_id: data.line_user_id
+                            });
+                        memberError = result.error;
+                    }
 
                     if (memberError) {
                         console.warn('[Supabase] Could not create society_members entry:', memberError);

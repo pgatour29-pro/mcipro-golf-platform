@@ -58170,6 +58170,33 @@ async function viewSocietyLeaderboard(organizerId, societyName, seasonYear, divi
             // If using default PIN 6789, allow without user authentication
             if (inputPin === '6789' && !userId) {
                 console.log('[SocietyAuth] Default PIN 6789 accepted without user authentication');
+
+                // Create fallback user for dashboard functionality
+                const organizerRole = 'society_organizer';
+                const devUserKey = `dev_userId_${organizerRole}`;
+                let devUserId = localStorage.getItem(devUserKey);
+
+                if (!devUserId) {
+                    devUserId = 'fallback-' + Math.random().toString(36).substring(2, 15);
+                    localStorage.setItem(devUserKey, devUserId);
+                }
+
+                // Ensure AppState.currentUser has proper structure
+                if (!AppState.currentUser) {
+                    AppState.currentUser = {
+                        role: organizerRole,
+                        name: AppState.selectedSociety?.name || 'Society Organizer',
+                        lineUserId: devUserId,
+                        userId: devUserId
+                    };
+                } else {
+                    AppState.currentUser.lineUserId = devUserId;
+                    AppState.currentUser.userId = devUserId;
+                    AppState.currentUser.role = organizerRole;
+                }
+
+                console.log('[SocietyAuth] Created fallback user with ID:', devUserId);
+
                 sessionStorage.setItem('society_organizer_verified', 'true');
                 sessionStorage.setItem('society_organizer_role', 'admin');
                 this.hidePinModal();

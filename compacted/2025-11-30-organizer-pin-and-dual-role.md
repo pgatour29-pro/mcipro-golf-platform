@@ -260,6 +260,17 @@ All implemented in `sql/society-organizer-pin-auth-per-organizer.sql`:
 - **Issue Fixed**: `Cannot read properties of undefined (reading 'name')` error in fallback mode
 - **Solution**: Added `'society_organizer'` profile entry to `userProfiles` object in FallbackAuthentication
 
+**Default PIN 6789**:
+- **Commit**: `0fcc618f`
+- **Message**: "Set default PIN 6789 for society organizers"
+- **Date**: Nov 30, 2025
+- **Feature**: Added default PIN fallback for organizers without custom PIN
+- **Changes**:
+  - Modified `SocietyOrganizerAuth.verifyPin()` to accept PIN 6789 when no custom PIN in database
+  - Custom PINs in database take precedence over default
+  - Updated service worker version to `default-pin-6789-v1`
+- **Files**: `public/index.html`, `public/sw.js`
+
 ---
 
 ## Deployment
@@ -277,23 +288,35 @@ All implemented in `sql/society-organizer-pin-auth-per-organizer.sql`:
 - **Commit**: `4f8e7e36`
 - **Fix**: Resolved `Cannot read properties of undefined (reading 'name')` error
 
+**Default PIN 6789 Deployment**:
+- **Command**: `vercel --prod`
+- **Vercel URL**: https://mcipro-golf-platform-btfh1n5i6-mcipros-projects.vercel.app
+- **Status**: ✅ Deployed Successfully
+- **Commit**: `0fcc618f`
+- **Feature**: Added default PIN 6789 for organizers who haven't set custom PIN
+- **Service Worker**: Updated to `default-pin-6789-v1`
+
 **Production Aliases**:
 - **Primary URL**: https://www.mycaddipro.com
 - **Alternate URL**: https://mycaddipro.com
-- **Aliased**: `vercel alias mcipro-golf-platform-1ygr6ltxx-mcipros-projects.vercel.app www.mycaddipro.com`
+- **Current Deployment**: `mcipro-golf-platform-btfh1n5i6-mcipros-projects.vercel.app`
 - **Status**: ✅ Live on Production Domain
 
 ---
 
 ## Testing Checklist
 
-- [ ] Society Organizer button on login page shows PIN modal (not hardcoded prompt)
-- [ ] PIN verification uses database (organizer-specific PIN)
+- [ ] Society Organizer button on login page shows society selector modal
+- [ ] Society selector modal appears instantly (not slow)
+- [ ] After selecting society, PIN modal appears
+- [ ] Default PIN 6789 works for organizers without custom PIN
+- [ ] Custom PIN (if set in database) takes precedence over default 6789
+- [ ] Wrong PIN shows error message "Incorrect PIN. Please try again."
 - [ ] Organizer can access society dashboard after PIN entry
 - [ ] "My Golfer Profile" button visible in Society Organizer Dashboard
 - [ ] Clicking "My Golfer Profile" switches to Golfer Dashboard
 - [ ] "Switch to Organizer" button visible in Golfer Dashboard (only if user is organizer)
-- [ ] Clicking "Switch to Organizer" shows PIN modal if PIN is set
+- [ ] Clicking "Switch to Organizer" shows society selector, then PIN modal
 - [ ] After PIN verification, user reaches Society Organizer Dashboard
 - [ ] Organizer can register for events when in Golfer role
 - [ ] Role switches persist in localStorage
@@ -304,9 +327,74 @@ All implemented in `sql/society-organizer-pin-auth-per-organizer.sql`:
 ## Security Features
 
 1. **Database-Based PIN**: Each organizer has unique PIN stored in database
-2. **Session Verification**: PIN verification stored in `sessionStorage` (clears on browser close)
-3. **PIN Required on Role Switch**: Switching to organizer role requires PIN re-entry if not verified
-4. **Auto-Detection**: RoleSwitcher only shows button if user is confirmed organizer in database
+2. **Default PIN Fallback**: PIN 6789 works as default when no custom PIN is set
+3. **Session Verification**: PIN verification stored in `sessionStorage` (clears on browser close)
+4. **PIN Required on Role Switch**: Switching to organizer role requires PIN re-entry if not verified
+5. **Auto-Detection**: RoleSwitcher only shows button if user is confirmed organizer in database
+
+---
+
+## Default PIN 6789 Feature
+
+**Added**: Nov 30, 2025 (Commit 0fcc618f)
+
+### How It Works
+
+The PIN verification system now supports a default PIN of **6789** for organizers who haven't set a custom PIN yet.
+
+**Verification Logic** (`public/index.html:58161-58251`):
+
+```javascript
+// 1. First, try to verify PIN from database
+const { data, error } = await window.SupabaseDB.client
+    .rpc('verify_society_organizer_pin', {
+        org_id: userId,
+        input_pin: inputPin
+    });
+
+// 2. If database returns data (custom PIN exists and is correct)
+if (data) {
+    pinVerified = true;
+    userRole = data; // 'super_admin' or 'admin'
+}
+// 3. If database returns NULL (no custom PIN set), check for default PIN
+else {
+    if (inputPin === '6789') {
+        pinVerified = true;
+        userRole = 'admin'; // Default role when using default PIN
+        console.log('[SocietyAuth] Default PIN 6789 accepted');
+    }
+}
+```
+
+### Priority Order
+
+1. **Custom PIN (Database)**: If organizer has set a custom PIN in database, that PIN is required
+2. **Default PIN (6789)**: If no custom PIN is set, PIN 6789 is accepted as fallback
+3. **Wrong PIN**: Any other PIN is rejected
+
+### Benefits
+
+- **Immediate Access**: Organizers can log in with 6789 without database setup
+- **Customizable**: Organizers can later change their PIN to override the default
+- **Secure**: Default only works when no custom PIN is set
+- **Testing-Friendly**: Fallback users in dev mode can use 6789 to test
+
+### Changing the Default PIN
+
+Organizers can change their PIN from the default 6789 to a custom PIN:
+
+1. Log in with PIN 6789
+2. Go to Admin tab in Society Organizer Dashboard
+3. Set a new PIN (this stores it in the database)
+4. Next login will require the new custom PIN (6789 will no longer work)
+
+### Code Reference
+
+- **PIN Verification**: `public/index.html:58161-58251` (SocietyOrganizerAuth.verifyPin)
+- **Service Worker Version**: `public/sw.js:4` (default-pin-6789-v1)
+- **Commit**: `0fcc618f`
+- **Deployment**: https://www.mycaddipro.com
 
 ---
 

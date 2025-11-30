@@ -357,6 +357,7 @@ class SupabaseClient {
             }
         };
 
+        console.log('--- normalizedProfile before upsert ---', normalizedProfile);
         const { data, error } = await this.client
             .from('user_profiles')
             .upsert(normalizedProfile, { onConflict: 'line_user_id' })

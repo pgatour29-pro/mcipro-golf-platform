@@ -10279,6 +10279,19 @@
                     roleSpecificData.experienceLevel = formData.get('experienceLevel');
                     roleSpecificData.clubAffiliation = formData.get('clubAffiliation');
                     roleSpecificData.playingStyle = formData.get('playingStyle');
+
+                    // FIX: Convert clubAffiliation text to society_id for database linking
+                    if (roleSpecificData.clubAffiliation) {
+                        const societyMapping = {
+                            'Travellers Rest Group': 'trgg-pattaya',
+                            'Pattaya Sports Club': 'pattaya-sports',
+                            'Bunker Boys': 'bunker-boys',
+                            'Diego Dubbi Golf': 'diego-dubbi',
+                            'JOA Golf Pattaya': 'JOAGOLFPAT'
+                        };
+                        profileData.societyOrganizerId = societyMapping[roleSpecificData.clubAffiliation];
+                        profileData.societyName = roleSpecificData.clubAffiliation;
+                    }
                     break;
                 case 'caddie':
                     roleSpecificData.caddyNumber = formData.get('caddyNumber'); // Required 3-digit number
@@ -15518,7 +15531,25 @@ document.addEventListener('DOMContentLoaded', function() {
                         profile.email = savedEmail;
 
                         // Golf Info with validation
-                        const handicap = document.getElementById('handicap')?.value?.trim() || '';
+                        // FIX: Use null instead of empty string for handicap, and parse as number
+                        let handicap = null;
+                        const handicapInput = document.getElementById('handicap')?.value?.trim();
+                        if (handicapInput && handicapInput !== '') {
+                            // Support +5 to 54 range (same as edit modal)
+                            const handicapMatch = handicapInput.match(/^(\+)?(\d+\.?\d*)$/);
+                            if (handicapMatch) {
+                                const isPlus = handicapMatch[1] === '+';
+                                const handicapValue = parseFloat(handicapMatch[2]);
+                                // Store as string to preserve the "+" sign if present
+                                handicap = isPlus ? `+${handicapValue}` : handicapValue;
+                            } else {
+                                // If invalid format, try to parse as number anyway
+                                const parsed = parseFloat(handicapInput);
+                                if (!isNaN(parsed)) {
+                                    handicap = parsed;
+                                }
+                            }
+                        }
                         // FIXED: memberSince is auto-set to profile creation date (user cannot change it)
                         const memberSince = profile.createdAt ? profile.createdAt.split('T')[0] : new Date().toISOString().split('T')[0];
                         // Strict home course extraction - only accepts real slugs, never placeholders

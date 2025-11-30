@@ -369,6 +369,58 @@ class SupabaseClient {
         }
 
         console.log('[Supabase] ✅ Full profile saved to cloud:', data.line_user_id);
+
+        // FIX: If profile has societyOrganizerId, look up society_id and create society_members entry
+        if (profile.societyOrganizerId && profile.role === 'golfer') {
+            try {
+                // Look up society by organizer_id
+                const { data: societyData, error: societyError } = await this.client
+                    .from('society_profiles')
+                    .select('id, society_name')
+                    .eq('organizer_id', profile.societyOrganizerId)
+                    .single();
+
+                if (!societyError && societyData) {
+                    // Update user profile with society_id
+                    await this.client
+                        .from('user_profiles')
+                        .update({
+                            society_id: societyData.id,
+                            society_name: societyData.society_name
+                        })
+                        .eq('line_user_id', data.line_user_id);
+
+                    // Create society_members entry (if not exists)
+                    const { error: memberError } = await this.client
+                        .from('society_members')
+                        .upsert({
+                            society_id: societyData.id,
+                            golfer_id: data.line_user_id,
+                            joined_date: new Date().toISOString().split('T')[0],
+                            status: 'active',
+                            member_data: {
+                                name: data.name,
+                                handicap: profile.handicap || profile.golfInfo?.handicap,
+                                homeClub: profile.homeClub || profile.golfInfo?.homeClub,
+                                email: data.email,
+                                phone: data.phone
+                            }
+                        }, {
+                            onConflict: 'society_id,golfer_id',
+                            ignoreDuplicates: true
+                        });
+
+                    if (memberError) {
+                        console.warn('[Supabase] Could not create society_members entry:', memberError);
+                    } else {
+                        console.log('[Supabase] ✅ Added to society:', societyData.society_name);
+                    }
+                }
+            } catch (err) {
+                console.warn('[Supabase] Society linking failed (non-critical):', err);
+            }
+        }
+
         return data;
     }
 

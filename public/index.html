@@ -37118,24 +37118,27 @@ class SocietyGolfSupabase {
         console.log('[SocietyGolfDB] AppState.currentUser.role:', AppState.currentUser?.role);
         console.log('[SocietyGolfDB] AppState.selectedSociety:', AppState.selectedSociety);
 
-        // Load all events for this society by organizer_id (simpler, more reliable)
-        const societyOrganizerId = AppState.selectedSociety?.organizerId;
+        // Load all events for this society by checking title prefix
+        // Many events have NULL organizer_id but start with society prefix (e.g., "TRGG -", "JOA Golf -")
+        const societyName = AppState.selectedSociety?.name;
+        const societyPrefix = societyName?.includes('Travellers') ? 'TRGG -' :
+                             societyName?.includes('JOA') ? 'JOA Golf' : null;
 
         console.log('[SocietyGolfDB] ===== QUERY DEBUG =====');
-        console.log('[SocietyGolfDB] AppState.selectedSociety:', AppState.selectedSociety);
-        console.log('[SocietyGolfDB] Organizer ID:', societyOrganizerId);
+        console.log('[SocietyGolfDB] Society name:', societyName);
+        console.log('[SocietyGolfDB] Society prefix:', societyPrefix);
 
-        if (!societyOrganizerId) {
-            console.error('[SocietyGolfDB] ERROR: No organizer ID found!');
+        if (!societyPrefix) {
+            console.error('[SocietyGolfDB] ERROR: Unknown society, cannot determine prefix!');
             return [];
         }
 
         const eventsQuery = window.SupabaseDB.client
             .from('society_events')
             .select('*')
-            .eq('organizer_id', societyOrganizerId);
+            .ilike('title', `${societyPrefix}%`);
 
-        console.log('[SocietyGolfDB] Query constructed, executing...');
+        console.log('[SocietyGolfDB] Query: title starts with', societyPrefix);
         const { data: events, error: eventsError } = await eventsQuery;
         console.log('[SocietyGolfDB] Query completed. Events:', events?.length || 0, 'Error:', eventsError);
 

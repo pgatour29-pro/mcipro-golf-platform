@@ -2209,6 +2209,36 @@
                 };
 
                 return courseNames[courseId] || courseId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            },
+
+            getAvailableProfiles() {
+                // FIX #3: Return complete list of available courses for manual round entry
+                return [
+                    'bangpakong',
+                    'bangpra',
+                    'burapha_ac',
+                    'burapha_cd',
+                    'burapha_east',
+                    'crystal_bay',
+                    'eastern_star',
+                    'grand_prix',
+                    'greenwood',
+                    'hermes',
+                    'khao_kheow',
+                    'laem_chabang',
+                    'mountain_shadow',
+                    'pattana',
+                    'pattavia',
+                    'pattaya_county',
+                    'phoenix',
+                    'pleasant_valley',
+                    'plutaluang',
+                    'royal_lakeside',
+                    'siam_cc_old',
+                    'siam_plantation',
+                    'treasure_hill',
+                    'generic'
+                ];
             }
         };
 
@@ -41729,8 +41759,11 @@ class LiveScorecardSystem {
 
     async distributeRoundScores() {
         try {
-            // FIXED: Save ONE round for the CURRENT user only
-            // Other players in the group can create their own rounds separately
+            console.log('[LiveScorecard] ========================================');
+            console.log('[LiveScorecard] DISTRIBUTING ROUNDS TO ALL PLAYERS');
+            console.log('[LiveScorecard] Total players in group:', this.players.length);
+            console.log('[LiveScorecard] ========================================');
+
             const currentUser = AppState.currentUser;
             if (!currentUser || !currentUser.lineUserId) {
                 console.error('[LiveScorecard] Cannot save round - no current user');
@@ -41738,84 +41771,81 @@ class LiveScorecardSystem {
                 return;
             }
 
-            // Find current user in players list
-            const currentPlayer = this.players.find(p => p.lineUserId === currentUser.lineUserId);
-            if (!currentPlayer) {
-                console.warn('[LiveScorecard] Current user not in players list, using first player');
-                // Fallback: create player object for current user
-                const fallbackPlayer = {
-                    id: currentUser.lineUserId,
-                    lineUserId: currentUser.lineUserId,
-                    name: currentUser.name || 'Me',
-                    handicap: currentUser.handicap || currentUser.profile_data?.golfInfo?.handicap || 0
-                };
+            const savedRounds = [];
+            let playersWithScores = 0;
 
-                const roundId = await this.saveRoundToHistory(fallbackPlayer);
-                if (roundId) {
-                    console.log(`[LiveScorecard] ✅ Saved round ${roundId} for current user`);
-
-                    // If society event, notify about organizer visibility
-                    if (!this.isPrivateRound && this.eventId) {
-                        NotificationManager.show('Round saved and posted to event organizer!', 'success');
-                    } else {
-                        NotificationManager.show('Round saved to your history!', 'success');
-                    }
+            // CRITICAL FIX: Save rounds for ALL players in the group (not just current user)
+            for (const player of this.players) {
+                // Skip players without LINE user ID (guest players)
+                if (!player.lineUserId || player.lineUserId.trim() === '') {
+                    console.log(`[LiveScorecard] Skipping ${player.name} - no LINE user ID (guest player)`);
+                    continue;
                 }
-            } else {
-                // Save round for current user
-                const roundId = await this.saveRoundToHistory(currentPlayer);
-                if (roundId) {
-                    console.log(`[LiveScorecard] ✅ Saved round ${roundId} for ${currentPlayer.name}`);
 
-                    // Get all player LINE IDs for sharing
-                    const playerIds = this.players
-                        .filter(p => p.lineUserId && p.lineUserId.trim() !== '')
-                        .map(p => p.lineUserId);
+                // Check if this player has any scores recorded
+                let holesPlayed = 0;
+                for (let hole = 1; hole <= 18; hole++) {
+                    if (this.scoresCache[player.id]?.[hole]) holesPlayed++;
+                }
 
-                    // Distribute this round to all players in group
-                    if (playerIds.length > 1) {
-                        const { error } = await window.SupabaseDB.client.rpc(
-                            'distribute_round_to_players',
-                            {
-                                p_round_id: roundId,
-                                p_player_ids: playerIds
-                            }
-                        );
+                if (holesPlayed === 0) {
+                    console.log(`[LiveScorecard] Skipping ${player.name} - no scores recorded`);
+                    continue;
+                }
 
-                        if (error) {
-                            console.error(`[LiveScorecard] Error distributing round ${roundId}:`, error);
-                        } else {
-                            console.log(`[LiveScorecard] ✅ Shared round ${roundId} with ${playerIds.length} players`);
-                        }
-                    }
+                try {
+                    console.log(`[LiveScorecard] Saving round for ${player.name} (${holesPlayed} holes)...`);
+                    const roundId = await this.saveRoundToHistory(player);
 
-                    // Notify success with different message for society events
-                    if (!this.isPrivateRound && this.eventId) {
-                        const { data: event } = await window.SupabaseDB.client
-                            .from('society_events')
-                            .select('title, organizer_id')
-                            .eq('id', this.eventId)
-                            .single();
-
-                        console.log(`[LiveScorecard] ✅ Round visible to organizer: ${event?.organizer_id || 'unknown'}`);
-
-                        if (event?.title) {
-                            NotificationManager.show(`Round saved and posted to "${event.title}" leaderboard!`, 'success');
-                        } else {
-                            NotificationManager.show('Round saved and posted to event organizer!', 'success');
-                        }
+                    if (roundId) {
+                        savedRounds.push({
+                            playerId: player.lineUserId,
+                            playerName: player.name,
+                            roundId: roundId,
+                            holesPlayed: holesPlayed
+                        });
+                        playersWithScores++;
+                        console.log(`[LiveScorecard] ✅ Saved round ${roundId} for ${player.name}`);
                     } else {
-                        NotificationManager.show(`Round saved! Shared with ${playerIds.length} player${playerIds.length !== 1 ? 's' : ''}`, 'success');
+                        console.error(`[LiveScorecard] ❌ Failed to save round for ${player.name}`);
                     }
+                } catch (playerError) {
+                    console.error(`[LiveScorecard] ❌ Error saving round for ${player.name}:`, playerError);
+                    // Continue with other players even if one fails
                 }
             }
 
-            // Update handicap statistics and progression chart
+            console.log('[LiveScorecard] ========================================');
+            console.log(`[LiveScorecard] ✅ SAVED ${savedRounds.length} ROUNDS SUCCESSFULLY`);
+            console.log('[LiveScorecard] Rounds:', savedRounds);
+            console.log('[LiveScorecard] ========================================');
+
+            // Show success notification
+            if (savedRounds.length === 0) {
+                NotificationManager.show('No scores to save', 'warning');
+            } else if (savedRounds.length === 1) {
+                const player = savedRounds[0];
+                if (!this.isPrivateRound && this.eventId) {
+                    NotificationManager.show(`Round saved and posted to event!`, 'success');
+                } else {
+                    NotificationManager.show(`Round saved to ${player.playerName}'s history!`, 'success');
+                }
+            } else {
+                // Multiple players
+                if (!this.isPrivateRound && this.eventId) {
+                    NotificationManager.show(`${savedRounds.length} rounds saved and posted to event!`, 'success');
+                } else {
+                    NotificationManager.show(`${savedRounds.length} rounds saved to player histories!`, 'success');
+                }
+            }
+
+            // Update handicap statistics and progression chart + REFRESH ROUND HISTORY TABLE
             if (window.GolfScoreSystem) {
-                console.log('[LiveScorecard] Updating handicap statistics...');
+                console.log('[LiveScorecard] Updating handicap statistics and round history...');
                 await window.GolfScoreSystem.updateStatistics();
                 await window.GolfScoreSystem.renderHandicapProgression();
-                console.log('[LiveScorecard] ✅ Handicap statistics updated');
+                await window.GolfScoreSystem.loadRoundHistoryTable(); // FIX #1: Refresh round history table
+                console.log('[LiveScorecard] ✅ Handicap statistics and round history updated');
             }
 
         } catch (error) {

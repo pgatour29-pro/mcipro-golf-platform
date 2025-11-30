@@ -128,6 +128,8 @@
     <!-- Supabase for Real-time Database and Chat (Replaces Pusher + Netlify Blobs) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
+    <script src="performance-monitor.js"></script>
+    <script src="notification-manager.js"></script>
 
     <!-- Tesseract.js for OCR Scorecard Scanning -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -6120,6 +6122,13 @@
                                 liff.getProfile().then(async (profile) => {
                                     console.log('[INIT] Got LINE profile:', profile.userId);
                                     await LineAuthentication.setUserFromLineProfile(profile);
+                                    // Initialize Notification Manager
+                                    if (window.notificationManager && AppState.currentUser?.lineUserId) {
+                                        await window.notificationManager.setUserId(AppState.currentUser.lineUserId);
+                                        window.notificationManager.setOnNotificationsUpdate(updateNotificationsUI);
+                                        updateNotificationsUI(); // Initial UI render
+                                        console.log('[INIT] Notification Manager initialized.');
+                                    }
                                     console.log('[INIT] Profile loaded, redirecting to dashboard...');
 
                                     // Initialize native push notifications
@@ -6320,11 +6329,310 @@
             }
         });
 
+        // ===== ADMIN DASHBOARD FUNCTIONS =====
+
+        async function renderAdminUserTable() {
+            const container = document.getElementById('adminUserTableContainer');
+            if (!container) return;
+
+            try {
+                container.innerHTML = '<p>Loading users...</p>';
+                const users = await window.SupabaseDB.getAllProfiles();
+                adminDashboardUsers = users; // Cache for modal access
+
+                if (!users || users.length === 0) {
+                    container.innerHTML = '<p>No users found.</p>';
+                    return;
+                }
+
+                // Get filter values
+                const nameFilter = document.getElementById('adminUserFilterName').value.toLowerCase();
+                const roleFilter = document.getElementById('adminUserFilterRole').value;
+                const tierFilter = document.getElementById('adminUserFilterTier').value;
+
+                // Apply filters
+                const filteredUsers = users.filter(user => {
+                    const nameMatch = !nameFilter || (user.name && user.name.toLowerCase().includes(nameFilter));
+                    const roleMatch = !roleFilter || user.role === roleFilter;
+                    const tierMatch = !tierFilter || (user.subscription_tier || 'free') === tierFilter;
+                    const statusMatch = (user.user_status || 'active') !== 'deleted'; // Hide deleted users by default
+                    return nameMatch && roleMatch && tierMatch && statusMatch;
+                });
+
+                const tableHtml = `
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subscription Tier</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">LINE ID</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            ${filteredUsers.map(user => `
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap">${user.name || 'N/A'}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">${user.role || 'N/A'}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">${user.subscription_tier || 'free'}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">${user.user_status || 'active'}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">${user.line_user_id}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <button class="text-indigo-600 hover:text-indigo-900 mr-2" onclick="showEditUserModal('${user.line_user_id}')">Edit</button>
+                                        <button class="text-yellow-600 hover:text-yellow-900 mr-2" onclick="showConfirmActionModal('suspend', '${user.line_user_id}', '${user.name || 'this user'}')">Suspend</button>
+                                        <button class="text-red-600 hover:text-red-900" onclick="showConfirmActionModal('delete', '${user.line_user_id}', '${user.name || 'this user'}')">Delete</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+                container.innerHTML = tableHtml;
+
+            } catch (error) {
+                console.error("Failed to render admin user table:", error);
+                container.innerHTML = '<p class="text-red-500">Error loading users. Check the console for details.</p>';
+            }
+        }
+
+        async function renderCaddyApprovals() {
+            const container = document.getElementById('adminCaddyApprovalContainer');
+            if (!container) return;
+
+            try {
+                container.innerHTML = '<p>Loading pending caddies...</p>';
+                // Assumption: Pending caddies have role 'caddie' and status 'pending'.
+                // This may need adjustment if the schema is different.
+                const { data: pendingCaddies, error } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('*')
+                    .eq('role', 'caddie')
+                    .eq('status', 'pending');
+
+                if (error) throw error;
+
+                if (!pendingCaddies || pendingCaddies.length === 0) {
+                    container.innerHTML = '<p>No caddies are currently awaiting approval.</p>';
+                    return;
+                }
+
+                const listHtml = `
+                    <ul class="divide-y divide-gray-200">
+                        ${pendingCaddies.map(caddy => `
+                            <li class="py-4 flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm font-medium text-gray-900">${caddy.name || 'N/A'}</p>
+                                    <p class="text-sm text-gray-500">${caddy.line_user_id}</p>
+                                </div>
+                                <div class="space-x-2">
+                                    <button class="btn-sm btn-primary" onclick="approveCaddy('${caddy.line_user_id}')">Approve</button>
+                                    <button class="btn-sm btn-outline" onclick="rejectCaddy('${caddy.line_user_id}')">Reject</button>
+                                </div>
+                            </li>
+                        `).join('')}
+                    </ul>
+                `;
+                container.innerHTML = listHtml;
+
+            } catch (error) {
+                console.error("Failed to render caddy approvals:", error);
+                container.innerHTML = '<p class="text-red-500">Error loading caddies. This might be a schema issue (e.g., missing "status" column). Check console.</p>';
+            }
+        }
+
+        async function approveCaddy(lineUserId) {
+            try {
+                await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .update({ status: 'approved' })
+                    .eq('line_user_id', lineUserId);
+                
+                // Create a notification for the caddy
+                await window.notificationManager.createNotification(lineUserId, 'Caddy Approval', 'Congratulations, your caddy application has been approved!');
+
+                // Refresh the list
+                renderCaddyApprovals();
+            } catch (error) {
+                console.error(`Failed to approve caddy ${lineUserId}:`, error);
+                alert(`Failed to approve caddy. See console for details.`);
+            }
+        }
+
+        async function rejectCaddy(lineUserId) {
+             try {
+                await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .update({ status: 'rejected' })
+                    .eq('line_user_id', lineUserId);
+                
+                // Create a notification for the caddy
+                await window.notificationManager.createNotification(lineUserId, 'Caddy Application', 'Your caddy application has been rejected. Please contact support for more information.');
+
+                // Refresh the list
+                renderCaddyApprovals();
+            } catch (error) {
+                console.error(`Failed to reject caddy ${lineUserId}:`, error);
+                alert(`Failed to reject caddy. See console for details.`);
+            }
+        }
+
+        async function renderSubscriptionSummary() {
+            const container = document.getElementById('adminSubscriptionSummaryContainer');
+            if (!container) return;
+
+            try {
+                container.innerHTML = '<p>Loading subscription summary...</p>';
+                const users = await window.SupabaseDB.getAllProfiles();
+
+                const summary = users.reduce((acc, user) => {
+                    const tier = user.subscription_tier || 'free';
+                    acc[tier] = (acc[tier] || 0) + 1;
+                    return acc;
+                }, {});
+
+                const summaryHtml = `
+                    <dl class="grid grid-cols-1 gap-5 sm:grid-cols-4">
+                        ${Object.entries(summary).map(([tier, count]) => `
+                            <div class="px-4 py-5 bg-gray-50 shadow rounded-lg overflow-hidden sm:p-6">
+                                <dt class="text-sm font-medium text-gray-500 truncate capitalize">${tier} Tier</dt>
+                                <dd class="mt-1 text-3xl font-semibold text-gray-900">${count} Users</dd>
+                            </div>
+                        `).join('')}
+                    </dl>
+                `;
+                container.innerHTML = summaryHtml;
+
+            } catch (error) {
+                console.error("Failed to render subscription summary:", error);
+                container.innerHTML = '<p class="text-red-500">Error loading summary. Check console.</p>';
+            }
+        }
+
+        async function renderPaymentSummary() {
+            const monthlyRevenueDisplay = document.getElementById('monthlyRevenueDisplay');
+            const pendingPaymentsDisplay = document.getElementById('pendingPaymentsDisplay');
+            if (!monthlyRevenueDisplay || !pendingPaymentsDisplay) return;
+
+            try {
+                monthlyRevenueDisplay.textContent = 'Loading...';
+                pendingPaymentsDisplay.textContent = 'Loading...';
+
+                const { data: eventSummaries, error } = await window.SupabaseDB.client
+                    .from('event_payment_summary')
+                    .select('*');
+
+                if (error) throw error;
+
+                let totalMonthlyRevenue = 0;
+                let totalPendingPayments = 0;
+
+                // For simplicity, aggregate from all event summaries
+                eventSummaries.forEach(summary => {
+                    totalMonthlyRevenue += (summary.total_collected || 0); // Assuming total_collected is monthly
+                    totalPendingPayments += (summary.unpaid_count || 0) + (summary.partial_count || 0);
+                });
+
+                monthlyRevenueDisplay.textContent = `฿${totalMonthlyRevenue.toLocaleString()}`;
+                pendingPaymentsDisplay.textContent = totalPendingPayments.toLocaleString();
+
+            } catch (error) {
+                console.error("Failed to render payment summary:", error);
+                monthlyRevenueDisplay.textContent = 'Error';
+                pendingPaymentsDisplay.textContent = 'Error';
+            }
+        }
+
+        function exportUsersToCsv() {
+            if (adminDashboardUsers.length === 0) {
+                NotificationManager.show('No users to export.', 'info');
+                return;
+            }
+
+            // Apply current filters to the full list of users to get the displayed data
+            const nameFilter = document.getElementById('adminUserFilterName').value.toLowerCase();
+            const roleFilter = document.getElementById('adminUserFilterRole').value;
+            const tierFilter = document.getElementById('adminUserFilterTier').value;
+
+            const filteredUsersToExport = adminDashboardUsers.filter(user => {
+                const nameMatch = !nameFilter || (user.name && user.name.toLowerCase().includes(nameFilter));
+                const roleMatch = !roleFilter || user.role === roleFilter;
+                const tierMatch = !tierFilter || (user.subscription_tier || 'free') === tierFilter;
+                const statusMatch = (user.user_status || 'active') !== 'deleted'; // Only export visible users
+                return nameMatch && roleMatch && tierMatch && statusMatch;
+            });
+
+            if (filteredUsersToExport.length === 0) {
+                NotificationManager.show('No users match current filters for export.', 'info');
+                return;
+            }
+
+            const headers = [
+                "LINE User ID", "Name", "Role", "Subscription Tier", "User Status",
+                "Email", "Phone", "Handicap", "Home Club", "Home Course ID", "Home Course Name",
+                "Created At", "Updated At"
+            ];
+
+            const csvRows = [];
+            csvRows.push(headers.join(',')); // Add header row
+
+            filteredUsersToExport.forEach(user => {
+                const row = [
+                    `"${user.line_user_id}"`,
+                    `"${user.name || ''}"`,
+                    `"${user.role || ''}"`,
+                    `"${user.subscription_tier || 'free'}"`,
+                    `"${user.user_status || 'active'}"`,
+                    `"${user.email || ''}"`,
+                    `"${user.phone || ''}"`,
+                    `"${user.handicap || ''}"`,
+                    `"${user.home_club || ''}"`,
+                    `"${user.home_course_id || ''}"`,
+                    `"${user.home_course_name || ''}"`,
+                    `"${user.created_at || ''}"`,
+                    `"${user.updated_at || ''}"`
+                ];
+                csvRows.push(row.join(','));
+            });
+
+            const csvString = csvRows.join('\n');
+            const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'mcipro_users_export.csv';
+            link.click();
+
+            NotificationManager.show(`Exported ${filteredUsersToExport.length} users to CSV.`, 'success');
+        }
+
+
+        function initAdminDashboardEventListeners() {
+            document.getElementById('adminUserFilterName')?.addEventListener('input', renderAdminUserTable);
+            document.getElementById('adminUserFilterRole')?.addEventListener('change', renderAdminUserTable);
+            document.getElementById('adminUserFilterTier')?.addEventListener('change', renderAdminUserTable);
+        }
+
+
         // ===== GLOBAL HELPER FUNCTIONS =====
+
+        let adminDashboardInitialized = false;
 
         // These are called directly from HTML onclick attributes
         function showScreen(screenId) {
             ScreenManager.showScreen(screenId);
+
+            // If we are showing the admin dashboard, render its content
+            if (screenId === 'adminDashboard') {
+                if (!adminDashboardInitialized) {
+                    initAdminDashboardEventListeners();
+                    adminDashboardInitialized = true;
+                }
+                renderAdminUserTable();
+                renderCaddyApprovals();
+                renderSubscriptionSummary();
+                renderPaymentSummary(); // Call the new payment summary renderer
+            }
         }
 
         function showTab(dashboardId, tabName, event) {
@@ -11768,7 +12076,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 try {
-                    if (userType === 'golfer') {
+                    if (userType === 'golfer' || userType === 'admin') {
                         // Get current form values
                         const firstNameEl = document.getElementById('profileFirstName');
                         const lastNameEl = document.getElementById('profileLastName');
@@ -11869,6 +12177,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         const savedGolfGoals = document.getElementById('golfGoals')?.value?.trim() || profile.golfInfo.golfGoals || profile.roleSpecific.golfGoals || '';
 
                         profile.golfInfo.handicap = handicap;
+                        profile.handicap = handicap;
                         profile.golfInfo.memberSince = memberSince;
                         profile.golfInfo.homeClub = homeClub;
                         profile.golfInfo.clubAffiliation = savedClubAffiliation;
@@ -11992,6 +12301,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
 
                     // Save profile immediately to localStorage (fast)
+                    console.log('--- profile before save ---', profile);
                     this.saveProfile(userType, profile);
 
                     // Close modal immediately
@@ -17872,6 +18182,105 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     console.log('%c🚀 PAGE VERSION: 2025-10-14-LOGIN-FIX', 'background: #00ff00; color: #000; font-size: 16px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
     </script>
+    <!-- Admin Dashboard Screen -->
+    <div id="adminDashboard" class="screen bg-gray-100">
+        <div class="nav-header no-print">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <h1 class="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+                    <div class="flex items-center space-x-4">
+                        <div class="relative">
+                            <button id="notificationBell" class="relative text-gray-600 hover:text-gray-900 focus:outline-none" onclick="toggleNotificationsDropdown()">
+                                <span class="material-symbols-outlined text-3xl">notifications</span>
+                                <span id="unreadNotificationsCount" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center hidden">0</span>
+                            </button>
+                            <div id="notificationsDropdown" class="absolute right-0 mt-2 w-80 bg-white rounded-md shadow-lg py-1 z-50 hidden">
+                                <div class="px-4 py-2 flex justify-between items-center border-b border-gray-200">
+                                    <h3 class="font-bold text-gray-800">Notifications</h3>
+                                    <button class="text-sm text-blue-600 hover:text-blue-800" onclick="markAllNotificationsAsRead()">Mark All Read</button>
+                                </div>
+                                <ul id="notificationsList" class="max-h-60 overflow-y-auto">
+                                    <!-- Notifications will be injected here -->
+                                    <li class="px-4 py-2 text-sm text-gray-500">No new notifications</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <button class="btn-logout" onclick="logout()">Logout</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <main class="p-8">
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold mb-4">User Management</h2>
+                <div class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label for="adminUserFilterName" class="block text-sm font-medium text-gray-700">Filter by Name</label>
+                        <input type="text" id="adminUserFilterName" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                    </div>
+                    <div>
+                        <label for="adminUserFilterRole" class="block text-sm font-medium text-gray-700">Filter by Role</label>
+                        <select id="adminUserFilterRole" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                            <option value="">All Roles</option>
+                            <option value="golfer">Golfer</option>
+                            <option value="caddie">Caddie</option>
+                            <option value="manager">Manager</option>
+                            <option value="proshop">Pro Shop</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="adminUserFilterTier" class="block text-sm font-medium text-gray-700">Filter by Tier</label>
+                        <select id="adminUserFilterTier" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                            <option value="">All Tiers</option>
+                            <option value="free">Free</option>
+                            <option value="silver">Silver</option>
+                            <option value="gold">Gold</option>
+                            <option value="platinum">Platinum</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mb-4 text-right">
+                    <button class="btn-primary btn-sm" onclick="exportUsersToCsv()">Export to CSV</button>
+                </div>
+                <div id="adminUserTableContainer">
+                    <p>Loading users...</p>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow-md mt-8">
+                <h2 class="text-xl font-semibold mb-4">Pending Caddy Approvals</h2>
+                <div id="adminCaddyApprovalContainer">
+                    <p>Loading pending caddies...</p>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow-md mt-8">
+                <h2 class="text-xl font-semibold mb-4">Subscription Management</h2>
+                <div id="adminSubscriptionSummaryContainer">
+                    <p>Loading subscription summary...</p>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow-md mt-8">
+                <h2 class="text-xl font-semibold mb-4">Payment Tracking</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="px-4 py-5 bg-gray-50 shadow rounded-lg overflow-hidden sm:p-6">
+                        <dt class="text-sm font-medium text-gray-500 truncate">Monthly Revenue</dt>
+                        <dd class="mt-1 text-3xl font-semibold text-gray-900" id="monthlyRevenueDisplay">฿0</dd>
+                    </div>
+                    <div class="px-4 py-5 bg-gray-50 shadow rounded-lg overflow-hidden sm:p-6">
+                        <dt class="text-sm font-medium text-gray-500 truncate">Pending Payments</dt>
+                        <dd class="mt-1 text-3xl font-semibold text-gray-900" id="pendingPaymentsDisplay">0</dd>
+                    </div>
+                </div>
+                <div class="mt-4 text-right">
+                    <button class="btn-primary btn-sm" onclick="showScreen('paymentDetailsScreen')">View Payment Details</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
     <!-- Login Screen -->
     <div id="loginScreen" class="screen active">
         <div class="min-h-screen hero-gradient flex items-center justify-center p-6">
@@ -25167,8 +25576,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
             <div class="p-6 space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Course Name</label>
-                    <input type="text" id="courseName" placeholder="e.g., Pattaya Golf Club"
+                    <select id="courseName"
                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500">
+                        <option value="">Select a course</option>
+                    </select>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
@@ -25191,10 +25602,9 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Holes</label>
-                        <select id="holesPlayed" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500">
-                            <option value="18">18 Holes</option>
-                            <option value="9">9 Holes</option>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Tee Marker</label>
+                        <select id="teeMarker" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500">
+                            <option value="">Select a tee</option>
                         </select>
                     </div>
                 </div>
@@ -25584,10 +25994,44 @@ Total Rounds: ${ningCaddy.totalRounds}`;
         };
 
         // Modal functions
+        async function populateCourseAndTeeDropdowns() {
+            const courseDropdown = document.getElementById('courseName');
+            if (courseDropdown) {
+                // Clear existing options
+                courseDropdown.innerHTML = '<option value="">Select a course</option>';
+                const courses = await SocietyGolfDB.getCourses();
+                courses.forEach(course => {
+                    const option = document.createElement('option');
+                    option.value = course.id;
+                    option.textContent = course.name;
+                    courseDropdown.appendChild(option);
+                });
+
+                // Add event listener to course dropdown
+                courseDropdown.addEventListener('change', async (event) => {
+                    const courseId = event.target.value;
+                    const teeMarkerDropdown = document.getElementById('teeMarker');
+
+                    if (courseId && teeMarkerDropdown) {
+                        // Clear existing options
+                        teeMarkerDropdown.innerHTML = '<option value="">Select a tee</option>';
+                        const teeMarkers = await SocietyGolfDB.getTeeMarkers(courseId);
+                        teeMarkers.forEach(teeMarker => {
+                            const option = document.createElement('option');
+                            option.value = teeMarker;
+                            option.textContent = teeMarker;
+                            teeMarkerDropdown.appendChild(option);
+                        });
+                    }
+                });
+            }
+        }
+
         function showAddScoreModal() {
             document.getElementById('addScoreModal').style.display = 'flex';
             // Set today's date as default
             document.getElementById('datePlayed').value = new Date().toISOString().split('T')[0];
+            populateCourseAndTeeDropdowns();
         }
 
         function closeAddScoreModal() {
@@ -28268,6 +28712,58 @@ class SocietyGolfSupabase {
      * Get all events for organizer with comprehensive statistics
      * Includes registration counts, revenue, payment status, etc.
      */
+    async getOrganizerEventsBySocietyId(societyId) {
+        await this.waitForSupabase();
+
+        console.log('[SocietyGolfDB] Loading events for society UUID:', societyId);
+
+        const { data, error } = await window.SupabaseDB.client
+            .from('society_events')
+            .select('*')
+            .eq('society_id', societyId)
+            .order('date', { ascending: true });
+
+        if (error) {
+            console.error('[SocietyGolf] Error fetching society events:', error);
+            return [];
+        }
+
+        console.log('[SocietyGolfDB] Found', data?.length || 0, 'events for society', societyId);
+
+        return (data || []).map(e => ({
+            id: e.id,
+            name: e.name,
+            date: e.date,
+            cutoff: e.cutoff,
+            startTime: e.start_time,
+            baseFee: e.base_fee || 0,
+            cartFee: e.cart_fee || 0,
+            caddyFee: e.caddy_fee || 0,
+            transportFee: e.transport_fee || 0,
+            competitionFee: e.competition_fee || 0,
+            maxPlayers: e.max_players,
+            societyId: e.society_id,
+            organizerId: e.organizer_id,
+            organizerName: e.organizer_name,
+            creatorId: e.creator_id,
+            status: e.status,
+            courseId: e.course_id,
+            courseName: e.course_name,
+            eventFormat: e.event_format,
+            notes: e.notes,
+            autoWaitlist: e.auto_waitlist,
+            recurring: e.recurring,
+            recurFrequency: e.recur_frequency,
+            recurDayOfWeek: e.recur_day_of_week,
+            recurMonthlyPattern: e.recur_monthly_pattern,
+            recurEndType: e.recur_end_type,
+            recurUntil: e.recur_until,
+            recurCount: e.recur_count,
+            createdAt: e.created_at,
+            updatedAt: e.updated_at
+        }));
+    }
+
     async getOrganizerEventsWithStats(organizerId) {
         await this.waitForSupabase();
 
@@ -32407,7 +32903,7 @@ class SocietyOrganizerManager {
             const startTime = Date.now();
 
             // Use enhanced method that includes registration statistics
-            this.events = await SocietyGolfDB.getOrganizerEventsWithStats(organizerId);
+            this.events = await SocietyGolfDB.getOrganizerEventsBySocietyId(AppState.selectedSociety?.id || localStorage.getItem("selectedSocietyId"));
 
             const endTime = Date.now();
             console.log(`[SocietyOrganizer] ⚡ Loaded ${this.events.length} events with stats in ${endTime - startTime}ms`);
@@ -36426,7 +36922,7 @@ class SocietyCalendar {
                 return;
             }
 
-            this.events = await window.SocietyGolfDB.getOrganizerEventsWithStats(organizerId);
+            this.events = await window.SocietyGolfDB.getOrganizerEventsBySocietyId(AppState.selectedSociety?.id || localStorage.getItem("selectedSocietyId"));
             console.log(`[Calendar] Loaded ${this.events.length} events with stats`);
         } catch (error) {
             console.error('[Calendar] Exception loading events:', error);
@@ -37160,6 +37656,351 @@ showOrganizerTab = function(tabName) {
         console.log('[Chat] Professional chat module loaded');
     </script>
 
+    <!-- Developer Role Switcher (only visible in dev mode) -->
+    <div id="devRoleSwitcher" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: none;">
+        <div class="bg-gray-900 text-white rounded-lg shadow-2xl p-4">
+            <h4 class="text-xs font-bold mb-2">🔧 DEV MODE</h4>
+            <div class="space-y-2">
+                <button onclick="switchToRole('golfer')" class="w-full bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-xs">
+                    Golfer Dashboard
+                </button>
+                <button onclick="switchToRole('caddie')" class="w-full bg-green-600 hover:bg-green-700 px-3 py-1 rounded text-xs">
+                    Caddy Dashboard
+                </button>
+                <button onclick="switchToRole('manager')" class="w-full bg-orange-600 hover:bg-orange-700 px-3 py-1 rounded text-xs">
+                    Manager Dashboard
+                </button>
+                <button onclick="switchToRole('proshop')" class="w-full bg-purple-600 hover:bg-purple-700 px-3 py-1 rounded text-xs">
+                    ProShop Dashboard
+                </button>
+                <button onclick="switchToRole('admin')" class="w-full bg-red-600 hover:bg-red-700 px-3 py-1 rounded text-xs">
+                    Admin Dashboard
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // Only enable for the specific admin user
+            const ADMIN_LINE_IDS = ['U2b6d976f19bca4b2f4374ae0e10ed873'];
+            let isDevMode = false;
+
+            // Function to switch roles
+            window.switchToRole = function(role) {
+                if (!AppState || !AppState.currentUser) {
+                    console.error("Cannot switch role: AppState.currentUser is not available.");
+                    alert("Cannot switch role. Are you logged in?");
+                    return;
+                }
+                console.log(`DEV MODE: Switching to role: ${role}`);
+                AppState.currentUser.role = role;
+
+                // We need to find the correct dashboard ID. The convention is role + 'Dashboard'.
+                const dashboardId = role + 'Dashboard';
+
+                // Check if the target screen exists
+                if (document.getElementById(dashboardId)) {
+                    showScreen(dashboardId);
+                } else {
+                    console.error(`DEV MODE: Dashboard screen '${dashboardId}' not found!`);
+                    alert(`Error: Screen '${dashboardId}' does not exist.`);
+                }
+            }
+
+            // Listen for the dev mode keyboard shortcut
+            document.addEventListener('keydown', function(e) {
+                if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+                    // Check if the current user is an admin
+                    if (AppState && AppState.currentUser && ADMIN_LINE_IDS.includes(AppState.currentUser.lineUserId)) {
+                        const switcher = document.getElementById('devRoleSwitcher');
+                        if (switcher) {
+                            isDevMode = !isDevMode;
+                            switcher.style.display = isDevMode ? 'block' : 'none';
+                            console.log(`DEV MODE ${isDevMode ? 'ENABLED' : 'DISABLED'}`);
+                        }
+                    } else {
+                        console.warn("DEV MODE shortcut pressed, but user is not an admin or AppState is not ready.");
+                    }
+                }
+            });
+
+             // Also check for ?dev=true in URL for convenience
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('dev') === 'true') {
+                 if (AppState && AppState.currentUser && ADMIN_LINE_IDS.includes(AppState.currentUser.lineUserId)) {
+                    const switcher = document.getElementById('devRoleSwitcher');
+                    if (switcher) {
+                        isDevMode = true;
+                        switcher.style.display = 'block';
+                        console.log(`DEV MODE ENABLED via URL parameter`);
+                    }
+                 }
+            }
+        })();
+    </script>
+
+    <!-- Generic Modal for Editing -->
+    <div id="editUserModal" class="modal-backdrop" style="display: none;">
+        <div class="modal-container w-full max-w-lg">
+            <div class="modal-header">
+                <h3 class="text-lg font-medium text-gray-900">Edit User Profile</h3>
+                <button onclick="closeEditUserModal()" class="text-gray-400 hover:text-gray-600">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="modal-body" id="editUserModalBody">
+                <!-- Form content will be injected by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let adminDashboardUsers = []; // To hold the full user list for editing
+
+        function closeEditUserModal() {
+            const modal = document.getElementById('editUserModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        function showEditUserModal(lineUserId) {
+            const user = adminDashboardUsers.find(u => u.line_user_id === lineUserId);
+            if (!user) {
+                alert('Could not find user data.');
+                return;
+            }
+
+            const modalBody = document.getElementById('editUserModalBody');
+            const modal = document.getElementById('editUserModal');
+            if (!modalBody || !modal) return;
+
+            modalBody.innerHTML = `
+                <div class="space-y-4">
+                    <input type="hidden" id="editUserLineId" value="${user.line_user_id}">
+                    <div>
+                        <label class="form-label">Name</label>
+                        <input type="text" id="editUserName" class="form-input" value="${user.name || ''}">
+                    </div>
+                    <div>
+                        <label class="form-label">Role</label>
+                        <select id="editUserRole" class="form-input">
+                            <option value="golfer" ${user.role === 'golfer' ? 'selected' : ''}>Golfer</option>
+                            <option value="caddie" ${user.role === 'caddie' ? 'selected' : ''}>Caddie</option>
+                            <option value="manager" ${user.role === 'manager' ? 'selected' : ''}>Manager</option>
+                            <option value="proshop" ${user.role === 'proshop' ? 'selected' : ''}>Pro Shop</option>
+                            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label">Subscription Tier</label>
+                        <select id="editUserTier" class="form-input">
+                            <option value="free" ${user.subscription_tier === 'free' ? 'selected' : ''}>Free</option>
+                            <option value="silver" ${user.subscription_tier === 'silver' ? 'selected' : ''}>Silver</option>
+                            <option value="gold" ${user.subscription_tier === 'gold' ? 'selected' : ''}>Gold</option>
+                            <option value="platinum" ${user.subscription_tier === 'platinum' ? 'selected' : ''}>Platinum</option>
+                        </select>
+                    </div>
+                    <div class="flex justify-end pt-4">
+                        <button class="btn-secondary mr-2" onclick="closeEditUserModal()">Cancel</button>
+                        <button class="btn-primary" onclick="updateUserProfile()">Save Changes</button>
+                    </div>
+                </div>
+            `;
+
+            modal.style.display = 'flex';
+        }
+
+        async function updateUserProfile() {
+            const lineUserId = document.getElementById('editUserLineId').value;
+            const updatedProfile = {
+                line_user_id: lineUserId,
+                name: document.getElementById('editUserName').value,
+                role: document.getElementById('editUserRole').value,
+                subscription_tier: document.getElementById('editUserTier').value
+            };
+
+            try {
+                LoadingManager.show('Saving profile...');
+                await window.SupabaseDB.saveUserProfile(updatedProfile);
+                LoadingManager.hide();
+                closeEditUserModal();
+                // Refresh the user table to show the updated data
+                renderAdminUserTable();
+                NotificationManager.show('Profile updated successfully!', 'success');
+            } catch (error) {
+                LoadingManager.hide();
+                console.error('Failed to update user profile:', error);
+                NotificationManager.show('Failed to save profile. Check console.', 'error');
+            }
+        }
+    </script>
+
+    <!-- Generic Modal for Confirmation of Actions (Delete/Suspend) -->
+    <div id="confirmActionModal" class="modal-backdrop" style="display: none;">
+        <div class="modal-container w-full max-w-md">
+            <div class="modal-header">
+                <h3 class="text-lg font-medium text-gray-900" id="confirmActionModalTitle">Confirm Action</h3>
+                <button onclick="hideConfirmActionModal()" class="text-gray-400 hover:text-gray-600">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="text-gray-700" id="confirmActionModalMessage">Are you sure you want to proceed?</p>
+                <input type="hidden" id="confirmActionLineId">
+                <input type="hidden" id="confirmActionType">
+                <div class="flex justify-end space-x-2 mt-6">
+                    <button class="btn-secondary" onclick="hideConfirmActionModal()">Cancel</button>
+                    <button class="btn-primary" id="confirmActionButton" onclick="performConfirmedAction()">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables for the confirmation modal
+        let currentConfirmActionType = '';
+        let currentConfirmLineUserId = '';
+
+        function showConfirmActionModal(actionType, lineUserId, userName) {
+            const modal = document.getElementById('confirmActionModal');
+            const title = document.getElementById('confirmActionModalTitle');
+            const message = document.getElementById('confirmActionModalMessage');
+            const confirmBtn = document.getElementById('confirmActionButton');
+
+            currentConfirmActionType = actionType;
+            currentConfirmLineUserId = lineUserId;
+
+            if (actionType === 'delete') {
+                title.textContent = 'Confirm User Deletion';
+                message.innerHTML = `Are you sure you want to **permanently delete** <span class="font-semibold">${userName}</span>? This action cannot be undone.`;
+                confirmBtn.textContent = 'Delete User';
+                confirmBtn.className = 'btn-logout'; // Use red style for delete
+            } else if (actionType === 'suspend') {
+                title.textContent = 'Confirm User Suspension';
+                message.innerHTML = `Are you sure you want to **suspend** <span class="font-semibold">${userName}</span>? They will not be able to log in.`;
+                confirmBtn.textContent = 'Suspend User';
+                confirmBtn.className = 'btn-secondary'; // Use a neutral style for suspend
+            }
+            modal.style.display = 'flex';
+        }
+
+        function hideConfirmActionModal() {
+            const modal = document.getElementById('confirmActionModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        async function performConfirmedAction() {
+            hideConfirmActionModal(); // Hide modal immediately
+
+            try {
+                if (currentConfirmActionType === 'delete') {
+                    await deleteUser(currentConfirmLineUserId);
+                } else if (currentConfirmActionType === 'suspend') {
+                    await suspendUser(currentConfirmLineUserId);
+                }
+            } catch (error) {
+                NotificationManager.show(`Action failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function deleteUser(lineUserId) {
+            try {
+                LoadingManager.show('Deleting user...');
+                await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .update({ user_status: 'deleted' }) // Mark as deleted, not actually delete row
+                    .eq('line_user_id', lineUserId);
+                
+                LoadingManager.hide();
+                renderAdminUserTable(); // Refresh the list
+                NotificationManager.show('User successfully marked as deleted!', 'success');
+            } catch (error) {
+                LoadingManager.hide();
+                console.error(`Failed to delete user ${lineUserId}:`, error);
+                throw new Error('Deletion failed');
+            }
+        }
+
+        async function suspendUser(lineUserId) {
+            try {
+                LoadingManager.show('Suspending user...');
+                await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .update({ user_status: 'suspended' })
+                    .eq('line_user_id', lineUserId);
+                
+                LoadingManager.hide();
+                renderAdminUserTable(); // Refresh the list
+                NotificationManager.show('User successfully suspended!', 'success');
+            } catch (error) {
+                LoadingManager.hide();
+                console.error(`Failed to suspend user ${lineUserId}:`, error);
+                throw new Error('Suspension failed');
+            }
+        }
+    </script>
+<script>
+    function toggleNotificationsDropdown() {
+        const dropdown = document.getElementById('notificationsDropdown');
+        if (dropdown) {
+            dropdown.classList.toggle('hidden');
+        }
+        // If opening, ensure notifications are fresh
+        if (!dropdown.classList.contains('hidden')) {
+            updateNotificationsUI();
+        }
+    }
+
+    async function markAllNotificationsAsRead() {
+        await window.notificationManager.markAllAsRead();
+        updateNotificationsUI();
+    }
+
+    async function updateNotificationsUI() {
+        const notificationBell = document.getElementById('notificationBell');
+        const unreadCountSpan = document.getElementById('unreadNotificationsCount');
+        const notificationsList = document.getElementById('notificationsList');
+
+        if (!notificationBell || !unreadCountSpan || !notificationsList) {
+            console.warn('[Notifications] Notification UI elements not found.');
+            return;
+        }
+
+        const notifications = await window.notificationManager.fetchNotifications();
+        const unreadCount = notifications.filter(n => !n.is_read).length;
+
+        unreadCountSpan.textContent = unreadCount;
+        if (unreadCount > 0) {
+            unreadCountSpan.classList.remove('hidden');
+        } else {
+            unreadCountSpan.classList.add('hidden');
+        }
+
+        notificationsList.innerHTML = ''; // Clear previous list
+        if (notifications.length === 0) {
+            notificationsList.innerHTML = '<li class="px-4 py-2 text-sm text-gray-500">No notifications</li>';
+        } else {
+            notifications.forEach(n => {
+                const li = document.createElement('li');
+                li.className = `px-4 py-2 hover:bg-gray-50 cursor-pointer ${n.is_read ? 'text-gray-500' : 'font-medium text-gray-900'}`;
+                li.textContent = n.message;
+                li.onclick = async () => {
+                    await window.notificationManager.markNotificationAsRead(n.id);
+                    updateNotificationsUI(); // Refresh UI after marking as read
+                    // Optionally, navigate based on metadata.link
+                    if (n.metadata && n.metadata.link) {
+                        window.location.href = n.metadata.link;
+                    }
+                };
+                notificationsList.appendChild(li);
+            });
+        }
+    }
+</script>
 </body>
 </html>
 

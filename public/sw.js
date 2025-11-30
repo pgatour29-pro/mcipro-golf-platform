@@ -1,7 +1,7 @@
 // SERVICE WORKER - UNREGISTRATION VERSION
 // This version clears all caches and unregisters itself
 
-const SW_VERSION = 'default-pin-6789-v5-society-organizer-id';
+const SW_VERSION = 'default-pin-6789-v6-debug-organizer-id';
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing unregistration version');

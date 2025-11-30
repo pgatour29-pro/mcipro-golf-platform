@@ -58173,7 +58173,11 @@ async function viewSocietyLeaderboard(organizerId, societyName, seasonYear, divi
 
                 // Use the selected society's organizer ID as the user ID
                 const organizerRole = 'society_organizer';
-                const societyOrganizerId = AppState.selectedSociety?.organizerId || AppState.selectedSociety?.id;
+
+                // Try multiple ways to get the organizer ID
+                let societyOrganizerId = AppState.selectedSociety?.organizerTextId ||
+                                        AppState.selectedSociety?.organizer_text_id ||
+                                        AppState.selectedSociety?.organizerId;
 
                 if (!societyOrganizerId) {
                     this.showError('No society selected');
@@ -58181,23 +58185,17 @@ async function viewSocietyLeaderboard(organizerId, societyName, seasonYear, divi
                 }
 
                 console.log('[SocietyAuth] Using society organizer ID:', societyOrganizerId);
+                console.log('[SocietyAuth] Selected society:', AppState.selectedSociety);
 
                 // Ensure AppState.currentUser has proper structure with society organizer ID
-                if (!AppState.currentUser) {
-                    AppState.currentUser = {
-                        role: organizerRole,
-                        name: AppState.selectedSociety?.name || 'Society Organizer',
-                        lineUserId: societyOrganizerId,
-                        userId: societyOrganizerId
-                    };
-                } else {
-                    AppState.currentUser.lineUserId = societyOrganizerId;
-                    AppState.currentUser.userId = societyOrganizerId;
-                    AppState.currentUser.role = organizerRole;
-                    AppState.currentUser.name = AppState.selectedSociety?.name || AppState.currentUser.name;
-                }
+                AppState.currentUser = {
+                    role: organizerRole,
+                    name: AppState.selectedSociety?.name || 'Society Organizer',
+                    lineUserId: societyOrganizerId,
+                    userId: societyOrganizerId
+                };
 
-                console.log('[SocietyAuth] Created user with society organizer ID:', societyOrganizerId);
+                console.log('[SocietyAuth] Created user:', AppState.currentUser);
 
                 sessionStorage.setItem('society_organizer_verified', 'true');
                 sessionStorage.setItem('society_organizer_role', 'admin');
@@ -62139,6 +62137,7 @@ showOrganizerTab = function(tabName) {
 
 
                             organizerId: society.organizer_id,
+                            organizerTextId: society.organizer_text_id || society.organizer_id,
 
 
 

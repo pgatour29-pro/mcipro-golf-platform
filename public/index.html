@@ -37000,19 +37000,36 @@ class SocietyGolfSupabase {
      * Get all events for organizer with comprehensive statistics
      * Includes registration counts, revenue, payment status, etc.
      */
-    async getOrganizerEventsWithStats(societyId) {
+    async getOrganizerEventsWithStats(organizerId) {
         await this.waitForSupabase();
 
         console.log('[SocietyGolfDB] ===== LOADING EVENTS =====');
-        console.log('[SocietyGolfDB] Input society UUID:', societyId);
+        console.log('[SocietyGolfDB] Input organizer ID:', organizerId);
         console.log('[SocietyGolfDB] AppState.currentUser.role:', AppState.currentUser?.role);
         console.log('[SocietyGolfDB] AppState.selectedSociety:', AppState.selectedSociety);
 
-        // Query events by society_id UUID (all societies including TRGG now use this field)
-        const eventsQuery = window.SupabaseDB.client
-            .from('society_events')
-            .select('*')
-            .eq('society_id', societyId);
+        // SPECIAL CASE: TRGG uses title matching since organizer_id is NULL
+        // Check both the organizerId and the society name
+        let eventsQuery;
+        const isTRGG = organizerId === 'trgg-pattaya' ||
+                       AppState.selectedSociety?.organizerId === 'trgg-pattaya' ||
+                       AppState.selectedSociety?.society_name?.includes('Travellers Rest');
+
+        if (isTRGG) {
+            console.log('[SocietyGolfDB] TRGG mode: Loading events by title prefix');
+            eventsQuery = window.SupabaseDB.client
+                .from('society_events')
+                .select('*')
+                .ilike('title', 'TRGG%');
+        } else {
+            // Load events for this specific society (filter by organizer_id)
+            // IMPORTANT: Exclude TRGG events from other societies
+            eventsQuery = window.SupabaseDB.client
+                .from('society_events')
+                .select('*')
+                .eq('organizer_id', organizerId)
+                .not('title', 'ilike', 'TRGG%');
+        }
 
         const { data: events, error: eventsError } = await eventsQuery;
 
@@ -46481,9 +46498,9 @@ class SocietyOrganizerManager {
                 }));
             } else {
                 // ORGANIZER MODE: Load society events
-                const societyId = AppState.selectedSociety?.id || localStorage.getItem('selectedSocietyId');
-                console.log('[SocietyOrganizer] ORGANIZER MODE: Loading events for society UUID:', societyId);
-                events = await SocietyGolfDB.getOrganizerEventsWithStats(societyId);
+                const organizerId = AppState.selectedSociety?.organizerId || localStorage.getItem('selectedSocietyOrganizerId');
+                console.log('[SocietyOrganizer] ORGANIZER MODE: Loading events for organizer ID:', organizerId);
+                events = await SocietyGolfDB.getOrganizerEventsWithStats(organizerId);
             }
 
             // Enrich each event with payment stats
@@ -58239,13 +58256,13 @@ class SocietyCalendar {
     async loadEvents() {
         try {
             // FIXED: Load events with stats to match Events tab and show accurate registration counts
-            const societyId = AppState.selectedSociety?.id || localStorage.getItem('selectedSocietyId');
-            if (!societyId) {
+            const organizerId = AppState.selectedSociety?.organizerId || localStorage.getItem('selectedSocietyOrganizerId');
+            if (!organizerId) {
                 console.error('[Calendar] No society selected');
                 return;
             }
 
-            this.events = await window.SocietyGolfDB.getOrganizerEventsWithStats(societyId);
+            this.events = await window.SocietyGolfDB.getOrganizerEventsWithStats(organizerId);
             console.log(`[Calendar] Loaded ${this.events.length} events with stats`);
         } catch (error) {
             console.error('[Calendar] Exception loading events:', error);
@@ -61086,39 +61103,32 @@ showOrganizerTab = function(tabName) {
 
                             try {
 
-    
-
-            
-
-                                const { count, error } = await window.SupabaseDB.client
 
 
 
 
-
+                                // TRGG special case: query by title since organizer_id is NULL
+                                let query = window.SupabaseDB.client
                                     .from('society_events')
+                                    .select('*', { count: 'exact', head: true });
+
+                                if (society.organizer_id === 'trgg-pattaya' || society.society_name?.includes('Travellers Rest')) {
+                                    query = query.ilike('title', 'TRGG%');
+                                } else {
+                                    query = query.eq('organizer_id', society.organizer_id);
+                                }
+
+                                const { count, error } = await query;
 
 
 
 
 
-                                    .select('*', { count: 'exact', head: true })
 
 
 
 
 
-                                    .eq('society_id', society.id);
-
-    
-
-            
-
-        
-
-    
-
-            
 
                                 society.eventCount = count || 0;
 

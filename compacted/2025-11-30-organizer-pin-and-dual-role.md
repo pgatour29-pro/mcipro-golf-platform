@@ -266,16 +266,22 @@ All implemented in `sql/society-organizer-pin-auth-per-organizer.sql`:
 
 **Initial Deployment**:
 - **Command**: `vercel --prod`
-- **Production URL**: https://mcipro-golf-platform-hu3wo7s8x-mcipros-projects.vercel.app
+- **Vercel URL**: https://mcipro-golf-platform-hu3wo7s8x-mcipros-projects.vercel.app
 - **Status**: ✅ Deployed Successfully
 - **Commit**: `6c4c49fb`
 
 **Bug Fix Deployment**:
 - **Command**: `vercel --prod`
-- **Production URL**: https://mcipro-golf-platform-1ygr6ltxx-mcipros-projects.vercel.app
+- **Vercel URL**: https://mcipro-golf-platform-1ygr6ltxx-mcipros-projects.vercel.app
 - **Status**: ✅ Deployed Successfully
 - **Commit**: `4f8e7e36`
 - **Fix**: Resolved `Cannot read properties of undefined (reading 'name')` error
+
+**Production Aliases**:
+- **Primary URL**: https://www.mycaddipro.com
+- **Alternate URL**: https://mycaddipro.com
+- **Aliased**: `vercel alias mcipro-golf-platform-1ygr6ltxx-mcipros-projects.vercel.app www.mycaddipro.com`
+- **Status**: ✅ Live on Production Domain
 
 ---
 

@@ -35,12 +35,11 @@ BEGIN
     society_id = trgg_society_id,
     society_name = 'Travellers Rest Golf Group',
     profile_data = jsonb_set(
-      COALESCE(profile_data, '{}'::jsonb),
-      '{organizationInfo,societyId}',
-      to_jsonb(trgg_society_id::text)
-    ),
-    profile_data = jsonb_set(
-      profile_data,
+      jsonb_set(
+        COALESCE(profile_data, '{}'::jsonb),
+        '{organizationInfo,societyId}',
+        to_jsonb(trgg_society_id::text)
+      ),
       '{organizationInfo,societyName}',
       '"Travellers Rest Golf Group"'
     )

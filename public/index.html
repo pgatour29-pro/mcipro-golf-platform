@@ -24778,10 +24778,15 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <div id="scorecardPlayersList" class="space-y-2 mb-3">
                                 <!-- Players will be added here -->
                             </div>
-                            <button onclick="LiveScorecardManager.addPlayer()" class="btn-secondary w-full">
-                                <span class="material-symbols-outlined text-sm">add</span>
-                                Add Player
-                            </button>
+                            <div class="flex gap-2">
+                                <button onclick="LiveScorecardManager.addPlayer()" class="btn-secondary flex-1">
+                                    <span class="material-symbols-outlined text-sm">add</span>
+                                    Add Player
+                                </button>
+                                <button onclick="GolfBuddiesSystem.openBuddiesModal()" class="btn-secondary px-3" title="Quick add from buddies">
+                                    <span class="material-symbols-outlined text-sm">group</span>
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Start Button -->
@@ -40198,6 +40203,21 @@ class LiveScorecardSystem {
         this.renderPlayersList();
         this.closeAddPlayerModal();
 
+        // Auto-select match play teams if we now have exactly 4 players and match play is selected
+        if (this.players.length === 4) {
+            const matchPlayCheckbox = document.querySelector('input[name="scoringFormat"][value="matchplay"]');
+            if (matchPlayCheckbox && matchPlayCheckbox.checked) {
+                const teamsRadio = document.querySelector('input[name="matchPlayType"][value="teams"]');
+                if (teamsRadio && !teamsRadio.checked) {
+                    console.log('[LiveScorecard] Auto-selecting 2-Man Teams (4th player added)');
+                    teamsRadio.checked = true;
+                    if (typeof updateMatchPlayType === 'function') {
+                        updateMatchPlayType();
+                    }
+                }
+            }
+        }
+
         NotificationManager.show(`✅ ${profile.name} added to group`, 'success');
         console.log(`[LiveScorecard] Added existing player: ${profile.name}`);
     }
@@ -40237,6 +40257,21 @@ class LiveScorecardSystem {
         this.scoresCache[playerId] = {};
         this.renderPlayersList();
         this.closeAddPlayerModal();
+
+        // Auto-select match play teams if we now have exactly 4 players and match play is selected
+        if (this.players.length === 4) {
+            const matchPlayCheckbox = document.querySelector('input[name="scoringFormat"][value="matchplay"]');
+            if (matchPlayCheckbox && matchPlayCheckbox.checked) {
+                const teamsRadio = document.querySelector('input[name="matchPlayType"][value="teams"]');
+                if (teamsRadio && !teamsRadio.checked) {
+                    console.log('[LiveScorecard] Auto-selecting 2-Man Teams (4th player added)');
+                    teamsRadio.checked = true;
+                    if (typeof updateMatchPlayType === 'function') {
+                        updateMatchPlayType();
+                    }
+                }
+            }
+        }
 
         // Reset form
         document.getElementById('newPlayerHandicap').value = '0';
@@ -46304,6 +46339,20 @@ window.toggleFormatCheckbox = function(label, event) {
     if (matchPlaySection) {
         if (selectedFormats.includes('matchplay')) {
             matchPlaySection.style.display = 'block';
+
+            // Auto-select 2-Man Teams if exactly 4 players are added
+            const playerCount = LiveScorecardManager?.players?.length || 0;
+            if (playerCount === 4) {
+                const teamsRadio = document.querySelector('input[name="matchPlayType"][value="teams"]');
+                if (teamsRadio && !teamsRadio.checked) {
+                    console.log('[LiveScorecard] Auto-selecting 2-Man Teams (4 players detected)');
+                    teamsRadio.checked = true;
+                    // Trigger the update to show team selection UI
+                    if (typeof updateMatchPlayType === 'function') {
+                        updateMatchPlayType();
+                    }
+                }
+            }
         } else {
             matchPlaySection.style.display = 'none';
         }

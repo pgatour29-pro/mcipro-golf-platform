@@ -800,8 +800,19 @@ window.GolfBuddiesSystem = {
 
                 // Use the existing selectExistingPlayer method
                 LiveScorecardManager.selectExistingPlayer(buddyId);
-                // Modal stays open so user can add multiple players - close manually when done
-                NotificationManager?.show?.('Player added to scorecard', 'success');
+
+                // Show immediate success feedback with player count
+                const playerCount = LiveScorecardManager.players.length;
+                NotificationManager?.show?.(`✅ Player added! (${playerCount} player${playerCount !== 1 ? 's' : ''} in round)`, 'success', 2000);
+
+                // Add visual feedback to the button
+                const buttons = document.querySelectorAll(`button[onclick*="quickAddBuddy('${buddyId}')"]`);
+                buttons.forEach(btn => {
+                    btn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                    btn.classList.add('bg-gray-400', 'cursor-not-allowed');
+                    btn.innerHTML = '<span class="material-symbols-outlined text-sm">check</span>';
+                    btn.disabled = true;
+                });
             } catch (error) {
                 console.error('[Buddies] Error quick-adding buddy:', error);
                 NotificationManager?.show?.('Error adding player to scorecard', 'error');

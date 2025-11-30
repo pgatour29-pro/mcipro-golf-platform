@@ -37118,19 +37118,26 @@ class SocietyGolfSupabase {
         console.log('[SocietyGolfDB] AppState.currentUser.role:', AppState.currentUser?.role);
         console.log('[SocietyGolfDB] AppState.selectedSociety:', AppState.selectedSociety);
 
-        // Load all events for this society by BOTH organizer_name AND organizer_id
-        const societyName = AppState.selectedSociety?.name;
+        // Load all events for this society by organizer_id (simpler, more reliable)
         const societyOrganizerId = AppState.selectedSociety?.organizerId;
 
-        console.log('[SocietyGolfDB] Querying events for society name:', societyName);
-        console.log('[SocietyGolfDB] Querying events for organizer_id:', societyOrganizerId);
+        console.log('[SocietyGolfDB] ===== QUERY DEBUG =====');
+        console.log('[SocietyGolfDB] AppState.selectedSociety:', AppState.selectedSociety);
+        console.log('[SocietyGolfDB] Organizer ID:', societyOrganizerId);
+
+        if (!societyOrganizerId) {
+            console.error('[SocietyGolfDB] ERROR: No organizer ID found!');
+            return [];
+        }
 
         const eventsQuery = window.SupabaseDB.client
             .from('society_events')
             .select('*')
-            .or(`organizer_name.eq.${societyName},organizer_id.eq.${societyOrganizerId}`);
+            .eq('organizer_id', societyOrganizerId);
 
+        console.log('[SocietyGolfDB] Query constructed, executing...');
         const { data: events, error: eventsError } = await eventsQuery;
+        console.log('[SocietyGolfDB] Query completed. Events:', events?.length || 0, 'Error:', eventsError);
 
         console.log('[SocietyGolfDB] Query result - events:', events?.length || 0);
         if (events && events.length > 0) {

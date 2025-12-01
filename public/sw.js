@@ -1,7 +1,7 @@
 // SERVICE WORKER - UNREGISTRATION VERSION
 // This version clears all caches and unregisters itself
 
-const SW_VERSION = 'scorecard-ux-improvements-v1';
+const SW_VERSION = 'fix-group-id-rounds-v1';
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing unregistration version');

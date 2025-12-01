@@ -1,68 +1,50 @@
-# Quick Reference Guide - Common Errors and Solutions
+# Quick Reference - Session 2025-12-01
 
-## Deployment Checklist
+## What Was Fixed
 
-```bash
-# 1. Make changes to public/index.html
-vim public/index.html
+### 1. Handicap Bug ✅
+- **Issue**: Pete Park 3.9 showed as 7, Rocky Jones +2.1 showed as 2
+- **Fix**: Proper handicap storage and display with decimals and plus signs
+- **Commit**: `fedcf453`
 
-# 2. ALWAYS sync to root
-cp public/index.html index.html
+### 2. Partner Preferences Bug ✅
+- **Issue**: Users saw themselves in partner selection list
+- **Fix**: Filter out current user from partner preferences
+- **Commit**: `9e38e572`
 
-# 3. Get new commit SHA
-git add public/index.html index.html
-git commit -m "Description"
-NEW_SHA=$(git rev-parse --short HEAD)
+### 3. Scorecard UX Improvements ✅
+- **Issue A**: Had to scroll to top to access buddies
+- **Fix A**: Added quick buddy button next to Add Player
 
-# 4. Update service workers
-sed -i "s/const SW_VERSION = '.*'/const SW_VERSION = '$NEW_SHA'/" sw.js
-sed -i "s/const SW_VERSION = '.*'/const SW_VERSION = '$NEW_SHA'/" public/sw.js
+- **Issue B**: No feedback when adding buddies
+- **Fix B**: Instant notifications + button changes to checkmark
 
-# 5. Commit and deploy
-git add sw.js public/sw.js
-git commit -m "Update SW version to $NEW_SHA"
-git push
-vercel --prod
-```
+- **Issue C**: Match play teams not showing with 4 players
+- **Fix C**: Auto-select "2-Man Teams" when conditions met
+- **Commit**: `69b8517d`
 
-## Common Field Name Mappings
+## Files Changed
 
-### Database Direct Query
-```javascript
-event.title          // Event name
-event.course         // Course name
-event.event_date     // Event date
-event.organizer_id   // Organizer ID
-```
+1. `public/index.html` - Main application (~90 lines)
+2. `public/golf-buddies-system.js` - Buddy system (~15 lines)
+3. `public/sw.js` - Service worker (3 version updates)
 
-### Transformed Object (getOrganizerEventsWithStats)
-```javascript
-event.name           // Event name
-event.courseName     // Course name
-event.date           // Event date
-event.organizerId    // Organizer ID
-```
+## Production Status
 
-## Property Path Issues
+**All changes deployed to**: www.mycaddipro.com
 
-### AppState.currentUser Structure
-```javascript
-// CORRECT
-AppState.currentUser.lineUserId
-AppState.currentUser.organizationInfo.societyName
+**Latest deployment**: mcipro-golf-platform-k6mqkxzm9-mcipros-projects.vercel.app
 
-// WRONG
-AppState.currentUser.profile_data.organizationInfo.societyName
-```
+## Test These Features
 
-## Files That Must Stay In Sync
+1. Register for JOA Golf event - handicap should show correctly
+2. Try selecting partner preferences - you won't see yourself
+3. Start a round - use quick buddy button (group icon)
+4. Add buddies - see instant feedback and checkmark
+5. Add 4 players + match play - teams auto-select
 
-1. public/index.html ↔ index.html
-2. sw.js ↔ public/sw.js
+## Service Worker Versions
 
-## Critical Errors to Avoid
-
-1. ❌ Updating only public/index.html without syncing to root
-2. ❌ Using database field names with transformed objects
-3. ❌ Assuming property nesting without verification
-4. ❌ Forgetting to update service worker versions
+- `handicap-plus-fix-v1`
+- `partner-prefs-exclude-self-v1`
+- `scorecard-ux-improvements-v1`

@@ -41657,6 +41657,19 @@ class LiveScorecardSystem {
                 round = canonicalInsert.data;
                 error = canonicalInsert.error;
 
+                // DIAGNOSTIC: Log what was inserted
+                if (round) {
+                    console.log('[LiveScorecard] ✅ Round saved successfully:', {
+                        round_id: round.id,
+                        golfer_id: round.golfer_id,
+                        society_event_id: round.society_event_id,
+                        organizer_id: round.organizer_id,
+                        type: round.type,
+                        total_gross: round.total_gross,
+                        total_stableford: round.total_stableford
+                    });
+                }
+
                 // If canonical failed due to missing columns, fallback to legacy schema
                 if (error) {
                     console.warn('[LiveScorecard] Canonical insert failed, falling back to legacy schema:', error);
@@ -59274,6 +59287,8 @@ class OrganizerScoringSystem {
             }
 
             // Fetch all rounds for this event
+            console.log('[OrganizerScoring] 🔍 Querying rounds for society_event_id:', this.currentEventId);
+
             const { data: rounds, error } = await window.SupabaseDB.client
                 .from('rounds')
                 .select('*')
@@ -59281,11 +59296,33 @@ class OrganizerScoringSystem {
                 .order('total_stableford', { ascending: false });
 
             if (error) {
-                console.error('[OrganizerScoring] Error loading scores:', error);
+                console.error('[OrganizerScoring] ❌ Error loading scores:', error);
                 return;
             }
 
-            console.log(`[OrganizerScoring] Loaded ${rounds?.length || 0} rounds for event ${this.currentEventId}`);
+            console.log(`[OrganizerScoring] ✅ Loaded ${rounds?.length || 0} rounds for event ${this.currentEventId}`);
+
+            // DIAGNOSTIC: Show what rounds were found
+            if (rounds && rounds.length > 0) {
+                console.log('[OrganizerScoring] Rounds found:', rounds.map(r => ({
+                    id: r.id,
+                    golfer_id: r.golfer_id,
+                    society_event_id: r.society_event_id,
+                    total_gross: r.total_gross,
+                    total_stableford: r.total_stableford
+                })));
+            } else {
+                console.warn('[OrganizerScoring] ⚠️ No rounds found for this event. Checking if any rounds exist without society_event_id...');
+
+                // DIAGNOSTIC: Check if there are ANY rounds in the database
+                const { data: allRounds } = await window.SupabaseDB.client
+                    .from('rounds')
+                    .select('id, golfer_id, society_event_id, type, total_gross, total_stableford')
+                    .order('created_at', { ascending: false })
+                    .limit(10);
+
+                console.log('[OrganizerScoring] Recent rounds in database:', allRounds);
+            }
 
             this.leaderboardData = rounds || [];
             this.renderLeaderboard();

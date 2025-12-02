@@ -6835,44 +6835,46 @@
                     console.log('[LINE] No profile found - searching for existing member records...', lineUserId);
 
                     try {
-                        // Search for potential matches in society_members
+                        // Search for potential matches using enhanced matching algorithm
                         await window.SupabaseDB.waitForReady();
 
-                        const { data: matches, error: matchError } = await window.SupabaseDB.client
-                            .rpc('find_existing_member_matches', {
-                                p_line_user_id: lineUserId,
-                                p_line_display_name: profile.displayName || 'User'
-                            });
+                        const displayName = (profile.displayName || '').trim();
+                        console.log('[LINE] Searching for matches with name:', displayName);
 
-                        if (matchError) {
-                            console.error('[LINE] Error finding matches:', matchError);
-                            // Continue with normal auto-create
-                            await this.createNewProfile(lineUserId, profile);
-                            return;
+                        // Search across all user_profiles for potential matches
+                        const { data: allProfiles, error: profilesError } = await window.SupabaseDB.client
+                            .from('user_profiles')
+                            .select('line_user_id, name, profile_data, society_name, society_id, handicap')
+                            .is('line_user_id', null) // Only profiles not yet linked to LINE
+                            .limit(500);
+
+                        if (profilesError) {
+                            console.error('[LINE] Error loading profiles:', profilesError);
+                            throw profilesError;
                         }
 
-                        if (matches && matches.length > 0) {
+                        console.log('[LINE] Loaded', allProfiles?.length || 0, 'unlinked profiles to match against');
+
+                        // Find matches using enhanced matching algorithm
+                        const matches = this.findProfileMatches(displayName, allProfiles || []);
+
+                        console.log('[LINE] Found', matches.length, 'potential matches');
+
+                        if (matches.length > 0) {
                             // MATCHES FOUND! Show confirmation modal
-                            console.log('[LINE] Found potential matches:', matches);
                             LoadingManager.hide();
                             await this.showMemberLinkConfirmation(lineUserId, profile, matches);
                         } else {
-                            // No matches, create new profile normally
-                            console.log('[LINE] No existing member records found, creating new profile...');
-                            await this.createNewProfile(lineUserId, profile);
+                            // No matches, show manual search option
+                            console.log('[LINE] No automatic matches found, showing manual search option...');
+                            LoadingManager.hide();
+                            await this.showManualProfileSearch(lineUserId, profile);
                         }
                     } catch (error) {
                         console.error('[LINE] Intelligent matching failed:', error);
-                        // Fallback to manual
-                        localStorage.setItem('pending_line_profile', JSON.stringify({
-                            lineUserId: lineUserId,
-                            displayName: profile.displayName,
-                            pictureUrl: profile.pictureUrl
-                        }));
-                        ScreenManager.showScreen('createProfileScreen');
-                        NotificationManager.show('Welcome! Please create your profile to continue.', 'info');
+                        // Show manual search as fallback
                         LoadingManager.hide();
-                        return;
+                        await this.showManualProfileSearch(lineUserId, profile);
                     }
                 }
             }
@@ -6967,6 +6969,328 @@
             // INTELLIGENT SIGNUP - HELPER METHODS
             // ========================================================================
 
+            static findProfileMatches(displayName, profiles) {
+                const matches = [];
+                const searchName = displayName.toLowerCase().trim();
+
+                // Helper function to calculate name similarity (0-1)
+                const calculateSimilarity = (name1, name2) => {
+                    const n1 = name1.toLowerCase().trim();
+                    const n2 = name2.toLowerCase().trim();
+
+                    // Exact match
+                    if (n1 === n2) return 1.0;
+
+                    // One contains the other
+                    if (n1.includes(n2) || n2.includes(n1)) return 0.85;
+
+                    // Check if first/last names match
+                    const parts1 = n1.split(/\s+/);
+                    const parts2 = n2.split(/\s+/);
+
+                    let matchingParts = 0;
+                    for (const p1 of parts1) {
+                        for (const p2 of parts2) {
+                            if (p1 === p2 || p1.includes(p2) || p2.includes(p1)) {
+                                matchingParts++;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (matchingParts > 0) {
+                        return 0.6 + (matchingParts / Math.max(parts1.length, parts2.length)) * 0.2;
+                    }
+
+                    // Levenshtein distance for close matches
+                    const distance = this.levenshteinDistance(n1, n2);
+                    const maxLen = Math.max(n1.length, n2.length);
+                    if (distance / maxLen < 0.3) {
+                        return 0.7 - (distance / maxLen);
+                    }
+
+                    return 0;
+                };
+
+                for (const profile of profiles) {
+                    const profileName = profile.name || '';
+                    const similarity = calculateSimilarity(displayName, profileName);
+
+                    if (similarity >= 0.6) {
+                        matches.push({
+                            golfer_id: profile.line_user_id || `temp_${Date.now()}`,
+                            society_name: profile.society_name || 'No Society',
+                            member_data: {
+                                name: profile.name,
+                                handicap: profile.handicap || profile.profile_data?.golfInfo?.handicap || 0
+                            },
+                            match_confidence: similarity,
+                            match_reason: similarity >= 0.95 ? 'Exact name match' :
+                                         similarity >= 0.85 ? 'Name contains match' :
+                                         similarity >= 0.7 ? 'Partial name match' :
+                                         'Similar name',
+                            profile_data: profile
+                        });
+                    }
+                }
+
+                // Sort by confidence (highest first)
+                matches.sort((a, b) => b.match_confidence - a.match_confidence);
+
+                return matches.slice(0, 5); // Return top 5 matches
+            }
+
+            static levenshteinDistance(str1, str2) {
+                const matrix = [];
+
+                for (let i = 0; i <= str2.length; i++) {
+                    matrix[i] = [i];
+                }
+
+                for (let j = 0; j <= str1.length; j++) {
+                    matrix[0][j] = j;
+                }
+
+                for (let i = 1; i <= str2.length; i++) {
+                    for (let j = 1; j <= str1.length; j++) {
+                        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                            matrix[i][j] = matrix[i - 1][j - 1];
+                        } else {
+                            matrix[i][j] = Math.min(
+                                matrix[i - 1][j - 1] + 1,
+                                matrix[i][j - 1] + 1,
+                                matrix[i - 1][j] + 1
+                            );
+                        }
+                    }
+                }
+
+                return matrix[str2.length][str1.length];
+            }
+
+            static async showManualProfileSearch(lineUserId, profile) {
+                // Remove any existing modal
+                const existingModal = document.getElementById('manualProfileSearchModal');
+                if (existingModal) existingModal.remove();
+
+                const modal = document.createElement('div');
+                modal.id = 'manualProfileSearchModal';
+                modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+                modal.innerHTML = `
+                    <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                        <!-- Header -->
+                        <div class="bg-gradient-to-r from-orange-600 to-red-500 text-white p-6 rounded-t-xl">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-4xl">search</span>
+                                <div>
+                                    <h2 class="text-2xl font-bold">Find Your Existing Profile</h2>
+                                    <p class="text-sm text-orange-100">Search to avoid creating a duplicate</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Content -->
+                        <div class="p-6">
+                            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+                                <div class="flex items-start gap-3">
+                                    <span class="material-symbols-outlined text-yellow-600">info</span>
+                                    <div class="text-sm">
+                                        <p class="font-semibold text-yellow-800 mb-1">Important: Avoid Duplicates!</p>
+                                        <p class="text-yellow-700">If you're already registered in Travellers or JOA Golf societies, search for your name below to link your existing profile.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Search Box -->
+                            <div class="mb-6">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Search for your name</label>
+                                <div class="relative">
+                                    <span class="material-symbols-outlined absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">search</span>
+                                    <input type="text" id="manualProfileSearchInput"
+                                           placeholder="Enter your real name (e.g., John Smith)..."
+                                           oninput="window.LineAuthentication.searchProfilesManually(this.value)"
+                                           class="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">Type your actual name, not your LINE display name</p>
+                            </div>
+
+                            <!-- Search Results -->
+                            <div id="manualSearchResults" class="mb-6">
+                                <div class="text-center text-gray-500 py-8">
+                                    <span class="material-symbols-outlined text-4xl mb-2">person_search</span>
+                                    <p>Type your name to search...</p>
+                                </div>
+                            </div>
+
+                            <!-- Actions -->
+                            <div class="flex gap-3">
+                                <button onclick="window.LineAuthentication.createNewProfileAfterSearch()"
+                                        class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2">
+                                    <span class="material-symbols-outlined text-sm">person_add</span>
+                                    I'm New - Create Profile
+                                </button>
+                            </div>
+
+                            <p class="text-xs text-gray-500 mt-4 text-center">
+                                Only click "Create Profile" if you're absolutely sure you're not already registered
+                            </p>
+                        </div>
+                    </div>
+                `;
+
+                document.body.appendChild(modal);
+
+                // Store data for use by handlers
+                window.manualSearchData = {
+                    lineUserId,
+                    profile
+                };
+
+                // Focus search input
+                setTimeout(() => {
+                    document.getElementById('manualProfileSearchInput').focus();
+                }, 100);
+
+                console.log('[ManualSearch] Modal shown');
+            }
+
+            static async searchProfilesManually(searchText) {
+                const resultsContainer = document.getElementById('manualSearchResults');
+
+                if (!searchText || searchText.trim().length < 2) {
+                    resultsContainer.innerHTML = `
+                        <div class="text-center text-gray-500 py-8">
+                            <span class="material-symbols-outlined text-4xl mb-2">person_search</span>
+                            <p>Type at least 2 characters to search...</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                try {
+                    resultsContainer.innerHTML = `
+                        <div class="text-center text-gray-500 py-8">
+                            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
+                            <p>Searching...</p>
+                        </div>
+                    `;
+
+                    // Search user_profiles
+                    const { data: profiles, error } = await window.SupabaseDB.client
+                        .from('user_profiles')
+                        .select('line_user_id, name, profile_data, society_name, handicap')
+                        .is('line_user_id', null)
+                        .ilike('name', `%${searchText}%`)
+                        .limit(20);
+
+                    if (error) throw error;
+
+                    if (!profiles || profiles.length === 0) {
+                        resultsContainer.innerHTML = `
+                            <div class="text-center text-gray-500 py-8">
+                                <span class="material-symbols-outlined text-4xl mb-2">search_off</span>
+                                <p class="font-medium">No matching profiles found</p>
+                                <p class="text-sm mt-2">You can safely create a new profile</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    resultsContainer.innerHTML = `
+                        <div class="space-y-2 max-h-64 overflow-y-auto">
+                            ${profiles.map((prof, index) => `
+                                <div class="bg-gray-50 p-4 rounded-lg border-2 border-gray-300 hover:border-blue-500 cursor-pointer transition-colors"
+                                     onclick="window.LineAuthentication.linkToManualProfile(${index})">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <h4 class="font-bold text-lg">${prof.name}</h4>
+                                        <span class="text-xs px-2 py-1 rounded bg-blue-100 text-blue-800">
+                                            Click to Link
+                                        </span>
+                                    </div>
+                                    <div class="text-sm text-gray-600 space-y-1">
+                                        ${prof.society_name ? `<p><strong>Society:</strong> ${prof.society_name}</p>` : ''}
+                                        ${prof.handicap || prof.profile_data?.golfInfo?.handicap ?
+                                            `<p><strong>Handicap:</strong> ${prof.handicap || prof.profile_data.golfInfo.handicap}</p>` : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <p class="text-xs text-gray-500 mt-3 text-center">Found ${profiles.length} profile(s). Click one to link your LINE account.</p>
+                    `;
+
+                    // Store search results
+                    window.manualSearchResults = profiles;
+
+                } catch (error) {
+                    console.error('[ManualSearch] Error:', error);
+                    resultsContainer.innerHTML = `
+                        <div class="text-center text-red-500 py-8">
+                            <span class="material-symbols-outlined text-4xl mb-2">error</span>
+                            <p>Error searching profiles</p>
+                        </div>
+                    `;
+                }
+            }
+
+            static async linkToManualProfile(index) {
+                const profile = window.manualSearchResults[index];
+                const { lineUserId, profile: lineProfile } = window.manualSearchData;
+
+                if (!confirm(`Link your LINE account to:\n\n${profile.name}\n${profile.society_name || ''}\n\nIs this you?`)) {
+                    return;
+                }
+
+                LoadingManager.show('Linking your account...');
+
+                try {
+                    // Link LINE account to existing profile
+                    const { error } = await window.SupabaseDB.client
+                        .from('user_profiles')
+                        .update({
+                            line_user_id: lineUserId,
+                            profile_data: {
+                                ...profile.profile_data,
+                                linePictureUrl: lineProfile.pictureUrl
+                            }
+                        })
+                        .eq('name', profile.name)
+                        .is('line_user_id', null);
+
+                    if (error) throw error;
+
+                    console.log('[ManualSearch] ✅ Profile linked successfully');
+
+                    // Close modal
+                    document.getElementById('manualProfileSearchModal').remove();
+
+                    NotificationManager.show(`✅ Welcome back ${profile.name}! Your account has been linked.`, 'success');
+
+                    // Reload to fetch the newly linked profile
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+
+                } catch (error) {
+                    console.error('[ManualSearch] Error linking:', error);
+                    NotificationManager.show('Failed to link profile. Please try again.', 'error');
+                    LoadingManager.hide();
+                }
+            }
+
+            static async createNewProfileAfterSearch() {
+                const { lineUserId, profile } = window.manualSearchData;
+
+                if (!confirm('Are you sure you want to create a NEW profile?\n\nOnly do this if you searched and could not find your name.')) {
+                    return;
+                }
+
+                // Close modal
+                document.getElementById('manualProfileSearchModal').remove();
+
+                // Create new profile
+                await this.createNewProfile(lineUserId, profile);
+            }
+
             static async showMemberLinkConfirmation(lineUserId, profile, matches) {
                 // Remove any existing modal
                 const existingModal = document.getElementById('memberLinkModal');
@@ -7014,10 +7338,15 @@
 
                         <!-- Content -->
                         <div class="p-6">
-                            <p class="text-gray-700 mb-6">
-                                It looks like you're already registered in our system.
-                                <strong>Is this you?</strong>
-                            </p>
+                            <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
+                                <div class="flex items-start gap-3">
+                                    <span class="material-symbols-outlined text-blue-600">info</span>
+                                    <div class="text-sm">
+                                        <p class="font-semibold text-blue-800 mb-1">We found existing profile(s) matching your LINE display name</p>
+                                        <p class="text-blue-700">To avoid duplicates, please confirm if one of these is you:</p>
+                                    </div>
+                                </div>
+                            </div>
 
                             <!-- Matches -->
                             <div id="matchesList">
@@ -7085,21 +7414,26 @@
                 LoadingManager.show('Linking your account...');
 
                 try {
-                    // Call SQL function to link accounts
-                    const { data, error } = await window.SupabaseDB.client
-                        .rpc('link_line_account_to_member', {
-                            p_line_user_id: lineUserId,
-                            p_line_display_name: profile.displayName,
-                            p_line_picture_url: profile.pictureUrl,
-                            p_society_name: selectedMatch.society_name,
-                            p_existing_golfer_id: selectedMatch.golfer_id
-                        });
+                    const profileData = selectedMatch.profile_data || {};
+
+                    // Link LINE account to existing profile
+                    const { error } = await window.SupabaseDB.client
+                        .from('user_profiles')
+                        .update({
+                            line_user_id: lineUserId,
+                            profile_data: {
+                                ...profileData.profile_data,
+                                linePictureUrl: profile.pictureUrl
+                            }
+                        })
+                        .eq('name', selectedMatch.member_data.name)
+                        .is('line_user_id', null);
 
                     if (error) {
                         throw error;
                     }
 
-                    console.log('[MemberLink] ✅ Account linked successfully!', data);
+                    console.log('[MemberLink] ✅ Account linked successfully!');
 
                     // Close modal
                     document.getElementById('memberLinkModal').remove();

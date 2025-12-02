@@ -24936,7 +24936,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                         <span class="material-symbols-outlined text-orange-600">groups</span>
                                         <h4 class="font-semibold text-gray-900">Assign Teams</h4>
                                     </div>
-                                    <p class="text-xs text-gray-600 mb-3">⚠️ You must add 4 players to the round and assign them to teams before starting</p>
+                                    <p class="text-xs text-gray-600 mb-3">⚠️ For private games: Add 4 players and assign to both teams. For public games: Add 2+ players to Team A and enable "Make Game Public" to play against other teams</p>
 
                                     <!-- Team A -->
                                     <div class="mb-3 p-2 bg-blue-50 border border-blue-300 rounded">
@@ -41066,36 +41066,70 @@ class LiveScorecardSystem {
 
         const errorDiv = document.getElementById('teamSelectionError');
         const successDiv = document.getElementById('teamSelectionSuccess');
+        const isPublicGame = document.getElementById('publicGameToggle')?.checked;
 
-        // Check if all 4 positions are filled
-        if (!teamA1 || !teamA2 || !teamB1 || !teamB2) {
+        // For public games: Only require Team A (1 team to compete against others)
+        // For private games: Require both teams
+        if (isPublicGame) {
+            // Public game: Just need Team A configured
+            if (!teamA1 || !teamA2) {
+                errorDiv.classList.add('hidden');
+                successDiv.classList.add('hidden');
+                this.matchPlayTeams = null;
+                return false;
+            }
+
+            // Check for duplicates in Team A
+            if (teamA1 === teamA2) {
+                errorDiv.textContent = '❌ Team A players must be different';
+                errorDiv.classList.remove('hidden');
+                successDiv.classList.add('hidden');
+                this.matchPlayTeams = null;
+                return false;
+            }
+
+            // Validation passed - store team configuration (only Team A for public)
+            this.matchPlayTeams = {
+                teamA: [teamA1, teamA2],
+                teamB: [] // Empty for public games
+            };
+
             errorDiv.classList.add('hidden');
-            successDiv.classList.add('hidden');
-            this.matchPlayTeams = null;
-            return false;
+            successDiv.classList.remove('hidden');
+            successDiv.textContent = '✅ Team A configured for public match play';
+            return true;
+        } else {
+            // Private game: Need all 4 positions filled
+            if (!teamA1 || !teamA2 || !teamB1 || !teamB2) {
+                errorDiv.classList.add('hidden');
+                successDiv.classList.add('hidden');
+                this.matchPlayTeams = null;
+                return false;
+            }
+
+            // Check for duplicates across both teams
+            const selections = [teamA1, teamA2, teamB1, teamB2];
+            const uniqueSelections = new Set(selections);
+
+            if (uniqueSelections.size !== 4) {
+                errorDiv.textContent = '❌ Each player can only be assigned to one position';
+                errorDiv.classList.remove('hidden');
+                successDiv.classList.add('hidden');
+                this.matchPlayTeams = null;
+                return false;
+            }
+
+            // Validation passed - store team configuration
+            this.matchPlayTeams = {
+                teamA: [teamA1, teamA2],
+                teamB: [teamB1, teamB2]
+            };
+
+            errorDiv.classList.add('hidden');
+            successDiv.classList.remove('hidden');
+            successDiv.textContent = '✅ Teams configured correctly';
+            return true;
         }
-
-        // Check for duplicates
-        const selections = [teamA1, teamA2, teamB1, teamB2];
-        const uniqueSelections = new Set(selections);
-
-        if (uniqueSelections.size !== 4) {
-            errorDiv.textContent = '❌ Each player can only be assigned to one position';
-            errorDiv.classList.remove('hidden');
-            successDiv.classList.add('hidden');
-            this.matchPlayTeams = null;
-            return false;
-        }
-
-        // Validation passed - store team configuration
-        this.matchPlayTeams = {
-            teamA: [teamA1, teamA2],
-            teamB: [teamB1, teamB2]
-        };
-
-        errorDiv.classList.add('hidden');
-        successDiv.classList.remove('hidden');
-        return true;
     }
 
     getMatchPlayTeamConfig() {
@@ -41127,6 +41161,7 @@ class LiveScorecardSystem {
             };
         }).filter(p => p !== null);
 
+        // Team B might be empty for public games
         const teamBData = this.matchPlayTeams.teamB.map(playerId => {
             const player = this.players.find(p => p.id === playerId);
             if (!player) return null;
@@ -41147,14 +41182,21 @@ class LiveScorecardSystem {
             };
         }).filter(p => p !== null);
 
-        // Validate we have 2 players per team
-        if (teamAData.length !== 2 || teamBData.length !== 2) {
+        // Validate: Team A must have 2 players
+        // Team B can be empty for public games (competing against other teams)
+        if (teamAData.length !== 2) {
+            return null;
+        }
+
+        // For private games, need both teams with 2 players each
+        const isPublicGame = document.getElementById('publicGameToggle')?.checked;
+        if (!isPublicGame && teamBData.length !== 2) {
             return null;
         }
 
         return {
             teamA: teamAData,
-            teamB: teamBData
+            teamB: teamBData // May be empty for public games
         };
     }
 

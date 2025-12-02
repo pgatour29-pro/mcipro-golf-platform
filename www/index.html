@@ -34323,12 +34323,27 @@ Total Rounds: ${ningCaddy.totalRounds}`;
             try {
                 resultsContainer.innerHTML = '<div class="text-center text-gray-500 py-8">Searching...</div>';
 
-                // GLOBAL SEARCH: Search all user profiles across all societies
-                const { data: players, error } = await window.SupabaseDB.client
+                // Build flexible search query for name variations
+                const searchWords = searchText.trim().split(/\s+/).filter(w => w.length > 0);
+                let query = window.SupabaseDB.client
                     .from('user_profiles')
-                    .select('line_user_id, name, profile_data, society_name, handicap')
-                    .ilike('name', `%${searchText}%`)
-                    .limit(50); // Increased for cross-society discovery
+                    .select('line_user_id, name, profile_data, society_name, handicap');
+
+                if (searchWords.length === 1) {
+                    // Single word: simple search
+                    query = query.ilike('name', `%${searchWords[0]}%`);
+                } else if (searchWords.length === 2) {
+                    // Two words: Search for ALL variations (handles "First Last", "Last, First", "Last First")
+                    const word1 = searchWords[0];
+                    const word2 = searchWords[1];
+                    query = query.or(`name.ilike.%${word1} ${word2}%,name.ilike.%${word2}, ${word1}%,name.ilike.%${word2} ${word1}%`);
+                } else {
+                    // Three or more words: search for the full phrase
+                    query = query.ilike('name', `%${searchText}%`);
+                }
+
+                // GLOBAL SEARCH: Search all user profiles across all societies
+                const { data: players, error } = await query.limit(50); // Increased for cross-society discovery
 
                 if (error) throw error;
 
@@ -37539,13 +37554,32 @@ class SocietyGolfSupabase {
         const results = [];
         const seenIds = new Set();
 
+        // Build flexible search query for name variations
+        const searchWords = searchTerm.trim().split(/\s+/).filter(w => w.length > 0);
+        let query = window.SupabaseDB.client
+            .from('user_profiles')
+            .select('line_user_id, name, profile_data, society_name, handicap');
+
+        if (searchWords.length === 1) {
+            // Single word: simple search
+            query = query.ilike('name', `%${searchWords[0]}%`);
+        } else if (searchWords.length === 2) {
+            // Two words: Search for ALL variations (handles "First Last", "Last, First", "Last First")
+            const word1 = searchWords[0];
+            const word2 = searchWords[1];
+            // Match any of these patterns:
+            // 1. "word1 word2" (e.g., "Pete Park")
+            // 2. "word2, word1" (e.g., "Park, Pete")
+            // 3. "word2 word1" (e.g., "Park Pete")
+            query = query.or(`name.ilike.%${word1} ${word2}%,name.ilike.%${word2}, ${word1}%,name.ilike.%${word2} ${word1}%`);
+        } else {
+            // Three or more words: search for the full phrase
+            query = query.ilike('name', `%${searchTerm}%`);
+        }
+
         // 1. Search ALL user_profiles globally (not restricted by society)
         try {
-            const { data, error } = await window.SupabaseDB.client
-                .from('user_profiles')
-                .select('line_user_id, name, profile_data, society_name, handicap')
-                .ilike('name', `%${searchTerm}%`)
-                .limit(50); // Increased limit for cross-society events
+            const { data, error } = await query.limit(50); // Increased limit for cross-society events
 
             if (!error && data) {
                 data.forEach(p => {
@@ -58154,12 +58188,27 @@ class GolferEventsManager {
         }
 
         try {
-            // GLOBAL SEARCH: Search all user profiles across all societies
-            const { data: golfers, error } = await window.SupabaseDB.client
+            // Build flexible search query for name variations
+            const searchWords = searchTerm.trim().split(/\s+/).filter(w => w.length > 0);
+            let query = window.SupabaseDB.client
                 .from('user_profiles')
-                .select('line_user_id, name, profile_data, society_name, handicap')
-                .ilike('name', `%${searchTerm}%`)
-                .limit(50); // Increased for cross-society discovery
+                .select('line_user_id, name, profile_data, society_name, handicap');
+
+            if (searchWords.length === 1) {
+                // Single word: simple search
+                query = query.ilike('name', `%${searchWords[0]}%`);
+            } else if (searchWords.length === 2) {
+                // Two words: Search for ALL variations (handles "First Last", "Last, First", "Last First")
+                const word1 = searchWords[0];
+                const word2 = searchWords[1];
+                query = query.or(`name.ilike.%${word1} ${word2}%,name.ilike.%${word2}, ${word1}%,name.ilike.%${word2} ${word1}%`);
+            } else {
+                // Three or more words: search for the full phrase
+                query = query.ilike('name', `%${searchTerm}%`);
+            }
+
+            // GLOBAL SEARCH: Search all user profiles across all societies
+            const { data: golfers, error } = await query.limit(50); // Increased for cross-society discovery
 
             if (error) throw error;
 
@@ -60704,12 +60753,27 @@ class OrganizerScoringSystem {
         try {
             resultsContainer.innerHTML = '<div class="text-center text-gray-500 py-8">Searching...</div>';
 
-            // GLOBAL SEARCH: Search all user profiles across all societies
-            const { data: players, error } = await window.SupabaseDB.client
+            // Build flexible search query for name variations
+            const searchWords = searchText.trim().split(/\s+/).filter(w => w.length > 0);
+            let query = window.SupabaseDB.client
                 .from('user_profiles')
-                .select('line_user_id, name, profile_data, society_name, handicap')
-                .ilike('name', `%${searchText}%`)
-                .limit(50); // Increased for cross-society discovery
+                .select('line_user_id, name, profile_data, society_name, handicap');
+
+            if (searchWords.length === 1) {
+                // Single word: simple search
+                query = query.ilike('name', `%${searchWords[0]}%`);
+            } else if (searchWords.length === 2) {
+                // Two words: Search for ALL variations (handles "First Last", "Last, First", "Last First")
+                const word1 = searchWords[0];
+                const word2 = searchWords[1];
+                query = query.or(`name.ilike.%${word1} ${word2}%,name.ilike.%${word2}, ${word1}%,name.ilike.%${word2} ${word1}%`);
+            } else {
+                // Three or more words: search for the full phrase
+                query = query.ilike('name', `%${searchText}%`);
+            }
+
+            // GLOBAL SEARCH: Search all user profiles across all societies
+            const { data: players, error } = await query.limit(50); // Increased for cross-society discovery
 
             if (error) throw error;
 

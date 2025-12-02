@@ -1,6 +1,6 @@
 # MyCaddiPro Complete Documentation Catalog
-**Last Updated**: December 1, 2025
-**Total Files**: 120+
+**Last Updated**: December 2, 2025
+**Total Files**: 130+
 
 ---
 
@@ -11,8 +11,16 @@
 - **MASTER_SYSTEM_INDEX.md** - Complete system architecture
 - **QUICK-REFERENCE.md** - Current state and quick links
 
-### 📅 **Today's Session**
-- **session-catalog-2025-12-01.md** - Current session (Dec 1, 2025)
+### 📅 **Today's Session (Dec 2, 2025)**
+- **session-catalog-2025-12-02.md** - CREATED TODAY
+  - ✅ Global cross-society user search (100%)
+  - ✅ Flexible name search with variations (Pete Park / Park, Pete)
+  - ✅ Stale event registration fix
+  - ✅ Cross-society badges (CROSS-SOCIETY, PRIMARY, UNAFFILIATED)
+  - ✅ Fixed column name bug (golfer_id → player_id)
+
+### 📅 **Previous Session (Dec 1, 2025)**
+- **session-catalog-2025-12-01.md**
   - Handicap display bugs fixed
   - Partner preferences fixed
   - Live scorecard UX improvements
@@ -47,13 +55,22 @@
 ### 📋 **Session Catalogs** (Chronological)
 
 #### December 2025
-- **session-catalog-2025-12-01.md** ⭐ TODAY
+- **session-catalog-2025-12-02.md** ⭐ **TODAY**
+  - Global cross-society user search (100%)
+  - Flexible name search (First Last / Last, First)
+  - Stale event registration cleanup
+  - Column name bug fix (golfer_id → player_id)
+  - Cross-society badges implementation
+
+- **session-catalog-2025-12-01.md**
   - Handicap display bug
   - Partner preferences bug
   - Live scorecard UX (quick buddy, feedback, auto-teams)
   - Score saving RLS fix
   - Buddy trigger group_id fix
   - Error logging improvements
+
+- **2025-12-01-default-pin-6789-implementation.md** - Default PIN system
 
 - **2025-11-30-joa-logo-and-event-cleanup.md**
   - JOA logo and branding
@@ -62,7 +79,6 @@
 - **2025-11-30-organizer-pin-and-dual-role.md**
   - Organizer PIN system
   - Dual role switcher
-- **2025-12-01-default-pin-6789-implementation.md** - Default PIN system
 
 #### November 2025
 - **2025-11-28_TRGG_EVENTS_COMPLETE_FUCKUP_CATALOG.md**
@@ -146,98 +162,64 @@
 
 #### October 2025
 - **2025-10-31_CATASTROPHIC_NAVIGATION_FAILURE.md**
-  - Navigation system failure
 - **2025-10-31_COMPLETE_SESSION_CATALOG.md**
-  - Complete Oct 31 session
-
 - **2025-10-30_CATASTROPHIC_SESSION_FAILURE.md**
-  - Oct 30 session failures
-
 - **2025-10-25_GOLF_COURSE_ADMIN_SETTINGS_TAB_COMPLETE.md**
-  - Golf course admin settings
 - **2025-10-25_SITE_LIVE_VERCEL_MIGRATION_COMPLETE.md**
-  - Vercel migration
 - **2025-10-25_VERCEL_MIGRATION_BANDWIDTH_FIX.md**
-  - Bandwidth optimization
-
 - **2025-10-23_COMPLETE_FIX_CATALOG.md**
-  - Oct 23 fixes catalog
 - **2025-10-23_ROUND_HISTORY_SAVE_DELETE_FIX.md**
-  - Round history fixes
 - **2025-10-23_TOTAL_FUCKUP_CATALOG.md**
-  - Oct 23 fuckups
-
 - **2025-10-22_COMPLETE_SESSION_CATALOG.md**
-  - Oct 22 session
-
 - **2025-10-21_GLOBAL_PROFILE_AUTO_SYNC_FIX.md**
-  - Profile auto-sync
 - **2025-10-21_GOLF_SOCIETY_COMPLETE_FIX_CATALOG.md**
-  - Golf society fixes
 - **2025-10-21_GOLF_SOCIETY_SUCCESS_REPORT.md**
-  - Society success report
 - **2025-10-21_HOME_COURSE_MISSING_ALL_PROFILES_FIX.md**
-  - Home course profile fix
 - **2025-10-21_LIVE_LEADERBOARD_AVERAGE_SCORE_MISMATCH_FIX.md**
-  - Leaderboard scoring fix
 - **2025-10-21_LIVE_SCORECARD_EVENT_DROPDOWN_BUGS_FIX.md**
-  - Event dropdown fix
 - **2025-10-21_LIVE_SCORECARD_NOT_SAVING_TO_HISTORY_FIX.md**
-  - Scorecard save fix
-
 - **2025-10-20_BANGPAKONG_SCORECARD_UPDATE_AND_MOBILE_MASTHEAD_SESSION.md**
-  - Bangpakong course update
-  - Mobile masthead
 - **2025-10-20_CHAT_FIX_COMPLETE_CATALOG.md**
-  - Chat fixes Oct 20
-
 - **2025-10-19_ROUND_HISTORY_100_PERCENT_COMPLETION.md**
-  - Round history 100% complete
 - **2025-10-19_SCORECARD_FIXES_AND_OPTIMIZATIONS.md**
-  - Scorecard optimizations
-
 - **2025-10-18-golf-course-tee-markers-complete.md**
-  - Tee markers implementation
 - **SESSION-2025-10-18-FEES-PAIRINGS-PRINT.md**
-  - Fees and pairings
 - **SESSION-2025-10-18-PAYMENT-REVENUE.md**
-  - Payment and revenue
 - **SESSION-2025-10-18-SOCIETY-FEATURES.md**
-  - Society features
-
 - **2025-10-17_COMPLETE_SESSION_CATALOG.md**
-  - Oct 17 complete catalog
 - **2025-10-17_GOLFER_EVENT_UPDATE_PROPAGATION_FIX.md**
-  - Event update propagation
 - **2025-10-17_SCORECARD_ENHANCEMENTS_SESSION.md**
-  - Scorecard enhancements
 - **2025-10-17_SCRAMBLE_MULTIFORMAT_SYNC_FIXES.md**
-  - Scramble multiformat
 - **2025-10-17_SESSION_OAUTH_DEDUPLICATION_FIX.md**
-  - OAuth deduplication
-
 - **2025-10-15_COMPLETE_ERROR_CATALOG_ALL_FUCKUPS.md**
-  - Complete error catalog
 - **2025-10-15_ROOT_FILE_DISCOVERY_SCROLLING_CHAT_FIX.md**
-  - Root file discovery
-  - Chat scroll fix
-
 - **2025-10-13_Mobile_Performance_And_Tailwind_Mistake.md**
-  - Mobile performance
-  - Tailwind issues
-
 - **2025-10-11_LiveScorecard_Complete_Overhaul.md**
-  - Live scorecard overhaul
 - **2025-10-11_Mobile_Header_and_Profile_Data_Fix.md**
-  - Mobile header fix
 - **2025-10-11_SESSION_CATALOG_FAILURES.md**
-  - Session failures
 - **2025-10-11_Session_Tasks_1-4_Tab_Fixes.md**
-  - Tab fixes
 
 ---
 
 ### 🔧 **Feature Implementation Guides**
+
+#### Search & Discovery (NEW - Dec 2, 2025)
+- **Global Cross-Society Search** ⭐
+  - All 4 search functions now global
+  - searchPlayers(), searchGolfersToInvite(), searchPlayingPartners(), searchPlayersToAdd()
+  - Society badges: CROSS-SOCIETY (orange), PRIMARY (purple), UNAFFILIATED (blue)
+
+- **Flexible Name Matching** ⭐
+  - Handles "First Last" and "Last, First" variations
+  - Searches: "Pete Park" finds "Park, Pete" and vice versa
+  - Automatic word order detection
+  - Comma separator support
+
+#### Event Registration (NEW - Dec 2, 2025)
+- **Stale Registration Cleanup** ⭐
+  - Auto-detects orphaned join requests
+  - Cleans up on unregister
+  - Prevents re-registration blocking
 
 #### Chat System
 - **01-chat-system-completed.md** - Chat implementation complete
@@ -259,11 +241,11 @@
 #### Golf Buddies
 - **2025-11-12_GOLF_BUDDIES_SYSTEM.md** - Buddies system
 - Functions: get_buddy_suggestions(), get_recent_partners()
-- **TODAY**: Fixed trigger errors (removed group_id)
+- **Dec 1**: Fixed trigger errors (removed group_id)
 
 #### Handicap System
 - **2025-11-12_AUTOMATIC_HANDICAP_SYSTEM.md** - Auto handicap
-- **TODAY**: Fixed plus handicap display (+2.1 showing correctly)
+- **Dec 1**: Fixed plus handicap display (+2.1 showing correctly)
 
 #### Season Points
 - **2025-11-12_SEASON_POINTS_SYSTEM_IMPLEMENTATION.md** - Points system
@@ -350,6 +332,17 @@
 
 ### By Topic
 
+**Cross-Society Features (NEW - Dec 2, 2025)** ⭐
+- Global search: See session-catalog-2025-12-02.md
+- Name variations: searchPlayers(), searchGolfersToInvite(), searchPlayingPartners(), searchPlayersToAdd()
+- Society badges: CROSS-SOCIETY, PRIMARY, UNAFFILIATED
+- Handicap continuity: Cross-society event participation enabled
+
+**Event Registration (NEW - Dec 2, 2025)** ⭐
+- Stale registration fix: deleteRegistration() cleanup
+- Join request auto-recovery: Detects orphaned records
+- Column name fix: player_id vs golfer_id
+
 **Authentication & Security**
 - PIN protection: `2025-11-06-LOGIN-PAGE-PIN-PROTECTION.md`, `2025-11-30-organizer-pin-and-dual-role.md`
 - OAuth: `2025-10-17_SESSION_OAUTH_DEDUPLICATION_FIX.md`
@@ -358,7 +351,7 @@
 **Scoring & Scorecards**
 - Live scorecard: `2025-10-11_LiveScorecard_Complete_Overhaul.md`
 - Scoring bugs: `2025-11-06-SOCIETY-EVENT-SCORING-FIX.md`
-- **TODAY**: Score saving RLS fix in `session-catalog-2025-12-01.md`
+- **Dec 1**: Score saving RLS fix in `session-catalog-2025-12-01.md`
 
 **Events & Societies**
 - Event creation: `2025-11-14-GOLFER-EVENT-CREATION-SYSTEM.md`
@@ -366,14 +359,14 @@
 - Calendar: `2025-11-16-ADMIN-USER-MGMT-AND-SOCIETY-CALENDAR-FILTERS.md`
 
 **Database & Backend**
-- RLS policies: **TODAY** in `session-catalog-2025-12-01.md`
-- Triggers: **TODAY** buddy system fix in `session-catalog-2025-12-01.md`
+- RLS policies: **Dec 1** in `session-catalog-2025-12-01.md`
+- Triggers: **Dec 1** buddy system fix in `session-catalog-2025-12-01.md`
 - Payment tracking: `PAYMENT_TRACKING_IMPLEMENTATION_GUIDE.md`
 
 **UI/UX**
 - Mobile: `2025-10-13_Mobile_Performance_And_Tailwind_Mistake.md`
 - Dashboard: `2025-11-06-PREMIUM-DASHBOARD-REDESIGN.md`
-- **TODAY**: Quick buddy button, feedback, auto-teams
+- **Dec 1**: Quick buddy button, feedback, auto-teams
 
 **Deployment**
 - Vercel: `2025-10-25_SITE_LIVE_VERCEL_MIGRATION_COMPLETE.md`
@@ -384,12 +377,12 @@
 ## 📈 Statistics
 
 ### By Month
-- **December 2025**: 4 sessions (including today)
+- **December 2025**: 5+ sessions (including today)
 - **November 2025**: 20+ sessions
 - **October 2025**: 30+ sessions
 
 ### By Type
-- **Session Catalogs**: 60+
+- **Session Catalogs**: 62+
 - **Fix Documentation**: 25+
 - **Feature Guides**: 15+
 - **System Documentation**: 10+
@@ -397,6 +390,7 @@
 
 ### Recent Activity
 **Last 7 Days**:
+- Dec 2: **Global search, flexible names, event registration fix** ⭐
 - Dec 1: Handicap, partner prefs, scorecard UX, **SCORE SAVING FIX** ⭐
 - Nov 30: JOA logo, organizer PIN
 - Nov 28: TRGG events issues
@@ -411,9 +405,10 @@
 1. **00-READ-ME-FIRST.md** - Project overview
 2. **MASTER_SYSTEM_INDEX.md** - System architecture
 3. **QUICK-REFERENCE.md** - Current state
-4. **session-catalog-2025-12-01.md** - Latest changes
-5. **DEPLOYMENT_CHECKLIST.md** - How to deploy
-6. **FUCKUPS_CATALOG.md** - Common mistakes to avoid
+4. **session-catalog-2025-12-02.md** - Latest changes (Dec 2)
+5. **session-catalog-2025-12-01.md** - Recent changes (Dec 1)
+6. **DEPLOYMENT_CHECKLIST.md** - How to deploy
+7. **FUCKUPS_CATALOG.md** - Common mistakes to avoid
 
 ### For Specific Features
 - Chat: `01-chat-system-completed.md`
@@ -421,30 +416,90 @@
 - Scoring: `2025-10-11_LiveScorecard_Complete_Overhaul.md`
 - Handicaps: `2025-11-12_AUTOMATIC_HANDICAP_SYSTEM.md`
 - Events: `2025-11-14-GOLFER-EVENT-CREATION-SYSTEM.md`
+- **Search**: `session-catalog-2025-12-02.md` (global & flexible search)
 
 ---
 
-## 🚀 Latest Production Changes (TODAY)
+## 🚀 Latest Production Changes (Dec 2, 2025)
 
-### What's Working NOW
+### What's Working NOW ⭐
+✅ **Global cross-society user search across all 4 search functions**
+✅ **Flexible name matching** (Pete Park / Park, Pete / Park Pete)
+✅ **Cross-society badges** (orange, purple, blue)
+✅ **Stale event registration auto-cleanup**
+✅ **Column name bug fixed** (player_id)
 ✅ Handicaps display correctly with decimals
 ✅ Plus handicaps show with + sign (+2.1)
 ✅ Partner preferences exclude current user
 ✅ Quick buddy button in scorecard
 ✅ Buddy selection shows instant feedback
 ✅ Match play auto-selects teams with 4 players
-✅ **Scores save in real-time** ⭐
-✅ **RLS policies allow anon users** ⭐
-✅ **Buddy trigger no longer crashes** ⭐
-✅ **Multi-player rounds save all scorecards** ⭐
+✅ Scores save in real-time
+✅ RLS policies allow anon users
+✅ Buddy trigger no longer crashes
+✅ Multi-player rounds save all scorecards
 
 ### SQL Files to Run (if fresh install)
 1. `sql/FIX_SCORECARD_RLS_POLICIES.sql` - RLS policies (7 tables)
 2. `sql/FIX_BUDDY_SYSTEM_REMOVE_GROUP_ID.sql` - Buddy trigger fix
 3. `sql/DIAGNOSE_AND_FIX_ALL_RLS_ISSUES.sql` - Comprehensive diagnostic
+4. `sql/FIX_PETE_PARK_EVENT_REGISTRATION.sql` - Event registration cleanup
+5. `sql/INVESTIGATE_PETE_PARK_USERS.sql` - User profile investigation
+6. `sql/FIND_BOTH_PETE_PARKS.sql` - Duplicate user detection
+
+### Code Locations (Dec 2, 2025)
+- **searchPlayers()**: public/index.html:37530 (global with name variations)
+- **searchGolfersToInvite()**: public/index.html:58167 (global with name variations)
+- **searchPlayingPartners()**: public/index.html:34315 (global with name variations)
+- **searchPlayersToAdd()**: public/index.html:60696 (global with name variations)
+- **deleteRegistration()**: public/index.html:56099 (cleanup join requests & invites)
+- **Join request check**: public/index.html:55757 (auto-recovery for stale requests)
 
 ---
 
-**Last Updated**: December 1, 2025, 5:00 PM
+## 📁 Folder Structure
+
+### Root: `C:\Users\pete\Documents\MciPro\compacted\`
+- **130+ files** - Main documentation and session catalogs
+- **~2.6 MB total size**
+
+### Public: `C:\Users\pete\Documents\MciPro\public\compacted\`
+- **3 files** - Payment system integration files
+  - payment-system-integration.js (15,209 bytes)
+  - payment-tracking-database.js (12,899 bytes)
+  - payment-tracking-manager.js (18,955 bytes)
+
+---
+
+**Last Updated**: December 2, 2025, 10:00 AM
 **Next Update**: When new features/fixes are deployed
 **Maintainer**: Claude Code
+
+---
+
+## 🎯 Today's Key Achievements (Dec 2, 2025)
+
+1. **100% Global User Search** ⭐
+   - All societies can now search all users
+   - Enables cross-society event participation
+   - Maintains handicap system integrity across societies
+
+2. **Flexible Name Matching** ⭐
+   - Solves duplicate user problem
+   - "Pete Park" finds "Park, Pete" automatically
+   - No more missed users due to name format
+
+3. **Event Registration Fix** ⭐
+   - Stale "approved" requests no longer block re-registration
+   - Auto-cleanup on unregister
+   - Auto-recovery when detecting orphaned records
+
+4. **Cross-Society Visibility** ⭐
+   - Orange badges: Cross-society players
+   - Purple badges: Primary society players
+   - Blue badges: Unaffiliated players
+   - Clear visual indicators for better UX
+
+---
+
+**END OF CATALOG**

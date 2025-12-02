@@ -80,7 +80,7 @@ class SupabaseClient {
             teeTime: booking.tee_time,
             status: booking.status,
             players: booking.players,
-            caddyNumber: booking.caddy_number,
+            caddiNumber: booking.caddy_number,
             currentHole: booking.current_hole,
             lastHoleUpdate: booking.last_hole_update,
             notes: booking.notes,
@@ -105,7 +105,7 @@ class SupabaseClient {
             caddieId: booking.caddie_id,
             caddieName: booking.caddie_name,
             caddieStatus: booking.caddie_status,
-            caddyConfirmationRequired: booking.caddy_confirmation_required,
+            caddiConfirmationRequired: booking.caddi_confirmation_required,
 
             // Service fields
             serviceName: booking.service_name,
@@ -144,7 +144,7 @@ class SupabaseClient {
             tee_time: booking.teeTime || booking.tee_time || booking.slotTime,
             status: booking.status || 'pending',
             players: booking.players || 1,
-            caddy_number: booking.caddyNumber || booking.caddy_number,
+            caddy_number: booking.caddiNumber || booking.caddy_number,
             current_hole: booking.currentHole || booking.current_hole,
             last_hole_update: booking.lastHoleUpdate || booking.last_hole_update,
             notes: booking.notes || '',
@@ -169,7 +169,7 @@ class SupabaseClient {
             caddie_id: booking.caddieId || booking.caddie_id,
             caddie_name: booking.caddieName || booking.caddie_name,
             caddie_status: booking.caddieStatus || booking.caddie_status,
-            caddy_confirmation_required: booking.caddyConfirmationRequired || booking.caddy_confirmation_required || false,
+            caddi_confirmation_required: booking.caddiConfirmationRequired || booking.caddi_confirmation_required || false,
 
             // Service-specific fields
             service_name: booking.serviceName || booking.service_name,
@@ -209,28 +209,6 @@ class SupabaseClient {
     }
 
     // =====================================================
-    // REALTIME SUBSCRIPTIONS
-    // =====================================================
-
-    subscribeToCaddyBookings(callback) {
-        const channel = this.client
-            .channel('caddy-bookings-changes')
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'caddy_bookings' },
-                (payload) => {
-                    console.log('[Supabase Realtime] Caddy booking changed:', payload);
-                    callback(payload);
-                }
-            )
-            .subscribe((status) => {
-                console.log('[Supabase Realtime] caddy_bookings channel status:', status);
-            });
-
-        return channel;
-    }
-
-    // =====================================================
     // USER PROFILES MANAGEMENT
     // =====================================================
 
@@ -244,6 +222,38 @@ class SupabaseClient {
         if (error && error.code !== 'PGRST116') { // Not found is OK
             console.error('[Supabase] Error fetching profile:', error);
             return null;
+        }
+
+        // Transform database row into UI-expected structure
+        if (data) {
+            // Ensure profile_data exists
+            if (!data.profile_data) {
+                data.profile_data = {};
+            }
+
+            // Ensure golfInfo structure exists with homeClub for UI compatibility
+            if (!data.profile_data.golfInfo) {
+                data.profile_data.golfInfo = {};
+            }
+            // Populate from dedicated columns if not in JSONB
+            if (!data.profile_data.golfInfo.homeClub && (data.home_course_name || data.home_club)) {
+                data.profile_data.golfInfo.homeClub = data.home_course_name || data.home_club;
+            }
+            if (!data.profile_data.golfInfo.homeCourseId && data.home_course_id) {
+                data.profile_data.golfInfo.homeCourseId = data.home_course_id;
+            }
+
+            // Ensure organizationInfo structure exists
+            if (!data.profile_data.organizationInfo) {
+                data.profile_data.organizationInfo = {};
+            }
+            // Populate from dedicated columns if not in JSONB
+            if (!data.profile_data.organizationInfo.societyName && data.society_name) {
+                data.profile_data.organizationInfo.societyName = data.society_name;
+            }
+            if (!data.profile_data.organizationInfo.societyId && data.society_id) {
+                data.profile_data.organizationInfo.societyId = data.society_id;
+            }
         }
 
         return data;
@@ -261,32 +271,94 @@ class SupabaseClient {
             return null;
         }
 
+        // Transform database row into UI-expected structure (same as getUserProfile)
+        if (data) {
+            if (!data.profile_data) {
+                data.profile_data = {};
+            }
+
+            if (!data.profile_data.golfInfo) {
+                data.profile_data.golfInfo = {};
+            }
+            if (!data.profile_data.golfInfo.homeClub && (data.home_course_name || data.home_club)) {
+                data.profile_data.golfInfo.homeClub = data.home_course_name || data.home_club;
+            }
+            if (!data.profile_data.golfInfo.homeCourseId && data.home_course_id) {
+                data.profile_data.golfInfo.homeCourseId = data.home_course_id;
+            }
+
+            if (!data.profile_data.organizationInfo) {
+                data.profile_data.organizationInfo = {};
+            }
+            if (!data.profile_data.organizationInfo.societyName && data.society_name) {
+                data.profile_data.organizationInfo.societyName = data.society_name;
+            }
+            if (!data.profile_data.organizationInfo.societyId && data.society_id) {
+                data.profile_data.organizationInfo.societyId = data.society_id;
+            }
+        }
+
         return data;
     }
 
     async saveUserProfile(profile) {
+        // Helper function to convert empty strings to null for UUID fields
+        const cleanUUID = (value) => {
+            if (!value || value === '') return null;
+            return value;
+        };
+
+        // Extract handicap value from all possible sources
+        const handicapValue = profile.handicap || profile.golfInfo?.handicap || profile.profile_data?.golfInfo?.handicap || null;
+
         // Normalize profile fields (handle both lineUserId and line_user_id)
         const normalizedProfile = {
             line_user_id: profile.line_user_id || profile.lineUserId,
             name: profile.name,
             role: profile.role,
-            caddy_number: profile.caddy_number || profile.caddyNumber,
+            caddy_number: profile.caddy_number || profile.caddiNumber,
             phone: profile.phone,
             email: profile.email,
             home_club: profile.home_club || profile.homeClub,
             language: profile.language || 'en',
 
+            // ===== GLOBAL HANDICAP COLUMN =====
+            // CRITICAL: Update top-level handicap column for global access
+            handicap: handicapValue,
+
+            // ===== NEW: Society Affiliation Fields =====
+            society_id: cleanUUID(profile.society_id || profile.societyId),
+            society_name: profile.society_name || profile.societyName || profile.organizationInfo?.societyName || '',
+            member_since: profile.member_since || profile.memberSince || null,
+
+            // ===== NEW: Home Course Fields =====
+            home_course_id: cleanUUID(profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId),
+            home_course_name: profile.home_course_name || profile.homeCourseName || profile.golfInfo?.homeClub || '',
+
             // ===== NEW: Store FULL profile data in JSONB column =====
             profile_data: {
                 personalInfo: profile.personalInfo || {},
-                golfInfo: profile.golfInfo || {},
+                golfInfo: {
+                    ...(profile.golfInfo || {}),
+                    // Ensure homeClub is in JSONB for UI compatibility
+                    homeClub: profile.home_course_name || profile.homeCourseName || profile.golfInfo?.homeClub || profile.profile_data?.golfInfo?.homeClub || profile.home_club || profile.homeClub || '',
+                    homeCourseId: cleanUUID(profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId || profile.profile_data?.golfInfo?.homeCourseId),
+                    // Use the same handicap value for consistency
+                    handicap: handicapValue
+                },
+                organizationInfo: {
+                    ...(profile.organizationInfo || {}),
+                    // Ensure society data is in JSONB for UI compatibility
+                    societyName: profile.society_name || profile.societyName || profile.organizationInfo?.societyName || '',
+                    societyId: cleanUUID(profile.society_id || profile.societyId || profile.organizationInfo?.societyId)
+                },
                 professionalInfo: profile.professionalInfo || {},
                 skills: profile.skills || {},
                 preferences: profile.preferences || {},
                 media: profile.media || {},
                 privacy: profile.privacy || {},
                 // Store any additional fields
-                handicap: profile.handicap || profile.golfInfo?.handicap || null,
+                handicap: handicapValue,  // Use same value for consistency
                 username: profile.username || null,
                 userId: profile.userId || profile.lineUserId,
                 linePictureUrl: profile.linePictureUrl || null
@@ -305,18 +377,147 @@ class SupabaseClient {
         }
 
         console.log('[Supabase] ✅ Full profile saved to cloud:', data.line_user_id);
+
+        // FIX: If profile has societyOrganizerId, look up society_id and create society_members entry
+        if (profile.societyOrganizerId && profile.role === 'golfer') {
+            try {
+                // Look up society by organizer_id (check both societies and society_profiles)
+                let societyData = null;
+                let societyError = null;
+
+                // First try society_profiles table
+                const profileResult = await this.client
+                    .from('society_profiles')
+                    .select('id, society_name')
+                    .eq('organizer_id', profile.societyOrganizerId)
+                    .single();
+
+                if (profileResult.data) {
+                    // Found in society_profiles, now get the corresponding societies entry
+                    const societiesResult = await this.client
+                        .from('societies')
+                        .select('id, name')
+                        .eq('id', profileResult.data.id)
+                        .single();
+
+                    if (societiesResult.data) {
+                        societyData = {
+                            id: societiesResult.data.id,
+                            society_name: societiesResult.data.name
+                        };
+                    } else {
+                        societyError = societiesResult.error;
+                    }
+                } else {
+                    societyError = profileResult.error;
+                }
+
+                if (!societyError && societyData) {
+                    // Update user profile with society_id
+                    await this.client
+                        .from('user_profiles')
+                        .update({
+                            society_id: societyData.id,
+                            society_name: societyData.society_name
+                        })
+                        .eq('line_user_id', data.line_user_id);
+
+                    // Create society_members entry (if not exists)
+                    // Note: Using only columns that exist in the table (society_id, golfer_id)
+                    // First check if already exists
+                    const { data: existingMember } = await this.client
+                        .from('society_members')
+                        .select('golfer_id')
+                        .eq('society_id', societyData.id)
+                        .eq('golfer_id', data.line_user_id)
+                        .single();
+
+                    // Only insert if doesn't exist
+                    let memberError = null;
+                    if (!existingMember) {
+                        const result = await this.client
+                            .from('society_members')
+                            .insert({
+                                society_id: societyData.id,
+                                golfer_id: data.line_user_id
+                            });
+                        memberError = result.error;
+                    }
+
+                    if (memberError) {
+                        console.warn('[Supabase] Could not create society_members entry:', memberError);
+                    } else {
+                        console.log('[Supabase] ✅ Added to society:', societyData.society_name);
+                    }
+                }
+            } catch (err) {
+                console.warn('[Supabase] Society linking failed (non-critical):', err);
+            }
+        }
+
         return data;
     }
 
     async getAllProfiles() {
         await this.waitForReady();
-        const { data, error } = await this.client
+
+        // PERFORMANCE FIX: Cache profiles for 5 minutes to avoid slow database queries
+        const cacheKey = 'mcipro_all_profiles_cache';
+        const cacheTimeKey = 'mcipro_all_profiles_cache_time';
+        const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+        try {
+            const cached = localStorage.getItem(cacheKey);
+            const cacheTime = parseInt(localStorage.getItem(cacheTimeKey) || '0');
+            const now = Date.now();
+
+            if (cached && (now - cacheTime) < CACHE_DURATION) {
+                console.log('[Supabase] Using cached profiles (age: ' + Math.round((now - cacheTime) / 1000) + 's)');
+                return JSON.parse(cached);
+            }
+        } catch (e) {
+            console.warn('[Supabase] Cache read failed:', e);
+        }
+
+        // PERFORMANCE FIX: Only select columns we need (not *)
+        const { data, error} = await this.client
             .from('user_profiles')
-            .select('*');
+            .select('line_user_id, name, email, profile_data, home_course_name, home_course_id, home_club, society_name, society_id')
+            .order('name');
 
         if (error) {
             console.error('[Supabase] Error fetching profiles:', error);
             return [];
+        }
+
+        // Transform each profile to include golfInfo.homeClub structure
+        if (data && Array.isArray(data)) {
+            data.forEach(profile => {
+                if (!profile.profile_data) profile.profile_data = {};
+                if (!profile.profile_data.golfInfo) profile.profile_data.golfInfo = {};
+                if (!profile.profile_data.golfInfo.homeClub && (profile.home_course_name || profile.home_club)) {
+                    profile.profile_data.golfInfo.homeClub = profile.home_course_name || profile.home_club;
+                }
+                if (!profile.profile_data.golfInfo.homeCourseId && profile.home_course_id) {
+                    profile.profile_data.golfInfo.homeCourseId = profile.home_course_id;
+                }
+                if (!profile.profile_data.organizationInfo) profile.profile_data.organizationInfo = {};
+                if (!profile.profile_data.organizationInfo.societyName && profile.society_name) {
+                    profile.profile_data.organizationInfo.societyName = profile.society_name;
+                }
+                if (!profile.profile_data.organizationInfo.societyId && profile.society_id) {
+                    profile.profile_data.organizationInfo.societyId = profile.society_id;
+                }
+            });
+        }
+
+        // Cache the results
+        try {
+            localStorage.setItem(cacheKey, JSON.stringify(data || []));
+            localStorage.setItem(cacheTimeKey, Date.now().toString());
+            console.log('[Supabase] Profiles cached (' + (data?.length || 0) + ' profiles)');
+        } catch (e) {
+            console.warn('[Supabase] Cache write failed:', e);
         }
 
         return data || [];
@@ -394,7 +595,7 @@ class SupabaseClient {
                 tee_time: booking.teeTime || booking.tee_time || booking.slotTime,
                 status: booking.status || 'pending',
                 players: booking.players || 1,
-                caddy_number: booking.caddyNumber || booking.caddy_number,
+                caddy_number: booking.caddiNumber || booking.caddy_number,
                 current_hole: booking.currentHole || booking.current_hole,
                 last_hole_update: booking.lastHoleUpdate || booking.last_hole_update,
                 notes: booking.notes || '',
@@ -415,7 +616,7 @@ class SupabaseClient {
                 caddie_id: booking.caddieId || booking.caddie_id,
                 caddie_name: booking.caddieName || booking.caddie_name,
                 caddie_status: booking.caddieStatus || booking.caddie_status,
-                caddy_confirmation_required: booking.caddyConfirmationRequired || booking.caddy_confirmation_required || false,
+                caddi_confirmation_required: booking.caddiConfirmationRequired || booking.caddi_confirmation_required || false,
                 service_name: booking.serviceName || booking.service_name,
                 service: booking.service,
                 source: booking.source,
@@ -444,11 +645,11 @@ class SupabaseClient {
     // GPS POSITIONS (Real-time tracking)
     // =====================================================
 
-    async updateGPSPosition(caddyNumber, position) {
+    async updateGPSPosition(caddiNumber, position) {
         const { data, error } = await this.client
             .from('gps_positions')
             .upsert({
-                caddy_number: caddyNumber,
+                caddy_number: caddiNumber,
                 current_hole: position.currentHole,
                 latitude: position.lat,
                 longitude: position.lng,
@@ -476,7 +677,7 @@ class SupabaseClient {
             return {};
         }
 
-        // Convert to object keyed by caddy_number
+        // Convert to object keyed by caddi_number
         const positions = {};
         data.forEach(pos => {
             positions[pos.caddy_number] = {
@@ -579,193 +780,6 @@ class SupabaseClient {
     // REALTIME SUBSCRIPTIONS (WebSocket - replaces polling)
     // =====================================================
 
-    subscribeToBookings(callback) {
-        const channel = this.client
-            .channel('bookings-changes')
-            .on('postgres_changes',
-                { event: '*', schema: 'public', table: 'bookings' },
-                (payload) => {
-                    console.log('[Supabase Realtime] Booking changed:', payload);
-                    callback(payload);
-                }
-            )
-            .subscribe();
-
-        console.log('[Supabase Realtime] Subscribed to bookings changes');
-        return channel;
-    }
-
-    subscribeToProfiles(callback) {
-        const channel = this.client
-            .channel('profiles-changes')
-            .on('postgres_changes',
-                { event: '*', schema: 'public', table: 'user_profiles' },
-                (payload) => {
-                    console.log('[Supabase Realtime] Profile changed:', payload);
-                    callback(payload);
-                }
-            )
-            .subscribe();
-
-        console.log('[Supabase Realtime] Subscribed to profile changes');
-        return channel;
-    }
-
-    // =====================================================
-    // EMERGENCY ALERTS (Cross-Device Sync)
-    // =====================================================
-
-    async getEmergencyAlerts() {
-        await this.waitForReady();
-
-        // Get all active alerts (not expired, not resolved)
-        const { data, error } = await this.client
-            .from('emergency_alerts')
-            .select('*')
-            .eq('status', 'active')
-            .gte('expires_at', new Date().toISOString())
-            .order('timestamp', { ascending: false });
-
-        if (error) {
-            console.error('[Supabase] Error fetching emergency alerts:', error);
-            return [];
-        }
-
-        // Convert to app format
-        const alerts = (data || []).map(alert => ({
-            id: alert.id,
-            type: alert.type,
-            message: alert.message,
-            user: alert.user_name,
-            role: alert.user_role,
-            timestamp: alert.timestamp,
-            location: (alert.location_lat && alert.location_lng) ? {
-                lat: alert.location_lat,
-                lng: alert.location_lng,
-                hole: alert.location_hole
-            } : null,
-            status: alert.status,
-            priority: alert.priority,
-            acknowledged: alert.acknowledged_by ? alert.acknowledged_by.includes(alert.user_name) : false,
-            acknowledgedBy: alert.acknowledged_by || [],
-            resolvedBy: alert.resolved_by,
-            resolvedAt: alert.resolved_at
-        }));
-
-        console.log(`[Supabase] Loaded ${alerts.length} active emergency alerts`);
-        return alerts;
-    }
-
-    async saveEmergencyAlert(alertData) {
-        await this.waitForReady();
-
-        // Normalize alert fields for Supabase
-        const normalizedAlert = {
-            id: alertData.id,
-            type: alertData.type,
-            message: alertData.message,
-            user_name: alertData.user,
-            user_role: alertData.role,
-            timestamp: alertData.timestamp,
-            location_lat: alertData.location?.lat || null,
-            location_lng: alertData.location?.lng || null,
-            location_hole: alertData.location?.hole || null,
-            status: alertData.status || 'active',
-            priority: alertData.priority || 'high',
-            acknowledged_by: alertData.acknowledgedBy || [],
-            resolved_by: alertData.resolvedBy || null,
-            resolved_at: alertData.resolvedAt || null,
-            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hours from now
-        };
-
-        const { data, error } = await this.client
-            .from('emergency_alerts')
-            .upsert(normalizedAlert, { onConflict: 'id' })
-            .select()
-            .single();
-
-        if (error) {
-            console.error('[Supabase] Error saving emergency alert:', error);
-            throw error;
-        }
-
-        console.log('[Supabase] Emergency alert saved:', data.id);
-        return data;
-    }
-
-    async updateAlertStatus(alertId, status, resolvedBy = null) {
-        await this.waitForReady();
-
-        const updates = {
-            status: status,
-            updated_at: new Date().toISOString()
-        };
-
-        if (status === 'resolved' && resolvedBy) {
-            updates.resolved_by = resolvedBy;
-            updates.resolved_at = new Date().toISOString();
-        }
-
-        const { error } = await this.client
-            .from('emergency_alerts')
-            .update(updates)
-            .eq('id', alertId);
-
-        if (error) {
-            console.error('[Supabase] Error updating alert status:', error);
-            throw error;
-        }
-
-        console.log(`[Supabase] Alert ${alertId} status updated to ${status}`);
-    }
-
-    async acknowledgeAlert(alertId, userName) {
-        await this.waitForReady();
-
-        // Get current alert
-        const { data: alert } = await this.client
-            .from('emergency_alerts')
-            .select('acknowledged_by')
-            .eq('id', alertId)
-            .single();
-
-        if (!alert) return;
-
-        // Add user to acknowledged list
-        const acknowledgedBy = alert.acknowledged_by || [];
-        if (!acknowledgedBy.includes(userName)) {
-            acknowledgedBy.push(userName);
-        }
-
-        const { error } = await this.client
-            .from('emergency_alerts')
-            .update({ acknowledged_by: acknowledgedBy })
-            .eq('id', alertId);
-
-        if (error) {
-            console.error('[Supabase] Error acknowledging alert:', error);
-            throw error;
-        }
-
-        console.log(`[Supabase] Alert ${alertId} acknowledged by ${userName}`);
-    }
-
-    async deleteEmergencyAlert(alertId) {
-        await this.waitForReady();
-
-        const { error } = await this.client
-            .from('emergency_alerts')
-            .delete()
-            .eq('id', alertId);
-
-        if (error) {
-            console.error('[Supabase] Error deleting emergency alert:', error);
-            throw error;
-        }
-
-        console.log(`[Supabase] ✅ Emergency alert DELETED permanently: ${alertId}`);
-    }
-
     async cleanupExpiredAlerts() {
         await this.waitForReady();
 
@@ -816,5 +830,36 @@ class SupabaseClient {
 
 // Global instance
 window.SupabaseDB = new SupabaseClient();
+
+// Realtime subscription: Caddy bookings
+window.SupabaseDB.subscribeToCaddyBookings = (handler) => {
+    if (!window.supabase) {
+        console.error('[SupabaseDB] Supabase client not ready.');
+        return null;
+    }
+
+    const channel = window.supabase
+        .channel('caddy_bookings_realtime')
+        .on(
+            'postgres_changes',
+            {
+                event: '*',
+                schema: 'public',
+                table: 'caddy_bookings'
+            },
+            (payload) => {
+                try {
+                    handler(payload);
+                } catch (err) {
+                    console.error('[SupabaseDB] Realtime handler error:', err);
+                }
+            }
+        )
+        .subscribe((status) => {
+            console.log('[SupabaseDB] Realtime status (caddy_bookings):', status);
+        });
+
+    return channel;
+};
 
 console.log('[Supabase] Configuration loaded - waiting for library...');

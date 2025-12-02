@@ -308,6 +308,9 @@ class SupabaseClient {
             return value;
         };
 
+        // Extract handicap value from all possible sources
+        const handicapValue = profile.handicap || profile.golfInfo?.handicap || profile.profile_data?.golfInfo?.handicap || null;
+
         // Normalize profile fields (handle both lineUserId and line_user_id)
         const normalizedProfile = {
             line_user_id: profile.line_user_id || profile.lineUserId,
@@ -318,6 +321,10 @@ class SupabaseClient {
             email: profile.email,
             home_club: profile.home_club || profile.homeClub,
             language: profile.language || 'en',
+
+            // ===== GLOBAL HANDICAP COLUMN =====
+            // CRITICAL: Update top-level handicap column for global access
+            handicap: handicapValue,
 
             // ===== NEW: Society Affiliation Fields =====
             society_id: cleanUUID(profile.society_id || profile.societyId),
@@ -336,7 +343,8 @@ class SupabaseClient {
                     // Ensure homeClub is in JSONB for UI compatibility
                     homeClub: profile.home_course_name || profile.homeCourseName || profile.golfInfo?.homeClub || profile.profile_data?.golfInfo?.homeClub || profile.home_club || profile.homeClub || '',
                     homeCourseId: cleanUUID(profile.home_course_id || profile.homeCourseId || profile.golfInfo?.homeCourseId || profile.profile_data?.golfInfo?.homeCourseId),
-                    handicap: profile.handicap || profile.golfInfo?.handicap || profile.profile_data?.golfInfo?.handicap || null
+                    // Use the same handicap value for consistency
+                    handicap: handicapValue
                 },
                 organizationInfo: {
                     ...(profile.organizationInfo || {}),
@@ -350,7 +358,7 @@ class SupabaseClient {
                 media: profile.media || {},
                 privacy: profile.privacy || {},
                 // Store any additional fields
-                handicap: profile.handicap || profile.golfInfo?.handicap || profile.profile_data?.golfInfo?.handicap || null,
+                handicap: handicapValue,  // Use same value for consistency
                 username: profile.username || null,
                 userId: profile.userId || profile.lineUserId,
                 linePictureUrl: profile.linePictureUrl || null

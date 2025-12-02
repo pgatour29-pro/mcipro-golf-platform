@@ -59180,25 +59180,32 @@ class OrganizerScoringSystem {
                 return;
             }
 
-            // Filter events in JavaScript where organizer_id matches OR user is Travellers (sees all)
-            // FIXED: Check AppState.selectedSociety instead of organizationInfo
-            const selectedSocietyName = AppState.selectedSociety?.name || AppState.currentUser?.organizationInfo?.societyName;
-            const isTravellers = selectedSocietyName === 'Travellers Rest Golf Group';
+            // FIXED: Filter events by selected society prefix (not by organizer_id or "show all")
+            // This ensures organizers only see events for their selected society
+            const selectedSociety = AppState.selectedSociety;
+            console.log('[OrganizerScoring] Selected society:', selectedSociety);
 
-            console.log('[OrganizerScoring] Selected society:', selectedSocietyName);
-            console.log('[OrganizerScoring] Is Travellers user:', isTravellers);
+            if (!selectedSociety || !selectedSociety.prefix) {
+                console.error('[OrganizerScoring] ❌ No society selected or no prefix available');
+                NotificationManager.show('Please select a society first', 'error');
+                return;
+            }
 
-            const events = isTravellers ? allEvents : allEvents.filter(e => e.organizer_id === userId);
+            const societyPrefix = selectedSociety.prefix;
+            console.log('[OrganizerScoring] Filtering events by society prefix:', societyPrefix);
+
+            // Filter events that start with the society prefix (e.g., "TRGG -" or "JOA -")
+            const events = allEvents.filter(e => e.title?.startsWith(societyPrefix));
             console.log('[OrganizerScoring] Events after filtering:', events.length);
 
             if (events.length === 0) {
-                console.warn('[OrganizerScoring] ⚠️ No events match user filter');
+                console.warn('[OrganizerScoring] ⚠️ No events match society prefix');
+                console.log('[OrganizerScoring] Society prefix:', societyPrefix);
                 console.log('[OrganizerScoring] Sample of all events:', allEvents.slice(0, 3).map(e => ({
                     id: e.id,
-                    title: e.title,
-                    organizer_id: e.organizer_id
+                    title: e.title
                 })));
-                NotificationManager.show(`No events found for organizer (${allEvents.length} total events in database)`, 'warning');
+                NotificationManager.show(`No events found for ${selectedSociety.name} (${allEvents.length} total events in database)`, 'warning');
             }
 
             // Store events for filtering

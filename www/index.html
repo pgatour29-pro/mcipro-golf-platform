@@ -30232,6 +30232,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                         <th class="py-2 px-3 text-center border w-24">HCP</th>
                                         <th class="py-2 px-3 text-center border w-32">Gross Score</th>
                                         <th class="py-2 px-3 text-center border w-32">Stableford</th>
+                                        <th class="py-2 px-3 text-center border w-32">Hole-by-Hole</th>
                                         <th class="py-2 px-3 text-center border w-24">Status</th>
                                     </tr>
                                 </thead>
@@ -60097,14 +60098,15 @@ class OrganizerScoringSystem {
         const players = filteredPlayers || this.qsePlayersData;
 
         if (!players || players.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-gray-500">No registered players found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-gray-500">No registered players found</td></tr>';
             document.getElementById('qseTotalPlayers').textContent = '0';
             return;
         }
 
         tbody.innerHTML = players.map(player => {
-            const scores = this.qseScores[player.player_id] || { gross: '', stableford: '' };
+            const scores = this.qseScores[player.player_id] || { gross: '', stableford: '', holes: {} };
             const hasScore = scores.gross !== '';
+            const hasHoleScores = scores.holes && Object.keys(scores.holes).length > 0;
             const statusIcon = player.hasExistingRound
                 ? '<span class="text-blue-600" title="Already has a round">✓</span>'
                 : hasScore
@@ -60126,7 +60128,8 @@ class OrganizerScoringSystem {
                             placeholder="72"
                             oninput="window.OrganizerScoringSystem.updatePlayerScore('${player.player_id}', 'gross', this.value)"
                             class="w-full px-2 py-1 border rounded text-center focus:ring-2 focus:ring-blue-500"
-                            ${player.hasExistingRound ? 'disabled' : ''}>
+                            ${player.hasExistingRound || hasHoleScores ? 'disabled' : ''}
+                            ${hasHoleScores ? 'title="Total calculated from hole-by-hole scores"' : ''}>
                     </td>
                     <td class="py-2 px-3 border">
                         <input type="number"
@@ -60136,9 +60139,25 @@ class OrganizerScoringSystem {
                             placeholder="36"
                             oninput="window.OrganizerScoringSystem.updatePlayerScore('${player.player_id}', 'stableford', this.value)"
                             class="w-full px-2 py-1 border rounded text-center focus:ring-2 focus:ring-green-500"
-                            ${player.hasExistingRound ? 'disabled' : ''}>
+                            ${player.hasExistingRound || hasHoleScores ? 'disabled' : ''}
+                            ${hasHoleScores ? 'title="Total calculated from hole-by-hole scores"' : ''}>
+                    </td>
+                    <td class="py-2 px-3 border text-center">
+                        <button onclick="window.OrganizerScoringSystem.toggleHoleByHole('${player.player_id}')"
+                                class="px-3 py-1 text-xs ${hasHoleScores ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'} rounded hover:opacity-80"
+                                ${player.hasExistingRound ? 'disabled' : ''}>
+                            ${hasHoleScores ? '✓ Edit' : '+ Enter'}
+                        </button>
                     </td>
                     <td class="py-2 px-3 border text-center">${statusIcon}</td>
+                </tr>
+                <tr id="qse-holes-${player.player_id}" style="display: none;">
+                    <td colspan="6" class="p-0 border-l border-r border-b">
+                        <div class="bg-gray-50 p-4">
+                            <!-- Hole-by-hole scorecard will be inserted here -->
+                            <div class="text-center text-gray-500">Loading scorecard...</div>
+                        </div>
+                    </td>
                 </tr>
             `;
         }).join('');
@@ -60150,11 +60169,294 @@ class OrganizerScoringSystem {
 
     updatePlayerScore(playerId, field, value) {
         if (!this.qseScores[playerId]) {
-            this.qseScores[playerId] = { gross: '', stableford: '' };
+            this.qseScores[playerId] = { gross: '', stableford: '', holes: {} };
         }
 
         this.qseScores[playerId][field] = value;
         this.updateScoreEntryStats();
+    }
+
+    async toggleHoleByHole(playerId) {
+        const holesRow = document.getElementById(`qse-holes-${playerId}`);
+        const isVisible = holesRow.style.display !== 'none';
+
+        if (isVisible) {
+            // Hide
+            holesRow.style.display = 'none';
+        } else {
+            // Show and render scorecard
+            holesRow.style.display = 'table-row';
+            await this.renderHoleByHoleScorecard(playerId);
+        }
+    }
+
+    async renderHoleByHoleScorecard(playerId) {
+        const holesRow = document.getElementById(`qse-holes-${playerId}`);
+        const player = this.qsePlayersData.find(p => p.player_id === playerId);
+
+        if (!player) return;
+
+        // Get course data for pars and handicap strokes
+        const courseData = await this.loadCourseData();
+
+        const holes = this.qseScores[playerId]?.holes || {};
+
+        // Initialize holes if empty
+        if (Object.keys(holes).length === 0) {
+            for (let i = 1; i <= 18; i++) {
+                holes[i] = null;
+            }
+            this.qseScores[playerId].holes = holes;
+        }
+
+        const scorecardHTML = `
+            <div class="bg-white rounded-lg p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-lg">${player.player_name} - Hole-by-Hole Scorecard</h3>
+                    <button onclick="window.OrganizerScoringSystem.toggleHoleByHole('${playerId}')"
+                            class="text-gray-500 hover:text-gray-700">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+
+                <!-- Front 9 -->
+                <div class="mb-4">
+                    <h4 class="font-semibold mb-2">Front 9</h4>
+                    <div class="grid grid-cols-10 gap-1 text-xs">
+                        <div class="font-bold text-center">Hole</div>
+                        ${[1,2,3,4,5,6,7,8,9].map(h => `<div class="font-bold text-center">${h}</div>`).join('')}
+
+                        <div class="font-medium text-center">Par</div>
+                        ${[1,2,3,4,5,6,7,8,9].map(h => `<div class="text-center">${courseData.holes[h-1]?.par || 4}</div>`).join('')}
+
+                        <div class="font-medium text-center">SI</div>
+                        ${[1,2,3,4,5,6,7,8,9].map(h => `<div class="text-center text-xs">${courseData.holes[h-1]?.handicap || h}</div>`).join('')}
+
+                        <div class="font-medium text-center">Score</div>
+                        ${[1,2,3,4,5,6,7,8,9].map(h => `
+                            <div><input type="number" min="1" max="15" value="${holes[h] || ''}"
+                                oninput="window.OrganizerScoringSystem.updateHoleScore('${playerId}', ${h}, this.value)"
+                                class="w-full px-1 py-1 border rounded text-center text-sm"></div>
+                        `).join('')}
+
+                        <div class="font-medium text-center">Pts</div>
+                        ${[1,2,3,4,5,6,7,8,9].map(h => {
+                            const pts = this.calculateStablefordPoints(holes[h], courseData.holes[h-1]?.par || 4, player.handicap, courseData.holes[h-1]?.handicap || h);
+                            return `<div class="text-center font-bold ${pts > 0 ? 'text-green-600' : 'text-gray-400'}">${pts > 0 ? pts : '-'}</div>`;
+                        }).join('')}
+                    </div>
+                </div>
+
+                <!-- Back 9 -->
+                <div class="mb-4">
+                    <h4 class="font-semibold mb-2">Back 9</h4>
+                    <div class="grid grid-cols-10 gap-1 text-xs">
+                        <div class="font-bold text-center">Hole</div>
+                        ${[10,11,12,13,14,15,16,17,18].map(h => `<div class="font-bold text-center">${h}</div>`).join('')}
+
+                        <div class="font-medium text-center">Par</div>
+                        ${[10,11,12,13,14,15,16,17,18].map(h => `<div class="text-center">${courseData.holes[h-1]?.par || 4}</div>`).join('')}
+
+                        <div class="font-medium text-center">SI</div>
+                        ${[10,11,12,13,14,15,16,17,18].map(h => `<div class="text-center text-xs">${courseData.holes[h-1]?.handicap || h}</div>`).join('')}
+
+                        <div class="font-medium text-center">Score</div>
+                        ${[10,11,12,13,14,15,16,17,18].map(h => `
+                            <div><input type="number" min="1" max="15" value="${holes[h] || ''}"
+                                oninput="window.OrganizerScoringSystem.updateHoleScore('${playerId}', ${h}, this.value)"
+                                class="w-full px-1 py-1 border rounded text-center text-sm"></div>
+                        `).join('')}
+
+                        <div class="font-medium text-center">Pts</div>
+                        ${[10,11,12,13,14,15,16,17,18].map(h => {
+                            const pts = this.calculateStablefordPoints(holes[h], courseData.holes[h-1]?.par || 4, player.handicap, courseData.holes[h-1]?.handicap || h);
+                            return `<div class="text-center font-bold ${pts > 0 ? 'text-green-600' : 'text-gray-400'}">${pts > 0 ? pts : '-'}</div>`;
+                        }).join('')}
+                    </div>
+                </div>
+
+                <!-- Totals -->
+                <div class="bg-blue-50 p-3 rounded-lg mt-4">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                            <span class="font-medium">Total Gross:</span>
+                            <span class="ml-2 font-bold text-lg" id="qse-total-gross-${playerId}">0</span>
+                        </div>
+                        <div>
+                            <span class="font-medium">Total Stableford:</span>
+                            <span class="ml-2 font-bold text-lg text-green-600" id="qse-total-stableford-${playerId}">0</span>
+                        </div>
+                        <div>
+                            <span class="font-medium">Handicap:</span>
+                            <span class="ml-2">${player.handicap.toFixed(1)}</span>
+                        </div>
+                        <div>
+                            <span class="font-medium">Holes Completed:</span>
+                            <span class="ml-2" id="qse-holes-completed-${playerId}">0</span> / 18
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        holesRow.querySelector('td > div').innerHTML = scorecardHTML;
+        this.updateHoleTotals(playerId);
+    }
+
+    calculateStablefordPoints(score, par, playerHcp, holeHcp) {
+        if (!score || score === '') return 0;
+
+        const grossScore = parseInt(score);
+        const holePar = parseInt(par) || 4;
+        const holeHandicap = parseInt(holeHcp) || 1;
+        const handicap = parseInt(playerHcp) || 0;
+
+        // Calculate shots received on this hole
+        let shots = 0;
+        if (handicap >= holeHandicap) shots = 1;
+        if (handicap >= (holeHandicap + 18)) shots = 2;
+
+        // Net score
+        const netScore = grossScore - shots;
+
+        // Stableford points
+        const diff = holePar - netScore;
+        if (diff >= 3) return 5;  // Albatross or better
+        if (diff === 2) return 4;  // Eagle
+        if (diff === 1) return 3;  // Birdie
+        if (diff === 0) return 2;  // Par
+        if (diff === -1) return 1; // Bogey
+        return 0; // Double bogey or worse
+    }
+
+    updateHoleScore(playerId, holeNumber, value) {
+        if (!this.qseScores[playerId]) {
+            this.qseScores[playerId] = { gross: '', stableford: '', holes: {} };
+        }
+        if (!this.qseScores[playerId].holes) {
+            this.qseScores[playerId].holes = {};
+        }
+
+        this.qseScores[playerId].holes[holeNumber] = value ? parseInt(value) : null;
+
+        // Update totals
+        this.updateHoleTotals(playerId);
+
+        // Re-render the scorecard to update Stableford points
+        this.renderHoleByHoleScorecard(playerId);
+    }
+
+    async updateHoleTotals(playerId) {
+        const player = this.qsePlayersData.find(p => p.player_id === playerId);
+        if (!player) return;
+
+        const holes = this.qseScores[playerId]?.holes || {};
+        const courseData = await this.loadCourseData();
+
+        let totalGross = 0;
+        let totalStableford = 0;
+        let holesCompleted = 0;
+
+        for (let h = 1; h <= 18; h++) {
+            const score = holes[h];
+            if (score) {
+                totalGross += parseInt(score);
+                holesCompleted++;
+
+                const par = courseData.holes[h-1]?.par || 4;
+                const holeHcp = courseData.holes[h-1]?.handicap || h;
+                totalStableford += this.calculateStablefordPoints(score, par, player.handicap, holeHcp);
+            }
+        }
+
+        // Update totals in the scorecard display
+        const grossEl = document.getElementById(`qse-total-gross-${playerId}`);
+        const stablefordEl = document.getElementById(`qse-total-stableford-${playerId}`);
+        const holesEl = document.getElementById(`qse-holes-completed-${playerId}`);
+
+        if (grossEl) grossEl.textContent = totalGross;
+        if (stablefordEl) stablefordEl.textContent = totalStableford;
+        if (holesEl) holesEl.textContent = holesCompleted;
+
+        // Update main totals
+        this.qseScores[playerId].gross = totalGross > 0 ? totalGross.toString() : '';
+        this.qseScores[playerId].stableford = totalStableford > 0 ? totalStableford.toString() : '';
+
+        // Update main inputs
+        const grossInput = document.getElementById(`qse-gross-${playerId}`);
+        const stablefordInput = document.getElementById(`qse-stableford-${playerId}`);
+        if (grossInput) grossInput.value = totalGross > 0 ? totalGross : '';
+        if (stablefordInput) stablefordInput.value = totalStableford > 0 ? totalStableford : '';
+
+        this.updateScoreEntryStats();
+    }
+
+    async loadCourseData() {
+        // Load actual course data from event's course_id
+        const courseId = this.qseEventData?.course_id;
+        const teeMarker = document.getElementById('qseTeeMarker')?.value || 'white';
+
+        if (!courseId) {
+            // Return default course data if no course_id
+            return {
+                holes: Array.from({ length: 18 }, (_, i) => ({
+                    hole_number: i + 1,
+                    par: [4,4,3,5,4,4,5,3,4,4,5,3,4,4,3,5,4,4][i], // Default par layout
+                    handicap: i + 1
+                }))
+            };
+        }
+
+        try {
+            // Get hole data for this course
+            const { data: holes, error } = await window.SupabaseDB.client
+                .from('course_holes')
+                .select('hole_number, par, stroke_index')
+                .eq('course_id', courseId)
+                .eq('tee_marker', teeMarker.toLowerCase())
+                .order('hole_number');
+
+            if (error) throw error;
+
+            if (!holes || holes.length === 0) {
+                // Fallback: try without tee marker filter
+                const { data: fallbackHoles, error: fallbackError } = await window.SupabaseDB.client
+                    .from('course_holes')
+                    .select('hole_number, par, stroke_index')
+                    .eq('course_id', courseId)
+                    .order('hole_number')
+                    .limit(18);
+
+                if (fallbackError) throw fallbackError;
+
+                return {
+                    holes: fallbackHoles?.map(h => ({
+                        hole_number: h.hole_number,
+                        par: h.par,
+                        handicap: h.stroke_index
+                    })) || []
+                };
+            }
+
+            return {
+                holes: holes.map(h => ({
+                    hole_number: h.hole_number,
+                    par: h.par,
+                    handicap: h.stroke_index
+                }))
+            };
+
+        } catch (error) {
+            console.error('[QuickScoreEntry] Error loading course data:', error);
+            // Return default course data on error
+            return {
+                holes: Array.from({ length: 18 }, (_, i) => ({
+                    hole_number: i + 1,
+                    par: [4,4,3,5,4,4,5,3,4,4,5,3,4,4,3,5,4,4][i],
+                    handicap: i + 1
+                }))
+            };
+        }
     }
 
     updateScoreEntryStats() {
@@ -60205,7 +60507,7 @@ class OrganizerScoringSystem {
 
         this.qsePlayersData.forEach(player => {
             if (!player.hasExistingRound) {
-                this.qseScores[player.player_id] = { gross: '', stableford: '' };
+                this.qseScores[player.player_id] = { gross: '', stableford: '', holes: {} };
                 const grossInput = document.getElementById(`qse-gross-${player.player_id}`);
                 const stablefordInput = document.getElementById(`qse-stableford-${player.player_id}`);
                 if (grossInput) grossInput.value = '';
@@ -60291,6 +60593,52 @@ class OrganizerScoringSystem {
 
                         // Mark as having existing round
                         player.hasExistingRound = true;
+
+                        // Save hole-by-hole scores if they exist
+                        const holeScores = scores.holes;
+                        if (holeScores && Object.keys(holeScores).length > 0 && round?.id) {
+                            console.log(`[QuickScoreEntry] Saving ${Object.keys(holeScores).length} hole scores for ${player.player_name}`);
+
+                            // Get course data for pars and handicaps
+                            const courseData = await this.loadCourseData();
+
+                            // Prepare hole records
+                            const holeRecords = [];
+                            for (let holeNum = 1; holeNum <= 18; holeNum++) {
+                                const score = holeScores[holeNum];
+                                if (score) {
+                                    const holeData = courseData.holes[holeNum - 1] || { par: 4, handicap: holeNum };
+                                    const stablefordPoints = this.calculateStablefordPoints(
+                                        score,
+                                        holeData.par,
+                                        player.handicap,
+                                        holeData.handicap
+                                    );
+
+                                    holeRecords.push({
+                                        round_id: round.id,
+                                        hole_number: holeNum,
+                                        par: holeData.par,
+                                        score: parseInt(score),
+                                        stableford_points: stablefordPoints,
+                                        handicap_strokes: holeData.handicap
+                                    });
+                                }
+                            }
+
+                            // Save all hole records
+                            if (holeRecords.length > 0) {
+                                const { error: holesError } = await window.SupabaseDB.client
+                                    .from('round_holes')
+                                    .insert(holeRecords);
+
+                                if (holesError) {
+                                    console.error(`[QuickScoreEntry] Error saving hole scores for ${player.player_name}:`, holesError);
+                                } else {
+                                    console.log(`[QuickScoreEntry] ✅ Saved ${holeRecords.length} hole scores for ${player.player_name}`);
+                                }
+                            }
+                        }
                     }
 
                 } catch (err) {

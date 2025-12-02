@@ -34323,12 +34323,12 @@ Total Rounds: ${ningCaddy.totalRounds}`;
             try {
                 resultsContainer.innerHTML = '<div class="text-center text-gray-500 py-8">Searching...</div>';
 
-                // Search user_profiles for players
+                // GLOBAL SEARCH: Search all user profiles across all societies
                 const { data: players, error } = await window.SupabaseDB.client
                     .from('user_profiles')
-                    .select('line_user_id, name, profile_data')
+                    .select('line_user_id, name, profile_data, society_name, handicap')
                     .ilike('name', `%${searchText}%`)
-                    .limit(20);
+                    .limit(50); // Increased for cross-society discovery
 
                 if (error) throw error;
 
@@ -34337,18 +34337,31 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     return;
                 }
 
+                // Get current user's society for cross-society detection
+                const currentUserSociety = window.UserState?.user?.society_name || null;
+
                 // Get already added partner IDs
                 const existingPartnerIds = new Set(selectedPlayingPartners.map(p => p.id));
 
-                // Render results
+                // Render results with society affiliation badges
                 resultsContainer.innerHTML = players.map(player => {
                     const isAlreadyAdded = existingPartnerIds.has(player.line_user_id);
-                    const handicap = player.profile_data?.golfInfo?.handicap || player.profile_data?.handicap || 0;
+                    const handicap = player.profile_data?.golfInfo?.handicap || player.profile_data?.handicap || player.handicap || 0;
+
+                    // Determine society affiliation
+                    const playerSociety = player.society_name;
+                    const isCrossSociety = currentUserSociety && playerSociety && playerSociety !== currentUserSociety;
+                    const isPrimarySociety = currentUserSociety && playerSociety === currentUserSociety;
 
                     return `
                         <div class="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 ${isAlreadyAdded ? 'bg-gray-100 opacity-50' : ''}">
                             <div class="flex-1">
-                                <div class="font-medium text-gray-900">${player.name}</div>
+                                <div class="flex items-center gap-2">
+                                    <div class="font-medium text-gray-900">${player.name}</div>
+                                    ${isCrossSociety ? `<span class="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">CROSS-SOCIETY: ${playerSociety}</span>` : ''}
+                                    ${isPrimarySociety ? `<span class="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">PRIMARY</span>` : ''}
+                                    ${!playerSociety ? `<span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">UNAFFILIATED</span>` : ''}
+                                </div>
                                 <div class="text-sm text-gray-600">Handicap: ${parseFloat(handicap).toFixed(1)}</div>
                             </div>
                             ${isAlreadyAdded
@@ -37520,107 +37533,73 @@ class SocietyGolfSupabase {
             return [];
         }
 
-        console.log('[SocietyGolf] Searching players:', { searchTerm, societyName });
+        console.log('[SocietyGolf] GLOBAL SEARCH - Searching all players across all societies:', { searchTerm, societyName });
 
-        // DUAL SEARCH: Platform-wide + Society-specific members
+        // GLOBAL SEARCH: All platform users with society affiliation indicators
         const results = [];
         const seenIds = new Set();
 
-        // 1. Search society members first (if society name provided)
-        if (societyName) {
-            try {
-                const { data: members, error: memberError } = await window.SupabaseDB.client
-                    .from('society_members')
-                    .select(`
-                        golfer_id,
-                        member_number,
-                        is_primary_society,
-                        user_profiles!inner(line_user_id, name, profile_data)
-                    `)
-                    .eq('society_name', societyName)
-                    .eq('status', 'active')
-                    .ilike('user_profiles.name', `%${searchTerm}%`)
-                    .limit(10);
-
-                if (!memberError && members) {
-                    members.forEach(m => {
-                        const profile = m.user_profiles;
-                        if (profile && !seenIds.has(m.golfer_id)) {
-                            const golfInfo = profile.profile_data?.golfInfo || {};
-                            // Safely parse handicap without relying on LiveScorecardManager
-                            let handicap = 36;
-                            if (golfInfo.handicap !== undefined) {
-                                // Handle handicap that might be string or number
-                                const hcpStr = String(golfInfo.handicap);
-                                if (hcpStr.startsWith('+')) {
-                                    handicap = -parseFloat(hcpStr.substring(1));
-                                } else {
-                                    handicap = parseFloat(hcpStr) || 36;
-                                }
-                            }
-                            results.push({
-                                id: m.golfer_id,
-                                name: profile.name,
-                                username: profile.name,
-                                handicap: handicap,
-                                homeClub: golfInfo.homeClub || '',
-                                profileData: profile.profile_data,
-                                isSocietyMember: true,
-                                memberNumber: m.member_number,
-                                isPrimarySociety: m.is_primary_society
-                            });
-                            seenIds.add(m.golfer_id);
-                        }
-                    });
-                    console.log(`[SocietyGolf] Found ${members.length} society members`);
-                }
-            } catch (err) {
-                console.error('[SocietyGolf] Error searching society members:', err);
-            }
-        }
-
-        // 2. Search platform-wide user_profiles
+        // 1. Search ALL user_profiles globally (not restricted by society)
         try {
             const { data, error } = await window.SupabaseDB.client
                 .from('user_profiles')
-                .select('line_user_id, name, profile_data')
+                .select('line_user_id, name, profile_data, society_name, handicap')
                 .ilike('name', `%${searchTerm}%`)
-                .limit(20);
+                .limit(50); // Increased limit for cross-society events
 
             if (!error && data) {
                 data.forEach(p => {
                     if (!seenIds.has(p.line_user_id)) {
                         const golfInfo = p.profile_data?.golfInfo || {};
-                        // Safely parse handicap without relying on LiveScorecardManager
+                        const clubAffiliation = p.profile_data?.organizationInfo?.societyName || p.society_name || '';
+
+                        // Safely parse handicap
                         let handicap = 36;
-                        if (golfInfo.handicap !== undefined) {
-                            // Handle handicap that might be string or number
-                            const hcpStr = String(golfInfo.handicap);
+                        const hcpValue = p.handicap || golfInfo.handicap;
+                        if (hcpValue !== undefined) {
+                            const hcpStr = String(hcpValue);
                             if (hcpStr.startsWith('+')) {
                                 handicap = -parseFloat(hcpStr.substring(1));
                             } else {
                                 handicap = parseFloat(hcpStr) || 36;
                             }
                         }
+
+                        // Check if this player is a member of the searching society
+                        const isPrimarySociety = societyName && clubAffiliation === societyName;
+                        const isCrossSociety = societyName && clubAffiliation && clubAffiliation !== societyName;
+
                         results.push({
                             id: p.line_user_id,
                             name: p.name,
                             username: p.name,
                             handicap: handicap,
                             homeClub: golfInfo.homeClub || '',
+                            societyAffiliation: clubAffiliation,
                             profileData: p.profile_data,
-                            isSocietyMember: false
+                            isSocietyMember: isPrimarySociety,
+                            isCrossSociety: isCrossSociety,
+                            isPrimarySociety: isPrimarySociety
                         });
                         seenIds.add(p.line_user_id);
                     }
                 });
-                console.log(`[SocietyGolf] Found ${data.length} platform users`);
+                console.log(`[SocietyGolf] GLOBAL: Found ${data.length} total players across all societies`);
             }
         } catch (err) {
-            console.error('[SocietyGolf] Error searching platform users:', err);
+            console.error('[SocietyGolf] Error in global player search:', err);
         }
 
-        console.log(`[SocietyGolf] Total search results: ${results.length}`);
+        // 2. Sort results: Primary society members first, then cross-society, then unaffiliated
+        results.sort((a, b) => {
+            if (a.isPrimarySociety && !b.isPrimarySociety) return -1;
+            if (!a.isPrimarySociety && b.isPrimarySociety) return 1;
+            if (a.isCrossSociety && !b.isCrossSociety) return -1;
+            if (!a.isCrossSociety && b.isCrossSociety) return 1;
+            return a.name.localeCompare(b.name);
+        });
+
+        console.log(`[SocietyGolf] Total search results: ${results.length} (${results.filter(r => r.isPrimarySociety).length} primary, ${results.filter(r => r.isCrossSociety).length} cross-society)`);
         return results;
     }
 
@@ -49337,14 +49316,15 @@ This action cannot be undone.`);
                 <div class="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
                      onclick="SocietyOrganizerSystem.selectPlayer('${player.id}', '${player.name.replace(/'/g, "\\'")}', ${player.handicap})">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 ${player.isSocietyMember ? 'bg-purple-100' : 'bg-green-100'} rounded-full flex items-center justify-center">
-                            <span class="material-symbols-outlined ${player.isSocietyMember ? 'text-purple-600' : 'text-green-600'}">person</span>
+                        <div class="w-10 h-10 ${player.isPrimarySociety ? 'bg-purple-100' : player.isCrossSociety ? 'bg-orange-100' : 'bg-green-100'} rounded-full flex items-center justify-center">
+                            <span class="material-symbols-outlined ${player.isPrimarySociety ? 'text-purple-600' : player.isCrossSociety ? 'text-orange-600' : 'text-green-600'}">person</span>
                         </div>
                         <div>
-                            <div class="flex items-center gap-2">
+                            <div class="flex items-center gap-2 flex-wrap">
                                 <span class="font-medium text-gray-900">${player.name}</span>
-                                ${player.isSocietyMember ? '<span class="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">MEMBER</span>' : ''}
-                                ${player.isPrimarySociety ? '<span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">PRIMARY</span>' : ''}
+                                ${player.isPrimarySociety ? '<span class="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">PRIMARY</span>' : ''}
+                                ${player.isCrossSociety && player.societyAffiliation ? `<span class="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">CROSS-SOCIETY: ${player.societyAffiliation}</span>` : ''}
+                                ${!player.isPrimarySociety && !player.isCrossSociety && player.societyAffiliation ? `<span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">${player.societyAffiliation}</span>` : ''}
                             </div>
                             <div class="text-xs text-gray-500">
                                 HCP: ${player.handicap}${player.homeClub ? ' • ' + player.homeClub : ''}${player.memberNumber ? ' • #' + player.memberNumber : ''}
@@ -58174,12 +58154,12 @@ class GolferEventsManager {
         }
 
         try {
-            // Search player profiles
+            // GLOBAL SEARCH: Search all user profiles across all societies
             const { data: golfers, error } = await window.SupabaseDB.client
-                .from('player_profiles')
-                .select('user_id, player_name, handicap_index')
-                .or(`player_name.ilike.%${searchTerm}%`)
-                .limit(20);
+                .from('user_profiles')
+                .select('line_user_id, name, profile_data, society_name, handicap')
+                .ilike('name', `%${searchTerm}%`)
+                .limit(50); // Increased for cross-society discovery
 
             if (error) throw error;
 
@@ -58196,25 +58176,38 @@ class GolferEventsManager {
 
             const invitedIds = new Set((existingInvites || []).map(inv => inv.invitee_id));
 
-            // Render golfer list
+            // Render golfer list with society indicators
             document.getElementById('inviteGolferList').innerHTML = golfers.map(golfer => {
-                const isAlreadyInvited = invitedIds.has(golfer.user_id);
-                const isSelected = this.selectedInvitees.some(inv => inv.id === golfer.user_id);
+                const isAlreadyInvited = invitedIds.has(golfer.line_user_id);
+                const isSelected = this.selectedInvitees.some(inv => inv.id === golfer.line_user_id);
+
+                // Get handicap
+                const golfInfo = golfer.profile_data?.golfInfo || {};
+                let handicap = golfer.handicap || golfInfo.handicap || 'N/A';
+                if (typeof handicap === 'number') {
+                    handicap = handicap.toFixed(1);
+                }
+
+                // Get society affiliation
+                const societyName = golfer.society_name || golfer.profile_data?.organizationInfo?.societyName || '';
 
                 return `
                     <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
-                        <div class="flex items-center gap-3">
-                            <span class="material-symbols-outlined text-gray-600">person</span>
-                            <div>
-                                <div class="font-medium text-gray-900">${golfer.player_name}</div>
-                                <div class="text-xs text-gray-500">HCP: ${golfer.handicap_index || 'N/A'}</div>
+                        <div class="flex items-center gap-3 flex-1">
+                            <span class="material-symbols-outlined ${societyName ? 'text-blue-600' : 'text-gray-600'}">person</span>
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="font-medium text-gray-900">${golfer.name}</span>
+                                    ${societyName ? `<span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">${societyName}</span>` : ''}
+                                </div>
+                                <div class="text-xs text-gray-500">HCP: ${handicap}</div>
                             </div>
                         </div>
                         ${isAlreadyInvited ?
                             '<span class="text-xs text-gray-500 bg-gray-200 px-2 py-1 rounded">Already Invited</span>' :
                             isSelected ?
-                            `<button onclick="GolferEventsSystem.toggleInvitee('${golfer.user_id}', '${golfer.player_name}')" class="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600">✓ Selected</button>` :
-                            `<button onclick="GolferEventsSystem.toggleInvitee('${golfer.user_id}', '${golfer.player_name}')" class="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">Invite</button>`
+                            `<button onclick="GolferEventsSystem.toggleInvitee('${golfer.line_user_id}', '${golfer.name.replace(/'/g, "\\\'")}')" class="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600">✓ Selected</button>` :
+                            `<button onclick="GolferEventsSystem.toggleInvitee('${golfer.line_user_id}', '${golfer.name.replace(/'/g, "\\\'")}')" class="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">Invite</button>`
                         }
                     </div>
                 `;
@@ -60711,12 +60704,12 @@ class OrganizerScoringSystem {
         try {
             resultsContainer.innerHTML = '<div class="text-center text-gray-500 py-8">Searching...</div>';
 
-            // Search user_profiles for players
+            // GLOBAL SEARCH: Search all user profiles across all societies
             const { data: players, error } = await window.SupabaseDB.client
                 .from('user_profiles')
-                .select('line_user_id, name, profile_data')
+                .select('line_user_id, name, profile_data, society_name, handicap')
                 .ilike('name', `%${searchText}%`)
-                .limit(20);
+                .limit(50); // Increased for cross-society discovery
 
             if (error) throw error;
 
@@ -60725,18 +60718,31 @@ class OrganizerScoringSystem {
                 return;
             }
 
+            // Get current user's society for cross-society detection
+            const currentUserSociety = window.UserState?.user?.society_name || null;
+
             // Get already added player IDs
             const existingPlayerIds = new Set(this.qsePlayersData.map(p => p.player_id));
 
-            // Render results
+            // Render results with society affiliation badges
             resultsContainer.innerHTML = players.map(player => {
                 const isAlreadyAdded = existingPlayerIds.has(player.line_user_id);
-                const handicap = player.profile_data?.golfInfo?.handicap || player.profile_data?.handicap || 0;
+                const handicap = player.profile_data?.golfInfo?.handicap || player.profile_data?.handicap || player.handicap || 0;
+
+                // Determine society affiliation
+                const playerSociety = player.society_name;
+                const isCrossSociety = currentUserSociety && playerSociety && playerSociety !== currentUserSociety;
+                const isPrimarySociety = currentUserSociety && playerSociety === currentUserSociety;
 
                 return `
                     <div class="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 ${isAlreadyAdded ? 'bg-gray-100 opacity-50' : ''}">
                         <div class="flex-1">
-                            <div class="font-medium text-gray-900">${player.name}</div>
+                            <div class="flex items-center gap-2">
+                                <div class="font-medium text-gray-900">${player.name}</div>
+                                ${isCrossSociety ? `<span class="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">CROSS-SOCIETY: ${playerSociety}</span>` : ''}
+                                ${isPrimarySociety ? `<span class="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">PRIMARY</span>` : ''}
+                                ${!playerSociety ? `<span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">UNAFFILIATED</span>` : ''}
+                            </div>
                             <div class="text-sm text-gray-600">Handicap: ${parseFloat(handicap).toFixed(1)}</div>
                         </div>
                         ${isAlreadyAdded

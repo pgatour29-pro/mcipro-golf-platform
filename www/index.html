@@ -59183,15 +59183,37 @@ class OrganizerScoringSystem {
             // FIXED: Filter events by selected society prefix (not by organizer_id or "show all")
             // This ensures organizers only see events for their selected society
             const selectedSociety = AppState.selectedSociety;
-            console.log('[OrganizerScoring] Selected society:', selectedSociety);
+            console.log('[OrganizerScoring] Selected society object:', selectedSociety);
 
-            if (!selectedSociety || !selectedSociety.prefix) {
-                console.error('[OrganizerScoring] ❌ No society selected or no prefix available');
+            if (!selectedSociety) {
+                console.error('[OrganizerScoring] ❌ No society selected');
                 NotificationManager.show('Please select a society first', 'error');
                 return;
             }
 
-            const societyPrefix = selectedSociety.prefix;
+            // Get society prefix - try multiple sources
+            let societyPrefix = selectedSociety.prefix;
+
+            // If no prefix in selectedSociety, derive it from the name
+            if (!societyPrefix && selectedSociety.name) {
+                if (selectedSociety.name === 'Travellers Rest Golf Group') {
+                    societyPrefix = 'TRGG -';
+                } else if (selectedSociety.name === 'JOA Golf Pattaya') {
+                    societyPrefix = 'JOA -';
+                } else {
+                    // Extract from name: "Society Name" -> "SOCIETY -"
+                    const words = selectedSociety.name.split(' ');
+                    societyPrefix = words[0].toUpperCase() + ' -';
+                }
+                console.log('[OrganizerScoring] Derived prefix from society name:', societyPrefix);
+            }
+
+            if (!societyPrefix) {
+                console.error('[OrganizerScoring] ❌ Cannot determine society prefix');
+                NotificationManager.show('Society configuration error - no prefix', 'error');
+                return;
+            }
+
             console.log('[OrganizerScoring] Filtering events by society prefix:', societyPrefix);
 
             // Filter events that start with the society prefix (e.g., "TRGG -" or "JOA -")

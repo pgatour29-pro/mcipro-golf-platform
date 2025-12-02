@@ -2,10 +2,13 @@
 -- Date: 2025-12-02
 
 -- 1. Fix RLS policies on side_game_pools table (401 Unauthorized errors)
--- Drop existing policies if they exist
+-- Drop existing policies if they exist (both old and new names)
 DROP POLICY IF EXISTS "Users can view active pools" ON side_game_pools;
 DROP POLICY IF EXISTS "Users can create pools" ON side_game_pools;
 DROP POLICY IF EXISTS "Pool creators can update their pools" ON side_game_pools;
+DROP POLICY IF EXISTS "Authenticated users can view active pools" ON side_game_pools;
+DROP POLICY IF EXISTS "Authenticated users can create pools" ON side_game_pools;
+DROP POLICY IF EXISTS "Authenticated users can update their pools" ON side_game_pools;
 
 -- Enable RLS on side_game_pools
 ALTER TABLE side_game_pools ENABLE ROW LEVEL SECURITY;
@@ -32,11 +35,14 @@ TO authenticated
 USING (created_by = auth.uid()::text);
 
 -- 2. Fix scorecards table policies (400 Bad Request errors)
--- Drop existing policies
+-- Drop existing policies (both old and new names)
 DROP POLICY IF EXISTS "Scorecards are viewable by everyone" ON scorecards;
 DROP POLICY IF EXISTS "Scorecards are insertable by everyone" ON scorecards;
 DROP POLICY IF EXISTS "Scorecards are updatable by everyone" ON scorecards;
 DROP POLICY IF EXISTS "Scorecards are deletable by everyone" ON scorecards;
+DROP POLICY IF EXISTS "Authenticated users can view all scorecards" ON scorecards;
+DROP POLICY IF EXISTS "Authenticated users can insert scorecards" ON scorecards;
+DROP POLICY IF EXISTS "Authenticated users can update all scorecards" ON scorecards;
 
 -- Enable RLS on scorecards
 ALTER TABLE scorecards ENABLE ROW LEVEL SECURITY;
@@ -63,11 +69,14 @@ TO authenticated
 USING (true);
 
 -- 3. Fix scores table policies (for score updates)
--- Drop existing policies
+-- Drop existing policies (both old and new names)
 DROP POLICY IF EXISTS "Scores are viewable by everyone" ON scores;
 DROP POLICY IF EXISTS "Scores are insertable by everyone" ON scores;
 DROP POLICY IF EXISTS "Scores are updatable by everyone" ON scores;
 DROP POLICY IF EXISTS "Scores are deletable by everyone" ON scores;
+DROP POLICY IF EXISTS "Authenticated users can view all scores" ON scores;
+DROP POLICY IF EXISTS "Authenticated users can insert scores" ON scores;
+DROP POLICY IF EXISTS "Authenticated users can update all scores" ON scores;
 
 -- Enable RLS on scores
 ALTER TABLE scores ENABLE ROW LEVEL SECURITY;

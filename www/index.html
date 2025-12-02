@@ -39857,6 +39857,143 @@ class LiveScorecardSystem {
             };
         },
 
+        // Calculate round robin match play with individual head-to-head results
+        calculateRoundRobinMatchPlay(allPlayerScores, roundRobinMatches, courseHoles, useNet = true) {
+            const results = {};
+
+            // For each player
+            for (const player of allPlayerScores) {
+                const playerId = player.player_id || player.playerId;
+                const opponentIds = roundRobinMatches[playerId] || [];
+
+                if (opponentIds.length === 0) continue;
+
+                // Initialize player result
+                results[playerId] = {
+                    playerId: playerId,
+                    playerName: player.name || player.playerName,
+                    opponents: opponentIds,
+                    totalHolesWon: 0,
+                    totalHolesLost: 0,
+                    totalHolesHalved: 0,
+                    totalHolesPlayed: 0,
+                    individualMatches: []
+                };
+
+                // Calculate match vs each opponent
+                for (const opponentId of opponentIds) {
+                    const opponent = allPlayerScores.find(p => (p.player_id || p.playerId) === opponentId);
+                    if (!opponent) continue;
+
+                    let holesWon = 0;
+                    let holesLost = 0;
+                    let holesHalved = 0;
+                    let holesPlayed = 0;
+
+                    // Compare hole by hole
+                    for (let holeNum = 1; holeNum <= 18; holeNum++) {
+                        const hole = courseHoles.find(h => (h.hole || h.hole_number || h.number) === holeNum);
+                        if (!hole) continue;
+
+                        const playerScore = player.scores.find(s => (s.hole_number || s.hole) === holeNum);
+                        const oppScore = opponent.scores.find(s => (s.hole_number || s.hole) === holeNum);
+
+                        if (!playerScore || !oppScore) continue;
+                        if (!playerScore.gross_score || !oppScore.gross_score) continue;
+
+                        const playerGross = playerScore.gross_score || playerScore.strokes;
+                        const oppGross = oppScore.gross_score || oppScore.strokes;
+
+                        let playerNet = playerGross;
+                        let oppNet = oppGross;
+
+                        if (useNet) {
+                            const strokeIndex = hole.stroke_index || hole.strokeIndex || holeNum;
+                            const playerHcp = parseFloat(player.handicap || 0);
+                            const oppHcp = parseFloat(opponent.handicap || 0);
+
+                            // Calculate strokes received
+                            const playerStrokes = Math.floor(playerHcp) + (strokeIndex <= (playerHcp % 1) * 18 ? 1 : 0);
+                            const oppStrokes = Math.floor(oppHcp) + (strokeIndex <= (oppHcp % 1) * 18 ? 1 : 0);
+
+                            playerNet = playerGross - playerStrokes;
+                            oppNet = oppGross - oppStrokes;
+                        }
+
+                        holesPlayed++;
+
+                        if (playerNet < oppNet) {
+                            holesWon++;
+                        } else if (oppNet < playerNet) {
+                            holesLost++;
+                        } else {
+                            holesHalved++;
+                        }
+                    }
+
+                    // Calculate net and status for this match
+                    const netHoles = holesWon - holesLost;
+                    const holesRemaining = 18 - holesPlayed;
+
+                    let status = 'All Square';
+                    let matchFinished = false;
+
+                    if (netHoles > 0) {
+                        if (netHoles > holesRemaining) {
+                            status = `${netHoles} & ${holesRemaining}`;
+                            matchFinished = true;
+                        } else {
+                            status = `${netHoles} UP`;
+                        }
+                    } else if (netHoles < 0) {
+                        const absNet = Math.abs(netHoles);
+                        if (absNet > holesRemaining) {
+                            status = `${absNet} & ${holesRemaining}`;
+                            matchFinished = true;
+                        } else {
+                            status = `${absNet} DOWN`;
+                        }
+                    }
+
+                    // Add individual match result
+                    results[playerId].individualMatches.push({
+                        opponentId: opponentId,
+                        opponentName: opponent.name || opponent.playerName,
+                        holesWon: holesWon,
+                        holesLost: holesLost,
+                        holesHalved: holesHalved,
+                        netHoles: netHoles,
+                        status: status,
+                        matchFinished: matchFinished,
+                        holesPlayed: holesPlayed
+                    });
+
+                    // Accumulate totals
+                    results[playerId].totalHolesWon += holesWon;
+                    results[playerId].totalHolesLost += holesLost;
+                    results[playerId].totalHolesHalved += holesHalved;
+                    results[playerId].totalHolesPlayed = Math.max(
+                        results[playerId].totalHolesPlayed,
+                        holesPlayed
+                    );
+                }
+
+                // Calculate aggregate status
+                const netTotal = results[playerId].totalHolesWon - results[playerId].totalHolesLost;
+                results[playerId].aggregateNet = netTotal;
+
+                if (netTotal > 0) {
+                    results[playerId].aggregateStatus = `${netTotal} UP`;
+                } else if (netTotal < 0) {
+                    results[playerId].aggregateStatus = `${Math.abs(netTotal)} DOWN`;
+                } else {
+                    results[playerId].aggregateStatus = 'All Square';
+                }
+            }
+
+            return results;
+        },
+
         // Calculate better ball / best ball (team format)
         calculateBetterBall(teamScores, courseHoles, scoresToCount = 1) {
             let teamTotal = 0;
@@ -45560,6 +45697,139 @@ class LiveScorecardSystem {
         return Math.round(totalHcp * multiplier);
     }
 
+    renderRoundRobinLeaderboard(leaderboard, formatIndex, formatName) {
+        // Sort by aggregate net holes
+        leaderboard.sort((a, b) => {
+            const aNet = a.roundRobinMatch?.aggregateNet || 0;
+            const bNet = b.roundRobinMatch?.aggregateNet || 0;
+            return bNet - aNet;
+        });
+
+        return `
+            <div class="mb-6 ${formatIndex > 0 ? 'mt-6 pt-6 border-t-4 border-gray-300' : ''}">
+                <h3 class="text-lg font-bold text-gray-900 mb-3 bg-gradient-to-r from-purple-100 to-purple-50 px-4 py-2 rounded-lg border-l-4 border-purple-500">
+                    ${formatName} - Round Robin
+                </h3>
+
+                <!-- Main Aggregate Table -->
+                <div class="overflow-x-auto mb-6">
+                    <table class="w-full text-sm">
+                        <thead class="border-b-2 border-gray-300">
+                            <tr class="text-left">
+                                <th class="py-2 px-2">Pos</th>
+                                <th class="py-2 px-2">Player</th>
+                                <th class="py-2 px-2">Thru</th>
+                                <th class="py-2 px-2 text-center bg-green-50">Won</th>
+                                <th class="py-2 px-2 text-center bg-gray-50">Halved</th>
+                                <th class="py-2 px-2 text-center bg-red-50">Lost</th>
+                                <th class="py-2 px-2 text-center bg-purple-50 font-bold">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${leaderboard.map((entry, index) => {
+                                const rrData = entry.roundRobinMatch || {};
+                                const holesPlayed = entry.holes_played || 0;
+                                const thru = holesPlayed === 18 ? 'F' : holesPlayed === 0 ? '-' : holesPlayed.toString();
+                                const status = rrData.aggregateStatus || 'All Square';
+                                const isUp = rrData.aggregateNet > 0;
+                                const isDown = rrData.aggregateNet < 0;
+
+                                let statusColor = 'text-gray-700';
+                                let statusBg = '';
+                                if (isUp) {
+                                    statusColor = 'text-green-700 font-bold';
+                                    statusBg = index === 0 ? 'bg-green-50' : '';
+                                } else if (isDown) {
+                                    statusColor = 'text-red-700 font-bold';
+                                } else {
+                                    statusColor = 'text-gray-600';
+                                }
+
+                                return `
+                                    <tr class="border-b border-gray-200 ${statusBg}">
+                                        <td class="py-2 px-2 font-bold">${index + 1}</td>
+                                        <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
+                                        <td class="py-2 px-2">${thru}</td>
+                                        <td class="py-2 px-2 text-center text-green-700 font-semibold">${rrData.totalHolesWon || 0}</td>
+                                        <td class="py-2 px-2 text-center text-gray-600">${rrData.totalHolesHalved || 0}</td>
+                                        <td class="py-2 px-2 text-center text-red-700 font-semibold">${rrData.totalHolesLost || 0}</td>
+                                        <td class="py-2 px-2 text-center ${statusColor}">${status}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Individual Head-to-Head Mini Tables -->
+                <div class="space-y-4">
+                    <h4 class="font-bold text-gray-800 text-base mb-3">Individual Matchups:</h4>
+
+                    ${leaderboard.map(entry => {
+                        const rrData = entry.roundRobinMatch;
+                        if (!rrData || !rrData.individualMatches || rrData.individualMatches.length === 0) return '';
+
+                        return `
+                            <div class="bg-white border-2 border-gray-300 rounded-lg p-3 shadow-sm">
+                                <h5 class="font-bold text-sm mb-2 text-gray-900">${entry.player_name}</h5>
+
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-xs">
+                                        <thead class="bg-gray-100 border-b border-gray-300">
+                                            <tr>
+                                                <th class="py-1.5 px-2 text-left">Opponent</th>
+                                                <th class="py-1.5 px-2 text-center bg-green-50">Won</th>
+                                                <th class="py-1.5 px-2 text-center bg-gray-50">Halved</th>
+                                                <th class="py-1.5 px-2 text-center bg-red-50">Lost</th>
+                                                <th class="py-1.5 px-2 text-center font-semibold">Match Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${rrData.individualMatches.map(match => {
+                                                const isWinning = match.netHoles > 0;
+                                                const isLosing = match.netHoles < 0;
+
+                                                let statusColor = 'text-gray-700';
+                                                let rowBg = '';
+                                                if (isWinning) {
+                                                    statusColor = 'text-green-700 font-bold';
+                                                    rowBg = 'bg-green-50';
+                                                } else if (isLosing) {
+                                                    statusColor = 'text-red-700 font-bold';
+                                                    rowBg = 'bg-red-50';
+                                                } else {
+                                                    rowBg = 'bg-gray-50';
+                                                }
+
+                                                return `
+                                                    <tr class="border-b border-gray-200 ${rowBg}">
+                                                        <td class="py-1.5 px-2">${match.opponentName}</td>
+                                                        <td class="py-1.5 px-2 text-center text-green-700">${match.holesWon}</td>
+                                                        <td class="py-1.5 px-2 text-center text-gray-600">${match.holesHalved}</td>
+                                                        <td class="py-1.5 px-2 text-center text-red-700">${match.holesLost}</td>
+                                                        <td class="py-1.5 px-2 text-center ${statusColor}">${match.status}</td>
+                                                    </tr>
+                                                `;
+                                            }).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+
+                <!-- Legend -->
+                <div class="text-xs text-gray-600 p-3 bg-purple-50 rounded-lg mt-4">
+                    <strong>Round Robin Match Play:</strong>
+                    <span class="ml-2">Main table shows aggregate results across all opponents</span>
+                    <span class="ml-2">• Individual tables show head-to-head breakdown</span>
+                    <span class="ml-2">• Green = Winning, Red = Losing, Gray = All Square</span>
+                </div>
+            </div>
+        `;
+    }
+
     async getGroupLeaderboard() {
         if (!this.groupId) return [];
 
@@ -45701,9 +45971,40 @@ class LiveScorecardSystem {
 
         // Calculate Match Play across all players
         if (this.scoringFormats.includes('matchplay') && this.courseData && this.courseData.holes) {
-            const teamConfig = this.getMatchPlayTeamConfig();
+            // Check if round robin mode is active
+            const hasRoundRobinData = this.roundRobinMatches && Object.keys(this.roundRobinMatches).length > 0;
 
-            if (teamConfig && teamConfig.teamB && teamConfig.teamB.length > 0) {
+            if (hasRoundRobinData) {
+                // ROUND ROBIN MATCH PLAY
+                const allPlayerData = leaderboard.map(entry => ({
+                    player_id: entry.player_id,
+                    playerId: entry.player_id,
+                    name: entry.player_name,
+                    playerName: entry.player_name,
+                    handicap: entry.handicap,
+                    scores: this.players.find(p => p.id === entry.player_id)?.scores || []
+                }));
+
+                const rrResults = engine.calculateRoundRobinMatchPlay(
+                    allPlayerData,
+                    this.roundRobinMatches,
+                    this.courseData.holes,
+                    true
+                );
+
+                // Add round robin data to each player's leaderboard entry
+                leaderboard.forEach(entry => {
+                    entry.roundRobinMatch = rrResults[entry.player_id] || null;
+                    // Also set holes_played for display
+                    if (rrResults[entry.player_id]) {
+                        entry.holes_played = rrResults[entry.player_id].totalHolesPlayed;
+                    }
+                });
+            } else {
+                // Team or individual match play
+                const teamConfig = this.getMatchPlayTeamConfig();
+
+                if (teamConfig && teamConfig.teamB && teamConfig.teamB.length > 0) {
                 // 2-MAN TEAM MATCH PLAY
                 const teamResults = engine.calculateTeamMatchPlay(
                     teamConfig.teamA,
@@ -46167,6 +46468,13 @@ class LiveScorecardSystem {
 
                         // Special rendering for Match Play format
             if (format === 'matchplay') {
+                // Check if this is round robin mode
+                const isRoundRobin = sortedLeaderboard.some(entry => entry.roundRobinMatch);
+
+                if (isRoundRobin) {
+                    return this.renderRoundRobinLeaderboard(sortedLeaderboard, formatIndex, formatName);
+                }
+
                 // Check if team mode is active
                 const isTeamMode = sortedLeaderboard.some(entry => entry.matchplay?.team);
 

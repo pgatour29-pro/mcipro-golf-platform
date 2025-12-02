@@ -24917,13 +24917,13 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                         <div class="grid grid-cols-2 gap-2">
                                             <div>
                                                 <label class="block text-xs text-gray-600 mb-1">Player 1</label>
-                                                <select id="teamA_player1" class="w-full text-sm rounded border-2 border-blue-400 px-2 py-1" onchange="LiveScorecardSystem.instance.validateTeamSelection()">
+                                                <select id="teamA_player1" class="w-full text-sm rounded border-2 border-blue-400 px-2 py-1" onchange="LiveScorecardManager.validateTeamSelection()">
                                                     <option value="">Select Player</option>
                                                 </select>
                                             </div>
                                             <div>
                                                 <label class="block text-xs text-gray-600 mb-1">Player 2</label>
-                                                <select id="teamA_player2" class="w-full text-sm rounded border-2 border-blue-400 px-2 py-1" onchange="LiveScorecardSystem.instance.validateTeamSelection()">
+                                                <select id="teamA_player2" class="w-full text-sm rounded border-2 border-blue-400 px-2 py-1" onchange="LiveScorecardManager.validateTeamSelection()">
                                                     <option value="">Select Player</option>
                                                 </select>
                                             </div>
@@ -24939,13 +24939,13 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                         <div class="grid grid-cols-2 gap-2">
                                             <div>
                                                 <label class="block text-xs text-gray-600 mb-1">Player 1</label>
-                                                <select id="teamB_player1" class="w-full text-sm rounded border-2 border-red-400 px-2 py-1" onchange="LiveScorecardSystem.instance.validateTeamSelection()">
+                                                <select id="teamB_player1" class="w-full text-sm rounded border-2 border-red-400 px-2 py-1" onchange="LiveScorecardManager.validateTeamSelection()">
                                                     <option value="">Select Player</option>
                                                 </select>
                                             </div>
                                             <div>
                                                 <label class="block text-xs text-gray-600 mb-1">Player 2</label>
-                                                <select id="teamB_player2" class="w-full text-sm rounded border-2 border-red-400 px-2 py-1" onchange="LiveScorecardSystem.instance.validateTeamSelection()">
+                                                <select id="teamB_player2" class="w-full text-sm rounded border-2 border-red-400 px-2 py-1" onchange="LiveScorecardManager.validateTeamSelection()">
                                                     <option value="">Select Player</option>
                                                 </select>
                                             </div>
@@ -41173,18 +41173,28 @@ class LiveScorecardSystem {
         // Validate Match Play team configuration if teams mode is selected
         if (this.scoringFormats.includes('matchplay')) {
             const matchPlayType = document.querySelector('input[name="matchPlayType"]:checked')?.value;
+            const isPublicGame = document.getElementById('publicGameToggle')?.checked;
 
             if (matchPlayType === 'teams') {
-                // Ensure exactly 4 players for 2-man teams
-                if (this.players.length !== 4) {
-                    NotificationManager.show('2-Man Team Match Play requires exactly 4 players', 'error');
-                    return;
-                }
+                // For public games: Allow 2+ players (1 team minimum)
+                // For private games: Require exactly 4 players (2 teams)
+                if (isPublicGame) {
+                    if (this.players.length < 2) {
+                        NotificationManager.show('Team Match Play requires at least 2 players to form a team', 'error');
+                        return;
+                    }
+                } else {
+                    // Private game requires 4 players (2 complete teams)
+                    if (this.players.length !== 4) {
+                        NotificationManager.show('Private 2-Man Team Match Play requires exactly 4 players. For fewer players, enable "Make Game Public" to compete against other groups.', 'error');
+                        return;
+                    }
 
-                // Validate teams are configured
-                if (!this.validateTeamSelection()) {
-                    NotificationManager.show('Please assign all 4 players to teams (Team A and Team B)', 'error');
-                    return;
+                    // Validate teams are configured for private games
+                    if (!this.validateTeamSelection()) {
+                        NotificationManager.show('Please assign all 4 players to teams (Team A and Team B)', 'error');
+                        return;
+                    }
                 }
 
                 console.log('[LiveScorecard] Team Match Play validated:', this.matchPlayTeams);

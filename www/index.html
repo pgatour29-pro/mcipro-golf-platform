@@ -25116,6 +25116,14 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                     <h4 class="text-xs font-semibold text-gray-600 mb-2">Team Games (2 players per team)</h4>
                                     <div class="space-y-2">
                                         <label class="flex items-center text-sm">
+                                            <input type="checkbox" id="publicTeamNassau" class="mr-2">
+                                            <span>Open Team Nassau pool</span>
+                                        </label>
+                                        <label class="flex items-center text-sm">
+                                            <input type="checkbox" id="publicTeamMatchPlay" class="mr-2">
+                                            <span>Open Team Match Play pool</span>
+                                        </label>
+                                        <label class="flex items-center text-sm">
                                             <input type="checkbox" id="publicScramble" class="mr-2">
                                             <span>Open Scramble pool</span>
                                         </label>
@@ -42569,6 +42577,8 @@ class LiveScorecardSystem {
         const createNassau = document.getElementById('publicNassau')?.checked;
 
         // Check which team pools to create
+        const createTeamNassau = document.getElementById('publicTeamNassau')?.checked;
+        const createTeamMatchPlay = document.getElementById('publicTeamMatchPlay')?.checked;
         const createScramble = document.getElementById('publicScramble')?.checked;
         const createBestBall = document.getElementById('publicBestBall')?.checked;
         const createFoursomes = document.getElementById('publicFoursomes')?.checked;
@@ -42658,6 +42668,58 @@ class LiveScorecardSystem {
             }
 
             // ===== TEAM GAMES =====
+
+            // Create Team Nassau pool
+            if (createTeamNassau) {
+                poolPromises.push(
+                    window.LiveGamesSystem.createPool({
+                        courseId: courseId,
+                        eventId: this.eventId,
+                        dateISO: today,
+                        type: 'team_nassau',
+                        name: `Team Nassau - Open`,
+                        isPublic: true,
+                        config: {
+                            useNet: true,
+                            teamSize: 2
+                        },
+                        createdBy: userId,
+                        isTeamGame: true
+                    }).then((result) => {
+                        if (result.success) {
+                            console.log('[LiveScorecard] Created Team Nassau pool:', result.pool.id);
+                            return { type: 'team_nassau', poolId: result.pool.id };
+                        }
+                        return null;
+                    })
+                );
+            }
+
+            // Create Team Match Play pool
+            if (createTeamMatchPlay) {
+                poolPromises.push(
+                    window.LiveGamesSystem.createPool({
+                        courseId: courseId,
+                        eventId: this.eventId,
+                        dateISO: today,
+                        type: 'team_matchplay',
+                        name: `Team Match Play - Open`,
+                        isPublic: true,
+                        config: {
+                            useNet: true,
+                            teamSize: 2
+                        },
+                        createdBy: userId,
+                        isTeamGame: true
+                    }).then((result) => {
+                        if (result.success) {
+                            console.log('[LiveScorecard] Created Team Match Play pool:', result.pool.id);
+                            return { type: 'team_matchplay', poolId: result.pool.id };
+                        }
+                        return null;
+                    })
+                );
+            }
 
             // Create Scramble pool
             if (createScramble) {
@@ -42883,6 +42945,8 @@ class LiveScorecardSystem {
             skins: { icon: 'monetization_on', color: 'orange' },
             matchplay: { icon: 'sports_score', color: 'purple' },
             nassau: { icon: 'emoji_events', color: 'blue' },
+            team_nassau: { icon: 'emoji_events', color: 'blue' },
+            team_matchplay: { icon: 'sports_score', color: 'purple' },
             scramble: { icon: 'groups', color: 'green' },
             best_ball: { icon: 'groups_2', color: 'teal' },
             foursomes: { icon: 'diversity_3', color: 'indigo' }
@@ -42892,7 +42956,7 @@ class LiveScorecardSystem {
         const entrantCount = pool.pool_entrants.length;
 
         // Check if this is a team game
-        const isTeamGame = ['scramble', 'best_ball', 'foursomes'].includes(pool.type);
+        const isTeamGame = ['team_nassau', 'team_matchplay', 'scramble', 'best_ball', 'foursomes'].includes(pool.type);
         const teamSize = pool.config?.teamSize || 2;
         const teamCount = Math.floor(entrantCount / teamSize);
 

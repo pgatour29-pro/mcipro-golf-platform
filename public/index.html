@@ -30213,6 +30213,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                     oninput="window.OrganizerScoringSystem.filterScoreEntryPlayers(this.value)"
                                     class="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
                             </div>
+                            <button onclick="window.OrganizerScoringSystem.openAddPlayerModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 whitespace-nowrap">
+                                <span class="material-symbols-outlined text-sm mr-1">person_add</span>
+                                Add Player
+                            </button>
                             <button onclick="window.OrganizerScoringSystem.fillAllScores()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 whitespace-nowrap">
                                 <span class="material-symbols-outlined text-sm mr-1">auto_fix_high</span>
                                 Fill Par
@@ -30261,6 +30265,50 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 Save All Scores
                             </button>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Add Player Modal -->
+            <div id="addPlayerToScoreEntryModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+                <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+                    <!-- Modal Header -->
+                    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                        <div>
+                            <h2 class="text-xl font-bold text-gray-900">Add Player to Score Entry</h2>
+                            <p class="text-sm text-gray-600 mt-1">Search and add a player who isn't registered</p>
+                        </div>
+                        <button onclick="window.OrganizerScoringSystem.closeAddPlayerModal()" class="text-gray-400 hover:text-gray-600">
+                            <span class="material-symbols-outlined text-3xl">close</span>
+                        </button>
+                    </div>
+
+                    <!-- Search Bar -->
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <div class="relative">
+                            <span class="material-symbols-outlined absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">search</span>
+                            <input type="text" id="addPlayerSearch" placeholder="Search by name..."
+                                oninput="window.OrganizerScoringSystem.searchPlayersToAdd(this.value)"
+                                class="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                autofocus>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">Start typing to search all players in the system</p>
+                    </div>
+
+                    <!-- Search Results -->
+                    <div class="flex-1 overflow-y-auto px-6 py-4">
+                        <div id="addPlayerSearchResults" class="space-y-2">
+                            <div class="text-center text-gray-500 py-8">
+                                Type to search for players...
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end">
+                        <button onclick="window.OrganizerScoringSystem.closeAddPlayerModal()" class="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100">
+                            Cancel
+                        </button>
                     </div>
                 </div>
             </div>
@@ -60053,8 +60101,8 @@ class OrganizerScoringSystem {
 
             if (error) {
                 console.error('[QuickScoreEntry] Error loading players:', error);
-                NotificationManager.show('Error loading players', 'error');
-                return;
+                // Don't show error - might be no registrations
+                // NotificationManager.show('Error loading players', 'error');
             }
 
             console.log(`[QuickScoreEntry] Loaded ${registrations?.length || 0} registered players`);
@@ -60072,7 +60120,8 @@ class OrganizerScoringSystem {
                 player_id: reg.player_id,
                 player_name: reg.player_name,
                 handicap: reg.player_handicap || 0,
-                hasExistingRound: playersWithRounds.has(reg.player_id)
+                hasExistingRound: playersWithRounds.has(reg.player_id),
+                isManuallyAdded: false
             }));
 
             // Initialize scores object
@@ -60080,12 +60129,18 @@ class OrganizerScoringSystem {
             this.qsePlayersData.forEach(player => {
                 this.qseScores[player.player_id] = {
                     gross: '',
-                    stableford: ''
+                    stableford: '',
+                    holes: {}
                 };
             });
 
             // Render table
             this.renderQuickScoreEntryTable();
+
+            // Show helpful message if no players
+            if (!this.qsePlayersData || this.qsePlayersData.length === 0) {
+                NotificationManager.show('No registered players - use "Add Player" to manually add players', 'info');
+            }
 
         } catch (error) {
             console.error('[QuickScoreEntry] Error:', error);
@@ -60093,12 +60148,116 @@ class OrganizerScoringSystem {
         }
     }
 
+    openAddPlayerModal() {
+        document.getElementById('addPlayerToScoreEntryModal').style.display = 'flex';
+        document.getElementById('addPlayerSearch').value = '';
+        document.getElementById('addPlayerSearchResults').innerHTML = '<div class="text-center text-gray-500 py-8">Type to search for players...</div>';
+        // Focus the search input
+        setTimeout(() => document.getElementById('addPlayerSearch').focus(), 100);
+    }
+
+    closeAddPlayerModal() {
+        document.getElementById('addPlayerToScoreEntryModal').style.display = 'none';
+    }
+
+    async searchPlayersToAdd(searchText) {
+        const resultsContainer = document.getElementById('addPlayerSearchResults');
+
+        if (!searchText || searchText.trim().length < 2) {
+            resultsContainer.innerHTML = '<div class="text-center text-gray-500 py-8">Type at least 2 characters to search...</div>';
+            return;
+        }
+
+        try {
+            resultsContainer.innerHTML = '<div class="text-center text-gray-500 py-8">Searching...</div>';
+
+            // Search user_profiles for players
+            const { data: players, error } = await window.SupabaseDB.client
+                .from('user_profiles')
+                .select('line_user_id, name, profile_data')
+                .ilike('name', `%${searchText}%`)
+                .limit(20);
+
+            if (error) throw error;
+
+            if (!players || players.length === 0) {
+                resultsContainer.innerHTML = '<div class="text-center text-gray-500 py-8">No players found</div>';
+                return;
+            }
+
+            // Get already added player IDs
+            const existingPlayerIds = new Set(this.qsePlayersData.map(p => p.player_id));
+
+            // Render results
+            resultsContainer.innerHTML = players.map(player => {
+                const isAlreadyAdded = existingPlayerIds.has(player.line_user_id);
+                const handicap = player.profile_data?.golfInfo?.handicap || player.profile_data?.handicap || 0;
+
+                return `
+                    <div class="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 ${isAlreadyAdded ? 'bg-gray-100 opacity-50' : ''}">
+                        <div class="flex-1">
+                            <div class="font-medium text-gray-900">${player.name}</div>
+                            <div class="text-sm text-gray-600">Handicap: ${parseFloat(handicap).toFixed(1)}</div>
+                        </div>
+                        ${isAlreadyAdded
+                            ? '<span class="text-sm text-gray-500">Already added</span>'
+                            : `<button onclick="window.OrganizerScoringSystem.addPlayerToScoring('${player.line_user_id}', '${player.name.replace(/'/g, "\\'")}', ${handicap})"
+                                    class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+                                Add
+                            </button>`
+                        }
+                    </div>
+                `;
+            }).join('');
+
+        } catch (error) {
+            console.error('[QuickScoreEntry] Error searching players:', error);
+            resultsContainer.innerHTML = '<div class="text-center text-red-500 py-8">Error searching players</div>';
+        }
+    }
+
+    addPlayerToScoring(playerId, playerName, handicap) {
+        // Check if already added
+        if (this.qsePlayersData.find(p => p.player_id === playerId)) {
+            NotificationManager.show('Player already added', 'warning');
+            return;
+        }
+
+        // Add to players data
+        this.qsePlayersData.push({
+            player_id: playerId,
+            player_name: playerName,
+            handicap: parseFloat(handicap) || 0,
+            hasExistingRound: false,
+            isManuallyAdded: true
+        });
+
+        // Initialize scores
+        this.qseScores[playerId] = {
+            gross: '',
+            stableford: '',
+            holes: {}
+        };
+
+        // Re-render table
+        this.renderQuickScoreEntryTable();
+
+        // Close modal and show success
+        this.closeAddPlayerModal();
+        NotificationManager.show(`${playerName} added to score entry`, 'success');
+
+        console.log(`[QuickScoreEntry] Manually added player: ${playerName} (${playerId})`);
+    }
+
     renderQuickScoreEntryTable(filteredPlayers = null) {
         const tbody = document.getElementById('qsePlayersTableBody');
         const players = filteredPlayers || this.qsePlayersData;
 
         if (!players || players.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-gray-500">No registered players found</td></tr>';
+            tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center">
+                <div class="text-gray-500 mb-2">No players added yet</div>
+                <div class="text-sm text-gray-400">Click "Add Player" to manually add players for score entry</div>
+            </td></tr>`;
             document.getElementById('qseTotalPlayers').textContent = '0';
             return;
         }
@@ -60118,6 +60277,7 @@ class OrganizerScoringSystem {
                     <td class="py-2 px-3 border">
                         ${player.player_name}
                         ${player.hasExistingRound ? '<span class="text-xs text-blue-600 ml-2">(Round exists)</span>' : ''}
+                        ${player.isManuallyAdded ? '<span class="text-xs text-purple-600 ml-2 bg-purple-100 px-2 py-0.5 rounded">Manual</span>' : ''}
                     </td>
                     <td class="py-2 px-3 border text-center">${player.handicap.toFixed(1)}</td>
                     <td class="py-2 px-3 border">

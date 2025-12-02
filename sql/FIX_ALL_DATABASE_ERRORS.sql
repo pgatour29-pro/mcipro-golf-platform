@@ -38,13 +38,16 @@ BEGIN
 END $$;
 
 -- Drop the problematic holes_played check constraint if it exists
-ALTER TABLE rounds DROP CONSTRAINT IF EXISTS rounds_holes_played_check;
+DO $$
+BEGIN
+    ALTER TABLE rounds DROP CONSTRAINT IF EXISTS rounds_holes_played_check;
 
--- Add a more lenient constraint that allows 1-18 holes
-ALTER TABLE rounds ADD CONSTRAINT rounds_holes_played_check
-    CHECK (holes_played >= 1 AND holes_played <= 18);
+    -- Add a more lenient constraint that allows 1-18 holes
+    ALTER TABLE rounds ADD CONSTRAINT rounds_holes_played_check
+        CHECK (holes_played >= 1 AND holes_played <= 18);
 
-RAISE NOTICE 'Updated rounds_holes_played_check constraint to allow 1-18 holes';
+    RAISE NOTICE 'Updated rounds_holes_played_check constraint to allow 1-18 holes';
+END $$;
 
 -- ============================================================================
 -- 3. FIX SIDE_GAME_POOLS RLS POLICIES - Allow all authenticated operations

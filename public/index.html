@@ -55756,9 +55756,41 @@ class GolferEventsManager {
 
                     if (existingRequest) {
                         console.log('[GolferEvents] Request already exists, status:', existingRequest.status);
-                        NotificationManager.show(`You already have a ${existingRequest.status} request for this event`, 'info', 3000);
-                        this.closeEventDetail();
-                        return;
+
+                        // Check if there's an actual registration for this event
+                        const { data: existingRegistration, error: regCheckError } = await window.SupabaseDB.client
+                            .from('event_registrations')
+                            .select('id')
+                            .eq('event_id', this.currentEvent.id)
+                            .eq('golfer_id', AppState.currentUser?.lineUserId || null)
+                            .maybeSingle();
+
+                        if (regCheckError && regCheckError.code !== 'PGRST116') {
+                            console.error('[GolferEvents] Registration check error:', regCheckError);
+                            throw regCheckError;
+                        }
+
+                        // If there's a join request but NO registration, it's a stale request
+                        // Delete it and allow re-registration
+                        if (!existingRegistration) {
+                            console.log('[GolferEvents] ⚠️ Found stale join request without registration - cleaning up');
+                            const { error: deleteError } = await window.SupabaseDB.client
+                                .from('event_join_requests')
+                                .delete()
+                                .eq('id', existingRequest.id);
+
+                            if (deleteError) {
+                                console.error('[GolferEvents] Failed to delete stale request:', deleteError);
+                            } else {
+                                console.log('[GolferEvents] ✅ Stale join request deleted, allowing re-registration');
+                                // Continue with creating new request below
+                            }
+                        } else {
+                            // There's both a request AND a registration - they're actually registered
+                            NotificationManager.show(`You already have a ${existingRequest.status} request for this event`, 'info', 3000);
+                            this.closeEventDetail();
+                            return;
+                        }
                     }
 
                     // CREATE join request instead of registration
@@ -56102,12 +56134,49 @@ class GolferEventsManager {
         if (!confirmed) return;
 
         try {
-            const { error } = await window.SupabaseDB.client
+            // First, get the registration details to find the event_id and golfer_id
+            const { data: registration, error: fetchError } = await window.SupabaseDB.client
+                .from('event_registrations')
+                .select('event_id, golfer_id')
+                .eq('id', registrationId)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            // Delete from event_registrations
+            const { error: deleteRegError } = await window.SupabaseDB.client
                 .from('event_registrations')
                 .delete()
                 .eq('id', registrationId);
 
-            if (error) throw error;
+            if (deleteRegError) throw deleteRegError;
+
+            // CLEANUP: Also delete any join requests for this event
+            // This prevents stale "approved" requests from blocking re-registration
+            if (registration) {
+                const { error: deleteJoinError } = await window.SupabaseDB.client
+                    .from('event_join_requests')
+                    .delete()
+                    .eq('event_id', registration.event_id)
+                    .eq('golfer_id', registration.golfer_id);
+
+                if (deleteJoinError) {
+                    console.warn('[GolferEventsSystem] Warning: Could not delete join request:', deleteJoinError);
+                    // Don't throw - join request deletion is cleanup, not critical
+                }
+
+                // CLEANUP: Also delete any invites for this event
+                const { error: deleteInviteError } = await window.SupabaseDB.client
+                    .from('event_invites')
+                    .delete()
+                    .eq('event_id', registration.event_id)
+                    .eq('invitee_id', registration.golfer_id);
+
+                if (deleteInviteError) {
+                    console.warn('[GolferEventsSystem] Warning: Could not delete invite:', deleteInviteError);
+                    // Don't throw - invite deletion is cleanup, not critical
+                }
+            }
 
             NotificationManager.show(`Successfully unregistered from "${eventName}"`, 'success', 3000);
 

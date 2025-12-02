@@ -25091,19 +25091,46 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 <p class="text-xs text-gray-700 mb-3">
                                     <strong>Let other groups compete!</strong> Groups on this course can join your side games in real-time.
                                 </p>
-                                <div class="space-y-2">
-                                    <label class="flex items-center text-sm">
-                                        <input type="checkbox" id="publicSkins" class="mr-2" checked>
-                                        <span>Open Skins pool</span>
-                                    </label>
-                                    <label class="flex items-center text-sm">
-                                        <input type="checkbox" id="publicMatchPlay" class="mr-2">
-                                        <span>Open Match Play pool</span>
-                                    </label>
-                                    <label class="flex items-center text-sm">
-                                        <input type="checkbox" id="publicNassau" class="mr-2">
-                                        <span>Open Nassau pool</span>
-                                    </label>
+
+                                <!-- Individual Games -->
+                                <div class="mb-3">
+                                    <h4 class="text-xs font-semibold text-gray-600 mb-2">Individual Games</h4>
+                                    <div class="space-y-2">
+                                        <label class="flex items-center text-sm">
+                                            <input type="checkbox" id="publicSkins" class="mr-2" checked>
+                                            <span>Open Skins pool</span>
+                                        </label>
+                                        <label class="flex items-center text-sm">
+                                            <input type="checkbox" id="publicMatchPlay" class="mr-2">
+                                            <span>Open Match Play pool</span>
+                                        </label>
+                                        <label class="flex items-center text-sm">
+                                            <input type="checkbox" id="publicNassau" class="mr-2">
+                                            <span>Open Nassau pool</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- Team Games -->
+                                <div class="border-t border-green-200 pt-3">
+                                    <h4 class="text-xs font-semibold text-gray-600 mb-2">Team Games (2 players per team)</h4>
+                                    <div class="space-y-2">
+                                        <label class="flex items-center text-sm">
+                                            <input type="checkbox" id="publicScramble" class="mr-2">
+                                            <span>Open Scramble pool</span>
+                                        </label>
+                                        <label class="flex items-center text-sm">
+                                            <input type="checkbox" id="publicBestBall" class="mr-2">
+                                            <span>Open Best Ball pool</span>
+                                        </label>
+                                        <label class="flex items-center text-sm">
+                                            <input type="checkbox" id="publicFoursomes" class="mr-2">
+                                            <span>Open Foursomes pool</span>
+                                        </label>
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-2">
+                                        💡 Teams can be formed from players in different groups
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -42536,10 +42563,15 @@ class LiveScorecardSystem {
             return;
         }
 
-        // Check which pools to create
+        // Check which pools to create (individual games)
         const createSkins = document.getElementById('publicSkins')?.checked;
         const createMatchPlay = document.getElementById('publicMatchPlay')?.checked;
         const createNassau = document.getElementById('publicNassau')?.checked;
+
+        // Check which team pools to create
+        const createScramble = document.getElementById('publicScramble')?.checked;
+        const createBestBall = document.getElementById('publicBestBall')?.checked;
+        const createFoursomes = document.getElementById('publicFoursomes')?.checked;
 
         this.publicPoolIds = [];
 
@@ -42619,6 +42651,86 @@ class LiveScorecardSystem {
                             await window.LiveGamesSystem.joinPool(result.pool.id, userId);
                             console.log('[LiveScorecard] Created and joined Nassau pool:', result.pool.id);
                             return { type: 'nassau', poolId: result.pool.id };
+                        }
+                        return null;
+                    })
+                );
+            }
+
+            // ===== TEAM GAMES =====
+
+            // Create Scramble pool
+            if (createScramble) {
+                poolPromises.push(
+                    window.LiveGamesSystem.createPool({
+                        courseId: courseId,
+                        eventId: this.eventId,
+                        dateISO: today,
+                        type: 'scramble',
+                        name: `Scramble - Team Competition`,
+                        isPublic: true,
+                        config: {
+                            useNet: true,
+                            teamSize: 2
+                        },
+                        createdBy: userId,
+                        isTeamGame: true
+                    }).then((result) => {
+                        if (result.success) {
+                            console.log('[LiveScorecard] Created Scramble pool:', result.pool.id);
+                            return { type: 'scramble', poolId: result.pool.id };
+                        }
+                        return null;
+                    })
+                );
+            }
+
+            // Create Best Ball pool
+            if (createBestBall) {
+                poolPromises.push(
+                    window.LiveGamesSystem.createPool({
+                        courseId: courseId,
+                        eventId: this.eventId,
+                        dateISO: today,
+                        type: 'best_ball',
+                        name: `Best Ball - Team Competition`,
+                        isPublic: true,
+                        config: {
+                            useNet: true,
+                            teamSize: 2
+                        },
+                        createdBy: userId,
+                        isTeamGame: true
+                    }).then((result) => {
+                        if (result.success) {
+                            console.log('[LiveScorecard] Created Best Ball pool:', result.pool.id);
+                            return { type: 'best_ball', poolId: result.pool.id };
+                        }
+                        return null;
+                    })
+                );
+            }
+
+            // Create Foursomes pool
+            if (createFoursomes) {
+                poolPromises.push(
+                    window.LiveGamesSystem.createPool({
+                        courseId: courseId,
+                        eventId: this.eventId,
+                        dateISO: today,
+                        type: 'foursomes',
+                        name: `Foursomes - Team Competition`,
+                        isPublic: true,
+                        config: {
+                            useNet: true,
+                            teamSize: 2
+                        },
+                        createdBy: userId,
+                        isTeamGame: true
+                    }).then((result) => {
+                        if (result.success) {
+                            console.log('[LiveScorecard] Created Foursomes pool:', result.pool.id);
+                            return { type: 'foursomes', poolId: result.pool.id };
                         }
                         return null;
                     })
@@ -42770,11 +42882,19 @@ class LiveScorecardSystem {
         const typeIcons = {
             skins: { icon: 'monetization_on', color: 'orange' },
             matchplay: { icon: 'sports_score', color: 'purple' },
-            nassau: { icon: 'emoji_events', color: 'blue' }
+            nassau: { icon: 'emoji_events', color: 'blue' },
+            scramble: { icon: 'groups', color: 'green' },
+            best_ball: { icon: 'groups_2', color: 'teal' },
+            foursomes: { icon: 'diversity_3', color: 'indigo' }
         };
 
         const config = typeIcons[pool.type] || typeIcons.skins;
         const entrantCount = pool.pool_entrants.length;
+
+        // Check if this is a team game
+        const isTeamGame = ['scramble', 'best_ball', 'foursomes'].includes(pool.type);
+        const teamSize = pool.config?.teamSize || 2;
+        const teamCount = Math.floor(entrantCount / teamSize);
 
         return `
             <div class="p-4 border-2 border-${config.color}-200 bg-${config.color}-50 rounded-lg">
@@ -42783,9 +42903,13 @@ class LiveScorecardSystem {
                         <div class="flex items-center gap-2 mb-1">
                             <span class="material-symbols-outlined text-${config.color}-600">${config.icon}</span>
                             <span class="font-semibold text-gray-900">${pool.name}</span>
+                            ${isTeamGame ? `<span class="text-xs bg-${config.color}-200 text-${config.color}-800 px-2 py-0.5 rounded-full">TEAM</span>` : ''}
                         </div>
                         <div class="text-xs text-gray-600">
-                            ${entrantCount} ${entrantCount === 1 ? 'player' : 'players'} joined
+                            ${isTeamGame ?
+                                `${teamCount} ${teamCount === 1 ? 'team' : 'teams'} (${entrantCount} ${entrantCount === 1 ? 'player' : 'players'})` :
+                                `${entrantCount} ${entrantCount === 1 ? 'player' : 'players'} joined`
+                            }
                             ${pool.config.pointsPerHole ? ` • ${pool.config.pointsPerHole} pts/hole` : ''}
                         </div>
                     </div>
@@ -42795,9 +42919,9 @@ class LiveScorecardSystem {
                             Leave
                         </button>
                     ` : `
-                        <button onclick="LiveScorecardManager.joinPool('${pool.id}')"
+                        <button onclick="LiveScorecardManager.${isTeamGame ? 'joinTeamPool' : 'joinPool'}('${pool.id}')"
                                 class="px-4 py-2 bg-${config.color}-600 text-white rounded-lg text-sm font-medium hover:bg-${config.color}-700">
-                            Join
+                            ${isTeamGame ? 'Join with Partner' : 'Join'}
                         </button>
                     `}
                 </div>
@@ -42846,6 +42970,132 @@ class LiveScorecardSystem {
         } else {
             NotificationManager.show('Failed to leave game', 'error');
         }
+    }
+
+    async joinTeamPool(poolId) {
+        const userId = AppState.currentUser?.lineUserId;
+        if (!userId) {
+            NotificationManager.show('Not authenticated', 'error');
+            return;
+        }
+
+        // Get players from the current round (if any)
+        const playersInRound = this.players || [];
+
+        // Get all players on this course today (for partner selection)
+        const courseId = document.getElementById('scorecardCourseSelect')?.value;
+        const today = new Date().toISOString().split('T')[0];
+
+        // Show partner selection modal
+        const partnerId = await this.showPartnerSelectionModal(playersInRound, poolId);
+
+        if (!partnerId) {
+            return; // User cancelled
+        }
+
+        // Join the pool as a team
+        const result = await window.LiveGamesSystem.joinTeamPool(poolId, userId, partnerId);
+
+        if (result.success) {
+            NotificationManager.show('✅ Joined team game!', 'success');
+            // Add to tracked pools
+            if (!this.publicPoolIds) this.publicPoolIds = [];
+            this.publicPoolIds.push({ type: 'team', poolId: poolId });
+            // Refresh the list
+            await this.loadAvailablePools();
+        } else {
+            NotificationManager.show(result.error || 'Failed to join team game', 'error');
+        }
+    }
+
+    async showPartnerSelectionModal(playersInRound, poolId) {
+        const userId = AppState.currentUser?.lineUserId;
+
+        return new Promise((resolve) => {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4';
+
+            const playerOptions = playersInRound
+                .filter(p => p.id !== userId) // Exclude current user
+                .map(p => `
+                    <label class="flex items-center p-3 border-2 border-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50 cursor-pointer">
+                        <input type="radio" name="partner" value="${p.id}" class="mr-3">
+                        <div class="flex-1">
+                            <div class="font-semibold">${p.name}</div>
+                            <div class="text-xs text-gray-600">Handicap: ${p.handicap || 'N/A'}</div>
+                        </div>
+                    </label>
+                `).join('');
+
+            modal.innerHTML = `
+                <div class="bg-white rounded-lg max-w-md w-full p-6">
+                    <h3 class="text-xl font-bold text-gray-900 mb-4">Select Your Partner</h3>
+                    <p class="text-sm text-gray-600 mb-4">
+                        Choose a player from your group or enter another player's ID
+                    </p>
+
+                    ${playersInRound.length > 1 ? `
+                        <div class="space-y-2 mb-4">
+                            <h4 class="text-sm font-semibold text-gray-700">Players in your group:</h4>
+                            ${playerOptions}
+                        </div>
+                    ` : ''}
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">
+                            Or enter partner's LINE User ID:
+                        </label>
+                        <input type="text" id="partnerIdInput"
+                               placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                               class="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button id="confirmPartner" class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                            Confirm
+                        </button>
+                        <button id="cancelPartner" class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            const confirmBtn = modal.querySelector('#confirmPartner');
+            const cancelBtn = modal.querySelector('#cancelPartner');
+            const partnerIdInput = modal.querySelector('#partnerIdInput');
+
+            confirmBtn.addEventListener('click', () => {
+                // Check for selected radio button
+                const selectedRadio = modal.querySelector('input[name="partner"]:checked');
+                const manualId = partnerIdInput.value.trim();
+
+                const partnerId = selectedRadio ? selectedRadio.value : manualId;
+
+                if (!partnerId) {
+                    NotificationManager.show('Please select or enter a partner', 'error');
+                    return;
+                }
+
+                document.body.removeChild(modal);
+                resolve(partnerId);
+            });
+
+            cancelBtn.addEventListener('click', () => {
+                document.body.removeChild(modal);
+                resolve(null);
+            });
+
+            // Close on outside click
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    document.body.removeChild(modal);
+                    resolve(null);
+                }
+            });
+        });
     }
 
     async updatePlayerHandicap(player) {
@@ -51705,6 +51955,62 @@ const LiveGamesSystem = {
             return { success: true };
         } catch (error) {
             console.error('[LiveGames] Error leaving pool:', error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    /**
+     * Join a team pool with a partner
+     */
+    async joinTeamPool(poolId, player1Id, player2Id) {
+        try {
+            // Validate that partner is not the same as player
+            if (player1Id === player2Id) {
+                return { success: false, error: 'Cannot team up with yourself' };
+            }
+
+            // Check if either player is already in this pool
+            const { data: existing, error: checkError } = await window.SupabaseDB.client
+                .from('pool_entrants')
+                .select('player_id')
+                .eq('pool_id', poolId)
+                .in('player_id', [player1Id, player2Id]);
+
+            if (checkError) throw checkError;
+
+            if (existing && existing.length > 0) {
+                const alreadyJoined = existing.map(e => e.player_id);
+                if (alreadyJoined.includes(player1Id)) {
+                    return { success: false, error: 'You are already in this team pool' };
+                }
+                if (alreadyJoined.includes(player2Id)) {
+                    return { success: false, error: 'Your partner is already in this team pool' };
+                }
+            }
+
+            // Add both players as a team
+            const { data, error } = await window.SupabaseDB.client
+                .from('pool_entrants')
+                .insert([
+                    {
+                        pool_id: poolId,
+                        player_id: player1Id,
+                        team_id: `${player1Id}_${player2Id}` // Create team ID
+                    },
+                    {
+                        pool_id: poolId,
+                        player_id: player2Id,
+                        team_id: `${player1Id}_${player2Id}` // Same team ID
+                    }
+                ])
+                .select();
+
+            if (error) throw error;
+
+            console.log('[LiveGames] Joined team pool:', poolId, 'with partner');
+            return { success: true };
+        } catch (error) {
+            console.error('[LiveGames] Error joining team pool:', error);
             return { success: false, error: error.message };
         }
     },

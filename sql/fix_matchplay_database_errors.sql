@@ -33,104 +33,65 @@ USING (created_by = auth.uid()::text);
 
 -- 2. Fix scorecards table policies (400 Bad Request errors)
 -- Drop existing policies
-DROP POLICY IF EXISTS "Users can view their own scorecards" ON scorecards;
-DROP POLICY IF EXISTS "Users can insert their own scorecards" ON scorecards;
-DROP POLICY IF EXISTS "Users can update their own scorecards" ON scorecards;
-DROP POLICY IF EXISTS "Users can view event scorecards" ON scorecards;
+DROP POLICY IF EXISTS "Scorecards are viewable by everyone" ON scorecards;
+DROP POLICY IF EXISTS "Scorecards are insertable by everyone" ON scorecards;
+DROP POLICY IF EXISTS "Scorecards are updatable by everyone" ON scorecards;
+DROP POLICY IF EXISTS "Scorecards are deletable by everyone" ON scorecards;
 
 -- Enable RLS on scorecards
 ALTER TABLE scorecards ENABLE ROW LEVEL SECURITY;
 
--- Allow users to view scorecards they're associated with
-CREATE POLICY "Users can view their own scorecards"
+-- Allow all authenticated users to view any scorecard (for leaderboards)
+CREATE POLICY "Authenticated users can view all scorecards"
 ON scorecards
 FOR SELECT
 TO authenticated
-USING (
-    player_id = auth.uid()::text
-    OR id IN (
-        SELECT scorecard_id FROM scorecard_players WHERE line_user_id = auth.uid()::text
-    )
-);
+USING (true);
 
--- Allow users to view event scorecards (for leaderboards)
-CREATE POLICY "Users can view event scorecards"
-ON scorecards
-FOR SELECT
-TO authenticated
-USING (
-    event_id IS NOT NULL
-    AND event_id IN (
-        SELECT event_id FROM event_registrations WHERE player_id = auth.uid()::text
-    )
-);
-
--- Allow users to insert scorecards
-CREATE POLICY "Users can insert their own scorecards"
+-- Allow authenticated users to insert scorecards
+CREATE POLICY "Authenticated users can insert scorecards"
 ON scorecards
 FOR INSERT
 TO authenticated
-WITH CHECK (player_id = auth.uid()::text);
+WITH CHECK (true);
 
--- Allow users to update their own scorecards
-CREATE POLICY "Users can update their own scorecards"
+-- Allow authenticated users to update any scorecard (for live scoring in groups)
+CREATE POLICY "Authenticated users can update all scorecards"
 ON scorecards
 FOR UPDATE
 TO authenticated
-USING (
-    player_id = auth.uid()::text
-    OR id IN (
-        SELECT scorecard_id FROM scorecard_players WHERE line_user_id = auth.uid()::text
-    )
-);
+USING (true);
 
 -- 3. Fix scores table policies (for score updates)
 -- Drop existing policies
-DROP POLICY IF EXISTS "Users can view scores for their scorecards" ON scores;
-DROP POLICY IF EXISTS "Users can insert scores" ON scores;
-DROP POLICY IF EXISTS "Users can update scores" ON scores;
+DROP POLICY IF EXISTS "Scores are viewable by everyone" ON scores;
+DROP POLICY IF EXISTS "Scores are insertable by everyone" ON scores;
+DROP POLICY IF EXISTS "Scores are updatable by everyone" ON scores;
+DROP POLICY IF EXISTS "Scores are deletable by everyone" ON scores;
 
 -- Enable RLS on scores
 ALTER TABLE scores ENABLE ROW LEVEL SECURITY;
 
--- Allow users to view scores for scorecards they have access to
-CREATE POLICY "Users can view scores for their scorecards"
+-- Allow authenticated users to view all scores (for leaderboards)
+CREATE POLICY "Authenticated users can view all scores"
 ON scores
 FOR SELECT
 TO authenticated
-USING (
-    scorecard_id IN (
-        SELECT id FROM scorecards
-        WHERE player_id = auth.uid()::text
-        OR id IN (SELECT scorecard_id FROM scorecard_players WHERE line_user_id = auth.uid()::text)
-    )
-);
+USING (true);
 
--- Allow users to insert scores for their scorecards
-CREATE POLICY "Users can insert scores"
+-- Allow authenticated users to insert scores
+CREATE POLICY "Authenticated users can insert scores"
 ON scores
 FOR INSERT
 TO authenticated
-WITH CHECK (
-    scorecard_id IN (
-        SELECT id FROM scorecards
-        WHERE player_id = auth.uid()::text
-        OR id IN (SELECT scorecard_id FROM scorecard_players WHERE line_user_id = auth.uid()::text)
-    )
-);
+WITH CHECK (true);
 
--- Allow users to update scores for their scorecards
-CREATE POLICY "Users can update scores"
+-- Allow authenticated users to update scores (for live scoring)
+CREATE POLICY "Authenticated users can update all scores"
 ON scores
 FOR UPDATE
 TO authenticated
-USING (
-    scorecard_id IN (
-        SELECT id FROM scorecards
-        WHERE player_id = auth.uid()::text
-        OR id IN (SELECT scorecard_id FROM scorecard_players WHERE line_user_id = auth.uid()::text)
-    )
-);
+USING (true);
 
 -- 4. Verify the fixes
 SELECT

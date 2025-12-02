@@ -13,12 +13,12 @@ DROP POLICY IF EXISTS "Authenticated users can update their pools" ON side_game_
 -- Enable RLS on side_game_pools
 ALTER TABLE side_game_pools ENABLE ROW LEVEL SECURITY;
 
--- Allow all authenticated users to view active pools
+-- Allow all authenticated users to view all pools
 CREATE POLICY "Users can view active pools"
 ON side_game_pools
 FOR SELECT
 TO authenticated
-USING (status = 'active' OR status = 'completed');
+USING (true);
 
 -- Allow authenticated users to create pools
 CREATE POLICY "Users can create pools"
@@ -27,12 +27,12 @@ FOR INSERT
 TO authenticated
 WITH CHECK (true);
 
--- Allow users to update pools they created
+-- Allow authenticated users to update pools
 CREATE POLICY "Pool creators can update their pools"
 ON side_game_pools
 FOR UPDATE
 TO authenticated
-USING (created_by = auth.uid()::text);
+USING (true);
 
 -- 2. Fix scorecards table policies (400 Bad Request errors)
 -- Drop existing policies (both old and new names)

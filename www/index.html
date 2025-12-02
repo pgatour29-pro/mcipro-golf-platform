@@ -24882,6 +24882,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                         <span class="text-xs font-medium">Individual vs Field</span>
                                     </label>
                                     <label class="flex-1 flex items-center justify-center p-2 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-blue-400">
+                                        <input type="radio" name="matchPlayType" value="roundrobin" class="mr-2" onchange="updateMatchPlayType()">
+                                        <span class="text-xs font-medium">Multiple 1v1</span>
+                                    </label>
+                                    <label class="flex-1 flex items-center justify-center p-2 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-blue-400">
                                         <input type="radio" name="matchPlayType" value="teams" class="mr-2" onchange="updateMatchPlayType()">
                                         <span class="text-xs font-medium">2-Man Teams</span>
                                     </label>
@@ -24892,12 +24896,38 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                     <strong>Individual:</strong> Each player compares their net score on each hole against all other players.
                                 </div>
 
+                                <!-- Round Robin 1v1 Info -->
+                                <div id="matchPlayRoundRobin" class="hidden text-sm text-gray-700">
+                                    <strong>Multiple 1v1 Matches:</strong> Each player plays separate head-to-head matches against selected opponents.<br>
+                                    <span class="text-xs">• Best for 3-player groups<br>
+                                    • Example: With A, B, C - Player A can play vs B and vs C (2 matches)<br>
+                                    • Each match scored independently hole-by-hole</span>
+                                </div>
+
                                 <!-- Team Match Play Info -->
                                 <div id="matchPlayTeams" class="hidden text-sm text-gray-700">
                                     <strong>2-Man Teams:</strong> Best ball vs best ball, second ball breaks ties.<br>
                                     <span class="text-xs">• Scored as Front 9, Back 9, and Overall<br>
                                     • Example: If both teams have 4 (best ball tied), then 5 beats 6 (second ball)<br>
                                     • Can use stroke or stableford scoring</span>
+                                </div>
+
+                                <!-- Round Robin Match Selection -->
+                                <div id="matchPlayRoundRobinSelection" class="hidden mt-3 p-3 bg-white border-2 border-purple-300 rounded-lg">
+                                    <div class="flex items-center gap-2 mb-3">
+                                        <span class="material-symbols-outlined text-purple-600">sports_martial_arts</span>
+                                        <h4 class="font-semibold text-gray-900">Select Your Matches</h4>
+                                    </div>
+                                    <p class="text-xs text-gray-600 mb-3">⚠️ Each player can select which 2 opponents they want to face</p>
+
+                                    <div id="roundRobinMatchContainer" class="space-y-2">
+                                        <!-- Dynamically populated with player match selections -->
+                                    </div>
+
+                                    <div id="roundRobinSelectionError" class="hidden mt-2 p-2 bg-red-100 border border-red-400 rounded text-xs text-red-700"></div>
+                                    <div id="roundRobinSelectionSuccess" class="hidden mt-2 p-2 bg-green-100 border border-green-400 rounded text-xs text-green-700">
+                                        ✅ Matches configured correctly
+                                    </div>
                                 </div>
 
                                 <!-- Team Selection Interface -->
@@ -39260,6 +39290,7 @@ class LiveScorecardSystem {
         this.courseData = null; // Store loaded course data
         this.availableCourses = []; // List of courses from database
         this.matchPlayTeams = null; // Team assignments for 2-man team Match Play: { teamA: [id1, id2], teamB: [id3, id4] }
+        this.roundRobinMatches = null; // Match assignments for round robin 1v1: { playerId: [opponent1Id, opponent2Id] }
     }
 
     // FORCE CACHE CLEAR: Remove all old course caches with tee markers in key
@@ -40841,10 +40872,21 @@ class LiveScorecardSystem {
         this.renderPlayersList();
         this.closeAddPlayerModal();
 
-        // Auto-select match play teams if we now have exactly 4 players and match play is selected
-        if (this.players.length === 4) {
-            const matchPlayCheckbox = document.querySelector('input[name="scoringFormat"][value="matchplay"]');
-            if (matchPlayCheckbox && matchPlayCheckbox.checked) {
+        // Auto-select match play mode based on player count
+        const matchPlayCheckbox = document.querySelector('input[name="scoringFormat"][value="matchplay"]');
+        if (matchPlayCheckbox && matchPlayCheckbox.checked) {
+            if (this.players.length === 3) {
+                // Auto-select Round Robin for 3 players
+                const roundRobinRadio = document.querySelector('input[name="matchPlayType"][value="roundrobin"]');
+                if (roundRobinRadio && !roundRobinRadio.checked) {
+                    console.log('[LiveScorecard] Auto-selecting Round Robin (3rd player added)');
+                    roundRobinRadio.checked = true;
+                    if (typeof updateMatchPlayType === 'function') {
+                        updateMatchPlayType();
+                    }
+                }
+            } else if (this.players.length === 4) {
+                // Auto-select 2-Man Teams for 4 players
                 const teamsRadio = document.querySelector('input[name="matchPlayType"][value="teams"]');
                 if (teamsRadio && !teamsRadio.checked) {
                     console.log('[LiveScorecard] Auto-selecting 2-Man Teams (4th player added)');
@@ -40896,10 +40938,21 @@ class LiveScorecardSystem {
         this.renderPlayersList();
         this.closeAddPlayerModal();
 
-        // Auto-select match play teams if we now have exactly 4 players and match play is selected
-        if (this.players.length === 4) {
-            const matchPlayCheckbox = document.querySelector('input[name="scoringFormat"][value="matchplay"]');
-            if (matchPlayCheckbox && matchPlayCheckbox.checked) {
+        // Auto-select match play mode based on player count
+        const matchPlayCheckbox = document.querySelector('input[name="scoringFormat"][value="matchplay"]');
+        if (matchPlayCheckbox && matchPlayCheckbox.checked) {
+            if (this.players.length === 3) {
+                // Auto-select Round Robin for 3 players
+                const roundRobinRadio = document.querySelector('input[name="matchPlayType"][value="roundrobin"]');
+                if (roundRobinRadio && !roundRobinRadio.checked) {
+                    console.log('[LiveScorecard] Auto-selecting Round Robin (3rd player added)');
+                    roundRobinRadio.checked = true;
+                    if (typeof updateMatchPlayType === 'function') {
+                        updateMatchPlayType();
+                    }
+                }
+            } else if (this.players.length === 4) {
+                // Auto-select 2-Man Teams for 4 players
                 const teamsRadio = document.querySelector('input[name="matchPlayType"][value="teams"]');
                 if (teamsRadio && !teamsRadio.checked) {
                     console.log('[LiveScorecard] Auto-selecting 2-Man Teams (4th player added)');
@@ -40941,10 +40994,12 @@ class LiveScorecardSystem {
             window.calculateScrambleHcp();
         }
 
-        // Populate team dropdowns if Match Play teams mode is active
+        // Populate match play UI if active
         const matchPlayType = document.querySelector('input[name="matchPlayType"]:checked')?.value;
         if (matchPlayType === 'teams') {
             this.populateTeamDropdowns();
+        } else if (matchPlayType === 'roundrobin') {
+            this.populateRoundRobinMatches();
         }
     }
 
@@ -40952,10 +41007,12 @@ class LiveScorecardSystem {
         this.players.splice(index, 1);
         this.renderPlayersList();
 
-        // Repopulate team dropdowns if Match Play teams mode is active
+        // Repopulate match play UI if active
         const matchPlayType = document.querySelector('input[name="matchPlayType"]:checked')?.value;
         if (matchPlayType === 'teams') {
             this.populateTeamDropdowns();
+        } else if (matchPlayType === 'roundrobin') {
+            this.populateRoundRobinMatches();
         }
     }
 
@@ -41099,6 +41156,147 @@ class LiveScorecardSystem {
         };
     }
 
+    // =====================================================
+    // ROUND ROBIN MATCH PLAY MANAGEMENT
+    // =====================================================
+
+    populateRoundRobinMatches() {
+        const container = document.getElementById('roundRobinMatchContainer');
+        if (!container) return;
+
+        // Clear container
+        container.innerHTML = '';
+
+        // Need at least 3 players for round robin
+        if (this.players.length < 3) {
+            container.innerHTML = '<p class="text-sm text-red-600">Add at least 3 players for Multiple 1v1 matches</p>';
+            return;
+        }
+
+        // For each player, let them select 2 opponents
+        this.players.forEach((player, index) => {
+            const playerDiv = document.createElement('div');
+            playerDiv.className = 'p-2 bg-purple-50 border border-purple-300 rounded';
+            playerDiv.innerHTML = `
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="material-symbols-outlined text-purple-600 text-sm">person</span>
+                    <label class="text-sm font-bold text-gray-900">${player.name}</label>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Opponent 1</label>
+                        <select id="rr_${player.id}_opp1" class="w-full text-sm rounded border-2 border-purple-400 px-2 py-1" onchange="LiveScorecardManager.validateRoundRobinSelection()">
+                            <option value="">Select Opponent</option>
+                            ${this.players.filter(p => p.id !== player.id).map(p =>
+                                `<option value="${p.id}">${p.name}</option>`
+                            ).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Opponent 2</label>
+                        <select id="rr_${player.id}_opp2" class="w-full text-sm rounded border-2 border-purple-400 px-2 py-1" onchange="LiveScorecardManager.validateRoundRobinSelection()">
+                            <option value="">Select Opponent</option>
+                            ${this.players.filter(p => p.id !== player.id).map(p =>
+                                `<option value="${p.id}">${p.name}</option>`
+                            ).join('')}
+                        </select>
+                    </div>
+                </div>
+            `;
+            container.appendChild(playerDiv);
+        });
+
+        // Validate after populating
+        this.validateRoundRobinSelection();
+    }
+
+    validateRoundRobinSelection() {
+        const errorDiv = document.getElementById('roundRobinSelectionError');
+        const successDiv = document.getElementById('roundRobinSelectionSuccess');
+
+        if (!errorDiv || !successDiv) return false;
+
+        const matches = {};
+        let allValid = true;
+
+        // Collect all match selections
+        this.players.forEach(player => {
+            const opp1 = document.getElementById(`rr_${player.id}_opp1`)?.value;
+            const opp2 = document.getElementById(`rr_${player.id}_opp2`)?.value;
+
+            // Check if both opponents are selected
+            if (!opp1 || !opp2) {
+                allValid = false;
+                return;
+            }
+
+            // Check if same opponent selected twice
+            if (opp1 === opp2) {
+                errorDiv.textContent = `❌ ${player.name} cannot play the same opponent twice`;
+                errorDiv.classList.remove('hidden');
+                successDiv.classList.add('hidden');
+                this.roundRobinMatches = null;
+                allValid = false;
+                return;
+            }
+
+            matches[player.id] = [opp1, opp2];
+        });
+
+        if (!allValid || Object.keys(matches).length === 0) {
+            if (allValid) { // Only hide if no specific error was shown
+                errorDiv.classList.add('hidden');
+                successDiv.classList.add('hidden');
+            }
+            this.roundRobinMatches = null;
+            return false;
+        }
+
+        // Store round robin configuration
+        this.roundRobinMatches = matches;
+
+        errorDiv.classList.add('hidden');
+        successDiv.classList.remove('hidden');
+        return true;
+    }
+
+    getRoundRobinMatchConfig() {
+        // Returns round robin match configuration if Round Robin mode is active
+        const matchPlayType = document.querySelector('input[name="matchPlayType"]:checked')?.value;
+
+        if (matchPlayType !== 'roundrobin' || !this.roundRobinMatches) {
+            return null;
+        }
+
+        // Build match data structure
+        const matchData = {};
+
+        Object.keys(this.roundRobinMatches).forEach(playerId => {
+            const player = this.players.find(p => p.id === playerId);
+            if (!player) return;
+
+            const opponents = this.roundRobinMatches[playerId];
+
+            matchData[playerId] = {
+                player: {
+                    id: player.id,
+                    name: player.name,
+                    handicap: player.handicap
+                },
+                matches: opponents.map(oppId => {
+                    const opponent = this.players.find(p => p.id === oppId);
+                    return opponent ? {
+                        id: opponent.id,
+                        name: opponent.name,
+                        handicap: opponent.handicap
+                    } : null;
+                }).filter(o => o !== null)
+            };
+        });
+
+        return matchData;
+    }
+
     async startRound() {
         console.log('[LiveScorecard] 🎯 Start Round button clicked!');
 
@@ -41198,6 +41396,20 @@ class LiveScorecardSystem {
                 }
 
                 console.log('[LiveScorecard] Team Match Play validated:', this.matchPlayTeams);
+            } else if (matchPlayType === 'roundrobin') {
+                // Round robin requires at least 3 players
+                if (this.players.length < 3) {
+                    NotificationManager.show('Multiple 1v1 Match Play requires at least 3 players', 'error');
+                    return;
+                }
+
+                // Validate round robin matches are configured
+                if (!this.validateRoundRobinSelection()) {
+                    NotificationManager.show('Please select 2 opponents for each player in the Round Robin Match Play configuration', 'error');
+                    return;
+                }
+
+                console.log('[LiveScorecard] Round Robin Match Play validated:', this.roundRobinMatches);
             }
         }
 
@@ -47280,9 +47492,20 @@ window.toggleFormatCheckbox = function(label, event) {
         if (selectedFormats.includes('matchplay')) {
             matchPlaySection.style.display = 'block';
 
-            // Auto-select 2-Man Teams if exactly 4 players are added
+            // Auto-select match play mode based on player count
             const playerCount = LiveScorecardManager?.players?.length || 0;
-            if (playerCount === 4) {
+            if (playerCount === 3) {
+                // Auto-select Round Robin for 3 players
+                const roundRobinRadio = document.querySelector('input[name="matchPlayType"][value="roundrobin"]');
+                if (roundRobinRadio && !roundRobinRadio.checked) {
+                    console.log('[LiveScorecard] Auto-selecting Round Robin (3 players detected)');
+                    roundRobinRadio.checked = true;
+                    if (typeof updateMatchPlayType === 'function') {
+                        updateMatchPlayType();
+                    }
+                }
+            } else if (playerCount === 4) {
+                // Auto-select 2-Man Teams for 4 players
                 const teamsRadio = document.querySelector('input[name="matchPlayType"][value="teams"]');
                 if (teamsRadio && !teamsRadio.checked) {
                     console.log('[LiveScorecard] Auto-selecting 2-Man Teams (4 players detected)');
@@ -47444,20 +47667,40 @@ window.updateMatchPlayType = function() {
     const selected = document.querySelector('input[name="matchPlayType"]:checked')?.value;
 
     const individualDiv = document.getElementById('matchPlayIndividual');
+    const roundRobinDiv = document.getElementById('matchPlayRoundRobin');
+    const roundRobinSelectionDiv = document.getElementById('matchPlayRoundRobinSelection');
     const teamsDiv = document.getElementById('matchPlayTeams');
     const teamSelectionDiv = document.getElementById('matchPlayTeamSelection');
 
-    if (selected === 'teams') {
+    if (selected === 'roundrobin') {
+        // Show round robin UI
         individualDiv.classList.add('hidden');
+        roundRobinDiv.classList.remove('hidden');
+        roundRobinSelectionDiv.classList.remove('hidden');
+        teamsDiv.classList.add('hidden');
+        teamSelectionDiv.classList.add('hidden');
+
+        // Populate round robin match selection if LiveScorecardManager exists
+        if (window.LiveScorecardManager) {
+            window.LiveScorecardManager.populateRoundRobinMatches();
+        }
+    } else if (selected === 'teams') {
+        // Show teams UI
+        individualDiv.classList.add('hidden');
+        roundRobinDiv.classList.add('hidden');
+        roundRobinSelectionDiv.classList.add('hidden');
         teamsDiv.classList.remove('hidden');
         teamSelectionDiv.classList.remove('hidden');
 
-        // Populate team dropdowns if LiveScorecardSystem instance exists
-        if (LiveScorecardSystem.instance) {
-            LiveScorecardSystem.instance.populateTeamDropdowns();
+        // Populate team dropdowns if LiveScorecardManager exists
+        if (window.LiveScorecardManager) {
+            window.LiveScorecardManager.populateTeamDropdowns();
         }
     } else {
+        // Show individual UI
         individualDiv.classList.remove('hidden');
+        roundRobinDiv.classList.add('hidden');
+        roundRobinSelectionDiv.classList.add('hidden');
         teamsDiv.classList.add('hidden');
         teamSelectionDiv.classList.add('hidden');
     }

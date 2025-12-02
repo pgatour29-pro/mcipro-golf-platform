@@ -59134,7 +59134,13 @@ class OrganizerScoringSystem {
     }
 
     async init() {
-        console.log('[OrganizerScoring] Initializing scoring system...');
+        console.log('[OrganizerScoring] 🚀 Initializing scoring system...');
+        console.log('[OrganizerScoring] Current user:', AppState.currentUser);
+        console.log('[OrganizerScoring] LINE ID:', AppState.currentUser?.lineUserId);
+
+        const dropdown = document.getElementById('organizerScoringEventSelect');
+        console.log('[OrganizerScoring] Dropdown element found:', !!dropdown);
+
         await this.loadEvents();
         this.updatePointsTable();
     }
@@ -59142,22 +59148,54 @@ class OrganizerScoringSystem {
     async loadEvents() {
         try {
             const userId = AppState.currentUser?.lineUserId;
-            if (!userId) return;
+            console.log('[OrganizerScoring] 🔍 Loading events for user:', userId);
+
+            if (!userId) {
+                console.error('[OrganizerScoring] ❌ No user ID - cannot load events');
+                NotificationManager.show('Please log in to view scoring', 'error');
+                return;
+            }
 
             // Load ALL events (filtering by organizer_id causes 400 error)
+            console.log('[OrganizerScoring] Querying society_events table...');
             const { data: allEvents, error } = await window.SupabaseDB.client
                 .from('society_events')
                 .select('*')
                 .limit(100);
 
+            console.log('[OrganizerScoring] Query result:', {
+                eventsCount: allEvents?.length || 0,
+                error: error
+            });
+
             if (error) {
-                console.error('[OrganizerScoring] Error loading events:', error);
+                console.error('[OrganizerScoring] ❌ Error loading events:', error);
+                NotificationManager.show('Failed to load events: ' + error.message, 'error');
+                return;
+            }
+
+            if (!allEvents || allEvents.length === 0) {
+                console.warn('[OrganizerScoring] ⚠️ No events found in database');
+                NotificationManager.show('No events found in database', 'warning');
                 return;
             }
 
             // Filter events in JavaScript where organizer_id matches OR user is Travellers (sees all)
             const isTravellers = AppState.currentUser?.organizationInfo?.societyName === 'Travellers Rest Golf Group';
+            console.log('[OrganizerScoring] Is Travellers user:', isTravellers);
+
             const events = isTravellers ? allEvents : allEvents.filter(e => e.organizer_id === userId);
+            console.log('[OrganizerScoring] Events after filtering:', events.length);
+
+            if (events.length === 0) {
+                console.warn('[OrganizerScoring] ⚠️ No events match user filter');
+                console.log('[OrganizerScoring] Sample of all events:', allEvents.slice(0, 3).map(e => ({
+                    id: e.id,
+                    title: e.title,
+                    organizer_id: e.organizer_id
+                })));
+                NotificationManager.show(`No events found for organizer (${allEvents.length} total events in database)`, 'warning');
+            }
 
             // Store events for filtering
             this.allEvents = events;
@@ -59165,15 +59203,21 @@ class OrganizerScoringSystem {
             // Render dropdown
             this.renderEventDropdown(events);
 
-            console.log(`[OrganizerScoring] Loaded ${events.length} events (filtered from ${allEvents.length})`);
+            console.log(`[OrganizerScoring] ✅ Loaded ${events.length} events (filtered from ${allEvents.length})`);
         } catch (error) {
-            console.error('[OrganizerScoring] Error in loadEvents:', error);
+            console.error('[OrganizerScoring] ❌ Exception in loadEvents:', error);
+            NotificationManager.show('Error loading events: ' + error.message, 'error');
         }
     }
 
     renderEventDropdown(events) {
         const select = document.getElementById('organizerScoringEventSelect');
-        if (!select) return;
+        if (!select) {
+            console.error('[OrganizerScoring] ❌ Dropdown element not found!');
+            return;
+        }
+
+        console.log('[OrganizerScoring] 📋 Rendering dropdown with', events.length, 'events');
 
         const currentValue = select.value; // Preserve current selection
         select.innerHTML = '<option value="">-- Select an event --</option>';

@@ -29,7 +29,7 @@ CREATE POLICY "Pool creators can update their pools"
 ON side_game_pools
 FOR UPDATE
 TO authenticated
-USING (created_by = auth.uid());
+USING (created_by = auth.uid()::text);
 
 -- 2. Fix scorecards table policies (400 Bad Request errors)
 -- Drop existing policies
@@ -47,9 +47,9 @@ ON scorecards
 FOR SELECT
 TO authenticated
 USING (
-    player_id = auth.uid()
+    player_id = auth.uid()::text
     OR id IN (
-        SELECT scorecard_id FROM scorecard_players WHERE line_user_id = auth.uid()
+        SELECT scorecard_id FROM scorecard_players WHERE line_user_id = auth.uid()::text
     )
 );
 
@@ -61,7 +61,7 @@ TO authenticated
 USING (
     event_id IS NOT NULL
     AND event_id IN (
-        SELECT event_id FROM event_registrations WHERE player_id = auth.uid()
+        SELECT event_id FROM event_registrations WHERE player_id = auth.uid()::text
     )
 );
 
@@ -70,7 +70,7 @@ CREATE POLICY "Users can insert their own scorecards"
 ON scorecards
 FOR INSERT
 TO authenticated
-WITH CHECK (player_id = auth.uid());
+WITH CHECK (player_id = auth.uid()::text);
 
 -- Allow users to update their own scorecards
 CREATE POLICY "Users can update their own scorecards"
@@ -78,9 +78,9 @@ ON scorecards
 FOR UPDATE
 TO authenticated
 USING (
-    player_id = auth.uid()
+    player_id = auth.uid()::text
     OR id IN (
-        SELECT scorecard_id FROM scorecard_players WHERE line_user_id = auth.uid()
+        SELECT scorecard_id FROM scorecard_players WHERE line_user_id = auth.uid()::text
     )
 );
 
@@ -101,8 +101,8 @@ TO authenticated
 USING (
     scorecard_id IN (
         SELECT id FROM scorecards
-        WHERE player_id = auth.uid()
-        OR id IN (SELECT scorecard_id FROM scorecard_players WHERE line_user_id = auth.uid())
+        WHERE player_id = auth.uid()::text
+        OR id IN (SELECT scorecard_id FROM scorecard_players WHERE line_user_id = auth.uid()::text)
     )
 );
 
@@ -114,8 +114,8 @@ TO authenticated
 WITH CHECK (
     scorecard_id IN (
         SELECT id FROM scorecards
-        WHERE player_id = auth.uid()
-        OR id IN (SELECT scorecard_id FROM scorecard_players WHERE line_user_id = auth.uid())
+        WHERE player_id = auth.uid()::text
+        OR id IN (SELECT scorecard_id FROM scorecard_players WHERE line_user_id = auth.uid()::text)
     )
 );
 
@@ -127,8 +127,8 @@ TO authenticated
 USING (
     scorecard_id IN (
         SELECT id FROM scorecards
-        WHERE player_id = auth.uid()
-        OR id IN (SELECT scorecard_id FROM scorecard_players WHERE line_user_id = auth.uid())
+        WHERE player_id = auth.uid()::text
+        OR id IN (SELECT scorecard_id FROM scorecard_players WHERE line_user_id = auth.uid()::text)
     )
 );
 

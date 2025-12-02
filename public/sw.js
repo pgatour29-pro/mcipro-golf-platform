@@ -1,7 +1,7 @@
 // SERVICE WORKER - UNREGISTRATION VERSION
 // This version clears all caches and unregisters itself
 
-const SW_VERSION = 'organizer-scoring-prefix-derivation-fix-v1';
+const SW_VERSION = 'organizer-scoring-correct-prefix-fix-v2';
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing unregistration version');

@@ -37379,24 +37379,50 @@ class SocietyGolfSupabase {
             return [];
         }
 
-        return (data || []).map(r => ({
-            id: r.id,
-            eventId: r.event_id,
-            playerName: r.player_name,
-            playerId: r.player_id,
-            handicap: r.handicap,
-            partnerPrefs: r.partner_prefs || [],
-            wantTransport: r.want_transport,
-            wantCompetition: r.want_competition,
-            pairedGroup: r.paired_group,
-            createdAt: r.created_at,
-            // Payment tracking fields
-            total_fee: r.total_fee || 0,
-            payment_status: r.payment_status || 'unpaid',
-            amount_paid: r.amount_paid || 0,
-            paid_at: r.paid_at,
-            paid_by: r.paid_by
+        // Fetch user profiles for any registrations with missing handicaps
+        const registrations = await Promise.all((data || []).map(async r => {
+            let handicap = r.handicap;
+
+            // If handicap is missing and we have a player_id, fetch from user profile
+            if ((handicap === null || handicap === undefined) && r.player_id) {
+                try {
+                    const { data: profileData, error: profileError } = await window.SupabaseDB.client
+                        .from('user_profiles')
+                        .select('profile_data')
+                        .eq('line_user_id', r.player_id)
+                        .maybeSingle();
+
+                    if (!profileError && profileData?.profile_data) {
+                        const golfInfo = profileData.profile_data.golfInfo || {};
+                        handicap = parseFloat(golfInfo.handicap) || parseFloat(profileData.profile_data.handicap) || null;
+                        console.log(`[SocietyGolf] Fetched handicap for ${r.player_name}: ${handicap}`);
+                    }
+                } catch (err) {
+                    console.warn(`[SocietyGolf] Could not fetch handicap for ${r.player_name}:`, err);
+                }
+            }
+
+            return {
+                id: r.id,
+                eventId: r.event_id,
+                playerName: r.player_name,
+                playerId: r.player_id,
+                handicap: handicap,
+                partnerPrefs: r.partner_prefs || [],
+                wantTransport: r.want_transport,
+                wantCompetition: r.want_competition,
+                pairedGroup: r.paired_group,
+                createdAt: r.created_at,
+                // Payment tracking fields
+                total_fee: r.total_fee || 0,
+                payment_status: r.payment_status || 'unpaid',
+                amount_paid: r.amount_paid || 0,
+                paid_at: r.paid_at,
+                paid_by: r.paid_by
+            };
         }));
+
+        return registrations;
     }
 
     async registerPlayer(eventId, playerData) {

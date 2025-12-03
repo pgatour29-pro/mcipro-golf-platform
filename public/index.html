@@ -42926,7 +42926,7 @@ class LiveScorecardSystem {
     async distributeRoundScores() {
         try {
             console.log('[LiveScorecard] ========================================');
-            console.log('[LiveScorecard] SAVING ROUND FOR CURRENT USER');
+            console.log('[LiveScorecard] SAVING ALL PLAYERS\' ROUNDS TO THEIR HISTORIES');
             console.log('[LiveScorecard] Total players in group:', this.players.length);
             console.log('[LiveScorecard] ========================================');
 
@@ -42940,14 +42940,9 @@ class LiveScorecardSystem {
             const savedRounds = [];
             let playersWithScores = 0;
 
-            // CRITICAL FIX: Save ONLY the current user's round (not all players)
-            // Other players will save their own rounds when they log in
+            // CRITICAL FIX: Save ALL players' rounds to their respective histories
+            // Each round is saved with the correct golfer_id, and queries filter by user
             for (const player of this.players) {
-                // ONLY save round for the current logged-in user
-                if (player.lineUserId !== currentUser.lineUserId) {
-                    console.log(`[LiveScorecard] Skipping ${player.name} - not current user`);
-                    continue;
-                }
                 // Skip players without LINE user ID (guest players)
                 if (!player.lineUserId || player.lineUserId.trim() === '') {
                     console.log(`[LiveScorecard] Skipping ${player.name} - no LINE user ID (guest player)`);
@@ -42995,12 +42990,18 @@ class LiveScorecardSystem {
             // Show success notification
             if (savedRounds.length === 0) {
                 NotificationManager.show('No scores to save', 'warning');
-            } else {
-                // Only one round saved (current user's)
+            } else if (savedRounds.length === 1) {
                 if (!this.isPrivateRound && this.eventId) {
                     NotificationManager.show(`Round saved and posted to event!`, 'success');
                 } else {
-                    NotificationManager.show(`Round saved to your history!`, 'success');
+                    NotificationManager.show(`Round saved to history!`, 'success');
+                }
+            } else {
+                // Multiple players
+                if (!this.isPrivateRound && this.eventId) {
+                    NotificationManager.show(`${savedRounds.length} rounds saved and posted to event!`, 'success');
+                } else {
+                    NotificationManager.show(`${savedRounds.length} rounds saved to player histories!`, 'success');
                 }
             }
 

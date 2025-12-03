@@ -485,7 +485,7 @@ class SocietyGolfSupabase {
                 id: p.id,
                 name: p.display_name || p.username,
                 username: p.username,
-                handicap: golfInfo.handicap ? parseFloat(golfInfo.handicap) : 36,
+                handicap: golfInfo.handicap || 36,  // KEEP AS STRING to preserve + sign
                 homeClub: golfInfo.homeClub || '',
                 profileData: p.profile_data
             };

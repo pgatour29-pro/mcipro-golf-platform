@@ -5507,6 +5507,11 @@
                         // Batch save all bookings in one transaction
                         await window.SupabaseDB.batchSaveBookings(cleanBookings);
 
+                        // DISABLED: Profile sync temporarily disabled to prevent handicap corruption
+                        // Profiles should only be saved when explicitly edited, not during auto-sync
+                        console.log('[SimpleCloudSync] ⚠️ Profile sync disabled - bookings only');
+
+                        /* COMMENTED OUT - CAUSING HANDICAP CORRUPTION
                         // Batch save all profiles
                         const profilePromises = profiles.map(profile =>
                             window.SupabaseDB.saveUserProfile(profile).catch(err => {
@@ -5516,6 +5521,7 @@
                         );
 
                         await Promise.all(profilePromises);
+                        */
                         console.log('[SimpleCloudSync] ✅ Batch save complete');
                     } catch (err) {
                         console.error('[SimpleCloudSync] Batch save failed, falling back to individual saves');
@@ -15309,7 +15315,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-2">Current Handicap</label>
-                                    <input type="number" id="handicap" value="${profile.golfInfo?.handicap || profile.roleSpecific?.handicap || ''}"
+                                    <input type="text" id="handicap" value="${profile.golfInfo?.handicap || profile.roleSpecific?.handicap || ''}" placeholder="+5 to 54"
                                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary-500 focus:border-primary-500">
                                 </div>
                                 <div>
@@ -15923,12 +15929,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                 const isPlus = handicapMatch[1] === '+';
                                 const handicapValue = parseFloat(handicapMatch[2]);
                                 // Store as string to preserve the "+" sign if present
-                                handicap = isPlus ? `+${handicapValue}` : handicapValue;
+                                handicap = isPlus ? `+${handicapValue}` : handicapValue.toString();
                             } else {
                                 // If invalid format, try to parse as number anyway
                                 const parsed = parseFloat(handicapInput);
                                 if (!isNaN(parsed)) {
-                                    handicap = parsed;
+                                    handicap = parsed.toString();
                                 }
                             }
                         }
@@ -24913,9 +24919,9 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 </div>
 
                                 <!-- Round Robin Match Selection -->
-                                <div id="matchPlayRoundRobinSelection" class="hidden mt-3 p-3 bg-white border-2 border-purple-300 rounded-lg">
+                                <div id="matchPlayRoundRobinSelection" class="hidden mt-3 p-3 bg-white border-2 border-green-300 rounded-lg">
                                     <div class="flex items-center gap-2 mb-3">
-                                        <span class="material-symbols-outlined text-purple-600">sports_martial_arts</span>
+                                        <span class="material-symbols-outlined text-green-600">sports_martial_arts</span>
                                         <h4 class="font-semibold text-gray-900">Select Your Matches</h4>
                                     </div>
                                     <p class="text-xs text-gray-600 mb-3">⚠️ Each player can select which 2 opponents they want to face</p>
@@ -32117,15 +32123,15 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Handicap</label>
-                    <input type="number" id="adminEditUserHandicap" placeholder="Enter handicap" step="0.1" min="-5" max="54" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                    <input type="text" id="adminEditUserHandicap" placeholder="Enter handicap (+5 to 54)" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Society Affiliation</label>
-                    <input type="text" id="adminEditUserSociety" placeholder="Society name (if any)" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                    <input type="text" id="adminEditUserSociety" placeholder="Society name (if any)" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Role</label>
-                    <select id="adminEditUserRole" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                    <select id="adminEditUserRole" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                         <option value="golfer">Golfer</option>
                         <option value="caddie">Caddie</option>
                         <option value="manager">Manager</option>
@@ -36551,13 +36557,31 @@ const AdminSystem = {
             const userId = document.getElementById('adminEditUserId').value;
             const fullName = document.getElementById('adminEditUserFullName').value.trim();
             const username = document.getElementById('adminEditUserUsername').value.trim();
-            const handicap = document.getElementById('adminEditUserHandicap').value.trim();
+            const handicapInput = document.getElementById('adminEditUserHandicap').value.trim();
             const society = document.getElementById('adminEditUserSociety').value.trim();
             const role = document.getElementById('adminEditUserRole').value;
 
             if (!fullName) {
                 DevMode.showNotification('Name is required', 'error');
                 return;
+            }
+
+            // Parse and validate handicap to preserve + sign
+            let handicap = null;
+            if (handicapInput && handicapInput !== '') {
+                const handicapMatch = handicapInput.match(/^(\+)?(\d+\.?\d*)$/);
+                if (handicapMatch) {
+                    const isPlus = handicapMatch[1] === '+';
+                    const handicapValue = parseFloat(handicapMatch[2]);
+                    // Store as string to preserve the "+" sign if present
+                    handicap = isPlus ? `+${handicapValue}` : handicapValue.toString();
+                } else {
+                    // If invalid format, try to parse as number anyway
+                    const parsed = parseFloat(handicapInput);
+                    if (!isNaN(parsed)) {
+                        handicap = parsed.toString();
+                    }
+                }
             }
 
             // Split name into first and last
@@ -36582,14 +36606,14 @@ const AdminSystem = {
             this.users[userIndex].society_name = society;
             this.users[userIndex].role = role;
 
-            // Update handicap in profile_data
+            // Update handicap in profile_data (store as string to preserve + sign)
             if (!this.users[userIndex].profile_data) {
                 this.users[userIndex].profile_data = {};
             }
             if (!this.users[userIndex].profile_data.golfInfo) {
                 this.users[userIndex].profile_data.golfInfo = {};
             }
-            this.users[userIndex].profile_data.golfInfo.handicap = handicap ? parseFloat(handicap) : null;
+            this.users[userIndex].profile_data.golfInfo.handicap = handicap;
 
             const updatePayload = {
                 name: fullName,
@@ -36623,7 +36647,10 @@ const AdminSystem = {
             console.log('[AdminSystem] ✅ Update successful:', data);
             DevMode.showNotification(`${fullName} updated successfully`, 'success');
             this.closeEditUserModal();
-            await this.loadUsersTable();
+
+            // CRITICAL: Reload users from database to get fresh data with correct handicap
+            await this.loadData();
+            this.loadUsersTable();
         } catch (error) {
             console.error('[AdminSystem] ❌ Unexpected error:', error);
             console.error('  - Type:', typeof error);
@@ -37394,7 +37421,8 @@ class SocietyGolfSupabase {
 
                     if (!profileError && profileData?.profile_data) {
                         const golfInfo = profileData.profile_data.golfInfo || {};
-                        handicap = parseFloat(golfInfo.handicap) || parseFloat(profileData.profile_data.handicap) || null;
+                        // KEEP AS STRING to preserve + sign for plus handicaps
+                        handicap = golfInfo.handicap || profileData.profile_data.handicap || null;
                         console.log(`[SocietyGolf] Fetched handicap for ${r.player_name}: ${handicap}`);
                     }
                 } catch (err) {
@@ -41039,15 +41067,8 @@ class LiveScorecardSystem {
         const matchPlayCheckbox = document.querySelector('input[name="scoringFormat"][value="matchplay"]');
         if (matchPlayCheckbox && matchPlayCheckbox.checked) {
             if (this.players.length === 3) {
-                // Auto-check Round Robin for 3 players
-                const roundRobinCheckbox = document.querySelector('input[name="matchPlayType"][value="roundrobin"]');
-                if (roundRobinCheckbox && !roundRobinCheckbox.checked) {
-                    console.log('[LiveScorecard] Auto-checking Round Robin (3rd player added)');
-                    roundRobinCheckbox.checked = true;
-                    if (typeof updateMatchPlayType === 'function') {
-                        updateMatchPlayType();
-                    }
-                }
+                // For 3 players, don't auto-check anything - let user choose both modes if desired
+                console.log('[LiveScorecard] 3 players detected - user can select Round Robin, Teams, or both');
             } else if (this.players.length === 4) {
                 // Auto-check 2-Man Teams for 4 players
                 const teamsCheckbox = document.querySelector('input[name="matchPlayType"][value="teams"]');
@@ -41105,15 +41126,8 @@ class LiveScorecardSystem {
         const matchPlayCheckbox = document.querySelector('input[name="scoringFormat"][value="matchplay"]');
         if (matchPlayCheckbox && matchPlayCheckbox.checked) {
             if (this.players.length === 3) {
-                // Auto-check Round Robin for 3 players
-                const roundRobinCheckbox = document.querySelector('input[name="matchPlayType"][value="roundrobin"]');
-                if (roundRobinCheckbox && !roundRobinCheckbox.checked) {
-                    console.log('[LiveScorecard] Auto-checking Round Robin (3rd player added)');
-                    roundRobinCheckbox.checked = true;
-                    if (typeof updateMatchPlayType === 'function') {
-                        updateMatchPlayType();
-                    }
-                }
+                // For 3 players, don't auto-check anything - let user choose both modes if desired
+                console.log('[LiveScorecard] 3 players detected - user can select Round Robin, Teams, or both');
             } else if (this.players.length === 4) {
                 // Auto-check 2-Man Teams for 4 players
                 const teamsCheckbox = document.querySelector('input[name="matchPlayType"][value="teams"]');
@@ -41383,16 +41397,16 @@ class LiveScorecardSystem {
         // For each player, let them select 2 opponents
         this.players.forEach((player, index) => {
             const playerDiv = document.createElement('div');
-            playerDiv.className = 'p-2 bg-purple-50 border border-purple-300 rounded';
+            playerDiv.className = 'p-2 bg-blue-50 border border-blue-300 rounded';
             playerDiv.innerHTML = `
                 <div class="flex items-center gap-2 mb-2">
-                    <span class="material-symbols-outlined text-purple-600 text-sm">person</span>
+                    <span class="material-symbols-outlined text-blue-600 text-sm">person</span>
                     <label class="text-sm font-bold text-gray-900">${player.name}</label>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
                         <label class="block text-xs text-gray-600 mb-1">Opponent 1</label>
-                        <select id="rr_${player.id}_opp1" class="w-full text-sm rounded border-2 border-purple-400 px-2 py-1" onchange="LiveScorecardManager.validateRoundRobinSelection()">
+                        <select id="rr_${player.id}_opp1" class="w-full text-sm rounded border-2 border-blue-400 px-2 py-1" onchange="LiveScorecardManager.validateRoundRobinSelection()">
                             <option value="">Select Opponent</option>
                             ${this.players.filter(p => p.id !== player.id).map(p =>
                                 `<option value="${p.id}">${p.name}</option>`
@@ -41401,7 +41415,7 @@ class LiveScorecardSystem {
                     </div>
                     <div>
                         <label class="block text-xs text-gray-600 mb-1">Opponent 2</label>
-                        <select id="rr_${player.id}_opp2" class="w-full text-sm rounded border-2 border-purple-400 px-2 py-1" onchange="LiveScorecardManager.validateRoundRobinSelection()">
+                        <select id="rr_${player.id}_opp2" class="w-full text-sm rounded border-2 border-blue-400 px-2 py-1" onchange="LiveScorecardManager.validateRoundRobinSelection()">
                             <option value="">Select Opponent</option>
                             ${this.players.filter(p => p.id !== player.id).map(p =>
                                 `<option value="${p.id}">${p.name}</option>`
@@ -41696,6 +41710,15 @@ class LiveScorecardSystem {
                 );
 
                 // Update with group and course info
+                // Build match play configuration to save
+                const matchPlayConfig = {};
+                if (this.matchPlayTeams) {
+                    matchPlayConfig.teams = this.matchPlayTeams;
+                }
+                if (this.roundRobinMatches) {
+                    matchPlayConfig.roundRobin = this.roundRobinMatches;
+                }
+
                 const { error: updateError } = await window.SupabaseDB.client
                     .from('scorecards')
                     .update({
@@ -41704,7 +41727,8 @@ class LiveScorecardSystem {
                         course_name: this.courseData.name,
                         tee_marker: teeMarker,
                         player_name: player.name,
-                        scoring_format: JSON.stringify(this.scoringFormats)
+                        scoring_format: JSON.stringify(this.scoringFormats),
+                        match_play_config: Object.keys(matchPlayConfig).length > 0 ? JSON.stringify(matchPlayConfig) : null
                     })
                     .eq('id', scorecard.id);
 
@@ -41731,6 +41755,15 @@ class LiveScorecardSystem {
             isOfflineMode = true;
             this.scorecards = {}; // Reset any partial online scorecards
 
+            // Build match play configuration to save
+                const matchPlayConfig = {};
+                if (this.matchPlayTeams) {
+                    matchPlayConfig.teams = this.matchPlayTeams;
+                }
+                if (this.roundRobinMatches) {
+                    matchPlayConfig.roundRobin = this.roundRobinMatches;
+                }
+
             for (const p of this.players) {
                     // Generate temporary local scorecard ID
                     const localId = `local_${this.groupId}_${p.id}`;
@@ -41749,6 +41782,7 @@ class LiveScorecardSystem {
                         course_name: this.courseData.name,
                         tee_marker: teeMarker,
                         scoring_format: this.scoringFormats,
+                        match_play_config: Object.keys(matchPlayConfig).length > 0 ? matchPlayConfig : null,
                         status: 'in_progress',
                         started_at: new Date().toISOString(),
                         pending_sync: true, // Mark for later sync to Supabase
@@ -45733,7 +45767,7 @@ class LiveScorecardSystem {
 
         return `
             <div class="mb-6 ${formatIndex > 0 ? 'mt-6 pt-6 border-t-4 border-gray-300' : ''}">
-                <h3 class="text-lg font-bold text-gray-900 mb-3 bg-gradient-to-r from-purple-100 to-purple-50 px-4 py-2 rounded-lg border-l-4 border-purple-500">
+                <h3 class="text-lg font-bold text-gray-900 mb-3 bg-gradient-to-r from-green-100 to-green-50 px-4 py-2 rounded-lg border-l-4 border-green-500">
                     ${formatName} - Round Robin
                 </h3>
 
@@ -45748,7 +45782,7 @@ class LiveScorecardSystem {
                                 <th class="py-2 px-2 text-center bg-green-50">Won</th>
                                 <th class="py-2 px-2 text-center bg-gray-50">Halved</th>
                                 <th class="py-2 px-2 text-center bg-red-50">Lost</th>
-                                <th class="py-2 px-2 text-center bg-purple-50 font-bold">Status</th>
+                                <th class="py-2 px-2 text-center bg-gray-50 font-bold">Status</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -45846,7 +45880,7 @@ class LiveScorecardSystem {
                 </div>
 
                 <!-- Legend -->
-                <div class="text-xs text-gray-600 p-3 bg-purple-50 rounded-lg mt-4">
+                <div class="text-xs text-gray-600 p-3 bg-green-50 rounded-lg mt-4">
                     <strong>Round Robin Match Play:</strong>
                     <span class="ml-2">Main table shows aggregate results across all opponents</span>
                     <span class="ml-2">• Individual tables show head-to-head breakdown</span>
@@ -45856,8 +45890,152 @@ class LiveScorecardSystem {
         `;
     }
 
+    renderTeamMatchPlayLeaderboard(leaderboard, formatIndex, formatName) {
+        // Sort by net holes (holes up)
+        leaderboard.sort((a, b) => (b.matchplay?.netHoles || 0) - (a.matchplay?.netHoles || 0));
+
+        const isTeamMode = leaderboard.some(entry => entry.matchplay?.team);
+
+        // Build team display HTML if teams are configured
+        let teamDisplayHtml = '';
+        if (this.matchPlayTeams) {
+            const teamAPlayers = this.matchPlayTeams.teamA.map(id => {
+                const player = this.players.find(p => p.id === id);
+                return player ? player.name : 'Unknown';
+            }).join(' + ');
+            const teamBPlayers = this.matchPlayTeams.teamB.map(id => {
+                const player = this.players.find(p => p.id === id);
+                return player ? player.name : 'Unknown';
+            }).join(' + ');
+
+            teamDisplayHtml = `
+                <div class="mb-4 p-3 bg-gradient-to-r from-blue-50 to-red-50 rounded-lg border-2 border-gray-300">
+                    <div class="font-semibold text-gray-900 mb-2 text-center">Team Match Play</div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="text-center p-2 bg-blue-100 rounded border border-blue-400">
+                            <div class="font-bold text-blue-900 mb-1">Team A</div>
+                            <div class="text-sm text-blue-800">${teamAPlayers}</div>
+                        </div>
+                        <div class="text-center p-2 bg-red-100 rounded border border-red-400">
+                            <div class="font-bold text-red-900 mb-1">Team B</div>
+                            <div class="text-sm text-red-800">${teamBPlayers}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="mb-6 ${formatIndex > 0 ? 'mt-6 pt-6 border-t-4 border-gray-300' : ''}">
+                <h3 class="text-lg font-bold text-gray-900 mb-3 bg-gradient-to-r from-blue-100 to-red-50 px-4 py-2 rounded-lg border-l-4 border-blue-500">
+                    ${formatName} Leaderboard - Team Match Play
+                </h3>
+
+                ${teamDisplayHtml}
+
+                <!-- Team Match Play Table -->
+                <div class="overflow-x-auto mb-4">
+                    <table class="w-full text-sm">
+                        <thead class="border-b-2 border-gray-300">
+                            <tr class="text-left">
+                                <th class="py-2 px-2">Pos</th>
+                                ${isTeamMode ? '<th class="py-2 px-2 text-center bg-orange-50">Team</th>' : ''}
+                                <th class="py-2 px-2">Player</th>
+                                <th class="py-2 px-2">Thru</th>
+                                <th class="py-2 px-2 text-center bg-green-50">Won</th>
+                                ${!isTeamMode ? '<th class="py-2 px-2 text-center bg-gray-50">Halved</th>' : ''}
+                                <th class="py-2 px-2 text-center bg-red-50">Lost</th>
+                                <th class="py-2 px-2 text-center bg-gray-50 font-bold">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${leaderboard.map((entry, index) => {
+                                const holesPlayed = entry.holes_played || 0;
+                                const thru = holesPlayed === 18 ? 'F' : holesPlayed === 0 ? '-' : holesPlayed.toString();
+                                const matchData = entry.matchplay || {};
+                                const status = matchData.status || 'All Square';
+                                const isUp = matchData.netHoles > 0;
+                                const isDown = matchData.netHoles < 0;
+                                const isFinished = matchData.matchFinished;
+                                const team = matchData.team || '';
+                                const teamBadge = team === 'A' ? '<span class="inline-block px-2 py-1 bg-blue-500 text-white text-xs font-bold rounded">A</span>'
+                                                : team === 'B' ? '<span class="inline-block px-2 py-1 bg-red-500 text-white text-xs font-bold rounded">B</span>'
+                                                : '';
+                                const teamBg = team === 'A' ? 'bg-blue-50' : team === 'B' ? 'bg-red-50' : '';
+
+                                let statusColor = 'text-gray-700';
+                                let statusBg = '';
+                                if (isUp) {
+                                    statusColor = 'text-green-700 font-bold';
+                                    statusBg = index === 0 ? 'bg-green-50' : '';
+                                } else if (isDown) {
+                                    statusColor = 'text-red-700 font-bold';
+                                } else {
+                                    statusColor = 'text-gray-600';
+                                }
+
+                                return `
+                                    <tr class="border-b border-gray-200 ${isTeamMode ? teamBg : statusBg}">
+                                        <td class="py-2 px-2 font-bold">${index + 1}</td>
+                                        ${isTeamMode ? `<td class="py-2 px-2 text-center">${teamBadge}</td>` : ''}
+                                        <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
+                                        <td class="py-2 px-2">${thru}</td>
+                                        <td class="py-2 px-2 text-center text-green-700 font-semibold">${matchData.holesUp || 0}</td>
+                                        ${!isTeamMode ? `<td class="py-2 px-2 text-center text-gray-600">${matchData.holesHalved || 0}</td>` : ''}
+                                        <td class="py-2 px-2 text-center text-red-700 font-semibold">${matchData.holesDown || 0}</td>
+                                        <td class="py-2 px-2 text-center ${statusColor}">
+                                            ${status}
+                                            ${isFinished ? '<br><span class="text-xs text-gray-600">(Finished)</span>' : ''}
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="text-xs text-gray-600 p-3 bg-green-50 rounded-lg">
+                    <strong>Team Match Play Legend:</strong>
+                    <span class="ml-2">UP = Team leading by holes</span>
+                    <span class="ml-2">• DOWN = Team trailing by holes</span>
+                    <span class="ml-2">• All Square = Tied</span>
+                    <span class="ml-2">• "4 & 3" = 4 holes up with 3 to play (match finished)</span>
+                </div>
+            </div>
+        `;
+    }
+
     async getGroupLeaderboard() {
         if (!this.groupId) return [];
+
+        // Load match play configuration from database if not already loaded
+        if (!this.matchPlayTeams && !this.roundRobinMatches && this.scoringFormats.includes('matchplay')) {
+            try {
+                // Get any scorecard from this group to load the match play config
+                const { data: scorecards, error } = await window.SupabaseDB.client
+                    .from('scorecards')
+                    .select('match_play_config')
+                    .eq('group_id', this.groupId)
+                    .limit(1);
+
+                if (!error && scorecards && scorecards.length > 0 && scorecards[0].match_play_config) {
+                    const config = typeof scorecards[0].match_play_config === 'string'
+                        ? JSON.parse(scorecards[0].match_play_config)
+                        : scorecards[0].match_play_config;
+
+                    if (config.teams) {
+                        this.matchPlayTeams = config.teams;
+                        console.log('[LiveScorecard] Loaded team match play config from database:', this.matchPlayTeams);
+                    }
+                    if (config.roundRobin) {
+                        this.roundRobinMatches = config.roundRobin;
+                        console.log('[LiveScorecard] Loaded round robin config from database:', this.roundRobinMatches);
+                    }
+                }
+            } catch (err) {
+                console.warn('[LiveScorecard] Could not load match play config from database:', err);
+            }
+        }
 
         // Build leaderboard from LOCAL cache (instant, works offline)
         const engine = LiveScorecardSystem.GolfScoringEngine;
@@ -46002,14 +46180,31 @@ class LiveScorecardSystem {
 
             if (hasRoundRobinData) {
                 // ROUND ROBIN MATCH PLAY
-                const allPlayerData = leaderboard.map(entry => ({
-                    player_id: entry.player_id,
-                    playerId: entry.player_id,
-                    name: entry.player_name,
-                    playerName: entry.player_name,
-                    handicap: entry.handicap,
-                    scores: this.players.find(p => p.id === entry.player_id)?.scores || []
-                }));
+                const allPlayerData = leaderboard.map(entry => {
+                    // Build scores array from scoresCache (same as team matchplay does)
+                    const scoresArray = [];
+                    for (let hole = 1; hole <= 18; hole++) {
+                        const score = this.scoresCache[entry.player_id]?.[hole];
+                        if (score) {
+                            scoresArray.push({ hole_number: hole, gross_score: score });
+                        }
+                    }
+
+                    return {
+                        player_id: entry.player_id,
+                        playerId: entry.player_id,
+                        name: entry.player_name,
+                        playerName: entry.player_name,
+                        handicap: entry.handicap,
+                        scores: scoresArray
+                    };
+                });
+
+                console.log('[Match Play] Round Robin Calculation:', {
+                    playerData: allPlayerData,
+                    matches: this.roundRobinMatches,
+                    scoresCache: this.scoresCache
+                });
 
                 const rrResults = engine.calculateRoundRobinMatchPlay(
                     allPlayerData,
@@ -46017,6 +46212,8 @@ class LiveScorecardSystem {
                     this.courseData.holes,
                     true
                 );
+
+                console.log('[Match Play] Round Robin Results:', rrResults);
 
                 // Add round robin data to each player's leaderboard entry
                 leaderboard.forEach(entry => {
@@ -46026,15 +46223,39 @@ class LiveScorecardSystem {
                         entry.holes_played = rrResults[entry.player_id].totalHolesPlayed;
                     }
                 });
-            } else {
-                // Team or individual match play
-                const teamConfig = this.getMatchPlayTeamConfig();
+            }
 
-                if (teamConfig && teamConfig.teamB && teamConfig.teamB.length > 0) {
-                // 2-MAN TEAM MATCH PLAY
+            // Team or individual match play (can run alongside round robin)
+            const teamConfig = this.getMatchPlayTeamConfig();
+
+                if (teamConfig && teamConfig.teamA && teamConfig.teamA.length > 0) {
+                // 2-MAN TEAM MATCH PLAY (or 1 team vs field for public games)
+
+                // For public games with empty teamB, treat all non-Team A players as Team B
+                let actualTeamB = teamConfig.teamB;
+                if (actualTeamB.length === 0) {
+                    actualTeamB = this.players
+                        .filter(p => !teamConfig.teamA.includes(p.id))
+                        .map(p => {
+                            const scoresArray = [];
+                            for (let hole = 1; hole <= 18; hole++) {
+                                const score = this.scoresCache[p.id]?.[hole];
+                                if (score) {
+                                    scoresArray.push({ hole_number: hole, gross_score: score });
+                                }
+                            }
+                            return {
+                                playerId: p.id,
+                                playerName: p.name,
+                                scores: scoresArray,
+                                handicap: p.handicap
+                            };
+                        });
+                }
+
                 const teamResults = engine.calculateTeamMatchPlay(
                     teamConfig.teamA,
-                    teamConfig.teamB,
+                    actualTeamB,
                     this.courseData.holes,
                     true,  // useNet
                     false  // useStableford (use stroke play for now - can be made configurable later)
@@ -46043,7 +46264,9 @@ class LiveScorecardSystem {
                 // Assign results to players based on their team
                 leaderboard.forEach(entry => {
                     const isTeamA = this.matchPlayTeams.teamA.includes(entry.player_id);
-                    const isTeamB = this.matchPlayTeams.teamB.includes(entry.player_id);
+                    // For public games with empty teamB, all non-Team A players are Team B
+                    const isTeamB = this.matchPlayTeams.teamB.includes(entry.player_id) ||
+                                   (this.matchPlayTeams.teamB.length === 0 && !isTeamA);
 
                     if (isTeamA) {
                         // Team A player
@@ -46495,15 +46718,21 @@ class LiveScorecardSystem {
 
                         // Special rendering for Match Play format
             if (format === 'matchplay') {
-                // Check if this is round robin mode
+                // Check which modes are active
                 const isRoundRobin = sortedLeaderboard.some(entry => entry.roundRobinMatch);
+                const isTeamMode = sortedLeaderboard.some(entry => entry.matchplay?.team);
 
+                // If BOTH round robin and team modes are active, show both leaderboards
+                if (isRoundRobin && isTeamMode) {
+                    const roundRobinHtml = this.renderRoundRobinLeaderboard(sortedLeaderboard, formatIndex, formatName);
+                    const teamHtml = this.renderTeamMatchPlayLeaderboard(sortedLeaderboard, formatIndex, formatName);
+                    return roundRobinHtml + teamHtml;
+                }
+
+                // If only round robin, show round robin leaderboard
                 if (isRoundRobin) {
                     return this.renderRoundRobinLeaderboard(sortedLeaderboard, formatIndex, formatName);
                 }
-
-                // Check if team mode is active
-                const isTeamMode = sortedLeaderboard.some(entry => entry.matchplay?.team);
 
                 // Sort by net holes (holes up)
                 sortedLeaderboard.sort((a, b) => (b.matchplay?.netHoles || 0) - (a.matchplay?.netHoles || 0));
@@ -46521,7 +46750,7 @@ class LiveScorecardSystem {
                     }).join(' + ');
 
                     teamDisplayHtml = `
-                        <div class="mb-4 p-3 bg-gradient-to-r from-blue-50 to-red-50 rounded-lg border-2 border-purple-300">
+                        <div class="mb-4 p-3 bg-gradient-to-r from-blue-50 to-red-50 rounded-lg border-2 border-gray-300">
                             <div class="font-semibold text-gray-900 mb-2 text-center">Team Match Play</div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div class="text-center p-2 bg-blue-100 rounded border border-blue-400">
@@ -46548,15 +46777,15 @@ class LiveScorecardSystem {
                         });
                         return `
                             <div class="text-sm text-gray-700">
-                                <span class="font-semibold text-purple-800">${player ? player.name : 'Unknown'}</span>
+                                <span class="font-semibold text-green-800">${player ? player.name : 'Unknown'}</span>
                                 <span class="text-gray-600">plays vs</span>
-                                <span class="font-medium text-purple-700">${opponents.join(' & ')}</span>
+                                <span class="font-medium text-green-700">${opponents.join(' & ')}</span>
                             </div>
                         `;
                     }).join('');
 
                     roundRobinDisplayHtml = `
-                        <div class="mb-4 p-3 bg-purple-50 rounded-lg border-2 border-purple-300">
+                        <div class="mb-4 p-3 bg-green-50 rounded-lg border-2 border-green-300">
                             <div class="font-semibold text-gray-900 mb-2">Multiple 1v1 Matches</div>
                             ${pairingsHtml}
                         </div>
@@ -46565,7 +46794,7 @@ class LiveScorecardSystem {
 
                 return `
                     <div class="mb-6 ${formatIndex > 0 ? 'mt-6 pt-6 border-t-4 border-gray-300' : ''}">
-                        <h3 class="text-lg font-bold text-gray-900 mb-3 bg-gradient-to-r from-purple-100 to-purple-50 px-4 py-2 rounded-lg border-l-4 border-purple-500">
+                        <h3 class="text-lg font-bold text-gray-900 mb-3 bg-gradient-to-r from-green-100 to-green-50 px-4 py-2 rounded-lg border-l-4 border-green-500">
                             ${formatName} Leaderboard ${isTeamMode ? '(2-Man Teams)' : '(Individual)'}
                         </h3>
 
@@ -46584,7 +46813,7 @@ class LiveScorecardSystem {
                                         <th class="py-2 px-2 text-center bg-green-50">Won</th>
                                         ${!isTeamMode ? '<th class="py-2 px-2 text-center bg-gray-50">Halved</th>' : ''}
                                         <th class="py-2 px-2 text-center bg-red-50">Lost</th>
-                                        <th class="py-2 px-2 text-center bg-purple-50 font-bold">Status</th>
+                                        <th class="py-2 px-2 text-center bg-gray-50 font-bold">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -46634,7 +46863,7 @@ class LiveScorecardSystem {
                             </table>
                         </div>
 
-                        <div class="text-xs text-gray-600 p-3 bg-purple-50 rounded-lg">
+                        <div class="text-xs text-gray-600 p-3 bg-green-50 rounded-lg">
                             <strong>Match Play Legend:</strong>
                             <span class="ml-2">UP = Leading by holes</span>
                             <span class="ml-2">• DOWN = Trailing by holes</span>
@@ -46980,6 +47209,7 @@ class LiveScorecardSystem {
         // Full calculation would require fetching all players' scores
         const standings = entrantIds.map(playerId => ({
             playerId,
+            playerName: playerId,
             holesCompleted: holesCompleted[playerId] || 0,
             isCurrentUser: playerId === userId
         }));
@@ -47003,7 +47233,7 @@ class LiveScorecardSystem {
                     <p>${competitionData.message}</p>
                     ${competitionData.message === 'Not in any public games yet' ? `
                         <button onclick="LiveScorecardManager.showJoinGamesModal()"
-                                class="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+                                class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                             Browse Public Games
                         </button>
                     ` : ''}
@@ -47023,7 +47253,7 @@ class LiveScorecardSystem {
         const poolsHtml = competitionData.pools.map(({ pool, leaderboard }) => {
             const typeIcons = {
                 skins: { icon: 'monetization_on', color: 'orange', bg: 'bg-orange-50', border: 'border-orange-200' },
-                matchplay: { icon: 'sports_score', color: 'purple', bg: 'bg-purple-50', border: 'border-purple-200' },
+                matchplay: { icon: 'sports_score', color: 'green', bg: 'bg-green-50', border: 'border-green-200' },
                 nassau: { icon: 'emoji_events', color: 'blue', bg: 'bg-blue-50', border: 'border-blue-200' }
             };
 
@@ -47073,7 +47303,7 @@ class LiveScorecardSystem {
                                     ${leaderboard.leaderboard.map((entry, index) => `
                                         <tr class="border-b border-${config.color}-100 ${entry.isCurrentUser ? 'bg-yellow-50 font-bold' : ''}">
                                             <td class="py-2 px-2">${index + 1}</td>
-                                            <td class="py-2 px-2">${entry.playerId}${entry.isCurrentUser ? ' (You)' : ''}</td>
+                                            <td class="py-2 px-2">${entry.playerName}${entry.isCurrentUser ? ' (You)' : ''}</td>
                                             <td class="py-2 px-2">${entry.holesCompleted}/18</td>
                                             <td class="py-2 px-2">
                                                 ${entry.holesCompleted === 18 ?
@@ -47099,9 +47329,9 @@ class LiveScorecardSystem {
 
         return `
             <div class="space-y-4">
-                <div class="bg-purple-50 border-2 border-purple-200 rounded-lg p-4 mb-4">
+                <div class="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-4">
                     <div class="flex items-center gap-2 mb-2">
-                        <span class="material-symbols-outlined text-purple-600">public</span>
+                        <span class="material-symbols-outlined text-blue-600">public</span>
                         <h3 class="font-bold text-gray-900">Multi-Group Competition</h3>
                     </div>
                     <p class="text-xs text-gray-600">
@@ -47945,15 +48175,8 @@ window.toggleFormatCheckbox = function(label, event) {
             // Auto-check match play modes based on player count (checkbox behavior)
             const playerCount = LiveScorecardManager?.players?.length || 0;
             if (playerCount === 3) {
-                // Auto-check Round Robin for 3 players
-                const roundRobinCheckbox = document.querySelector('input[name="matchPlayType"][value="roundrobin"]');
-                if (roundRobinCheckbox && !roundRobinCheckbox.checked) {
-                    console.log('[LiveScorecard] Auto-checking Round Robin (3 players detected)');
-                    roundRobinCheckbox.checked = true;
-                    if (typeof updateMatchPlayType === 'function') {
-                        updateMatchPlayType();
-                    }
-                }
+                // For 3 players, don't auto-check anything - let user choose both modes if desired
+                console.log('[LiveScorecard] 3 players detected - user can select Round Robin, Teams, or both');
             } else if (playerCount === 4) {
                 // Auto-check 2-Man Teams for 4 players
                 const teamsCheckbox = document.querySelector('input[name="matchPlayType"][value="teams"]');
@@ -48965,8 +49188,12 @@ class SocietyOrganizerManager {
             if (existingProfile) {
                 // Profile exists - update it
                 console.log('[SaveUserEdits] Updating existing user_profile');
+
+                // CRITICAL: Remove any top-level handicap field from old data
+                const { handicap: _unused, ...profileWithoutHandicap } = existingProfile;
+
                 const updatedProfile = {
-                    ...existingProfile,
+                    ...profileWithoutHandicap,
                     name: name,
                     profile_data: {
                         ...(existingProfile.profile_data || {}),

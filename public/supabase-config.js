@@ -311,7 +311,8 @@ class SupabaseClient {
         // Extract handicap value from all possible sources
         const handicapValue = profile.handicap || profile.golfInfo?.handicap || profile.profile_data?.golfInfo?.handicap || null;
 
-        // Normalize profile fields (handle both lineUserId and line_user_id)
+        // CRITICAL: Only include fields that exist in database schema
+        // DO NOT spread profile object - it may contain 'handicap' which doesn't exist as column
         const normalizedProfile = {
             line_user_id: profile.line_user_id || profile.lineUserId,
             name: profile.name,
@@ -321,10 +322,6 @@ class SupabaseClient {
             email: profile.email,
             home_club: profile.home_club || profile.homeClub,
             language: profile.language || 'en',
-
-            // ===== GLOBAL HANDICAP COLUMN =====
-            // CRITICAL: Update top-level handicap column for global access
-            handicap: handicapValue,
 
             // ===== NEW: Society Affiliation Fields =====
             society_id: cleanUUID(profile.society_id || profile.societyId),
@@ -365,7 +362,11 @@ class SupabaseClient {
             }
         };
 
-        const { data, error } = await this.client
+        // DEBUG: Log exactly what we're sending
+        console.log('[Supabase] Attempting to save profile with keys:', Object.keys(normalizedProfile));
+        console.log('[Supabase] Has top-level handicap?', 'handicap' in normalizedProfile);
+
+        const { data, error} = await this.client
             .from('user_profiles')
             .upsert(normalizedProfile, { onConflict: 'line_user_id' })
             .select()
@@ -373,6 +374,8 @@ class SupabaseClient {
 
         if (error) {
             console.error('[Supabase] Error saving profile:', error);
+            console.error('[Supabase] Failed payload keys:', Object.keys(normalizedProfile));
+            console.error('[Supabase] Full payload:', JSON.stringify(normalizedProfile, null, 2));
             throw error;
         }
 

@@ -1,188 +1,91 @@
-# 📁 Compacted Documentation - Live Scorecard Overhaul
-**Session Date:** October 11, 2025
+# Compacted Documentation - MciPro Golf Platform
+
+**Latest Update:** 2025-12-03
+**Latest Issue:** Plus handicap (+) sign not saving correctly
+
+## 🔥 LATEST ISSUE: Handicap Plus Sign Failure (2025-12-03)
+
+**Problem:** Plus handicaps (e.g., "+2.1") being saved without the + sign (as "2.1")
+**Root Cause:** Multiple issues - parseFloat(), type="number" inputs, auto-sync, schema mismatch
+**Solution:** All code fixes deployed, user needs to hard refresh browser
+**Status:** FIXED AND DEPLOYED (commit d67ecdf1)
+
+**Documentation:**
+- **2025-12-03_HANDICAP_PLUS_SIGN_CATASTROPHIC_FAILURE.md** - Complete incident report
+- **HANDICAP_SYSTEM_RULES.md** - Prevention guide (READ THIS BEFORE TOUCHING HANDICAPS)
+
+**Action Required:**
+1. Hard refresh browser (Ctrl+Shift+R)
+2. Wait for deployment to complete
+3. Test saving "+2.1" for Rocky Jones
+4. Run SQL scripts to fix corrupted handicaps
 
 ---
 
-## 📚 What's Inside
+## Previous Issue: 1v1 Matchplay Teams Not Displaying (2025-12-02)
 
-This folder contains complete documentation for the Live Scorecard system overhaul that achieved **100% improvement across the board**.
+**Problem:** All database queries fail with 400/401 errors due to Row Level Security
+**Solution:** Run `sql/DISABLE_RLS_COMPLETELY.sql` in Supabase SQL Editor
+**Status:** NOT YET FIXED (waiting for user to run SQL)
 
----
+## Documentation Files
 
-### 📄 Files
+1. **01_ERRORS_AND_FUCKUPS.md**
+   - All errors encountered during troubleshooting
+   - Database query failures (400/401 errors)
+   - Failed SQL fix attempts
+   - Console error logs
 
-#### 1. **2025-10-11_LiveScorecard_Complete_Overhaul.md** (17 KB)
-**The complete story** - Read this for full details
+2. **02_CHANGES_MADE.md**
+   - SQL scripts created
+   - Code modifications (golf-buddies-system.js handicaps)
+   - What was NOT changed
 
-Contains:
-- Mission statement and goals
-- Every feature fixed (6 major improvements)
-- Before/after comparisons
-- Technical implementation details
-- Code examples with line numbers
-- Performance metrics
-- Git commit history
-- Testing procedures
-- Database schema reference
-- Troubleshooting guide
-- Future enhancement ideas
+3. **03_DO_NOT_DO_THIS.md**
+   - DO NOT touch handicap code (user will fix manually)
+   - DO NOT make simple SQL column name mistakes
+   - DO NOT assume SQL was run without confirmation
 
-**Best for:** Understanding everything that changed
+4. **04_WHAT_NEEDS_TO_BE_FIXED.md**
+   - Priority 1: Database RLS blocking queries
+   - Priority 2: Handicap data (user will fix)
+   - Code status (code is correct, database is broken)
 
----
+5. **05_SQL_TO_RUN.md**
+   - Exact SQL commands to run
+   - Expected output
+   - Verification steps
+   - What to do after running SQL
 
-#### 2. **QUICK_REFERENCE.md** (2.4 KB)
-**TL;DR version** - Read this for quick lookup
+## The Core Issue
 
-Contains:
-- What changed (bullet points)
-- Score entry flow diagram
-- Common troubleshooting commands
-- Course data reference
-- Test checklist
+The JavaScript code for 1v1 matchplay team display EXISTS and is CORRECT:
+- Team display rendering: `public/index.html` lines 46513-46538
+- Team validation: `public/index.html` lines 41230-41295
+- Round robin display: `public/index.html` lines 46501-46564
 
-**Best for:** Quick reference when working with the system
+**The problem is NOT the code.**
 
----
+The problem is database queries fail BEFORE the code can execute:
+```
+GET side_game_pools → 400 Bad Request
+GET pool_entrants → 401 Unauthorized
+GET scorecards → 400 Bad Request
+```
 
-#### 3. **TECHNICAL_SUMMARY.md** (12 KB)
-**For developers** - Read this to understand the code
+## How to Fix
 
-Contains:
-- Architecture changes
-- Data flow diagrams
-- Critical function modifications
-- Data structures
-- Event flow charts
-- Performance optimizations
-- Error handling strategies
-- Testing scenarios
-- Code review checklist
+1. Open Supabase SQL Editor
+2. Run `sql/DISABLE_RLS_COMPLETELY.sql`
+3. Refresh the web page
+4. Teams will display
 
-**Best for:** Developers maintaining or extending the system
+## User Instructions
 
----
+**What User Said NOT To Do:**
+- "don't fuck with the handicap" - User will fix handicap data manually
 
-#### 4. **CHANGELOG.md** (7 KB)
-**Version history** - Read this for release notes
-
-Contains:
-- Version 2.0.0 release notes
-- Added/Changed/Fixed/Removed sections
-- Performance comparison table
-- Database migrations
-- Testing coverage
-- Migration guide
-- Future roadmap
-
-**Best for:** Understanding version changes and migration steps
-
----
-
-## 🎯 Quick Summary
-
-### What Was Achieved:
-
-✅ **Offline-First** - Works without internet, auto-syncs when online
-✅ **Zero-Lag** - Single tap, instant advance (removed 200ms delay)
-✅ **Live Leaderboard** - Updates after every score
-✅ **Accurate Data** - Real scorecard values (Bangpakong Par 71, correct indices)
-✅ **Lazy Loading** - Fast page load (0 queries vs 6+ before)
-✅ **Consistent Calcs** - Player totals match leaderboard perfectly
-
-### Git Commits:
-- `417d653c` - Real course data from scorecards
-- `74ab563b` - Instant optimistic score updates
-- `988c9d80` - Offline-first support
-- `eb537103` - 1-tap scoring + live leaderboard
-- `1154b2bd` - Fix calculation consistency
-- `4c900fc8` - Remove 200ms delay (zero lag)
-- `73b14dd3` - Add comprehensive documentation
-
-### Result:
-**100% improvement across the board** ⛳✅
-
----
-
-## 📖 How to Use These Docs
-
-### If you want to...
-
-**Understand the big picture:**
-→ Read `2025-10-11_LiveScorecard_Complete_Overhaul.md`
-
-**Fix a problem quickly:**
-→ Check `QUICK_REFERENCE.md` troubleshooting section
-
-**Modify the code:**
-→ Study `TECHNICAL_SUMMARY.md` architecture section
-
-**See what changed in this version:**
-→ Read `CHANGELOG.md` release notes
-
-**Train new developers:**
-→ Start with `CHANGELOG.md`, then `TECHNICAL_SUMMARY.md`
-
-**Report to stakeholders:**
-→ Use metrics from `2025-10-11_LiveScorecard_Complete_Overhaul.md`
-
----
-
-## 🔍 Key Sections to Bookmark
-
-### Troubleshooting:
-- `QUICK_REFERENCE.md` - "If Something's Wrong" section
-- `2025-10-11_LiveScorecard_Complete_Overhaul.md` - "Support & Maintenance" section
-
-### Code Examples:
-- `TECHNICAL_SUMMARY.md` - "Critical Functions Modified" section
-- `2025-10-11_LiveScorecard_Complete_Overhaul.md` - "Technical Architecture" section
-
-### Performance Data:
-- `CHANGELOG.md` - "Performance" table
-- `2025-10-11_LiveScorecard_Complete_Overhaul.md` - "Metrics: Before vs After" table
-
-### Testing:
-- `QUICK_REFERENCE.md` - "Test Checklist"
-- `TECHNICAL_SUMMARY.md` - "Testing Scenarios"
-
----
-
-## 📊 Documentation Stats
-
-- **Total Words:** ~20,000
-- **Code Examples:** 40+
-- **Diagrams:** 15+
-- **Tables:** 10+
-- **Files:** 4
-- **Size:** 38.4 KB
-
----
-
-## 🚀 Next Steps
-
-1. **Review** the documentation
-2. **Test** the system (use checklists)
-3. **Train** team members (share relevant docs)
-4. **Monitor** production (use troubleshooting guides)
-5. **Iterate** based on feedback
-
----
-
-## 💡 Tips
-
-- Keep these docs updated when making changes
-- Add new troubleshooting scenarios as they arise
-- Document any workarounds discovered
-- Share success stories and metrics
-- Use as template for future feature docs
-
----
-
-**All documentation is version-controlled in git.**
-**Last updated:** October 11, 2025
-**Status:** Complete ✅
-
----
-
-*Built with ❤️ for golfers in Thailand* ⛳🇹🇭
+**What User Wants Fixed:**
+- 1v1 matchplay teams not displaying
+- This is caused by database RLS errors
+- Fix by running the SQL script

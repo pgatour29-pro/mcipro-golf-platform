@@ -33583,7 +33583,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         const { data: dbRounds, error } = await window.SupabaseDB.client
                             .from('rounds')
                             .select('*')
-                            // Let RLS filter visibility; order by available timestamp fields
+                            .eq('golfer_id', userId) // CRITICAL: Filter by current user's LINE ID
                             .order('completed_at', { ascending: false, nullsFirst: false })
                             .order('played_at', { ascending: false, nullsFirst: false })
                             .order('started_at', { ascending: false, nullsFirst: false });
@@ -42926,7 +42926,7 @@ class LiveScorecardSystem {
     async distributeRoundScores() {
         try {
             console.log('[LiveScorecard] ========================================');
-            console.log('[LiveScorecard] DISTRIBUTING ROUNDS TO ALL PLAYERS');
+            console.log('[LiveScorecard] SAVING ROUND FOR CURRENT USER');
             console.log('[LiveScorecard] Total players in group:', this.players.length);
             console.log('[LiveScorecard] ========================================');
 
@@ -42940,8 +42940,14 @@ class LiveScorecardSystem {
             const savedRounds = [];
             let playersWithScores = 0;
 
-            // CRITICAL FIX: Save rounds for ALL players in the group (not just current user)
+            // CRITICAL FIX: Save ONLY the current user's round (not all players)
+            // Other players will save their own rounds when they log in
             for (const player of this.players) {
+                // ONLY save round for the current logged-in user
+                if (player.lineUserId !== currentUser.lineUserId) {
+                    console.log(`[LiveScorecard] Skipping ${player.name} - not current user`);
+                    continue;
+                }
                 // Skip players without LINE user ID (guest players)
                 if (!player.lineUserId || player.lineUserId.trim() === '') {
                     console.log(`[LiveScorecard] Skipping ${player.name} - no LINE user ID (guest player)`);
@@ -42989,19 +42995,12 @@ class LiveScorecardSystem {
             // Show success notification
             if (savedRounds.length === 0) {
                 NotificationManager.show('No scores to save', 'warning');
-            } else if (savedRounds.length === 1) {
-                const player = savedRounds[0];
+            } else {
+                // Only one round saved (current user's)
                 if (!this.isPrivateRound && this.eventId) {
                     NotificationManager.show(`Round saved and posted to event!`, 'success');
                 } else {
-                    NotificationManager.show(`Round saved to ${player.playerName}'s history!`, 'success');
-                }
-            } else {
-                // Multiple players
-                if (!this.isPrivateRound && this.eventId) {
-                    NotificationManager.show(`${savedRounds.length} rounds saved and posted to event!`, 'success');
-                } else {
-                    NotificationManager.show(`${savedRounds.length} rounds saved to player histories!`, 'success');
+                    NotificationManager.show(`Round saved to your history!`, 'success');
                 }
             }
 

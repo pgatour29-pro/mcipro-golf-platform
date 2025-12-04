@@ -22201,7 +22201,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 <body>
     <script>
     // BUILD ID - Injected at deploy time for cache busting
-    window.__BUILD_ID__ = 'fe6c3a42';
+    window.__BUILD_ID__ = 'b8a9c4d7';
 
     console.log('%c🚀 PAGE VERSION: 2025-11-04-HANDICAP-WHS-INTEGRATION', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
@@ -50619,7 +50619,7 @@ This action cannot be undone.`);
         if (manualModeBtn) manualModeBtn.style.display = ''; // Restore manual entry button
     }
 
-    setPlayerAddMode(mode) {
+    setPlayerAddMode(mode, prefilledName = '') {
         const searchMode = document.getElementById('searchMode');
         const manualMode = document.getElementById('manualMode');
         const searchBtn = document.getElementById('searchModeBtn');
@@ -50641,6 +50641,25 @@ This action cannot be undone.`);
             searchBtn.classList.remove('bg-white', 'text-green-600');
             searchBtn.classList.add('bg-white/20', 'text-white');
             this.selectedPlayer = null;
+
+            // Pre-fill name if provided (from failed search)
+            if (prefilledName) {
+                const nameInput = document.getElementById('manualPlayerName');
+                if (nameInput) {
+                    nameInput.value = prefilledName;
+                    // Focus on handicap field since name is already filled
+                    setTimeout(() => {
+                        const handicapInput = document.getElementById('manualPlayerHandicap');
+                        if (handicapInput) handicapInput.focus();
+                    }, 100);
+                }
+            } else {
+                // Focus on name field for fresh manual entry
+                setTimeout(() => {
+                    const nameInput = document.getElementById('manualPlayerName');
+                    if (nameInput) nameInput.focus();
+                }, 100);
+            }
         }
     }
 
@@ -50674,11 +50693,17 @@ This action cannot be undone.`);
             const players = await SocietyGolfDB.searchPlayers(searchTerm, societyName);
 
             if (players.length === 0) {
+                const escapedName = searchTerm.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 resultsDiv.innerHTML = `
                     <div class="text-center py-8 text-gray-500">
                         <span class="material-symbols-outlined text-5xl text-gray-300">person_off</span>
-                        <p class="text-sm mt-2">No players found</p>
-                        <p class="text-xs mt-1 text-gray-400">Try a different search or use Manual Entry</p>
+                        <p class="text-sm mt-2 font-medium">No players found for "${escapedName}"</p>
+                        <p class="text-xs mt-1 text-gray-400 mb-4">Player not in database? Add them manually instead.</p>
+                        <button onclick="SocietyOrganizerSystem.setPlayerAddMode('manual', '${escapedName}')"
+                                class="px-6 py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition-colors flex items-center gap-2 mx-auto">
+                            <span class="material-symbols-outlined text-sm">person_add</span>
+                            Add "${escapedName}" Manually
+                        </button>
                     </div>
                 `;
                 return;

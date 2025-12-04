@@ -22201,7 +22201,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 <body>
     <script>
     // BUILD ID - Injected at deploy time for cache busting
-    window.__BUILD_ID__ = 'e3f7a912';
+    window.__BUILD_ID__ = 'f9d2c8a4';
 
     console.log('%c🚀 PAGE VERSION: 2025-11-04-HANDICAP-WHS-INTEGRATION', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
@@ -50894,14 +50894,6 @@ This action cannot be undone.`);
     }
 
     async addManualPlayer() {
-        // Check if current event is still available
-        if (!this.currentRosterEvent || !this.currentRosterEvent.id) {
-            console.error('[Manual Player] currentRosterEvent is null or missing id');
-            NotificationManager.show('Error: Event context lost. Please close and reopen the roster.', 'error');
-            this.closeManualPlayerModal();
-            return;
-        }
-
         const name = document.getElementById('manualPlayerName').value.trim();
         const handicap = parseFloat(document.getElementById('manualPlayerHandicap').value);
         const wantTransport = document.getElementById('manualPlayerTransport').checked;
@@ -50919,8 +50911,34 @@ This action cannot be undone.`);
         }
 
         try {
+            // Determine society name based on mode
+            const societyName = this.directoryAddMode
+                ? (this.societyProfile?.society_name || null)
+                : (this.currentRosterEvent?.organizerName || null);
+
             // IMPORTANT: Create or find player in user_profiles so they can be found in future searches
-            let playerId = await SocietyGolfDB.createOrFindManualPlayer(name, handicap, this.currentRosterEvent.organizerName);
+            let playerId = await SocietyGolfDB.createOrFindManualPlayer(name, handicap, societyName);
+
+            // If in directory mode, ONLY add to database (not to any event)
+            if (this.directoryAddMode) {
+                console.log('[Manual Player] Directory mode - player added to database only');
+                NotificationManager.show(`${name} added to directory`, 'success');
+
+                // Close modal and refresh directory
+                this.closeManualPlayerModal();
+                if (this.societyProfile) {
+                    await this.loadSocietyMembers(this.societyProfile.society_name);
+                }
+                return;
+            }
+
+            // Event mode - add to both database AND event
+            if (!this.currentRosterEvent || !this.currentRosterEvent.id) {
+                console.error('[Manual Player] currentRosterEvent is null or missing id');
+                NotificationManager.show('Error: Event context lost. Please close and reopen the roster.', 'error');
+                this.closeManualPlayerModal();
+                return;
+            }
 
             const playerData = {
                 name: name,

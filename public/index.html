@@ -22201,7 +22201,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 <body>
     <script>
     // BUILD ID - Injected at deploy time for cache busting
-    window.__BUILD_ID__ = 'a6b8d3e5';
+    window.__BUILD_ID__ = 'c5d8e2f7';
 
     console.log('%c🚀 PAGE VERSION: 2025-11-04-HANDICAP-WHS-INTEGRATION', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
@@ -36216,7 +36216,22 @@ const AdminSystem = {
             filtered = filtered.filter(u => {
                 const name = (u.name || `${u.first_name || u.firstName || ''} ${u.last_name || u.lastName || ''}`).toLowerCase();
                 const username = (u.username || '').toLowerCase();
-                return name.includes(search) || username.includes(search);
+
+                // Simple match first
+                if (name.includes(search) || username.includes(search)) {
+                    return true;
+                }
+
+                // Handle reversed name format: "Pete Park" should find "Park, Pete"
+                const searchWords = search.trim().split(/\s+/).filter(w => w.length > 0);
+                if (searchWords.length === 2) {
+                    const [word1, word2] = searchWords;
+                    // Check if name contains both words in any order
+                    const hasBothWords = name.includes(word1) && name.includes(word2);
+                    if (hasBothWords) return true;
+                }
+
+                return false;
             });
         }
 
@@ -49052,9 +49067,9 @@ class SocietyOrganizerManager {
         if (modalSubtitle) modalSubtitle.textContent = this.societyProfile?.society_name || 'Society Members';
         if (addToDestination) addToDestination.textContent = 'Society Directory';
 
-        // Hide manual entry mode for directory (only allow adding existing users)
+        // Show both search and manual entry modes for directory
         const manualModeBtn = document.getElementById('manualModeBtn');
-        if (manualModeBtn) manualModeBtn.style.display = 'none';
+        if (manualModeBtn) manualModeBtn.style.display = ''; // Ensure it's visible
 
         // Initialize search mode
         this.setPlayerAddMode('search');

@@ -170,6 +170,7 @@ LiveScorecardManager.saveRoundToHistoryNew = async function(player) {
             'archive_scorecard_to_history',
             {
                 p_scorecard_id: scorecardId && !scorecardId.startsWith('local_') ? scorecardId : null,
+                p_golfer_id: player.lineUserId || player.id,
                 p_round_type: roundType,
                 p_society_event_id: eventId,
                 p_scoring_formats: this.scoringFormats,

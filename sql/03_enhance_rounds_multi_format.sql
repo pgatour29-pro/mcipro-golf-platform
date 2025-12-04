@@ -62,6 +62,7 @@ COMMENT ON COLUMN public.round_holes.team_score IS 'For team formats: Team score
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.archive_scorecard_to_history(
   p_scorecard_id UUID,
+  p_golfer_id TEXT,
   p_round_type TEXT DEFAULT 'private',
   p_society_event_id UUID DEFAULT NULL,
   p_scoring_formats JSONB DEFAULT '["stableford"]'::jsonb,
@@ -118,7 +119,7 @@ BEGIN
     organizer_id
   )
   VALUES (
-    v_scorecard.player_id,
+    p_golfer_id,
     v_scorecard.course_id,
     v_scorecard.course_name,
     p_round_type,
@@ -166,7 +167,7 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.archive_scorecard_to_history(UUID, TEXT, UUID, JSONB, JSONB, TEXT[], JSONB) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.archive_scorecard_to_history(UUID, TEXT, TEXT, UUID, JSONB, JSONB, TEXT[], JSONB) TO authenticated;
 
 -- ---------------------------------------------------------------------------
 -- NEW FUNCTION: Distribute round to multiple players
@@ -233,6 +234,7 @@ GRANT EXECUTE ON FUNCTION public.get_shared_rounds(TEXT) TO authenticated;
 DROP POLICY IF EXISTS "rounds_select_own" ON public.rounds;
 
 -- Recreate with shared access
+DROP POLICY IF EXISTS "rounds_select_own_or_shared" ON public.rounds;
 CREATE POLICY "rounds_select_own_or_shared"
   ON public.rounds FOR SELECT
   TO authenticated

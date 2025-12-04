@@ -22201,7 +22201,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 <body>
     <script>
     // BUILD ID - Injected at deploy time for cache busting
-    window.__BUILD_ID__ = 'e8f2a4b6';
+    window.__BUILD_ID__ = 'f9a3b5c7';
 
     console.log('%c🚀 PAGE VERSION: 2025-11-04-HANDICAP-WHS-INTEGRATION', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
@@ -38747,19 +38747,18 @@ class SocietyGolfSupabase {
             if (searchWords.length === 1) {
                 // Single word: search in name
                 profileQuery = profileQuery.ilike('name', `%${searchWords[0]}%`);
-            } else if (searchWords.length === 2) {
-                // Two words: Search for BOTH patterns (handles "First Last" and "Last, First")
-                // Example: "Rocky Jones" will match both "Rocky Jones" AND "Jones, Rocky"
+            } else {
+                // Multiple words: Search for BOTH words appearing in any order
+                // This handles "Jason Kang" finding "Kang, Jason" and vice versa
+                // We check that both words appear somewhere in the name
                 const word1 = searchWords[0];
                 const word2 = searchWords[1];
-                // Use OR to match either:
-                // 1. "rocky jones" (original order)
-                // 2. "jones, rocky" (reversed with comma)
-                // 3. "jones rocky" (reversed without comma)
-                profileQuery = profileQuery.or(`name.ilike.%${word1} ${word2}%,name.ilike.%${word2}, ${word1}%,name.ilike.%${word2} ${word1}%`);
-            } else if (searchWords.length > 2) {
-                // Three or more words: Search for the full phrase as-is
-                profileQuery = profileQuery.ilike('name', `%${searchLower}%`);
+
+                // Use a combination of ilike conditions that check for both words
+                // This avoids the complex OR syntax that breaks with special characters
+                profileQuery = profileQuery
+                    .ilike('name', `%${word1}%`)
+                    .ilike('name', `%${word2}%`);
             }
 
             const { data: matchingProfiles, error: profileError } = await profileQuery;
@@ -50934,7 +50933,7 @@ This action cannot be undone.`);
         try {
             // Determine society name based on mode
             const societyName = this.directoryAddMode
-                ? (this.societyProfile?.society_name || null)
+                ? (this.societyProfile?.societyName || null)
                 : (this.currentRosterEvent?.organizerName || null);
 
             // IMPORTANT: Create or find player in user_profiles so they can be found in future searches

@@ -22201,7 +22201,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 <body>
     <script>
     // BUILD ID - Injected at deploy time for cache busting
-    window.__BUILD_ID__ = 'b8a9c4d7';
+    window.__BUILD_ID__ = 'e3f7a912';
 
     console.log('%c🚀 PAGE VERSION: 2025-11-04-HANDICAP-WHS-INTEGRATION', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
@@ -37833,6 +37833,52 @@ class SocietyGolfSupabase {
         return results;
     }
 
+    async createOrFindManualPlayer(name, handicap, societyName = null) {
+        await this.waitForSupabase();
+
+        console.log('[SocietyGolf] Creating or finding manual player:', { name, handicap, societyName });
+
+        // First, search if player with this name already exists
+        const { data: existingPlayers, error: searchError } = await window.SupabaseDB.client
+            .from('user_profiles')
+            .select('line_user_id')
+            .ilike('name', name.trim())
+            .limit(1);
+
+        if (!searchError && existingPlayers && existingPlayers.length > 0) {
+            console.log('[SocietyGolf] Player already exists:', existingPlayers[0].line_user_id);
+            return existingPlayers[0].line_user_id;
+        }
+
+        // Player doesn't exist, create new manual player profile
+        const manualPlayerId = `MANUAL-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+        const profileData = {
+            handicap: handicap,
+            is_manual_entry: true
+        };
+
+        if (societyName) {
+            profileData.society_name = societyName;
+        }
+
+        const { error: insertError } = await window.SupabaseDB.client
+            .from('user_profiles')
+            .insert({
+                line_user_id: manualPlayerId,
+                name: name.trim(),
+                profile_data: profileData
+            });
+
+        if (insertError) {
+            console.error('[SocietyGolf] Error creating manual player:', insertError);
+            throw insertError;
+        }
+
+        console.log('[SocietyGolf] Created new manual player:', manualPlayerId);
+        return manualPlayerId;
+    }
+
     // =====================================================
     // PAIRINGS MANAGEMENT
     // =====================================================
@@ -50873,9 +50919,12 @@ This action cannot be undone.`);
         }
 
         try {
+            // IMPORTANT: Create or find player in user_profiles so they can be found in future searches
+            let playerId = await SocietyGolfDB.createOrFindManualPlayer(name, handicap, this.currentRosterEvent.organizerName);
+
             const playerData = {
                 name: name,
-                playerId: null, // Manual entry, no user ID
+                playerId: playerId, // Use the created/found player ID
                 handicap: handicap,
                 wantTransport: wantTransport,
                 wantCompetition: wantCompetition

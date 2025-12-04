@@ -22201,7 +22201,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 <body>
     <script>
     // BUILD ID - Injected at deploy time for cache busting
-    window.__BUILD_ID__ = '61cc69a2';
+    window.__BUILD_ID__ = 'fe6c3a42';
 
     console.log('%c🚀 PAGE VERSION: 2025-11-04-HANDICAP-WHS-INTEGRATION', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
@@ -50684,9 +50684,17 @@ This action cannot be undone.`);
                 return;
             }
 
-            resultsDiv.innerHTML = players.map(player => `
-                <div class="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
-                     onclick="SocietyOrganizerSystem.selectPlayer('${player.id}', '${player.name.replace(/'/g, "\\'")}', ${player.handicap})">
+            resultsDiv.innerHTML = players.map((player, index) => {
+                const playerId = player.id || '';
+                const playerName = (player.name || 'Unknown').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                const handicap = player.handicap || 36;
+
+                return `
+                <div class="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer player-result-item"
+                     data-player-id="${playerId}"
+                     data-player-name="${playerName}"
+                     data-player-handicap="${handicap}"
+                     data-player-index="${index}">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 ${player.isPrimarySociety ? 'bg-purple-100' : player.isCrossSociety ? 'bg-orange-100' : 'bg-green-100'} rounded-full flex items-center justify-center">
                             <span class="material-symbols-outlined ${player.isPrimarySociety ? 'text-purple-600' : player.isCrossSociety ? 'text-orange-600' : 'text-green-600'}">person</span>
@@ -50707,7 +50715,18 @@ This action cannot be undone.`);
                         Select
                     </button>
                 </div>
-            `).join('');
+            `}).join('');
+
+            // Attach event listeners to each result
+            resultsDiv.querySelectorAll('.player-result-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const playerId = item.dataset.playerId;
+                    const playerName = item.dataset.playerName;
+                    const handicap = parseFloat(item.dataset.playerHandicap);
+                    SocietyOrganizerSystem.selectPlayer(playerId, playerName, handicap);
+                });
+            });
         } catch (error) {
             console.error('[Manual Player] Error searching:', error);
             resultsDiv.innerHTML = `

@@ -42626,8 +42626,12 @@ class LiveScorecardSystem {
                 }
             }
     
-            const engine = LiveScorecardSystem.GolfScoringEngine;
-    
+            const engine = LiveScorecardSystem?.GolfScoringEngine;
+            if (!engine) {
+                console.error('[LiveScorecard] CRITICAL: GolfScoringEngine not initialized!');
+                throw new Error('GolfScoringEngine not available - please refresh the page');
+            }
+
             // Calculate each selected format
             for (const format of this.scoringFormats) {
                 switch (format) {
@@ -42748,6 +42752,7 @@ class LiveScorecardSystem {
                         type: this.roundType || (this.isPrivateRound ? 'private' : (this.eventId ? 'society' : 'private')),
                         society_event_id: this.eventId || null,
                         organizer_id: organizerId,
+                        played_at: new Date().toISOString(), // CRITICAL: Add played_at for NOT NULL constraint
                         started_at: new Date().toISOString(),
                         completed_at: new Date().toISOString(),
                         status: 'completed',
@@ -42849,7 +42854,11 @@ class LiveScorecardSystem {
 
             // Save hole-by-hole data including scramble tracking
             // CRITICAL: Calculate proper shot allocation ONCE for this player
-            const shotAllocation = this.GolfScoringEngine.allocHandicapShots(this.courseData.holes || [], player.handicap);
+            const shotAllocation = LiveScorecardSystem?.GolfScoringEngine?.allocHandicapShots(this.courseData.holes || [], player.handicap);
+            if (!shotAllocation) {
+                console.error('[LiveScorecard] CRITICAL: Could not allocate handicap shots - GolfScoringEngine may not be initialized');
+                throw new Error('Failed to calculate handicap shots - please refresh the page');
+            }
 
             const holeInserts = [];
             for (let holeNum = 1; holeNum <= 18; holeNum++) {
@@ -45739,7 +45748,7 @@ class LiveScorecardSystem {
 
         // CRITICAL FIX: Convert handicaps to numbers to prevent string concatenation
         // Use parseHandicap to correctly handle plus handicaps ("+1.5" -> -1.5)
-        const totalHcp = this.players.reduce((sum, p) => sum + this.GolfScoringEngine.parseHandicap(p.handicap), 0);
+        const totalHcp = this.players.reduce((sum, p) => sum + LiveScorecardSystem.GolfScoringEngine.parseHandicap(p.handicap), 0);
         const teamSize = this.players.length;
 
         let multiplier;

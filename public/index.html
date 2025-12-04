@@ -7345,17 +7345,38 @@
             }
 
             static async createNewProfileAfterSearch() {
-                const { lineUserId, profile } = window.manualSearchData;
+                try {
+                    console.log('[ProfileCreation] Create new profile button clicked');
 
-                if (!confirm('Are you sure you want to create a NEW profile?\n\nOnly do this if you searched and could not find your name.')) {
-                    return;
+                    if (!window.manualSearchData) {
+                        console.error('[ProfileCreation] ERROR: manualSearchData not found');
+                        NotificationManager.show('Session data missing. Please try logging in again.', 'error');
+                        return;
+                    }
+
+                    const { lineUserId, profile } = window.manualSearchData;
+                    console.log('[ProfileCreation] Using data:', { lineUserId, displayName: profile?.displayName });
+
+                    if (!confirm('Are you sure you want to create a NEW profile?\n\nOnly do this if you searched and could not find your name.')) {
+                        console.log('[ProfileCreation] User cancelled profile creation');
+                        return;
+                    }
+
+                    console.log('[ProfileCreation] User confirmed, creating profile...');
+
+                    // Close modal
+                    const modal = document.getElementById('manualProfileSearchModal');
+                    if (modal) {
+                        modal.remove();
+                        console.log('[ProfileCreation] Modal closed');
+                    }
+
+                    // Create new profile
+                    await this.createNewProfile(lineUserId, profile);
+                } catch (error) {
+                    console.error('[ProfileCreation] Error in createNewProfileAfterSearch:', error);
+                    NotificationManager.show(`Error: ${error.message}`, 'error');
                 }
-
-                // Close modal
-                document.getElementById('manualProfileSearchModal').remove();
-
-                // Create new profile
-                await this.createNewProfile(lineUserId, profile);
             }
 
             static async showMemberLinkConfirmation(lineUserId, profile, matches) {
@@ -7980,6 +8001,9 @@
                 NotificationManager.show('Logged out successfully', 'info');
             }
         }
+
+        // Expose LineAuthentication to window for onclick handlers
+        window.LineAuthentication = LineAuthentication;
 
         // OTP Authentication System
         class OTPAuthentication {
@@ -40810,14 +40834,10 @@ class LiveScorecardSystem {
         }
 
         try {
-            // PERFORMANCE: Get course info AND hole data in PARALLEL (was sequential causing lag!)
-            const [courseResult, holesResult] = await Promise.all([
-                // Get course info (including scorecard_url)
-                window.SupabaseDB.client
-                    .from('courses')
-                    .select('id, name, scorecard_url')
-                    .eq('id', courseId)
-                    .single(),
+            // PERFORMANCE: Load course profile AND hole data in PARALLEL
+            const [courseProfile, holesResult] = await Promise.all([
+                // Get course info from YAML profile
+                window.scorecardProfileLoader.loadYAMLProfile(courseId),
 
                 // Get hole data with tee marker
                 window.SupabaseDB.client
@@ -40828,8 +40848,12 @@ class LiveScorecardSystem {
                     .order('hole_number')
             ]);
 
-            const { data: course, error: courseError } = courseResult;
-            if (courseError) throw courseError;
+            // Get course name from profile
+            const course = {
+                id: courseId,
+                name: courseProfile?.course_name || window.scorecardProfileLoader.getCourseDisplayName(courseId),
+                scorecard_url: courseProfile?.scorecard_url || null
+            };
 
             let queryResult = holesResult;
             let holes = queryResult.data;
@@ -40894,8 +40918,14 @@ class LiveScorecardSystem {
 
         } catch (error) {
             console.error('[LiveScorecard] Error loading course data:', error);
-            
-            NotificationManager.show('Error loading course data', 'error');
+            console.error('[LiveScorecard] Error details:', {
+                courseId,
+                teeMarker,
+                errorMessage: error.message,
+                errorStack: error.stack
+            });
+
+            NotificationManager.show(`Error loading course data: ${error.message || 'Unknown error'}`, 'error');
             return null;
         }
     }

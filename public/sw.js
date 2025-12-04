@@ -1,7 +1,7 @@
 // SERVICE WORKER - UNREGISTRATION VERSION
 // This version clears all caches and unregisters itself
 
-const SW_VERSION = 'golf-buddies-handicap-fix-v1';
+const SW_VERSION = 'profile-creation-fix-dec4-v4';
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing unregistration version');

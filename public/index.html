@@ -6629,6 +6629,67 @@
                     console.error('[LINE] Failed to query Supabase:', err);
                 }
 
+                // ===== AUTO-MIGRATE GUEST ID TO REAL LINE ID =====
+                // Check if user has a guest profile that needs to be migrated
+                if (window.SupabaseDB && profile.displayName) {
+                    try {
+                        console.log('[LINE] Checking for guest profile to migrate...');
+                        const normalized_name = profile.displayName.toLowerCase().trim().replace(/\s+/g, ' ');
+
+                        // Search for guest profile with matching name
+                        const { data: guestProfiles, error: guestError } = await window.SupabaseDB.client
+                            .from('user_profiles')
+                            .select('line_user_id, name')
+                            .like('line_user_id', 'TRGG-GUEST%')
+                            .ilike('name', `%${profile.displayName}%`);
+
+                        if (!guestError && guestProfiles && guestProfiles.length > 0) {
+                            const guestProfile = guestProfiles[0];
+                            console.log(`[LINE] Found guest profile for ${profile.displayName}: ${guestProfile.line_user_id}`);
+                            console.log('[LINE] Migrating guest profile to real LINE ID...');
+
+                            // Call Supabase function to migrate (or use raw SQL)
+                            const { error: migrateError } = await window.SupabaseDB.client.rpc('migrate_guest_to_real_id', {
+                                p_guest_id: guestProfile.line_user_id,
+                                p_real_id: lineUserId
+                            });
+
+                            if (migrateError) {
+                                console.error('[LINE] Migration function failed, using manual migration:', migrateError);
+
+                                // Manual migration if function doesn't exist
+                                await window.SupabaseDB.client.from('rounds').update({ golfer_id: lineUserId }).eq('golfer_id', guestProfile.line_user_id);
+                                await window.SupabaseDB.client.from('scorecards').update({ player_id: lineUserId }).eq('player_id', guestProfile.line_user_id);
+                                await window.SupabaseDB.client.from('event_registrations').update({ player_id: lineUserId }).eq('player_id', guestProfile.line_user_id);
+                                await window.SupabaseDB.client.from('society_members').update({ golfer_id: lineUserId }).eq('golfer_id', guestProfile.line_user_id);
+                                await window.SupabaseDB.client.from('event_join_requests').update({ golfer_id: lineUserId }).eq('golfer_id', guestProfile.line_user_id);
+                                await window.SupabaseDB.client.from('golf_buddies').update({ buddy_id: lineUserId }).eq('buddy_id', guestProfile.line_user_id);
+                                await window.SupabaseDB.client.from('golf_buddies').update({ user_id: lineUserId }).eq('user_id', guestProfile.line_user_id);
+
+                                // If real profile doesn't exist, update guest profile's line_user_id
+                                if (!userProfile) {
+                                    await window.SupabaseDB.client.from('user_profiles').update({ line_user_id: lineUserId }).eq('line_user_id', guestProfile.line_user_id);
+                                    console.log('[LINE] ✅ Updated guest profile to use real LINE ID');
+                                } else {
+                                    // If real profile exists, delete guest profile
+                                    await window.SupabaseDB.client.from('user_profiles').delete().eq('line_user_id', guestProfile.line_user_id);
+                                    console.log('[LINE] ✅ Deleted guest profile, kept real profile');
+                                }
+
+                                console.log('[LINE] ✅ Guest profile migration complete');
+                            } else {
+                                console.log('[LINE] ✅ Migration function executed successfully');
+                            }
+
+                            // Reload user profile after migration
+                            userProfile = await window.SupabaseDB.getUserProfile(lineUserId);
+                        }
+                    } catch (migrateErr) {
+                        console.error('[LINE] Guest profile migration failed (non-critical):', migrateErr);
+                    }
+                }
+                // ===== END AUTO-MIGRATE =====
+
                 if (userProfile) {
                     // User has a profile - load it
                     console.log('[LINE] Profile found:', {

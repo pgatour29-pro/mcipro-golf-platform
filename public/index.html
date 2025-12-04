@@ -22201,7 +22201,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
 <body>
     <script>
     // BUILD ID - Injected at deploy time for cache busting
-    window.__BUILD_ID__ = 'd7e9f1a3';
+    window.__BUILD_ID__ = 'e8f2a4b6';
 
     console.log('%c🚀 PAGE VERSION: 2025-11-04-HANDICAP-WHS-INTEGRATION', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
@@ -50940,10 +50940,23 @@ This action cannot be undone.`);
             // IMPORTANT: Create or find player in user_profiles so they can be found in future searches
             let playerId = await SocietyGolfDB.createOrFindManualPlayer(name, handicap, societyName);
 
-            // If in directory mode, ONLY add to database (not to any event)
+            // If in directory mode, add to database AND society_members table
             if (this.directoryAddMode) {
-                console.log('[Manual Player] Directory mode - player added to database only');
-                NotificationManager.show(`${name} added to directory`, 'success');
+                console.log('[Manual Player] Directory mode - adding to database and society');
+
+                // Get society info
+                const organizerId = AppState.selectedSociety?.organizerId || AppState.currentUser?.lineUserId;
+
+                // Generate member number
+                const memberNumber = await this.generateMemberNumber(societyName);
+
+                // Add to society members table
+                await SocietyGolfDB.addSocietyMember(societyName, organizerId, playerId, {
+                    memberNumber: memberNumber,
+                    status: 'active'
+                });
+
+                NotificationManager.show(`${name} added to directory as member ${memberNumber}`, 'success');
 
                 // Close modal and refresh directory
                 this.closeManualPlayerModal();

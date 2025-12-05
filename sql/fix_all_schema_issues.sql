@@ -1,7 +1,9 @@
 -- ========================================
--- FIX ALL SCHEMA ISSUES
+-- FIX ALL SCHEMA ISSUES - COMPLETE VERSION
 -- 1. Add is_primary_society column to society_members
--- 2. Ensure society_organizer_access table exists with PIN columns
+-- 2. Create society_organizer_access table with PIN columns
+-- 3. Create society_organizer_roles table for role management
+-- 4. Create RPC functions for PIN management
 -- ========================================
 
 -- PART 1: Fix society_members table
@@ -28,7 +30,7 @@ CREATE UNIQUE INDEX idx_unique_primary_society
     ON society_members(golfer_id)
     WHERE is_primary_society = true;
 
--- PART 2: Ensure society_organizer_access table exists
+-- PART 2: Create society_organizer_access table (for PINs)
 CREATE TABLE IF NOT EXISTS society_organizer_access (
     organizer_id TEXT PRIMARY KEY,
     super_admin_pin TEXT,
@@ -37,7 +39,42 @@ CREATE TABLE IF NOT EXISTS society_organizer_access (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- PART 3: Recreate the RPC functions
+-- PART 3: Create society_organizer_roles table (for role management)
+CREATE TABLE IF NOT EXISTS society_organizer_roles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL,
+    organizer_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'staff')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, organizer_id)
+);
+
+-- Create indexes for society_organizer_roles
+CREATE INDEX IF NOT EXISTS idx_society_organizer_roles_user_id
+    ON society_organizer_roles(user_id);
+CREATE INDEX IF NOT EXISTS idx_society_organizer_roles_organizer_id
+    ON society_organizer_roles(organizer_id);
+
+-- Enable RLS on society_organizer_roles
+ALTER TABLE society_organizer_roles ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Allow users to view their own roles" ON society_organizer_roles;
+DROP POLICY IF EXISTS "Allow organizers to manage roles" ON society_organizer_roles;
+
+-- Create RLS policies for society_organizer_roles
+CREATE POLICY "Allow users to view their own roles"
+    ON society_organizer_roles
+    FOR SELECT
+    USING (user_id = current_setting('request.jwt.claims', true)::json->>'sub');
+
+CREATE POLICY "Allow organizers to manage roles"
+    ON society_organizer_roles
+    FOR ALL
+    USING (organizer_id = current_setting('request.jwt.claims', true)::json->>'sub');
+
+-- PART 4: Create RPC functions for PIN management
 CREATE OR REPLACE FUNCTION set_super_admin_pin(org_id TEXT, new_pin TEXT)
 RETURNS BOOLEAN
 LANGUAGE plpgsql
@@ -70,7 +107,7 @@ BEGIN
 END;
 $$;
 
--- PART 4: Verification
+-- PART 5: Verification
 SELECT 'society_members columns' as info, column_name, data_type
 FROM information_schema.columns
 WHERE table_schema = 'public' AND table_name = 'society_members'
@@ -79,6 +116,11 @@ ORDER BY ordinal_position;
 SELECT 'society_organizer_access columns' as info, column_name, data_type
 FROM information_schema.columns
 WHERE table_schema = 'public' AND table_name = 'society_organizer_access'
+ORDER BY ordinal_position;
+
+SELECT 'society_organizer_roles columns' as info, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name = 'society_organizer_roles'
 ORDER BY ordinal_position;
 
 SELECT 'RPC Functions' as info, routine_name

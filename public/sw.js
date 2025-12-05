@@ -1,7 +1,7 @@
 // SERVICE WORKER - UNREGISTRATION VERSION
 // This version clears all caches and unregisters itself
 
-const SW_VERSION = 'fix-devmode-roleswitch-and-rls-dec5-v1';
+const SW_VERSION = 'fix-society-modal-reopen-dec5-v1';
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing unregistration version');

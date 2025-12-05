@@ -43703,10 +43703,39 @@ class LiveScorecardSystem {
     }
 
     async joinPool(poolId) {
-        const userId = AppState.currentUser?.lineUserId;
+        let userId = AppState.currentUser?.lineUserId;
+
+        // If no authenticated user, check if this is a public pool
         if (!userId) {
-            NotificationManager.show('Not authenticated', 'error');
-            return;
+            // Check if pool is public
+            const { data: pool, error } = await window.SupabaseDB.client
+                .from('side_game_pools')
+                .select('is_public')
+                .eq('id', poolId)
+                .single();
+
+            if (error || !pool?.is_public) {
+                NotificationManager.show('Please log in to join this game', 'error');
+                return;
+            }
+
+            // For public pools, create or get guest ID
+            let guestId = localStorage.getItem('mcipro_guest_id');
+            if (!guestId) {
+                guestId = 'guest_' + this.generateGuestId();
+                localStorage.setItem('mcipro_guest_id', guestId);
+            }
+            userId = guestId;
+
+            // Prompt for guest name
+            const guestName = prompt('Enter your name to join this public game:');
+            if (!guestName) {
+                NotificationManager.show('Name required to join', 'error');
+                return;
+            }
+
+            // Store guest name
+            localStorage.setItem('mcipro_guest_name', guestName);
         }
 
         const result = await window.LiveGamesSystem.joinPool(poolId, userId);
@@ -43723,9 +43752,22 @@ class LiveScorecardSystem {
         }
     }
 
+    generateGuestId() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
     async leavePool(poolId) {
-        const userId = AppState.currentUser?.lineUserId;
-        if (!userId) return;
+        let userId = AppState.currentUser?.lineUserId;
+
+        // Check for guest ID if not authenticated
+        if (!userId) {
+            userId = localStorage.getItem('mcipro_guest_id');
+            if (!userId) return;
+        }
 
         // NO POPUPS: Just execute the command directly as user requested
         // Removed: confirm('Leave this game?')
@@ -43746,10 +43788,39 @@ class LiveScorecardSystem {
     }
 
     async joinTeamPool(poolId) {
-        const userId = AppState.currentUser?.lineUserId;
+        let userId = AppState.currentUser?.lineUserId;
+
+        // If no authenticated user, check if this is a public pool
         if (!userId) {
-            NotificationManager.show('Not authenticated', 'error');
-            return;
+            // Check if pool is public
+            const { data: pool, error } = await window.SupabaseDB.client
+                .from('side_game_pools')
+                .select('is_public')
+                .eq('id', poolId)
+                .single();
+
+            if (error || !pool?.is_public) {
+                NotificationManager.show('Please log in to join this game', 'error');
+                return;
+            }
+
+            // For public pools, create or get guest ID
+            let guestId = localStorage.getItem('mcipro_guest_id');
+            if (!guestId) {
+                guestId = 'guest_' + this.generateGuestId();
+                localStorage.setItem('mcipro_guest_id', guestId);
+            }
+            userId = guestId;
+
+            // Prompt for guest name
+            const guestName = prompt('Enter your name to join this public game:');
+            if (!guestName) {
+                NotificationManager.show('Name required to join', 'error');
+                return;
+            }
+
+            // Store guest name
+            localStorage.setItem('mcipro_guest_name', guestName);
         }
 
         // Get players from the current round (if any)

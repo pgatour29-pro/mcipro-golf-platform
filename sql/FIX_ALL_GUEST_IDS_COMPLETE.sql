@@ -68,38 +68,10 @@ SELECT 'Event registrations migrated' as step, COUNT(*) as count
 FROM public.event_registrations
 WHERE player_id IN (SELECT real_id FROM duplicate_users);
 
--- STEP 5: Migrate society members (use ON CONFLICT because real ID might already exist)
--- First, update existing real ID entries with any data from guest entries
-UPDATE public.society_members sm_real
-SET
-    member_number = COALESCE(sm_real.member_number, sm_guest.member_number),
-    is_primary_society = COALESCE(sm_real.is_primary_society, sm_guest.is_primary_society),
-    status = COALESCE(sm_real.status, sm_guest.status),
-    member_data = COALESCE(sm_real.member_data, sm_guest.member_data),
-    joined_at = LEAST(sm_real.joined_at, sm_guest.joined_at)
-FROM public.society_members sm_guest
-JOIN duplicate_users d ON sm_guest.golfer_id = d.guest_id
-WHERE sm_real.golfer_id = d.real_id
-  AND sm_real.society_id = sm_guest.society_id;
-
--- Then, insert guest entries that don't have real ID equivalents
-INSERT INTO public.society_members (society_id, golfer_id, member_number, is_primary_society, status, member_data, joined_at, organizer_id)
-SELECT
-    sm.society_id,
-    d.real_id,
-    sm.member_number,
-    sm.is_primary_society,
-    sm.status,
-    sm.member_data,
-    sm.joined_at,
-    sm.organizer_id
-FROM public.society_members sm
-JOIN duplicate_users d ON sm.golfer_id = d.guest_id
-ON CONFLICT (society_id, golfer_id) DO NOTHING;
-
--- Finally, delete guest society member entries
-DELETE FROM public.society_members sm
-USING duplicate_users d
+-- STEP 5: Migrate society members - just update the golfer_id
+UPDATE public.society_members sm
+SET golfer_id = d.real_id
+FROM duplicate_users d
 WHERE sm.golfer_id = d.guest_id;
 
 SELECT 'Society memberships migrated' as step, COUNT(*) as count
@@ -131,10 +103,13 @@ SELECT 'Golf buddies migrated' as step, COUNT(*) as count
 FROM public.golf_buddies
 WHERE buddy_id IN (SELECT real_id FROM duplicate_users) OR user_id IN (SELECT real_id FROM duplicate_users);
 
--- STEP 8: Migrate scores table (if exists)
+-- STEP 8: Migrate scores table (if exists and has golfer_id column)
 DO $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'scores') THEN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'scores' AND column_name = 'golfer_id'
+    ) THEN
         UPDATE public.scores s
         SET golfer_id = d.real_id
         FROM duplicate_users d

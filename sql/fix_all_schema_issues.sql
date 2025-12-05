@@ -76,33 +76,39 @@ END;
 $$;
 
 -- PART 4: Verification
-RAISE NOTICE '========================================';
-RAISE NOTICE 'VERIFICATION:';
-RAISE NOTICE '========================================';
+DO $$
+BEGIN
+    RAISE NOTICE '========================================';
+    RAISE NOTICE 'VERIFICATION:';
+    RAISE NOTICE '========================================';
+    RAISE NOTICE '✅ ALL FIXES APPLIED';
+    RAISE NOTICE '========================================';
+END $$;
 
 -- Show society_members schema
-RAISE NOTICE '--- society_members columns:';
-SELECT column_name, data_type
+SELECT
+    'society_members' as table_name,
+    column_name,
+    data_type
 FROM information_schema.columns
 WHERE table_schema = 'public'
 AND table_name = 'society_members'
 ORDER BY ordinal_position;
 
 -- Show society_organizer_access schema
-RAISE NOTICE '--- society_organizer_access columns:';
-SELECT column_name, data_type
+SELECT
+    'society_organizer_access' as table_name,
+    column_name,
+    data_type
 FROM information_schema.columns
 WHERE table_schema = 'public'
 AND table_name = 'society_organizer_access'
 ORDER BY ordinal_position;
 
 -- Show functions
-RAISE NOTICE '--- RPC functions:';
-SELECT routine_name
+SELECT
+    'RPC Functions' as type,
+    routine_name
 FROM information_schema.routines
 WHERE routine_schema = 'public'
 AND routine_name IN ('set_super_admin_pin', 'set_staff_pin');
-
-RAISE NOTICE '========================================';
-RAISE NOTICE '✅ ALL FIXES APPLIED';
-RAISE NOTICE '========================================';

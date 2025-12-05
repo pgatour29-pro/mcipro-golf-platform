@@ -24,7 +24,7 @@ WITH duplicates AS (
         id,
         ROW_NUMBER() OVER (
             PARTITION BY society_id, golfer_id
-            ORDER BY created_at ASC, id ASC
+            ORDER BY id ASC
         ) as rn
     FROM society_members
 )

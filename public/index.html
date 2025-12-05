@@ -39849,111 +39849,128 @@ class LiveScorecardSystem {
 
         // Calculate match play (hole-by-hole comparison)
         calculateMatchPlay(playerScores, courseHoles, useNet = true) {
-            // For 1v1 (exactly 2 players): true head-to-head matchplay
-            // For 3+ players: match play vs the field (best opponent score)
+            // For 2+ players: automatic round robin (each player vs every other player)
+            // This creates multiple head-to-head 1v1 matches happening simultaneously
             const matchResults = {};
-            const is1v1 = playerScores.length === 2;
 
             for (const player of playerScores) {
-                let holesUp = 0; // Holes won
-                let holesDown = 0; // Holes lost
-                let holesHalved = 0; // Tied holes
-                let holesPlayed = 0;
-                const holeByHole = [];
+                const playerId = player.playerId;
+                const allOpponents = playerScores.filter(p => p.playerId !== playerId);
 
-                for (let hole = 1; hole <= 18; hole++) {
-                    const playerScore = player.scores.find(s => (s.hole_number || s.hole) === hole);
-                    if (!playerScore) continue;
+                // Track totals across all matches for this player
+                let totalHolesWon = 0;
+                let totalHolesLost = 0;
+                let totalHolesHalved = 0;
+                let totalHolesPlayed = 0;
+                const individualMatches = [];
 
-                    let playerStrokes = playerScore.gross_score || playerScore.strokes;
-                    if (useNet && player.handicap) {
-                        const shots = this.allocHandicapShots(courseHoles, player.handicap);
-                        playerStrokes = this.netStrokesForHole(playerStrokes, shots[hole] || 0);
-                    }
+                // Play head-to-head against each opponent
+                for (const opponent of allOpponents) {
+                    let holesWon = 0;
+                    let holesLost = 0;
+                    let holesHalved = 0;
+                    let holesPlayed = 0;
 
-                    // For 1v1: compare against the single opponent
-                    // For 3+: compare against best opponent score (field)
-                    let opponentStrokes = 999;
+                    // Compare hole by hole
+                    for (let hole = 1; hole <= 18; hole++) {
+                        const playerScore = player.scores.find(s => (s.hole_number || s.hole) === hole);
+                        const oppScore = opponent.scores.find(s => (s.hole_number || s.hole) === hole);
 
-                    if (is1v1) {
-                        // True 1v1: get the single opponent's score
-                        const opponent = playerScores.find(p => p.playerId !== player.playerId);
-                        if (opponent) {
-                            const oppScore = opponent.scores.find(s => (s.hole_number || s.hole) === hole);
-                            if (oppScore) {
-                                let oppStrokes = oppScore.gross_score || oppScore.strokes;
-                                if (useNet && opponent.handicap) {
-                                    const shots = this.allocHandicapShots(courseHoles, opponent.handicap);
-                                    oppStrokes = this.netStrokesForHole(oppStrokes, shots[hole] || 0);
-                                }
-                                opponentStrokes = oppStrokes;
+                        if (!playerScore || !oppScore) continue;
+
+                        let playerStrokes = playerScore.gross_score || playerScore.strokes;
+                        let oppStrokes = oppScore.gross_score || oppScore.strokes;
+
+                        if (useNet) {
+                            if (player.handicap) {
+                                const shots = this.allocHandicapShots(courseHoles, player.handicap);
+                                playerStrokes = this.netStrokesForHole(playerStrokes, shots[hole] || 0);
                             }
-                        }
-                    } else {
-                        // Match play vs field: find best opponent score
-                        for (const opponent of playerScores) {
-                            if (opponent.playerId === player.playerId) continue;
-                            const oppScore = opponent.scores.find(s => (s.hole_number || s.hole) === hole);
-                            if (!oppScore) continue;
-
-                            let oppStrokes = oppScore.gross_score || oppScore.strokes;
-                            if (useNet && opponent.handicap) {
+                            if (opponent.handicap) {
                                 const shots = this.allocHandicapShots(courseHoles, opponent.handicap);
                                 oppStrokes = this.netStrokesForHole(oppStrokes, shots[hole] || 0);
                             }
+                        }
 
-                            opponentStrokes = Math.min(opponentStrokes, oppStrokes);
+                        holesPlayed++;
+                        if (playerStrokes < oppStrokes) {
+                            holesWon++;
+                        } else if (playerStrokes > oppStrokes) {
+                            holesLost++;
+                        } else {
+                            holesHalved++;
                         }
                     }
 
-                    if (opponentStrokes === 999) continue; // No opponent scores
+                    // Calculate status for this individual match
+                    const netHoles = holesWon - holesLost;
+                    const holesRemaining = 18 - holesPlayed;
+                    let status = 'All Square';
+                    let matchFinished = false;
 
-                    holesPlayed++;
-                    if (playerStrokes < opponentStrokes) {
-                        holesUp++;
-                        holeByHole.push({ hole, result: 'won' });
-                    } else if (playerStrokes > opponentStrokes) {
-                        holesDown++;
-                        holeByHole.push({ hole, result: 'lost' });
-                    } else {
-                        holesHalved++;
-                        holeByHole.push({ hole, result: 'halved' });
+                    if (netHoles > 0) {
+                        if (netHoles > holesRemaining) {
+                            status = `${netHoles} & ${holesRemaining}`;
+                            matchFinished = true;
+                        } else {
+                            status = `${netHoles} UP`;
+                        }
+                    } else if (netHoles < 0) {
+                        if (Math.abs(netHoles) > holesRemaining) {
+                            status = `${Math.abs(netHoles)} & ${holesRemaining}`;
+                            matchFinished = true;
+                        } else {
+                            status = `${Math.abs(netHoles)} DOWN`;
+                        }
                     }
+
+                    individualMatches.push({
+                        opponentId: opponent.playerId,
+                        opponentName: opponent.playerName || 'Unknown',
+                        holesWon,
+                        holesLost,
+                        holesHalved,
+                        holesPlayed,
+                        netHoles,
+                        status,
+                        matchFinished
+                    });
+
+                    // Add to totals
+                    totalHolesWon += holesWon;
+                    totalHolesLost += holesLost;
+                    totalHolesHalved += holesHalved;
+                    totalHolesPlayed = Math.max(totalHolesPlayed, holesPlayed);
                 }
 
-                // Calculate match status
-                const netHoles = holesUp - holesDown;
-                const holesRemaining = 18 - holesPlayed;
-
-                let status = 'All Square';
-                let matchFinished = false;
+                // Overall status for this player across all matches
+                const netHoles = totalHolesWon - totalHolesLost;
+                const holesRemaining = 18 - totalHolesPlayed;
+                let overallStatus = 'All Square';
 
                 if (netHoles > 0) {
                     if (netHoles > holesRemaining) {
-                        // Match is won (e.g., "4 & 3" means 4 up with 3 to play)
-                        status = `${netHoles} & ${holesRemaining}`;
-                        matchFinished = true;
+                        overallStatus = `${netHoles} & ${holesRemaining}`;
                     } else {
-                        status = `${netHoles} UP`;
+                        overallStatus = `${netHoles} UP`;
                     }
                 } else if (netHoles < 0) {
                     if (Math.abs(netHoles) > holesRemaining) {
-                        status = `${Math.abs(netHoles)} & ${holesRemaining} (Down)`;
-                        matchFinished = true;
+                        overallStatus = `${Math.abs(netHoles)} & ${holesRemaining}`;
                     } else {
-                        status = `${Math.abs(netHoles)} DOWN`;
+                        overallStatus = `${Math.abs(netHoles)} DOWN`;
                     }
                 }
 
-                matchResults[player.playerId] = {
-                    holesUp,
-                    holesDown,
-                    holesHalved,
-                    holesPlayed,
-                    netHoles,
-                    status,
-                    matchFinished,
-                    holeByHole
+                matchResults[playerId] = {
+                    holesUp: totalHolesWon,
+                    holesDown: totalHolesLost,
+                    holesHalved: totalHolesHalved,
+                    holesPlayed: totalHolesPlayed,
+                    netHoles: netHoles,
+                    status: overallStatus,
+                    matchFinished: false,
+                    individualMatches: individualMatches
                 };
             }
 
@@ -46935,7 +46952,28 @@ class LiveScorecardSystem {
             if (format === 'matchplay') {
                 // Check which modes are active
                 const isRoundRobin = sortedLeaderboard.some(entry => entry.roundRobinMatch);
+                const isIndividualMatchPlay = sortedLeaderboard.some(entry => entry.matchplay?.individualMatches && entry.matchplay.individualMatches.length > 0);
                 const isTeamMode = sortedLeaderboard.some(entry => entry.matchplay?.team);
+
+                // If Individual Match Play with multiple matches, convert to roundRobinMatch format for display
+                if (isIndividualMatchPlay && !isRoundRobin) {
+                    sortedLeaderboard.forEach(entry => {
+                        if (entry.matchplay?.individualMatches) {
+                            entry.roundRobinMatch = {
+                                playerId: entry.player_id,
+                                playerName: entry.player_name,
+                                totalHolesWon: entry.matchplay.holesUp,
+                                totalHolesLost: entry.matchplay.holesDown,
+                                totalHolesHalved: entry.matchplay.holesHalved,
+                                totalHolesPlayed: entry.matchplay.holesPlayed,
+                                individualMatches: entry.matchplay.individualMatches,
+                                aggregateNet: entry.matchplay.netHoles,
+                                aggregateStatus: entry.matchplay.status
+                            };
+                        }
+                    });
+                    return this.renderRoundRobinLeaderboard(sortedLeaderboard, formatIndex, formatName);
+                }
 
                 // If BOTH round robin and team modes are active, show both leaderboards
                 if (isRoundRobin && isTeamMode) {

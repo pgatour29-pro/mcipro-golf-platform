@@ -1,7 +1,7 @@
 // SERVICE WORKER - UNREGISTRATION VERSION
 // This version clears all caches and unregisters itself
 
-const SW_VERSION = 'handicap-adjust-3-rounds-dec5-v1';
+const SW_VERSION = 'fix-1v1-matchplay-calculation-dec5-v1';
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing unregistration version');

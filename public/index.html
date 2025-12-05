@@ -39849,8 +39849,10 @@ class LiveScorecardSystem {
 
         // Calculate match play (hole-by-hole comparison)
         calculateMatchPlay(playerScores, courseHoles, useNet = true) {
-            // Match play is typically head-to-head, we'll calculate vs the field for simplicity
+            // For 1v1 (exactly 2 players): true head-to-head matchplay
+            // For 3+ players: match play vs the field (best opponent score)
             const matchResults = {};
+            const is1v1 = playerScores.length === 2;
 
             for (const player of playerScores) {
                 let holesUp = 0; // Holes won
@@ -39869,29 +39871,48 @@ class LiveScorecardSystem {
                         playerStrokes = this.netStrokesForHole(playerStrokes, shots[hole] || 0);
                     }
 
-                    // Find best opponent score on this hole
-                    let bestOpponentStrokes = 999;
-                    for (const opponent of playerScores) {
-                        if (opponent.playerId === player.playerId) continue;
-                        const oppScore = opponent.scores.find(s => (s.hole_number || s.hole) === hole);
-                        if (!oppScore) continue;
+                    // For 1v1: compare against the single opponent
+                    // For 3+: compare against best opponent score (field)
+                    let opponentStrokes = 999;
 
-                        let oppStrokes = oppScore.gross_score || oppScore.strokes;
-                        if (useNet && opponent.handicap) {
-                            const shots = this.allocHandicapShots(courseHoles, opponent.handicap);
-                            oppStrokes = this.netStrokesForHole(oppStrokes, shots[hole] || 0);
+                    if (is1v1) {
+                        // True 1v1: get the single opponent's score
+                        const opponent = playerScores.find(p => p.playerId !== player.playerId);
+                        if (opponent) {
+                            const oppScore = opponent.scores.find(s => (s.hole_number || s.hole) === hole);
+                            if (oppScore) {
+                                let oppStrokes = oppScore.gross_score || oppScore.strokes;
+                                if (useNet && opponent.handicap) {
+                                    const shots = this.allocHandicapShots(courseHoles, opponent.handicap);
+                                    oppStrokes = this.netStrokesForHole(oppStrokes, shots[hole] || 0);
+                                }
+                                opponentStrokes = oppStrokes;
+                            }
                         }
+                    } else {
+                        // Match play vs field: find best opponent score
+                        for (const opponent of playerScores) {
+                            if (opponent.playerId === player.playerId) continue;
+                            const oppScore = opponent.scores.find(s => (s.hole_number || s.hole) === hole);
+                            if (!oppScore) continue;
 
-                        bestOpponentStrokes = Math.min(bestOpponentStrokes, oppStrokes);
+                            let oppStrokes = oppScore.gross_score || oppScore.strokes;
+                            if (useNet && opponent.handicap) {
+                                const shots = this.allocHandicapShots(courseHoles, opponent.handicap);
+                                oppStrokes = this.netStrokesForHole(oppStrokes, shots[hole] || 0);
+                            }
+
+                            opponentStrokes = Math.min(opponentStrokes, oppStrokes);
+                        }
                     }
 
-                    if (bestOpponentStrokes === 999) continue; // No opponent scores
+                    if (opponentStrokes === 999) continue; // No opponent scores
 
                     holesPlayed++;
-                    if (playerStrokes < bestOpponentStrokes) {
+                    if (playerStrokes < opponentStrokes) {
                         holesUp++;
                         holeByHole.push({ hole, result: 'won' });
-                    } else if (playerStrokes > bestOpponentStrokes) {
+                    } else if (playerStrokes > opponentStrokes) {
                         holesDown++;
                         holeByHole.push({ hole, result: 'lost' });
                     } else {

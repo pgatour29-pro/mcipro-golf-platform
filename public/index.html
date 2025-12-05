@@ -38862,22 +38862,29 @@ class SocietyGolfSupabase {
 
     async addSocietyMember(societyName, organizerId, golferId, memberData = {}) {
         await this.waitForSupabase();
+
+        const payload = {
+            society_name: societyName,
+            organizer_id: organizerId,
+            golfer_id: golferId,
+            member_number: memberData.memberNumber || null,
+            is_primary_society: memberData.isPrimary || false,
+            status: memberData.status || 'active',
+            member_data: memberData.extra || {}
+        };
+
+        console.log('[SocietyGolfDB] Adding society member with payload:', payload);
+
         const { data, error } = await window.SupabaseDB.client
             .from('society_members')
-            .upsert({
-                society_name: societyName,
-                organizer_id: organizerId,
-                golfer_id: golferId,
-                member_number: memberData.memberNumber || null,
-                status: memberData.status || 'active',
-                member_data: memberData.extra || {}
-            }, {
+            .upsert(payload, {
                 onConflict: 'society_name,golfer_id'
             })
             .select();
 
         if (error) {
             console.error('[SocietyGolfDB] Error adding society member:', error);
+            console.error('[SocietyGolfDB] Error details:', JSON.stringify(error, null, 2));
             throw error;
         }
 

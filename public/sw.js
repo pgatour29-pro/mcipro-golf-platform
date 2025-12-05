@@ -1,7 +1,7 @@
 // SERVICE WORKER - UNREGISTRATION VERSION
 // This version clears all caches and unregisters itself
 
-const SW_VERSION = 'fix-society-name-property-dec5-v2';
+const SW_VERSION = 'debug-400-error-dec5-v3';
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing unregistration version');

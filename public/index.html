@@ -38857,15 +38857,50 @@ class SocietyGolfSupabase {
 
         console.log(`[SocietyGolfDB] Search results: ${members?.length || 0} members (${offset}-${offset + (members?.length || 0)} of ${totalCount})`);
 
-        return { members: members || [], totalCount: totalCount || 0, hasMore };
+        // If we found matching profiles but no members, return the non-member profiles so they can be added
+        let nonMembers = [];
+        if (searchTerm && filteredMemberIds && filteredMemberIds.length > 0 && members.length === 0) {
+            // Get the full profile data for non-members
+            const { data: nonMemberProfiles, error: nonMemberError } = await window.SupabaseDB.client
+                .from('user_profiles')
+                .select('line_user_id, name, email, phone, profile_data')
+                .in('line_user_id', filteredMemberIds);
+
+            if (!nonMemberError && nonMemberProfiles) {
+                console.log(`[SocietyGolfDB] 📝 Found ${nonMemberProfiles.length} non-member profiles to suggest`);
+                nonMembers = nonMemberProfiles.map(profile => ({
+                    golfer_id: profile.line_user_id,
+                    user_profiles: profile,
+                    isNonMember: true // Flag to show "Add" button instead of member actions
+                }));
+            }
+        }
+
+        return { members: members || [], totalCount: totalCount || 0, hasMore, nonMembers };
     }
 
     async addSocietyMember(societyName, organizerId, golferId, memberData = {}) {
         await this.waitForSupabase();
 
+        // First get the society_id
+        let query = window.SupabaseDB.client
+            .from('society_profiles')
+            .select('id')
+            .eq('society_name', societyName);
+
+        if (organizerId) {
+            query = query.eq('organizer_id', organizerId);
+        }
+
+        const { data: societyData, error: societyError } = await query.single();
+
+        if (societyError || !societyData) {
+            console.error('[SocietyGolfDB] Error loading society for member insert:', societyError);
+            throw new Error('Society not found');
+        }
+
         const payload = {
-            society_name: societyName,
-            organizer_id: organizerId,
+            society_id: societyData.id,
             golfer_id: golferId,
             member_number: memberData.memberNumber || null,
             is_primary_society: memberData.isPrimary || false,
@@ -38878,7 +38913,7 @@ class SocietyGolfSupabase {
         const { data, error } = await window.SupabaseDB.client
             .from('society_members')
             .upsert(payload, {
-                onConflict: 'society_name,golfer_id'
+                onConflict: 'society_id,golfer_id'
             })
             .select();
 
@@ -48783,13 +48818,16 @@ class SocietyOrganizerManager {
             }
 
             // Use new server-side search with pagination
-            const { members, totalCount, hasMore } = await SocietyGolfDB.searchSocietyMembers(
+            const { members, totalCount, hasMore, nonMembers } = await SocietyGolfDB.searchSocietyMembers(
                 societyName,
                 organizerId,
                 this.playerDirectorySearchTerm,
                 this.playerDirectoryOffset,
                 this.playerDirectoryLimit
             );
+
+            // Store non-members for rendering
+            this.playerDirectoryNonMembers = nonMembers || [];
 
             // Enrich members with profile data
             const enrichedMembers = members.map(member => {
@@ -48939,7 +48977,10 @@ class SocietyOrganizerManager {
         const tbody = document.getElementById('playerDirectoryTable');
         if (!tbody) return;
 
-        if (!members || members.length === 0) {
+        // Check if we have non-members to show
+        const nonMembers = this.playerDirectoryNonMembers || [];
+
+        if ((!members || members.length === 0) && nonMembers.length === 0) {
             // Check if this is due to searching or genuinely no members
             const isSearching = this.playerDirectorySearchTerm && this.playerDirectorySearchTerm.length > 0;
 
@@ -48952,6 +48993,41 @@ class SocietyOrganizerManager {
                     </td>
                 </tr>
             `;
+            return;
+        }
+
+        // If we have no members but have non-members, show them with "Add" buttons
+        if ((!members || members.length === 0) && nonMembers.length > 0) {
+            tbody.innerHTML = nonMembers.map(nonMember => {
+                const profile = nonMember.user_profiles;
+                const golfInfo = profile?.profile_data?.golfInfo || {};
+                const playerName = profile?.name || 'Unknown';
+                const handicap = golfInfo.handicap || '36';
+                const homeClub = golfInfo.homeClub || '-';
+
+                return `
+                    <tr class="hover:bg-gray-50 bg-blue-50">
+                        <td colspan="5" class="px-6 py-4">
+                            <div class="flex items-center gap-3">
+                                <div class="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <span class="material-symbols-outlined text-blue-600 text-sm">person_add</span>
+                                </div>
+                                <div class="flex-grow">
+                                    <div class="text-sm font-medium text-gray-900">${playerName}</div>
+                                    <div class="text-xs text-gray-500">Handicap: ${handicap} | Home Club: ${homeClub}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td colspan="2" class="px-6 py-4 text-right">
+                            <button onclick="SocietyOrganizerSystem.addPlayerToDirectory('${nonMember.golfer_id}', '${playerName.replace(/'/g, "\\'")}', ${handicap})"
+                                class="inline-flex items-center gap-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm font-medium">
+                                <span class="material-symbols-outlined text-sm">add</span>
+                                Add to Directory
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
             return;
         }
 

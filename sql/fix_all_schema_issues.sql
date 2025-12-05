@@ -7,7 +7,6 @@
 -- PART 1: Fix society_members table
 DO $$
 BEGIN
-    -- Check if column exists
     IF NOT EXISTS (
         SELECT 1
         FROM information_schema.columns
@@ -15,17 +14,15 @@ BEGIN
           AND table_name = 'society_members'
           AND column_name = 'is_primary_society'
     ) THEN
-        -- Add the column
         ALTER TABLE public.society_members
         ADD COLUMN is_primary_society BOOLEAN DEFAULT false;
-
-        RAISE NOTICE '✅ Added is_primary_society column to society_members';
+        RAISE NOTICE 'Added is_primary_society column';
     ELSE
-        RAISE NOTICE 'ℹ️  is_primary_society column already exists';
+        RAISE NOTICE 'is_primary_society column already exists';
     END IF;
 END $$;
 
--- Create or replace the unique index for primary society
+-- Create unique index for primary society
 DROP INDEX IF EXISTS idx_unique_primary_society;
 CREATE UNIQUE INDEX idx_unique_primary_society
     ON society_members(golfer_id)
@@ -53,7 +50,6 @@ BEGIN
     DO UPDATE SET
         super_admin_pin = new_pin,
         updated_at = NOW();
-
     RETURN true;
 END;
 $$;
@@ -70,45 +66,22 @@ BEGIN
     DO UPDATE SET
         staff_pin = new_pin,
         updated_at = NOW();
-
     RETURN true;
 END;
 $$;
 
 -- PART 4: Verification
-DO $$
-BEGIN
-    RAISE NOTICE '========================================';
-    RAISE NOTICE 'VERIFICATION:';
-    RAISE NOTICE '========================================';
-    RAISE NOTICE '✅ ALL FIXES APPLIED';
-    RAISE NOTICE '========================================';
-END $$;
-
--- Show society_members schema
-SELECT
-    'society_members' as table_name,
-    column_name,
-    data_type
+SELECT 'society_members columns' as info, column_name, data_type
 FROM information_schema.columns
-WHERE table_schema = 'public'
-AND table_name = 'society_members'
+WHERE table_schema = 'public' AND table_name = 'society_members'
 ORDER BY ordinal_position;
 
--- Show society_organizer_access schema
-SELECT
-    'society_organizer_access' as table_name,
-    column_name,
-    data_type
+SELECT 'society_organizer_access columns' as info, column_name, data_type
 FROM information_schema.columns
-WHERE table_schema = 'public'
-AND table_name = 'society_organizer_access'
+WHERE table_schema = 'public' AND table_name = 'society_organizer_access'
 ORDER BY ordinal_position;
 
--- Show functions
-SELECT
-    'RPC Functions' as type,
-    routine_name
+SELECT 'RPC Functions' as info, routine_name
 FROM information_schema.routines
 WHERE routine_schema = 'public'
 AND routine_name IN ('set_super_admin_pin', 'set_staff_pin');

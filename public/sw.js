@@ -1,7 +1,7 @@
 // SERVICE WORKER - UNREGISTRATION VERSION
 // This version clears all caches and unregisters itself
 
-const SW_VERSION = 'fix-schema-column-dec5-v1';
+const SW_VERSION = 'fix-society-name-property-dec5-v2';
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing unregistration version');

@@ -58276,6 +58276,19 @@ class GolferEventsManager {
         `;
     }
 
+    // Helper to get normalized society name for an event
+    getSocietyNameForEvent(event) {
+        // Check for TRGG events (by name prefix, organizerId, or organizerName)
+        if (event.name?.startsWith('TRGG') ||
+            event.organizerId === 'trgg-pattaya' ||
+            event.organizerName === 'Travellers Rest Golf Group' ||
+            event.societyName === 'Travellers Rest Golf Group') {
+            return 'Travellers Rest Golf Group';
+        }
+        // Otherwise use societyName or organizerName
+        return event.societyName || event.organizerName;
+    }
+
     async populateSocietyFilter() {
         const select = document.getElementById('societyFilter');
         if (!select) return;
@@ -58283,14 +58296,32 @@ class GolferEventsManager {
         // Get current selection to preserve it
         const currentSelection = select.value;
 
-        // Extract societies directly from events (this ensures names match exactly for filtering)
+        // Count events per society from events (using normalized society name)
         const societyCounts = {};
         this.allEvents.forEach(event => {
-            const societyName = event.societyName || event.organizerName;
+            const societyName = this.getSocietyNameForEvent(event);
             if (societyName) {
                 societyCounts[societyName] = (societyCounts[societyName] || 0) + 1;
             }
         });
+
+        // Also get all societies from society_profiles (so they appear even with 0 events)
+        try {
+            const { data: societyProfiles, error } = await window.SupabaseDB.client
+                .from('society_profiles')
+                .select('society_name')
+                .order('society_name');
+
+            if (!error && societyProfiles) {
+                societyProfiles.forEach(profile => {
+                    if (profile.society_name && !(profile.society_name in societyCounts)) {
+                        societyCounts[profile.society_name] = 0;
+                    }
+                });
+            }
+        } catch (err) {
+            console.warn('[GolferEventsSystem] Could not load society_profiles:', err);
+        }
 
         // Sort alphabetically
         const sortedSocieties = Object.keys(societyCounts).sort((a, b) => a.localeCompare(b));
@@ -58319,8 +58350,8 @@ class GolferEventsManager {
         const isActivelySearching = searchTerm || dateFilter !== 'all' || statusFilter !== 'all' || societyFilter !== 'all';
 
         this.filteredEvents = this.allEvents.filter(event => {
-            // Get society name (use societyName or fallback to organizerName)
-            const eventSocietyName = event.societyName || event.organizerName;
+            // Get normalized society name (handles TRGG events correctly)
+            const eventSocietyName = this.getSocietyNameForEvent(event);
 
             // SOCIETY FILTER (filter by specific society)
             if (societyFilter !== 'all') {

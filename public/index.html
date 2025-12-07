@@ -44633,16 +44633,18 @@ class LiveScorecardSystem {
 
             // Create Nassau pool
             if (createNassau) {
+                const nassauMethod = document.querySelector('input[name="nassauMethod"]:checked')?.value || 'stroke';
                 poolPromises.push(
                     window.LiveGamesSystem.createPool({
                         courseId: courseId,
                         eventId: this.eventId,
                         dateISO: today,
                         type: 'nassau',
-                        name: `Nassau - Open`,
+                        name: `Nassau - Open (${nassauMethod === 'stableford' ? 'Stableford' : 'Stroke'})`,
                         isPublic: true,
                         config: {
-                            useNet: true
+                            useNet: true,
+                            nassauMethod: nassauMethod
                         },
                         createdBy: userId
                     }).then(async (result) => {
@@ -49081,24 +49083,48 @@ class LiveScorecardSystem {
             // Match Play: sort by net score (lowest first)
             standings.sort((a, b) => a.totalGross - b.totalGross);
         } else if (pool.type === 'nassau' || pool.type === 'team_nassau') {
-            // Nassau: sort by total gross (lowest first)
-            standings.sort((a, b) => a.totalGross - b.totalGross);
+            // Check if pool uses stableford method
+            const useStableford = pool.config?.nassauMethod === 'stableford';
 
-            // Determine winners for each segment
-            const front9Winner = standings.filter(s => s.front9Gross > 0).sort((a, b) => a.front9Gross - b.front9Gross)[0];
-            const back9Winner = standings.filter(s => s.back9Gross > 0).sort((a, b) => a.back9Gross - b.back9Gross)[0];
-            const totalWinner = standings.filter(s => s.totalGross > 0).sort((a, b) => a.totalGross - b.totalGross)[0];
+            if (useStableford) {
+                // Stableford Nassau: highest points wins
+                standings.sort((a, b) => b.totalStableford - a.totalStableford);
 
-            // Mark winners
-            standings.forEach(s => {
-                s.wonFront9 = front9Winner && s.playerId === front9Winner.playerId;
-                s.wonBack9 = back9Winner && s.playerId === back9Winner.playerId;
-                s.wonTotal = totalWinner && s.playerId === totalWinner.playerId;
-                s.nassauPoints = (s.wonFront9 ? 1 : 0) + (s.wonBack9 ? 1 : 0) + (s.wonTotal ? 1 : 0);
-            });
+                // Determine winners for each segment (highest stableford wins)
+                const front9Winner = standings.filter(s => s.front9Stableford > 0).sort((a, b) => b.front9Stableford - a.front9Stableford)[0];
+                const back9Winner = standings.filter(s => s.back9Stableford > 0).sort((a, b) => b.back9Stableford - a.back9Stableford)[0];
+                const totalWinner = standings.filter(s => s.totalStableford > 0).sort((a, b) => b.totalStableford - a.totalStableford)[0];
 
-            // Re-sort by Nassau points won (most first)
-            standings.sort((a, b) => b.nassauPoints - a.nassauPoints || a.totalGross - b.totalGross);
+                // Mark winners
+                standings.forEach(s => {
+                    s.wonFront9 = front9Winner && s.playerId === front9Winner.playerId;
+                    s.wonBack9 = back9Winner && s.playerId === back9Winner.playerId;
+                    s.wonTotal = totalWinner && s.playerId === totalWinner.playerId;
+                    s.nassauPoints = (s.wonFront9 ? 1 : 0) + (s.wonBack9 ? 1 : 0) + (s.wonTotal ? 1 : 0);
+                });
+
+                // Re-sort by Nassau points won (most first), tiebreak by stableford
+                standings.sort((a, b) => b.nassauPoints - a.nassauPoints || b.totalStableford - a.totalStableford);
+            } else {
+                // Stroke Nassau: lowest gross wins
+                standings.sort((a, b) => a.totalGross - b.totalGross);
+
+                // Determine winners for each segment (lowest gross wins)
+                const front9Winner = standings.filter(s => s.front9Gross > 0).sort((a, b) => a.front9Gross - b.front9Gross)[0];
+                const back9Winner = standings.filter(s => s.back9Gross > 0).sort((a, b) => a.back9Gross - b.back9Gross)[0];
+                const totalWinner = standings.filter(s => s.totalGross > 0).sort((a, b) => a.totalGross - b.totalGross)[0];
+
+                // Mark winners
+                standings.forEach(s => {
+                    s.wonFront9 = front9Winner && s.playerId === front9Winner.playerId;
+                    s.wonBack9 = back9Winner && s.playerId === back9Winner.playerId;
+                    s.wonTotal = totalWinner && s.playerId === totalWinner.playerId;
+                    s.nassauPoints = (s.wonFront9 ? 1 : 0) + (s.wonBack9 ? 1 : 0) + (s.wonTotal ? 1 : 0);
+                });
+
+                // Re-sort by Nassau points won (most first), tiebreak by gross
+                standings.sort((a, b) => b.nassauPoints - a.nassauPoints || a.totalGross - b.totalGross);
+            }
         } else {
             // Default: sort by stableford points
             standings.sort((a, b) => b.totalStableford - a.totalStableford);
@@ -49190,20 +49216,25 @@ class LiveScorecardSystem {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    ${leaderboard.leaderboard.map((entry, index) => `
+                                    ${leaderboard.leaderboard.map((entry, index) => {
+                                        const useStableford = pool.config?.nassauMethod === 'stableford';
+                                        const f9 = useStableford ? entry.front9Stableford : entry.front9Gross;
+                                        const b9 = useStableford ? entry.back9Stableford : entry.back9Gross;
+                                        const tot = useStableford ? entry.totalStableford : entry.totalGross;
+                                        return `
                                         <tr class="border-b border-${config.color}-100 ${entry.isCurrentUser ? 'bg-yellow-50 font-bold' : ''}">
                                             <td class="py-2 px-2 font-semibold">${index + 1}</td>
                                             <td class="py-2 px-2 truncate max-w-[100px]">${entry.playerName}${entry.isCurrentUser ? ' <span class="text-xs text-green-600">(You)</span>' : ''}</td>
-                                            <td class="py-2 px-2 text-center ${entry.wonFront9 ? 'bg-blue-200 font-bold text-blue-800' : ''}">${entry.front9Gross || '-'}</td>
-                                            <td class="py-2 px-2 text-center ${entry.wonBack9 ? 'bg-green-200 font-bold text-green-800' : ''}">${entry.back9Gross || '-'}</td>
-                                            <td class="py-2 px-2 text-center ${entry.wonTotal ? 'bg-yellow-200 font-bold text-yellow-800' : ''}">${entry.totalGross || '-'}</td>
+                                            <td class="py-2 px-2 text-center ${entry.wonFront9 ? 'bg-blue-200 font-bold text-blue-800' : ''}">${f9 || '-'}</td>
+                                            <td class="py-2 px-2 text-center ${entry.wonBack9 ? 'bg-green-200 font-bold text-green-800' : ''}">${b9 || '-'}</td>
+                                            <td class="py-2 px-2 text-center ${entry.wonTotal ? 'bg-yellow-200 font-bold text-yellow-800' : ''}">${tot || '-'}</td>
                                             <td class="py-2 px-2 text-center font-bold ${entry.nassauPoints > 0 ? 'text-orange-600 bg-orange-100' : 'text-gray-400'}">${entry.nassauPoints || 0}</td>
                                         </tr>
-                                    `).join('')}
+                                    `}).join('')}
                                 </tbody>
                             </table>
                             <div class="mt-3 text-xs text-gray-600 bg-blue-50 p-2 rounded">
-                                <strong>Nassau:</strong> Win points for lowest score on Front 9, Back 9, and Total. Highlighted = segment winner.
+                                <strong>Nassau${pool.config?.nassauMethod === 'stableford' ? ' (Stableford)' : ''}:</strong> Win points for ${pool.config?.nassauMethod === 'stableford' ? 'highest points' : 'lowest score'} on Front 9, Back 9, and Total. Highlighted = segment winner.
                             </div>
                         </div>
                     ` : `

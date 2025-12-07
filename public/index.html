@@ -23865,9 +23865,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <span class="material-symbols-outlined" style="font-size: 14px;">history</span>
                         <span style="margin-left: 3px;" data-i18n="golfer.roundhistory">Round History</span>
                     </button>
-                    <button onclick="showGolferTab('societyevents', event)" class="tab-button" style="padding: 4px 8px; font-size: 11px;">
+                    <button onclick="showGolferTab('societyevents', event)" class="tab-button relative" style="padding: 4px 8px; font-size: 11px;">
                         <span class="material-symbols-outlined" style="font-size: 14px;">groups</span>
                         <span style="margin-left: 3px;" data-i18n="golfer.societyevents">Society Events</span>
+                        <span id="societyEventsBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse" style="display: none; font-size: 9px;">0</span>
                     </button>
                     <button onclick="showGolferTab('scorecard', event)" class="tab-button" style="padding: 4px 8px; font-size: 11px;">
                         <span class="material-symbols-outlined" style="font-size: 14px;">scoreboard</span>
@@ -25079,6 +25080,24 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 <button onclick="GolferEventsSystem.refreshEvents()" class="hover:bg-gray-100 rounded-lg transition-colors" style="padding: 8px; flex-shrink: 0;" title="Refresh Events">
                                     <span class="material-symbols-outlined text-gray-600" style="font-size: 20px;">refresh</span>
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick View: New & Updated Events -->
+                    <div id="newUpdatedEventsQuickView" class="mb-4" style="display: none;">
+                        <div class="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-xl p-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <h3 class="text-sm font-bold text-gray-900 flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-red-500 animate-pulse">notifications_active</span>
+                                    New & Updated Events
+                                </h3>
+                                <button onclick="EventNotificationSystem.markAllAsSeen(); GolferEventsSystem.filterEvents(); GolferEventsSystem.updateQuickView();" class="text-xs bg-white hover:bg-gray-100 text-gray-600 px-2 py-1 rounded-lg border">
+                                    Clear All
+                                </button>
+                            </div>
+                            <div id="newUpdatedEventsList" class="space-y-2 max-h-48 overflow-y-auto">
+                                <!-- Will be populated by JS -->
                             </div>
                         </div>
                     </div>
@@ -58058,6 +58077,9 @@ class GolferEventsManager {
             EventNotificationSystem.updateCubeBadge(newCount, updatedCount);
             console.log(`[GolferEventsSystem] Notification counts - New: ${newCount}, Updated: ${updatedCount}`);
 
+            // Update quick view section
+            this.updateQuickView();
+
         } catch (error) {
             console.error('[GolferEventsSystem] Error loading events:', error);
             this.allEvents = [];
@@ -60513,6 +60535,45 @@ class GolferEventsManager {
                 </span>
             `).join('');
         }
+    }
+
+    updateQuickView() {
+        const container = document.getElementById('newUpdatedEventsQuickView');
+        const list = document.getElementById('newUpdatedEventsList');
+        if (!container || !list) return;
+
+        // Get new and updated events
+        const newUpdatedEvents = this.allEvents.filter(event => {
+            const status = EventNotificationSystem.getEventStatus(event);
+            return status === 'new' || status === 'updated';
+        }).slice(0, 10); // Limit to 10 events
+
+        if (newUpdatedEvents.length === 0) {
+            container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = 'block';
+
+        list.innerHTML = newUpdatedEvents.map(event => {
+            const status = EventNotificationSystem.getEventStatus(event);
+            const badgeClass = status === 'new' ? 'bg-red-500' : 'bg-orange-500';
+            const badgeText = status === 'new' ? 'NEW' : 'UPDATED';
+            const eventDate = event.date ? new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+
+            return `
+                <div class="flex items-center justify-between bg-white rounded-lg p-2 border cursor-pointer hover:bg-gray-50" onclick="GolferEventsSystem.showEventDetails('${event.id}')">
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        <span class="${badgeClass} text-white text-xs font-bold px-1.5 py-0.5 rounded">${badgeText}</span>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm font-medium text-gray-900 truncate">${event.name}</div>
+                            <div class="text-xs text-gray-500">${eventDate} • ${event.societyName || 'Society Event'}</div>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-gray-400 text-sm">chevron_right</span>
+                </div>
+            `;
+        }).join('');
     }
 
     async toggleSocietySelector() {

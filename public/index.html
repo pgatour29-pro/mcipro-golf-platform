@@ -58222,7 +58222,7 @@ class GolferEventsManager {
             });
 
             // Populate the society filter dropdown
-            this.populateSocietyFilter();
+            await this.populateSocietyFilter();
 
             // Apply public/private filter
             this.filterEvents();
@@ -58276,15 +58276,33 @@ class GolferEventsManager {
         `;
     }
 
-    populateSocietyFilter() {
+    async populateSocietyFilter() {
         const select = document.getElementById('societyFilter');
         if (!select) return;
 
         // Get current selection to preserve it
         const currentSelection = select.value;
 
-        // Extract unique society names from all events
+        // Get all societies from society_profiles table
         const societies = new Set();
+        try {
+            const { data: societyProfiles, error } = await window.SupabaseDB.client
+                .from('society_profiles')
+                .select('society_name')
+                .order('society_name');
+
+            if (!error && societyProfiles) {
+                societyProfiles.forEach(profile => {
+                    if (profile.society_name) {
+                        societies.add(profile.society_name);
+                    }
+                });
+            }
+        } catch (err) {
+            console.warn('[GolferEventsSystem] Could not load society_profiles:', err);
+        }
+
+        // Also include any societies from current events (in case not in society_profiles)
         this.allEvents.forEach(event => {
             const societyName = event.societyName || event.organizerName;
             if (societyName) {

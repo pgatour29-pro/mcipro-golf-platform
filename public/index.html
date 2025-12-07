@@ -49022,7 +49022,11 @@ class LiveScorecardSystem {
                             playerScores[playerId] = {
                                 totalGross: 0,
                                 totalStableford: 0,
-                                holesWithScores: 0
+                                holesWithScores: 0,
+                                front9Gross: 0,
+                                back9Gross: 0,
+                                front9Stableford: 0,
+                                back9Stableford: 0
                             };
                         }
                         // Only count up to the cutoff hole for fairness
@@ -49030,6 +49034,15 @@ class LiveScorecardSystem {
                             playerScores[playerId].totalGross += s.gross_score || 0;
                             playerScores[playerId].totalStableford += s.stableford_points || 0;
                             playerScores[playerId].holesWithScores++;
+
+                            // Track front 9 / back 9 for Nassau
+                            if (s.hole_number <= 9) {
+                                playerScores[playerId].front9Gross += s.gross_score || 0;
+                                playerScores[playerId].front9Stableford += s.stableford_points || 0;
+                            } else {
+                                playerScores[playerId].back9Gross += s.gross_score || 0;
+                                playerScores[playerId].back9Stableford += s.stableford_points || 0;
+                            }
                         }
                     });
                 }
@@ -49040,7 +49053,10 @@ class LiveScorecardSystem {
 
         // Build standings with player names and scores
         const standings = entrantIds.map(playerId => {
-            const scores = playerScores[playerId] || { totalGross: 0, totalStableford: 0, holesWithScores: 0 };
+            const scores = playerScores[playerId] || {
+                totalGross: 0, totalStableford: 0, holesWithScores: 0,
+                front9Gross: 0, back9Gross: 0, front9Stableford: 0, back9Stableford: 0
+            };
             return {
                 playerId,
                 playerName: playerNames[playerId] || playerId.substring(0, 8) + '...',
@@ -49048,7 +49064,12 @@ class LiveScorecardSystem {
                 totalGross: scores.totalGross,
                 totalStableford: scores.totalStableford,
                 holesScored: scores.holesWithScores,
-                isCurrentUser: playerId === userId
+                isCurrentUser: playerId === userId,
+                // Nassau-specific data
+                front9Gross: scores.front9Gross,
+                back9Gross: scores.back9Gross,
+                front9Stableford: scores.front9Stableford,
+                back9Stableford: scores.back9Stableford
             };
         });
 
@@ -49059,6 +49080,25 @@ class LiveScorecardSystem {
         } else if (pool.type === 'matchplay') {
             // Match Play: sort by net score (lowest first)
             standings.sort((a, b) => a.totalGross - b.totalGross);
+        } else if (pool.type === 'nassau' || pool.type === 'team_nassau') {
+            // Nassau: sort by total gross (lowest first)
+            standings.sort((a, b) => a.totalGross - b.totalGross);
+
+            // Determine winners for each segment
+            const front9Winner = standings.filter(s => s.front9Gross > 0).sort((a, b) => a.front9Gross - b.front9Gross)[0];
+            const back9Winner = standings.filter(s => s.back9Gross > 0).sort((a, b) => a.back9Gross - b.back9Gross)[0];
+            const totalWinner = standings.filter(s => s.totalGross > 0).sort((a, b) => a.totalGross - b.totalGross)[0];
+
+            // Mark winners
+            standings.forEach(s => {
+                s.wonFront9 = front9Winner && s.playerId === front9Winner.playerId;
+                s.wonBack9 = back9Winner && s.playerId === back9Winner.playerId;
+                s.wonTotal = totalWinner && s.playerId === totalWinner.playerId;
+                s.nassauPoints = (s.wonFront9 ? 1 : 0) + (s.wonBack9 ? 1 : 0) + (s.wonTotal ? 1 : 0);
+            });
+
+            // Re-sort by Nassau points won (most first)
+            standings.sort((a, b) => b.nassauPoints - a.nassauPoints || a.totalGross - b.totalGross);
         } else {
             // Default: sort by stableford points
             standings.sort((a, b) => b.totalStableford - a.totalStableford);
@@ -49134,6 +49174,37 @@ class LiveScorecardSystem {
                     ${leaderboard.message ? `
                         <div class="p-8 text-center text-gray-500">
                             <p>${leaderboard.message}</p>
+                        </div>
+                    ` : (pool.type === 'nassau' || pool.type === 'team_nassau') ? `
+                        <!-- Nassau-specific table with Front 9, Back 9, Total -->
+                        <div class="p-4">
+                            <table class="w-full text-sm">
+                                <thead class="border-b border-${config.color}-200">
+                                    <tr class="text-left">
+                                        <th class="py-2 px-2">#</th>
+                                        <th class="py-2 px-2">Player</th>
+                                        <th class="py-2 px-2 text-center bg-blue-50">F9</th>
+                                        <th class="py-2 px-2 text-center bg-green-50">B9</th>
+                                        <th class="py-2 px-2 text-center bg-yellow-50">Tot</th>
+                                        <th class="py-2 px-2 text-center bg-orange-50">Won</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${leaderboard.leaderboard.map((entry, index) => `
+                                        <tr class="border-b border-${config.color}-100 ${entry.isCurrentUser ? 'bg-yellow-50 font-bold' : ''}">
+                                            <td class="py-2 px-2 font-semibold">${index + 1}</td>
+                                            <td class="py-2 px-2 truncate max-w-[100px]">${entry.playerName}${entry.isCurrentUser ? ' <span class="text-xs text-green-600">(You)</span>' : ''}</td>
+                                            <td class="py-2 px-2 text-center ${entry.wonFront9 ? 'bg-blue-200 font-bold text-blue-800' : ''}">${entry.front9Gross || '-'}</td>
+                                            <td class="py-2 px-2 text-center ${entry.wonBack9 ? 'bg-green-200 font-bold text-green-800' : ''}">${entry.back9Gross || '-'}</td>
+                                            <td class="py-2 px-2 text-center ${entry.wonTotal ? 'bg-yellow-200 font-bold text-yellow-800' : ''}">${entry.totalGross || '-'}</td>
+                                            <td class="py-2 px-2 text-center font-bold ${entry.nassauPoints > 0 ? 'text-orange-600 bg-orange-100' : 'text-gray-400'}">${entry.nassauPoints || 0}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                            <div class="mt-3 text-xs text-gray-600 bg-blue-50 p-2 rounded">
+                                <strong>Nassau:</strong> Win points for lowest score on Front 9, Back 9, and Total. Highlighted = segment winner.
+                            </div>
                         </div>
                     ` : `
                         <div class="p-4">

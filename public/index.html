@@ -41543,6 +41543,11 @@ class LiveScorecardSystem {
         // Clean up old/failed offline data first
         this.cleanupOldOfflineData();
 
+        // Clean up old public game pools from past dates
+        if (window.LiveGamesSystem?.cleanupOldPools) {
+            window.LiveGamesSystem.cleanupOldPools();
+        }
+
         await this.loadEvents();
         // No longer load courses on init - dropdown is static!
 
@@ -55142,7 +55147,7 @@ const LiveGamesSystem = {
     },
 
     /**
-     * Leave a pool
+     * Leave a pool - and clean up empty pools
      */
     async leavePool(poolId, playerId) {
         try {
@@ -55155,10 +55160,60 @@ const LiveGamesSystem = {
             if (error) throw error;
 
             console.log('[LiveGames] Left pool:', poolId);
+
+            // Check if pool is now empty and delete it
+            const { data: remaining, error: countError } = await window.SupabaseDB.client
+                .from('pool_entrants')
+                .select('player_id')
+                .eq('pool_id', poolId);
+
+            if (!countError && (!remaining || remaining.length === 0)) {
+                // Pool is empty - delete it
+                const { error: deleteError } = await window.SupabaseDB.client
+                    .from('side_game_pools')
+                    .delete()
+                    .eq('id', poolId);
+
+                if (!deleteError) {
+                    console.log('[LiveGames] ✅ Deleted empty pool:', poolId);
+                }
+            }
+
             return { success: true };
         } catch (error) {
             console.error('[LiveGames] Error leaving pool:', error);
             return { success: false, error: error.message };
+        }
+    },
+
+    /**
+     * Clean up old pools from past dates
+     */
+    async cleanupOldPools() {
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            console.log('[LiveGames] Cleaning up pools older than:', today);
+
+            // Delete pools from past dates
+            const { data, error } = await window.SupabaseDB.client
+                .from('side_game_pools')
+                .delete()
+                .lt('date_iso', today)
+                .select();
+
+            if (error) {
+                console.error('[LiveGames] Error cleaning up old pools:', error);
+                return { success: false, deleted: 0 };
+            }
+
+            const deletedCount = data?.length || 0;
+            if (deletedCount > 0) {
+                console.log(`[LiveGames] ✅ Cleaned up ${deletedCount} old pools`);
+            }
+            return { success: true, deleted: deletedCount };
+        } catch (error) {
+            console.error('[LiveGames] Error in cleanup:', error);
+            return { success: false, deleted: 0 };
         }
     },
 

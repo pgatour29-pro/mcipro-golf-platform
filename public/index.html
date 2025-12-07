@@ -51370,6 +51370,29 @@ class SocietyOrganizerManager {
         return divisions;
     }
 
+    async deleteEventById(eventId, eventName) {
+        if (!eventId) {
+            NotificationManager.show('No event ID provided', 'error');
+            return;
+        }
+
+        const confirmed = confirm(`Are you sure you want to delete "${eventName || 'this event'}"?\n\nThis will also delete all registrations, waitlist entries, and pairings.\n\nThis action cannot be undone.`);
+
+        if (!confirmed) return;
+
+        try {
+            console.log('[SocietyOrganizer] Deleting event by ID:', eventId);
+            await SocietyGolfDB.deleteEvent(eventId);
+            this.events = this.events.filter(e => e.id !== eventId);
+            this.renderEvents();
+            this.renderCalendar();
+            NotificationManager.show('Event deleted successfully', 'success');
+        } catch (error) {
+            console.error('[SocietyOrganizer] Error deleting event:', error);
+            NotificationManager.show('Failed to delete event: ' + error.message, 'error');
+        }
+    }
+
     async deleteEvent() {
         if (!this.currentEvent || !this.currentEvent.id) {
             NotificationManager.show('No event selected', 'error');
@@ -51382,7 +51405,7 @@ class SocietyOrganizerManager {
 This will also delete all registrations, waitlist entries, and pairings for this event.
 
 This action cannot be undone.`);
-        
+
         if (!confirmed) {
             return;
         }
@@ -51866,14 +51889,18 @@ This action cannot be undone.`);
                     </div>
 
                     <!-- Additional Actions -->
-                    <div class="grid grid-cols-2 gap-2 mb-2">
+                    <div class="grid grid-cols-3 gap-2 mb-2">
                         <button onclick="SocietyOrganizerSystem.openPairingsModal('${event.id}')" class="btn-secondary text-xs py-2 flex items-center justify-center gap-1">
                             <span class="material-symbols-outlined text-sm">grid_view</span>
                             <span>Pairings</span>
                         </button>
                         <button onclick="SocietyOrganizerSystem.copyRegistrationLink('${event.id}')" class="btn-secondary text-xs py-2 flex items-center justify-center gap-1">
                             <span class="material-symbols-outlined text-sm">link</span>
-                            <span>Share Link</span>
+                            <span>Share</span>
+                        </button>
+                        <button onclick="SocietyOrganizerSystem.deleteEventById('${event.id}', '${event.name.replace(/'/g, "\\'")}')" class="btn-danger text-xs py-2 flex items-center justify-center gap-1">
+                            <span class="material-symbols-outlined text-sm">delete</span>
+                            <span>Delete</span>
                         </button>
                     </div>
 

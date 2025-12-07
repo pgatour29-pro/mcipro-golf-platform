@@ -44984,6 +44984,8 @@ class LiveScorecardSystem {
 
         const config = typeIcons[pool.type] || typeIcons.skins;
         const entrantCount = pool.pool_entrants.length;
+        const currentUserId = AppState.currentUser?.lineUserId;
+        const isCreator = pool.created_by === currentUserId;
 
         // Check if this is a team game
         const isTeamGame = ['team_nassau', 'team_matchplay', 'scramble', 'best_ball', 'foursomes'].includes(pool.type);
@@ -45042,17 +45044,26 @@ class LiveScorecardSystem {
                             ${pool.config.pointsPerHole ? ` • ${pool.config.pointsPerHole} pts/hole` : ''}
                         </div>
                     </div>
-                    ${isJoined ? `
-                        <button onclick="LiveScorecardManager.leavePool('${pool.id}')"
-                                class="px-4 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200">
-                            Leave
-                        </button>
-                    ` : `
-                        <button onclick="LiveScorecardManager.${isTeamGame ? 'joinTeamPool' : 'joinPool'}('${pool.id}')"
-                                class="px-4 py-2 bg-${config.color}-600 text-white rounded-lg text-sm font-medium hover:bg-${config.color}-700">
-                            ${isTeamGame ? 'Join with Partner' : 'Join'}
-                        </button>
-                    `}
+                    <div class="flex items-center gap-2">
+                        ${isJoined ? `
+                            <button onclick="LiveScorecardManager.leavePool('${pool.id}')"
+                                    class="px-4 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200">
+                                Leave
+                            </button>
+                        ` : `
+                            <button onclick="LiveScorecardManager.${isTeamGame ? 'joinTeamPool' : 'joinPool'}('${pool.id}')"
+                                    class="px-4 py-2 bg-${config.color}-600 text-white rounded-lg text-sm font-medium hover:bg-${config.color}-700">
+                                ${isTeamGame ? 'Join with Partner' : 'Join'}
+                            </button>
+                        `}
+                        ${isCreator ? `
+                            <button onclick="LiveScorecardManager.deletePool('${pool.id}')"
+                                    class="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-red-100 hover:text-red-600"
+                                    title="Delete this game">
+                                <span class="material-symbols-outlined text-sm">delete</span>
+                            </button>
+                        ` : ''}
+                    </div>
                 </div>
             </div>
         `;
@@ -45143,6 +45154,60 @@ class LiveScorecardSystem {
             await this.loadAvailablePools();
         } else {
             NotificationManager.show('Failed to leave game', 'error');
+        }
+    }
+
+    async deletePool(poolId) {
+        const userId = AppState.currentUser?.lineUserId;
+        if (!userId) {
+            NotificationManager.show('Please log in to delete games', 'error');
+            return;
+        }
+
+        // Confirm deletion
+        if (!confirm('Delete this game? All players will be removed.')) {
+            return;
+        }
+
+        try {
+            // First verify user is the creator
+            const { data: pool, error: poolError } = await window.SupabaseDB.client
+                .from('side_game_pools')
+                .select('created_by')
+                .eq('id', poolId)
+                .single();
+
+            if (poolError || pool.created_by !== userId) {
+                NotificationManager.show('Only the creator can delete this game', 'error');
+                return;
+            }
+
+            // Delete all entrants first (foreign key constraint)
+            await window.SupabaseDB.client
+                .from('pool_entrants')
+                .delete()
+                .eq('pool_id', poolId);
+
+            // Delete the pool
+            const { error } = await window.SupabaseDB.client
+                .from('side_game_pools')
+                .delete()
+                .eq('id', poolId);
+
+            if (error) throw error;
+
+            NotificationManager.show('Game deleted', 'success');
+
+            // Remove from tracked pools
+            if (this.publicPoolIds) {
+                this.publicPoolIds = this.publicPoolIds.filter(p => p.poolId !== poolId);
+            }
+
+            // Refresh the list
+            await this.loadAvailablePools();
+        } catch (err) {
+            console.error('[LiveScorecard] Error deleting pool:', err);
+            NotificationManager.show('Failed to delete game', 'error');
         }
     }
 

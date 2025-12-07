@@ -7043,15 +7043,6 @@
                         AppState.navigation.breadcrumb.shift();
                     }
 
-                    // PERSIST: Save last dashboard to localStorage for state restoration (only for dashboards, not login)
-                    if (screenId.endsWith('Dashboard')) {
-                        try {
-                            localStorage.setItem('mcipro_last_dashboard', screenId);
-                        } catch (e) {
-                            console.warn('[ScreenManager] Could not save last dashboard:', e);
-                        }
-                    }
-
                     // Initialize screen-specific functionality
                     this.initializeScreen(screenId, data);
 
@@ -7352,17 +7343,6 @@
                     if (targetContent) {
                         targetContent.classList.add('active');
                         AppState.navigation.activeTab = tabName;
-
-                        // PERSIST: Save last active tab to localStorage for state restoration
-                        try {
-                            localStorage.setItem('mcipro_last_tab', JSON.stringify({
-                                dashboard: dashboardId,
-                                tab: tabName,
-                                timestamp: Date.now()
-                            }));
-                        } catch (e) {
-                            console.warn('[TabManager] Could not save last tab:', e);
-                        }
 
                         // Load tab-specific data
                         this.loadTabData(dashboardId, tabName);
@@ -8003,26 +7983,6 @@
 
                 NotificationManager.show(`Welcome back, ${userName}!`, 'success');
                 // Enable dev mode panel after login                if (typeof DevMode !== 'undefined') {                    DevMode.init(); // Re-check after user is logged in                }
-
-                // RESTORE LAST TAB: Check if user was on a specific tab before and restore it
-                try {
-                    const lastTabData = localStorage.getItem('mcipro_last_tab');
-                    if (lastTabData) {
-                        const { dashboard, tab, timestamp } = JSON.parse(lastTabData);
-                        // Only restore if the saved dashboard matches current dashboard
-                        // and the state is less than 24 hours old
-                        const age = Date.now() - timestamp;
-                        const maxAge = 24 * 60 * 60 * 1000; // 24 hours
-                        if (dashboard === targetDashboard && age < maxAge && tab !== 'overview') {
-                            console.log(`[redirectToDashboard] Restoring last tab: ${tab} in ${dashboard}`);
-                            setTimeout(() => {
-                                TabManager.showTab(dashboard, tab);
-                            }, 100);
-                        }
-                    }
-                } catch (e) {
-                    console.warn('[redirectToDashboard] Could not restore last tab:', e);
-                }
 
                 // Load data from Cloudflare AFTER successful login (source of truth)
                 if (typeof ProductionCloudSync !== 'undefined') {
@@ -9142,8 +9102,7 @@
                         AppState.session.loginTime = new Date().toISOString();
 
                         NotificationManager.show('Phone verified successfully!', 'success');
-                        // Use redirectToDashboard to restore last tab position
-                        LineAuthentication.redirectToDashboard();
+                        ScreenManager.showScreen('golferDashboard');
 
                     } else {
                         NotificationManager.show('Invalid OTP code. Please try again.', 'error');
@@ -9291,9 +9250,20 @@
                         UserInterface.updateUserDisplays();
                     }
 
-                    // Navigate to dashboard - use redirectToDashboard to restore last tab position
-                    console.log('[FallbackAuth] Using redirectToDashboard for role:', role);
-                    LineAuthentication.redirectToDashboard();
+                    // Navigate to dashboard
+                    const dashboardMap = {
+                        'golfer': 'golferDashboard',
+                        'caddie': 'caddieDashboard',
+                        'manager': 'managerDashboard',
+                        'proshop': 'proshopDashboard',
+                        'society': 'societyOrganizerDashboard', // Support 'society' role for backwards compatibility
+                        'society_organizer': 'societyOrganizerDashboard',
+                        'maintenance': 'maintenanceDashboard'
+                    };
+                    const targetDashboard = dashboardMap[role] || 'golferDashboard';
+                    console.log('[FallbackAuth] Navigating to:', targetDashboard, 'for role:', role);
+                    ScreenManager.showScreen(targetDashboard);
+                    NotificationManager.show(`Welcome, ${profile.name}!`, 'success');
 
                 }, 1500);
             }
@@ -10839,9 +10809,7 @@
                 'caddie_system_data',
                 'golf_courses_data',
                 'mcipro_bookings',  // CRITICAL: Preserve bookings with their caddies
-                'schedule_items',   // CRITICAL: Preserve schedules
-                'mcipro_last_tab',  // PERSIST: Preserve last tab for state restoration
-                'mcipro_last_dashboard' // PERSIST: Preserve last dashboard for state restoration
+                'schedule_items'    // CRITICAL: Preserve schedules
             ];
 
             // FIXED: Only clear temporary UI data, PRESERVE bookings and schedules
@@ -40318,27 +40286,27 @@ class SocietyGolfSupabase {
 
         const netScore = grossScore - strokesReceived;
 
-        // Calculate Stableford points based on NET score vs par
-        // Standard Stableford: Net Eagle+=4, Net Birdie=3, Net Par=2, Net Bogey=1, Net Double+=0
-        // The net score already incorporates handicap strokes, so NO additional bonus needed
+        // Calculate Thailand Stableford points
+        // Base points: Eagle=4, Birdie=3, Par=2, Bogey=1, Double+=0
+        // PLUS bonus points equal to handicap strokes received on this hole
         const scoreToPar = netScore - par; // Negative = under par, Positive = over par
         let stablefordPoints = 0;
 
         if (scoreToPar <= -2) {
-            // Net Eagle or better
-            stablefordPoints = 4;
+            // Eagle or better
+            stablefordPoints = 4 + strokesReceived;
         } else if (scoreToPar === -1) {
-            // Net Birdie
-            stablefordPoints = 3;
+            // Birdie
+            stablefordPoints = 3 + strokesReceived;
         } else if (scoreToPar === 0) {
-            // Net Par
-            stablefordPoints = 2;
+            // Par
+            stablefordPoints = 2 + strokesReceived;
         } else if (scoreToPar === 1) {
-            // Net Bogey
-            stablefordPoints = 1;
+            // Bogey
+            stablefordPoints = 1 + strokesReceived;
         } else {
-            // Net Double bogey or worse
-            stablefordPoints = 0;
+            // Double bogey or worse
+            stablefordPoints = 0 + strokesReceived;
         }
 
         const { data, error } = await window.SupabaseDB.client
@@ -40350,8 +40318,8 @@ class SocietyGolfSupabase {
                 stroke_index: strokeIndex,
                 gross_score: grossScore,
                 net_score: netScore,
-                handicap_strokes: strokesReceived,
-                stableford_points: stablefordPoints
+                handicap_strokes: strokesReceived
+                // stableford column temporarily removed - run sql/FIX_ALL_DATABASE_ERRORS.sql to add it
             }], {
                 onConflict: 'scorecard_id,hole_number'
             })
@@ -44914,13 +44882,6 @@ class LiveScorecardSystem {
         const today = new Date().toISOString().split('T')[0];
         const userId = AppState.currentUser?.lineUserId;
 
-        // CLEANUP: Auto-cleanup old pools from previous days before loading
-        try {
-            await window.LiveGamesSystem.cleanupOldPools();
-        } catch (e) {
-            console.warn('[LiveScorecard] Cleanup failed:', e);
-        }
-
         console.log('[LiveScorecard] Loading pools for:', { courseId, today, eventId: this.eventId, userId });
         const result = await window.LiveGamesSystem.getAvailablePools(courseId, today, this.eventId);
         console.log('[LiveScorecard] Pools result:', result);
@@ -45055,10 +45016,6 @@ class LiveScorecardSystem {
             }
         }
 
-        // Check if current user is the creator of this pool
-        const currentUserId = AppState.currentUser?.lineUserId;
-        const isCreator = pool.created_by === currentUserId;
-
         return `
             <div class="p-4 border-2 border-${config.color}-200 bg-${config.color}-50 rounded-lg">
                 <div class="flex items-center justify-between">
@@ -45067,7 +45024,6 @@ class LiveScorecardSystem {
                             <span class="material-symbols-outlined text-${config.color}-600">${config.icon}</span>
                             <span class="font-semibold text-gray-900">${pool.name}</span>
                             ${isTeamGame ? `<span class="text-xs bg-${config.color}-200 text-${config.color}-800 px-2 py-0.5 rounded-full">TEAM</span>` : ''}
-                            ${isCreator ? `<span class="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">Creator</span>` : ''}
                         </div>
                         ${(courseName || dateDisplay) ? `
                         <div class="text-xs text-gray-500 mb-1">
@@ -45084,26 +45040,17 @@ class LiveScorecardSystem {
                             ${pool.config.pointsPerHole ? ` • ${pool.config.pointsPerHole} pts/hole` : ''}
                         </div>
                     </div>
-                    <div class="flex gap-2">
-                        ${isJoined ? `
-                            <button onclick="LiveScorecardManager.leavePool('${pool.id}')"
-                                    class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200">
-                                Leave
-                            </button>
-                            ${isCreator ? `
-                            <button onclick="LiveScorecardManager.closePool('${pool.id}')"
-                                    class="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300"
-                                    title="Close this game permanently">
-                                Close
-                            </button>
-                            ` : ''}
-                        ` : `
-                            <button onclick="LiveScorecardManager.${isTeamGame ? 'joinTeamPool' : 'joinPool'}('${pool.id}')"
-                                    class="px-4 py-2 bg-${config.color}-600 text-white rounded-lg text-sm font-medium hover:bg-${config.color}-700">
-                                ${isTeamGame ? 'Join with Partner' : 'Join'}
-                            </button>
-                        `}
-                    </div>
+                    ${isJoined ? `
+                        <button onclick="LiveScorecardManager.leavePool('${pool.id}')"
+                                class="px-4 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200">
+                            Leave
+                        </button>
+                    ` : `
+                        <button onclick="LiveScorecardManager.${isTeamGame ? 'joinTeamPool' : 'joinPool'}('${pool.id}')"
+                                class="px-4 py-2 bg-${config.color}-600 text-white rounded-lg text-sm font-medium hover:bg-${config.color}-700">
+                            ${isTeamGame ? 'Join with Partner' : 'Join'}
+                        </button>
+                    `}
                 </div>
             </div>
         `;
@@ -45194,23 +45141,6 @@ class LiveScorecardSystem {
             await this.loadAvailablePools();
         } else {
             NotificationManager.show('Failed to leave game', 'error');
-        }
-    }
-
-    async closePool(poolId) {
-        // Close/complete a pool - only the creator can do this
-        const result = await window.LiveGamesSystem.completePool(poolId);
-
-        if (result.success) {
-            NotificationManager.show('Game closed', 'success');
-            // Remove from tracked pools
-            if (this.publicPoolIds) {
-                this.publicPoolIds = this.publicPoolIds.filter(p => p.poolId !== poolId);
-            }
-            // Refresh the list
-            await this.loadAvailablePools();
-        } else {
-            NotificationManager.show('Failed to close game', 'error');
         }
     }
 
@@ -47805,9 +47735,7 @@ class LiveScorecardSystem {
             }
 
             // Calculate ALL selected formats simultaneously
-            // Use course holes if available, otherwise empty array (will calculate with available data)
-            const playerCourseHoles = (this.courseData && this.courseData.holes) ? this.courseData.holes : [];
-            if (playerCourseHoles.length > 0 || scoresArray.length > 0) {
+            if (this.courseData && this.courseData.holes) {
                 for (const format of this.scoringFormats) {
                     switch (format) {
                         case 'stableford':
@@ -47818,7 +47746,7 @@ class LiveScorecardSystem {
                                 : player.handicap;
                             totalStableford = engine.calculateStablefordTotal(
                                 scoresArray,
-                                playerCourseHoles,
+                                this.courseData.holes,
                                 handicapToUse,
                                 true // useNet
                             );
@@ -47828,7 +47756,7 @@ class LiveScorecardSystem {
                             // Modified Stableford (different point system)
                             totalModifiedStableford = engine.calculateStablefordTotal(
                                 scoresArray,
-                                playerCourseHoles,
+                                this.courseData.holes,
                                 player.handicap,
                                 true,
                                 engine.modifiedStablefordPoints
@@ -47840,7 +47768,7 @@ class LiveScorecardSystem {
                             // Check Nassau method selection (stroke or stableford)
                             const nassauMethodRadio = document.querySelector('input[name="nassauMethod"]:checked');
                             const nassauMethod = nassauMethodRadio?.value || 'stroke';
-                            totalNassau = engine.calculateNassau(scoresArray, playerCourseHoles, player.handicap, nassauMethod);
+                            totalNassau = engine.calculateNassau(scoresArray, this.courseData.holes, player.handicap, nassauMethod);
                             break;
 
                         case 'strokeplay':
@@ -47874,9 +47802,7 @@ class LiveScorecardSystem {
         });
 
         // Calculate Skins across all players (requires all player data)
-        // Always try to calculate skins if format is selected (use course data if available)
-        if (this.scoringFormats.includes('skins')) {
-            const skinsCourseHoles = (this.courseData && this.courseData.holes) ? this.courseData.holes : [];
+        if (this.scoringFormats.includes('skins') && this.courseData && this.courseData.holes) {
             const allPlayerData = this.players.map(player => {
                 const playerScores = this.scoresCache[player.id] || {};
                 const scoresArray = Object.entries(playerScores).map(([hole, score]) => ({
@@ -47894,7 +47820,7 @@ class LiveScorecardSystem {
 
             // Get skins value from input (default 100 if not set)
             const pointsPerHole = parseInt(document.getElementById('skinsValueInput')?.value) || 100;
-            const skinsResults = engine.calculateSkins(allPlayerData, skinsCourseHoles, true, pointsPerHole);
+            const skinsResults = engine.calculateSkins(allPlayerData, this.courseData.holes, true, pointsPerHole);
 
             // Add skins data to each player's leaderboard entry
             leaderboard.forEach(entry => {
@@ -47909,10 +47835,7 @@ class LiveScorecardSystem {
         }
 
         // Calculate Match Play across all players
-        // ALWAYS populate matchplay data when matchplay format is selected (even with empty values)
-        if (this.scoringFormats.includes('matchplay')) {
-            // If course data not ready, still provide default matchplay structure
-            const courseHoles = (this.courseData && this.courseData.holes) ? this.courseData.holes : [];
+        if (this.scoringFormats.includes('matchplay') && this.courseData && this.courseData.holes) {
             // Check if round robin mode is active
             const hasRoundRobinData = this.roundRobinMatches && Object.keys(this.roundRobinMatches).length > 0;
 
@@ -47947,7 +47870,7 @@ class LiveScorecardSystem {
                 const rrResults = engine.calculateRoundRobinMatchPlay(
                     allPlayerData,
                     this.roundRobinMatches,
-                    courseHoles,
+                    this.courseData.holes,
                     true
                 );
 
@@ -47994,7 +47917,7 @@ class LiveScorecardSystem {
                 const teamResults = engine.calculateTeamMatchPlay(
                     teamConfig.teamA,
                     actualTeamB,
-                    courseHoles,
+                    this.courseData.holes,
                     true,  // useNet
                     false  // useStableford (use stroke play for now - can be made configurable later)
                 );
@@ -48059,7 +47982,7 @@ class LiveScorecardSystem {
                     };
                 });
 
-                const matchResults = engine.calculateMatchPlay(allPlayerData, courseHoles, true);
+                const matchResults = engine.calculateMatchPlay(allPlayerData, this.courseData.holes, true);
 
                 // Add match play data to each player's leaderboard entry
                 leaderboard.forEach(entry => {
@@ -48657,11 +48580,11 @@ class LiveScorecardSystem {
                     headerColor = 'from-blue-100 to-blue-50';
                     borderColor = 'border-blue-500';
                     break;
+                case 'matchplay':
                 case 'bestball':
                 case 'scramble':
                 case 'skins':
                 default:
-                    // NOTE: matchplay, nassau removed - they have their own special rendering blocks above
                     scoreHeader = 'Gross';
                     getDisplayScore = (entry) => entry.total_gross;
                     headerColor = 'from-gray-100 to-gray-50';
@@ -49035,10 +48958,10 @@ class LiveScorecardSystem {
                     return sc.id;
                 });
 
-                // Now get scores for these scorecards (include par for match play calculations)
+                // Now get scores for these scorecards
                 const { data: scores, error } = await window.SupabaseDB.client
                     .from('scores')
-                    .select('scorecard_id, hole_number, gross_score, net_score, stableford_points, par')
+                    .select('scorecard_id, hole_number, gross_score, net_score, stableford_points')
                     .in('scorecard_id', scorecardIds);
 
                 if (!error && scores) {
@@ -49050,50 +48973,15 @@ class LiveScorecardSystem {
                         if (!playerScores[playerId]) {
                             playerScores[playerId] = {
                                 totalGross: 0,
-                                totalNet: 0,
-                                totalPar: 0,
                                 totalStableford: 0,
-                                holesWithScores: 0,
-                                // Nassau-specific tracking
-                                front9Gross: 0,
-                                front9Net: 0,
-                                front9Par: 0,
-                                front9Stableford: 0,
-                                front9Holes: 0,
-                                back9Gross: 0,
-                                back9Net: 0,
-                                back9Par: 0,
-                                back9Stableford: 0,
-                                back9Holes: 0
+                                holesWithScores: 0
                             };
                         }
                         // Only count up to the cutoff hole for fairness
                         if (s.hole_number <= cutoff) {
-                            const gross = s.gross_score || 0;
-                            const net = s.net_score || gross;
-                            const par = s.par || 4;
-                            const stableford = s.stableford_points || 0;
-
-                            playerScores[playerId].totalGross += gross;
-                            playerScores[playerId].totalNet += net;
-                            playerScores[playerId].totalPar += par;
-                            playerScores[playerId].totalStableford += stableford;
+                            playerScores[playerId].totalGross += s.gross_score || 0;
+                            playerScores[playerId].totalStableford += s.stableford_points || 0;
                             playerScores[playerId].holesWithScores++;
-
-                            // Track front 9 vs back 9 for Nassau
-                            if (s.hole_number <= 9) {
-                                playerScores[playerId].front9Gross += gross;
-                                playerScores[playerId].front9Net += net;
-                                playerScores[playerId].front9Par += par;
-                                playerScores[playerId].front9Stableford += stableford;
-                                playerScores[playerId].front9Holes++;
-                            } else {
-                                playerScores[playerId].back9Gross += gross;
-                                playerScores[playerId].back9Net += net;
-                                playerScores[playerId].back9Par += par;
-                                playerScores[playerId].back9Stableford += stableford;
-                                playerScores[playerId].back9Holes++;
-                            }
                         }
                     });
                 }
@@ -49103,42 +48991,15 @@ class LiveScorecardSystem {
         }
 
         // Build standings with player names and scores
-        const defaultScores = {
-            totalGross: 0, totalNet: 0, totalPar: 0, totalStableford: 0, holesWithScores: 0,
-            front9Gross: 0, front9Net: 0, front9Par: 0, front9Stableford: 0, front9Holes: 0,
-            back9Gross: 0, back9Net: 0, back9Par: 0, back9Stableford: 0, back9Holes: 0
-        };
         const standings = entrantIds.map(playerId => {
-            const scores = playerScores[playerId] || defaultScores;
-            // Calculate net vs par for match play
-            const netVsPar = scores.totalNet - scores.totalPar;
-            const front9VsPar = scores.front9Net - scores.front9Par;
-            const back9VsPar = scores.back9Net - scores.back9Par;
-
+            const scores = playerScores[playerId] || { totalGross: 0, totalStableford: 0, holesWithScores: 0 };
             return {
                 playerId,
                 playerName: playerNames[playerId] || playerId.substring(0, 8) + '...',
                 holesCompleted: holesCompleted[playerId] || 0,
                 totalGross: scores.totalGross,
-                totalNet: scores.totalNet,
-                totalPar: scores.totalPar,
-                netVsPar: netVsPar,
-                netVsParDisplay: netVsPar === 0 ? 'E' : (netVsPar > 0 ? `+${netVsPar}` : `${netVsPar}`),
                 totalStableford: scores.totalStableford,
                 holesScored: scores.holesWithScores,
-                // Nassau-specific data
-                front9Gross: scores.front9Gross,
-                front9Net: scores.front9Net,
-                front9VsPar: front9VsPar,
-                front9VsParDisplay: front9VsPar === 0 ? 'E' : (front9VsPar > 0 ? `+${front9VsPar}` : `${front9VsPar}`),
-                front9Stableford: scores.front9Stableford,
-                front9Holes: scores.front9Holes,
-                back9Gross: scores.back9Gross,
-                back9Net: scores.back9Net,
-                back9VsPar: back9VsPar,
-                back9VsParDisplay: back9VsPar === 0 ? 'E' : (back9VsPar > 0 ? `+${back9VsPar}` : `${back9VsPar}`),
-                back9Stableford: scores.back9Stableford,
-                back9Holes: scores.back9Holes,
                 isCurrentUser: playerId === userId
             };
         });
@@ -49148,11 +49009,8 @@ class LiveScorecardSystem {
             // Skins: sort by stableford (most points first)
             standings.sort((a, b) => b.totalStableford - a.totalStableford);
         } else if (pool.type === 'matchplay') {
-            // Match Play: sort by net vs par (lowest/best first)
-            standings.sort((a, b) => a.netVsPar - b.netVsPar);
-        } else if (pool.type === 'nassau') {
-            // Nassau: sort by total stableford (best overall wins the total)
-            standings.sort((a, b) => b.totalStableford - a.totalStableford);
+            // Match Play: sort by net score (lowest first)
+            standings.sort((a, b) => a.totalGross - b.totalGross);
         } else {
             // Default: sort by stableford points
             standings.sort((a, b) => b.totalStableford - a.totalStableford);
@@ -49161,7 +49019,6 @@ class LiveScorecardSystem {
         return {
             cutoffHole: cutoff,
             leaderboard: standings,
-            poolType: pool.type,
             message: null,
             entrants: entrantIds.length
         };
@@ -49230,66 +49087,7 @@ class LiveScorecardSystem {
                         <div class="p-8 text-center text-gray-500">
                             <p>${leaderboard.message}</p>
                         </div>
-                    ` : pool.type === 'nassau' ? `
-                        <!-- Nassau-specific table with Front 9, Back 9, Total -->
-                        <div class="p-4">
-                            <table class="w-full text-sm">
-                                <thead class="border-b border-${config.color}-200">
-                                    <tr class="text-left">
-                                        <th class="py-2 px-1">#</th>
-                                        <th class="py-2 px-1">Player</th>
-                                        <th class="py-2 px-1 text-center text-xs">Front 9</th>
-                                        <th class="py-2 px-1 text-center text-xs">Back 9</th>
-                                        <th class="py-2 px-1 text-center text-xs font-bold">Total</th>
-                                        <th class="py-2 px-1 text-center">Thru</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${leaderboard.leaderboard.map((entry, index) => `
-                                        <tr class="border-b border-${config.color}-100 ${entry.isCurrentUser ? 'bg-yellow-50 font-bold' : ''}">
-                                            <td class="py-2 px-1 font-semibold">${index + 1}</td>
-                                            <td class="py-2 px-1 truncate max-w-[100px]">${entry.playerName}${entry.isCurrentUser ? ' <span class="text-xs text-green-600">(You)</span>' : ''}</td>
-                                            <td class="py-2 px-1 text-center ${entry.front9Stableford > 0 ? 'text-green-600' : 'text-gray-400'}">${entry.front9Holes > 0 ? entry.front9Stableford : '-'}</td>
-                                            <td class="py-2 px-1 text-center ${entry.back9Stableford > 0 ? 'text-green-600' : 'text-gray-400'}">${entry.back9Holes > 0 ? entry.back9Stableford : '-'}</td>
-                                            <td class="py-2 px-1 text-center font-bold text-blue-600">${entry.totalStableford || '-'}</td>
-                                            <td class="py-2 px-1 text-center text-xs">${entry.holesScored || entry.holesCompleted}/${leaderboard.cutoffHole || 18}</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    ` : pool.type === 'matchplay' ? `
-                        <!-- Match Play table with Net vs Par -->
-                        <div class="p-4">
-                            <table class="w-full text-sm">
-                                <thead class="border-b border-${config.color}-200">
-                                    <tr class="text-left">
-                                        <th class="py-2 px-1">#</th>
-                                        <th class="py-2 px-1">Player</th>
-                                        <th class="py-2 px-1 text-center">Thru</th>
-                                        <th class="py-2 px-1 text-center font-bold">Score</th>
-                                        <th class="py-2 px-1 text-center text-xs">vs Leader</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${leaderboard.leaderboard.map((entry, index) => {
-                                        const leader = leaderboard.leaderboard[0];
-                                        const vsLeader = entry.netVsPar - leader.netVsPar;
-                                        const vsLeaderDisplay = index === 0 ? '-' : (vsLeader === 0 ? 'T' : `+${vsLeader}`);
-                                        return `
-                                        <tr class="border-b border-${config.color}-100 ${entry.isCurrentUser ? 'bg-yellow-50 font-bold' : ''}">
-                                            <td class="py-2 px-1 font-semibold">${index + 1}</td>
-                                            <td class="py-2 px-1 truncate max-w-[100px]">${entry.playerName}${entry.isCurrentUser ? ' <span class="text-xs text-green-600">(You)</span>' : ''}</td>
-                                            <td class="py-2 px-1 text-center text-xs">${entry.holesScored || entry.holesCompleted}/${leaderboard.cutoffHole || 18}</td>
-                                            <td class="py-2 px-1 text-center font-bold ${entry.netVsPar < 0 ? 'text-red-600' : entry.netVsPar > 0 ? 'text-blue-600' : 'text-gray-600'}">${entry.holesScored > 0 ? entry.netVsParDisplay : '-'}</td>
-                                            <td class="py-2 px-1 text-center text-xs text-gray-500">${entry.holesScored > 0 ? vsLeaderDisplay : '-'}</td>
-                                        </tr>
-                                    `}).join('')}
-                                </tbody>
-                            </table>
-                        </div>
                     ` : `
-                        <!-- Default table for Skins and other types -->
                         <div class="p-4">
                             <table class="w-full text-sm">
                                 <thead class="border-b border-${config.color}-200">
@@ -49297,7 +49095,7 @@ class LiveScorecardSystem {
                                         <th class="py-2 px-2">#</th>
                                         <th class="py-2 px-2">Player</th>
                                         <th class="py-2 px-2 text-center">Thru</th>
-                                        <th class="py-2 px-2 text-center">Pts</th>
+                                        <th class="py-2 px-2 text-center">${pool.type === 'matchplay' ? 'Gross' : 'Pts'}</th>
                                         <th class="py-2 px-2 text-center">Status</th>
                                     </tr>
                                 </thead>
@@ -49307,7 +49105,7 @@ class LiveScorecardSystem {
                                             <td class="py-2 px-2 font-semibold">${index + 1}</td>
                                             <td class="py-2 px-2 truncate max-w-[120px]">${entry.playerName}${entry.isCurrentUser ? ' <span class="text-xs text-green-600">(You)</span>' : ''}</td>
                                             <td class="py-2 px-2 text-center">${entry.holesScored || entry.holesCompleted}/${leaderboard.cutoffHole || 18}</td>
-                                            <td class="py-2 px-2 text-center font-bold text-green-600">${entry.totalStableford || '-'}</td>
+                                            <td class="py-2 px-2 text-center font-bold ${pool.type === 'matchplay' ? '' : 'text-green-600'}">${pool.type === 'matchplay' ? (entry.totalGross || '-') : (entry.totalStableford || '-')}</td>
                                             <td class="py-2 px-2 text-center">
                                                 ${entry.holesCompleted >= 18 ?
                                                     '<span class="text-green-600 text-xs">✓ Done</span>' :
@@ -55237,55 +55035,6 @@ const LiveGamesSystem = {
         } catch (error) {
             console.error('[LiveGames] Error getting pools:', error);
             return { success: false, error: error.message, pools: [] };
-        }
-    },
-
-    /**
-     * Complete/close a pool (marks it as completed so it won't show in available pools)
-     */
-    async completePool(poolId) {
-        try {
-            const { error } = await window.SupabaseDB.client
-                .from('side_game_pools')
-                .update({ status: 'completed' })
-                .eq('id', poolId);
-
-            if (error) throw error;
-
-            console.log('[LiveGames] Pool marked as completed:', poolId);
-            return { success: true };
-        } catch (error) {
-            console.error('[LiveGames] Error completing pool:', error);
-            return { success: false, error: error.message };
-        }
-    },
-
-    /**
-     * Cleanup old pools - marks pools from previous days as completed
-     * Should be called on app startup or periodically
-     */
-    async cleanupOldPools() {
-        try {
-            const today = new Date().toISOString().split('T')[0];
-
-            // Mark all pools from previous days as completed
-            const { data, error } = await window.SupabaseDB.client
-                .from('side_game_pools')
-                .update({ status: 'completed' })
-                .eq('status', 'active')
-                .lt('date_iso', today)
-                .select('id');
-
-            if (error) throw error;
-
-            const count = data?.length || 0;
-            if (count > 0) {
-                console.log(`[LiveGames] Cleaned up ${count} old pools from previous days`);
-            }
-            return { success: true, cleaned: count };
-        } catch (error) {
-            console.error('[LiveGames] Error cleaning up old pools:', error);
-            return { success: false, error: error.message };
         }
     },
 

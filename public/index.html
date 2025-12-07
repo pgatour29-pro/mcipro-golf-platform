@@ -55194,23 +55194,39 @@ const LiveGamesSystem = {
             const today = new Date().toISOString().split('T')[0];
             console.log('[LiveGames] Cleaning up pools older than:', today);
 
-            // Delete pools from past dates
-            const { data, error } = await window.SupabaseDB.client
+            // First get old pools (date_iso is TEXT, so string comparison works for ISO dates)
+            const { data: oldPools, error: fetchError } = await window.SupabaseDB.client
                 .from('side_game_pools')
-                .delete()
-                .lt('date_iso', today)
-                .select();
+                .select('id, date_iso')
+                .neq('date_iso', today);
 
-            if (error) {
-                console.error('[LiveGames] Error cleaning up old pools:', error);
+            if (fetchError) {
+                console.error('[LiveGames] Error fetching old pools:', fetchError);
                 return { success: false, deleted: 0 };
             }
 
-            const deletedCount = data?.length || 0;
-            if (deletedCount > 0) {
-                console.log(`[LiveGames] ✅ Cleaned up ${deletedCount} old pools`);
+            // Filter to only pools from before today (string compare works for YYYY-MM-DD format)
+            const poolsToDelete = (oldPools || []).filter(p => p.date_iso < today);
+
+            if (poolsToDelete.length === 0) {
+                console.log('[LiveGames] No old pools to clean up');
+                return { success: true, deleted: 0 };
             }
-            return { success: true, deleted: deletedCount };
+
+            // Delete old pools by ID
+            const idsToDelete = poolsToDelete.map(p => p.id);
+            const { error: deleteError } = await window.SupabaseDB.client
+                .from('side_game_pools')
+                .delete()
+                .in('id', idsToDelete);
+
+            if (deleteError) {
+                console.error('[LiveGames] Error deleting old pools:', deleteError);
+                return { success: false, deleted: 0 };
+            }
+
+            console.log(`[LiveGames] ✅ Cleaned up ${poolsToDelete.length} old pools`);
+            return { success: true, deleted: poolsToDelete.length };
         } catch (error) {
             console.error('[LiveGames] Error in cleanup:', error);
             return { success: false, deleted: 0 };

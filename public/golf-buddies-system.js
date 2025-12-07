@@ -634,11 +634,26 @@ window.GolfBuddiesSystem = {
         container.innerHTML = '<p class="text-center text-gray-500 py-8">Searching...</p>';
 
         try {
-            const { data, error } = await window.SupabaseDB.client
+            // Build flexible search query for name variations (same as scorecard search)
+            const searchWords = query.trim().split(/\s+/).filter(w => w.length > 0);
+            let dbQuery = window.SupabaseDB.client
                 .from('user_profiles')
-                .select('line_user_id, name, profile_data')
-                .ilike('name', `%${query}%`)
-                .limit(20);
+                .select('line_user_id, name, profile_data');
+
+            if (searchWords.length === 1) {
+                // Single word: simple search
+                dbQuery = dbQuery.ilike('name', `%${searchWords[0]}%`);
+            } else if (searchWords.length === 2) {
+                // Two words: Search for ALL variations (handles "First Last", "Last, First", "Last First")
+                const word1 = searchWords[0];
+                const word2 = searchWords[1];
+                dbQuery = dbQuery.or(`name.ilike.%${word1} ${word2}%,name.ilike.%${word2}, ${word1}%,name.ilike.%${word2} ${word1}%`);
+            } else {
+                // Three or more words: search for the full phrase
+                dbQuery = dbQuery.ilike('name', `%${query}%`);
+            }
+
+            const { data, error } = await dbQuery.limit(20);
 
             if (error) {
                 console.error('[Buddies] Search error:', error);

@@ -58283,44 +58283,22 @@ class GolferEventsManager {
         // Get current selection to preserve it
         const currentSelection = select.value;
 
-        // Get all societies from society_profiles table
-        const societies = new Set();
-        try {
-            const { data: societyProfiles, error } = await window.SupabaseDB.client
-                .from('society_profiles')
-                .select('society_name')
-                .order('society_name');
-
-            if (!error && societyProfiles) {
-                societyProfiles.forEach(profile => {
-                    if (profile.society_name) {
-                        societies.add(profile.society_name);
-                    }
-                });
-            }
-        } catch (err) {
-            console.warn('[GolferEventsSystem] Could not load society_profiles:', err);
-        }
-
-        // Also include any societies from current events (in case not in society_profiles)
+        // Extract societies directly from events (this ensures names match exactly for filtering)
+        const societyCounts = {};
         this.allEvents.forEach(event => {
             const societyName = event.societyName || event.organizerName;
             if (societyName) {
-                societies.add(societyName);
+                societyCounts[societyName] = (societyCounts[societyName] || 0) + 1;
             }
         });
 
         // Sort alphabetically
-        const sortedSocieties = Array.from(societies).sort((a, b) => a.localeCompare(b));
+        const sortedSocieties = Object.keys(societyCounts).sort((a, b) => a.localeCompare(b));
 
         // Build options HTML
         let optionsHtml = '<option value="all">All Societies</option>';
         sortedSocieties.forEach(society => {
-            // Count events for this society
-            const eventCount = this.allEvents.filter(e =>
-                (e.societyName || e.organizerName) === society
-            ).length;
-            optionsHtml += `<option value="${society}">${society} (${eventCount})</option>`;
+            optionsHtml += `<option value="${society}">${society} (${societyCounts[society]})</option>`;
         });
 
         select.innerHTML = optionsHtml;

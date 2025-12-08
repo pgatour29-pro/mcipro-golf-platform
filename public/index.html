@@ -37132,21 +37132,48 @@ const AdminSystem = {
         try {
             console.log('[AdminSystem] Loading users from Supabase...');
 
-            // Query user_profiles table directly
-            // Note: Supabase default limit is 1000 rows, use search for specific users
-            const { data, error } = await window.SupabaseDB.client
+            // Get exact count first (not limited by row fetch)
+            const { count: totalUserCount, error: countError } = await window.SupabaseDB.client
                 .from('user_profiles')
-                .select('*')
-                .order('name', { ascending: true })
-                .limit(10000);
+                .select('*', { count: 'exact', head: true });
 
-            if (error) {
-                console.error('[AdminSystem] Database error:', error);
-                throw error;
+            if (countError) {
+                console.error('[AdminSystem] Count error:', countError);
+            } else {
+                this.totalUserCount = totalUserCount || 0;
+                console.log('[AdminSystem] Total users in database:', this.totalUserCount);
             }
 
-            console.log('[AdminSystem] Loaded', data?.length || 0, 'users from database');
-            this.users = data || [];
+            // Fetch users in batches to overcome Supabase 1000 row limit
+            const batchSize = 1000;
+            let allUsers = [];
+            let offset = 0;
+            let hasMore = true;
+
+            while (hasMore) {
+                const { data, error } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('*')
+                    .order('name', { ascending: true })
+                    .range(offset, offset + batchSize - 1);
+
+                if (error) {
+                    console.error('[AdminSystem] Database error at offset', offset, ':', error);
+                    break;
+                }
+
+                if (data && data.length > 0) {
+                    allUsers = allUsers.concat(data);
+                    offset += data.length;
+                    hasMore = data.length === batchSize;
+                    console.log(`[AdminSystem] Loaded batch: ${data.length} users (total: ${allUsers.length})`);
+                } else {
+                    hasMore = false;
+                }
+            }
+
+            console.log('[AdminSystem] Loaded', allUsers.length, 'users from database');
+            this.users = allUsers;
 
             // Load subscriptions
             this.subscriptions = this.users.map(user => ({
@@ -37200,8 +37227,9 @@ const AdminSystem = {
     },
 
     updateOverview() {
-        // Total users
-        document.getElementById('admin-total-users').textContent = this.users.length;
+        // Total users - use exact count from database (not limited by fetch)
+        const totalUsers = this.totalUserCount || this.users.length;
+        document.getElementById('admin-total-users').textContent = totalUsers.toLocaleString();
 
         // Calculate revenue
         const prices = {free: 0, silver: 299, gold: 599, platinum: 999};
@@ -37214,7 +37242,7 @@ const AdminSystem = {
         document.getElementById('admin-societies-count').textContent = this.societies.length;
 
         // Active today (simulate)
-        document.getElementById('admin-active-today').textContent = Math.floor(this.users.length * 0.3);
+        document.getElementById('admin-active-today').textContent = Math.floor(totalUsers * 0.3).toLocaleString();
 
         // Load recent signups
         this.loadRecentSignups();

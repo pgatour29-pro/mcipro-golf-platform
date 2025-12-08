@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Leaderboards - MyCaddiPro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .winner-row { background: linear-gradient(90deg, #fef3c7 0%, #fde68a 50%, #fef3c7 100%); }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Header -->
+    <header class="bg-gradient-to-r from-green-600 to-green-700 text-white shadow-lg">
+        <div class="max-w-4xl mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-3xl">sports_golf</span>
+                    <div>
+                        <h1 class="text-xl font-bold">MyCaddiPro</h1>
+                        <p class="text-green-200 text-sm">Live Leaderboards</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 text-sm">
+                    <span class="material-symbols-outlined text-red-300 pulse">radio_button_checked</span>
+                    <span>LIVE</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-4xl mx-auto px-4 py-6">
+        <!-- Status Bar -->
+        <div class="bg-white rounded-lg shadow-sm p-3 mb-4 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-gray-600">
+                <span class="material-symbols-outlined">schedule</span>
+                <span id="lastUpdate">Loading...</span>
+            </div>
+            <button onclick="loadLeaderboards()" class="flex items-center gap-1 text-green-600 hover:text-green-700">
+                <span class="material-symbols-outlined">refresh</span>
+                Refresh
+            </button>
+        </div>
+
+        <!-- Leaderboards Container -->
+        <div id="leaderboardsContainer">
+            <div class="text-center py-12 text-gray-500">
+                <span class="material-symbols-outlined text-5xl mb-4">hourglass_empty</span>
+                <p class="text-lg">Loading live leaderboards...</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="text-center py-6 text-gray-500 text-sm">
+        <p>Auto-refreshes every 30 seconds</p>
+        <p class="mt-1">Powered by MyCaddiPro</p>
+    </footer>
+
+    <!-- Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // Supabase configuration
+        const SUPABASE_URL = 'https://bkkzsleglaqrawvgfjgy.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJra3pzbGVnbGFxcmF3dmdmamd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjYxOTE2MDIsImV4cCI6MjA0MTc2NzYwMn0.UBpQLhh7EZGY3S3ICqFUHAoocGt4KJBrrLNHXbQyDLI';
+
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Load leaderboards
+        async function loadLeaderboards() {
+            const container = document.getElementById('leaderboardsContainer');
+            const today = new Date().toISOString().split('T')[0];
+
+            try {
+                // Get all active pools from today
+                const { data: pools, error: poolError } = await supabase
+                    .from('side_game_pools')
+                    .select(`
+                        id, name, type, course_id, date_iso, config, created_at,
+                        pool_entrants (player_id)
+                    `)
+                    .eq('date_iso', today)
+                    .eq('status', 'active')
+                    .eq('is_public', true);
+
+                if (poolError) throw poolError;
+
+                // Also get society events happening today
+                const { data: events, error: eventError } = await supabase
+                    .from('society_events')
+                    .select(`
+                        id, event_name, event_date, course_name, society_id,
+                        societies (name)
+                    `)
+                    .eq('event_date', today);
+
+                if (eventError) throw eventError;
+
+                // Update last refresh time
+                document.getElementById('lastUpdate').textContent =
+                    `Last updated: ${new Date().toLocaleTimeString()}`;
+
+                // No active games
+                if ((!pools || pools.length === 0) && (!events || events.length === 0)) {
+                    container.innerHTML = `
+                        <div class="bg-white rounded-lg shadow-sm p-8 text-center">
+                            <span class="material-symbols-outlined text-6xl text-gray-300 mb-4">sports_golf</span>
+                            <h2 class="text-xl font-semibold text-gray-700 mb-2">No Live Games Right Now</h2>
+                            <p class="text-gray-500">Check back when golfers are on the course!</p>
+                            <p class="text-gray-400 text-sm mt-4">Today: ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = '';
+
+                // Render Society Events
+                if (events && events.length > 0) {
+                    for (const event of events) {
+                        const leaderboard = await getEventLeaderboard(event.id);
+                        html += renderEventCard(event, leaderboard);
+                    }
+                }
+
+                // Render Public Pools (Side Games)
+                if (pools && pools.length > 0) {
+                    for (const pool of pools) {
+                        const leaderboard = await getPoolLeaderboard(pool);
+                        html += renderPoolCard(pool, leaderboard);
+                    }
+                }
+
+                container.innerHTML = html;
+
+            } catch (error) {
+                console.error('Error loading leaderboards:', error);
+                container.innerHTML = `
+                    <div class="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+                        <span class="material-symbols-outlined text-4xl text-red-400 mb-2">error</span>
+                        <p class="text-red-600">Error loading leaderboards</p>
+                        <p class="text-red-400 text-sm mt-1">${error.message}</p>
+                        <button onclick="loadLeaderboards()" class="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg">
+                            Try Again
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        // Get event leaderboard
+        async function getEventLeaderboard(eventId) {
+            const { data: scorecards, error } = await supabase
+                .from('scorecards')
+                .select(`
+                    id, player_id, total_gross, total_net, status, created_at,
+                    scores (hole_number, gross_score, net_score, stableford_points)
+                `)
+                .eq('event_id', eventId)
+                .order('total_gross', { ascending: true });
+
+            if (error || !scorecards) return [];
+
+            // Get player names
+            const playerIds = [...new Set(scorecards.map(s => s.player_id))];
+            const { data: profiles } = await supabase
+                .from('user_profiles')
+                .select('line_user_id, name')
+                .in('line_user_id', playerIds);
+
+            const nameMap = {};
+            (profiles || []).forEach(p => nameMap[p.line_user_id] = p.name);
+
+            return scorecards.map(sc => ({
+                player_name: nameMap[sc.player_id] || 'Player',
+                total_gross: sc.total_gross || 0,
+                total_stableford: (sc.scores || []).reduce((sum, s) => sum + (s.stableford_points || 0), 0),
+                holes_played: (sc.scores || []).length,
+                status: sc.status
+            })).sort((a, b) => b.total_stableford - a.total_stableford);
+        }
+
+        // Get pool leaderboard
+        async function getPoolLeaderboard(pool) {
+            const entrantIds = pool.pool_entrants.map(e => e.player_id);
+            if (entrantIds.length === 0) return [];
+
+            const today = new Date().toISOString().split('T')[0];
+
+            // Get scorecards for today
+            const { data: scorecards, error } = await supabase
+                .from('scorecards')
+                .select(`
+                    id, player_id,
+                    scores (hole_number, gross_score, stableford_points)
+                `)
+                .in('player_id', entrantIds)
+                .gte('created_at', today + 'T00:00:00')
+                .lte('created_at', today + 'T23:59:59');
+
+            if (error || !scorecards) return [];
+
+            // Get player names
+            const { data: profiles } = await supabase
+                .from('user_profiles')
+                .select('line_user_id, name')
+                .in('line_user_id', entrantIds);
+
+            const nameMap = {};
+            (profiles || []).forEach(p => nameMap[p.line_user_id] = p.name);
+
+            // Aggregate scores by player
+            const playerScores = {};
+            for (const sc of scorecards) {
+                if (!playerScores[sc.player_id]) {
+                    playerScores[sc.player_id] = {
+                        player_name: nameMap[sc.player_id] || 'Player',
+                        total_gross: 0,
+                        total_stableford: 0,
+                        front9_stableford: 0,
+                        back9_stableford: 0,
+                        holes_played: 0
+                    };
+                }
+                for (const score of (sc.scores || [])) {
+                    playerScores[sc.player_id].total_gross += score.gross_score || 0;
+                    playerScores[sc.player_id].total_stableford += score.stableford_points || 0;
+                    playerScores[sc.player_id].holes_played++;
+                    if (score.hole_number <= 9) {
+                        playerScores[sc.player_id].front9_stableford += score.stableford_points || 0;
+                    } else {
+                        playerScores[sc.player_id].back9_stableford += score.stableford_points || 0;
+                    }
+                }
+            }
+
+            return Object.values(playerScores).sort((a, b) => b.total_stableford - a.total_stableford);
+        }
+
+        // Render event card
+        function renderEventCard(event, leaderboard) {
+            const societyName = event.societies?.name || 'Golf Event';
+            return `
+                <div class="bg-white rounded-lg shadow-sm mb-4 overflow-hidden">
+                    <div class="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h2 class="font-bold text-lg">${event.event_name}</h2>
+                                <p class="text-blue-200 text-sm">${societyName} - ${event.course_name || 'Golf Course'}</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="flex items-center gap-1 text-sm">
+                                    <span class="material-symbols-outlined text-green-300">group</span>
+                                    <span>${leaderboard.length} players</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    ${renderLeaderboardTable(leaderboard, 'stableford')}
+                </div>
+            `;
+        }
+
+        // Render pool card
+        function renderPoolCard(pool, leaderboard) {
+            const typeConfig = {
+                skins: { icon: 'monetization_on', color: 'orange', label: 'Skins' },
+                nassau: { icon: 'emoji_events', color: 'blue', label: 'Nassau' },
+                matchplay: { icon: 'sports_score', color: 'green', label: 'Match Play' },
+                stableford: { icon: 'star', color: 'yellow', label: 'Stableford' }
+            };
+            const config = typeConfig[pool.type] || typeConfig.stableford;
+
+            return `
+                <div class="bg-white rounded-lg shadow-sm mb-4 overflow-hidden">
+                    <div class="bg-gradient-to-r from-${config.color}-500 to-${config.color}-600 text-white p-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined">${config.icon}</span>
+                                <div>
+                                    <h2 class="font-bold">${pool.name}</h2>
+                                    <p class="text-${config.color}-200 text-sm">${config.label} Competition</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-1 text-sm">
+                                <span class="material-symbols-outlined">group</span>
+                                <span>${pool.pool_entrants.length}</span>
+                            </div>
+                        </div>
+                    </div>
+                    ${pool.type === 'nassau' ? renderNassauTable(leaderboard) : renderLeaderboardTable(leaderboard, pool.type)}
+                </div>
+            `;
+        }
+
+        // Render standard leaderboard table
+        function renderLeaderboardTable(leaderboard, type) {
+            if (leaderboard.length === 0) {
+                return `
+                    <div class="p-6 text-center text-gray-500">
+                        <span class="material-symbols-outlined text-3xl mb-2">hourglass_empty</span>
+                        <p>Waiting for scores...</p>
+                    </div>
+                `;
+            }
+
+            const rows = leaderboard.map((entry, i) => {
+                const isLeader = i === 0;
+                return `
+                    <tr class="${isLeader ? 'winner-row font-bold' : 'border-b border-gray-100'}">
+                        <td class="py-3 px-4 text-center">${i + 1}</td>
+                        <td class="py-3 px-4">
+                            ${entry.player_name}
+                            ${isLeader ? '<span class="ml-2">🏆</span>' : ''}
+                        </td>
+                        <td class="py-3 px-4 text-center">${entry.holes_played}</td>
+                        <td class="py-3 px-4 text-center font-bold text-green-600">${entry.total_stableford}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            return `
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 border-b">
+                        <tr class="text-gray-600">
+                            <th class="py-2 px-4 text-center">Pos</th>
+                            <th class="py-2 px-4 text-left">Player</th>
+                            <th class="py-2 px-4 text-center">Thru</th>
+                            <th class="py-2 px-4 text-center">Pts</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        }
+
+        // Render Nassau-specific table
+        function renderNassauTable(leaderboard) {
+            if (leaderboard.length === 0) {
+                return `
+                    <div class="p-6 text-center text-gray-500">
+                        <span class="material-symbols-outlined text-3xl mb-2">hourglass_empty</span>
+                        <p>Waiting for scores...</p>
+                    </div>
+                `;
+            }
+
+            // Find winners for each segment
+            const f9Winner = leaderboard.reduce((max, e) => e.front9_stableford > (max?.front9_stableford || 0) ? e : max, null);
+            const b9Winner = leaderboard.reduce((max, e) => e.back9_stableford > (max?.back9_stableford || 0) ? e : max, null);
+            const totalWinner = leaderboard[0]; // Already sorted by total
+
+            const rows = leaderboard.map((entry, i) => {
+                const wonF9 = entry.player_name === f9Winner?.player_name && entry.front9_stableford > 0;
+                const wonB9 = entry.player_name === b9Winner?.player_name && entry.back9_stableford > 0;
+                const wonTotal = i === 0;
+
+                return `
+                    <tr class="${wonTotal ? 'winner-row' : 'border-b border-gray-100'}">
+                        <td class="py-3 px-3 text-center font-semibold">${i + 1}</td>
+                        <td class="py-3 px-3">${entry.player_name}</td>
+                        <td class="py-3 px-3 text-center ${wonF9 ? 'bg-blue-200 font-bold' : ''}">${entry.front9_stableford || '-'}</td>
+                        <td class="py-3 px-3 text-center ${wonB9 ? 'bg-green-200 font-bold' : ''}">${entry.back9_stableford || '-'}</td>
+                        <td class="py-3 px-3 text-center ${wonTotal ? 'bg-yellow-200 font-bold' : ''}">${entry.total_stableford || '-'}</td>
+                        <td class="py-3 px-3 text-center">${entry.holes_played}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            return `
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 border-b">
+                        <tr class="text-gray-600">
+                            <th class="py-2 px-3">#</th>
+                            <th class="py-2 px-3 text-left">Player</th>
+                            <th class="py-2 px-3 text-center bg-blue-50">F9</th>
+                            <th class="py-2 px-3 text-center bg-green-50">B9</th>
+                            <th class="py-2 px-3 text-center bg-yellow-50">Total</th>
+                            <th class="py-2 px-3 text-center">Thru</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+                <div class="px-4 py-2 bg-gray-50 text-xs text-gray-600">
+                    Highlighted cells = segment winner
+                </div>
+            `;
+        }
+
+        // Initial load
+        loadLeaderboards();
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadLeaderboards, 30000);
+    </script>
+</body>
+</html>

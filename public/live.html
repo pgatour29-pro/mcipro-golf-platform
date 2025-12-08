@@ -24,12 +24,17 @@
         .hole-cell { text-align: center; padding: 4px 2px; font-size: 11px; }
         .hole-header { background: #f3f4f6; font-weight: 600; }
         .hole-score { background: #fff; border: 1px solid #e5e7eb; }
+        .event-item { cursor: pointer; transition: all 0.2s; }
+        .event-item:hover { background-color: #f3f4f6; }
+        .event-item.active { background-color: #dcfce7; border-left: 3px solid #16a34a; }
+        .sidebar-scroll { max-height: calc(100vh - 200px); overflow-y: auto; }
+        .live-badge { animation: pulse 2s infinite; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
     <!-- Header -->
     <header class="bg-gradient-to-r from-green-600 to-green-700 text-white shadow-lg">
-        <div class="max-w-4xl mx-auto px-4 py-4">
+        <div class="max-w-7xl mx-auto px-4 py-4">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-3">
                     <span class="material-symbols-outlined text-3xl">sports_golf</span>
@@ -46,32 +51,70 @@
         </div>
     </header>
 
-    <!-- Main Content -->
-    <main class="max-w-4xl mx-auto px-4 py-6">
-        <!-- Status Bar -->
-        <div class="bg-white rounded-lg shadow-sm p-3 mb-4 flex items-center justify-between">
-            <div class="flex items-center gap-2 text-gray-600">
-                <span class="material-symbols-outlined">schedule</span>
-                <span id="lastUpdate">Loading...</span>
-            </div>
-            <button onclick="loadLeaderboards()" class="flex items-center gap-1 text-green-600 hover:text-green-700">
-                <span class="material-symbols-outlined">refresh</span>
-                Refresh
-            </button>
-        </div>
+    <!-- Main Content - Two Column Layout -->
+    <main class="max-w-7xl mx-auto px-4 py-6">
+        <div class="flex flex-col lg:flex-row gap-6">
+            <!-- Left/Center: Main Leaderboard Area -->
+            <div class="flex-1 lg:w-2/3">
+                <!-- Status Bar -->
+                <div class="bg-white rounded-lg shadow-sm p-3 mb-4 flex items-center justify-between">
+                    <div class="flex items-center gap-2 text-gray-600">
+                        <span class="material-symbols-outlined">schedule</span>
+                        <span id="lastUpdate">Loading...</span>
+                    </div>
+                    <button onclick="loadAllData()" class="flex items-center gap-1 text-green-600 hover:text-green-700">
+                        <span class="material-symbols-outlined">refresh</span>
+                        Refresh
+                    </button>
+                </div>
 
-        <!-- Leaderboards Container -->
-        <div id="leaderboardsContainer">
-            <div class="text-center py-12 text-gray-500">
-                <span class="material-symbols-outlined text-5xl mb-4">hourglass_empty</span>
-                <p class="text-lg">Loading live leaderboards...</p>
+                <!-- Selected Event Header (for archived events) -->
+                <div id="selectedEventHeader" class="hidden bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-amber-600">history</span>
+                            <span class="text-amber-800 font-medium">Viewing Archived Event</span>
+                        </div>
+                        <button onclick="showLiveEvents()" class="text-amber-700 hover:text-amber-900 text-sm flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">arrow_back</span>
+                            Back to Live
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Leaderboards Container -->
+                <div id="leaderboardsContainer">
+                    <div class="text-center py-12 text-gray-500">
+                        <span class="material-symbols-outlined text-5xl mb-4">hourglass_empty</span>
+                        <p class="text-lg">Loading live leaderboards...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Sidebar: Event History -->
+            <div class="lg:w-1/3">
+                <div class="bg-white rounded-lg shadow-sm overflow-hidden sticky top-4">
+                    <div class="bg-gradient-to-r from-gray-700 to-gray-800 text-white p-4">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined">calendar_month</span>
+                            <h2 class="font-bold">Event History</h2>
+                        </div>
+                        <p class="text-gray-300 text-sm mt-1">Select an event to view leaderboard</p>
+                    </div>
+                    <div id="eventHistorySidebar" class="sidebar-scroll p-2">
+                        <div class="text-center py-6 text-gray-400">
+                            <span class="material-symbols-outlined">event</span>
+                            <p class="text-sm">Loading events...</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </main>
 
     <!-- Footer -->
     <footer class="text-center py-6 text-gray-500 text-sm">
-        <p>Auto-refreshes every 5 seconds</p>
+        <p>Auto-refreshes every 5 seconds for live events</p>
         <p class="mt-1">Powered by MyCaddiPro</p>
     </footer>
 
@@ -84,45 +127,304 @@
 
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // Load leaderboards
-        async function loadLeaderboards() {
-            const container = document.getElementById('leaderboardsContainer');
-            const today = new Date().toISOString().split('T')[0];
+        // State
+        let allEvents = [];
+        let allPools = [];
+        let selectedEventId = null;
+        let selectedPoolId = null;
+        let viewingArchived = false;
+        const expandedPlayers = new Set();
+
+        // Get today's date in YYYY-MM-DD format
+        function getToday() {
+            return new Date().toISOString().split('T')[0];
+        }
+
+        // Check if a date is in the past
+        function isPastDate(dateStr) {
+            const today = getToday();
+            return dateStr < today;
+        }
+
+        // Check if a date is today
+        function isToday(dateStr) {
+            return dateStr === getToday();
+        }
+
+        // Format date for display
+        function formatDate(dateStr) {
+            const date = new Date(dateStr + 'T12:00:00');
+            const today = getToday();
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+            if (dateStr === today) return 'Today';
+            if (dateStr === yesterdayStr) return 'Yesterday';
+
+            return date.toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric'
+            });
+        }
+
+        // Load all data
+        async function loadAllData() {
+            await Promise.all([
+                loadEventHistory(),
+                viewingArchived ? loadArchivedLeaderboard() : loadLiveLeaderboards()
+            ]);
+        }
+
+        // Load event history for sidebar (last 30 days + upcoming)
+        async function loadEventHistory() {
+            const sidebar = document.getElementById('eventHistorySidebar');
 
             try {
-                // Get all active pools from today
-                const { data: pools, error: poolError } = await supabase
-                    .from('side_game_pools')
-                    .select(`
-                        id, name, type, course_id, date_iso, config, created_at,
-                        pool_entrants (player_id)
-                    `)
-                    .eq('date_iso', today)
-                    .eq('status', 'active')
-                    .eq('is_public', true);
+                // Get events from last 30 days
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                const cutoffDate = thirtyDaysAgo.toISOString().split('T')[0];
 
-                if (poolError) throw poolError;
-
-                // Also get society events happening today
                 const { data: events, error: eventError } = await supabase
                     .from('society_events')
                     .select('id, title, event_date, course_name, organizer_name')
-                    .eq('event_date', today);
+                    .gte('event_date', cutoffDate)
+                    .order('event_date', { ascending: false });
 
                 if (eventError) throw eventError;
+
+                // Also get pools from last 30 days
+                const { data: pools, error: poolError } = await supabase
+                    .from('side_game_pools')
+                    .select(`
+                        id, name, type, date_iso, created_at,
+                        pool_entrants (player_id)
+                    `)
+                    .gte('date_iso', cutoffDate)
+                    .eq('is_public', true)
+                    .order('date_iso', { ascending: false });
+
+                if (poolError) throw poolError;
+
+                allEvents = events || [];
+                allPools = pools || [];
+
+                // Group by date
+                const eventsByDate = {};
+
+                for (const event of allEvents) {
+                    const date = event.event_date;
+                    if (!eventsByDate[date]) eventsByDate[date] = [];
+                    eventsByDate[date].push({ type: 'event', data: event });
+                }
+
+                for (const pool of allPools) {
+                    const date = pool.date_iso;
+                    if (!eventsByDate[date]) eventsByDate[date] = [];
+                    eventsByDate[date].push({ type: 'pool', data: pool });
+                }
+
+                // Sort dates descending
+                const sortedDates = Object.keys(eventsByDate).sort((a, b) => b.localeCompare(a));
+
+                if (sortedDates.length === 0) {
+                    sidebar.innerHTML = `
+                        <div class="text-center py-8 text-gray-400">
+                            <span class="material-symbols-outlined text-3xl mb-2">event_busy</span>
+                            <p class="text-sm">No events found</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = '';
+                for (const date of sortedDates) {
+                    const items = eventsByDate[date];
+                    const isLive = isToday(date);
+                    const isPast = isPastDate(date);
+
+                    html += `
+                        <div class="mb-3">
+                            <div class="flex items-center gap-2 px-2 py-1 text-xs font-semibold text-gray-500 uppercase">
+                                ${isLive ? '<span class="w-2 h-2 bg-red-500 rounded-full live-badge"></span>' : ''}
+                                ${formatDate(date)}
+                                ${isPast ? '<span class="text-amber-600 font-normal">(Archived)</span>' : ''}
+                            </div>
+                            ${items.map(item => renderSidebarItem(item, isLive, isPast)).join('')}
+                        </div>
+                    `;
+                }
+
+                sidebar.innerHTML = html;
+
+            } catch (error) {
+                console.error('Error loading event history:', error);
+                sidebar.innerHTML = `
+                    <div class="text-center py-8 text-red-400">
+                        <span class="material-symbols-outlined text-3xl mb-2">error</span>
+                        <p class="text-sm">Error loading events</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Render sidebar item
+        function renderSidebarItem(item, isLive, isPast) {
+            if (item.type === 'event') {
+                const event = item.data;
+                const isActive = selectedEventId === event.id && viewingArchived;
+                return `
+                    <div class="event-item rounded-lg p-2 mb-1 ${isActive ? 'active' : ''}"
+                         onclick="selectEvent('${event.id}', ${isPast})">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-sm ${isLive ? 'text-red-500' : 'text-blue-500'}">
+                                ${isLive ? 'radio_button_checked' : 'emoji_events'}
+                            </span>
+                            <div class="flex-1 min-w-0">
+                                <div class="font-medium text-sm text-gray-800 truncate">${event.title}</div>
+                                <div class="text-xs text-gray-500 truncate">${event.organizer_name || 'Golf Society'}</div>
+                            </div>
+                            ${isLive ? '<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">LIVE</span>' : ''}
+                        </div>
+                    </div>
+                `;
+            } else {
+                const pool = item.data;
+                const isActive = selectedPoolId === pool.id && viewingArchived;
+                const typeLabels = { skins: 'Skins', nassau: 'Nassau', matchplay: 'Match Play', stableford: 'Stableford' };
+                return `
+                    <div class="event-item rounded-lg p-2 mb-1 ${isActive ? 'active' : ''}"
+                         onclick="selectPool('${pool.id}', ${isPast})">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-sm ${isLive ? 'text-orange-500' : 'text-gray-500'}">
+                                ${isLive ? 'radio_button_checked' : 'sports_score'}
+                            </span>
+                            <div class="flex-1 min-w-0">
+                                <div class="font-medium text-sm text-gray-800 truncate">${pool.name}</div>
+                                <div class="text-xs text-gray-500">${typeLabels[pool.type] || 'Side Game'} - ${pool.pool_entrants?.length || 0} players</div>
+                            </div>
+                            ${isLive ? '<span class="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">LIVE</span>' : ''}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // Select an event to view
+        function selectEvent(eventId, isPast) {
+            selectedEventId = eventId;
+            selectedPoolId = null;
+            viewingArchived = isPast;
+
+            if (isPast) {
+                document.getElementById('selectedEventHeader').classList.remove('hidden');
+            } else {
+                document.getElementById('selectedEventHeader').classList.add('hidden');
+            }
+
+            loadAllData();
+        }
+
+        // Select a pool to view
+        function selectPool(poolId, isPast) {
+            selectedPoolId = poolId;
+            selectedEventId = null;
+            viewingArchived = isPast;
+
+            if (isPast) {
+                document.getElementById('selectedEventHeader').classList.remove('hidden');
+            } else {
+                document.getElementById('selectedEventHeader').classList.add('hidden');
+            }
+
+            loadAllData();
+        }
+
+        // Show live events (back to default view)
+        function showLiveEvents() {
+            selectedEventId = null;
+            selectedPoolId = null;
+            viewingArchived = false;
+            document.getElementById('selectedEventHeader').classList.add('hidden');
+            loadAllData();
+        }
+
+        // Load archived leaderboard (specific event/pool)
+        async function loadArchivedLeaderboard() {
+            const container = document.getElementById('leaderboardsContainer');
+
+            try {
+                let html = '';
+
+                if (selectedEventId) {
+                    const event = allEvents.find(e => e.id === selectedEventId);
+                    if (event) {
+                        const leaderboard = await getEventLeaderboard(event.id);
+                        html = renderEventCard(event, leaderboard, true);
+                    }
+                } else if (selectedPoolId) {
+                    const pool = allPools.find(p => p.id === selectedPoolId);
+                    if (pool) {
+                        const leaderboard = await getPoolLeaderboard(pool);
+                        html = renderPoolCard(pool, leaderboard, true);
+                    }
+                }
+
+                if (!html) {
+                    html = `
+                        <div class="bg-white rounded-lg shadow-sm p-8 text-center">
+                            <span class="material-symbols-outlined text-6xl text-gray-300 mb-4">search_off</span>
+                            <h2 class="text-xl font-semibold text-gray-700 mb-2">Event Not Found</h2>
+                            <p class="text-gray-500">The selected event could not be loaded.</p>
+                        </div>
+                    `;
+                }
+
+                container.innerHTML = html;
+                document.getElementById('lastUpdate').textContent = `Viewing archived event`;
+
+                // Restore expanded state
+                setTimeout(restoreExpandedState, 50);
+
+            } catch (error) {
+                console.error('Error loading archived leaderboard:', error);
+                container.innerHTML = `
+                    <div class="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+                        <span class="material-symbols-outlined text-4xl text-red-400 mb-2">error</span>
+                        <p class="text-red-600">Error loading leaderboard</p>
+                        <p class="text-red-400 text-sm mt-1">${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Load live leaderboards (today's events)
+        async function loadLiveLeaderboards() {
+            const container = document.getElementById('leaderboardsContainer');
+            const today = getToday();
+
+            try {
+                // Get today's pools
+                const todayPools = allPools.filter(p => p.date_iso === today && p.status !== 'completed');
+
+                // Get today's events
+                const todayEvents = allEvents.filter(e => e.event_date === today);
 
                 // Update last refresh time
                 document.getElementById('lastUpdate').textContent =
                     `Last updated: ${new Date().toLocaleTimeString()}`;
 
-                // No active games
-                if ((!pools || pools.length === 0) && (!events || events.length === 0)) {
+                // No active games today
+                if (todayPools.length === 0 && todayEvents.length === 0) {
                     container.innerHTML = `
                         <div class="bg-white rounded-lg shadow-sm p-8 text-center">
                             <span class="material-symbols-outlined text-6xl text-gray-300 mb-4">sports_golf</span>
                             <h2 class="text-xl font-semibold text-gray-700 mb-2">No Live Games Right Now</h2>
                             <p class="text-gray-500">Check back when golfers are on the course!</p>
                             <p class="text-gray-400 text-sm mt-4">Today: ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+                            <p class="text-green-600 text-sm mt-4">Select an archived event from the right to view past results</p>
                         </div>
                     `;
                     return;
@@ -131,19 +433,15 @@
                 let html = '';
 
                 // Render Society Events
-                if (events && events.length > 0) {
-                    for (const event of events) {
-                        const leaderboard = await getEventLeaderboard(event.id);
-                        html += renderEventCard(event, leaderboard);
-                    }
+                for (const event of todayEvents) {
+                    const leaderboard = await getEventLeaderboard(event.id);
+                    html += renderEventCard(event, leaderboard, false);
                 }
 
                 // Render Public Pools (Side Games)
-                if (pools && pools.length > 0) {
-                    for (const pool of pools) {
-                        const leaderboard = await getPoolLeaderboard(pool);
-                        html += renderPoolCard(pool, leaderboard);
-                    }
+                for (const pool of todayPools) {
+                    const leaderboard = await getPoolLeaderboard(pool);
+                    html += renderPoolCard(pool, leaderboard, false);
                 }
 
                 container.innerHTML = html;
@@ -158,16 +456,13 @@
                         <span class="material-symbols-outlined text-4xl text-red-400 mb-2">error</span>
                         <p class="text-red-600">Error loading leaderboards</p>
                         <p class="text-red-400 text-sm mt-1">${error.message}</p>
-                        <button onclick="loadLeaderboards()" class="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg">
+                        <button onclick="loadAllData()" class="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg">
                             Try Again
                         </button>
                     </div>
                 `;
             }
         }
-
-        // Track expanded players (persist across refreshes)
-        const expandedPlayers = new Set();
 
         // Get event leaderboard
         async function getEventLeaderboard(eventId) {
@@ -193,7 +488,6 @@
             (profiles || []).forEach(p => nameMap[p.line_user_id] = p.name);
 
             return scorecards.map(sc => {
-                // Build hole-by-hole array
                 const holeScores = new Array(18).fill(null);
                 for (const score of (sc.scores || [])) {
                     if (score.hole_number >= 1 && score.hole_number <= 18) {
@@ -217,12 +511,11 @@
 
         // Get pool leaderboard
         async function getPoolLeaderboard(pool) {
-            const entrantIds = pool.pool_entrants.map(e => e.player_id);
+            const entrantIds = (pool.pool_entrants || []).map(e => e.player_id);
             if (entrantIds.length === 0) return [];
 
-            const today = new Date().toISOString().split('T')[0];
+            const poolDate = pool.date_iso;
 
-            // Get scorecards for today
             const { data: scorecards, error } = await supabase
                 .from('scorecards')
                 .select(`
@@ -230,12 +523,11 @@
                     scores (hole_number, gross_score, stableford_points)
                 `)
                 .in('player_id', entrantIds)
-                .gte('created_at', today + 'T00:00:00')
-                .lte('created_at', today + 'T23:59:59');
+                .gte('created_at', poolDate + 'T00:00:00')
+                .lte('created_at', poolDate + 'T23:59:59');
 
             if (error || !scorecards) return [];
 
-            // Get player names
             const { data: profiles } = await supabase
                 .from('user_profiles')
                 .select('line_user_id, name')
@@ -244,7 +536,7 @@
             const nameMap = {};
             (profiles || []).forEach(p => nameMap[p.line_user_id] = p.name);
 
-            // Use scorecard with MOST HOLES per player (the active round, not abandoned ones)
+            // Use scorecard with MOST HOLES per player
             const bestScorecardByPlayer = {};
             for (const sc of scorecards) {
                 const holesCount = (sc.scores || []).length;
@@ -254,18 +546,8 @@
                 }
             }
 
-            // Debug: log what we're using
-            console.log('[Live] Scorecards selected:', Object.entries(bestScorecardByPlayer).map(([pid, sc]) => ({
-                player: nameMap[pid],
-                scorecard_id: sc.id,
-                holes: (sc.scores || []).length,
-                stableford: (sc.scores || []).reduce((sum, s) => sum + (s.stableford_points || 0), 0)
-            })));
-
-            // Aggregate scores by player (using only their best scorecard)
             const playerScores = {};
             for (const sc of Object.values(bestScorecardByPlayer)) {
-                // Build hole-by-hole array (1-18)
                 const holeScores = new Array(18).fill(null);
                 for (const score of (sc.scores || [])) {
                     if (score.hole_number >= 1 && score.hole_number <= 18) {
@@ -300,14 +582,11 @@
 
         // Toggle player details expansion
         function togglePlayerDetails(playerId) {
-            console.log('[Live] Toggle clicked for:', playerId);
             const detailRow = document.getElementById('details-' + playerId);
             const icon = document.getElementById('icon-' + playerId);
-            console.log('[Live] Found elements:', { detailRow: !!detailRow, icon: !!icon });
             if (detailRow) {
                 const isExpanded = detailRow.classList.toggle('show');
                 if (icon) icon.classList.toggle('expanded');
-                // Track expanded state
                 if (isExpanded) {
                     expandedPlayers.add(playerId);
                 } else {
@@ -328,7 +607,7 @@
             });
         }
 
-        // Event delegation for player clicks (more reliable than inline onclick)
+        // Event delegation for player clicks
         document.addEventListener('click', function(e) {
             const playerName = e.target.closest('.player-name');
             if (playerName) {
@@ -351,7 +630,6 @@
                 <tr id="details-${playerId}" class="hole-details bg-gray-50">
                     <td colspan="${colspan}" class="p-3">
                         <div class="text-xs font-semibold text-gray-600 mb-2">Hole-by-Hole (Gross)</div>
-                        <!-- Front 9 -->
                         <div class="mb-2">
                             <div class="hole-grid mb-1">
                                 ${[1,2,3,4,5,6,7,8,9].map(h => `<div class="hole-cell hole-header">${h}</div>`).join('')}
@@ -361,7 +639,6 @@
                             </div>
                             <div class="text-right text-xs mt-1 text-gray-600">Out: <span class="font-bold">${front9Total || '-'}</span></div>
                         </div>
-                        <!-- Back 9 -->
                         <div>
                             <div class="hole-grid mb-1">
                                 ${[10,11,12,13,14,15,16,17,18].map(h => `<div class="hole-cell hole-header">${h}</div>`).join('')}
@@ -377,15 +654,20 @@
         }
 
         // Render event card
-        function renderEventCard(event, leaderboard) {
+        function renderEventCard(event, leaderboard, isArchived) {
             const societyName = event.organizer_name || 'Golf Event';
+            const dateDisplay = formatDate(event.event_date);
             return `
                 <div class="bg-white rounded-lg shadow-sm mb-4 overflow-hidden">
-                    <div class="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4">
+                    <div class="bg-gradient-to-r ${isArchived ? 'from-gray-600 to-gray-700' : 'from-blue-600 to-blue-700'} text-white p-4">
                         <div class="flex items-center justify-between">
                             <div>
-                                <h2 class="font-bold text-lg">${event.title}</h2>
-                                <p class="text-blue-200 text-sm">${societyName} - ${event.course_name || 'Golf Course'}</p>
+                                <div class="flex items-center gap-2">
+                                    <h2 class="font-bold text-lg">${event.title}</h2>
+                                    ${isArchived ? `<span class="text-xs bg-amber-500 text-white px-2 py-0.5 rounded-full">ARCHIVED</span>` : '<span class="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full live-badge">LIVE</span>'}
+                                </div>
+                                <p class="${isArchived ? 'text-gray-300' : 'text-blue-200'} text-sm">${societyName} - ${event.course_name || 'Golf Course'}</p>
+                                <p class="${isArchived ? 'text-gray-400' : 'text-blue-300'} text-xs mt-1">${dateDisplay}</p>
                             </div>
                             <div class="text-right">
                                 <div class="flex items-center gap-1 text-sm">
@@ -401,7 +683,7 @@
         }
 
         // Render pool card
-        function renderPoolCard(pool, leaderboard) {
+        function renderPoolCard(pool, leaderboard, isArchived) {
             const typeConfig = {
                 skins: { icon: 'monetization_on', color: 'orange', label: 'Skins' },
                 nassau: { icon: 'emoji_events', color: 'blue', label: 'Nassau' },
@@ -409,21 +691,26 @@
                 stableford: { icon: 'star', color: 'yellow', label: 'Stableford' }
             };
             const config = typeConfig[pool.type] || typeConfig.stableford;
+            const dateDisplay = formatDate(pool.date_iso);
 
             return `
                 <div class="bg-white rounded-lg shadow-sm mb-4 overflow-hidden">
-                    <div class="bg-gradient-to-r from-${config.color}-500 to-${config.color}-600 text-white p-4">
+                    <div class="bg-gradient-to-r ${isArchived ? 'from-gray-600 to-gray-700' : `from-${config.color}-500 to-${config.color}-600`} text-white p-4">
                         <div class="flex items-center justify-between">
                             <div class="flex items-center gap-2">
                                 <span class="material-symbols-outlined">${config.icon}</span>
                                 <div>
-                                    <h2 class="font-bold">${pool.name}</h2>
-                                    <p class="text-${config.color}-200 text-sm">${config.label} Competition</p>
+                                    <div class="flex items-center gap-2">
+                                        <h2 class="font-bold">${pool.name}</h2>
+                                        ${isArchived ? `<span class="text-xs bg-amber-500 text-white px-2 py-0.5 rounded-full">ARCHIVED</span>` : '<span class="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full live-badge">LIVE</span>'}
+                                    </div>
+                                    <p class="${isArchived ? 'text-gray-300' : `text-${config.color}-200`} text-sm">${config.label} Competition</p>
+                                    <p class="${isArchived ? 'text-gray-400' : `text-${config.color}-300`} text-xs">${dateDisplay}</p>
                                 </div>
                             </div>
                             <div class="flex items-center gap-1 text-sm">
                                 <span class="material-symbols-outlined">group</span>
-                                <span>${pool.pool_entrants.length}</span>
+                                <span>${pool.pool_entrants?.length || 0}</span>
                             </div>
                         </div>
                     </div>
@@ -438,7 +725,7 @@
                 return `
                     <div class="p-6 text-center text-gray-500">
                         <span class="material-symbols-outlined text-3xl mb-2">hourglass_empty</span>
-                        <p>Waiting for scores...</p>
+                        <p>No scores recorded</p>
                     </div>
                 `;
             }
@@ -484,15 +771,14 @@
                 return `
                     <div class="p-6 text-center text-gray-500">
                         <span class="material-symbols-outlined text-3xl mb-2">hourglass_empty</span>
-                        <p>Waiting for scores...</p>
+                        <p>No scores recorded</p>
                     </div>
                 `;
             }
 
-            // Find winners for each segment
             const f9Winner = leaderboard.reduce((max, e) => e.front9_stableford > (max?.front9_stableford || 0) ? e : max, null);
             const b9Winner = leaderboard.reduce((max, e) => e.back9_stableford > (max?.back9_stableford || 0) ? e : max, null);
-            const totalWinner = leaderboard[0]; // Already sorted by total
+            const totalWinner = leaderboard[0];
 
             const rows = leaderboard.map((entry, i) => {
                 const wonF9 = entry.player_name === f9Winner?.player_name && entry.front9_stableford > 0;
@@ -539,10 +825,14 @@
         }
 
         // Initial load
-        loadLeaderboards();
+        loadAllData();
 
-        // Auto-refresh every 5 seconds for near real-time updates
-        setInterval(loadLeaderboards, 5000);
+        // Auto-refresh every 5 seconds for live events (only when viewing live)
+        setInterval(() => {
+            if (!viewingArchived) {
+                loadAllData();
+            }
+        }, 5000);
     </script>
 </body>
 </html>

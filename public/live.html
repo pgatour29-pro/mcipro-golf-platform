@@ -14,6 +14,16 @@
             50% { opacity: 0.5; }
         }
         .winner-row { background: linear-gradient(90deg, #fef3c7 0%, #fde68a 50%, #fef3c7 100%); }
+        .player-name { cursor: pointer; }
+        .player-name:hover { text-decoration: underline; color: #059669; }
+        .expand-icon { transition: transform 0.2s; }
+        .expand-icon.expanded { transform: rotate(180deg); }
+        .hole-details { display: none; }
+        .hole-details.show { display: table-row; }
+        .hole-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 2px; }
+        .hole-cell { text-align: center; padding: 4px 2px; font-size: 11px; }
+        .hole-header { background: #f3f4f6; font-weight: 600; }
+        .hole-score { background: #fff; border: 1px solid #e5e7eb; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -235,13 +245,23 @@
             // Aggregate scores by player (using only their best scorecard)
             const playerScores = {};
             for (const sc of Object.values(bestScorecardByPlayer)) {
+                // Build hole-by-hole array (1-18)
+                const holeScores = new Array(18).fill(null);
+                for (const score of (sc.scores || [])) {
+                    if (score.hole_number >= 1 && score.hole_number <= 18) {
+                        holeScores[score.hole_number - 1] = score.gross_score;
+                    }
+                }
+
                 playerScores[sc.player_id] = {
+                    player_id: sc.player_id,
                     player_name: nameMap[sc.player_id] || 'Player',
                     total_gross: 0,
                     total_stableford: 0,
                     front9_stableford: 0,
                     back9_stableford: 0,
-                    holes_played: 0
+                    holes_played: 0,
+                    hole_scores: holeScores
                 };
                 for (const score of (sc.scores || [])) {
                     playerScores[sc.player_id].total_gross += score.gross_score || 0;
@@ -256,6 +276,53 @@
             }
 
             return Object.values(playerScores).sort((a, b) => b.total_stableford - a.total_stableford);
+        }
+
+        // Toggle player details expansion
+        function togglePlayerDetails(playerId) {
+            const detailRow = document.getElementById(`details-${playerId}`);
+            const icon = document.getElementById(`icon-${playerId}`);
+            if (detailRow) {
+                detailRow.classList.toggle('show');
+                if (icon) icon.classList.toggle('expanded');
+            }
+        }
+
+        // Render hole-by-hole details row
+        function renderHoleDetails(entry, colspan) {
+            const holes = entry.hole_scores || [];
+            const front9 = holes.slice(0, 9);
+            const back9 = holes.slice(9, 18);
+            const front9Total = front9.reduce((sum, s) => sum + (s || 0), 0);
+            const back9Total = back9.reduce((sum, s) => sum + (s || 0), 0);
+
+            return `
+                <tr id="details-${entry.player_id}" class="hole-details bg-gray-50">
+                    <td colspan="${colspan}" class="p-3">
+                        <div class="text-xs font-semibold text-gray-600 mb-2">Hole-by-Hole (Gross)</div>
+                        <!-- Front 9 -->
+                        <div class="mb-2">
+                            <div class="hole-grid mb-1">
+                                ${[1,2,3,4,5,6,7,8,9].map(h => `<div class="hole-cell hole-header">${h}</div>`).join('')}
+                            </div>
+                            <div class="hole-grid">
+                                ${front9.map(s => `<div class="hole-cell hole-score">${s !== null ? s : '-'}</div>`).join('')}
+                            </div>
+                            <div class="text-right text-xs mt-1 text-gray-600">Out: <span class="font-bold">${front9Total || '-'}</span></div>
+                        </div>
+                        <!-- Back 9 -->
+                        <div>
+                            <div class="hole-grid mb-1">
+                                ${[10,11,12,13,14,15,16,17,18].map(h => `<div class="hole-cell hole-header">${h}</div>`).join('')}
+                            </div>
+                            <div class="hole-grid">
+                                ${back9.map(s => `<div class="hole-cell hole-score">${s !== null ? s : '-'}</div>`).join('')}
+                            </div>
+                            <div class="text-right text-xs mt-1 text-gray-600">In: <span class="font-bold">${back9Total || '-'}</span> | Total: <span class="font-bold">${entry.total_gross || '-'}</span></div>
+                        </div>
+                    </td>
+                </tr>
+            `;
         }
 
         // Render event card
@@ -327,16 +394,21 @@
 
             const rows = leaderboard.map((entry, i) => {
                 const isLeader = i === 0;
+                const playerId = entry.player_id || `player-${i}`;
                 return `
                     <tr class="${isLeader ? 'winner-row font-bold' : 'border-b border-gray-100'}">
                         <td class="py-3 px-4 text-center">${i + 1}</td>
                         <td class="py-3 px-4">
-                            ${entry.player_name}
-                            ${isLeader ? '<span class="ml-2">🏆</span>' : ''}
+                            <span class="player-name flex items-center gap-1" onclick="togglePlayerDetails('${playerId}')">
+                                <span class="material-symbols-outlined text-sm expand-icon" id="icon-${playerId}">expand_more</span>
+                                ${entry.player_name}
+                                ${isLeader ? '<span class="ml-2">🏆</span>' : ''}
+                            </span>
                         </td>
                         <td class="py-3 px-4 text-center">${entry.holes_played}</td>
                         <td class="py-3 px-4 text-center font-bold text-green-600">${entry.total_stableford}</td>
                     </tr>
+                    ${renderHoleDetails(entry, 4)}
                 `;
             }).join('');
 
@@ -375,16 +447,23 @@
                 const wonF9 = entry.player_name === f9Winner?.player_name && entry.front9_stableford > 0;
                 const wonB9 = entry.player_name === b9Winner?.player_name && entry.back9_stableford > 0;
                 const wonTotal = i === 0;
+                const playerId = entry.player_id || `nassau-player-${i}`;
 
                 return `
                     <tr class="${wonTotal ? 'winner-row' : 'border-b border-gray-100'}">
                         <td class="py-3 px-3 text-center font-semibold">${i + 1}</td>
-                        <td class="py-3 px-3">${entry.player_name}</td>
+                        <td class="py-3 px-3">
+                            <span class="player-name flex items-center gap-1" onclick="togglePlayerDetails('${playerId}')">
+                                <span class="material-symbols-outlined text-sm expand-icon" id="icon-${playerId}">expand_more</span>
+                                ${entry.player_name}
+                            </span>
+                        </td>
                         <td class="py-3 px-3 text-center ${wonF9 ? 'bg-blue-200 font-bold' : ''}">${entry.front9_stableford || '-'}</td>
                         <td class="py-3 px-3 text-center ${wonB9 ? 'bg-green-200 font-bold' : ''}">${entry.back9_stableford || '-'}</td>
                         <td class="py-3 px-3 text-center ${wonTotal ? 'bg-yellow-200 font-bold' : ''}">${entry.total_stableford || '-'}</td>
                         <td class="py-3 px-3 text-center">${entry.holes_played}</td>
                     </tr>
+                    ${renderHoleDetails(entry, 6)}
                 `;
             }).join('');
 
@@ -403,7 +482,7 @@
                     <tbody>${rows}</tbody>
                 </table>
                 <div class="px-4 py-2 bg-gray-50 text-xs text-gray-600">
-                    Highlighted cells = segment winner
+                    Tap player name to see hole-by-hole scores
                 </div>
             `;
         }

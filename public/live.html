@@ -192,7 +192,7 @@
 
             const today = new Date().toISOString().split('T')[0];
 
-            // Get scorecards for today - ordered by created_at desc to get most recent first
+            // Get scorecards for today
             const { data: scorecards, error } = await supabase
                 .from('scorecards')
                 .select(`
@@ -201,8 +201,7 @@
                 `)
                 .in('player_id', entrantIds)
                 .gte('created_at', today + 'T00:00:00')
-                .lte('created_at', today + 'T23:59:59')
-                .order('created_at', { ascending: false });
+                .lte('created_at', today + 'T23:59:59');
 
             if (error || !scorecards) return [];
 
@@ -215,17 +214,27 @@
             const nameMap = {};
             (profiles || []).forEach(p => nameMap[p.line_user_id] = p.name);
 
-            // Only use the MOST RECENT scorecard per player (avoid double-counting from restarted rounds)
-            const latestScorecardByPlayer = {};
+            // Use scorecard with MOST HOLES per player (the active round, not abandoned ones)
+            const bestScorecardByPlayer = {};
             for (const sc of scorecards) {
-                if (!latestScorecardByPlayer[sc.player_id]) {
-                    latestScorecardByPlayer[sc.player_id] = sc;
+                const holesCount = (sc.scores || []).length;
+                if (!bestScorecardByPlayer[sc.player_id] ||
+                    holesCount > (bestScorecardByPlayer[sc.player_id].scores || []).length) {
+                    bestScorecardByPlayer[sc.player_id] = sc;
                 }
             }
 
-            // Aggregate scores by player (using only their latest scorecard)
+            // Debug: log what we're using
+            console.log('[Live] Scorecards selected:', Object.entries(bestScorecardByPlayer).map(([pid, sc]) => ({
+                player: nameMap[pid],
+                scorecard_id: sc.id,
+                holes: (sc.scores || []).length,
+                stableford: (sc.scores || []).reduce((sum, s) => sum + (s.stableford_points || 0), 0)
+            })));
+
+            // Aggregate scores by player (using only their best scorecard)
             const playerScores = {};
-            for (const sc of Object.values(latestScorecardByPlayer)) {
+            for (const sc of Object.values(bestScorecardByPlayer)) {
                 playerScores[sc.player_id] = {
                     player_name: nameMap[sc.player_id] || 'Player',
                     total_gross: 0,

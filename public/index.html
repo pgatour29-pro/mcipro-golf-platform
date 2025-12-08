@@ -44109,14 +44109,37 @@ class LiveScorecardSystem {
             const formatScores = {};
             let totalGross = 0;
             let totalStableford = 0;
-    
-            // Build scores array for engine
+
+            // FIX: Read scores from DATABASE instead of unreliable in-memory cache
             const scoresArray = [];
-            for (let hole = 1; hole <= 18; hole++) {
-                const score = this.scoresCache[player.id]?.[hole];
-                if (score) {
-                    totalGross += score;
-                    scoresArray.push({ hole_number: hole, gross_score: score });
+            if (scorecardId) {
+                const { data: dbScores, error: scoresError } = await window.SupabaseDB.client
+                    .from('scores')
+                    .select('hole_number, gross_score, stableford_points')
+                    .eq('scorecard_id', scorecardId)
+                    .order('hole_number');
+
+                if (scoresError) {
+                    console.error('[LiveScorecard] Error fetching scores from DB:', scoresError);
+                } else if (dbScores && dbScores.length > 0) {
+                    for (const s of dbScores) {
+                        totalGross += s.gross_score || 0;
+                        totalStableford += s.stableford_points || 0;
+                        scoresArray.push({ hole_number: s.hole_number, gross_score: s.gross_score });
+                    }
+                    console.log(`[LiveScorecard] ✅ Read ${dbScores.length} scores from DB: gross=${totalGross}, stableford=${totalStableford}`);
+                }
+            }
+
+            // Fallback to cache if DB read failed
+            if (scoresArray.length === 0) {
+                console.warn('[LiveScorecard] No scores from DB, falling back to cache...');
+                for (let hole = 1; hole <= 18; hole++) {
+                    const score = this.scoresCache[player.id]?.[hole];
+                    if (score) {
+                        totalGross += score;
+                        scoresArray.push({ hole_number: hole, gross_score: score });
+                    }
                 }
             }
     
@@ -44127,20 +44150,28 @@ class LiveScorecardSystem {
             }
 
             // Calculate each selected format
+            // Note: totalStableford already calculated from DB above - don't overwrite
+            const dbStableford = totalStableford; // Preserve DB value
             for (const format of this.scoringFormats) {
                 switch (format) {
                     case 'stableford':
-                        // For scramble: use team handicap, not individual
-                        const handicapForStableford = this.scoringFormats.includes('scramble')
-                            ? this.calculateTeamHandicap()
-                            : player.handicap;
-                        formatScores.stableford = engine.calculateStablefordTotal(
-                            scoresArray,
-                            this.courseData.holes,
-                            handicapForStableford,
-                            true
-                        );
-                        totalStableford = formatScores.stableford;
+                        // Use DB value if available, otherwise calculate
+                        if (dbStableford > 0) {
+                            formatScores.stableford = dbStableford;
+                            totalStableford = dbStableford;
+                        } else {
+                            // Fallback: calculate if no DB value
+                            const handicapForStableford = this.scoringFormats.includes('scramble')
+                                ? this.calculateTeamHandicap()
+                                : player.handicap;
+                            formatScores.stableford = engine.calculateStablefordTotal(
+                                scoresArray,
+                                this.courseData.holes,
+                                handicapForStableford,
+                                true
+                            );
+                            totalStableford = formatScores.stableford;
+                        }
                         break;
     
                     case 'strokeplay':

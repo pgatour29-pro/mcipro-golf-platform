@@ -51288,43 +51288,33 @@ class SocietyOrganizerManager {
             // Fetch existing profile
             const existingProfile = await window.SupabaseDB.getUserProfile(golferId);
 
-            if (existingProfile) {
-                // Profile exists - update it
-                console.log('[SaveUserEdits] Updating existing user_profile');
+            // Build updated profile_data preserving existing data
+            const existingProfileData = existingProfile?.profile_data || {};
+            const updatedProfileData = {
+                ...existingProfileData,
+                golfInfo: {
+                    ...(existingProfileData.golfInfo || {}),
+                    handicap: handicap,
+                    homeClub: homeClub
+                }
+            };
 
-                // CRITICAL: Remove any top-level handicap field from old data
-                const { handicap: _unused, ...profileWithoutHandicap } = existingProfile;
-
-                const updatedProfile = {
-                    ...profileWithoutHandicap,
-                    name: name,
-                    profile_data: {
-                        ...(existingProfile.profile_data || {}),
-                        golfInfo: {
-                            ...(existingProfile.profile_data?.golfInfo || {}),
-                            handicap: handicap, // Already a string (e.g., "+1.5" or "18")
-                            homeClub: homeClub
-                        }
-                    }
-                };
-
-                await window.SupabaseDB.saveUserProfile(updatedProfile);
-            } else {
-                // No profile exists - create new user_profile
-                console.log('[SaveUserEdits] Creating new user_profile');
-                const newProfile = {
+            // Use direct update call (like AdminSystem) - avoids saveUserProfile issues
+            const { data, error } = await window.SupabaseDB.client
+                .from('user_profiles')
+                .upsert({
                     line_user_id: golferId,
                     name: name,
-                    profile_data: {
-                        golfInfo: {
-                            handicap: handicap, // Already a string (e.g., "+1.5" or "18")
-                            homeClub: homeClub
-                        }
-                    }
-                };
+                    profile_data: updatedProfileData
+                }, { onConflict: 'line_user_id' })
+                .select();
 
-                await window.SupabaseDB.saveUserProfile(newProfile);
+            if (error) {
+                console.error('[SaveUserEdits] Supabase error:', error);
+                throw new Error(error.message || 'Database update failed');
             }
+
+            console.log('[SaveUserEdits] Successfully updated:', data);
 
             // Invalidate profile cache to force fresh data
             console.log('[SaveUserEdits] Invalidating profile cache for:', golferId);

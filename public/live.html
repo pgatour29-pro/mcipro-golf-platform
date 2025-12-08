@@ -192,16 +192,17 @@
 
             const today = new Date().toISOString().split('T')[0];
 
-            // Get scorecards for today
+            // Get scorecards for today - ordered by created_at desc to get most recent first
             const { data: scorecards, error } = await supabase
                 .from('scorecards')
                 .select(`
-                    id, player_id,
+                    id, player_id, created_at,
                     scores (hole_number, gross_score, stableford_points)
                 `)
                 .in('player_id', entrantIds)
                 .gte('created_at', today + 'T00:00:00')
-                .lte('created_at', today + 'T23:59:59');
+                .lte('created_at', today + 'T23:59:59')
+                .order('created_at', { ascending: false });
 
             if (error || !scorecards) return [];
 
@@ -214,19 +215,25 @@
             const nameMap = {};
             (profiles || []).forEach(p => nameMap[p.line_user_id] = p.name);
 
-            // Aggregate scores by player
-            const playerScores = {};
+            // Only use the MOST RECENT scorecard per player (avoid double-counting from restarted rounds)
+            const latestScorecardByPlayer = {};
             for (const sc of scorecards) {
-                if (!playerScores[sc.player_id]) {
-                    playerScores[sc.player_id] = {
-                        player_name: nameMap[sc.player_id] || 'Player',
-                        total_gross: 0,
-                        total_stableford: 0,
-                        front9_stableford: 0,
-                        back9_stableford: 0,
-                        holes_played: 0
-                    };
+                if (!latestScorecardByPlayer[sc.player_id]) {
+                    latestScorecardByPlayer[sc.player_id] = sc;
                 }
+            }
+
+            // Aggregate scores by player (using only their latest scorecard)
+            const playerScores = {};
+            for (const sc of Object.values(latestScorecardByPlayer)) {
+                playerScores[sc.player_id] = {
+                    player_name: nameMap[sc.player_id] || 'Player',
+                    total_gross: 0,
+                    total_stableford: 0,
+                    front9_stableford: 0,
+                    back9_stableford: 0,
+                    holes_played: 0
+                };
                 for (const score of (sc.scores || [])) {
                     playerScores[sc.player_id].total_gross += score.gross_score || 0;
                     playerScores[sc.player_id].total_stableford += score.stableford_points || 0;

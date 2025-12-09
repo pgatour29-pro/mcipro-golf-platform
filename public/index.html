@@ -40102,10 +40102,27 @@ class SocietyGolfSupabase {
 
     async removeSocietyMember(societyName, golferId) {
         await this.waitForSupabase();
+
+        // First get the society_id from society_name
+        const { data: societyData, error: societyError } = await window.SupabaseDB.client
+            .from('society_profiles')
+            .select('id')
+            .eq('society_name', societyName)
+            .single();
+
+        if (societyError || !societyData) {
+            console.error('[SocietyGolfDB] Error finding society for removal:', societyError);
+            throw new Error('Society not found');
+        }
+
+        const societyId = societyData.id;
+        console.log('[SocietyGolfDB] Removing member', golferId, 'from society', societyId);
+
+        // Delete using society_id (correct column name)
         const { error } = await window.SupabaseDB.client
             .from('society_members')
             .delete()
-            .eq('society_name', societyName)
+            .eq('society_id', societyId)
             .eq('golfer_id', golferId);
 
         if (error) {
@@ -40113,7 +40130,68 @@ class SocietyGolfSupabase {
             throw error;
         }
 
+        console.log('[SocietyGolfDB] Successfully removed member', golferId);
         return true;
+    }
+
+    async cleanupDuplicateMembers(societyId) {
+        await this.waitForSupabase();
+
+        // Find duplicates: same golfer_id appearing multiple times for this society
+        const { data: allMembers, error: fetchError } = await window.SupabaseDB.client
+            .from('society_members')
+            .select('id, golfer_id, joined_at')
+            .eq('society_id', societyId)
+            .order('joined_at', { ascending: false });
+
+        if (fetchError || !allMembers) {
+            console.error('[SocietyGolfDB] Error fetching members for duplicate cleanup:', fetchError);
+            return { cleaned: 0, duplicates: [] };
+        }
+
+        // Group by golfer_id to find duplicates
+        const golferMap = {};
+        allMembers.forEach(member => {
+            if (!golferMap[member.golfer_id]) {
+                golferMap[member.golfer_id] = [];
+            }
+            golferMap[member.golfer_id].push(member);
+        });
+
+        // Find IDs to delete (keep the first/newest entry, delete the rest)
+        const idsToDelete = [];
+        const duplicateGolfers = [];
+
+        Object.entries(golferMap).forEach(([golferId, entries]) => {
+            if (entries.length > 1) {
+                duplicateGolfers.push(golferId);
+                // Skip the first one (newest), delete the rest
+                entries.slice(1).forEach(entry => {
+                    idsToDelete.push(entry.id);
+                });
+            }
+        });
+
+        if (idsToDelete.length === 0) {
+            console.log('[SocietyGolfDB] No duplicate members found');
+            return { cleaned: 0, duplicates: [] };
+        }
+
+        console.log(`[SocietyGolfDB] Found ${idsToDelete.length} duplicate entries to remove for ${duplicateGolfers.length} golfers`);
+
+        // Delete duplicates
+        const { error: deleteError } = await window.SupabaseDB.client
+            .from('society_members')
+            .delete()
+            .in('id', idsToDelete);
+
+        if (deleteError) {
+            console.error('[SocietyGolfDB] Error deleting duplicate members:', deleteError);
+            return { cleaned: 0, duplicates: duplicateGolfers };
+        }
+
+        console.log(`[SocietyGolfDB] Successfully removed ${idsToDelete.length} duplicate entries`);
+        return { cleaned: idsToDelete.length, duplicates: duplicateGolfers };
     }
 
     async getUserSocietyMemberships(golferId) {
@@ -40136,18 +40214,32 @@ class SocietyGolfSupabase {
     async setPrimarySociety(golferId, societyName) {
         await this.waitForSupabase();
 
+        // First get the society_id from society_name
+        const { data: societyData, error: societyError } = await window.SupabaseDB.client
+            .from('society_profiles')
+            .select('id')
+            .eq('society_name', societyName)
+            .single();
+
+        if (societyError || !societyData) {
+            console.error('[SocietyGolfDB] Error finding society:', societyError);
+            throw new Error('Society not found');
+        }
+
+        const societyId = societyData.id;
+
         // First, remove primary flag from all societies for this user
         await window.SupabaseDB.client
             .from('society_members')
             .update({ is_primary_society: false })
             .eq('golfer_id', golferId);
 
-        // Then set the new primary society
+        // Then set the new primary society using society_id
         const { error } = await window.SupabaseDB.client
             .from('society_members')
             .update({ is_primary_society: true })
             .eq('golfer_id', golferId)
-            .eq('society_name', societyName);
+            .eq('society_id', societyId);
 
         if (error) {
             console.error('[SocietyGolfDB] Error setting primary society:', error);
@@ -51200,8 +51292,35 @@ class SocietyOrganizerManager {
     async refreshPlayerDirectory() {
         console.log('[PlayerDirectory] Refreshing...');
         NotificationManager.show('Refreshing player directory...', 'info', 2000);
+
+        // Clean up any duplicate entries first
+        if (this.societyProfile) {
+            try {
+                const societyName = this.societyProfile.societyName;
+                const organizerId = AppState.selectedSociety?.organizerId || AppState.currentUser?.lineUserId;
+
+                // Get society_id
+                const { data: societyData } = await window.SupabaseDB.client
+                    .from('society_profiles')
+                    .select('id')
+                    .eq('society_name', societyName)
+                    .eq('organizer_id', organizerId)
+                    .single();
+
+                if (societyData) {
+                    const { cleaned, duplicates } = await SocietyGolfDB.cleanupDuplicateMembers(societyData.id);
+                    if (cleaned > 0) {
+                        console.log(`[PlayerDirectory] Cleaned up ${cleaned} duplicate entries`);
+                        NotificationManager.show(`Removed ${cleaned} duplicate entries`, 'info', 2000);
+                    }
+                }
+            } catch (cleanupError) {
+                console.error('[PlayerDirectory] Duplicate cleanup error:', cleanupError);
+            }
+        }
+
         await this.loadPlayerDirectory();
-        NotificationManager.show('✅ Player directory updated!', 'success', 2000);
+        NotificationManager.show('Player directory updated!', 'success', 2000);
     }
 
     async showAddPlayerModal() {
@@ -51334,13 +51453,22 @@ class SocietyOrganizerManager {
                 await SocietyGolfDB.setPrimarySociety(golferId, societyName);
                 NotificationManager.show('✅ Set as primary society', 'success');
             } else {
-                // Remove primary flag
-                await window.SupabaseDB.client
-                    .from('society_members')
-                    .update({ is_primary_society: false })
-                    .eq('golfer_id', golferId)
-                    .eq('society_name', societyName);
-                NotificationManager.show('✅ Removed as primary society', 'success');
+                // Get society_id first (society_members uses society_id, not society_name)
+                const { data: societyData } = await window.SupabaseDB.client
+                    .from('society_profiles')
+                    .select('id')
+                    .eq('society_name', societyName)
+                    .single();
+
+                if (societyData) {
+                    // Remove primary flag using correct column
+                    await window.SupabaseDB.client
+                        .from('society_members')
+                        .update({ is_primary_society: false })
+                        .eq('golfer_id', golferId)
+                        .eq('society_id', societyData.id);
+                    NotificationManager.show('✅ Removed as primary society', 'success');
+                }
             }
 
             await this.loadPlayerDirectory();

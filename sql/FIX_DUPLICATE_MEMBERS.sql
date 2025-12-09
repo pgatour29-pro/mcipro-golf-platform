@@ -43,15 +43,16 @@ LEFT JOIN society_profiles sp ON sp.id = sm.society_id
 LEFT JOIN user_profiles up ON up.line_user_id = sm.golfer_id
 ORDER BY sp.society_name, up.name, sm.joined_at DESC;
 
--- Step 3: DELETE duplicates, keeping the NEWEST entry (highest id or most recent joined_at)
+-- Step 3: DELETE duplicates, keeping the NEWEST entry (most recent joined_at)
 SELECT 'DELETING DUPLICATES (keeping newest)' as info;
 
-DELETE FROM society_members
-WHERE id NOT IN (
-    -- Keep the row with the highest id for each society_id + golfer_id combination
-    SELECT MAX(id)
-    FROM society_members
-    GROUP BY society_id, golfer_id
+DELETE FROM society_members sm1
+WHERE EXISTS (
+    -- Find a newer entry for the same society_id + golfer_id
+    SELECT 1 FROM society_members sm2
+    WHERE sm2.society_id = sm1.society_id
+    AND sm2.golfer_id = sm1.golfer_id
+    AND sm2.joined_at > sm1.joined_at
 );
 
 -- Step 4: Verify cleanup

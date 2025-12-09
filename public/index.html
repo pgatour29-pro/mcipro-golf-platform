@@ -44426,12 +44426,25 @@ class LiveScorecardSystem {
                 holesPlayed
             });
 
+            // ========================================
+            // HANDICAP ADJUSTMENT AFTER ROUND
+            // ========================================
+            // Adjust player's handicap based on this round's performance
+            // Uses simple differential system (not linked to external handicap authority)
+            // MOVED HERE to ensure it runs even if hole-by-hole save fails
+            try {
+                await this.adjustHandicapAfterRound(player, totalGross, holesPlayed, round.course_rating || 72, round.slope_rating || 113);
+            } catch (handicapError) {
+                console.error('[LiveScorecard] Error adjusting handicap:', handicapError);
+                // Don't fail the round save if handicap adjustment fails
+            }
+
             // Save hole-by-hole data including scramble tracking
             // CRITICAL: Calculate proper shot allocation ONCE for this player
             const shotAllocation = LiveScorecardSystem?.GolfScoringEngine?.allocHandicapShots(this.courseData.holes || [], player.handicap);
             if (!shotAllocation) {
                 console.warn('[LiveScorecard] WARNING: Could not allocate handicap shots - GolfScoringEngine may not be initialized. Skipping hole-by-hole save.');
-                return round.id; // Round saved successfully, just skip hole details
+                return round.id; // Round saved successfully, handicap adjusted, just skip hole details
             }
 
             const holeInserts = [];

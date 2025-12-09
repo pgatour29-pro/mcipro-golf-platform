@@ -44498,11 +44498,154 @@ class LiveScorecardSystem {
                 NotificationManager.show('Warning: Round saved but no hole-by-hole data found', 'warning');
             }
 
+            // ========================================
+            // HANDICAP ADJUSTMENT AFTER ROUND
+            // ========================================
+            // Adjust player's handicap based on this round's performance
+            // Uses simple differential system (not linked to external handicap authority)
+            try {
+                await this.adjustHandicapAfterRound(player, totalGross, holesPlayed, round.course_rating || 72, round.slope_rating || 113);
+            } catch (handicapError) {
+                console.error('[LiveScorecard] Error adjusting handicap:', handicapError);
+                // Don't fail the round save if handicap adjustment fails
+            }
+
             return round.id;
     
         } catch (error) {
             console.error('[LiveScorecard] Error in saveRoundToHistory:', error);
             return null;
+        }
+    }
+
+    // ========================================
+    // HANDICAP ADJUSTMENT SYSTEM
+    // ========================================
+    // Simple standalone handicap adjustment (not linked to external authority)
+    // Uses differential calculation and updates profile handicap after each round
+    async adjustHandicapAfterRound(player, totalGross, holesPlayed, courseRating = 72, slopeRating = 113) {
+        // Only adjust for 18-hole rounds (or scale for 9-hole)
+        if (holesPlayed < 9) {
+            console.log('[Handicap] Skipping adjustment - less than 9 holes played');
+            return;
+        }
+
+        // Scale 9-hole scores to 18-hole equivalent
+        let adjustedGross = totalGross;
+        if (holesPlayed === 9) {
+            adjustedGross = totalGross * 2;
+            courseRating = courseRating; // Keep same rating, differential formula handles it
+        }
+
+        // Get current handicap from player object (already loaded from profile)
+        let currentHandicap = 0;
+        if (typeof player.handicap === 'string') {
+            if (player.handicap.startsWith('+')) {
+                currentHandicap = -parseFloat(player.handicap.substring(1));
+            } else {
+                currentHandicap = parseFloat(player.handicap) || 0;
+            }
+        } else {
+            currentHandicap = parseFloat(player.handicap) || 0;
+        }
+
+        // Calculate differential: (Adjusted Gross - Course Rating) × (113 / Slope Rating)
+        const differential = (adjustedGross - courseRating) * (113 / slopeRating);
+
+        console.log('[Handicap] Calculation:', {
+            player: player.name,
+            totalGross,
+            holesPlayed,
+            adjustedGross,
+            courseRating,
+            slopeRating,
+            differential: differential.toFixed(1),
+            currentHandicap: currentHandicap.toFixed(1)
+        });
+
+        // Simple adjustment formula:
+        // - Move handicap 20% toward the new differential
+        // - Cap adjustment at ±1.0 per round to prevent wild swings
+        const adjustmentFactor = 0.2;
+        let rawAdjustment = (differential - currentHandicap) * adjustmentFactor;
+
+        // Cap the adjustment
+        const maxAdjustment = 1.0;
+        if (rawAdjustment > maxAdjustment) rawAdjustment = maxAdjustment;
+        if (rawAdjustment < -maxAdjustment) rawAdjustment = -maxAdjustment;
+
+        const newHandicap = currentHandicap + rawAdjustment;
+
+        // Round to 1 decimal place
+        const finalHandicap = Math.round(newHandicap * 10) / 10;
+
+        // Cap handicap range: -5 (plus 5) to 54
+        const cappedHandicap = Math.max(-5, Math.min(54, finalHandicap));
+
+        console.log('[Handicap] Adjustment:', {
+            rawAdjustment: rawAdjustment.toFixed(2),
+            newHandicap: newHandicap.toFixed(1),
+            finalHandicap: cappedHandicap.toFixed(1),
+            change: (cappedHandicap - currentHandicap).toFixed(1)
+        });
+
+        // Format handicap string for storage (preserve + for plus handicaps)
+        let handicapString;
+        if (cappedHandicap < 0) {
+            handicapString = `+${Math.abs(cappedHandicap).toFixed(1)}`;
+        } else {
+            handicapString = cappedHandicap.toFixed(1);
+        }
+
+        // Update profile in database
+        if (player.lineUserId) {
+            try {
+                // Get existing profile data
+                const { data: existingProfile } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('profile_data')
+                    .eq('line_user_id', player.lineUserId)
+                    .single();
+
+                const existingProfileData = existingProfile?.profile_data || {};
+
+                // Update handicap in golfInfo
+                const updatedProfileData = {
+                    ...existingProfileData,
+                    golfInfo: {
+                        ...(existingProfileData.golfInfo || {}),
+                        handicap: handicapString,
+                        lastHandicapUpdate: new Date().toISOString(),
+                        lastRoundDifferential: differential.toFixed(1)
+                    }
+                };
+
+                // Save to database
+                const { error: updateError } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .update({ profile_data: updatedProfileData })
+                    .eq('line_user_id', player.lineUserId);
+
+                if (updateError) {
+                    console.error('[Handicap] Error updating profile:', updateError);
+                } else {
+                    console.log(`[Handicap] ✅ Updated ${player.name}'s handicap: ${player.handicap} → ${handicapString}`);
+
+                    // Update local player object and AppState if this is the current user
+                    player.handicap = handicapString;
+                    if (AppState.currentUser?.lineUserId === player.lineUserId) {
+                        if (AppState.currentUser.profile_data?.golfInfo) {
+                            AppState.currentUser.profile_data.golfInfo.handicap = handicapString;
+                        }
+                    }
+
+                    // Show notification to user
+                    const changeText = rawAdjustment >= 0 ? `+${rawAdjustment.toFixed(1)}` : rawAdjustment.toFixed(1);
+                    NotificationManager.show(`Handicap updated: ${handicapString} (${changeText})`, 'info');
+                }
+            } catch (err) {
+                console.error('[Handicap] Error in profile update:', err);
+            }
         }
     }
 

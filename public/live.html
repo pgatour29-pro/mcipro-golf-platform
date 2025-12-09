@@ -195,7 +195,7 @@
 
                 const { data: events, error: eventError } = await supabase
                     .from('society_events')
-                    .select('id, title, event_date, course_name, organizer_name')
+                    .select('id, title, event_date, course_name, organizer_name, format')
                     .gte('event_date', cutoffDate)
                     .order('event_date', { ascending: false });
 
@@ -367,8 +367,9 @@
                 if (selectedEventId) {
                     const event = allEvents.find(e => e.id === selectedEventId);
                     if (event) {
-                        const leaderboard = await getEventLeaderboard(event.id);
-                        html = renderEventCard(event, leaderboard, true);
+                        const format = event.format || 'stableford';
+                        const leaderboard = await getEventLeaderboard(event.id, format);
+                        html = renderEventCard(event, leaderboard, true, format);
                     }
                 } else if (selectedPoolId) {
                     const pool = allPools.find(p => p.id === selectedPoolId);
@@ -440,8 +441,9 @@
 
                 // Render Society Events
                 for (const event of todayEvents) {
-                    const leaderboard = await getEventLeaderboard(event.id);
-                    html += renderEventCard(event, leaderboard, false);
+                    const format = event.format || 'stableford';
+                    const leaderboard = await getEventLeaderboard(event.id, format);
+                    html += renderEventCard(event, leaderboard, false, format);
                 }
 
                 // Render Public Pools (Side Games)
@@ -471,15 +473,14 @@
         }
 
         // Get event leaderboard
-        async function getEventLeaderboard(eventId) {
+        async function getEventLeaderboard(eventId, format = 'stableford') {
             const { data: scorecards, error } = await supabase
                 .from('scorecards')
                 .select(`
                     id, player_id, total_gross, total_net, status, created_at,
                     scores (hole_number, gross_score, net_score, stableford_points)
                 `)
-                .eq('event_id', eventId)
-                .order('total_gross', { ascending: true });
+                .eq('event_id', eventId);
 
             if (error || !scorecards) return [];
 
@@ -493,7 +494,7 @@
             const nameMap = {};
             (profiles || []).forEach(p => nameMap[p.line_user_id] = p.name);
 
-            return scorecards.map(sc => {
+            const leaderboard = scorecards.map(sc => {
                 const holeScores = new Array(18).fill(null);
                 for (const score of (sc.scores || [])) {
                     if (score.hole_number >= 1 && score.hole_number <= 18) {
@@ -505,14 +506,48 @@
                     player_id: sc.player_id,
                     player_name: nameMap[sc.player_id] || 'Player',
                     total_gross: (sc.scores || []).reduce((sum, s) => sum + (s.gross_score || 0), 0),
+                    total_net: (sc.scores || []).reduce((sum, s) => sum + (s.net_score || 0), 0),
                     total_stableford: (sc.scores || []).reduce((sum, s) => sum + (s.stableford_points || 0), 0),
                     front9_stableford: (sc.scores || []).filter(s => s.hole_number <= 9).reduce((sum, s) => sum + (s.stableford_points || 0), 0),
                     back9_stableford: (sc.scores || []).filter(s => s.hole_number > 9).reduce((sum, s) => sum + (s.stableford_points || 0), 0),
+                    front9_gross: (sc.scores || []).filter(s => s.hole_number <= 9).reduce((sum, s) => sum + (s.gross_score || 0), 0),
+                    back9_gross: (sc.scores || []).filter(s => s.hole_number > 9).reduce((sum, s) => sum + (s.gross_score || 0), 0),
                     holes_played: (sc.scores || []).length,
                     hole_scores: holeScores,
                     status: sc.status
                 };
-            }).sort((a, b) => b.total_stableford - a.total_stableford);
+            });
+
+            // Sort based on format
+            if (format === 'stroke_play') {
+                // Stroke play: lowest gross wins, but only compare players with same holes played fairly
+                // Players with more holes should generally be ahead of those with fewer
+                leaderboard.sort((a, b) => {
+                    // If same holes played, sort by gross (lower is better)
+                    if (a.holes_played === b.holes_played) {
+                        return a.total_gross - b.total_gross;
+                    }
+                    // Players with more holes played come first (they're further along)
+                    // Among those, lower gross per hole is better
+                    const aAvg = a.holes_played > 0 ? a.total_gross / a.holes_played : 999;
+                    const bAvg = b.holes_played > 0 ? b.total_gross / b.holes_played : 999;
+                    if (a.holes_played > b.holes_played) return -1;
+                    if (b.holes_played > a.holes_played) return 1;
+                    return aAvg - bAvg;
+                });
+            } else {
+                // Stableford and others: highest points wins
+                leaderboard.sort((a, b) => {
+                    // Higher stableford is better
+                    if (b.total_stableford !== a.total_stableford) {
+                        return b.total_stableford - a.total_stableford;
+                    }
+                    // Tiebreaker: more holes played
+                    return b.holes_played - a.holes_played;
+                });
+            }
+
+            return leaderboard;
         }
 
         // Get pool leaderboard
@@ -660,9 +695,18 @@
         }
 
         // Render event card
-        function renderEventCard(event, leaderboard, isArchived) {
+        function renderEventCard(event, leaderboard, isArchived, format = 'stableford') {
             const societyName = event.organizer_name || 'Golf Event';
             const dateDisplay = formatDate(event.event_date);
+            const formatLabels = {
+                'stroke_play': 'Stroke Play',
+                'stableford': 'Stableford',
+                'match_play': 'Match Play',
+                'scramble': 'Scramble',
+                'best_ball': 'Best Ball'
+            };
+            const formatLabel = formatLabels[format] || 'Stableford';
+
             return `
                 <div class="bg-white rounded-lg shadow-sm mb-4 overflow-hidden">
                     <div class="bg-gradient-to-r ${isArchived ? 'from-gray-600 to-gray-700' : 'from-blue-600 to-blue-700'} text-white p-4">
@@ -673,7 +717,7 @@
                                     ${isArchived ? `<span class="text-xs bg-amber-500 text-white px-2 py-0.5 rounded-full">ARCHIVED</span>` : '<span class="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full live-badge">LIVE</span>'}
                                 </div>
                                 <p class="${isArchived ? 'text-gray-300' : 'text-blue-200'} text-sm">${societyName} - ${event.course_name || 'Golf Course'}</p>
-                                <p class="${isArchived ? 'text-gray-400' : 'text-blue-300'} text-xs mt-1">${dateDisplay}</p>
+                                <p class="${isArchived ? 'text-gray-400' : 'text-blue-300'} text-xs mt-1">${dateDisplay} • ${formatLabel}</p>
                             </div>
                             <div class="text-right">
                                 <div class="flex items-center gap-1 text-sm">
@@ -683,7 +727,7 @@
                             </div>
                         </div>
                     </div>
-                    ${renderLeaderboardTable(leaderboard, 'stableford')}
+                    ${renderLeaderboardTable(leaderboard, format)}
                 </div>
             `;
         }
@@ -726,7 +770,7 @@
         }
 
         // Render standard leaderboard table
-        function renderLeaderboardTable(leaderboard, type) {
+        function renderLeaderboardTable(leaderboard, format) {
             if (leaderboard.length === 0) {
                 return `
                     <div class="p-6 text-center text-gray-500">
@@ -736,24 +780,47 @@
                 `;
             }
 
+            const isStrokePlay = format === 'stroke_play';
+
             const rows = leaderboard.map((entry, i) => {
                 const isLeader = i === 0;
                 const playerId = entry.player_id || ('player-' + i);
-                return `
-                    <tr class="${isLeader ? 'winner-row font-bold' : 'border-b border-gray-100'}">
-                        <td class="py-3 px-4 text-center">${i + 1}</td>
-                        <td class="py-3 px-4">
-                            <span class="player-name flex items-center gap-1" data-player-id="${playerId}" style="cursor:pointer;">
-                                <span class="material-symbols-outlined text-sm expand-icon" id="icon-${playerId}">expand_more</span>
-                                ${entry.player_name}
-                                ${isLeader ? '<span class="ml-2">🏆</span>' : ''}
-                            </span>
-                        </td>
-                        <td class="py-3 px-4 text-center">${entry.holes_played}</td>
-                        <td class="py-3 px-4 text-center font-bold text-green-600">${entry.total_stableford}</td>
-                    </tr>
-                    ${renderHoleDetails(entry, 4, playerId)}
-                `;
+
+                if (isStrokePlay) {
+                    // Stroke Play: Show gross score
+                    return `
+                        <tr class="${isLeader ? 'winner-row font-bold' : 'border-b border-gray-100'}">
+                            <td class="py-3 px-4 text-center">${i + 1}</td>
+                            <td class="py-3 px-4">
+                                <span class="player-name flex items-center gap-1" data-player-id="${playerId}" style="cursor:pointer;">
+                                    <span class="material-symbols-outlined text-sm expand-icon" id="icon-${playerId}">expand_more</span>
+                                    ${entry.player_name}
+                                    ${isLeader ? '<span class="ml-2">🏆</span>' : ''}
+                                </span>
+                            </td>
+                            <td class="py-3 px-4 text-center">${entry.holes_played}</td>
+                            <td class="py-3 px-4 text-center font-bold text-blue-600">${entry.total_gross}</td>
+                        </tr>
+                        ${renderHoleDetails(entry, 4, playerId)}
+                    `;
+                } else {
+                    // Stableford: Show points
+                    return `
+                        <tr class="${isLeader ? 'winner-row font-bold' : 'border-b border-gray-100'}">
+                            <td class="py-3 px-4 text-center">${i + 1}</td>
+                            <td class="py-3 px-4">
+                                <span class="player-name flex items-center gap-1" data-player-id="${playerId}" style="cursor:pointer;">
+                                    <span class="material-symbols-outlined text-sm expand-icon" id="icon-${playerId}">expand_more</span>
+                                    ${entry.player_name}
+                                    ${isLeader ? '<span class="ml-2">🏆</span>' : ''}
+                                </span>
+                            </td>
+                            <td class="py-3 px-4 text-center">${entry.holes_played}</td>
+                            <td class="py-3 px-4 text-center font-bold text-green-600">${entry.total_stableford}</td>
+                        </tr>
+                        ${renderHoleDetails(entry, 4, playerId)}
+                    `;
+                }
             }).join('');
 
             return `
@@ -763,7 +830,7 @@
                             <th class="py-2 px-4 text-center">Pos</th>
                             <th class="py-2 px-4 text-left">Player</th>
                             <th class="py-2 px-4 text-center">Thru</th>
-                            <th class="py-2 px-4 text-center">Pts</th>
+                            <th class="py-2 px-4 text-center">${isStrokePlay ? 'Gross' : 'Pts'}</th>
                         </tr>
                     </thead>
                     <tbody>${rows}</tbody>

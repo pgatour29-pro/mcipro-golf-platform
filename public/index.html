@@ -58928,20 +58928,34 @@ const MessagesSystem = {
 
     async loadMySocieties() {
         try {
-            const { data, error } = await window.SupabaseDB.client
+            // Get user's society memberships
+            const { data: memberships, error } = await window.SupabaseDB.client
                 .from('society_members')
-                .select('society_id, society_profiles!inner(id, society_name, organizer_id)')
+                .select('society_id')
                 .eq('golfer_id', this.userLineId);
 
-            if (!error && data) {
-                this.mySocieties = data.map(m => ({
-                    id: m.society_profiles.id,
-                    name: m.society_profiles.society_name,
-                    isOrganizer: m.society_profiles.organizer_id === this.userLineId
+            if (error || !memberships || memberships.length === 0) {
+                this.mySocieties = [];
+                return;
+            }
+
+            // Get society details separately
+            const societyIds = memberships.map(m => m.society_id);
+            const { data: societies } = await window.SupabaseDB.client
+                .from('society_profiles')
+                .select('id, society_name, organizer_id')
+                .in('id', societyIds);
+
+            if (societies) {
+                this.mySocieties = societies.map(s => ({
+                    id: s.id,
+                    name: s.society_name,
+                    isOrganizer: s.organizer_id === this.userLineId
                 }));
             }
         } catch (err) {
             console.error('[MessagesSystem] Error loading societies:', err);
+            this.mySocieties = [];
         }
     },
 
@@ -59321,7 +59335,7 @@ const MessagesSystem = {
             await this.loadMessages();
         } catch (err) {
             console.error('[MessagesSystem] Error sending message:', err);
-            showNotification('Failed to send message', 'error');
+            NotificationManager.show('Failed to send message', 'error');
         }
     },
 
@@ -59539,14 +59553,14 @@ const MessagesSystem = {
         const messageText = document.getElementById('compose-message').value.trim();
 
         if (!messageText) {
-            showNotification('Please enter a message', 'error');
+            NotificationManager.show('Please enter a message', 'error');
             return;
         }
 
         try {
             if (type === 'dm') {
                 if (!this.selectedRecipient) {
-                    showNotification('Please select a recipient', 'error');
+                    NotificationManager.show('Please select a recipient', 'error');
                     return;
                 }
 
@@ -59558,7 +59572,7 @@ const MessagesSystem = {
                         message_text: messageText
                     });
 
-                showNotification('Message sent!', 'success');
+                NotificationManager.show('Message sent!', 'success');
                 this.closeComposeModal();
                 this.showSubTab('direct');
 
@@ -59568,11 +59582,11 @@ const MessagesSystem = {
                 const priority = document.getElementById('compose-priority').value;
 
                 if (!societyId) {
-                    showNotification('Please select a society', 'error');
+                    NotificationManager.show('Please select a society', 'error');
                     return;
                 }
                 if (!title) {
-                    showNotification('Please enter a title', 'error');
+                    NotificationManager.show('Please enter a title', 'error');
                     return;
                 }
 
@@ -59586,13 +59600,13 @@ const MessagesSystem = {
                         priority: priority
                     });
 
-                showNotification('Announcement sent!', 'success');
+                NotificationManager.show('Announcement sent!', 'success');
                 this.closeComposeModal();
                 this.showSubTab('announcements');
             }
         } catch (err) {
             console.error('[MessagesSystem] Error sending message:', err);
-            showNotification('Failed to send message', 'error');
+            NotificationManager.show('Failed to send message', 'error');
         }
     },
 

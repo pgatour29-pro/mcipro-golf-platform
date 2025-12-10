@@ -60151,17 +60151,38 @@ const MessagesSystem = {
 
     async loadAllAvailableMembers() {
         const resultsContainer = document.getElementById('group-member-search-results');
-        resultsContainer.innerHTML = '<div class="p-3 text-gray-500 text-sm text-center"><div class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>Loading members...</div>';
+        resultsContainer.innerHTML = '<div class="p-3 text-gray-500 text-sm text-center"><div class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>Loading all members...</div>';
         resultsContainer.style.display = 'block';
 
         try {
-            // Get ALL users from the system (not just society members)
-            const { data: allUsers, error } = await window.SupabaseDB.client
-                .from('user_profiles')
-                .select('line_user_id, name, profile_data')
-                .neq('line_user_id', this.userLineId)
-                .order('name', { ascending: true })
-                .limit(50);
+            // Get ALL users from the system - fetch in batches to bypass 1000 row limit
+            let allUsers = [];
+            let offset = 0;
+            const batchSize = 1000;
+
+            while (true) {
+                const { data: batch, error } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('line_user_id, name, profile_data')
+                    .neq('line_user_id', this.userLineId)
+                    .order('name', { ascending: true })
+                    .range(offset, offset + batchSize - 1);
+
+                if (error) {
+                    console.error('[MessagesSystem] Error fetching batch:', error);
+                    break;
+                }
+
+                if (!batch || batch.length === 0) break;
+
+                allUsers = allUsers.concat(batch);
+                console.log('[MessagesSystem] Loaded batch:', batch.length, 'Total:', allUsers.length);
+
+                if (batch.length < batchSize) break; // Last batch
+                offset += batchSize;
+            }
+
+            const error = null;
 
             if (error) {
                 console.error('[MessagesSystem] Error loading members:', error);

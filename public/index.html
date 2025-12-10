@@ -60136,14 +60136,76 @@ const MessagesSystem = {
     },
 
     // ========== CREATE GROUP MODAL ==========
-    openCreateGroupModal() {
+    async openCreateGroupModal() {
         document.getElementById('createGroupModal').classList.remove('hidden');
         document.getElementById('group-name').value = '';
         document.getElementById('group-description').value = '';
         document.getElementById('group-member-search').value = '';
-        document.getElementById('group-member-search-results').style.display = 'none';
         this.selectedGroupMembers = [];
         this.updateSelectedMembersDisplay();
+
+        // Show all available members immediately
+        await this.loadAllAvailableMembers();
+    },
+
+    async loadAllAvailableMembers() {
+        const resultsContainer = document.getElementById('group-member-search-results');
+        resultsContainer.innerHTML = '<div class="p-3 text-gray-500 text-sm text-center"><div class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>Loading members...</div>';
+        resultsContainer.style.display = 'block';
+
+        try {
+            // Get ALL users from the system (not just society members)
+            const { data: allUsers, error } = await window.SupabaseDB.client
+                .from('user_profiles')
+                .select('line_user_id, name, profile_data')
+                .neq('line_user_id', this.userLineId)
+                .order('name', { ascending: true })
+                .limit(50);
+
+            if (error) {
+                console.error('[MessagesSystem] Error loading members:', error);
+                resultsContainer.innerHTML = '<div class="p-3 text-red-500 text-sm">Error loading members</div>';
+                return;
+            }
+
+            console.log('[MessagesSystem] Found', allUsers?.length || 0, 'users');
+
+            if (!allUsers || allUsers.length === 0) {
+                resultsContainer.innerHTML = '<div class="p-3 text-gray-500 text-sm">No users found</div>';
+                return;
+            }
+
+            this.allAvailableMembers = allUsers;
+            this.renderMemberResults(allUsers);
+
+        } catch (err) {
+            console.error('[MessagesSystem] Error:', err);
+            resultsContainer.innerHTML = '<div class="p-3 text-red-500 text-sm">Error loading members</div>';
+        }
+    },
+
+    renderMemberResults(members) {
+        const resultsContainer = document.getElementById('group-member-search-results');
+        const selectedIds = this.selectedGroupMembers.map(m => m.id);
+        const available = members.filter(p => !selectedIds.includes(p.line_user_id));
+
+        if (available.length === 0) {
+            resultsContainer.innerHTML = '<div class="p-3 text-gray-500 text-sm">No matching members found</div>';
+            resultsContainer.style.display = 'block';
+            return;
+        }
+
+        resultsContainer.innerHTML = available.slice(0, 20).map(p => {
+            const name = p.name || p.profile_data?.displayName || 'Unknown';
+            const avatar = p.profile_data?.pictureUrl || `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2240%22>${(name)[0].toUpperCase()}</text></svg>`;
+            return `
+                <div onclick="MessagesSystem.addGroupMember('${p.line_user_id}', '${this.escapeHtml(name)}')"
+                     class="flex items-center p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0">
+                    <img src="${avatar}" class="w-8 h-8 rounded-full mr-2" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2240%22>?</text></svg>'">
+                    <span class="text-sm font-medium">${this.escapeHtml(name)}</span>
+                </div>`;
+        }).join('');
+        resultsContainer.style.display = 'block';
     },
 
     closeCreateGroupModal() {
@@ -60155,8 +60217,26 @@ const MessagesSystem = {
         const query = document.getElementById('group-member-search').value.trim();
         const resultsContainer = document.getElementById('group-member-search-results');
 
-        if (query.length < 1) {
-            resultsContainer.style.display = 'none';
+        // If empty query, show all available members
+        if (query.length === 0) {
+            if (this.allAvailableMembers && this.allAvailableMembers.length > 0) {
+                this.renderMemberResults(this.allAvailableMembers);
+            } else {
+                await this.loadAllAvailableMembers();
+            }
+            return;
+        }
+
+        // Filter from cached members first (instant)
+        if (this.allAvailableMembers && this.allAvailableMembers.length > 0) {
+            const queryLower = query.toLowerCase();
+            const filtered = this.allAvailableMembers.filter(p => {
+                const name = (p.name || '').toLowerCase();
+                const nickname = (p.profile_data?.nickname || '').toLowerCase();
+                const displayName = (p.profile_data?.displayName || '').toLowerCase();
+                return name.includes(queryLower) || nickname.includes(queryLower) || displayName.includes(queryLower);
+            });
+            this.renderMemberResults(filtered);
             return;
         }
 
@@ -60167,50 +60247,29 @@ const MessagesSystem = {
         clearTimeout(this.searchTimeout);
         this.searchTimeout = setTimeout(async () => {
             try {
-                // Get all society IDs the user belongs to
-                const societyIds = this.mySocieties.map(s => s.id);
-
-                if (societyIds.length === 0) {
-                    resultsContainer.innerHTML = '<div class="p-3 text-gray-500 text-sm">Join a society to add members</div>';
-                    return;
-                }
-
-                // Fetch all society members in ONE query
-                const { data: allMemberships } = await window.SupabaseDB.client
-                    .from('society_members')
-                    .select('golfer_id')
-                    .in('society_id', societyIds);
-
-                if (!allMemberships || allMemberships.length === 0) {
-                    resultsContainer.innerHTML = '<div class="p-3 text-gray-500 text-sm">No members found in your societies</div>';
-                    return;
-                }
-
-                // Get unique member IDs (excluding self)
-                const memberIds = [...new Set(allMemberships.map(m => m.golfer_id))].filter(id => id !== this.userLineId);
-
-                if (memberIds.length === 0) {
-                    resultsContainer.innerHTML = '<div class="p-3 text-gray-500 text-sm">No other members found</div>';
-                    return;
-                }
-
-                // Search profiles with ILIKE for case-insensitive matching
-                const { data: profiles } = await window.SupabaseDB.client
+                // Search ALL users in the system with ILIKE
+                const { data: profiles, error } = await window.SupabaseDB.client
                     .from('user_profiles')
                     .select('line_user_id, name, profile_data')
-                    .in('line_user_id', memberIds)
+                    .neq('line_user_id', this.userLineId)
                     .ilike('name', `%${query}%`)
-                    .limit(15);
+                    .limit(20);
 
-                // Also search by nickname in profile_data if no results
+                if (error) {
+                    console.error('[MessagesSystem] Search error:', error);
+                    resultsContainer.innerHTML = '<div class="p-3 text-red-500 text-sm">Search error</div>';
+                    return;
+                }
+
                 let results = profiles || [];
 
+                // If no results, try broader search
                 if (results.length === 0) {
-                    // Fallback: get all and filter by nickname/displayName
                     const { data: allProfiles } = await window.SupabaseDB.client
                         .from('user_profiles')
                         .select('line_user_id, name, profile_data')
-                        .in('line_user_id', memberIds);
+                        .neq('line_user_id', this.userLineId)
+                        .limit(100);
 
                     const queryLower = query.toLowerCase();
                     results = (allProfiles || []).filter(p => {
@@ -60218,38 +60277,19 @@ const MessagesSystem = {
                         const nickname = (p.profile_data?.nickname || '').toLowerCase();
                         const displayName = (p.profile_data?.displayName || '').toLowerCase();
                         return name.includes(queryLower) || nickname.includes(queryLower) || displayName.includes(queryLower);
-                    }).slice(0, 15);
+                    });
                 }
 
-                // Filter by search query (additional client-side filter for robustness)
+                // Filter by search query
                 const queryLower = query.toLowerCase();
                 const filtered = results.filter(p => {
                     const name = (p.name || '').toLowerCase();
                     const nickname = (p.profile_data?.nickname || '').toLowerCase();
                     const displayName = (p.profile_data?.displayName || '').toLowerCase();
                     return name.includes(queryLower) || nickname.includes(queryLower) || displayName.includes(queryLower);
-                }).slice(0, 10);
+                });
 
-                // Exclude already selected members
-                const selectedIds = this.selectedGroupMembers.map(m => m.id);
-                const available = filtered.filter(p => !selectedIds.includes(p.line_user_id));
-
-                if (available.length === 0) {
-                    resultsContainer.innerHTML = '<div class="p-3 text-gray-500 text-sm">No matching members found</div>';
-                    resultsContainer.style.display = 'block';
-                    return;
-                }
-
-                resultsContainer.innerHTML = available.map(p => {
-                    const avatar = p.profile_data?.pictureUrl || `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2240%22>${(p.name || '?')[0].toUpperCase()}</text></svg>`;
-                    return `
-                        <div onclick="MessagesSystem.addGroupMember('${p.line_user_id}', '${this.escapeHtml(p.name)}')"
-                             class="flex items-center p-2 hover:bg-gray-100 cursor-pointer">
-                            <img src="${avatar}" class="w-8 h-8 rounded-full mr-2" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2240%22>?</text></svg>'">
-                            <span class="text-sm font-medium">${this.escapeHtml(p.name || 'Unknown')}</span>
-                        </div>`;
-                }).join('');
-                resultsContainer.style.display = 'block';
+                this.renderMemberResults(filtered);
 
             } catch (err) {
                 console.error('[MessagesSystem] Error searching members:', err);
@@ -60265,7 +60305,11 @@ const MessagesSystem = {
         this.selectedGroupMembers.push({ id: memberId, name: memberName });
         this.updateSelectedMembersDisplay();
         document.getElementById('group-member-search').value = '';
-        document.getElementById('group-member-search-results').style.display = 'none';
+
+        // After adding, refresh the member list (show remaining available members)
+        if (this.allAvailableMembers) {
+            this.renderMemberResults(this.allAvailableMembers);
+        }
     },
 
     removeGroupMember(memberId) {

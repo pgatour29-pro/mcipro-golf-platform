@@ -7164,6 +7164,15 @@
                     }, 1000);
                 }
 
+                // Initialize Messages badge (async, doesn't block)
+                if (typeof MessagesSystem !== 'undefined' && MessagesSystem.init) {
+                    MessagesSystem.init().then(() => {
+                        console.log('[Dashboard] Messages badge initialized');
+                    }).catch(err => {
+                        console.warn('[Dashboard] Messages init error:', err);
+                    });
+                }
+
                 // CRITICAL: Render caddy bookings widget on dashboard
                 if (typeof GolferCaddyBooking !== 'undefined' && GolferCaddyBooking.renderDashboardWidget) {
                     GolferCaddyBooking.renderDashboardWidget();
@@ -12209,6 +12218,14 @@
             if (tabName === 'caddies' && typeof CaddyOrganizerSystem !== 'undefined') {
                 setTimeout(() => {
                     CaddyOrganizerSystem.init();
+                }, 100);
+            }
+
+            // Initialize Messages when that tab is shown
+            if (tabName === 'messages' && typeof MessagesSystem !== 'undefined') {
+                setTimeout(() => {
+                    MessagesSystem.init();
+                    MessagesSystem.showSubTab('announcements');
                 }, 100);
             }
         }
@@ -23990,6 +24007,11 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <span class="material-symbols-outlined" style="font-size: 14px;">person_pin</span>
                         <span style="margin-left: 3px;">My Caddies</span>
                     </button>
+                    <button onclick="showGolferTab('messages', event)" class="tab-button relative" style="padding: 4px 8px; font-size: 11px;">
+                        <span class="material-symbols-outlined" style="font-size: 14px;">chat</span>
+                        <span style="margin-left: 3px;">Messages</span>
+                        <span id="messagesBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse" style="display: none; font-size: 9px;">0</span>
+                    </button>
                 </div>
             </div>
         </nav>
@@ -26817,6 +26839,97 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 </div>
             </div>
 
+            <!-- Messages Tab -->
+            <div id="golfer-messages" class="tab-content">
+                <div class="mb-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-xl font-bold text-gray-900">Messages</h2>
+                        <button onclick="MessagesSystem.openComposeModal()" class="btn-primary text-sm">
+                            <span class="material-symbols-outlined text-sm">edit</span>
+                            <span>New Message</span>
+                        </button>
+                    </div>
+
+                    <!-- Sub-tab Navigation -->
+                    <div class="flex space-x-1 bg-gray-100 p-1 rounded-lg mb-4">
+                        <button onclick="MessagesSystem.showSubTab('announcements')" id="msg-tab-announcements" class="flex-1 px-3 py-2 text-sm font-medium rounded-md bg-white shadow text-gray-900">
+                            <span class="material-symbols-outlined text-sm align-middle">campaign</span>
+                            <span class="align-middle ml-1">Announcements</span>
+                            <span id="announcements-count" class="ml-1 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full" style="display: none;">0</span>
+                        </button>
+                        <button onclick="MessagesSystem.showSubTab('direct')" id="msg-tab-direct" class="flex-1 px-3 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50">
+                            <span class="material-symbols-outlined text-sm align-middle">person</span>
+                            <span class="align-middle ml-1">Direct</span>
+                            <span id="direct-count" class="ml-1 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full" style="display: none;">0</span>
+                        </button>
+                        <button onclick="MessagesSystem.showSubTab('events')" id="msg-tab-events" class="flex-1 px-3 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50">
+                            <span class="material-symbols-outlined text-sm align-middle">groups</span>
+                            <span class="align-middle ml-1">Events</span>
+                            <span id="events-count" class="ml-1 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full" style="display: none;">0</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Announcements Content -->
+                <div id="msg-content-announcements" class="msg-subcontent">
+                    <div id="announcements-list" class="space-y-3">
+                        <div class="text-center text-gray-500 py-8">
+                            <span class="material-symbols-outlined text-4xl mb-2">campaign</span>
+                            <p>No announcements yet</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Direct Messages Content -->
+                <div id="msg-content-direct" class="msg-subcontent hidden">
+                    <div id="dm-list" class="space-y-2">
+                        <div class="text-center text-gray-500 py-8">
+                            <span class="material-symbols-outlined text-4xl mb-2">chat</span>
+                            <p>No conversations yet</p>
+                            <button onclick="MessagesSystem.openComposeModal()" class="btn-secondary mt-3 text-sm">Start a conversation</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Event Groups Content -->
+                <div id="msg-content-events" class="msg-subcontent hidden">
+                    <div id="event-groups-list" class="space-y-2">
+                        <div class="text-center text-gray-500 py-8">
+                            <span class="material-symbols-outlined text-4xl mb-2">groups</span>
+                            <p>No event chats available</p>
+                            <p class="text-sm mt-1">Register for events to join their group chats</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Conversation View (slides in) -->
+                <div id="conversation-view" class="hidden">
+                    <div class="flex items-center mb-4 pb-3 border-b">
+                        <button onclick="MessagesSystem.closeConversation()" class="mr-3 text-gray-600 hover:text-gray-900">
+                            <span class="material-symbols-outlined">arrow_back</span>
+                        </button>
+                        <img id="conv-avatar" src="" class="w-10 h-10 rounded-full mr-3" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2240%22>?</text></svg>'">
+                        <div>
+                            <div id="conv-name" class="font-bold text-gray-900">Conversation</div>
+                            <div id="conv-subtitle" class="text-sm text-gray-500"></div>
+                        </div>
+                    </div>
+
+                    <div id="messages-container" class="space-y-3 mb-4 max-h-96 overflow-y-auto">
+                        <!-- Messages will be rendered here -->
+                    </div>
+
+                    <div class="flex space-x-2 pt-3 border-t">
+                        <input type="text" id="message-input" placeholder="Type a message..."
+                               class="flex-1 rounded-full border px-4 py-2 focus:ring-2 focus:ring-primary focus:border-primary"
+                               onkeypress="if(event.key==='Enter') MessagesSystem.sendMessage()">
+                        <button onclick="MessagesSystem.sendMessage()" class="btn-primary rounded-full px-4">
+                            <span class="material-symbols-outlined">send</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
         </main>
     </div>
 
@@ -26905,6 +27018,89 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </ul>
                     <p class="mt-3"><strong>⚠️ OCR not working?</strong></p>
                     <p class="mt-1">Click "Manual Entry" button above to skip OCR and enter data directly. It's faster and more reliable!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Compose Message Modal -->
+    <div id="composeMessageModal" class="fixed inset-0 bg-black bg-opacity-75 z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg max-w-lg w-full mx-4 max-h-screen overflow-y-auto">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-900">New Message</h2>
+                    <button onclick="MessagesSystem.closeComposeModal()" class="text-gray-500 hover:text-gray-700">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+
+                <!-- Message Type Selector -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Message Type</label>
+                    <select id="compose-type" onchange="MessagesSystem.onComposeTypeChange()" class="w-full rounded-lg border px-3 py-2 bg-white">
+                        <option value="dm">Direct Message</option>
+                        <option value="announcement">Society Announcement</option>
+                    </select>
+                </div>
+
+                <!-- Recipient Selection (for DM) -->
+                <div id="compose-dm-fields">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">To</label>
+                        <input type="text" id="compose-search" oninput="MessagesSystem.searchRecipients()"
+                               placeholder="Search society members..."
+                               class="w-full rounded-lg border px-3 py-2">
+                    </div>
+                    <div id="compose-search-results" class="max-h-40 overflow-y-auto mb-4 border rounded-lg" style="display: none;">
+                        <!-- Search results will be populated here -->
+                    </div>
+                    <div id="compose-selected-recipient" class="mb-4" style="display: none;">
+                        <div class="flex items-center bg-gray-100 rounded-lg p-2">
+                            <img id="compose-recipient-avatar" src="" class="w-8 h-8 rounded-full mr-2">
+                            <span id="compose-recipient-name" class="flex-1 font-medium"></span>
+                            <button onclick="MessagesSystem.clearRecipient()" class="text-gray-500 hover:text-gray-700">
+                                <span class="material-symbols-outlined text-sm">close</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Society Selection (for Announcement) -->
+                <div id="compose-announcement-fields" style="display: none;">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Society</label>
+                        <select id="compose-society" class="w-full rounded-lg border px-3 py-2 bg-white">
+                            <option value="">Select a society...</option>
+                        </select>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Title</label>
+                        <input type="text" id="compose-title" placeholder="Announcement title..."
+                               class="w-full rounded-lg border px-3 py-2">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+                        <select id="compose-priority" class="w-full rounded-lg border px-3 py-2 bg-white">
+                            <option value="normal">Normal</option>
+                            <option value="important">Important</option>
+                            <option value="urgent">Urgent</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Message Content -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Message</label>
+                    <textarea id="compose-message" rows="4" placeholder="Type your message..."
+                              class="w-full rounded-lg border px-3 py-2 resize-none"></textarea>
+                </div>
+
+                <div class="flex justify-end space-x-3">
+                    <button onclick="MessagesSystem.closeComposeModal()" class="btn-secondary">Cancel</button>
+                    <button onclick="MessagesSystem.sendComposedMessage()" class="btn-primary">
+                        <span class="material-symbols-outlined text-sm">send</span>
+                        <span>Send</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -58703,6 +58899,803 @@ class EventNotificationSystem {
 // Make globally available
 window.EventNotificationSystem = EventNotificationSystem;
 console.log('[EventNotifications] ✅ Module loaded');
+
+// ==================================================================
+// MESSAGING SYSTEM - Announcements, Direct Messages, Event Groups
+// ==================================================================
+const MessagesSystem = {
+    userLineId: null,
+    currentSubTab: 'announcements',
+    currentConversation: null, // { type: 'dm'|'event', id: partnerLineId|eventId }
+    unreadCounts: { announcements: 0, dms: 0, events: 0, total: 0 },
+    selectedRecipient: null,
+    mySocieties: [],
+    searchTimeout: null,
+
+    async init() {
+        console.log('[MessagesSystem] Initializing...');
+        const user = AppState?.currentUser || window.currentUser;
+        if (!user?.lineUserId) {
+            console.warn('[MessagesSystem] No user logged in');
+            return;
+        }
+        this.userLineId = user.lineUserId;
+        await this.loadMySocieties();
+        await this.refreshUnreadCounts();
+        this.updateBadge();
+        console.log('[MessagesSystem] ✅ Initialized');
+    },
+
+    async loadMySocieties() {
+        try {
+            const { data, error } = await window.SupabaseDB.client
+                .from('society_members')
+                .select('society_id, society_profiles!inner(id, society_name, organizer_id)')
+                .eq('golfer_id', this.userLineId);
+
+            if (!error && data) {
+                this.mySocieties = data.map(m => ({
+                    id: m.society_profiles.id,
+                    name: m.society_profiles.society_name,
+                    isOrganizer: m.society_profiles.organizer_id === this.userLineId
+                }));
+            }
+        } catch (err) {
+            console.error('[MessagesSystem] Error loading societies:', err);
+        }
+    },
+
+    // ========== SUB-TAB NAVIGATION ==========
+    showSubTab(tabName) {
+        this.currentSubTab = tabName;
+
+        // Update tab buttons
+        ['announcements', 'direct', 'events'].forEach(t => {
+            const btn = document.getElementById(`msg-tab-${t}`);
+            if (btn) {
+                if (t === tabName) {
+                    btn.classList.add('bg-white', 'shadow', 'text-gray-900');
+                    btn.classList.remove('text-gray-600');
+                } else {
+                    btn.classList.remove('bg-white', 'shadow', 'text-gray-900');
+                    btn.classList.add('text-gray-600');
+                }
+            }
+        });
+
+        // Show/hide content
+        document.getElementById('msg-content-announcements').classList.toggle('hidden', tabName !== 'announcements');
+        document.getElementById('msg-content-direct').classList.toggle('hidden', tabName !== 'direct');
+        document.getElementById('msg-content-events').classList.toggle('hidden', tabName !== 'events');
+        document.getElementById('conversation-view').classList.add('hidden');
+
+        // Load content
+        this.loadSubTabContent(tabName);
+    },
+
+    async loadSubTabContent(tabName) {
+        switch (tabName) {
+            case 'announcements': await this.loadAnnouncements(); break;
+            case 'direct': await this.loadConversationList(); break;
+            case 'events': await this.loadEventGroups(); break;
+        }
+    },
+
+    // ========== ANNOUNCEMENTS ==========
+    async loadAnnouncements() {
+        const container = document.getElementById('announcements-list');
+        if (!container) return;
+
+        container.innerHTML = '<div class="text-center py-4"><div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div></div>';
+
+        try {
+            if (this.mySocieties.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <span class="material-symbols-outlined text-4xl mb-2">groups</span>
+                        <p>Join a society to see announcements</p>
+                    </div>`;
+                return;
+            }
+
+            const societyIds = this.mySocieties.map(s => s.id);
+
+            // Get announcements
+            const { data: announcements, error } = await window.SupabaseDB.client
+                .from('announcements')
+                .select('*')
+                .in('society_id', societyIds)
+                .order('created_at', { ascending: false })
+                .limit(50);
+
+            if (error) throw error;
+
+            // Get read status
+            const { data: reads } = await window.SupabaseDB.client
+                .from('announcement_reads')
+                .select('announcement_id')
+                .eq('reader_line_id', this.userLineId);
+
+            const readIds = new Set((reads || []).map(r => r.announcement_id));
+
+            if (!announcements || announcements.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <span class="material-symbols-outlined text-4xl mb-2">campaign</span>
+                        <p>No announcements yet</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = announcements.map(a => {
+                const society = this.mySocieties.find(s => s.id === a.society_id);
+                const isRead = readIds.has(a.id);
+                const timeAgo = this.formatTimeAgo(a.created_at);
+                const priorityBadge = a.priority === 'urgent' ? '<span class="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full mr-2">URGENT</span>' :
+                                      a.priority === 'important' ? '<span class="bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full mr-2">Important</span>' : '';
+
+                return `
+                    <div class="bg-white rounded-lg shadow p-4 ${isRead ? 'opacity-75' : 'border-l-4 border-primary'}"
+                         onclick="MessagesSystem.viewAnnouncement('${a.id}')">
+                        <div class="flex items-start justify-between mb-2">
+                            <div>
+                                ${priorityBadge}
+                                <span class="font-bold text-gray-900">${this.escapeHtml(a.title)}</span>
+                            </div>
+                            ${!isRead ? '<span class="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></span>' : ''}
+                        </div>
+                        <p class="text-gray-600 text-sm mb-2 line-clamp-2">${this.escapeHtml(a.message_text)}</p>
+                        <div class="flex items-center justify-between text-xs text-gray-500">
+                            <span>${society?.name || 'Unknown Society'}</span>
+                            <span>${timeAgo}</span>
+                        </div>
+                    </div>`;
+            }).join('');
+
+        } catch (err) {
+            console.error('[MessagesSystem] Error loading announcements:', err);
+            container.innerHTML = `<div class="text-center text-red-500 py-4">Failed to load announcements</div>`;
+        }
+    },
+
+    async viewAnnouncement(announcementId) {
+        // Mark as read
+        try {
+            await window.SupabaseDB.client
+                .from('announcement_reads')
+                .upsert({
+                    announcement_id: announcementId,
+                    reader_line_id: this.userLineId,
+                    read_at: new Date().toISOString()
+                }, { onConflict: 'announcement_id,reader_line_id' });
+
+            await this.refreshUnreadCounts();
+            await this.loadAnnouncements();
+        } catch (err) {
+            console.error('[MessagesSystem] Error marking announcement read:', err);
+        }
+    },
+
+    // ========== DIRECT MESSAGES ==========
+    async loadConversationList() {
+        const container = document.getElementById('dm-list');
+        if (!container) return;
+
+        container.innerHTML = '<div class="text-center py-4"><div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div></div>';
+
+        try {
+            // Get all DMs where user is sender or recipient
+            const { data: messages, error } = await window.SupabaseDB.client
+                .from('direct_messages')
+                .select('*')
+                .or(`sender_line_id.eq.${this.userLineId},recipient_line_id.eq.${this.userLineId}`)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            if (!messages || messages.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <span class="material-symbols-outlined text-4xl mb-2">chat</span>
+                        <p>No conversations yet</p>
+                        <button onclick="MessagesSystem.openComposeModal()" class="btn-secondary mt-3 text-sm">Start a conversation</button>
+                    </div>`;
+                return;
+            }
+
+            // Group by conversation partner
+            const conversations = {};
+            messages.forEach(m => {
+                const partnerId = m.sender_line_id === this.userLineId ? m.recipient_line_id : m.sender_line_id;
+                if (!conversations[partnerId]) {
+                    conversations[partnerId] = {
+                        partnerId,
+                        lastMessage: m,
+                        unreadCount: 0
+                    };
+                }
+                if (m.recipient_line_id === this.userLineId && !m.is_read) {
+                    conversations[partnerId].unreadCount++;
+                }
+            });
+
+            // Get partner profiles
+            const partnerIds = Object.keys(conversations);
+            const { data: profiles } = await window.SupabaseDB.client
+                .from('user_profiles')
+                .select('line_user_id, name, profile_data')
+                .in('line_user_id', partnerIds);
+
+            const profileMap = {};
+            (profiles || []).forEach(p => profileMap[p.line_user_id] = p);
+
+            // Render conversations
+            const sortedConvos = Object.values(conversations).sort((a, b) =>
+                new Date(b.lastMessage.created_at) - new Date(a.lastMessage.created_at)
+            );
+
+            container.innerHTML = sortedConvos.map(c => {
+                const profile = profileMap[c.partnerId] || {};
+                const name = profile.name || 'Unknown';
+                const avatar = profile.profile_data?.pictureUrl || '';
+                const lastMsg = c.lastMessage.message_text;
+                const timeAgo = this.formatTimeAgo(c.lastMessage.created_at);
+                const isMine = c.lastMessage.sender_line_id === this.userLineId;
+
+                return `
+                    <div class="flex items-center p-3 bg-white rounded-lg shadow hover:bg-gray-50 cursor-pointer ${c.unreadCount > 0 ? 'border-l-4 border-primary' : ''}"
+                         onclick="MessagesSystem.openDirectConversation('${c.partnerId}')">
+                        <img src="${avatar || ''}" class="w-12 h-12 rounded-full mr-3 bg-gray-200"
+                             onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2255%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2236%22 fill=%22%23666%22>${name.charAt(0).toUpperCase()}</text></svg>'">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold text-gray-900">${this.escapeHtml(name)}</span>
+                                <span class="text-xs text-gray-500">${timeAgo}</span>
+                            </div>
+                            <p class="text-sm text-gray-600 truncate">${isMine ? 'You: ' : ''}${this.escapeHtml(lastMsg)}</p>
+                        </div>
+                        ${c.unreadCount > 0 ? `<span class="ml-2 bg-primary text-white text-xs px-2 py-1 rounded-full">${c.unreadCount}</span>` : ''}
+                    </div>`;
+            }).join('');
+
+        } catch (err) {
+            console.error('[MessagesSystem] Error loading conversations:', err);
+            container.innerHTML = `<div class="text-center text-red-500 py-4">Failed to load conversations</div>`;
+        }
+    },
+
+    async openDirectConversation(partnerId) {
+        this.currentConversation = { type: 'dm', id: partnerId };
+
+        // Hide list, show conversation view
+        document.getElementById('msg-content-direct').classList.add('hidden');
+        document.getElementById('conversation-view').classList.remove('hidden');
+
+        // Get partner profile
+        const { data: profile } = await window.SupabaseDB.client
+            .from('user_profiles')
+            .select('name, profile_data')
+            .eq('line_user_id', partnerId)
+            .single();
+
+        document.getElementById('conv-avatar').src = profile?.profile_data?.pictureUrl || '';
+        document.getElementById('conv-name').textContent = profile?.name || 'Unknown';
+        document.getElementById('conv-subtitle').textContent = 'Direct Message';
+
+        await this.loadMessages();
+    },
+
+    async loadMessages() {
+        const container = document.getElementById('messages-container');
+        if (!container || !this.currentConversation) return;
+
+        container.innerHTML = '<div class="text-center py-4"><div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div></div>';
+
+        try {
+            let messages = [];
+
+            if (this.currentConversation.type === 'dm') {
+                const partnerId = this.currentConversation.id;
+                const { data, error } = await window.SupabaseDB.client
+                    .from('direct_messages')
+                    .select('*')
+                    .or(`and(sender_line_id.eq.${this.userLineId},recipient_line_id.eq.${partnerId}),and(sender_line_id.eq.${partnerId},recipient_line_id.eq.${this.userLineId})`)
+                    .order('created_at', { ascending: true });
+
+                if (error) throw error;
+                messages = data || [];
+
+                // Mark as read
+                const unreadIds = messages.filter(m => m.recipient_line_id === this.userLineId && !m.is_read).map(m => m.id);
+                if (unreadIds.length > 0) {
+                    await window.SupabaseDB.client
+                        .from('direct_messages')
+                        .update({ is_read: true, read_at: new Date().toISOString() })
+                        .in('id', unreadIds);
+                    await this.refreshUnreadCounts();
+                }
+
+            } else if (this.currentConversation.type === 'event') {
+                const eventId = this.currentConversation.id;
+                const { data, error } = await window.SupabaseDB.client
+                    .from('event_group_messages')
+                    .select('*')
+                    .eq('event_id', eventId)
+                    .order('created_at', { ascending: true });
+
+                if (error) throw error;
+                messages = data || [];
+
+                // Update read timestamp
+                await window.SupabaseDB.client
+                    .from('event_message_reads')
+                    .upsert({
+                        event_id: eventId,
+                        reader_line_id: this.userLineId,
+                        last_read_at: new Date().toISOString()
+                    }, { onConflict: 'event_id,reader_line_id' });
+                await this.refreshUnreadCounts();
+            }
+
+            if (messages.length === 0) {
+                container.innerHTML = '<div class="text-center text-gray-500 py-8">No messages yet. Start the conversation!</div>';
+                return;
+            }
+
+            // Get sender profiles for event messages
+            let profileMap = {};
+            if (this.currentConversation.type === 'event') {
+                const senderIds = [...new Set(messages.map(m => m.sender_line_id))];
+                const { data: profiles } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('line_user_id, name, profile_data')
+                    .in('line_user_id', senderIds);
+                (profiles || []).forEach(p => profileMap[p.line_user_id] = p);
+            }
+
+            container.innerHTML = messages.map(m => {
+                const isMine = m.sender_line_id === this.userLineId;
+                const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                if (isMine) {
+                    return `
+                        <div class="flex justify-end">
+                            <div class="max-w-xs lg:max-w-md">
+                                <div class="bg-primary text-white px-4 py-2 rounded-2xl rounded-br-sm">
+                                    ${this.escapeHtml(m.message_text)}
+                                </div>
+                                <div class="text-xs text-gray-500 text-right mt-1">${time}</div>
+                            </div>
+                        </div>`;
+                } else {
+                    const senderProfile = profileMap[m.sender_line_id] || {};
+                    const showSender = this.currentConversation.type === 'event';
+                    return `
+                        <div class="flex justify-start">
+                            <div class="max-w-xs lg:max-w-md">
+                                ${showSender ? `<div class="text-xs text-gray-600 mb-1">${this.escapeHtml(senderProfile.name || 'Unknown')}</div>` : ''}
+                                <div class="bg-gray-200 text-gray-900 px-4 py-2 rounded-2xl rounded-bl-sm">
+                                    ${this.escapeHtml(m.message_text)}
+                                </div>
+                                <div class="text-xs text-gray-500 mt-1">${time}</div>
+                            </div>
+                        </div>`;
+                }
+            }).join('');
+
+            // Scroll to bottom
+            container.scrollTop = container.scrollHeight;
+
+        } catch (err) {
+            console.error('[MessagesSystem] Error loading messages:', err);
+            container.innerHTML = '<div class="text-center text-red-500 py-4">Failed to load messages</div>';
+        }
+    },
+
+    async sendMessage() {
+        const input = document.getElementById('message-input');
+        const text = input?.value?.trim();
+        if (!text || !this.currentConversation) return;
+
+        input.value = '';
+
+        try {
+            if (this.currentConversation.type === 'dm') {
+                await window.SupabaseDB.client
+                    .from('direct_messages')
+                    .insert({
+                        sender_line_id: this.userLineId,
+                        recipient_line_id: this.currentConversation.id,
+                        message_text: text
+                    });
+            } else if (this.currentConversation.type === 'event') {
+                await window.SupabaseDB.client
+                    .from('event_group_messages')
+                    .insert({
+                        event_id: this.currentConversation.id,
+                        sender_line_id: this.userLineId,
+                        message_text: text
+                    });
+            }
+
+            await this.loadMessages();
+        } catch (err) {
+            console.error('[MessagesSystem] Error sending message:', err);
+            showNotification('Failed to send message', 'error');
+        }
+    },
+
+    closeConversation() {
+        this.currentConversation = null;
+        document.getElementById('conversation-view').classList.add('hidden');
+        document.getElementById(`msg-content-${this.currentSubTab}`).classList.remove('hidden');
+        this.loadSubTabContent(this.currentSubTab);
+    },
+
+    // ========== EVENT GROUPS ==========
+    async loadEventGroups() {
+        const container = document.getElementById('event-groups-list');
+        if (!container) return;
+
+        container.innerHTML = '<div class="text-center py-4"><div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div></div>';
+
+        try {
+            // Get events user is registered for
+            const { data: registrations, error } = await window.SupabaseDB.client
+                .from('event_registrations')
+                .select('event_id, society_events!inner(id, title, event_date, course_name)')
+                .eq('player_id', this.userLineId)
+                .gte('society_events.event_date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]); // Last 7 days + future
+
+            if (error) throw error;
+
+            if (!registrations || registrations.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <span class="material-symbols-outlined text-4xl mb-2">groups</span>
+                        <p>No event chats available</p>
+                        <p class="text-sm mt-1">Register for events to join their group chats</p>
+                    </div>`;
+                return;
+            }
+
+            // Get latest message for each event
+            const eventIds = registrations.map(r => r.event_id);
+            const { data: latestMessages } = await window.SupabaseDB.client
+                .from('event_group_messages')
+                .select('*')
+                .in('event_id', eventIds)
+                .order('created_at', { ascending: false });
+
+            // Get read timestamps
+            const { data: readStatus } = await window.SupabaseDB.client
+                .from('event_message_reads')
+                .select('event_id, last_read_at')
+                .eq('reader_line_id', this.userLineId)
+                .in('event_id', eventIds);
+
+            const readMap = {};
+            (readStatus || []).forEach(r => readMap[r.event_id] = new Date(r.last_read_at));
+
+            // Group messages by event and count unread
+            const eventGroups = registrations.map(r => {
+                const event = r.society_events;
+                const messages = (latestMessages || []).filter(m => m.event_id === r.event_id);
+                const lastMessage = messages[0];
+                const lastRead = readMap[r.event_id];
+                const unreadCount = messages.filter(m =>
+                    m.sender_line_id !== this.userLineId &&
+                    (!lastRead || new Date(m.created_at) > lastRead)
+                ).length;
+
+                return {
+                    eventId: event.id,
+                    title: event.title,
+                    date: event.event_date,
+                    course: event.course_name,
+                    lastMessage,
+                    unreadCount
+                };
+            }).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            container.innerHTML = eventGroups.map(g => {
+                const dateStr = new Date(g.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const isUpcoming = new Date(g.date) >= new Date(new Date().toDateString());
+
+                return `
+                    <div class="flex items-center p-3 bg-white rounded-lg shadow hover:bg-gray-50 cursor-pointer ${g.unreadCount > 0 ? 'border-l-4 border-primary' : ''}"
+                         onclick="MessagesSystem.openEventConversation('${g.eventId}', '${this.escapeHtml(g.title)}')">
+                        <div class="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center mr-3">
+                            <span class="material-symbols-outlined text-purple-600">groups</span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold text-gray-900">${this.escapeHtml(g.title)}</span>
+                                <span class="text-xs ${isUpcoming ? 'text-green-600 font-medium' : 'text-gray-500'}">${dateStr}</span>
+                            </div>
+                            <p class="text-sm text-gray-600 truncate">${g.course || 'Location TBD'}</p>
+                            ${g.lastMessage ? `<p class="text-xs text-gray-500 truncate">${this.escapeHtml(g.lastMessage.message_text)}</p>` : ''}
+                        </div>
+                        ${g.unreadCount > 0 ? `<span class="ml-2 bg-primary text-white text-xs px-2 py-1 rounded-full">${g.unreadCount}</span>` : ''}
+                    </div>`;
+            }).join('');
+
+        } catch (err) {
+            console.error('[MessagesSystem] Error loading event groups:', err);
+            container.innerHTML = `<div class="text-center text-red-500 py-4">Failed to load event groups</div>`;
+        }
+    },
+
+    async openEventConversation(eventId, eventTitle) {
+        this.currentConversation = { type: 'event', id: eventId };
+
+        // Hide list, show conversation view
+        document.getElementById('msg-content-events').classList.add('hidden');
+        document.getElementById('conversation-view').classList.remove('hidden');
+
+        document.getElementById('conv-avatar').src = '';
+        document.getElementById('conv-avatar').style.display = 'none';
+        document.getElementById('conv-name').textContent = eventTitle;
+        document.getElementById('conv-subtitle').textContent = 'Event Group Chat';
+
+        await this.loadMessages();
+    },
+
+    // ========== COMPOSE MODAL ==========
+    openComposeModal() {
+        document.getElementById('composeMessageModal').classList.remove('hidden');
+        document.getElementById('compose-type').value = 'dm';
+        this.onComposeTypeChange();
+        this.populateSocietySelector();
+        this.clearRecipient();
+        document.getElementById('compose-message').value = '';
+        document.getElementById('compose-title').value = '';
+        document.getElementById('compose-search').value = '';
+    },
+
+    closeComposeModal() {
+        document.getElementById('composeMessageModal').classList.add('hidden');
+        this.selectedRecipient = null;
+    },
+
+    onComposeTypeChange() {
+        const type = document.getElementById('compose-type').value;
+        document.getElementById('compose-dm-fields').style.display = type === 'dm' ? 'block' : 'none';
+        document.getElementById('compose-announcement-fields').style.display = type === 'announcement' ? 'block' : 'none';
+    },
+
+    populateSocietySelector() {
+        const select = document.getElementById('compose-society');
+        const organizerSocieties = this.mySocieties.filter(s => s.isOrganizer);
+
+        select.innerHTML = '<option value="">Select a society...</option>' +
+            organizerSocieties.map(s => `<option value="${s.id}">${this.escapeHtml(s.name)}</option>`).join('');
+
+        if (organizerSocieties.length === 0) {
+            select.innerHTML = '<option value="">You are not an organizer of any society</option>';
+        }
+    },
+
+    async searchRecipients() {
+        const query = document.getElementById('compose-search').value.trim();
+        const resultsContainer = document.getElementById('compose-search-results');
+
+        if (query.length < 2) {
+            resultsContainer.style.display = 'none';
+            return;
+        }
+
+        // Debounce
+        clearTimeout(this.searchTimeout);
+        this.searchTimeout = setTimeout(async () => {
+            try {
+                const { data: profiles, error } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('line_user_id, name, profile_data')
+                    .ilike('name', `%${query}%`)
+                    .neq('line_user_id', this.userLineId)
+                    .limit(10);
+
+                if (error) throw error;
+
+                if (!profiles || profiles.length === 0) {
+                    resultsContainer.innerHTML = '<div class="p-3 text-gray-500 text-center">No members found</div>';
+                } else {
+                    resultsContainer.innerHTML = profiles.map(p => `
+                        <div class="flex items-center p-2 hover:bg-gray-50 cursor-pointer"
+                             onclick="MessagesSystem.selectRecipient('${p.line_user_id}', '${this.escapeHtml(p.name)}', '${p.profile_data?.pictureUrl || ''}')">
+                            <img src="${p.profile_data?.pictureUrl || ''}" class="w-8 h-8 rounded-full mr-2 bg-gray-200"
+                                 onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/></svg>'">
+                            <span class="font-medium">${this.escapeHtml(p.name)}</span>
+                        </div>
+                    `).join('');
+                }
+                resultsContainer.style.display = 'block';
+            } catch (err) {
+                console.error('[MessagesSystem] Error searching recipients:', err);
+            }
+        }, 300);
+    },
+
+    selectRecipient(lineId, name, avatar) {
+        this.selectedRecipient = { lineId, name, avatar };
+        document.getElementById('compose-search-results').style.display = 'none';
+        document.getElementById('compose-search').style.display = 'none';
+        document.getElementById('compose-selected-recipient').style.display = 'block';
+        document.getElementById('compose-recipient-name').textContent = name;
+        document.getElementById('compose-recipient-avatar').src = avatar || '';
+    },
+
+    clearRecipient() {
+        this.selectedRecipient = null;
+        document.getElementById('compose-search-results').style.display = 'none';
+        document.getElementById('compose-search').style.display = 'block';
+        document.getElementById('compose-search').value = '';
+        document.getElementById('compose-selected-recipient').style.display = 'none';
+    },
+
+    async sendComposedMessage() {
+        const type = document.getElementById('compose-type').value;
+        const messageText = document.getElementById('compose-message').value.trim();
+
+        if (!messageText) {
+            showNotification('Please enter a message', 'error');
+            return;
+        }
+
+        try {
+            if (type === 'dm') {
+                if (!this.selectedRecipient) {
+                    showNotification('Please select a recipient', 'error');
+                    return;
+                }
+
+                await window.SupabaseDB.client
+                    .from('direct_messages')
+                    .insert({
+                        sender_line_id: this.userLineId,
+                        recipient_line_id: this.selectedRecipient.lineId,
+                        message_text: messageText
+                    });
+
+                showNotification('Message sent!', 'success');
+                this.closeComposeModal();
+                this.showSubTab('direct');
+
+            } else if (type === 'announcement') {
+                const societyId = document.getElementById('compose-society').value;
+                const title = document.getElementById('compose-title').value.trim();
+                const priority = document.getElementById('compose-priority').value;
+
+                if (!societyId) {
+                    showNotification('Please select a society', 'error');
+                    return;
+                }
+                if (!title) {
+                    showNotification('Please enter a title', 'error');
+                    return;
+                }
+
+                await window.SupabaseDB.client
+                    .from('announcements')
+                    .insert({
+                        society_id: societyId,
+                        sender_line_id: this.userLineId,
+                        title: title,
+                        message_text: messageText,
+                        priority: priority
+                    });
+
+                showNotification('Announcement sent!', 'success');
+                this.closeComposeModal();
+                this.showSubTab('announcements');
+            }
+        } catch (err) {
+            console.error('[MessagesSystem] Error sending message:', err);
+            showNotification('Failed to send message', 'error');
+        }
+    },
+
+    // ========== UNREAD COUNTS & BADGE ==========
+    async refreshUnreadCounts() {
+        try {
+            // Count unread announcements
+            let announcementCount = 0;
+            if (this.mySocieties.length > 0) {
+                const societyIds = this.mySocieties.map(s => s.id);
+                const { data: allAnnouncements } = await window.SupabaseDB.client
+                    .from('announcements')
+                    .select('id')
+                    .in('society_id', societyIds);
+
+                const { data: readAnnouncements } = await window.SupabaseDB.client
+                    .from('announcement_reads')
+                    .select('announcement_id')
+                    .eq('reader_line_id', this.userLineId);
+
+                const readIds = new Set((readAnnouncements || []).map(r => r.announcement_id));
+                announcementCount = (allAnnouncements || []).filter(a => !readIds.has(a.id)).length;
+            }
+
+            // Count unread DMs
+            const { count: dmCount } = await window.SupabaseDB.client
+                .from('direct_messages')
+                .select('*', { count: 'exact', head: true })
+                .eq('recipient_line_id', this.userLineId)
+                .eq('is_read', false);
+
+            // Count unread event messages (simplified - just check if any newer than last read)
+            let eventCount = 0;
+            // This is complex, skip for now - can be implemented later
+
+            this.unreadCounts = {
+                announcements: announcementCount || 0,
+                dms: dmCount || 0,
+                events: eventCount,
+                total: (announcementCount || 0) + (dmCount || 0) + eventCount
+            };
+
+            // Update sub-tab badges
+            this.updateSubTabBadges();
+
+        } catch (err) {
+            console.error('[MessagesSystem] Error refreshing unread counts:', err);
+        }
+    },
+
+    updateSubTabBadges() {
+        const setBadge = (id, count) => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.textContent = count;
+                el.style.display = count > 0 ? 'inline' : 'none';
+            }
+        };
+
+        setBadge('announcements-count', this.unreadCounts.announcements);
+        setBadge('direct-count', this.unreadCounts.dms);
+        setBadge('events-count', this.unreadCounts.events);
+    },
+
+    updateBadge() {
+        const badge = document.getElementById('messagesBadge');
+        if (badge) {
+            if (this.unreadCounts.total > 0) {
+                badge.textContent = this.unreadCounts.total > 99 ? '99+' : this.unreadCounts.total;
+                badge.style.display = 'inline-flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+    },
+
+    // ========== UTILITIES ==========
+    formatTimeAgo(dateStr) {
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        if (diffDays < 7) return `${diffDays}d ago`;
+        return date.toLocaleDateString();
+    },
+
+    escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+};
+
+// Make globally available
+window.MessagesSystem = MessagesSystem;
+console.log('[MessagesSystem] ✅ Module loaded');
 
 // ==================================================================
 // GOLFER EVENTS SYSTEM - Browse and Register for Society Events

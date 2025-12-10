@@ -26876,9 +26876,14 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <span id="direct-count" class="ml-1 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full" style="display: none;">0</span>
                         </button>
                         <button onclick="MessagesSystem.showSubTab('events')" id="msg-tab-events" class="flex-1 px-3 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50">
-                            <span class="material-symbols-outlined text-sm align-middle">groups</span>
+                            <span class="material-symbols-outlined text-sm align-middle">event</span>
                             <span class="align-middle ml-1">Events</span>
                             <span id="events-count" class="ml-1 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full" style="display: none;">0</span>
+                        </button>
+                        <button onclick="MessagesSystem.showSubTab('groups')" id="msg-tab-groups" class="flex-1 px-3 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50">
+                            <span class="material-symbols-outlined text-sm align-middle">groups</span>
+                            <span class="align-middle ml-1">Groups</span>
+                            <span id="groups-count" class="ml-1 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full" style="display: none;">0</span>
                         </button>
                     </div>
                 </div>
@@ -26908,9 +26913,26 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 <div id="msg-content-events" class="msg-subcontent hidden">
                     <div id="event-groups-list" class="space-y-2">
                         <div class="text-center text-gray-500 py-8">
-                            <span class="material-symbols-outlined text-4xl mb-2">groups</span>
+                            <span class="material-symbols-outlined text-4xl mb-2">event</span>
                             <p>No event chats available</p>
                             <p class="text-sm mt-1">Register for events to join their group chats</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Custom Groups Content -->
+                <div id="msg-content-groups" class="msg-subcontent hidden">
+                    <div class="flex justify-end mb-3">
+                        <button onclick="MessagesSystem.openCreateGroupModal()" class="btn-secondary text-sm">
+                            <span class="material-symbols-outlined text-sm">add</span>
+                            <span>Create Group</span>
+                        </button>
+                    </div>
+                    <div id="groups-list" class="space-y-2">
+                        <div class="text-center text-gray-500 py-8">
+                            <span class="material-symbols-outlined text-4xl mb-2">groups</span>
+                            <p>No groups yet</p>
+                            <p class="text-sm mt-1">Create a group to chat with multiple golfers</p>
                         </div>
                     </div>
                 </div>
@@ -27113,6 +27135,62 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     <button onclick="MessagesSystem.sendComposedMessage()" class="btn-primary">
                         <span class="material-symbols-outlined text-sm">send</span>
                         <span>Send</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Group Chat Modal -->
+    <div id="createGroupModal" class="fixed inset-0 bg-black bg-opacity-75 z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg max-w-lg w-full mx-4 max-h-screen overflow-y-auto">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-900">Create Group Chat</h2>
+                    <button onclick="MessagesSystem.closeCreateGroupModal()" class="text-gray-500 hover:text-gray-700">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+
+                <!-- Group Name -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Group Name</label>
+                    <input type="text" id="group-name" placeholder="Enter group name..."
+                           class="w-full rounded-lg border px-3 py-2">
+                </div>
+
+                <!-- Group Description (optional) -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Description (optional)</label>
+                    <input type="text" id="group-description" placeholder="What's this group about?"
+                           class="w-full rounded-lg border px-3 py-2">
+                </div>
+
+                <!-- Member Selection -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Add Members</label>
+                    <input type="text" id="group-member-search" oninput="MessagesSystem.searchGroupMembers()"
+                           placeholder="Search society members..."
+                           class="w-full rounded-lg border px-3 py-2">
+                </div>
+
+                <!-- Search Results -->
+                <div id="group-member-search-results" class="max-h-32 overflow-y-auto mb-4 border rounded-lg" style="display: none;">
+                </div>
+
+                <!-- Selected Members -->
+                <div id="group-selected-members" class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Selected Members (<span id="selected-member-count">0</span>)</label>
+                    <div id="selected-members-list" class="flex flex-wrap gap-2 min-h-[40px] p-2 border rounded-lg bg-gray-50">
+                        <span class="text-gray-400 text-sm" id="no-members-text">No members selected</span>
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-3">
+                    <button onclick="MessagesSystem.closeCreateGroupModal()" class="btn-secondary">Cancel</button>
+                    <button onclick="MessagesSystem.createGroup()" class="btn-primary">
+                        <span class="material-symbols-outlined text-sm">group_add</span>
+                        <span>Create Group</span>
                     </button>
                 </div>
             </div>
@@ -58919,8 +58997,9 @@ console.log('[EventNotifications] ✅ Module loaded');
 const MessagesSystem = {
     userLineId: null,
     currentSubTab: 'announcements',
-    currentConversation: null, // { type: 'dm'|'event', id: partnerLineId|eventId }
-    unreadCounts: { announcements: 0, dms: 0, events: 0, total: 0 },
+    currentConversation: null, // { type: 'dm'|'event'|'group', id: partnerLineId|eventId|groupId }
+    unreadCounts: { announcements: 0, dms: 0, events: 0, groups: 0, total: 0 },
+    selectedGroupMembers: [], // For create group modal
     selectedRecipient: null,
     mySocieties: [],
     searchTimeout: null,
@@ -59010,7 +59089,7 @@ const MessagesSystem = {
         this.currentSubTab = tabName;
 
         // Update tab buttons
-        ['announcements', 'direct', 'events'].forEach(t => {
+        ['announcements', 'direct', 'events', 'groups'].forEach(t => {
             const btn = document.getElementById(`msg-tab-${t}`);
             if (btn) {
                 if (t === tabName) {
@@ -59027,6 +59106,8 @@ const MessagesSystem = {
         document.getElementById('msg-content-announcements').classList.toggle('hidden', tabName !== 'announcements');
         document.getElementById('msg-content-direct').classList.toggle('hidden', tabName !== 'direct');
         document.getElementById('msg-content-events').classList.toggle('hidden', tabName !== 'events');
+        const groupsContent = document.getElementById('msg-content-groups');
+        if (groupsContent) groupsContent.classList.toggle('hidden', tabName !== 'groups');
         document.getElementById('conversation-view').classList.add('hidden');
 
         // Load content
@@ -59038,6 +59119,7 @@ const MessagesSystem = {
             case 'announcements': await this.loadAnnouncements(); break;
             case 'direct': await this.loadConversationList(); break;
             case 'events': await this.loadEventGroups(); break;
+            case 'groups': await this.loadGroupChats(); break;
         }
     },
 
@@ -59307,6 +59389,27 @@ const MessagesSystem = {
                         last_read_at: new Date().toISOString()
                     }, { onConflict: 'event_id,reader_line_id' });
                 await this.refreshUnreadCounts();
+
+            } else if (this.currentConversation.type === 'group') {
+                const groupId = this.currentConversation.id;
+                const { data, error } = await window.SupabaseDB.client
+                    .from('group_chat_messages')
+                    .select('*')
+                    .eq('group_id', groupId)
+                    .order('created_at', { ascending: true });
+
+                if (error) throw error;
+                messages = data || [];
+
+                // Update read timestamp
+                await window.SupabaseDB.client
+                    .from('group_chat_reads')
+                    .upsert({
+                        group_id: groupId,
+                        reader_line_id: this.userLineId,
+                        last_read_at: new Date().toISOString()
+                    }, { onConflict: 'group_id,reader_line_id' });
+                await this.refreshUnreadCounts();
             }
 
             if (messages.length === 0) {
@@ -59314,9 +59417,9 @@ const MessagesSystem = {
                 return;
             }
 
-            // Get sender profiles for event messages
+            // Get sender profiles for event and group messages
             let profileMap = {};
-            if (this.currentConversation.type === 'event') {
+            if (this.currentConversation.type === 'event' || this.currentConversation.type === 'group') {
                 const senderIds = [...new Set(messages.map(m => m.sender_line_id))];
                 const { data: profiles } = await window.SupabaseDB.client
                     .from('user_profiles')
@@ -59330,18 +59433,33 @@ const MessagesSystem = {
                 const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
                 if (isMine) {
+                    // Read receipt for sent messages (DMs only)
+                    let readReceipt = '';
+                    if (this.currentConversation.type === 'dm') {
+                        if (m.is_read) {
+                            // Double checkmark (read) - blue color
+                            readReceipt = `<span class="text-blue-500 ml-1" title="Read${m.read_at ? ' at ' + new Date(m.read_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : ''}">
+                                <span class="material-symbols-outlined" style="font-size: 14px;">done_all</span>
+                            </span>`;
+                        } else {
+                            // Single checkmark (sent/delivered) - gray color
+                            readReceipt = `<span class="text-gray-400 ml-1" title="Sent">
+                                <span class="material-symbols-outlined" style="font-size: 14px;">check</span>
+                            </span>`;
+                        }
+                    }
                     return `
                         <div class="flex justify-end">
                             <div class="max-w-xs lg:max-w-md">
                                 <div class="bg-primary text-white px-4 py-2 rounded-2xl rounded-br-sm">
                                     ${this.escapeHtml(m.message_text)}
                                 </div>
-                                <div class="text-xs text-gray-500 text-right mt-1">${time}</div>
+                                <div class="text-xs text-gray-500 text-right mt-1 flex items-center justify-end">${time}${readReceipt}</div>
                             </div>
                         </div>`;
                 } else {
                     const senderProfile = profileMap[m.sender_line_id] || {};
-                    const showSender = this.currentConversation.type === 'event';
+                    const showSender = this.currentConversation.type === 'event' || this.currentConversation.type === 'group';
                     return `
                         <div class="flex justify-start">
                             <div class="max-w-xs lg:max-w-md">
@@ -59388,6 +59506,20 @@ const MessagesSystem = {
                         sender_line_id: this.userLineId,
                         message_text: text
                     });
+            } else if (this.currentConversation.type === 'group') {
+                await window.SupabaseDB.client
+                    .from('group_chat_messages')
+                    .insert({
+                        group_id: this.currentConversation.id,
+                        sender_line_id: this.userLineId,
+                        message_text: text
+                    });
+
+                // Update group's updated_at timestamp
+                await window.SupabaseDB.client
+                    .from('group_chats')
+                    .update({ updated_at: new Date().toISOString() })
+                    .eq('id', this.currentConversation.id);
             }
 
             await this.loadMessages();
@@ -59700,11 +59832,57 @@ const MessagesSystem = {
             let eventCount = 0;
             // This is complex, skip for now - can be implemented later
 
+            // Count unread group messages
+            let groupCount = 0;
+            try {
+                // Get groups user is member of
+                const { data: myGroups } = await window.SupabaseDB.client
+                    .from('group_chat_members')
+                    .select('group_id')
+                    .eq('member_line_id', this.userLineId);
+
+                if (myGroups && myGroups.length > 0) {
+                    const groupIds = myGroups.map(g => g.group_id);
+
+                    // Get last read times for each group
+                    const { data: lastReads } = await window.SupabaseDB.client
+                        .from('group_chat_reads')
+                        .select('group_id, last_read_at')
+                        .eq('reader_line_id', this.userLineId)
+                        .in('group_id', groupIds);
+
+                    const lastReadMap = {};
+                    (lastReads || []).forEach(r => {
+                        lastReadMap[r.group_id] = r.last_read_at;
+                    });
+
+                    // Count messages newer than last read in each group
+                    for (const groupId of groupIds) {
+                        const lastRead = lastReadMap[groupId];
+                        let query = window.SupabaseDB.client
+                            .from('group_chat_messages')
+                            .select('*', { count: 'exact', head: true })
+                            .eq('group_id', groupId)
+                            .neq('sender_line_id', this.userLineId);
+
+                        if (lastRead) {
+                            query = query.gt('created_at', lastRead);
+                        }
+
+                        const { count } = await query;
+                        groupCount += (count || 0);
+                    }
+                }
+            } catch (err) {
+                console.warn('[MessagesSystem] Error counting group unread:', err);
+            }
+
             this.unreadCounts = {
                 announcements: announcementCount || 0,
                 dms: dmCount || 0,
                 events: eventCount,
-                total: (announcementCount || 0) + (dmCount || 0) + eventCount
+                groups: groupCount,
+                total: (announcementCount || 0) + (dmCount || 0) + eventCount + groupCount
             };
 
             // Update sub-tab badges
@@ -59727,6 +59905,7 @@ const MessagesSystem = {
         setBadge('announcements-count', this.unreadCounts.announcements);
         setBadge('direct-count', this.unreadCounts.dms);
         setBadge('events-count', this.unreadCounts.events);
+        setBadge('groups-count', this.unreadCounts.groups);
     },
 
     updateBadge() {
@@ -59791,6 +59970,355 @@ const MessagesSystem = {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    },
+
+    // ========== GROUP CHATS ==========
+    async loadGroupChats() {
+        const container = document.getElementById('groups-list');
+        if (!container) return;
+
+        container.innerHTML = '<div class="text-center py-4"><div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div></div>';
+
+        try {
+            // Get groups user is member of
+            const { data: memberships, error } = await window.SupabaseDB.client
+                .from('group_chat_members')
+                .select('group_id, role')
+                .eq('member_line_id', this.userLineId);
+
+            if (error || !memberships || memberships.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <span class="material-symbols-outlined text-4xl mb-2">groups</span>
+                        <p>No groups yet</p>
+                        <p class="text-sm mt-1">Create a group to chat with multiple golfers</p>
+                    </div>`;
+                return;
+            }
+
+            const groupIds = memberships.map(m => m.group_id);
+            const roleMap = {};
+            memberships.forEach(m => { roleMap[m.group_id] = m.role; });
+
+            // Get group details
+            const { data: groups } = await window.SupabaseDB.client
+                .from('group_chats')
+                .select('*')
+                .in('id', groupIds)
+                .order('updated_at', { ascending: false });
+
+            if (!groups || groups.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <span class="material-symbols-outlined text-4xl mb-2">groups</span>
+                        <p>No groups yet</p>
+                    </div>`;
+                return;
+            }
+
+            // Get last message and member count for each group
+            const groupsHtml = await Promise.all(groups.map(async (group) => {
+                // Get last message
+                const { data: lastMsgs } = await window.SupabaseDB.client
+                    .from('group_chat_messages')
+                    .select('message_text, sender_line_id, created_at')
+                    .eq('group_id', group.id)
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+
+                const lastMsg = lastMsgs && lastMsgs.length > 0 ? lastMsgs[0] : null;
+
+                // Get member count
+                const { count: memberCount } = await window.SupabaseDB.client
+                    .from('group_chat_members')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('group_id', group.id);
+
+                // Get unread count for this group
+                let unreadCount = 0;
+                const { data: lastRead } = await window.SupabaseDB.client
+                    .from('group_chat_reads')
+                    .select('last_read_at')
+                    .eq('group_id', group.id)
+                    .eq('reader_line_id', this.userLineId)
+                    .single();
+
+                if (lastRead && lastRead.last_read_at) {
+                    const { count } = await window.SupabaseDB.client
+                        .from('group_chat_messages')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('group_id', group.id)
+                        .neq('sender_line_id', this.userLineId)
+                        .gt('created_at', lastRead.last_read_at);
+                    unreadCount = count || 0;
+                } else if (lastMsg) {
+                    // Never read - count all messages not from user
+                    const { count } = await window.SupabaseDB.client
+                        .from('group_chat_messages')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('group_id', group.id)
+                        .neq('sender_line_id', this.userLineId);
+                    unreadCount = count || 0;
+                }
+
+                const isAdmin = roleMap[group.id] === 'admin';
+                const timeAgo = lastMsg ? this.formatTimeAgo(lastMsg.created_at) : 'No messages';
+                const preview = lastMsg ? this.escapeHtml(lastMsg.message_text.substring(0, 50) + (lastMsg.message_text.length > 50 ? '...' : '')) : 'No messages yet';
+
+                return `
+                    <div onclick="MessagesSystem.openGroupConversation('${group.id}', '${this.escapeHtml(group.name)}')"
+                         class="flex items-center p-3 bg-white rounded-lg border hover:border-primary hover:shadow-md cursor-pointer transition-all ${unreadCount > 0 ? 'border-l-4 border-l-primary bg-blue-50' : ''}">
+                        <div class="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center mr-3 flex-shrink-0">
+                            <span class="material-symbols-outlined text-2xl text-primary">groups</span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center justify-between">
+                                <h3 class="font-medium text-gray-900 truncate">${this.escapeHtml(group.name)}</h3>
+                                <span class="text-xs text-gray-500">${timeAgo}</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <p class="text-sm text-gray-600 truncate">${preview}</p>
+                                ${unreadCount > 0 ? `<span class="bg-primary text-white text-xs px-2 py-0.5 rounded-full">${unreadCount}</span>` : ''}
+                            </div>
+                            <div class="flex items-center mt-1 text-xs text-gray-400">
+                                <span class="material-symbols-outlined text-xs mr-1">person</span>
+                                <span>${memberCount || 0} members</span>
+                                ${isAdmin ? '<span class="ml-2 px-1.5 py-0.5 bg-yellow-100 text-yellow-700 rounded">Admin</span>' : ''}
+                            </div>
+                        </div>
+                    </div>`;
+            }));
+
+            container.innerHTML = groupsHtml.join('');
+
+        } catch (err) {
+            console.error('[MessagesSystem] Error loading group chats:', err);
+            container.innerHTML = `
+                <div class="text-center text-red-500 py-8">
+                    <span class="material-symbols-outlined text-4xl mb-2">error</span>
+                    <p>Error loading groups</p>
+                </div>`;
+        }
+    },
+
+    async openGroupConversation(groupId, groupName) {
+        this.currentConversation = { type: 'group', id: groupId, name: groupName };
+
+        // Hide sub-content, show conversation
+        document.querySelectorAll('.msg-subcontent').forEach(el => el.classList.add('hidden'));
+        document.getElementById('conversation-view').classList.remove('hidden');
+
+        // Set header
+        document.getElementById('conv-avatar').src = 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%230ABAB5%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2240%22>G</text></svg>';
+        document.getElementById('conv-name').textContent = groupName;
+
+        // Get member count
+        const { count } = await window.SupabaseDB.client
+            .from('group_chat_members')
+            .select('*', { count: 'exact', head: true })
+            .eq('group_id', groupId);
+        document.getElementById('conv-subtitle').textContent = `${count || 0} members`;
+
+        // Load messages
+        await this.loadMessages();
+
+        // Mark as read
+        await window.SupabaseDB.client
+            .from('group_chat_reads')
+            .upsert({
+                group_id: groupId,
+                reader_line_id: this.userLineId,
+                last_read_at: new Date().toISOString()
+            }, { onConflict: 'group_id,reader_line_id' });
+
+        await this.refreshUnreadCounts();
+        this.updateBadge();
+    },
+
+    // ========== CREATE GROUP MODAL ==========
+    openCreateGroupModal() {
+        document.getElementById('createGroupModal').classList.remove('hidden');
+        document.getElementById('group-name').value = '';
+        document.getElementById('group-description').value = '';
+        document.getElementById('group-member-search').value = '';
+        document.getElementById('group-member-search-results').style.display = 'none';
+        this.selectedGroupMembers = [];
+        this.updateSelectedMembersDisplay();
+    },
+
+    closeCreateGroupModal() {
+        document.getElementById('createGroupModal').classList.add('hidden');
+        this.selectedGroupMembers = [];
+    },
+
+    async searchGroupMembers() {
+        const query = document.getElementById('group-member-search').value.trim().toLowerCase();
+        const resultsContainer = document.getElementById('group-member-search-results');
+
+        if (query.length < 2) {
+            resultsContainer.style.display = 'none';
+            return;
+        }
+
+        clearTimeout(this.searchTimeout);
+        this.searchTimeout = setTimeout(async () => {
+            try {
+                // Search all society members the user has access to
+                const allMembers = [];
+                for (const society of this.mySocieties) {
+                    const { data: members } = await window.SupabaseDB.client
+                        .from('society_members')
+                        .select('golfer_id')
+                        .eq('society_id', society.id);
+
+                    if (members) {
+                        members.forEach(m => {
+                            if (!allMembers.includes(m.golfer_id) && m.golfer_id !== this.userLineId) {
+                                allMembers.push(m.golfer_id);
+                            }
+                        });
+                    }
+                }
+
+                if (allMembers.length === 0) {
+                    resultsContainer.innerHTML = '<div class="p-3 text-gray-500 text-sm">No members found</div>';
+                    resultsContainer.style.display = 'block';
+                    return;
+                }
+
+                // Get profiles
+                const { data: profiles } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('line_user_id, name, profile_data')
+                    .in('line_user_id', allMembers);
+
+                // Filter by search query
+                const filtered = (profiles || []).filter(p => {
+                    const name = (p.name || '').toLowerCase();
+                    return name.includes(query);
+                }).slice(0, 10);
+
+                // Exclude already selected members
+                const selectedIds = this.selectedGroupMembers.map(m => m.id);
+                const available = filtered.filter(p => !selectedIds.includes(p.line_user_id));
+
+                if (available.length === 0) {
+                    resultsContainer.innerHTML = '<div class="p-3 text-gray-500 text-sm">No matching members found</div>';
+                    resultsContainer.style.display = 'block';
+                    return;
+                }
+
+                resultsContainer.innerHTML = available.map(p => {
+                    const avatar = p.profile_data?.pictureUrl || `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2240%22>${(p.name || '?')[0].toUpperCase()}</text></svg>`;
+                    return `
+                        <div onclick="MessagesSystem.addGroupMember('${p.line_user_id}', '${this.escapeHtml(p.name)}')"
+                             class="flex items-center p-2 hover:bg-gray-100 cursor-pointer">
+                            <img src="${avatar}" class="w-8 h-8 rounded-full mr-2" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2240%22>?</text></svg>'">
+                            <span class="text-sm font-medium">${this.escapeHtml(p.name || 'Unknown')}</span>
+                        </div>`;
+                }).join('');
+                resultsContainer.style.display = 'block';
+
+            } catch (err) {
+                console.error('[MessagesSystem] Error searching members:', err);
+                resultsContainer.innerHTML = '<div class="p-3 text-red-500 text-sm">Error searching</div>';
+                resultsContainer.style.display = 'block';
+            }
+        }, 300);
+    },
+
+    addGroupMember(memberId, memberName) {
+        if (this.selectedGroupMembers.some(m => m.id === memberId)) return;
+
+        this.selectedGroupMembers.push({ id: memberId, name: memberName });
+        this.updateSelectedMembersDisplay();
+        document.getElementById('group-member-search').value = '';
+        document.getElementById('group-member-search-results').style.display = 'none';
+    },
+
+    removeGroupMember(memberId) {
+        this.selectedGroupMembers = this.selectedGroupMembers.filter(m => m.id !== memberId);
+        this.updateSelectedMembersDisplay();
+    },
+
+    updateSelectedMembersDisplay() {
+        const container = document.getElementById('selected-members-list');
+        const countEl = document.getElementById('selected-member-count');
+        const noMembersText = document.getElementById('no-members-text');
+
+        countEl.textContent = this.selectedGroupMembers.length;
+
+        if (this.selectedGroupMembers.length === 0) {
+            container.innerHTML = '<span class="text-gray-400 text-sm" id="no-members-text">No members selected</span>';
+            return;
+        }
+
+        container.innerHTML = this.selectedGroupMembers.map(m => `
+            <span class="inline-flex items-center bg-primary/10 text-primary text-sm px-2 py-1 rounded-full">
+                ${this.escapeHtml(m.name)}
+                <button onclick="event.stopPropagation(); MessagesSystem.removeGroupMember('${m.id}')" class="ml-1 text-primary/60 hover:text-primary">
+                    <span class="material-symbols-outlined text-sm">close</span>
+                </button>
+            </span>
+        `).join('');
+    },
+
+    async createGroup() {
+        const name = document.getElementById('group-name').value.trim();
+        const description = document.getElementById('group-description').value.trim();
+
+        if (!name) {
+            NotificationManager.show('Please enter a group name', 'error');
+            return;
+        }
+
+        if (this.selectedGroupMembers.length === 0) {
+            NotificationManager.show('Please add at least one member', 'error');
+            return;
+        }
+
+        try {
+            // Create the group
+            const { data: group, error } = await window.SupabaseDB.client
+                .from('group_chats')
+                .insert({
+                    name: name,
+                    description: description || null,
+                    creator_line_id: this.userLineId
+                })
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            // Add creator as admin
+            await window.SupabaseDB.client
+                .from('group_chat_members')
+                .insert({
+                    group_id: group.id,
+                    member_line_id: this.userLineId,
+                    role: 'admin'
+                });
+
+            // Add selected members
+            const memberInserts = this.selectedGroupMembers.map(m => ({
+                group_id: group.id,
+                member_line_id: m.id,
+                role: 'member'
+            }));
+
+            await window.SupabaseDB.client
+                .from('group_chat_members')
+                .insert(memberInserts);
+
+            NotificationManager.show(`Group "${name}" created!`, 'success');
+            this.closeCreateGroupModal();
+            this.showSubTab('groups');
+
+        } catch (err) {
+            console.error('[MessagesSystem] Error creating group:', err);
+            NotificationManager.show('Failed to create group', 'error');
+        }
     }
 };
 

@@ -59170,10 +59170,22 @@ const MessagesSystem = {
                 return;
             }
 
+            // Fetch sender names for announcements
+            const senderIds = [...new Set(announcements.map(a => a.sender_line_id))];
+            const senderMap = {};
+            if (senderIds.length > 0) {
+                const { data: senders } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('line_user_id, name')
+                    .in('line_user_id', senderIds);
+                (senders || []).forEach(s => senderMap[s.line_user_id] = s.name || 'Organizer');
+            }
+
             container.innerHTML = announcements.map(a => {
                 const society = this.mySocieties.find(s => s.id === a.society_id);
                 const isRead = readIds.has(a.id);
                 const timeAgo = this.formatTimeAgo(a.created_at);
+                const senderName = senderMap[a.sender_line_id] || 'Organizer';
                 const priorityBadge = a.priority === 'urgent' ? '<span class="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full mr-2">URGENT</span>' :
                                       a.priority === 'important' ? '<span class="bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full mr-2">Important</span>' : '';
 
@@ -59189,7 +59201,7 @@ const MessagesSystem = {
                         </div>
                         <p class="text-gray-600 text-sm mb-2 line-clamp-2">${this.escapeHtml(a.message_text)}</p>
                         <div class="flex items-center justify-between text-xs text-gray-500">
-                            <span>${society?.name || 'Unknown Society'}</span>
+                            <span>${society?.name || 'Unknown Society'} • ${senderName}</span>
                             <span>${timeAgo}</span>
                         </div>
                     </div>`;
@@ -59437,8 +59449,10 @@ const MessagesSystem = {
                 (profiles || []).forEach(p => profileMap[p.line_user_id] = p);
             }
 
+            console.log('[MessagesSystem] Rendering messages. My userLineId:', this.userLineId);
             container.innerHTML = messages.map(m => {
                 const isMine = m.sender_line_id === this.userLineId;
+                console.log('[MessagesSystem] Message from:', m.sender_line_id, 'isMine:', isMine, 'text:', m.message_text?.substring(0, 20));
                 const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
                 if (isMine) {
@@ -59629,9 +59643,27 @@ const MessagesSystem = {
                 };
             }).sort((a, b) => new Date(b.date) - new Date(a.date));
 
+            // Fetch sender names for last messages
+            const senderIds = [...new Set(eventGroups.filter(g => g.lastMessage).map(g => g.lastMessage.sender_line_id))];
+            const senderMap = {};
+            if (senderIds.length > 0) {
+                const { data: senders } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('line_user_id, name')
+                    .in('line_user_id', senderIds);
+                (senders || []).forEach(s => senderMap[s.line_user_id] = s.name?.split(' ')[0] || 'Someone');
+            }
+
             container.innerHTML = eventGroups.map(g => {
                 const dateStr = new Date(g.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                 const isUpcoming = new Date(g.date) >= new Date(new Date().toDateString());
+                // Get sender name for last message
+                let lastMsgPreview = '';
+                if (g.lastMessage) {
+                    const senderName = g.lastMessage.sender_line_id === this.userLineId ? 'You' : (senderMap[g.lastMessage.sender_line_id] || 'Someone');
+                    const msgText = this.escapeHtml(g.lastMessage.message_text.substring(0, 30) + (g.lastMessage.message_text.length > 30 ? '...' : ''));
+                    lastMsgPreview = `${senderName}: ${msgText}`;
+                }
 
                 return `
                     <div class="flex items-center p-3 bg-white rounded-lg shadow hover:bg-gray-50 cursor-pointer ${g.unreadCount > 0 ? 'border-l-4 border-primary' : ''}"
@@ -59645,7 +59677,7 @@ const MessagesSystem = {
                                 <span class="text-xs ${isUpcoming ? 'text-green-600 font-medium' : 'text-gray-500'}">${dateStr}</span>
                             </div>
                             <p class="text-sm text-gray-600 truncate">${g.course || 'Location TBD'}</p>
-                            ${g.lastMessage ? `<p class="text-xs text-gray-500 truncate">${this.escapeHtml(g.lastMessage.message_text)}</p>` : ''}
+                            ${lastMsgPreview ? `<p class="text-xs text-gray-500 truncate">${lastMsgPreview}</p>` : ''}
                         </div>
                         ${g.unreadCount > 0 ? `<span class="ml-2 bg-primary text-white text-xs px-2 py-1 rounded-full">${g.unreadCount}</span>` : ''}
                     </div>`;
@@ -60055,6 +60087,21 @@ const MessagesSystem = {
 
                 const lastMsg = lastMsgs && lastMsgs.length > 0 ? lastMsgs[0] : null;
 
+                // Get sender name for last message
+                let lastMsgSenderName = '';
+                if (lastMsg) {
+                    if (lastMsg.sender_line_id === this.userLineId) {
+                        lastMsgSenderName = 'You';
+                    } else {
+                        const { data: senderProfile } = await window.SupabaseDB.client
+                            .from('user_profiles')
+                            .select('name')
+                            .eq('line_user_id', lastMsg.sender_line_id)
+                            .single();
+                        lastMsgSenderName = senderProfile?.name?.split(' ')[0] || 'Someone'; // First name only
+                    }
+                }
+
                 // Get member count
                 const { count: memberCount } = await window.SupabaseDB.client
                     .from('group_chat_members')
@@ -60090,7 +60137,9 @@ const MessagesSystem = {
 
                 const isAdmin = roleMap[group.id] === 'admin';
                 const timeAgo = lastMsg ? this.formatTimeAgo(lastMsg.created_at) : 'No messages';
-                const preview = lastMsg ? this.escapeHtml(lastMsg.message_text.substring(0, 50) + (lastMsg.message_text.length > 50 ? '...' : '')) : 'No messages yet';
+                // Include sender name in preview so users know WHO sent the message
+                const msgPreview = lastMsg ? this.escapeHtml(lastMsg.message_text.substring(0, 35) + (lastMsg.message_text.length > 35 ? '...' : '')) : '';
+                const preview = lastMsg ? `${lastMsgSenderName}: ${msgPreview}` : 'No messages yet';
 
                 return `
                     <div onclick="MessagesSystem.openGroupConversation('${group.id}', '${this.escapeHtml(group.name)}')"

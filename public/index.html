@@ -59256,11 +59256,23 @@ const MessagesSystem = {
 
             if (this.currentConversation.type === 'dm') {
                 const partnerId = this.currentConversation.id;
-                const { data, error } = await window.SupabaseDB.client
+                // Fetch messages in both directions (sent and received)
+                const { data: sentMessages, error: err1 } = await window.SupabaseDB.client
                     .from('direct_messages')
                     .select('*')
-                    .or(`and(sender_line_id.eq.${this.userLineId},recipient_line_id.eq.${partnerId}),and(sender_line_id.eq.${partnerId},recipient_line_id.eq.${this.userLineId})`)
-                    .order('created_at', { ascending: true });
+                    .eq('sender_line_id', this.userLineId)
+                    .eq('recipient_line_id', partnerId);
+
+                const { data: receivedMessages, error: err2 } = await window.SupabaseDB.client
+                    .from('direct_messages')
+                    .select('*')
+                    .eq('sender_line_id', partnerId)
+                    .eq('recipient_line_id', this.userLineId);
+
+                const error = err1 || err2;
+                // Combine and sort by created_at
+                const data = [...(sentMessages || []), ...(receivedMessages || [])]
+                    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
                 if (error) throw error;
                 messages = data || [];

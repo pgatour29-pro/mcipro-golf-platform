@@ -58924,6 +58924,8 @@ const MessagesSystem = {
     selectedRecipient: null,
     mySocieties: [],
     searchTimeout: null,
+    refreshInterval: null,
+    REFRESH_INTERVAL_MS: 15000, // 15 seconds
 
     async init() {
         console.log('[MessagesSystem] Initializing...');
@@ -58936,7 +58938,38 @@ const MessagesSystem = {
         await this.loadMySocieties();
         await this.refreshUnreadCounts();
         this.updateBadge();
-        console.log('[MessagesSystem] ✅ Initialized');
+        this.startAutoRefresh();
+        console.log('[MessagesSystem] ✅ Initialized with 15s auto-refresh');
+    },
+
+    startAutoRefresh() {
+        // Clear any existing interval
+        if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+        }
+        // Start new interval
+        this.refreshInterval = setInterval(async () => {
+            if (!this.userLineId) return;
+            try {
+                await this.refreshUnreadCounts();
+                this.updateBadge();
+                // If viewing a conversation, refresh messages too
+                if (this.currentConversation) {
+                    await this.loadMessages();
+                }
+            } catch (err) {
+                console.warn('[MessagesSystem] Auto-refresh error:', err);
+            }
+        }, this.REFRESH_INTERVAL_MS);
+        console.log('[MessagesSystem] Auto-refresh started (every 15s)');
+    },
+
+    stopAutoRefresh() {
+        if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+            this.refreshInterval = null;
+            console.log('[MessagesSystem] Auto-refresh stopped');
+        }
     },
 
     async loadMySocieties() {

@@ -30646,6 +30646,38 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </div>
                 </div>
 
+                <!-- New Members Growth Stats -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                    <div class="metric-card bg-gradient-to-br from-blue-50 to-blue-100">
+                        <div class="text-center">
+                            <p class="text-xs text-blue-600 font-medium uppercase tracking-wide">Today</p>
+                            <p class="text-2xl font-bold text-blue-900" id="admin-new-today">0</p>
+                            <p class="text-xs text-blue-500">new members</p>
+                        </div>
+                    </div>
+                    <div class="metric-card bg-gradient-to-br from-green-50 to-green-100">
+                        <div class="text-center">
+                            <p class="text-xs text-green-600 font-medium uppercase tracking-wide">This Week</p>
+                            <p class="text-2xl font-bold text-green-900" id="admin-new-week">0</p>
+                            <p class="text-xs text-green-500">new members</p>
+                        </div>
+                    </div>
+                    <div class="metric-card bg-gradient-to-br from-orange-50 to-orange-100">
+                        <div class="text-center">
+                            <p class="text-xs text-orange-600 font-medium uppercase tracking-wide">This Month</p>
+                            <p class="text-2xl font-bold text-orange-900" id="admin-new-month">0</p>
+                            <p class="text-xs text-orange-500">new members</p>
+                        </div>
+                    </div>
+                    <div class="metric-card bg-gradient-to-br from-purple-50 to-purple-100">
+                        <div class="text-center">
+                            <p class="text-xs text-purple-600 font-medium uppercase tracking-wide">Year to Date</p>
+                            <p class="text-2xl font-bold text-purple-900" id="admin-new-ytd">0</p>
+                            <p class="text-xs text-purple-500">new members</p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Recent Activity -->
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div class="metric-card">
@@ -37123,7 +37155,7 @@ const AdminSystem = {
 
     async init() {
         await this.loadData();
-        this.updateOverview();
+        await this.updateOverview();
         this.loadUsersTable();
     },
 
@@ -37219,14 +37251,14 @@ const AdminSystem = {
 
     async refreshData() {
         await this.loadData();
-        this.updateOverview();
+        await this.updateOverview();
         this.loadUsersTable();
         this.loadSubscriptionsTable();
         this.loadSocietiesTable();
         NotificationManager.show('Data refreshed from database', 'success');
     },
 
-    updateOverview() {
+    async updateOverview() {
         // Total users - use exact count from database (not limited by fetch)
         const totalUsers = this.totalUserCount || this.users.length;
         document.getElementById('admin-total-users').textContent = totalUsers.toLocaleString();
@@ -37241,11 +37273,94 @@ const AdminSystem = {
         // Golf societies count
         document.getElementById('admin-societies-count').textContent = this.societies.length;
 
-        // Active today (simulate)
-        document.getElementById('admin-active-today').textContent = Math.floor(totalUsers * 0.3).toLocaleString();
+        // Active Today - REAL count from scorecards created today
+        try {
+            const today = new Date();
+            const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+            const { count: activeToday, error: activeTodayError } = await window.SupabaseDB.client
+                .from('scorecards')
+                .select('player_id', { count: 'exact', head: true })
+                .gte('created_at', todayStr);
+
+            if (!activeTodayError) {
+                document.getElementById('admin-active-today').textContent = (activeToday || 0).toLocaleString();
+            } else {
+                document.getElementById('admin-active-today').textContent = '0';
+            }
+        } catch (e) {
+            console.error('[AdminSystem] Error getting active today:', e);
+            document.getElementById('admin-active-today').textContent = '0';
+        }
+
+        // New Members Growth Stats - calculated from created_at timestamps
+        await this.updateMemberGrowthStats();
 
         // Load recent signups
         this.loadRecentSignups();
+    },
+
+    async updateMemberGrowthStats() {
+        try {
+            const now = new Date();
+
+            // Today (local timezone)
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+            // This week (Monday start)
+            const dayOfWeek = now.getDay();
+            const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+            const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
+
+            // This month
+            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+            // Year to date
+            const yearStart = new Date(now.getFullYear(), 0, 1);
+
+            // Format dates for Supabase query
+            const formatDate = (d) => d.toISOString();
+
+            // Count new members for each period
+            const [todayResult, weekResult, monthResult, ytdResult] = await Promise.all([
+                window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('*', { count: 'exact', head: true })
+                    .gte('created_at', formatDate(todayStart)),
+                window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('*', { count: 'exact', head: true })
+                    .gte('created_at', formatDate(weekStart)),
+                window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('*', { count: 'exact', head: true })
+                    .gte('created_at', formatDate(monthStart)),
+                window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('*', { count: 'exact', head: true })
+                    .gte('created_at', formatDate(yearStart))
+            ]);
+
+            // Update UI
+            document.getElementById('admin-new-today').textContent = (todayResult.count || 0).toLocaleString();
+            document.getElementById('admin-new-week').textContent = (weekResult.count || 0).toLocaleString();
+            document.getElementById('admin-new-month').textContent = (monthResult.count || 0).toLocaleString();
+            document.getElementById('admin-new-ytd').textContent = (ytdResult.count || 0).toLocaleString();
+
+            console.log('[AdminSystem] Member growth stats:', {
+                today: todayResult.count,
+                week: weekResult.count,
+                month: monthResult.count,
+                ytd: ytdResult.count
+            });
+
+        } catch (error) {
+            console.error('[AdminSystem] Error updating member growth stats:', error);
+            document.getElementById('admin-new-today').textContent = '0';
+            document.getElementById('admin-new-week').textContent = '0';
+            document.getElementById('admin-new-month').textContent = '0';
+            document.getElementById('admin-new-ytd').textContent = '0';
+        }
     },
 
     loadRecentSignups() {

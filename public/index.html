@@ -59393,11 +59393,18 @@ const MessagesSystem = {
 
             } else if (this.currentConversation.type === 'group') {
                 const groupId = this.currentConversation.id;
+                console.log('[MessagesSystem] Loading group messages for group:', groupId);
                 const { data, error } = await window.SupabaseDB.client
                     .from('group_chat_messages')
                     .select('*')
                     .eq('group_id', groupId)
                     .order('created_at', { ascending: true });
+
+                console.log('[MessagesSystem] Group messages loaded:', data?.length || 0, 'Error:', error);
+                if (data && data.length > 0) {
+                    console.log('[MessagesSystem] Message senders:', data.map(m => m.sender_line_id));
+                    console.log('[MessagesSystem] My userLineId:', this.userLineId);
+                }
 
                 if (error) throw error;
                 messages = data || [];
@@ -59413,6 +59420,7 @@ const MessagesSystem = {
                 await this.refreshUnreadCounts();
             }
 
+            console.log('[MessagesSystem] Total messages to render:', messages.length);
             if (messages.length === 0) {
                 container.innerHTML = '<div class="text-center text-gray-500 py-8">No messages yet. Start the conversation!</div>';
                 return;
@@ -59488,39 +59496,57 @@ const MessagesSystem = {
         const text = input?.value?.trim();
         if (!text || !this.currentConversation) return;
 
+        console.log('[MessagesSystem] Sending message:', {
+            type: this.currentConversation.type,
+            id: this.currentConversation.id,
+            userLineId: this.userLineId,
+            text: text.substring(0, 20) + '...'
+        });
+
         input.value = '';
 
         try {
+            let result;
             if (this.currentConversation.type === 'dm') {
-                await window.SupabaseDB.client
+                result = await window.SupabaseDB.client
                     .from('direct_messages')
                     .insert({
                         sender_line_id: this.userLineId,
                         recipient_line_id: this.currentConversation.id,
                         message_text: text
-                    });
+                    })
+                    .select();
+                console.log('[MessagesSystem] DM insert result:', result);
             } else if (this.currentConversation.type === 'event') {
-                await window.SupabaseDB.client
+                result = await window.SupabaseDB.client
                     .from('event_group_messages')
                     .insert({
                         event_id: this.currentConversation.id,
                         sender_line_id: this.userLineId,
                         message_text: text
-                    });
+                    })
+                    .select();
+                console.log('[MessagesSystem] Event message insert result:', result);
             } else if (this.currentConversation.type === 'group') {
-                await window.SupabaseDB.client
+                result = await window.SupabaseDB.client
                     .from('group_chat_messages')
                     .insert({
                         group_id: this.currentConversation.id,
                         sender_line_id: this.userLineId,
                         message_text: text
-                    });
+                    })
+                    .select();
+                console.log('[MessagesSystem] Group message insert result:', result);
 
                 // Update group's updated_at timestamp
                 await window.SupabaseDB.client
                     .from('group_chats')
                     .update({ updated_at: new Date().toISOString() })
                     .eq('id', this.currentConversation.id);
+            }
+
+            if (result?.error) {
+                console.error('[MessagesSystem] Insert error:', result.error);
             }
 
             await this.loadMessages();

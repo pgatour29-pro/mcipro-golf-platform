@@ -59010,11 +59010,14 @@ const MessagesSystem = {
     async init() {
         console.log('[MessagesSystem] Initializing...');
         const user = AppState?.currentUser || window.currentUser;
+        console.log('[MessagesSystem] User object:', user);
+        console.log('[MessagesSystem] User lineUserId:', user?.lineUserId);
         if (!user?.lineUserId) {
             console.warn('[MessagesSystem] No user logged in');
             return;
         }
         this.userLineId = user.lineUserId;
+        console.log('[MessagesSystem] Set userLineId to:', this.userLineId, 'Type:', typeof this.userLineId);
         await this.loadMySocieties();
         await this.refreshUnreadCounts();
         this.updateBadge();
@@ -59449,10 +59452,21 @@ const MessagesSystem = {
                 (profiles || []).forEach(p => profileMap[p.line_user_id] = p);
             }
 
-            console.log('[MessagesSystem] Rendering messages. My userLineId:', this.userLineId);
-            container.innerHTML = messages.map(m => {
+            console.log('[MessagesSystem] === RENDERING MESSAGES ===');
+            console.log('[MessagesSystem] My userLineId:', this.userLineId, 'Type:', typeof this.userLineId);
+            console.log('[MessagesSystem] Total messages to render:', messages.length);
+            container.innerHTML = messages.map((m, idx) => {
                 const isMine = m.sender_line_id === this.userLineId;
-                console.log('[MessagesSystem] Message from:', m.sender_line_id, 'isMine:', isMine, 'text:', m.message_text?.substring(0, 20));
+                console.log(`[MessagesSystem] Message ${idx}:`, {
+                    sender_line_id: m.sender_line_id,
+                    sender_type: typeof m.sender_line_id,
+                    my_userLineId: this.userLineId,
+                    my_type: typeof this.userLineId,
+                    exact_match: m.sender_line_id === this.userLineId,
+                    trimmed_match: m.sender_line_id?.trim() === this.userLineId?.trim(),
+                    isMine: isMine,
+                    text: m.message_text?.substring(0, 20)
+                });
                 const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
                 if (isMine) {
@@ -59510,27 +59524,31 @@ const MessagesSystem = {
         const text = input?.value?.trim();
         if (!text || !this.currentConversation) return;
 
-        console.log('[MessagesSystem] Sending message:', {
-            type: this.currentConversation.type,
-            id: this.currentConversation.id,
-            userLineId: this.userLineId,
-            text: text.substring(0, 20) + '...'
-        });
+        console.log('[MessagesSystem] === SENDING MESSAGE ===');
+        console.log('[MessagesSystem] this.userLineId:', this.userLineId);
+        console.log('[MessagesSystem] typeof this.userLineId:', typeof this.userLineId);
+        console.log('[MessagesSystem] conversation type:', this.currentConversation.type);
+        console.log('[MessagesSystem] conversation id:', this.currentConversation.id);
 
         input.value = '';
 
         try {
             let result;
             if (this.currentConversation.type === 'dm') {
+                const insertData = {
+                    sender_line_id: this.userLineId,
+                    recipient_line_id: this.currentConversation.id,
+                    message_text: text
+                };
+                console.log('[MessagesSystem] DM insert data:', insertData);
                 result = await window.SupabaseDB.client
                     .from('direct_messages')
-                    .insert({
-                        sender_line_id: this.userLineId,
-                        recipient_line_id: this.currentConversation.id,
-                        message_text: text
-                    })
+                    .insert(insertData)
                     .select();
                 console.log('[MessagesSystem] DM insert result:', result);
+                if (result.data?.[0]) {
+                    console.log('[MessagesSystem] SAVED sender_line_id:', result.data[0].sender_line_id);
+                }
             } else if (this.currentConversation.type === 'event') {
                 result = await window.SupabaseDB.client
                     .from('event_group_messages')

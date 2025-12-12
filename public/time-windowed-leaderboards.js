@@ -124,16 +124,15 @@ class TimeWindowedLeaderboards {
 
     async getStandings(period, societyFilter = null) {
         // LEADERBOARD RESET: Starting fresh from 2025-12-12
-        // Only count rounds from today onwards
-        const LEADERBOARD_START_DATE = '2025-12-12T00:00:00.000Z';
+        const LEADERBOARD_START_DATE = '2025-12-12';
 
         if (!this.supabase) {
             return { success: false, error: 'Supabase not initialized' };
         }
 
         try {
-            // Calculate period start date
             const now = new Date();
+            const currentYear = now.getFullYear();
             let startDate;
 
             switch (period) {
@@ -141,7 +140,6 @@ class TimeWindowedLeaderboards {
                     startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                     break;
                 case 'weekly':
-                    // Week starts on Monday
                     const dayOfWeek = now.getDay();
                     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
                     startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
@@ -156,17 +154,24 @@ class TimeWindowedLeaderboards {
                     startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
             }
 
-            // Use the later of period start or leaderboard reset date
-            let startDateStr = startDate.toISOString();
+            let startDateStr = startDate.toISOString().split('T')[0];
             if (startDateStr < LEADERBOARD_START_DATE) {
                 startDateStr = LEADERBOARD_START_DATE;
             }
 
-            // Query scorecards WITH scores to calculate stableford (like live leaderboard)
+            // FedEx Cup style point system
+            const FEDEX_POINTS = {
+                1: 100, 2: 50, 3: 35, 4: 25, 5: 20,
+                6: 15, 7: 12, 8: 10, 9: 8, 10: 6,
+                11: 5, 12: 4, 13: 3, 14: 2, 15: 1
+            };
+
+            // Query completed scorecards with scores for the period
             const { data: scorecards, error } = await this.supabase
                 .from('scorecards')
-                .select('id, player_id, total_gross, total_net, created_at, scores(*)')
-                .gte('created_at', startDateStr);
+                .select('id, player_id, event_id, total_gross, total_net, created_at, scores(*)')
+                .gte('created_at', startDateStr + 'T00:00:00.000Z')
+                .eq('status', 'completed');
 
             console.log('[TimeWindowedLeaderboards] Query:', { startDateStr, count: scorecards?.length || 0 });
 
@@ -179,14 +184,13 @@ class TimeWindowedLeaderboards {
                 return { success: true, standings: [] };
             }
 
-            // Aggregate by player - track gross, net, and stableford
-            const playerStats = {};
+            // Group scorecards by event to calculate positions and award FedEx points
+            const eventGroups = {};
             for (const card of scorecards) {
-                if (!card.player_id) continue;
-                // Skip scorecards without scores
+                if (!card.event_id || !card.player_id) continue;
                 if (!card.total_gross && !card.total_net) continue;
 
-                // Calculate stableford from individual hole scores (like live leaderboard)
+                // Calculate stableford for this card
                 let totalStableford = 0;
                 if (card.scores && Array.isArray(card.scores)) {
                     for (const score of card.scores) {
@@ -194,65 +198,100 @@ class TimeWindowedLeaderboards {
                     }
                 }
 
-                if (!playerStats[card.player_id]) {
-                    playerStats[card.player_id] = {
-                        player_id: card.player_id,
-                        total_gross: 0,
-                        total_net: 0,
-                        total_stableford: 0,
-                        rounds_played: 0
-                    };
+                if (!eventGroups[card.event_id]) {
+                    eventGroups[card.event_id] = [];
                 }
-
-                playerStats[card.player_id].total_gross += card.total_gross || 0;
-                playerStats[card.player_id].total_net += card.total_net || 0;
-                playerStats[card.player_id].total_stableford += totalStableford;
-                playerStats[card.player_id].rounds_played += 1;
+                eventGroups[card.event_id].push({
+                    ...card,
+                    total_stableford: totalStableford
+                });
             }
 
-            // Convert to array and sort by total stableford (higher is better)
+            // Calculate positions within each event and award FedEx points
+            const playerStats = {};
+
+            for (const eventId of Object.keys(eventGroups)) {
+                const eventCards = eventGroups[eventId];
+
+                // Sort by stableford (higher is better) to determine positions
+                eventCards.sort((a, b) => b.total_stableford - a.total_stableford);
+
+                // Award FedEx points based on position
+                eventCards.forEach((card, index) => {
+                    const position = index + 1;
+                    const fedexPoints = FEDEX_POINTS[position] || 0;
+
+                    if (!playerStats[card.player_id]) {
+                        playerStats[card.player_id] = {
+                            player_id: card.player_id,
+                            total_fedex_points: 0,
+                            total_gross: 0,
+                            total_net: 0,
+                            total_stableford: 0,
+                            events_played: 0,
+                            wins: 0,
+                            top_3: 0,
+                            best_finish: 999,
+                            finishes: []
+                        };
+                    }
+
+                    playerStats[card.player_id].total_fedex_points += fedexPoints;
+                    playerStats[card.player_id].total_gross += card.total_gross || 0;
+                    playerStats[card.player_id].total_net += card.total_net || 0;
+                    playerStats[card.player_id].total_stableford += card.total_stableford || 0;
+                    playerStats[card.player_id].events_played += 1;
+                    playerStats[card.player_id].finishes.push({ position, points: fedexPoints, eventId });
+
+                    if (position === 1) playerStats[card.player_id].wins += 1;
+                    if (position <= 3) playerStats[card.player_id].top_3 += 1;
+                    if (position < playerStats[card.player_id].best_finish) {
+                        playerStats[card.player_id].best_finish = position;
+                    }
+                });
+            }
+
+            // Convert to array and sort by FedEx points (higher is better)
             let standings = Object.values(playerStats)
-                .filter(p => p.rounds_played > 0)
+                .filter(p => p.events_played > 0)
                 .map(p => ({
                     ...p,
-                    // For single round, show actual score. For multiple, show average
-                    display_gross: p.rounds_played === 1 ? p.total_gross : Math.round(p.total_gross / p.rounds_played * 10) / 10,
-                    display_net: p.rounds_played === 1 ? p.total_net : Math.round(p.total_net / p.rounds_played * 10) / 10,
-                    display_stableford: p.total_stableford // Total stableford points
+                    display_gross: p.events_played === 1 ? p.total_gross : Math.round(p.total_gross / p.events_played * 10) / 10,
+                    display_net: p.events_played === 1 ? p.total_net : Math.round(p.total_net / p.events_played * 10) / 10,
+                    display_stableford: p.total_stableford,
+                    rounds_played: p.events_played
                 }))
-                .sort((a, b) => b.total_stableford - a.total_stableford); // Higher stableford = better ranking
+                .sort((a, b) => {
+                    // Sort by FedEx points, then wins, then best finish
+                    if (b.total_fedex_points !== a.total_fedex_points) return b.total_fedex_points - a.total_fedex_points;
+                    if (b.wins !== a.wins) return b.wins - a.wins;
+                    return a.best_finish - b.best_finish;
+                });
 
             // Get player names AND society affiliations
             const playerIdsList = standings.map(s => s.player_id);
             if (playerIdsList.length > 0) {
-                // Fetch profiles
                 const { data: profiles } = await this.supabase
                     .from('user_profiles')
                     .select('line_user_id, name, display_name, society_name')
                     .in('line_user_id', playerIdsList);
 
-                // Fetch society memberships for society names
                 const { data: memberships } = await this.supabase
                     .from('society_members')
                     .select('golfer_id, is_primary, societies(name)')
                     .in('golfer_id', playerIdsList)
                     .eq('status', 'active');
 
-                // Build maps
                 const nameMap = {};
                 const societyMap = {};
 
                 if (profiles) {
                     profiles.forEach(p => {
                         nameMap[p.line_user_id] = p.display_name || p.name || 'Unknown';
-                        // Use society_name from profile as fallback
-                        if (p.society_name) {
-                            societyMap[p.line_user_id] = p.society_name;
-                        }
+                        if (p.society_name) societyMap[p.line_user_id] = p.society_name;
                     });
                 }
 
-                // Get primary society from memberships (more accurate)
                 if (memberships) {
                     memberships.forEach(m => {
                         if (m.societies?.name && (m.is_primary || !societyMap[m.golfer_id])) {
@@ -267,7 +306,7 @@ class TimeWindowedLeaderboards {
                     society_name: societyMap[s.player_id] || null,
                     rank: index + 1,
                     rank_change: 0,
-                    total_points: s.display_stableford // Stableford for ranking
+                    total_points: s.total_fedex_points // FedEx points for display
                 }));
             }
 
@@ -486,6 +525,10 @@ class TimeWindowedLeaderboards {
         // Short society name (abbreviation)
         const societyAbbrev = player.society_name ? this.getSocietyAbbrev(player.society_name) : '';
 
+        // FedEx points display
+        const fedexPoints = player.total_fedex_points || player.total_points || 0;
+        const winsDisplay = player.wins > 0 ? `🏆${player.wins}` : '';
+
         return `
             <div class="${order} ${style.height}">
                 <div class="bg-gradient-to-b ${style.bg} rounded-2xl p-3 md:p-4 shadow-lg ${isHighlighted ? 'ring-4 ' + style.ring : ''} transform hover:scale-105 transition-transform">
@@ -498,24 +541,22 @@ class TimeWindowedLeaderboards {
                             ${(player.player_name || 'U')[0].toUpperCase()}
                         </div>
 
-                        <!-- Player Name with Points Badge -->
+                        <!-- Player Name -->
                         <div class="mb-1">
                             <div class="font-bold text-white text-sm md:text-base truncate">${player.player_name || 'Unknown'}</div>
                             ${societyAbbrev ? `<div class="text-white/70 text-xs">${societyAbbrev}</div>` : ''}
                         </div>
 
-                        <!-- Points Badge - Prominent! -->
-                        <div class="inline-flex items-center gap-1 bg-white/20 backdrop-blur rounded-full px-3 py-1 mt-1">
-                            <span class="material-symbols-outlined text-white text-sm">star</span>
-                            <span class="text-white font-bold text-lg">${player.display_stableford || 0}</span>
-                            <span class="text-white/70 text-xs">pts</span>
+                        <!-- FedEx Points Badge - Big & Prominent! -->
+                        <div class="inline-flex items-center gap-1 bg-white/30 backdrop-blur rounded-full px-4 py-2 mt-1">
+                            <span class="text-white font-black text-2xl">${fedexPoints}</span>
+                            <span class="text-white/80 text-xs font-medium">PTS</span>
                         </div>
 
-                        <!-- Score Details -->
-                        <div class="flex justify-center gap-3 mt-2 text-white/80 text-xs">
-                            <span>${player.display_gross || '-'} G</span>
-                            <span>${player.display_net || '-'} N</span>
-                            <span>${player.rounds_played || 0} rd${player.rounds_played !== 1 ? 's' : ''}</span>
+                        <!-- Stats Row -->
+                        <div class="flex justify-center gap-2 mt-2 text-white/90 text-xs">
+                            ${winsDisplay ? `<span class="font-bold">${winsDisplay}</span>` : ''}
+                            <span>${player.events_played || player.rounds_played || 0} event${(player.events_played || player.rounds_played) !== 1 ? 's' : ''}</span>
                         </div>
                     </div>
                 </div>
@@ -527,6 +568,8 @@ class TimeWindowedLeaderboards {
     renderPlayerRow(player, rank, highlightPlayerId) {
         const isHighlighted = player.player_id === highlightPlayerId;
         const societyAbbrev = player.society_name ? this.getSocietyAbbrev(player.society_name) : '';
+        const fedexPoints = player.total_fedex_points || player.total_points || 0;
+        const winsDisplay = player.wins > 0 ? `🏆${player.wins}` : '';
 
         return `
             <div class="flex items-center gap-3 p-3 ${isHighlighted ? 'bg-emerald-50' : 'hover:bg-gray-50'} transition-colors">
@@ -544,28 +587,24 @@ class TimeWindowedLeaderboards {
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">
                         <span class="font-semibold text-gray-800 truncate">${player.player_name || 'Unknown'}</span>
-                        <!-- Points Badge next to name -->
-                        <span class="inline-flex items-center gap-0.5 bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5 text-xs font-bold flex-shrink-0">
-                            <span class="material-symbols-outlined text-xs">star</span>
-                            ${player.display_stableford || 0}
+                        <!-- FedEx Points Badge - prominent next to name -->
+                        <span class="inline-flex items-center gap-1 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-full px-2.5 py-0.5 text-sm font-bold flex-shrink-0 shadow-sm">
+                            ${fedexPoints}
                         </span>
+                        ${winsDisplay ? `<span class="text-sm">${winsDisplay}</span>` : ''}
                     </div>
                     ${societyAbbrev ? `<div class="text-xs text-gray-500">${societyAbbrev}</div>` : ''}
                 </div>
 
-                <!-- Scores -->
-                <div class="flex items-center gap-4 text-sm text-gray-600 flex-shrink-0">
+                <!-- Stats -->
+                <div class="flex items-center gap-3 text-sm text-gray-600 flex-shrink-0">
                     <div class="text-center hidden sm:block">
-                        <div class="font-medium">${player.display_gross || '-'}</div>
-                        <div class="text-xs text-gray-400">Gross</div>
-                    </div>
-                    <div class="text-center hidden sm:block">
-                        <div class="font-medium">${player.display_net || '-'}</div>
-                        <div class="text-xs text-gray-400">Net</div>
+                        <div class="font-medium">${player.top_3 || 0}</div>
+                        <div class="text-xs text-gray-400">Top 3</div>
                     </div>
                     <div class="text-center">
-                        <div class="font-medium">${player.rounds_played || 0}</div>
-                        <div class="text-xs text-gray-400">Rds</div>
+                        <div class="font-medium">${player.events_played || player.rounds_played || 0}</div>
+                        <div class="text-xs text-gray-400">Events</div>
                     </div>
                 </div>
             </div>

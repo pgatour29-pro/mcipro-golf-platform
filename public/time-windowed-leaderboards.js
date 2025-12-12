@@ -38,13 +38,18 @@ class TimeWindowedLeaderboards {
                 .eq('status', 'active');
 
             if (!error && data) {
-                this.userSocieties = data
-                    .filter(m => m.societies)
-                    .map(m => ({
-                        id: m.societies.id,
-                        name: m.societies.name
-                    }));
-                console.log('[TimeWindowedLeaderboards] Loaded societies:', this.userSocieties.length);
+                // FIXED: Deduplicate societies by ID to prevent duplicates in dropdown
+                const societyMap = new Map();
+                data.filter(m => m.societies).forEach(m => {
+                    if (!societyMap.has(m.societies.id)) {
+                        societyMap.set(m.societies.id, {
+                            id: m.societies.id,
+                            name: m.societies.name
+                        });
+                    }
+                });
+                this.userSocieties = Array.from(societyMap.values());
+                console.log('[TimeWindowedLeaderboards] Loaded societies (deduplicated):', this.userSocieties.length);
             }
         } catch (err) {
             console.error('[TimeWindowedLeaderboards] Error loading societies:', err);
@@ -217,24 +222,49 @@ class TimeWindowedLeaderboards {
                 }))
                 .sort((a, b) => b.total_stableford - a.total_stableford); // Higher stableford = better ranking
 
-            // Get player names
+            // Get player names AND society affiliations
             const playerIdsList = standings.map(s => s.player_id);
             if (playerIdsList.length > 0) {
+                // Fetch profiles
                 const { data: profiles } = await this.supabase
                     .from('user_profiles')
-                    .select('line_user_id, name, display_name')
+                    .select('line_user_id, name, display_name, society_name')
                     .in('line_user_id', playerIdsList);
 
+                // Fetch society memberships for society names
+                const { data: memberships } = await this.supabase
+                    .from('society_members')
+                    .select('golfer_id, is_primary, societies(name)')
+                    .in('golfer_id', playerIdsList)
+                    .eq('status', 'active');
+
+                // Build maps
                 const nameMap = {};
+                const societyMap = {};
+
                 if (profiles) {
                     profiles.forEach(p => {
                         nameMap[p.line_user_id] = p.display_name || p.name || 'Unknown';
+                        // Use society_name from profile as fallback
+                        if (p.society_name) {
+                            societyMap[p.line_user_id] = p.society_name;
+                        }
+                    });
+                }
+
+                // Get primary society from memberships (more accurate)
+                if (memberships) {
+                    memberships.forEach(m => {
+                        if (m.societies?.name && (m.is_primary || !societyMap[m.golfer_id])) {
+                            societyMap[m.golfer_id] = m.societies.name;
+                        }
                     });
                 }
 
                 standings = standings.map((s, index) => ({
                     ...s,
                     player_name: nameMap[s.player_id] || 'Unknown',
+                    society_name: societyMap[s.player_id] || null,
                     rank: index + 1,
                     rank_change: 0,
                     total_points: s.display_stableford // Stableford for ranking
@@ -386,65 +416,174 @@ class TimeWindowedLeaderboards {
         if (!standings || standings.length === 0) {
             container.innerHTML = `
                 <div class="text-center py-8 text-gray-500">
-                    <i class="material-symbols-outlined text-4xl mb-2">leaderboard</i>
-                    <p>No rounds played yet this period</p>
+                    <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">leaderboard</span>
+                    <p class="font-medium">No rounds played yet this period</p>
                     <p class="text-sm mt-2">Complete a round to appear on the leaderboard!</p>
                 </div>
             `;
             return;
         }
 
+        // Get top 3 for podium display
+        const podium = standings.slice(0, 3);
+        const rest = standings.slice(3);
+
         let html = `
-            <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                <div class="bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-3">
-                    <h3 class="text-white font-bold text-lg">${title}</h3>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-2 py-2 text-left text-xs font-semibold text-gray-600">Rank</th>
-                                <th class="px-2 py-2 text-left text-xs font-semibold text-gray-600">Player</th>
-                                <th class="px-2 py-2 text-center text-xs font-semibold text-gray-600">Gross</th>
-                                <th class="px-2 py-2 text-center text-xs font-semibold text-gray-600">Net</th>
-                                <th class="px-2 py-2 text-center text-xs font-semibold text-gray-600">Pts</th>
-                                <th class="px-2 py-2 text-center text-xs font-semibold text-gray-600">Rds</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100">
-        `;
-
-        standings.forEach((player, index) => {
-            const isHighlighted = player.player_id === highlightPlayerId;
-            const rankDisplay = this.getRankBadge(player.rank || index + 1);
-
-            html += `
-                <tr class="${isHighlighted ? 'bg-emerald-50' : (index % 2 === 0 ? 'bg-white' : 'bg-gray-50')}">
-                    <td class="px-2 py-2">${rankDisplay}</td>
-                    <td class="px-2 py-2">
-                        <div class="flex items-center gap-2">
-                            <div class="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xs">
-                                ${(player.player_name || 'U')[0].toUpperCase()}
+            <div class="space-y-4">
+                <!-- Stylish Header -->
+                <div class="bg-gradient-to-r from-emerald-600 via-green-500 to-teal-500 rounded-2xl p-4 shadow-lg">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="bg-white/20 rounded-xl p-2">
+                                <span class="material-symbols-outlined text-white text-2xl">emoji_events</span>
                             </div>
-                            <span class="font-medium text-gray-800 text-sm ${isHighlighted ? 'text-emerald-700' : ''}">${player.player_name || 'Unknown'}</span>
+                            <div>
+                                <h3 class="text-white font-bold text-lg">${title}</h3>
+                                <p class="text-white/80 text-sm">${standings.length} players • ${standings.reduce((sum, p) => sum + (p.rounds_played || 0), 0)} rounds</p>
+                            </div>
                         </div>
-                    </td>
-                    <td class="px-2 py-2 text-center text-gray-700">${player.display_gross || player.total_gross || '-'}</td>
-                    <td class="px-2 py-2 text-center text-gray-700">${player.display_net || player.total_net || '-'}</td>
-                    <td class="px-2 py-2 text-center font-bold text-emerald-600">${player.display_stableford || player.total_points || 0}</td>
-                    <td class="px-2 py-2 text-center text-gray-500 text-sm">${player.rounds_played || 0}</td>
-                </tr>
-            `;
-        });
-
-        html += `
-                        </tbody>
-                    </table>
+                    </div>
                 </div>
+
+                <!-- Podium Top 3 -->
+                ${podium.length > 0 ? `
+                <div class="grid grid-cols-3 gap-2 md:gap-4">
+                    ${this.renderPodiumCard(podium[1], 2, highlightPlayerId)}
+                    ${this.renderPodiumCard(podium[0], 1, highlightPlayerId)}
+                    ${this.renderPodiumCard(podium[2], 3, highlightPlayerId)}
+                </div>
+                ` : ''}
+
+                <!-- Rest of Leaderboard -->
+                ${rest.length > 0 ? `
+                <div class="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100">
+                    <div class="divide-y divide-gray-100">
+                        ${rest.map((player, index) => this.renderPlayerRow(player, index + 4, highlightPlayerId)).join('')}
+                    </div>
+                </div>
+                ` : ''}
             </div>
         `;
 
         container.innerHTML = html;
+    }
+
+    // Render podium card for top 3
+    renderPodiumCard(player, rank, highlightPlayerId) {
+        if (!player) {
+            return `<div class="order-${rank === 1 ? '2' : rank === 2 ? '1' : '3'}"></div>`;
+        }
+
+        const isHighlighted = player.player_id === highlightPlayerId;
+        const colors = {
+            1: { bg: 'from-yellow-400 to-amber-500', ring: 'ring-yellow-300', icon: '🥇', height: 'md:pt-0' },
+            2: { bg: 'from-gray-300 to-slate-400', ring: 'ring-gray-200', icon: '🥈', height: 'md:pt-6' },
+            3: { bg: 'from-amber-600 to-orange-700', ring: 'ring-amber-400', icon: '🥉', height: 'md:pt-8' }
+        };
+        const style = colors[rank];
+        const order = rank === 1 ? 'order-2' : rank === 2 ? 'order-1' : 'order-3';
+
+        // Short society name (abbreviation)
+        const societyAbbrev = player.society_name ? this.getSocietyAbbrev(player.society_name) : '';
+
+        return `
+            <div class="${order} ${style.height}">
+                <div class="bg-gradient-to-b ${style.bg} rounded-2xl p-3 md:p-4 shadow-lg ${isHighlighted ? 'ring-4 ' + style.ring : ''} transform hover:scale-105 transition-transform">
+                    <div class="text-center">
+                        <!-- Rank Icon -->
+                        <div class="text-2xl md:text-3xl mb-1">${style.icon}</div>
+
+                        <!-- Player Avatar -->
+                        <div class="mx-auto w-12 h-12 md:w-14 md:h-14 rounded-full bg-white/30 flex items-center justify-center text-white font-bold text-xl md:text-2xl shadow-inner mb-2">
+                            ${(player.player_name || 'U')[0].toUpperCase()}
+                        </div>
+
+                        <!-- Player Name with Points Badge -->
+                        <div class="mb-1">
+                            <div class="font-bold text-white text-sm md:text-base truncate">${player.player_name || 'Unknown'}</div>
+                            ${societyAbbrev ? `<div class="text-white/70 text-xs">${societyAbbrev}</div>` : ''}
+                        </div>
+
+                        <!-- Points Badge - Prominent! -->
+                        <div class="inline-flex items-center gap-1 bg-white/20 backdrop-blur rounded-full px-3 py-1 mt-1">
+                            <span class="material-symbols-outlined text-white text-sm">star</span>
+                            <span class="text-white font-bold text-lg">${player.display_stableford || 0}</span>
+                            <span class="text-white/70 text-xs">pts</span>
+                        </div>
+
+                        <!-- Score Details -->
+                        <div class="flex justify-center gap-3 mt-2 text-white/80 text-xs">
+                            <span>${player.display_gross || '-'} G</span>
+                            <span>${player.display_net || '-'} N</span>
+                            <span>${player.rounds_played || 0} rd${player.rounds_played !== 1 ? 's' : ''}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Render player row for positions 4+
+    renderPlayerRow(player, rank, highlightPlayerId) {
+        const isHighlighted = player.player_id === highlightPlayerId;
+        const societyAbbrev = player.society_name ? this.getSocietyAbbrev(player.society_name) : '';
+
+        return `
+            <div class="flex items-center gap-3 p-3 ${isHighlighted ? 'bg-emerald-50' : 'hover:bg-gray-50'} transition-colors">
+                <!-- Rank -->
+                <div class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center font-bold text-gray-600 text-sm flex-shrink-0">
+                    ${rank}
+                </div>
+
+                <!-- Avatar -->
+                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white font-bold shadow-sm flex-shrink-0">
+                    ${(player.player_name || 'U')[0].toUpperCase()}
+                </div>
+
+                <!-- Name & Society -->
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                        <span class="font-semibold text-gray-800 truncate">${player.player_name || 'Unknown'}</span>
+                        <!-- Points Badge next to name -->
+                        <span class="inline-flex items-center gap-0.5 bg-emerald-100 text-emerald-700 rounded-full px-2 py-0.5 text-xs font-bold flex-shrink-0">
+                            <span class="material-symbols-outlined text-xs">star</span>
+                            ${player.display_stableford || 0}
+                        </span>
+                    </div>
+                    ${societyAbbrev ? `<div class="text-xs text-gray-500">${societyAbbrev}</div>` : ''}
+                </div>
+
+                <!-- Scores -->
+                <div class="flex items-center gap-4 text-sm text-gray-600 flex-shrink-0">
+                    <div class="text-center hidden sm:block">
+                        <div class="font-medium">${player.display_gross || '-'}</div>
+                        <div class="text-xs text-gray-400">Gross</div>
+                    </div>
+                    <div class="text-center hidden sm:block">
+                        <div class="font-medium">${player.display_net || '-'}</div>
+                        <div class="text-xs text-gray-400">Net</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="font-medium">${player.rounds_played || 0}</div>
+                        <div class="text-xs text-gray-400">Rds</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Get society abbreviation
+    getSocietyAbbrev(name) {
+        if (!name) return '';
+        // Common abbreviations
+        const abbrevs = {
+            'Travellers Rest Golf Group': 'TRGG',
+            'JOA': 'JOA',
+            'Japan Open Amateur': 'JOA'
+        };
+        if (abbrevs[name]) return abbrevs[name];
+        // Generate abbreviation from initials
+        return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 4);
     }
 
     getRankBadge(rank) {

@@ -43223,7 +43223,8 @@ class LiveScorecardSystem {
 
         container.innerHTML = availableProfiles.map(profile => {
             const name = profile.name || 'Unknown';
-            const handicap = profile.profile_data?.handicap || profile.profile_data?.golfInfo?.handicap || 0;
+            // FIXED: Prioritize golfInfo.handicap (canonical location) over legacy profile_data.handicap
+            const handicap = profile.profile_data?.golfInfo?.handicap || profile.profile_data?.handicap || 0;
             const email = profile.profile_data?.personalInfo?.email || profile.email || 'No email';
 
             return `
@@ -43268,7 +43269,8 @@ class LiveScorecardSystem {
             return;
         }
 
-        const handicap = profile.profile_data?.handicap || profile.profile_data?.golfInfo?.handicap || 0;
+        // FIXED: Prioritize golfInfo.handicap (canonical location) over legacy profile_data.handicap
+        const handicap = profile.profile_data?.golfInfo?.handicap || profile.profile_data?.handicap || 0;
 
         this.players.push({
             id: profile.line_user_id,
@@ -45367,10 +45369,14 @@ class LiveScorecardSystem {
                     }
                 };
 
-                // Save to database
+                // Save to database - update BOTH profile_data AND top-level handicap column
+                // This ensures consistency across all parts of the system
                 const { error: updateError } = await window.SupabaseDB.client
                     .from('user_profiles')
-                    .update({ profile_data: updatedProfileData })
+                    .update({
+                        profile_data: updatedProfileData,
+                        handicap: handicapString  // FIXED: Also update top-level handicap column
+                    })
                     .eq('line_user_id', player.lineUserId);
 
                 if (updateError) {

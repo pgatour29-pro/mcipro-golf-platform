@@ -7199,6 +7199,26 @@
                     });
                 }
 
+                // Initialize Dashboard Widgets (Upcoming Events, Caddy Booking, Performance)
+                setTimeout(() => {
+                    const userId = AppState?.currentUser?.lineUserId;
+                    console.log('[Dashboard] Initializing dashboard widgets for user:', userId);
+                    if (userId) {
+                        if (typeof DashboardUpcomingEvents !== 'undefined') {
+                            console.log('[Dashboard] Loading upcoming events...');
+                            DashboardUpcomingEvents.load();
+                        }
+                        if (typeof DashboardCaddyBooking !== 'undefined') {
+                            DashboardCaddyBooking.init();
+                        }
+                        if (typeof DashboardPerformance !== 'undefined') {
+                            DashboardPerformance.load();
+                        }
+                    } else {
+                        console.log('[Dashboard] No user ID yet, widgets will load on retry');
+                    }
+                }, 1500);
+
                 // CRITICAL: Render caddy bookings widget on dashboard
                 if (typeof GolferCaddyBooking !== 'undefined' && GolferCaddyBooking.renderDashboardWidget) {
                     GolferCaddyBooking.renderDashboardWidget();
@@ -7500,6 +7520,18 @@
                             console.log('[TabManager] Live Scorecard initialized');
                         } else {
                             console.warn('[TabManager] LiveScorecardManager not found or init() missing');
+                        }
+                    }, 100);
+                }
+
+                // Initialize Society Events tab when shown
+                if (dashboardId === 'golferDashboard' && tabName === 'societyevents') {
+                    setTimeout(() => {
+                        if (typeof GolferEventsSystem !== 'undefined') {
+                            GolferEventsSystem.init();
+                            console.log('[TabManager] Society Events initialized');
+                        } else {
+                            console.warn('[TabManager] GolferEventsSystem not found');
                         }
                     }, 100);
                 }
@@ -12205,22 +12237,41 @@
 
             // Close mobile drawer if open to avoid overlay blocking taps
 
-            // Update Today's Tee Time when showing overview
-            if (tabName === 'overview' && typeof TodaysTeeTimeManager !== 'undefined') {
+            // Load Upcoming Events and Caddy Booking when showing overview
+            if (tabName === 'overview') {
+                // Wait for user to be fully loaded
                 setTimeout(() => {
-                    TodaysTeeTimeManager.updateTodaysTeeTime();
+                    const userId = AppState?.currentUser?.lineUserId;
+                    console.log('[Dashboard] Loading overview widgets for user:', userId);
 
-                    // Force reset Performance Overview stats to zero state (prevent cloud data from overwriting)
-                    const bestScoreEl = document.getElementById('bestScore');
-                    const avgScoreEl = document.getElementById('avgScore');
-                    const totalRoundsEl = document.getElementById('totalRounds');
-                    const eaglesCountEl = document.getElementById('eaglesCount');
+                    if (!userId) {
+                        console.log('[Dashboard] User not loaded yet, retrying in 1s...');
+                        // Retry after another second if user not loaded
+                        setTimeout(() => {
+                            const retryUserId = AppState?.currentUser?.lineUserId;
+                            console.log('[Dashboard] Retry loading widgets for user:', retryUserId);
+                            if (retryUserId) {
+                                if (typeof DashboardUpcomingEvents !== 'undefined') DashboardUpcomingEvents.load();
+                                if (typeof DashboardCaddyBooking !== 'undefined') DashboardCaddyBooking.init();
+                                if (typeof DashboardPerformance !== 'undefined') DashboardPerformance.load();
+                            }
+                        }, 1000);
+                        return;
+                    }
 
-                    if (bestScoreEl) bestScoreEl.textContent = '-';
-                    if (avgScoreEl) avgScoreEl.textContent = '-';
-                    if (totalRoundsEl) totalRoundsEl.textContent = '0';
-                    if (eaglesCountEl) eaglesCountEl.textContent = '0';
-                }, 100);
+                    // Load upcoming events preview
+                    if (typeof DashboardUpcomingEvents !== 'undefined') {
+                        DashboardUpcomingEvents.load();
+                    }
+                    // Load caddy booking data
+                    if (typeof DashboardCaddyBooking !== 'undefined') {
+                        DashboardCaddyBooking.init();
+                    }
+                    // Load Performance Overview stats
+                    if (typeof DashboardPerformance !== 'undefined') {
+                        DashboardPerformance.load();
+                    }
+                }, 500);
             }
 
             // Initialize Round History filters when showing rounds tab
@@ -23391,6 +23442,382 @@ Total Rounds: ${ningCaddy.totalRounds}`;
             }
         };
 
+        // Dashboard Upcoming Events - Shows next 3 events user is registered for
+        const DashboardUpcomingEvents = {
+            async load() {
+                const container = document.getElementById('upcomingEventsContent');
+                if (!container) return;
+
+                try {
+                    const userId = AppState?.currentUser?.lineUserId ||
+                                   window.currentUserId ||
+                                   localStorage.getItem('line_user_id') ||
+                                   localStorage.getItem('lineUserId');
+                    const today = new Date().toISOString().split('T')[0];
+
+                    console.log('[DashboardUpcomingEvents] Loading for userId:', userId);
+
+                    if (!userId) {
+                        container.innerHTML = `<p class="text-center text-gray-400 text-sm py-4">No user found</p>`;
+                        return;
+                    }
+
+                    // Get events the user is registered for
+                    const { data: registrations, error: regError } = await window.SupabaseDB.client
+                        .from('event_registrations')
+                        .select('event_id, society_events(id, title, event_date, start_time, course_name, organizer_name)')
+                        .eq('player_id', userId);
+
+                    if (regError) throw regError;
+
+                    // Extract and filter upcoming events
+                    const now = new Date();
+                    now.setHours(0, 0, 0, 0);
+
+                    const upcomingEvents = (registrations || [])
+                        .map(r => r.society_events)
+                        .filter(e => e && new Date(e.event_date) >= now)
+                        .sort((a, b) => new Date(a.event_date) - new Date(b.event_date));
+
+                    const visibleEvents = upcomingEvents.slice(0, 3);
+
+                    if (visibleEvents.length === 0) {
+                        container.innerHTML = `
+                            <div class="text-center py-6 text-gray-400">
+                                <span class="material-symbols-outlined text-3xl mb-2">event_busy</span>
+                                <p class="text-sm">No upcoming events</p>
+                                <button onclick="TabManager.showTab('golferDashboard', 'societyevents', event)"
+                                    class="mt-3 text-primary-600 hover:text-primary-700 text-sm font-medium">
+                                    Browse Events →
+                                </button>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    container.innerHTML = visibleEvents.map((evt, idx) => {
+                        const eventDate = new Date(evt.event_date);
+                        const dayName = eventDate.toLocaleDateString('en-US', { weekday: 'short' });
+                        const dayNum = eventDate.getDate();
+                        const month = eventDate.toLocaleDateString('en-US', { month: 'short' });
+                        const isFirst = idx === 0;
+
+                        return `
+                            <div class="flex items-center gap-3 p-3 ${isFirst ? 'bg-primary-50 border border-primary-200' : 'bg-gray-50'} rounded-lg cursor-pointer hover:shadow-md transition-shadow"
+                                onclick="DashboardUpcomingEvents.viewEvent('${evt.id}')">
+                                <div class="text-center min-w-[50px]">
+                                    <div class="text-xs ${isFirst ? 'text-primary-600' : 'text-gray-500'} uppercase font-medium">${dayName}</div>
+                                    <div class="text-2xl font-bold ${isFirst ? 'text-primary-700' : 'text-gray-700'}">${dayNum}</div>
+                                    <div class="text-xs ${isFirst ? 'text-primary-500' : 'text-gray-400'}">${month}</div>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-semibold text-gray-900 truncate">${evt.title}</div>
+                                    <div class="text-sm text-gray-500 truncate">
+                                        <span class="material-symbols-outlined text-xs align-middle">location_on</span>
+                                        ${evt.course_name || 'TBD'}
+                                    </div>
+                                    <div class="text-xs text-gray-400">
+                                        ${evt.start_time || ''} ${evt.organizer_name ? '• ' + evt.organizer_name : ''}
+                                    </div>
+                                </div>
+                                ${isFirst ? '<span class="bg-primary-600 text-white text-xs px-2 py-1 rounded-full">NEXT</span>' : ''}
+                            </div>
+                        `;
+                    }).join('');
+
+                    // Also populate the caddy event selector
+                    DashboardCaddyBooking.populateEventSelector(visibleEvents);
+
+                } catch (err) {
+                    console.error('[DashboardUpcomingEvents] Error:', err);
+                    container.innerHTML = `<p class="text-center text-red-500 text-sm">Failed to load events</p>`;
+                }
+            },
+
+            async viewEvent(eventId) {
+                console.log('[DashboardUpcomingEvents] Opening event:', eventId);
+                // Navigate to society events tab and open event detail
+                TabManager.showTab('golferDashboard', 'societyevents', null);
+                // Wait for tab to load, then init events system and open detail
+                setTimeout(async () => {
+                    if (typeof GolferEventsSystem !== 'undefined') {
+                        // Make sure events are loaded first
+                        if (!GolferEventsSystem.allEvents || GolferEventsSystem.allEvents.length === 0) {
+                            await GolferEventsSystem.init();
+                        }
+                        // Now open the event detail
+                        GolferEventsSystem.openEventDetail(eventId);
+                    }
+                }, 500);
+            }
+        };
+
+        // Dashboard Caddy Booking - Manual caddy number input for events
+        const DashboardCaddyBooking = {
+            selectedEventId: null,
+
+            async init() {
+                // Load any saved caddy info for the user
+                await this.loadUserCaddyBookings();
+            },
+
+            populateEventSelector(events) {
+                const select = document.getElementById('caddyEventSelect');
+                if (!select) return;
+
+                select.innerHTML = '<option value="">-- Select an upcoming event --</option>';
+                (events || []).forEach(evt => {
+                    const eventDate = new Date(evt.event_date);
+                    const dateStr = eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    select.innerHTML += `<option value="${evt.id}">${dateStr} - ${evt.title}</option>`;
+                });
+            },
+
+            async loadUserCaddyBookings() {
+                try {
+                    const userId = AppState?.currentUser?.lineUserId ||
+                                   window.currentUserId ||
+                                   localStorage.getItem('line_user_id');
+                    if (!userId) return;
+
+                    // Check if user has any caddy bookings in event_registrations
+                    const { data, error } = await window.SupabaseDB.client
+                        .from('event_registrations')
+                        .select('event_id, caddy_numbers, society_events(title, event_date)')
+                        .eq('player_id', userId)
+                        .not('caddy_numbers', 'is', null)
+                        .order('created_at', { ascending: false })
+                        .limit(1);
+
+                    if (data && data.length > 0 && data[0].caddy_numbers) {
+                        // Show the last saved caddy
+                        this.selectedEventId = data[0].event_id;
+                        const select = document.getElementById('caddyEventSelect');
+                        if (select) select.value = data[0].event_id;
+                        this.showSavedCaddy(data[0].caddy_numbers);
+                    }
+                } catch (err) {
+                    console.error('[DashboardCaddyBooking] Error loading:', err);
+                }
+            },
+
+            async loadCaddyForEvent(eventId) {
+                this.selectedEventId = eventId;
+                const input = document.getElementById('caddyNumberInput');
+                const savedDiv = document.getElementById('savedCaddyInfo');
+
+                if (!eventId) {
+                    if (input) input.value = '';
+                    if (savedDiv) savedDiv.classList.add('hidden');
+                    return;
+                }
+
+                try {
+                    const userId = AppState?.currentUser?.lineUserId ||
+                                   window.currentUserId ||
+                                   localStorage.getItem('line_user_id');
+                    const { data, error } = await window.SupabaseDB.client
+                        .from('event_registrations')
+                        .select('caddy_numbers')
+                        .eq('event_id', eventId)
+                        .eq('player_id', userId)
+                        .single();
+
+                    if (data && data.caddy_numbers) {
+                        if (input) input.value = data.caddy_numbers;
+                        this.showSavedCaddy(data.caddy_numbers);
+                    } else {
+                        if (input) input.value = '';
+                        if (savedDiv) savedDiv.classList.add('hidden');
+                    }
+                } catch (err) {
+                    console.log('[DashboardCaddyBooking] No existing registration:', err.message);
+                    if (input) input.value = '';
+                    if (savedDiv) savedDiv.classList.add('hidden');
+                }
+            },
+
+            showSavedCaddy(numbers) {
+                const savedDiv = document.getElementById('savedCaddyInfo');
+                const numbersEl = document.getElementById('savedCaddyNumbers');
+                if (savedDiv && numbersEl) {
+                    numbersEl.textContent = numbers;
+                    savedDiv.classList.remove('hidden');
+                }
+            },
+
+            async saveCaddyNumber() {
+                const input = document.getElementById('caddyNumberInput');
+                const eventId = this.selectedEventId || document.getElementById('caddyEventSelect')?.value;
+
+                if (!eventId) {
+                    NotificationManager.show('Please select an event first', 'warning');
+                    return;
+                }
+
+                const caddyNumbers = input?.value?.trim();
+                if (!caddyNumbers) {
+                    NotificationManager.show('Please enter caddy number(s)', 'warning');
+                    return;
+                }
+
+                try {
+                    const userId = AppState?.currentUser?.lineUserId ||
+                                   window.currentUserId ||
+                                   localStorage.getItem('line_user_id');
+                    const userName = AppState?.currentUser?.name ||
+                                     window.currentUserName ||
+                                     localStorage.getItem('display_name') || 'Unknown';
+
+                    // First try to update existing registration
+                    const { data: existing } = await window.SupabaseDB.client
+                        .from('event_registrations')
+                        .select('id')
+                        .eq('event_id', eventId)
+                        .eq('player_id', userId)
+                        .single();
+
+                    let error;
+                    if (existing) {
+                        // Update existing registration
+                        const result = await window.SupabaseDB.client
+                            .from('event_registrations')
+                            .update({ caddy_numbers: caddyNumbers })
+                            .eq('event_id', eventId)
+                            .eq('player_id', userId);
+                        error = result.error;
+                    } else {
+                        // Insert new registration
+                        const result = await window.SupabaseDB.client
+                            .from('event_registrations')
+                            .insert({
+                                event_id: eventId,
+                                player_id: userId,
+                                player_name: userName,
+                                caddy_numbers: caddyNumbers
+                            });
+                        error = result.error;
+                    }
+
+                    if (error) throw error;
+
+                    this.showSavedCaddy(caddyNumbers);
+                    NotificationManager.show('Caddy booking saved!', 'success');
+                } catch (err) {
+                    console.error('[DashboardCaddyBooking] Save error:', err);
+                    NotificationManager.show('Failed to save caddy booking', 'error');
+                }
+            },
+
+            async clearCaddyNumber() {
+                const eventId = this.selectedEventId || document.getElementById('caddyEventSelect')?.value;
+                if (!eventId) return;
+
+                try {
+                    const userId = AppState?.currentUser?.lineUserId ||
+                                   window.currentUserId ||
+                                   localStorage.getItem('line_user_id');
+
+                    const { error } = await window.SupabaseDB.client
+                        .from('event_registrations')
+                        .update({ caddy_numbers: null })
+                        .eq('event_id', eventId)
+                        .eq('player_id', userId);
+
+                    if (error) throw error;
+
+                    document.getElementById('caddyNumberInput').value = '';
+                    document.getElementById('savedCaddyInfo').classList.add('hidden');
+                    NotificationManager.show('Caddy booking cleared', 'info');
+                } catch (err) {
+                    console.error('[DashboardCaddyBooking] Clear error:', err);
+                }
+            }
+        };
+
+        // Dashboard Performance - Load actual stats from rounds table
+        const DashboardPerformance = {
+            async load() {
+                try {
+                    const userId = AppState?.currentUser?.lineUserId ||
+                                   window.currentUserId ||
+                                   localStorage.getItem('line_user_id');
+                    if (!userId) return;
+
+                    // Get this year's start
+                    const thisYear = new Date().getFullYear();
+                    const yearStart = `${thisYear}-01-01`;
+                    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+
+                    // Fetch rounds for this year
+                    const { data: rounds, error } = await window.SupabaseDB.client
+                        .from('rounds')
+                        .select('total_gross, played_at')
+                        .eq('golfer_id', userId)
+                        .gte('played_at', yearStart)
+                        .order('played_at', { ascending: false });
+
+                    if (error) {
+                        console.error('[DashboardPerformance] Rounds query error:', error);
+                        // Don't throw, just continue with empty data
+                    }
+
+                    const validRounds = (rounds || []).filter(r => r.total_gross >= 60 && r.total_gross <= 130);
+
+                    // Calculate stats
+                    const totalRounds = validRounds.length;
+                    const bestScore = totalRounds > 0 ? Math.min(...validRounds.map(r => r.total_gross)) : null;
+                    const avgScore = totalRounds > 0 ? Math.round(validRounds.reduce((sum, r) => sum + r.total_gross, 0) / totalRounds) : null;
+
+                    // Count eagles this month (from scorecards with scores)
+                    let eaglesCount = 0;
+                    try {
+                        const { data: scorecards } = await window.SupabaseDB.client
+                            .from('scorecards')
+                            .select('id, scores(gross_score, par)')
+                            .eq('player_id', userId)
+                            .gte('created_at', monthStart);
+
+                        (scorecards || []).forEach(sc => {
+                            (sc.scores || []).forEach(s => {
+                                if (s.gross_score && s.par && s.gross_score <= s.par - 2) {
+                                    eaglesCount++;
+                                }
+                            });
+                        });
+                    } catch {}
+
+                    // Update UI
+                    const bestScoreEl = document.getElementById('bestScore');
+                    const avgScoreEl = document.getElementById('avgScore');
+                    const totalRoundsEl = document.getElementById('totalRounds');
+                    const eaglesCountEl = document.getElementById('eaglesCount');
+
+                    if (bestScoreEl) {
+                        bestScoreEl.textContent = bestScore || '-';
+                        const subtext = bestScoreEl.parentElement?.querySelector('.text-xs');
+                        if (subtext) subtext.textContent = totalRounds > 0 ? 'Best gross' : 'No rounds yet';
+                    }
+                    if (avgScoreEl) {
+                        avgScoreEl.textContent = avgScore || '-';
+                        const subtext = avgScoreEl.parentElement?.querySelector('.text-xs');
+                        if (subtext) subtext.textContent = totalRounds > 0 ? 'Avg gross' : 'No rounds yet';
+                    }
+                    if (totalRoundsEl) {
+                        totalRoundsEl.textContent = totalRounds;
+                    }
+                    if (eaglesCountEl) {
+                        eaglesCountEl.textContent = eaglesCount;
+                    }
+
+                    console.log('[DashboardPerformance] Loaded:', { totalRounds, bestScore, avgScore, eaglesCount });
+
+                } catch (err) {
+                    console.error('[DashboardPerformance] Error:', err);
+                }
+            }
+        };
+
         // Global functions for UI
         function joinWaitlist(caddieId, event) {
             EnhancedBookingManager.joinWaitlist(caddieId, event);
@@ -23409,6 +23836,9 @@ Total Rounds: ${ningCaddy.totalRounds}`;
             setTimeout(() => {
                 EnhancedBookingManager.updateWaitlistDisplay();
             }, 500);
+
+            // Dashboard widgets will be initialized when showGolferTab('overview') is called
+            // after user login - see the showGolferTab function
         });
 
         // BEGIN: emergency sound helpers
@@ -24280,64 +24710,62 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </div>
                 </div>
 
-                <!-- Current Status Grid -->
+                <!-- Upcoming Events & Caddy Booking Grid -->
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mb-4 md:mb-8">
-                    <!-- Today's Tee Time -->
-                    <div class="metric-card" id="todaysTeeTimeCard">
-                        <div class="flex items-center justify-between mb-6">
-                            <h3 class="text-xl font-bold text-gray-900" data-i18n="golfer.today.teetime">Today's Tee Time</h3>
-                        </div>
-                        <div id="todaysTeeTimeContent" class="text-center py-8">
-                            <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <span class="material-symbols-outlined text-gray-400 text-2xl">schedule</span>
-                            </div>
-                            <p class="text-gray-500 font-medium" data-i18n="golfer.no.teetime">No tee time booked today</p>
-                            <p class="text-sm text-gray-400 mt-1" data-i18n="golfer.book.prompt">Book your next round to see it here</p>
-                        </div>
-                        <div class="mt-6">
-                            <button class="btn-primary w-full" onclick="TabManager.showTab('golferDashboard', 'booking', event)">
-                                <span class="material-symbols-outlined text-sm">add</span>
-                                <span data-i18n="golfer.book.teetime">Book Tee Time</span>
+                    <!-- Upcoming Events -->
+                    <div class="metric-card" id="upcomingEventsCard">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xl font-bold text-gray-900">Upcoming Events</h3>
+                            <button onclick="TabManager.showTab('golferDashboard', 'societyevents', event)" class="text-primary-600 hover:text-primary-700 font-medium text-sm">
+                                View All →
                             </button>
+                        </div>
+                        <div id="upcomingEventsContent" class="space-y-3">
+                            <div class="text-center py-8 text-gray-400">
+                                <span class="material-symbols-outlined text-4xl mb-2">event</span>
+                                <p>Loading events...</p>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Live Course Status -->
-                    <div class="metric-card">
-                        <h3 class="text-xl font-bold text-gray-900 mb-6" data-i18n="golfer.live.status">Live Course Status</h3>
-                        <div class="grid grid-cols-2 gap-6 mb-6">
-                            <div class="text-center">
-                                <div class="metric-value text-2xl text-gray-400" id="currentHole">-</div>
-                                <div class="metric-label" data-i18n="golfer.current.hole">Current Hole</div>
-                                <div class="text-xs text-gray-400 mt-1" data-i18n="golfer.not.playing">Not playing</div>
-                            </div>
-                            <div class="text-center">
-                                <div class="metric-value text-2xl text-gray-400" id="distanceToPin">-</div>
-                                <div class="metric-label" data-i18n="golfer.yards.topin">Yards to Pin</div>
-                                <div class="text-xs text-gray-400 mt-1" data-i18n="golfer.not.playing">Not playing</div>
-                            </div>
+                    <!-- My Caddy Booking -->
+                    <div class="metric-card" id="myCaddyBookingCard">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xl font-bold text-gray-900">My Caddy Booking</h3>
+                            <button onclick="TabManager.showTab('golferDashboard', 'myCaddies', event)" class="text-primary-600 hover:text-primary-700 font-medium text-sm">
+                                Caddy Book →
+                            </button>
                         </div>
-                        <div class="space-y-4">
-                            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                                <div class="flex items-center space-x-3">
-                                    <span class="material-symbols-outlined text-blue-600">thermostat</span>
-                                    <span class="font-medium" data-i18n="golfer.temperature">Temperature</span>
-                                </div>
-                                <span class="font-bold text-gray-900">24°C</span>
+                        <div id="myCaddyBookingContent">
+                            <!-- Event selector for caddy -->
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Select Event</label>
+                                <select id="caddyEventSelect" class="form-input w-full" onchange="DashboardCaddyBooking.loadCaddyForEvent(this.value)">
+                                    <option value="">-- Select an upcoming event --</option>
+                                </select>
                             </div>
-                            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                                <div class="flex items-center space-x-3">
-                                    <span class="material-symbols-outlined text-green-600">air</span>
-                                    <span class="font-medium" data-i18n="golfer.wind">Wind</span>
+                            <!-- Caddy number input -->
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Caddy Number(s)</label>
+                                <div class="flex gap-2">
+                                    <input type="text" id="caddyNumberInput" class="form-input flex-1" placeholder="e.g., 42, 15, 88" />
+                                    <button onclick="DashboardCaddyBooking.saveCaddyNumber()" class="btn-primary px-4">
+                                        <span class="material-symbols-outlined text-sm">save</span>
+                                    </button>
                                 </div>
-                                <span class="font-bold text-gray-900">8 km/h NE</span>
+                                <p class="text-xs text-gray-400 mt-1">Enter caddy numbers separated by commas</p>
                             </div>
-                            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                                <div class="flex items-center space-x-3">
-                                    <span class="material-symbols-outlined text-yellow-500">wb_sunny</span>
-                                    <span class="font-medium" data-i18n="golfer.conditions">Conditions</span>
+                            <!-- Saved caddy info display -->
+                            <div id="savedCaddyInfo" class="hidden bg-green-50 border border-green-200 rounded-lg p-3">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p class="text-sm font-medium text-green-800">Caddy Booked</p>
+                                        <p class="text-lg font-bold text-green-900" id="savedCaddyNumbers">-</p>
+                                    </div>
+                                    <button onclick="DashboardCaddyBooking.clearCaddyNumber()" class="text-red-500 hover:text-red-700">
+                                        <span class="material-symbols-outlined">delete</span>
+                                    </button>
                                 </div>
-                                <span class="font-bold text-gray-900" data-i18n="golfer.sunny">Sunny</span>
                             </div>
                         </div>
                     </div>
@@ -34327,6 +34755,19 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             >
                         </div>
 
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Caddy Number(s) <span class="text-xs text-gray-500 font-normal">(Optional)</span>
+                            </label>
+                            <input
+                                type="text"
+                                id="regCaddyNumbers"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                                placeholder="e.g., 42, 15 (comma separated for multiple)"
+                            >
+                            <p class="text-xs text-gray-500 mt-1">Enter your preferred caddy numbers if you have them</p>
+                        </div>
+
                         <div class="flex items-center space-x-6">
                             <label class="flex items-center cursor-pointer">
                                 <input type="checkbox" id="regWantTransport" class="mr-2 rounded" onchange="GolferEventsSystem.updateRegistrationTotal()">
@@ -39014,7 +39455,39 @@ class SocietyGolfSupabase {
         }
 
         console.log('[DEBUG] createEvent SUCCESS, created event:', data);
-        return data?.[0];
+
+        // Send LINE push notification for ALL new events
+        const createdEvent = data?.[0];
+        if (createdEvent) {
+            try {
+                const notifResponse = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'new_event',
+                        record: {
+                            id: createdEvent.id,
+                            title: createdEvent.title,
+                            event_date: createdEvent.event_date,
+                            start_time: createdEvent.start_time,
+                            course_name: createdEvent.course_name,
+                            society_id: createdEvent.society_id || null,
+                            creator_id: createdEvent.creator_id,
+                            organizer_name: createdEvent.organizer_name,
+                            is_private: createdEvent.is_private,
+                            description: createdEvent.description
+                        }
+                    })
+                });
+                const notifResult = await notifResponse.json();
+                console.log('[SocietyGolfDB] LINE notification sent for new event:', notifResult);
+            } catch (notifErr) {
+                console.error('[SocietyGolfDB] LINE notification failed:', notifErr);
+                // Don't fail event creation if notification fails
+            }
+        }
+
+        return createdEvent;
     }
 
     async updateEvent(eventId, updates) {
@@ -39358,6 +39831,7 @@ class SocietyGolfSupabase {
                 wantCompetition: r.want_competition,
                 pairedGroup: r.paired_group,
                 createdAt: r.created_at,
+                caddyNumbers: r.caddy_numbers || '',
                 // Payment tracking fields
                 total_fee: r.total_fee || 0,
                 payment_status: r.payment_status || 'unpaid',
@@ -39421,7 +39895,8 @@ class SocietyGolfSupabase {
                 partner_prefs: playerData.partnerPrefs || [],
                 want_transport: playerData.wantTransport || false,
                 want_competition: playerData.wantCompetition || false,
-                total_fee: totalFee
+                total_fee: totalFee,
+                caddy_numbers: playerData.caddyNumbers || ''
             }])
             .select()
             .single();
@@ -39460,7 +39935,8 @@ class SocietyGolfSupabase {
             partnerPrefs: registration.partnerPrefs || [],
             handicap: registration.handicap,
             wantTransport: registration.wantTransport,
-            wantCompetition: registration.wantCompetition
+            wantCompetition: registration.wantCompetition,
+            caddyNumbers: registration.caddyNumbers || ''
         });
     }
 
@@ -53017,8 +53493,45 @@ This action cannot be undone.`);
             if (this.currentEvent) {
                 // Update existing event
                 console.log('[SocietyOrganizer] 📝 Updating event:', this.currentEvent.id);
+                const oldEvent = { ...this.currentEvent };
                 await SocietyGolfDB.updateEvent(this.currentEvent.id, eventData);
                 console.log('[SocietyOrganizer] ✅ Event updated in database');
+
+                // Send LINE notification if significant changes (date, time, venue, or cancellation)
+                const significantChange =
+                    oldEvent.event_date !== eventData.date ||
+                    oldEvent.start_time !== eventData.startTime ||
+                    oldEvent.course_name !== eventData.courseName;
+
+                if (significantChange) {
+                    try {
+                        const notifResponse = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                type: 'event_update',
+                                record: {
+                                    id: this.currentEvent.id,
+                                    title: eventData.name,
+                                    event_date: eventData.date,
+                                    start_time: eventData.startTime,
+                                    course_name: eventData.courseName,
+                                    society_id: this.currentSociety?.id
+                                },
+                                old_record: {
+                                    event_date: oldEvent.event_date,
+                                    start_time: oldEvent.start_time,
+                                    course_name: oldEvent.course_name
+                                }
+                            })
+                        });
+                        const notifResult = await notifResponse.json();
+                        console.log('[SocietyOrganizer] LINE update notification sent:', notifResult);
+                    } catch (notifErr) {
+                        console.error('[SocietyOrganizer] LINE update notification failed:', notifErr);
+                    }
+                }
+
                 NotificationManager.show('Event updated successfully', 'success');
             } else {
                 // Create new event
@@ -53027,6 +53540,7 @@ This action cannot be undone.`);
                 const result = await SocietyGolfDB.createEvent(eventData);
                 console.log('[DEBUG] createEvent returned:', result);
                 console.log('[SocietyOrganizer] ✅ Event created in database');
+                // LINE notification is now sent automatically in SocietyGolfDB.createEvent()
 
                 // If recurring, create additional events in the database
                 if (isRecurring) {
@@ -61905,12 +62419,29 @@ class GolferEventsManager {
         const registerBtn = document.getElementById('eventRegisterBtn');
         if (registerBtn) {
             if (isUserRegistered) {
-                // User is already registered - keep default "Register" which will show edit options
+                // User is already registered - load their registration for editing
                 registerBtn.innerHTML = `
                     <span class="material-symbols-outlined text-sm">edit</span>
                     View/Edit Registration
                 `;
-                registerBtn.onclick = () => this.showRegistrationForm();
+                registerBtn.onclick = async () => {
+                    // Find and set the user's registration ID for edit mode
+                    const userId = AppState?.currentUser?.lineUserId;
+                    if (userId && this.currentEvent?.id) {
+                        const { data: reg } = await window.SupabaseDB.client
+                            .from('event_registrations')
+                            .select('id')
+                            .eq('event_id', this.currentEvent.id)
+                            .eq('player_id', userId)
+                            .maybeSingle();
+
+                        if (reg?.id) {
+                            this.editingRegistrationId = reg.id;
+                            console.log('[GolferEvents] Set editingRegistrationId for existing registration:', reg.id);
+                        }
+                    }
+                    this.showRegistrationForm();
+                };
             } else if (hasPendingRequest) {
                 // User has a pending join request
                 registerBtn.innerHTML = `
@@ -61994,7 +62525,10 @@ class GolferEventsManager {
                         </span>
                         <div>
                             <div class="font-medium text-gray-900">${reg.playerName}</div>
-                            ${reg.handicap !== null && reg.handicap !== undefined ? `<div class="text-xs text-gray-500">HCP: ${reg.handicap < 0 ? '+' + Math.abs(reg.handicap).toFixed(1) : reg.handicap.toFixed(1)}</div>` : ''}
+                            <div class="text-xs text-gray-500">
+                                ${reg.handicap !== null && reg.handicap !== undefined ? `HCP: ${reg.handicap < 0 ? '+' + Math.abs(reg.handicap).toFixed(1) : reg.handicap.toFixed(1)}` : ''}
+                                ${reg.caddyNumbers ? `<span class="ml-2 text-purple-600">🏌️ Caddy: ${reg.caddyNumbers}</span>` : ''}
+                            </div>
                         </div>
                     </div>
                     <div class="flex items-center gap-2 text-xs">
@@ -62144,7 +62678,7 @@ class GolferEventsManager {
         }
     }
 
-    showRegistrationForm() {
+    async showRegistrationForm() {
         try {
             console.log('[GolferEvents] showRegistrationForm called');
             console.log('[GolferEvents] currentEvent:', this.currentEvent);
@@ -62155,9 +62689,15 @@ class GolferEventsManager {
             const submitBtn = document.getElementById('eventSubmitBtn');
             submitBtn.style.display = 'inline-flex';
 
-            // Update button text for private events
+            // Update button text based on mode (edit vs new) and event type
             const isPrivateGolferEvent = this.currentEvent?.creatorType === 'golfer' && this.currentEvent?.isPrivate;
-            if (isPrivateGolferEvent) {
+            if (this.editingRegistrationId) {
+                // Edit mode - updating existing registration
+                submitBtn.innerHTML = `
+                    <span class="material-symbols-outlined text-sm">check_circle</span>
+                    Update Registration
+                `;
+            } else if (isPrivateGolferEvent) {
                 submitBtn.innerHTML = `
                     <span class="material-symbols-outlined text-sm">send</span>
                     Submit Request
@@ -62167,6 +62707,30 @@ class GolferEventsManager {
                     <span class="material-symbols-outlined text-sm">send</span>
                     Submit Registration
                 `;
+            }
+
+            // Load existing caddy numbers if user already registered
+            const caddyInput = document.getElementById('regCaddyNumbers');
+            if (caddyInput) {
+                caddyInput.value = ''; // Clear first
+                const userId = AppState?.currentUser?.lineUserId;
+                if (userId && this.currentEvent?.id) {
+                    try {
+                        const { data: existing } = await window.SupabaseDB.client
+                            .from('event_registrations')
+                            .select('caddy_numbers')
+                            .eq('event_id', this.currentEvent.id)
+                            .eq('player_id', userId)
+                            .maybeSingle();
+
+                        if (existing?.caddy_numbers) {
+                            caddyInput.value = existing.caddy_numbers;
+                            console.log('[GolferEvents] Loaded existing caddy numbers:', existing.caddy_numbers);
+                        }
+                    } catch (err) {
+                        console.log('[GolferEvents] Could not load caddy numbers:', err.message);
+                    }
+                }
             }
 
             // Populate partner preferences
@@ -62270,6 +62834,7 @@ class GolferEventsManager {
     async submitRegistration() {
         const playerName = document.getElementById('regPlayerName').value.trim();
         const handicapInput = document.getElementById('regHandicap').value.trim();
+        const caddyNumbers = document.getElementById('regCaddyNumbers')?.value.trim() || '';
 
         // Parse handicap - preserve plus sign for scratch golfers (e.g., "+2.1")
         // Plus handicaps are for players who shoot under par
@@ -62310,7 +62875,8 @@ class GolferEventsManager {
                         handicap: handicap,
                         want_transport: wantTransport,
                         want_competition: wantCompetition,
-                        partner_prefs: partnerPrefs
+                        partner_prefs: partnerPrefs,
+                        caddy_numbers: caddyNumbers
                     })
                     .eq('id', this.editingRegistrationId);
 
@@ -62438,7 +63004,8 @@ class GolferEventsManager {
                         handicap: handicap,
                         wantTransport: wantTransport,
                         wantCompetition: wantCompetition,
-                        partnerPrefs: partnerPrefs
+                        partnerPrefs: partnerPrefs,
+                        caddyNumbers: caddyNumbers
                     };
 
                     await window.SocietyGolfDB.registerForEvent(registration);
@@ -65432,6 +65999,37 @@ class GolferEventsManager {
             }
 
             console.log('[GolferEvents] Event', isEditMode ? 'updated' : 'created', 'successfully:', data);
+
+            // Send LINE push notification for new events
+            const createdEvent = data?.[0];
+            if (createdEvent && !isEditMode) {
+                try {
+                    const notifResponse = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 'new_event',
+                            record: {
+                                id: createdEvent.id,
+                                title: createdEvent.title,
+                                event_date: createdEvent.event_date,
+                                start_time: createdEvent.start_time,
+                                course_name: createdEvent.course_name,
+                                society_id: createdEvent.society_id || null,
+                                creator_id: createdEvent.creator_id,
+                                organizer_name: createdEvent.organizer_name,
+                                is_private: createdEvent.is_private,
+                                description: createdEvent.description
+                            }
+                        })
+                    });
+                    const notifResult = await notifResponse.json();
+                    console.log('[GolferEvents] LINE notification sent:', notifResult);
+                } catch (notifErr) {
+                    console.error('[GolferEvents] LINE notification failed:', notifErr);
+                }
+            }
+
             NotificationManager.show(`Event ${isEditMode ? 'updated' : 'created'} successfully!`, 'success');
 
             // Clear edit mode

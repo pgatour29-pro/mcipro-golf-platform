@@ -7199,6 +7199,14 @@
                     });
                 }
 
+                // Initialize Marketplace badge (pending offers count)
+                if (typeof MarketplaceSystem !== 'undefined' && MarketplaceSystem.refreshOfferCounts) {
+                    setTimeout(() => {
+                        MarketplaceSystem.refreshOfferCounts();
+                        console.log('[Dashboard] Marketplace badge initialized');
+                    }, 1000);
+                }
+
                 // Initialize Dashboard Widgets (Upcoming Events, Caddy Booking, Performance)
                 setTimeout(() => {
                     const userId = AppState?.currentUser?.lineUserId;
@@ -7532,6 +7540,19 @@
                             console.log('[TabManager] Society Events initialized');
                         } else {
                             console.warn('[TabManager] GolferEventsSystem not found');
+                        }
+                    }, 100);
+                }
+
+                // Initialize 19th Hole Marketplace tab when shown
+                if (dashboardId === 'golferDashboard' && tabName === 'marketplace') {
+                    setTimeout(() => {
+                        if (typeof MarketplaceSystem !== 'undefined') {
+                            MarketplaceSystem.init();
+                            MarketplaceSystem.showSubTab('browse');
+                            console.log('[TabManager] Marketplace initialized');
+                        } else {
+                            console.warn('[TabManager] MarketplaceSystem not found');
                         }
                     }, 100);
                 }
@@ -12303,6 +12324,14 @@
                 setTimeout(() => {
                     MessagesSystem.init();
                     MessagesSystem.showSubTab('announcements');
+                }, 100);
+            }
+
+            // Initialize Marketplace when 19th Hole tab is shown
+            if (tabName === 'marketplace' && typeof MarketplaceSystem !== 'undefined') {
+                setTimeout(() => {
+                    MarketplaceSystem.init();
+                    MarketplaceSystem.showSubTab('browse');
                 }, 100);
             }
         }
@@ -24513,9 +24542,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <span style="margin-left: 3px;" data-i18n="golfer.orderstatus">Order Status</span>
                         <span class="absolute -top-1 -right-1 bg-gradient-to-br from-red-500 to-red-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold shadow-lg animate-pulse" id="orderStatusTabBadge" style="display: none; border: 2px solid white;">0</span>
                     </button>
-                    <button onclick="showGolferTab('stats', event)" class="tab-button" style="padding: 4px 8px; font-size: 11px;">
-                        <span class="material-symbols-outlined" style="font-size: 14px;">analytics</span>
-                        <span style="margin-left: 3px;" data-i18n="golfer.statistics">Statistics</span>
+                    <button onclick="showGolferTab('marketplace', event)" class="tab-button relative" style="padding: 4px 8px; font-size: 11px; background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; border-radius: 8px;">
+                        <span class="material-symbols-outlined" style="font-size: 14px;">storefront</span>
+                        <span style="margin-left: 3px;">19th Hole</span>
+                        <span id="marketplaceBadge" class="absolute -top-1 -right-1 bg-yellow-400 text-red-800 text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse" style="display: none; font-size: 9px;">0</span>
                     </button>
                     <button onclick="showGolferTab('rounds', event)" class="tab-button" style="padding: 4px 8px; font-size: 11px;">
                         <span class="material-symbols-outlined" style="font-size: 14px;">history</span>
@@ -24771,35 +24801,36 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </div>
                 </div>
 
-                <!-- Performance Overview -->
+                <!-- 19th Hole Marketplace Quick Access -->
                 <div class="metric-card">
-                    <div class="flex items-center justify-between mb-6">
-                        <h3 class="text-xl font-bold text-gray-900" data-i18n="golfer.performance">Performance Overview</h3>
-                        <button onclick="showGolferTab('stats', event)" class="text-primary-600 hover:text-primary-700 font-medium text-sm" data-i18n="golfer.viewdetails">
-                            View Details →
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xl font-bold text-gray-900">19th Hole Marketplace</h3>
+                        <button onclick="showGolferTab('marketplace', event)" class="text-primary-600 hover:text-primary-700 font-medium text-sm">
+                            Browse All →
                         </button>
                     </div>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
-                        <div class="text-center">
-                            <div class="metric-value" id="bestScore">-</div>
-                            <div class="metric-label" data-i18n="golfer.bestscore">Best Score</div>
-                            <div class="text-xs text-gray-400 mt-1" data-i18n="golfer.norounds">No rounds yet</div>
-                        </div>
-                        <div class="text-center">
-                            <div class="metric-value" id="avgScore">-</div>
-                            <div class="metric-label" data-i18n="golfer.avgscore">Average Score</div>
-                            <div class="text-xs text-gray-400 mt-1" data-i18n="golfer.norounds">No rounds yet</div>
-                        </div>
-                        <div class="text-center">
-                            <div class="metric-value" id="totalRounds">0</div>
-                            <div class="metric-label" data-i18n="golfer.roundsplayed">Rounds Played</div>
-                            <div class="text-xs text-gray-400 mt-1" data-i18n="golfer.thisyear">This year</div>
-                        </div>
-                        <div class="text-center">
-                            <div class="metric-value" id="eaglesCount">0</div>
-                            <div class="metric-label" data-i18n="golfer.eagles">Eagles</div>
-                            <div class="text-xs text-gray-400 mt-1" data-i18n="golfer.thismonth">This month</div>
-                        </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="showGolferTab('marketplace', event); setTimeout(() => MarketplaceSystem.filterByCategory('golf_equipment'), 100)" class="p-4 bg-green-50 rounded-xl hover:bg-green-100 transition-colors text-left">
+                            <span class="material-symbols-outlined text-2xl text-green-600 mb-2">sports_golf</span>
+                            <div class="font-semibold text-gray-900">Golf Equipment</div>
+                            <div class="text-xs text-gray-500">Clubs, balls, bags & more</div>
+                        </button>
+                        <button onclick="showGolferTab('marketplace', event); setTimeout(() => MarketplaceSystem.filterByCategory('services'), 100)" class="p-4 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors text-left">
+                            <span class="material-symbols-outlined text-2xl text-blue-600 mb-2">handyman</span>
+                            <div class="font-semibold text-gray-900">Services</div>
+                            <div class="text-xs text-gray-500">Lessons, repairs, fitting</div>
+                        </button>
+                        <button onclick="MarketplaceSystem.openCreateModal()" class="p-4 bg-purple-50 rounded-xl hover:bg-purple-100 transition-colors text-left">
+                            <span class="material-symbols-outlined text-2xl text-purple-600 mb-2">add_circle</span>
+                            <div class="font-semibold text-gray-900">Sell Something</div>
+                            <div class="text-xs text-gray-500">Create a listing</div>
+                        </button>
+                        <button onclick="showGolferTab('marketplace', event); setTimeout(() => MarketplaceSystem.showSubTab('myoffers'), 100)" class="p-4 bg-orange-50 rounded-xl hover:bg-orange-100 transition-colors text-left relative">
+                            <span class="material-symbols-outlined text-2xl text-orange-600 mb-2">local_offer</span>
+                            <div class="font-semibold text-gray-900">My Offers</div>
+                            <div class="text-xs text-gray-500">View received offers</div>
+                            <span id="dashboard-offers-badge" class="absolute top-2 right-2 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold" style="display: none;">0</span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -25429,89 +25460,151 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 </div>
             </div>
 
-            <!-- Statistics Tab -->
-            <div id="golfer-stats" class="tab-content">
-                <div class="space-y-8">
-                    <!-- Performance Summary -->
-                    <div class="metric-card">
-                        <h3 class="text-2xl font-bold text-gray-900 mb-6" data-i18n="golfer.performance">Performance Summary</h3>
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
-                            <div class="text-center">
-                                <div class="metric-value text-gray-400 user-handicap">0</div>
-                                <div class="metric-label" data-i18n="golfer.stats.handicap">Current Handicap</div>
-                                <div class="text-xs text-gray-400 mt-1">Not set</div>
-                            </div>
-                            <div class="text-center">
-                                <div class="metric-value text-gray-400">-</div>
-                                <div class="metric-label" data-i18n="golfer.avgscore">Average Score</div>
-                                <div class="text-xs text-gray-400 mt-1" data-i18n="golfer.norounds">No rounds yet</div>
-                            </div>
-                            <div class="text-center">
-                                <div class="metric-value text-gray-400">-</div>
-                                <div class="metric-label" data-i18n="golfer.bestscore">Best Score</div>
-                                <div class="text-xs text-gray-400 mt-1" data-i18n="golfer.norounds">No rounds yet</div>
-                            </div>
-                            <div class="text-center">
-                                <div class="metric-value text-gray-400">0</div>
-                                <div class="metric-label" data-i18n="golfer.roundsplayed">Rounds Played</div>
-                                <div class="text-xs text-gray-400 mt-1" data-i18n="golfer.thisyear">This year</div>
+            <!-- 19th Hole Marketplace Tab -->
+            <div id="golfer-marketplace" class="tab-content">
+                <div class="space-y-4">
+
+                    <!-- Sponsored Ads Carousel -->
+                    <div id="marketplace-ads" class="relative overflow-hidden rounded-xl bg-gradient-to-r from-green-50 to-blue-50 p-4" style="display: none;">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs text-gray-500 font-medium">SPONSORED</span>
+                            <div class="flex space-x-1">
+                                <button onclick="MarketplaceSystem.prevAd()" class="p-1 rounded-full bg-white shadow hover:bg-gray-100">
+                                    <span class="material-symbols-outlined text-sm">chevron_left</span>
+                                </button>
+                                <button onclick="MarketplaceSystem.nextAd()" class="p-1 rounded-full bg-white shadow hover:bg-gray-100">
+                                    <span class="material-symbols-outlined text-sm">chevron_right</span>
+                                </button>
                             </div>
                         </div>
-
-                        <!-- Personal Info -->
-                        <div class="mt-6 p-4 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg">
-                            <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                <div class="text-center">
-                                    <div class="text-sm font-medium text-gray-600" data-i18n="golfer.stats.experience">Experience</div>
-                                    <div class="experience-level font-semibold text-blue-600">Intermediate</div>
-                                </div>
-                                <div class="text-center">
-                                    <div class="text-sm font-medium text-gray-600" data-i18n="golfer.stats.homeclub">Home Club</div>
-                                    <div class="home-club font-semibold text-green-600">Pattaya Golf Club</div>
-                                </div>
-                                <div class="text-center club-affiliation-stats-container" style="display: none;">
-                                    <div class="text-sm font-medium text-gray-600" data-i18n="golfer.stats.society">Society</div>
-                                    <div class="club-affiliation font-semibold text-blue-600">Society Name</div>
-                                </div>
-                                <div class="text-center">
-                                    <div class="text-sm font-medium text-gray-600" data-i18n="golfer.stats.membersince">Member Since</div>
-                                    <div class="member-since font-semibold text-purple-600">2024</div>
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
-
-                    <!-- Achievements -->
-                    <div class="metric-card">
-                        <h3 class="text-xl font-bold text-gray-900 mb-6" data-i18n="golfer.stats.achievements">Achievements</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <div class="achievement-card p-4 bg-yellow-50 border-2 border-yellow-200 rounded-lg text-center">
-                                <div class="w-12 h-12 bg-yellow-500 rounded-full flex items-center justify-center mx-auto mb-3">
-                                    <span class="material-symbols-outlined text-white">emoji_events</span>
-                                </div>
-                                <h4 class="font-bold text-gray-900" data-i18n="golfer.stats.eagleachievement">Eagle Achievement</h4>
-                                <p class="text-sm text-gray-600">3 eagles this month</p>
-                            </div>
-
-                            <div class="achievement-card p-4 bg-green-50 border-2 border-green-200 rounded-lg text-center">
-                                <div class="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-3">
-                                    <span class="material-symbols-outlined text-white">trending_down</span>
-                                </div>
-                                <h4 class="font-bold text-gray-900" data-i18n="golfer.stats.handicapimprovement">Handicap Improvement</h4>
-                                <p class="text-sm text-gray-600">Reduced by 2 points</p>
-                            </div>
-
-                            <div class="achievement-card p-4 bg-blue-50 border-2 border-blue-200 rounded-lg text-center">
-                                <div class="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-3">
-                                    <span class="material-symbols-outlined text-white">schedule</span>
-                                </div>
-                                <h4 class="font-bold text-gray-900" data-i18n="golfer.stats.newplayer">New Player</h4>
-                                <p class="text-sm text-gray-600">0 rounds this year</p>
-                            </div>
+                        <div id="ads-carousel" class="flex transition-transform duration-300">
+                            <!-- Ads rendered dynamically -->
                         </div>
                     </div>
+
+                    <!-- Sub-tab Navigation -->
+                    <div class="flex space-x-1 bg-gray-100 p-1 rounded-lg overflow-x-auto">
+                        <button onclick="MarketplaceSystem.showSubTab('browse')" id="market-tab-browse" class="flex-1 px-3 py-2 text-sm font-medium rounded-md bg-white shadow text-gray-900 whitespace-nowrap">
+                            <span class="material-symbols-outlined text-sm align-middle">search</span>
+                            <span class="align-middle ml-1">Browse</span>
+                        </button>
+                        <button onclick="MarketplaceSystem.showSubTab('mylistings')" id="market-tab-mylistings" class="flex-1 px-3 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 whitespace-nowrap">
+                            <span class="material-symbols-outlined text-sm align-middle">inventory_2</span>
+                            <span class="align-middle ml-1">My Listings</span>
+                        </button>
+                        <button onclick="MarketplaceSystem.showSubTab('myoffers')" id="market-tab-myoffers" class="flex-1 px-3 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 relative whitespace-nowrap">
+                            <span class="material-symbols-outlined text-sm align-middle">local_offer</span>
+                            <span class="align-middle ml-1">Offers</span>
+                            <span id="offers-badge" class="ml-1 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full" style="display: none;">0</span>
+                        </button>
+                        <button onclick="MarketplaceSystem.showSubTab('favorites')" id="market-tab-favorites" class="flex-1 px-3 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 whitespace-nowrap">
+                            <span class="material-symbols-outlined text-sm align-middle">favorite</span>
+                            <span class="align-middle ml-1">Saved</span>
+                        </button>
+                    </div>
+
+                    <!-- Search and Filters (Browse tab) -->
+                    <div id="browse-filters" class="space-y-3">
+                        <!-- Search Bar -->
+                        <div class="relative">
+                            <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">search</span>
+                            <input type="text" id="marketplace-search" placeholder="Search listings..."
+                                   class="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                   oninput="MarketplaceSystem.debounceSearch(this.value)">
+                        </div>
+
+                        <!-- Category Filters -->
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="MarketplaceSystem.filterByCategory('all')" id="cat-filter-all" class="px-3 py-1.5 text-sm rounded-full bg-primary-600 text-white flex items-center">
+                                <span class="material-symbols-outlined text-sm mr-1">apps</span>
+                                <span>All</span>
+                            </button>
+                            <button onclick="MarketplaceSystem.filterByCategory('golf_equipment')" id="cat-filter-golf_equipment" class="px-3 py-1.5 text-sm rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 flex items-center">
+                                <span class="material-symbols-outlined text-sm mr-1">sports_golf</span>
+                                <span>Golf</span>
+                            </button>
+                            <button onclick="MarketplaceSystem.filterByCategory('services')" id="cat-filter-services" class="px-3 py-1.5 text-sm rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 flex items-center">
+                                <span class="material-symbols-outlined text-sm mr-1">handyman</span>
+                                <span>Services</span>
+                            </button>
+                            <button onclick="MarketplaceSystem.filterByCategory('general')" id="cat-filter-general" class="px-3 py-1.5 text-sm rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 flex items-center">
+                                <span class="material-symbols-outlined text-sm mr-1">category</span>
+                                <span>General</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Browse Content -->
+                    <div id="market-content-browse" class="market-subcontent">
+                        <div id="listings-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                            <!-- Listing cards rendered dynamically -->
+                            <div class="text-center text-gray-500 py-12 col-span-full">
+                                <span class="material-symbols-outlined text-4xl mb-2">storefront</span>
+                                <p>Loading listings...</p>
+                            </div>
+                        </div>
+                        <!-- Load More Button -->
+                        <div id="load-more-container" class="text-center mt-4" style="display: none;">
+                            <button onclick="MarketplaceSystem.loadMore()" class="btn-secondary">
+                                <span class="material-symbols-outlined text-sm">expand_more</span>
+                                Load More
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- My Listings Content -->
+                    <div id="market-content-mylistings" class="market-subcontent hidden">
+                        <div id="my-listings-list" class="space-y-3">
+                            <div class="text-center text-gray-500 py-12">
+                                <span class="material-symbols-outlined text-4xl mb-2">inventory_2</span>
+                                <p>You haven't posted any listings yet</p>
+                                <button onclick="MarketplaceSystem.openCreateModal()" class="btn-primary mt-3">
+                                    <span class="material-symbols-outlined text-sm">add</span>
+                                    Create Listing
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- My Offers Content -->
+                    <div id="market-content-myoffers" class="market-subcontent hidden">
+                        <!-- Sub-tabs for offers sent/received -->
+                        <div class="flex space-x-2 mb-4">
+                            <button onclick="MarketplaceSystem.showOfferTab('received')" id="offers-tab-received" class="px-4 py-2 text-sm font-medium rounded-lg bg-primary-100 text-primary-700">
+                                Received
+                                <span id="received-count" class="ml-1 bg-primary-600 text-white text-xs px-1.5 py-0.5 rounded-full" style="display: none;">0</span>
+                            </button>
+                            <button onclick="MarketplaceSystem.showOfferTab('sent')" id="offers-tab-sent" class="px-4 py-2 text-sm font-medium rounded-lg text-gray-600 hover:bg-gray-100">
+                                Sent
+                            </button>
+                        </div>
+                        <div id="offers-received-list" class="space-y-3">
+                            <div class="text-center text-gray-500 py-12">
+                                <span class="material-symbols-outlined text-4xl mb-2">local_offer</span>
+                                <p>No offers received yet</p>
+                            </div>
+                        </div>
+                        <div id="offers-sent-list" class="space-y-3 hidden">
+                            <div class="text-center text-gray-500 py-12">
+                                <span class="material-symbols-outlined text-4xl mb-2">send</span>
+                                <p>You haven't made any offers yet</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Favorites Content -->
+                    <div id="market-content-favorites" class="market-subcontent hidden">
+                        <div id="favorites-list" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                            <div class="text-center text-gray-500 py-12 col-span-full">
+                                <span class="material-symbols-outlined text-4xl mb-2">favorite_border</span>
+                                <p>No saved listings yet</p>
+                                <p class="text-sm mt-1">Tap the heart icon on listings to save them</p>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
+
             </div>
 
             <!-- Round History Tab -->
@@ -28330,6 +28423,192 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Create Listing Modal -->
+    <div id="createListingModal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black/50" onclick="MarketplaceSystem.closeCreateModal()"></div>
+        <div class="absolute inset-x-4 top-1/2 -translate-y-1/2 bg-white rounded-2xl shadow-xl max-w-lg mx-auto max-h-[90vh] overflow-y-auto">
+            <div class="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between rounded-t-2xl z-10">
+                <h3 class="text-lg font-bold text-gray-900">Create Listing</h3>
+                <button onclick="MarketplaceSystem.closeCreateModal()" class="text-gray-500 hover:text-gray-700">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+
+            <form id="createListingForm" class="p-4 space-y-4">
+                <!-- Images Upload -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Photos (up to 5)</label>
+                    <div class="grid grid-cols-5 gap-2" id="listing-images-preview">
+                        <div class="aspect-square border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-primary-500" onclick="document.getElementById('listingImagesInput').click()">
+                            <span class="material-symbols-outlined text-gray-400">add_photo_alternate</span>
+                        </div>
+                    </div>
+                    <input type="file" id="listingImagesInput" accept="image/*" multiple class="hidden" onchange="MarketplaceSystem.handleImageUpload(event)">
+                </div>
+
+                <!-- Title -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Title *</label>
+                    <input type="text" id="listingTitle" required maxlength="100" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500" placeholder="What are you selling?">
+                </div>
+
+                <!-- Category -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+                    <select id="listingCategory" required class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500" onchange="MarketplaceSystem.updateSubcategories(this.value)">
+                        <option value="">Select category</option>
+                        <option value="golf_equipment">Golf Equipment</option>
+                        <option value="services">Services</option>
+                        <option value="general">General Items</option>
+                    </select>
+                </div>
+
+                <!-- Subcategory (dynamic based on category) -->
+                <div id="subcategory-container" style="display: none;">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Subcategory</label>
+                    <select id="listingSubcategory" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500">
+                        <!-- Options populated dynamically -->
+                    </select>
+                </div>
+
+                <!-- Listing Type -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Listing Type *</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <label class="flex items-center justify-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:border-primary-500 has-[:checked]:bg-primary-50">
+                            <input type="radio" name="listingType" value="sale" class="sr-only" checked onchange="MarketplaceSystem.updatePriceVisibility()">
+                            <div class="text-center">
+                                <span class="material-symbols-outlined text-xl">sell</span>
+                                <div class="text-xs mt-1">For Sale</div>
+                            </div>
+                        </label>
+                        <label class="flex items-center justify-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:border-primary-500 has-[:checked]:bg-primary-50">
+                            <input type="radio" name="listingType" value="swap" class="sr-only" onchange="MarketplaceSystem.updatePriceVisibility()">
+                            <div class="text-center">
+                                <span class="material-symbols-outlined text-xl">swap_horiz</span>
+                                <div class="text-xs mt-1">Swap</div>
+                            </div>
+                        </label>
+                        <label class="flex items-center justify-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:border-primary-500 has-[:checked]:bg-primary-50">
+                            <input type="radio" name="listingType" value="wanted" class="sr-only" onchange="MarketplaceSystem.updatePriceVisibility()">
+                            <div class="text-center">
+                                <span class="material-symbols-outlined text-xl">search</span>
+                                <div class="text-xs mt-1">Wanted</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Price Section (for sale listings) -->
+                <div id="price-section">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Price (THB)</label>
+                    <div class="flex items-center space-x-3">
+                        <input type="number" id="listingPrice" class="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500" placeholder="0">
+                        <label class="flex items-center space-x-2 text-sm whitespace-nowrap">
+                            <input type="checkbox" id="priceNegotiable" class="rounded text-primary-600">
+                            <span>Negotiable</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Condition -->
+                <div id="condition-section">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Condition</label>
+                    <select id="listingCondition" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500">
+                        <option value="new">New</option>
+                        <option value="like_new">Like New</option>
+                        <option value="good" selected>Good</option>
+                        <option value="fair">Fair</option>
+                    </select>
+                </div>
+
+                <!-- Description -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea id="listingDescription" rows="4" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500" placeholder="Describe your item, service, or what you're looking for..."></textarea>
+                </div>
+
+                <!-- Location -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                    <input type="text" id="listingLocation" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500" placeholder="e.g., Pattaya, Bangkok">
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" class="w-full btn-primary py-3">
+                    <span class="material-symbols-outlined text-sm">publish</span>
+                    Post Listing
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Listing Detail Modal -->
+    <div id="listingDetailModal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black/50" onclick="MarketplaceSystem.closeDetailModal()"></div>
+        <div class="absolute inset-x-4 top-1/2 -translate-y-1/2 bg-white rounded-2xl shadow-xl max-w-lg mx-auto max-h-[90vh] overflow-y-auto">
+            <div id="listing-detail-content">
+                <!-- Content rendered dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Make Offer Modal -->
+    <div id="makeOfferModal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black/50" onclick="MarketplaceSystem.closeMakeOfferModal()"></div>
+        <div class="absolute inset-x-4 top-1/2 -translate-y-1/2 bg-white rounded-2xl shadow-xl max-w-md mx-auto p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">Make an Offer</h3>
+            <form id="makeOfferForm" onsubmit="MarketplaceSystem.submitOffer(event)">
+                <input type="hidden" id="offerListingId">
+
+                <!-- Offer Type -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Offer Type</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <label class="flex items-center justify-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:border-primary-500 has-[:checked]:bg-primary-50">
+                            <input type="radio" name="offerType" value="price" class="sr-only" checked onchange="MarketplaceSystem.updateOfferTypeUI()">
+                            <div class="text-center">
+                                <span class="material-symbols-outlined">payments</span>
+                                <div class="text-xs mt-1">Price</div>
+                            </div>
+                        </label>
+                        <label class="flex items-center justify-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:border-primary-500 has-[:checked]:bg-primary-50">
+                            <input type="radio" name="offerType" value="swap" class="sr-only" onchange="MarketplaceSystem.updateOfferTypeUI()">
+                            <div class="text-center">
+                                <span class="material-symbols-outlined">swap_horiz</span>
+                                <div class="text-xs mt-1">Swap</div>
+                            </div>
+                        </label>
+                        <label class="flex items-center justify-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:border-primary-500 has-[:checked]:bg-primary-50">
+                            <input type="radio" name="offerType" value="question" class="sr-only" onchange="MarketplaceSystem.updateOfferTypeUI()">
+                            <div class="text-center">
+                                <span class="material-symbols-outlined">help</span>
+                                <div class="text-xs mt-1">Question</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Price Input (for price offers) -->
+                <div id="offer-price-input" class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Your Offer (THB)</label>
+                    <input type="number" id="offerAmount" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500" placeholder="Enter amount">
+                </div>
+
+                <!-- Message -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                    <textarea id="offerMessage" rows="3" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500" placeholder="Add a message to the seller..."></textarea>
+                </div>
+
+                <div class="flex space-x-3">
+                    <button type="button" onclick="MarketplaceSystem.closeMakeOfferModal()" class="flex-1 btn-secondary">Cancel</button>
+                    <button type="submit" class="flex-1 btn-primary">Send Offer</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -61472,6 +61751,1298 @@ window.MessagesSystem = MessagesSystem;
 console.log('[MessagesSystem] ✅ Module loaded');
 
 // ==================================================================
+// 19TH HOLE MARKETPLACE SYSTEM
+// ==================================================================
+const MarketplaceSystem = {
+    userLineId: null,
+    currentSubTab: 'browse',
+    currentCategory: 'all',
+    searchQuery: '',
+    listings: [],
+    currentPage: 0,
+    pageSize: 20,
+    hasMore: true,
+    currentListing: null,
+    uploadedImages: [],
+    sponsoredAds: [],
+    currentAdIndex: 0,
+    searchTimeout: null,
+    refreshInterval: null,
+    currentImageIndex: 0,
+
+    // Subcategories by category
+    subcategories: {
+        golf_equipment: ['Clubs', 'Balls', 'Bags', 'Shoes', 'Gloves', 'GPS/Rangefinders', 'Apparel', 'Accessories', 'Other'],
+        services: ['Lessons', 'Club Repair', 'Club Fitting', 'Caddy Services', 'Transport', 'Other'],
+        general: ['Electronics', 'Clothing', 'Sports', 'Home', 'Other']
+    },
+
+    async init() {
+        console.log('[Marketplace] Initializing...');
+        const user = AppState?.currentUser || window.currentUser;
+        if (!user?.lineUserId) {
+            console.warn('[Marketplace] No user logged in');
+            return;
+        }
+        this.userLineId = user.lineUserId;
+
+        // Ensure category filter buttons are properly styled on init
+        this.currentCategory = 'all';
+        ['all', 'golf_equipment', 'services', 'general'].forEach(cat => {
+            const btn = document.getElementById(`cat-filter-${cat}`);
+            if (btn) {
+                if (cat === 'all') {
+                    btn.classList.add('bg-primary-600', 'text-white');
+                    btn.classList.remove('bg-gray-200', 'text-gray-700');
+                } else {
+                    btn.classList.remove('bg-primary-600', 'text-white');
+                    btn.classList.add('bg-gray-200', 'text-gray-700');
+                }
+            }
+        });
+
+        await this.loadSponsoredAds();
+        await this.loadListings();
+        this.startAutoRefresh();
+        console.log('[Marketplace] Initialized');
+    },
+
+    startAutoRefresh() {
+        if (this.refreshInterval) clearInterval(this.refreshInterval);
+        this.refreshInterval = setInterval(async () => {
+            await this.refreshOfferCounts();
+        }, 30000);
+    },
+
+    // ========== SPONSORED ADS ==========
+    async loadSponsoredAds() {
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            const { data, error } = await window.SupabaseDB.client
+                .from('sponsored_ads')
+                .select('*')
+                .eq('is_active', true)
+                .lte('start_date', today)
+                .gte('end_date', today)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            this.sponsoredAds = data || [];
+            this.renderAds();
+        } catch (err) {
+            console.error('[Marketplace] Error loading ads:', err);
+        }
+    },
+
+    renderAds() {
+        const container = document.getElementById('marketplace-ads');
+        const carousel = document.getElementById('ads-carousel');
+
+        if (!this.sponsoredAds.length || !container) {
+            if (container) container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = 'block';
+        carousel.innerHTML = this.sponsoredAds.map((ad, index) => `
+            <div class="flex-shrink-0 w-full" style="display: ${index === 0 ? 'block' : 'none'};" data-ad-index="${index}">
+                <a href="${ad.link_url || '#'}" target="_blank" onclick="MarketplaceSystem.trackAdClick('${ad.id}')" class="block">
+                    <div class="flex items-center space-x-4">
+                        ${ad.image_url ? `<img src="${ad.image_url}" class="w-20 h-20 object-cover rounded-lg" alt="${ad.title}">` : ''}
+                        <div class="flex-1">
+                            <h4 class="font-semibold text-gray-900">${ad.title}</h4>
+                            <p class="text-sm text-gray-600 line-clamp-2">${ad.description || ''}</p>
+                            <span class="text-xs text-primary-600">${ad.advertiser_name}</span>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        `).join('');
+
+        if (this.sponsoredAds.length > 0) {
+            this.trackAdImpression(this.sponsoredAds[0].id);
+        }
+    },
+
+    nextAd() {
+        if (this.sponsoredAds.length <= 1) return;
+        const ads = document.querySelectorAll('#ads-carousel > div');
+        ads[this.currentAdIndex].style.display = 'none';
+        this.currentAdIndex = (this.currentAdIndex + 1) % this.sponsoredAds.length;
+        ads[this.currentAdIndex].style.display = 'block';
+        this.trackAdImpression(this.sponsoredAds[this.currentAdIndex].id);
+    },
+
+    prevAd() {
+        if (this.sponsoredAds.length <= 1) return;
+        const ads = document.querySelectorAll('#ads-carousel > div');
+        ads[this.currentAdIndex].style.display = 'none';
+        this.currentAdIndex = (this.currentAdIndex - 1 + this.sponsoredAds.length) % this.sponsoredAds.length;
+        ads[this.currentAdIndex].style.display = 'block';
+        this.trackAdImpression(this.sponsoredAds[this.currentAdIndex].id);
+    },
+
+    async trackAdImpression(adId) {
+        try {
+            await window.SupabaseDB.client.rpc('increment_ad_impressions', { ad_id: adId });
+        } catch (err) {
+            console.warn('[Marketplace] Failed to track impression:', err);
+        }
+    },
+
+    async trackAdClick(adId) {
+        try {
+            await window.SupabaseDB.client.rpc('increment_ad_clicks', { ad_id: adId });
+        } catch (err) {
+            console.warn('[Marketplace] Failed to track click:', err);
+        }
+    },
+
+    // ========== SUB-TAB NAVIGATION ==========
+    showSubTab(tabName) {
+        this.currentSubTab = tabName;
+
+        ['browse', 'mylistings', 'myoffers', 'favorites'].forEach(t => {
+            const btn = document.getElementById(`market-tab-${t}`);
+            if (btn) {
+                if (t === tabName) {
+                    btn.classList.add('bg-white', 'shadow', 'text-gray-900');
+                    btn.classList.remove('text-gray-600');
+                } else {
+                    btn.classList.remove('bg-white', 'shadow', 'text-gray-900');
+                    btn.classList.add('text-gray-600');
+                }
+            }
+        });
+
+        document.querySelectorAll('.market-subcontent').forEach(el => el.classList.add('hidden'));
+        const content = document.getElementById(`market-content-${tabName}`);
+        if (content) content.classList.remove('hidden');
+
+        const filters = document.getElementById('browse-filters');
+        if (filters) filters.style.display = tabName === 'browse' ? 'block' : 'none';
+
+        switch (tabName) {
+            case 'browse':
+                this.loadListings();
+                break;
+            case 'mylistings':
+                this.loadMyListings();
+                break;
+            case 'myoffers':
+                this.loadMyOffers();
+                break;
+            case 'favorites':
+                this.loadFavorites();
+                break;
+        }
+    },
+
+    // ========== CATEGORY FILTER ==========
+    filterByCategory(category) {
+        this.currentCategory = category;
+        this.currentPage = 0;
+        this.listings = [];
+
+        ['all', 'golf_equipment', 'services', 'general'].forEach(cat => {
+            const btn = document.getElementById(`cat-filter-${cat}`);
+            if (btn) {
+                if (cat === category) {
+                    btn.classList.add('bg-primary-600', 'text-white');
+                    btn.classList.remove('bg-gray-200', 'text-gray-700');
+                } else {
+                    btn.classList.remove('bg-primary-600', 'text-white');
+                    btn.classList.add('bg-gray-200', 'text-gray-700');
+                }
+            }
+        });
+
+        this.loadListings();
+    },
+
+    // ========== SEARCH ==========
+    debounceSearch(query) {
+        if (this.searchTimeout) clearTimeout(this.searchTimeout);
+        this.searchTimeout = setTimeout(() => {
+            this.searchQuery = query;
+            this.currentPage = 0;
+            this.listings = [];
+            this.loadListings();
+        }, 300);
+    },
+
+    // ========== LOAD LISTINGS ==========
+    async loadListings() {
+        const container = document.getElementById('listings-grid');
+        if (!container) return;
+
+        try {
+            if (this.currentPage === 0) {
+                container.innerHTML = '<div class="text-center text-gray-500 py-12 col-span-full"><div class="animate-spin h-8 w-8 border-2 border-primary-600 border-t-transparent rounded-full mx-auto mb-2"></div><p>Loading...</p></div>';
+            }
+
+            let query = window.SupabaseDB.client
+                .from('marketplace_listings')
+                .select('*')
+                .eq('status', 'active')
+                .order('created_at', { ascending: false })
+                .range(this.currentPage * this.pageSize, (this.currentPage + 1) * this.pageSize - 1);
+
+            if (this.currentCategory !== 'all') {
+                query = query.eq('category', this.currentCategory);
+            }
+
+            if (this.searchQuery) {
+                query = query.or(`title.ilike.%${this.searchQuery}%,description.ilike.%${this.searchQuery}%`);
+            }
+
+            const { data, error } = await query;
+
+            if (error) throw error;
+
+            this.hasMore = data.length === this.pageSize;
+
+            if (this.currentPage === 0) {
+                this.listings = data;
+            } else {
+                this.listings = [...this.listings, ...data];
+            }
+
+            this.renderListings();
+        } catch (err) {
+            console.error('[Marketplace] Error loading listings:', err);
+            container.innerHTML = '<div class="text-center text-red-500 py-12 col-span-full"><span class="material-symbols-outlined text-4xl mb-2">error</span><p>Failed to load listings</p></div>';
+        }
+    },
+
+    renderListings() {
+        const container = document.getElementById('listings-grid');
+        const loadMoreBtn = document.getElementById('load-more-container');
+
+        if (!this.listings.length) {
+            container.innerHTML = `
+                <div class="text-center text-gray-500 py-12 col-span-full">
+                    <span class="material-symbols-outlined text-4xl mb-2">storefront</span>
+                    <p>No listings found</p>
+                    <button onclick="MarketplaceSystem.openCreateModal()" class="btn-primary mt-3">
+                        <span class="material-symbols-outlined text-sm">add</span>
+                        Be the first to post!
+                    </button>
+                </div>`;
+            loadMoreBtn.style.display = 'none';
+            return;
+        }
+
+        container.innerHTML = this.listings.map(listing => this.renderListingCard(listing)).join('');
+        loadMoreBtn.style.display = this.hasMore ? 'block' : 'none';
+    },
+
+    renderListingCard(listing) {
+        const imageUrl = listing.images?.[0] || 'https://via.placeholder.com/200?text=No+Image';
+        const price = listing.price_type === 'swap_only' ? 'Swap' :
+                     listing.price ? `฿${listing.price.toLocaleString()}` :
+                     listing.listing_type === 'wanted' ? 'Wanted' : 'Make Offer';
+        const priceClass = listing.price_type === 'swap_only' ? 'text-purple-600' :
+                          listing.listing_type === 'wanted' ? 'text-orange-600' : 'text-green-600';
+        const timeAgo = this.timeAgo(listing.created_at);
+        const categoryIcon = listing.category === 'golf_equipment' ? 'sports_golf' :
+                            listing.category === 'services' ? 'handyman' : 'category';
+
+        return `
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer" onclick="MarketplaceSystem.openDetailModal('${listing.id}')">
+                <div class="aspect-square relative overflow-hidden bg-gray-100">
+                    <img src="${imageUrl}" alt="${listing.title}" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/200?text=No+Image'">
+                    <button onclick="event.stopPropagation(); MarketplaceSystem.toggleFavorite('${listing.id}')" class="absolute top-2 right-2 p-1.5 bg-white/80 rounded-full hover:bg-white" id="fav-btn-${listing.id}">
+                        <span class="material-symbols-outlined text-gray-400" id="fav-icon-${listing.id}">favorite_border</span>
+                    </button>
+                    ${listing.price_type === 'negotiable' ? '<span class="absolute bottom-2 left-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">Negotiable</span>' : ''}
+                </div>
+                <div class="p-3">
+                    <h4 class="font-medium text-gray-900 text-sm line-clamp-2">${listing.title}</h4>
+                    <div class="flex items-center justify-between mt-2">
+                        <span class="font-bold ${priceClass}">${price}</span>
+                        <span class="text-xs text-gray-400">${timeAgo}</span>
+                    </div>
+                    <div class="flex items-center mt-1 text-xs text-gray-500">
+                        <span class="material-symbols-outlined text-xs mr-1">${categoryIcon}</span>
+                        <span>${listing.location || 'Thailand'}</span>
+                    </div>
+                </div>
+            </div>`;
+    },
+
+    loadMore() {
+        this.currentPage++;
+        this.loadListings();
+    },
+
+    // ========== MY LISTINGS ==========
+    async loadMyListings() {
+        const container = document.getElementById('my-listings-list');
+        if (!container) return;
+
+        try {
+            container.innerHTML = '<div class="text-center py-8"><div class="animate-spin h-8 w-8 border-2 border-primary-600 border-t-transparent rounded-full mx-auto"></div></div>';
+
+            const { data, error } = await window.SupabaseDB.client
+                .from('marketplace_listings')
+                .select('*')
+                .eq('seller_line_id', this.userLineId)
+                .neq('status', 'deleted')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            if (!data?.length) {
+                container.innerHTML = `
+                    <div class="text-center text-gray-500 py-12">
+                        <span class="material-symbols-outlined text-4xl mb-2">inventory_2</span>
+                        <p>You haven't posted any listings yet</p>
+                        <button onclick="MarketplaceSystem.openCreateModal()" class="btn-primary mt-3">
+                            <span class="material-symbols-outlined text-sm">add</span>
+                            Create Listing
+                        </button>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = data.map(listing => this.renderMyListingItem(listing)).join('');
+        } catch (err) {
+            console.error('[Marketplace] Error loading my listings:', err);
+            container.innerHTML = '<div class="text-center text-red-500 py-8">Failed to load listings</div>';
+        }
+    },
+
+    renderMyListingItem(listing) {
+        const imageUrl = listing.images?.[0] || 'https://via.placeholder.com/80?text=No+Image';
+        const statusBadge = listing.status === 'active' ?
+            '<span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">Active</span>' :
+            listing.status === 'sold' ?
+            '<span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">Sold</span>' :
+            '<span class="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded-full">Expired</span>';
+
+        return `
+            <div class="bg-white rounded-xl shadow-sm p-4 flex items-start space-x-4">
+                <img src="${imageUrl}" class="w-20 h-20 object-cover rounded-lg" alt="${listing.title}">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-start justify-between">
+                        <h4 class="font-medium text-gray-900 truncate">${listing.title}</h4>
+                        ${statusBadge}
+                    </div>
+                    <p class="text-sm text-gray-600 mt-1">${listing.price ? `฿${listing.price.toLocaleString()}` : listing.price_type === 'swap_only' ? 'Swap' : 'Make Offer'}</p>
+                    <p class="text-xs text-gray-400 mt-1">${listing.views || 0} views</p>
+                    <div class="flex space-x-2 mt-2">
+                        <button onclick="MarketplaceSystem.editListing('${listing.id}')" class="text-xs text-primary-600 hover:underline">Edit</button>
+                        ${listing.status === 'active' ? `<button onclick="MarketplaceSystem.markAsSold('${listing.id}')" class="text-xs text-green-600 hover:underline">Mark Sold</button>` : ''}
+                        <button onclick="MarketplaceSystem.deleteListing('${listing.id}')" class="text-xs text-red-600 hover:underline">Delete</button>
+                    </div>
+                </div>
+            </div>`;
+    },
+
+    // ========== MY OFFERS ==========
+    async loadMyOffers() {
+        await this.loadReceivedOffers();
+    },
+
+    showOfferTab(tab) {
+        const receivedBtn = document.getElementById('offers-tab-received');
+        const sentBtn = document.getElementById('offers-tab-sent');
+        const receivedList = document.getElementById('offers-received-list');
+        const sentList = document.getElementById('offers-sent-list');
+
+        if (tab === 'received') {
+            receivedBtn.classList.add('bg-primary-100', 'text-primary-700');
+            receivedBtn.classList.remove('text-gray-600');
+            sentBtn.classList.remove('bg-primary-100', 'text-primary-700');
+            sentBtn.classList.add('text-gray-600');
+            receivedList.classList.remove('hidden');
+            sentList.classList.add('hidden');
+            this.loadReceivedOffers();
+        } else {
+            sentBtn.classList.add('bg-primary-100', 'text-primary-700');
+            sentBtn.classList.remove('text-gray-600');
+            receivedBtn.classList.remove('bg-primary-100', 'text-primary-700');
+            receivedBtn.classList.add('text-gray-600');
+            sentList.classList.remove('hidden');
+            receivedList.classList.add('hidden');
+            this.loadSentOffers();
+        }
+    },
+
+    async loadReceivedOffers() {
+        const container = document.getElementById('offers-received-list');
+        if (!container) return;
+
+        try {
+            container.innerHTML = '<div class="text-center py-8"><div class="animate-spin h-8 w-8 border-2 border-primary-600 border-t-transparent rounded-full mx-auto"></div></div>';
+
+            const { data: myListings } = await window.SupabaseDB.client
+                .from('marketplace_listings')
+                .select('id')
+                .eq('seller_line_id', this.userLineId);
+
+            if (!myListings?.length) {
+                container.innerHTML = `
+                    <div class="text-center text-gray-500 py-12">
+                        <span class="material-symbols-outlined text-4xl mb-2">local_offer</span>
+                        <p>No offers received yet</p>
+                        <p class="text-sm mt-1">Post a listing to start receiving offers</p>
+                    </div>`;
+                return;
+            }
+
+            const listingIds = myListings.map(l => l.id);
+            const { data: offers, error } = await window.SupabaseDB.client
+                .from('marketplace_offers')
+                .select('*, listing:marketplace_listings(*)')
+                .in('listing_id', listingIds)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            if (!offers?.length) {
+                container.innerHTML = `
+                    <div class="text-center text-gray-500 py-12">
+                        <span class="material-symbols-outlined text-4xl mb-2">local_offer</span>
+                        <p>No offers received yet</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = offers.map(offer => this.renderOfferItem(offer, 'received')).join('');
+        } catch (err) {
+            console.error('[Marketplace] Error loading received offers:', err);
+            container.innerHTML = '<div class="text-center text-red-500 py-8">Failed to load offers</div>';
+        }
+    },
+
+    async loadSentOffers() {
+        const container = document.getElementById('offers-sent-list');
+        if (!container) return;
+
+        try {
+            container.innerHTML = '<div class="text-center py-8"><div class="animate-spin h-8 w-8 border-2 border-primary-600 border-t-transparent rounded-full mx-auto"></div></div>';
+
+            const { data: offers, error } = await window.SupabaseDB.client
+                .from('marketplace_offers')
+                .select('*, listing:marketplace_listings(*)')
+                .eq('buyer_line_id', this.userLineId)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            if (!offers?.length) {
+                container.innerHTML = `
+                    <div class="text-center text-gray-500 py-12">
+                        <span class="material-symbols-outlined text-4xl mb-2">send</span>
+                        <p>You haven't made any offers yet</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = offers.map(offer => this.renderOfferItem(offer, 'sent')).join('');
+        } catch (err) {
+            console.error('[Marketplace] Error loading sent offers:', err);
+            container.innerHTML = '<div class="text-center text-red-500 py-8">Failed to load offers</div>';
+        }
+    },
+
+    renderOfferItem(offer, type) {
+        const listing = offer.listing;
+        const imageUrl = listing?.images?.[0] || 'https://via.placeholder.com/60?text=No+Image';
+        const statusColors = {
+            pending: 'bg-yellow-100 text-yellow-700',
+            accepted: 'bg-green-100 text-green-700',
+            declined: 'bg-red-100 text-red-700',
+            withdrawn: 'bg-gray-100 text-gray-700'
+        };
+        const statusBadge = `<span class="px-2 py-0.5 ${statusColors[offer.status]} text-xs rounded-full capitalize">${offer.status}</span>`;
+
+        const offerInfo = offer.offer_type === 'price' ?
+            `฿${offer.offer_amount?.toLocaleString() || 0}` :
+            offer.offer_type === 'swap' ? 'Swap Offer' : 'Question';
+
+        const buyerName = type === 'received' ? (offer.buyer_name || 'Anonymous') : '';
+
+        return `
+            <div class="bg-white rounded-xl shadow-sm p-4">
+                <div class="flex items-start space-x-4">
+                    <img src="${imageUrl}" class="w-16 h-16 object-cover rounded-lg" alt="${listing?.title || 'Listing'}">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <h4 class="font-medium text-gray-900 text-sm">${listing?.title || 'Listing Removed'}</h4>
+                                ${type === 'received' ? `<p class="text-xs text-gray-500">From: ${buyerName}</p>` : ''}
+                            </div>
+                            ${statusBadge}
+                        </div>
+                        <p class="text-sm font-semibold text-primary-600 mt-1">${offerInfo}</p>
+                        ${offer.offer_message ? `<p class="text-xs text-gray-600 mt-1 line-clamp-2">"${offer.offer_message}"</p>` : ''}
+                        <p class="text-xs text-gray-400 mt-1">${this.timeAgo(offer.created_at)}</p>
+                    </div>
+                </div>
+                ${type === 'received' && offer.status === 'pending' ? `
+                    <div class="flex space-x-2 mt-3 pt-3 border-t">
+                        <button onclick="MarketplaceSystem.respondToOffer('${offer.id}', 'accepted')" class="flex-1 btn-primary text-sm py-2">Accept</button>
+                        <button onclick="MarketplaceSystem.respondToOffer('${offer.id}', 'declined')" class="flex-1 btn-secondary text-sm py-2">Decline</button>
+                        <button onclick="MarketplaceSystem.messageOfferBuyer('${offer.buyer_line_id}', '${offer.listing_id}')" class="px-3 btn-secondary text-sm py-2">
+                            <span class="material-symbols-outlined text-sm">chat</span>
+                        </button>
+                    </div>
+                ` : ''}
+                ${type === 'sent' && offer.status === 'pending' ? `
+                    <div class="flex space-x-2 mt-3 pt-3 border-t">
+                        <button onclick="MarketplaceSystem.withdrawOffer('${offer.id}')" class="flex-1 btn-secondary text-sm py-2">Withdraw</button>
+                    </div>
+                ` : ''}
+            </div>`;
+    },
+
+    // ========== FAVORITES ==========
+    async loadFavorites() {
+        const container = document.getElementById('favorites-list');
+        if (!container) return;
+
+        try {
+            container.innerHTML = '<div class="text-center py-8 col-span-full"><div class="animate-spin h-8 w-8 border-2 border-primary-600 border-t-transparent rounded-full mx-auto"></div></div>';
+
+            const { data: favorites, error } = await window.SupabaseDB.client
+                .from('marketplace_favorites')
+                .select('listing:marketplace_listings(*)')
+                .eq('user_line_id', this.userLineId);
+
+            if (error) throw error;
+
+            const listings = favorites?.map(f => f.listing).filter(l => l && l.status === 'active') || [];
+
+            if (!listings.length) {
+                container.innerHTML = `
+                    <div class="text-center text-gray-500 py-12 col-span-full">
+                        <span class="material-symbols-outlined text-4xl mb-2">favorite_border</span>
+                        <p>No saved listings yet</p>
+                        <p class="text-sm mt-1">Tap the heart icon on listings to save them</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = listings.map(listing => this.renderListingCard(listing)).join('');
+        } catch (err) {
+            console.error('[Marketplace] Error loading favorites:', err);
+            container.innerHTML = '<div class="text-center text-red-500 py-8 col-span-full">Failed to load favorites</div>';
+        }
+    },
+
+    async toggleFavorite(listingId) {
+        try {
+            const { data: existing } = await window.SupabaseDB.client
+                .from('marketplace_favorites')
+                .select('*')
+                .eq('listing_id', listingId)
+                .eq('user_line_id', this.userLineId)
+                .maybeSingle();
+
+            const icon = document.getElementById(`fav-icon-${listingId}`);
+
+            if (existing) {
+                await window.SupabaseDB.client
+                    .from('marketplace_favorites')
+                    .delete()
+                    .eq('listing_id', listingId)
+                    .eq('user_line_id', this.userLineId);
+
+                if (icon) {
+                    icon.textContent = 'favorite_border';
+                    icon.classList.remove('text-red-500');
+                    icon.classList.add('text-gray-400');
+                }
+                NotificationManager.show('Removed from favorites', 'info');
+            } else {
+                await window.SupabaseDB.client
+                    .from('marketplace_favorites')
+                    .insert({ listing_id: listingId, user_line_id: this.userLineId });
+
+                if (icon) {
+                    icon.textContent = 'favorite';
+                    icon.classList.add('text-red-500');
+                    icon.classList.remove('text-gray-400');
+                }
+                NotificationManager.show('Saved to favorites', 'success');
+            }
+        } catch (err) {
+            console.error('[Marketplace] Error toggling favorite:', err);
+        }
+    },
+
+    // ========== CREATE LISTING MODAL ==========
+    openCreateModal() {
+        document.getElementById('createListingModal').classList.remove('hidden');
+        document.getElementById('createListingForm').reset();
+        this.uploadedImages = [];
+        this.renderImagePreviews();
+        this.updatePriceVisibility();
+
+        document.getElementById('createListingForm').onsubmit = (e) => this.submitListing(e);
+    },
+
+    closeCreateModal() {
+        document.getElementById('createListingModal').classList.add('hidden');
+    },
+
+    updateSubcategories(category) {
+        const container = document.getElementById('subcategory-container');
+        const select = document.getElementById('listingSubcategory');
+
+        if (this.subcategories[category]) {
+            select.innerHTML = '<option value="">Select subcategory</option>' +
+                this.subcategories[category].map(sub => `<option value="${sub.toLowerCase()}">${sub}</option>`).join('');
+            container.style.display = 'block';
+        } else {
+            container.style.display = 'none';
+        }
+    },
+
+    updatePriceVisibility() {
+        const listingType = document.querySelector('input[name="listingType"]:checked')?.value;
+        const priceSection = document.getElementById('price-section');
+        const conditionSection = document.getElementById('condition-section');
+
+        if (listingType === 'sale') {
+            priceSection.style.display = 'block';
+            conditionSection.style.display = 'block';
+        } else if (listingType === 'swap') {
+            priceSection.style.display = 'none';
+            conditionSection.style.display = 'block';
+        } else {
+            priceSection.style.display = 'none';
+            conditionSection.style.display = 'none';
+        }
+    },
+
+    async handleImageUpload(event) {
+        const files = Array.from(event.target.files);
+        const maxImages = 5;
+
+        if (this.uploadedImages.length + files.length > maxImages) {
+            NotificationManager.show(`Maximum ${maxImages} images allowed`, 'warning');
+            return;
+        }
+
+        for (const file of files) {
+            if (!file.type.startsWith('image/')) continue;
+            if (file.size > 5 * 1024 * 1024) {
+                NotificationManager.show('Image must be smaller than 5MB', 'warning');
+                continue;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                this.uploadedImages.push({
+                    file: file,
+                    preview: e.target.result,
+                    uploaded: false,
+                    url: null
+                });
+                this.renderImagePreviews();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        event.target.value = '';
+    },
+
+    renderImagePreviews() {
+        const container = document.getElementById('listing-images-preview');
+        const maxImages = 5;
+
+        let html = this.uploadedImages.map((img, index) => `
+            <div class="aspect-square relative rounded-lg overflow-hidden">
+                <img src="${img.preview}" class="w-full h-full object-cover">
+                <button type="button" onclick="MarketplaceSystem.removeImage(${index})" class="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full">
+                    <span class="material-symbols-outlined text-xs">close</span>
+                </button>
+            </div>
+        `).join('');
+
+        if (this.uploadedImages.length < maxImages) {
+            html += `
+                <div class="aspect-square border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-primary-500" onclick="document.getElementById('listingImagesInput').click()">
+                    <span class="material-symbols-outlined text-gray-400">add_photo_alternate</span>
+                </div>`;
+        }
+
+        container.innerHTML = html;
+    },
+
+    removeImage(index) {
+        this.uploadedImages.splice(index, 1);
+        this.renderImagePreviews();
+    },
+
+    async submitListing(event) {
+        event.preventDefault();
+
+        const title = document.getElementById('listingTitle').value.trim();
+        const category = document.getElementById('listingCategory').value;
+        const subcategory = document.getElementById('listingSubcategory')?.value || null;
+        const listingType = document.querySelector('input[name="listingType"]:checked')?.value;
+        const price = document.getElementById('listingPrice')?.value || null;
+        const negotiable = document.getElementById('priceNegotiable')?.checked;
+        const condition = document.getElementById('listingCondition')?.value;
+        const description = document.getElementById('listingDescription').value.trim();
+        const location = document.getElementById('listingLocation').value.trim();
+
+        if (!title || !category || !listingType) {
+            NotificationManager.show('Please fill in required fields', 'error');
+            return;
+        }
+
+        try {
+            NotificationManager.show('Creating listing...', 'info');
+
+            // Upload images to Supabase Storage
+            const imageUrls = [];
+            for (const img of this.uploadedImages) {
+                if (!img.uploaded) {
+                    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${img.file.name.split('.').pop()}`;
+                    const filePath = `listings/${this.userLineId}/${fileName}`;
+
+                    const { data, error } = await window.SupabaseDB.client.storage
+                        .from('marketplace-images')
+                        .upload(filePath, img.file, { contentType: img.file.type });
+
+                    if (error) {
+                        console.warn('[Marketplace] Image upload failed:', error);
+                        continue;
+                    }
+
+                    const { data: { publicUrl } } = window.SupabaseDB.client.storage
+                        .from('marketplace-images')
+                        .getPublicUrl(filePath);
+
+                    imageUrls.push(publicUrl);
+                } else {
+                    imageUrls.push(img.url);
+                }
+            }
+
+            const user = AppState?.currentUser || window.currentUser;
+            const sellerName = user?.displayName || user?.name || 'Anonymous';
+
+            let priceType = null;
+            if (listingType === 'sale') {
+                priceType = negotiable ? 'negotiable' : 'fixed';
+            } else if (listingType === 'swap') {
+                priceType = 'swap_only';
+            }
+
+            const { data, error } = await window.SupabaseDB.client
+                .from('marketplace_listings')
+                .insert({
+                    seller_line_id: this.userLineId,
+                    seller_name: sellerName,
+                    title,
+                    description,
+                    category,
+                    subcategory,
+                    listing_type: listingType,
+                    price: listingType === 'sale' ? parseInt(price) || null : null,
+                    price_type: priceType,
+                    images: imageUrls,
+                    condition: ['sale', 'swap'].includes(listingType) ? condition : null,
+                    location,
+                    status: 'active'
+                })
+                .select();
+
+            if (error) throw error;
+
+            NotificationManager.show('Listing created successfully!', 'success');
+            this.closeCreateModal();
+            this.showSubTab('mylistings');
+
+        } catch (err) {
+            console.error('[Marketplace] Error creating listing:', err);
+            NotificationManager.show('Failed to create listing: ' + err.message, 'error');
+        }
+    },
+
+    // ========== LISTING DETAIL MODAL ==========
+    async openDetailModal(listingId) {
+        const modal = document.getElementById('listingDetailModal');
+        const content = document.getElementById('listing-detail-content');
+        modal.classList.remove('hidden');
+        content.innerHTML = '<div class="p-8 text-center"><div class="animate-spin h-8 w-8 border-2 border-primary-600 border-t-transparent rounded-full mx-auto"></div></div>';
+
+        try {
+            // Increment view count
+            try {
+                await window.SupabaseDB.client.rpc('increment_listing_views', { listing_id: listingId });
+            } catch (e) { console.warn('View count failed:', e); }
+
+            const { data: listing, error } = await window.SupabaseDB.client
+                .from('marketplace_listings')
+                .select('*')
+                .eq('id', listingId)
+                .single();
+
+            if (error) throw error;
+            this.currentListing = listing;
+
+            const isOwner = listing.seller_line_id === this.userLineId;
+            const sellerName = listing.seller_name || 'Anonymous';
+            const images = listing.images || [];
+
+            content.innerHTML = `
+                <div class="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between z-10">
+                    <button onclick="MarketplaceSystem.closeDetailModal()" class="text-gray-500 hover:text-gray-700">
+                        <span class="material-symbols-outlined">arrow_back</span>
+                    </button>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="MarketplaceSystem.toggleFavorite('${listing.id}')" class="p-2 hover:bg-gray-100 rounded-full">
+                            <span class="material-symbols-outlined text-gray-400" id="detail-fav-icon">favorite_border</span>
+                        </button>
+                        <button onclick="MarketplaceSystem.shareListing('${listing.id}')" class="p-2 hover:bg-gray-100 rounded-full">
+                            <span class="material-symbols-outlined text-gray-400">share</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Image Gallery -->
+                <div class="relative aspect-video bg-gray-100">
+                    ${images.length > 0 ? `
+                        <img src="${images[0]}" class="w-full h-full object-contain" id="detail-main-image">
+                        ${images.length > 1 ? `
+                            <button onclick="MarketplaceSystem.prevImage()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-white/80 rounded-full shadow">
+                                <span class="material-symbols-outlined">chevron_left</span>
+                            </button>
+                            <button onclick="MarketplaceSystem.nextImage()" class="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-white/80 rounded-full shadow">
+                                <span class="material-symbols-outlined">chevron_right</span>
+                            </button>
+                            <div class="absolute bottom-2 left-1/2 -translate-x-1/2 flex space-x-1">
+                                ${images.map((_, i) => `<span class="w-2 h-2 rounded-full ${i === 0 ? 'bg-white' : 'bg-white/50'}" id="dot-${i}"></span>`).join('')}
+                            </div>
+                        ` : ''}
+                    ` : '<div class="w-full h-full flex items-center justify-center"><span class="material-symbols-outlined text-4xl text-gray-400">image</span></div>'}
+                </div>
+
+                <div class="p-4 space-y-4">
+                    <!-- Title and Price -->
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-900">${listing.title}</h2>
+                        <div class="flex items-center justify-between mt-2">
+                            <span class="text-2xl font-bold ${listing.price_type === 'swap_only' ? 'text-purple-600' : 'text-green-600'}">
+                                ${listing.price_type === 'swap_only' ? 'Swap Only' :
+                                  listing.price ? `฿${listing.price.toLocaleString()}` :
+                                  listing.listing_type === 'wanted' ? 'Wanted' : 'Make Offer'}
+                            </span>
+                            ${listing.price_type === 'negotiable' ? '<span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">Negotiable</span>' : ''}
+                        </div>
+                    </div>
+
+                    <!-- Details -->
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                        <div class="flex items-center text-gray-600">
+                            <span class="material-symbols-outlined text-sm mr-2">category</span>
+                            <span class="capitalize">${listing.category.replace('_', ' ')}</span>
+                        </div>
+                        ${listing.condition ? `
+                            <div class="flex items-center text-gray-600">
+                                <span class="material-symbols-outlined text-sm mr-2">grade</span>
+                                <span class="capitalize">${listing.condition.replace('_', ' ')}</span>
+                            </div>
+                        ` : ''}
+                        ${listing.location ? `
+                            <div class="flex items-center text-gray-600">
+                                <span class="material-symbols-outlined text-sm mr-2">location_on</span>
+                                <span>${listing.location}</span>
+                            </div>
+                        ` : ''}
+                        <div class="flex items-center text-gray-600">
+                            <span class="material-symbols-outlined text-sm mr-2">visibility</span>
+                            <span>${listing.views || 0} views</span>
+                        </div>
+                    </div>
+
+                    <!-- Description -->
+                    ${listing.description ? `
+                        <div>
+                            <h3 class="font-semibold text-gray-900 mb-2">Description</h3>
+                            <p class="text-gray-600 whitespace-pre-wrap">${listing.description}</p>
+                        </div>
+                    ` : ''}
+
+                    <!-- Seller Info -->
+                    <div class="flex items-center p-3 bg-gray-50 rounded-lg">
+                        <div class="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center mr-3">
+                            <span class="material-symbols-outlined text-primary-600">person</span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="font-medium text-gray-900">${sellerName}</div>
+                            <div class="text-xs text-gray-500">Posted ${this.timeAgo(listing.created_at)}</div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    ${!isOwner ? `
+                        <div class="flex space-x-3 pt-4 border-t">
+                            <button onclick="MarketplaceSystem.openMakeOfferModal('${listing.id}')" class="flex-1 btn-primary py-3">
+                                <span class="material-symbols-outlined text-sm mr-1">local_offer</span>
+                                Make Offer
+                            </button>
+                            <button onclick="MarketplaceSystem.messageSeller('${listing.seller_line_id}', '${listing.id}')" class="px-4 btn-secondary py-3">
+                                <span class="material-symbols-outlined">chat</span>
+                            </button>
+                        </div>
+                    ` : `
+                        <div class="flex space-x-3 pt-4 border-t">
+                            <button onclick="MarketplaceSystem.editListing('${listing.id}')" class="flex-1 btn-secondary py-3">
+                                <span class="material-symbols-outlined text-sm mr-1">edit</span>
+                                Edit
+                            </button>
+                            <button onclick="MarketplaceSystem.markAsSold('${listing.id}')" class="flex-1 btn-primary py-3">
+                                <span class="material-symbols-outlined text-sm mr-1">check</span>
+                                Mark Sold
+                            </button>
+                        </div>
+                    `}
+                </div>
+            `;
+
+            this.currentImageIndex = 0;
+
+            // Check if favorited
+            const { data: fav } = await window.SupabaseDB.client
+                .from('marketplace_favorites')
+                .select('*')
+                .eq('listing_id', listingId)
+                .eq('user_line_id', this.userLineId)
+                .maybeSingle();
+
+            if (fav) {
+                const icon = document.getElementById('detail-fav-icon');
+                if (icon) {
+                    icon.textContent = 'favorite';
+                    icon.classList.add('text-red-500');
+                }
+            }
+        } catch (err) {
+            console.error('[Marketplace] Error loading listing detail:', err);
+            content.innerHTML = '<div class="p-8 text-center text-red-500">Failed to load listing</div>';
+        }
+    },
+
+    closeDetailModal() {
+        document.getElementById('listingDetailModal').classList.add('hidden');
+        this.currentListing = null;
+    },
+
+    prevImage() {
+        if (!this.currentListing?.images?.length) return;
+        const images = this.currentListing.images;
+        const prevDot = document.getElementById(`dot-${this.currentImageIndex}`);
+        if (prevDot) prevDot.classList.replace('bg-white', 'bg-white/50');
+        this.currentImageIndex = (this.currentImageIndex - 1 + images.length) % images.length;
+        document.getElementById('detail-main-image').src = images[this.currentImageIndex];
+        const newDot = document.getElementById(`dot-${this.currentImageIndex}`);
+        if (newDot) newDot.classList.replace('bg-white/50', 'bg-white');
+    },
+
+    nextImage() {
+        if (!this.currentListing?.images?.length) return;
+        const images = this.currentListing.images;
+        const prevDot = document.getElementById(`dot-${this.currentImageIndex}`);
+        if (prevDot) prevDot.classList.replace('bg-white', 'bg-white/50');
+        this.currentImageIndex = (this.currentImageIndex + 1) % images.length;
+        document.getElementById('detail-main-image').src = images[this.currentImageIndex];
+        const newDot = document.getElementById(`dot-${this.currentImageIndex}`);
+        if (newDot) newDot.classList.replace('bg-white/50', 'bg-white');
+    },
+
+    // ========== MAKE OFFER ==========
+    openMakeOfferModal(listingId) {
+        document.getElementById('makeOfferModal').classList.remove('hidden');
+        document.getElementById('offerListingId').value = listingId;
+        document.getElementById('makeOfferForm').reset();
+        this.updateOfferTypeUI();
+    },
+
+    closeMakeOfferModal() {
+        document.getElementById('makeOfferModal').classList.add('hidden');
+    },
+
+    updateOfferTypeUI() {
+        const offerType = document.querySelector('input[name="offerType"]:checked')?.value;
+        const priceInput = document.getElementById('offer-price-input');
+        priceInput.style.display = offerType === 'price' ? 'block' : 'none';
+    },
+
+    async submitOffer(event) {
+        event.preventDefault();
+
+        const listingId = document.getElementById('offerListingId').value;
+        const offerType = document.querySelector('input[name="offerType"]:checked')?.value;
+        const offerAmount = document.getElementById('offerAmount')?.value;
+        const offerMessage = document.getElementById('offerMessage').value.trim();
+
+        if (offerType === 'price' && !offerAmount) {
+            NotificationManager.show('Please enter an offer amount', 'error');
+            return;
+        }
+
+        try {
+            const user = AppState?.currentUser || window.currentUser;
+            const buyerName = user?.displayName || user?.name || 'Anonymous';
+
+            const { data, error } = await window.SupabaseDB.client
+                .from('marketplace_offers')
+                .insert({
+                    listing_id: listingId,
+                    buyer_line_id: this.userLineId,
+                    buyer_name: buyerName,
+                    offer_type: offerType,
+                    offer_amount: offerType === 'price' ? parseInt(offerAmount) : null,
+                    offer_message: offerMessage,
+                    status: 'pending'
+                })
+                .select();
+
+            if (error) throw error;
+
+            // Send LINE notification to seller
+            await this.sendOfferNotification(listingId, offerType, offerAmount, offerMessage);
+
+            NotificationManager.show('Offer sent successfully!', 'success');
+            this.closeMakeOfferModal();
+            this.closeDetailModal();
+
+        } catch (err) {
+            console.error('[Marketplace] Error submitting offer:', err);
+            NotificationManager.show('Failed to send offer', 'error');
+        }
+    },
+
+    async sendOfferNotification(listingId, offerType, offerAmount, message) {
+        try {
+            const { data: listing } = await window.SupabaseDB.client
+                .from('marketplace_listings')
+                .select('title, seller_line_id')
+                .eq('id', listingId)
+                .single();
+
+            if (!listing) return;
+
+            const user = AppState?.currentUser || window.currentUser;
+            const buyerName = user?.displayName || user?.name || 'Someone';
+
+            const offerText = offerType === 'price' ?
+                `฿${parseInt(offerAmount).toLocaleString()}` :
+                offerType === 'swap' ? 'Swap offer' : 'Question';
+
+            // Use direct_messages to trigger LINE notification
+            await window.SupabaseDB.client
+                .from('direct_messages')
+                .insert({
+                    sender_line_id: this.userLineId,
+                    recipient_line_id: listing.seller_line_id,
+                    message_text: `🏷️ New offer on "${listing.title}"\n\nOffer: ${offerText}${message ? `\n\n"${message}"` : ''}\n\nOpen 19th Hole to respond.`
+                });
+
+        } catch (err) {
+            console.warn('[Marketplace] Failed to send notification:', err);
+        }
+    },
+
+    async respondToOffer(offerId, status) {
+        try {
+            const { error } = await window.SupabaseDB.client
+                .from('marketplace_offers')
+                .update({ status, updated_at: new Date().toISOString() })
+                .eq('id', offerId);
+
+            if (error) throw error;
+
+            NotificationManager.show(`Offer ${status}!`, 'success');
+
+            if (status === 'accepted') {
+                if (confirm('Mark listing as sold?')) {
+                    const { data: offer } = await window.SupabaseDB.client
+                        .from('marketplace_offers')
+                        .select('listing_id')
+                        .eq('id', offerId)
+                        .single();
+
+                    if (offer) {
+                        await this.markAsSold(offer.listing_id);
+                    }
+                }
+            }
+
+            this.loadReceivedOffers();
+        } catch (err) {
+            console.error('[Marketplace] Error responding to offer:', err);
+            NotificationManager.show('Failed to respond to offer', 'error');
+        }
+    },
+
+    async withdrawOffer(offerId) {
+        try {
+            const { error } = await window.SupabaseDB.client
+                .from('marketplace_offers')
+                .update({ status: 'withdrawn', updated_at: new Date().toISOString() })
+                .eq('id', offerId);
+
+            if (error) throw error;
+            NotificationManager.show('Offer withdrawn', 'success');
+            this.loadSentOffers();
+        } catch (err) {
+            console.error('[Marketplace] Error withdrawing offer:', err);
+            NotificationManager.show('Failed to withdraw offer', 'error');
+        }
+    },
+
+    // ========== MESSAGING INTEGRATION ==========
+    async messageSeller(sellerId, listingId) {
+        if (typeof MessagesSystem !== 'undefined') {
+            showGolferTab('messages', event);
+            setTimeout(() => {
+                MessagesSystem.showSubTab('direct');
+                MessagesSystem.openDirectMessage(sellerId);
+            }, 200);
+        }
+    },
+
+    async messageOfferBuyer(buyerId, listingId) {
+        if (typeof MessagesSystem !== 'undefined') {
+            showGolferTab('messages', event);
+            setTimeout(() => {
+                MessagesSystem.showSubTab('direct');
+                MessagesSystem.openDirectMessage(buyerId);
+            }, 200);
+        }
+    },
+
+    // ========== LISTING MANAGEMENT ==========
+    async markAsSold(listingId) {
+        try {
+            const { error } = await window.SupabaseDB.client
+                .from('marketplace_listings')
+                .update({ status: 'sold', updated_at: new Date().toISOString() })
+                .eq('id', listingId);
+
+            if (error) throw error;
+            NotificationManager.show('Listing marked as sold!', 'success');
+            this.loadMyListings();
+            this.closeDetailModal();
+        } catch (err) {
+            console.error('[Marketplace] Error marking as sold:', err);
+            NotificationManager.show('Failed to update listing', 'error');
+        }
+    },
+
+    async deleteListing(listingId) {
+        if (!confirm('Are you sure you want to delete this listing?')) return;
+
+        try {
+            const { error } = await window.SupabaseDB.client
+                .from('marketplace_listings')
+                .update({ status: 'deleted', updated_at: new Date().toISOString() })
+                .eq('id', listingId);
+
+            if (error) throw error;
+            NotificationManager.show('Listing deleted', 'success');
+            this.loadMyListings();
+        } catch (err) {
+            console.error('[Marketplace] Error deleting listing:', err);
+            NotificationManager.show('Failed to delete listing', 'error');
+        }
+    },
+
+    editListing(listingId) {
+        NotificationManager.show('Edit feature coming soon', 'info');
+    },
+
+    shareListing(listingId) {
+        const url = `${window.location.origin}/?listing=${listingId}`;
+        if (navigator.share) {
+            navigator.share({ title: this.currentListing?.title, url });
+        } else {
+            navigator.clipboard.writeText(url);
+            NotificationManager.show('Link copied to clipboard', 'success');
+        }
+    },
+
+    // ========== OFFER COUNTS & BADGE ==========
+    async refreshOfferCounts() {
+        try {
+            const { data: myListings } = await window.SupabaseDB.client
+                .from('marketplace_listings')
+                .select('id')
+                .eq('seller_line_id', this.userLineId);
+
+            if (!myListings?.length) {
+                this.updateOfferBadges(0);
+                return;
+            }
+
+            const listingIds = myListings.map(l => l.id);
+            const { count } = await window.SupabaseDB.client
+                .from('marketplace_offers')
+                .select('*', { count: 'exact', head: true })
+                .in('listing_id', listingIds)
+                .eq('status', 'pending');
+
+            this.updateOfferBadges(count || 0);
+        } catch (err) {
+            console.warn('[Marketplace] Error refreshing offer counts:', err);
+        }
+    },
+
+    updateOfferBadges(count) {
+        const tabBadge = document.getElementById('marketplaceBadge');
+        if (tabBadge) {
+            tabBadge.textContent = count;
+            tabBadge.style.display = count > 0 ? 'inline' : 'none';
+        }
+
+        const offersBadge = document.getElementById('offers-badge');
+        if (offersBadge) {
+            offersBadge.textContent = count;
+            offersBadge.style.display = count > 0 ? 'inline' : 'none';
+        }
+
+        const receivedBadge = document.getElementById('received-count');
+        if (receivedBadge) {
+            receivedBadge.textContent = count;
+            receivedBadge.style.display = count > 0 ? 'inline' : 'none';
+        }
+
+        const dashboardBadge = document.getElementById('dashboard-offers-badge');
+        if (dashboardBadge) {
+            dashboardBadge.textContent = count;
+            dashboardBadge.style.display = count > 0 ? 'inline' : 'none';
+        }
+    },
+
+    // ========== UTILITIES ==========
+    timeAgo(dateString) {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diff = Math.floor((now - date) / 1000);
+
+        if (diff < 60) return 'Just now';
+        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+        if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+        if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+        return date.toLocaleDateString();
+    }
+};
+
+// Make globally available
+window.MarketplaceSystem = MarketplaceSystem;
+console.log('[MarketplaceSystem] Module loaded');
+
+// ==================================================================
 // GOLFER EVENTS SYSTEM - Browse and Register for Society Events
 // ==================================================================
 class GolferEventsManager {
@@ -69437,7 +71008,7 @@ showOrganizerTab = function(tabName) {
 
                 <button class="drawer-link" onclick="showGolferTab('schedule', event); closeMobileDrawer();"><span class="material-symbols-outlined">calendar_month</span><span data-i18n="golfer.schedule">Schedule</span></button>
 
-                <button class="drawer-link" onclick="showGolferTab('stats', event); closeMobileDrawer();"><span class="material-symbols-outlined">analytics</span><span data-i18n="golfer.statistics">Statistics</span></button>
+                <button class="drawer-link" onclick="showGolferTab('marketplace', event); closeMobileDrawer();" style="background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; border-radius: 8px;"><span class="material-symbols-outlined">storefront</span><span>19th Hole</span></button>
 
                 <button class="drawer-link" onclick="showGolferTab('food', event); closeMobileDrawer();"><span class="material-symbols-outlined">restaurant</span><span data-i18n="golfer.food">Food & Dining</span></button>
 

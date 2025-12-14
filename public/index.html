@@ -41039,41 +41039,54 @@ class SocietyGolfSupabase {
         }
 
         // Calculate handicap strokes for this hole
-        // Formula handles all handicap ranges (0-54) and plus handicaps:
-        // - Handicap 0-18: 1 stroke on holes with SI <= handicap (hardest holes)
-        // - Handicap 19-36: 2 strokes on SI <= (handicap-18), 1 stroke on remaining holes
-        // - Handicap 37-54: 3 strokes on SI <= (handicap-36), 2 strokes on SI <= (handicap-18), etc.
-        // - Plus handicap +2: LOSE 1 stroke on SI 17-18 (easiest holes)
-        // - Plus handicap +20: LOSE 2 strokes on SI 15-18, 1 stroke on SI 1-14
+        // IMPORTANT: For combined nines (SI 1-9 for each nine), handicap applies per-nine
+        // For full 18-hole courses (SI 1-18), handicap applies across all 18
 
         // FIX: Convert plus handicap string "+X" to negative number -X
-        // JavaScript parseFloat("+2.1") = 2.1 (positive), but golf "+2.1" means MINUS 2.1
         let numericHandicap = handicap;
         if (typeof handicap === 'string') {
             if (handicap.startsWith('+')) {
-                // Plus handicap: "+2.1" should become -2.1
                 numericHandicap = -parseFloat(handicap.substring(1));
             } else {
                 numericHandicap = parseFloat(handicap);
             }
         }
         const playingHandicap = Math.round(numericHandicap);
-        const fullStrokes = Math.floor(Math.abs(playingHandicap) / 18);
-        const remainingStrokes = Math.abs(playingHandicap) % 18;
+
+        // Detect if this is a combined nine course (SI 1-9) or full 18 (SI 1-18)
+        // Combined nines have SI max of 9, full courses have SI up to 18
+        const isCombinedNines = strokeIndex <= 9; // If SI is 1-9, treat as combined nines
 
         let strokesReceived;
-        if (playingHandicap >= 0) {
-            // Positive handicap: receive strokes on HARDEST holes (lowest SI)
-            strokesReceived = fullStrokes + (strokeIndex <= remainingStrokes ? 1 : 0);
+        if (isCombinedNines) {
+            // COMBINED NINES: Each nine uses SI 1-9, so divide handicap between front/back
+            // Handicap 11 = 5.5 per nine, rounded: front gets 6, back gets 5 (or use same for both)
+            // Simpler: half handicap per nine, allocate to lowest SI holes
+            const halfHandicap = Math.round(Math.abs(playingHandicap) / 2);
+            const fullStrokes = Math.floor(halfHandicap / 9);
+            const remainingStrokes = halfHandicap % 9;
+
+            if (playingHandicap >= 0) {
+                strokesReceived = fullStrokes + (strokeIndex <= remainingStrokes ? 1 : 0);
+            } else {
+                strokesReceived = -(fullStrokes + (strokeIndex > (9 - remainingStrokes) ? 1 : 0));
+            }
         } else {
-            // Plus handicap: give strokes on EASIEST holes (highest SI)
-            strokesReceived = -(fullStrokes + (strokeIndex > (18 - remainingStrokes) ? 1 : 0));
+            // FULL 18-HOLE COURSE: SI 1-18, use full handicap
+            const fullStrokes = Math.floor(Math.abs(playingHandicap) / 18);
+            const remainingStrokes = Math.abs(playingHandicap) % 18;
+
+            if (playingHandicap >= 0) {
+                strokesReceived = fullStrokes + (strokeIndex <= remainingStrokes ? 1 : 0);
+            } else {
+                strokesReceived = -(fullStrokes + (strokeIndex > (18 - remainingStrokes) ? 1 : 0));
+            }
         }
 
         const netScore = grossScore - strokesReceived;
 
         // Calculate Stableford points based on NET score vs par
-        // Standard Stableford: Net Eagle+=4, Net Birdie=3, Net Par=2, Net Bogey=1, Net Double+=0
+        // Thailand Stableford: Net Eagle=4, Net Birdie=3, Net Par=2, Net Bogey=1, Net Double+=0
         const scoreToPar = netScore - par; // Negative = under par, Positive = over par
         let stablefordPoints = 0;
 
@@ -41093,6 +41106,8 @@ class SocietyGolfSupabase {
             // Net Double bogey or worse
             stablefordPoints = 0;
         }
+
+        console.log(`[SocietyGolf] saveScore: Hole ${holeNumber}, Gross ${grossScore}, Par ${par}, SI ${strokeIndex}, HCP ${handicap}, Strokes ${strokesReceived}, Net ${netScore}, ScoreToPar ${scoreToPar}, StablefordPts ${stablefordPoints}`);
 
         const { data, error } = await window.SupabaseDB.client
             .from('scores')
@@ -41316,6 +41331,14 @@ class SocietyGolfSupabase {
             const holesCompleted = (card.scores || []).filter(s => s.gross_score).length;
             const thru = holesCompleted === 18 ? 'F' : holesCompleted.toString();
 
+            // FIX: Calculate stableford from scores table (total_stableford column doesn't exist in scorecards)
+            let totalStableford = 0;
+            if (card.scores && Array.isArray(card.scores)) {
+                for (const score of card.scores) {
+                    totalStableford += score.stableford_points || 0;
+                }
+            }
+
             // Calculate countback if enabled
             const countback = useCountback ?
                 this.calculateCountback(card.scores, scoringFormat) :
@@ -41327,7 +41350,7 @@ class SocietyGolfSupabase {
                 scorecard_id: card.id,
                 total_gross: card.total_gross || 0,
                 total_net: card.total_net || 0,
-                total_stableford: card.total_stableford || 0,
+                total_stableford: totalStableford, // Calculated from scores table
                 holes_completed: holesCompleted,
                 thru: thru,
                 status: card.status,
@@ -44344,10 +44367,13 @@ class LiveScorecardSystem {
                 }
                 this.scoresCache[player.id][this.currentHole] = score;
 
-                // Get hole data
-                const holeData = this.courseData?.holes?.[this.currentHole - 1];
+                // Get hole data - use .find() for robustness with combined nine courses
+                const holeData = this.courseData?.holes?.find(h => h.hole_number === this.currentHole)
+                              || this.courseData?.holes?.[this.currentHole - 1];
                 const par = holeData?.par || 4;
                 const strokeIndex = holeData?.stroke_index || this.currentHole;
+
+                console.log(`[LiveScorecard] Saving score: Hole ${this.currentHole}, Score ${score}, Par ${par}, SI ${strokeIndex}, HCP ${player.handicap}`);
 
                 // Save to database if online
                 if (scorecardId && !scorecardId.startsWith('local_')) {
@@ -45051,20 +45077,22 @@ class LiveScorecardSystem {
                 };
             }
 
-            // Verify player has LINE ID (should always be true for current user)
-            if (!player.lineUserId || player.lineUserId.trim() === '') {
-                console.error(`[LiveScorecard] CRITICAL: Cannot save round - player missing LINE ID:`, player);
-                throw new Error(`Cannot save round: Player "${player.name}" is not logged in with LINE`);
+            // Get golfer ID - prefer LINE user ID, fall back to player.id (for manually added players)
+            // This allows rounds to be saved for ALL players, not just those with LINE accounts
+            const golferId = player.lineUserId || player.id;
+            if (!golferId || golferId.trim() === '') {
+                console.error(`[LiveScorecard] CRITICAL: Cannot save round - player has no ID:`, player);
+                throw new Error(`Cannot save round: Player "${player.name}" has no valid ID`);
             }
-    
-            // Save to Supabase database using LINE user ID
+
+            // Save to Supabase database using golfer ID (LINE ID or generated ID)
             let round, error;
             try {
-                // FIXED: Use LINE user ID (TEXT) instead of Supabase UUID
+                // FIX: Use golferId which is either LINE user ID or generated player ID
                 const canonicalInsert = await window.SupabaseDB.client
                     .from('rounds')
                     .insert({
-                        golfer_id: player.lineUserId, // FIXED: Use LINE user ID directly
+                        golfer_id: golferId, // FIX: Use LINE user ID OR player.id for manually added players
                         course_id: courseId || null,
                         course_name: courseName, // FIX: Use local variable instead of this.courseData?.name
                         type: this.roundType || (this.isPrivateRound ? 'private' : (this.eventId ? 'society' : 'private')),
@@ -45121,7 +45149,7 @@ class LiveScorecardSystem {
                     const legacyInsert = await window.SupabaseDB.client
                         .from('rounds')
                         .insert({
-                            golfer_id: player.lineUserId, // FIXED: Use golfer_id (TEXT) instead of user_id (UUID)
+                            golfer_id: golferId, // FIX: Use golferId (LINE ID or player.id for manually added players)
                             course_id: courseId || null,
                             course_name: courseName, // FIX: Add course_name for legacy schema
                             played_at: new Date().toISOString(),
@@ -45419,9 +45447,11 @@ class LiveScorecardSystem {
             // CRITICAL FIX: Save ALL players' rounds to their respective histories
             // Each round is saved with the correct golfer_id, and queries filter by user
             for (const player of this.players) {
-                // Skip players without LINE user ID (guest players)
-                if (!player.lineUserId || player.lineUserId.trim() === '') {
-                    console.log(`[LiveScorecard] Skipping ${player.name} - no LINE user ID (guest player)`);
+                // FIX: Allow players with either lineUserId OR player.id (for manually added players)
+                // This ensures ALL players get their rounds saved, not just LINE-linked users
+                const playerId = player.lineUserId || player.id;
+                if (!playerId || playerId.trim() === '') {
+                    console.log(`[LiveScorecard] Skipping ${player.name} - no player ID at all`);
                     continue;
                 }
 

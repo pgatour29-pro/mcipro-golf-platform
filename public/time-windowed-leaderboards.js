@@ -31,26 +31,46 @@ class TimeWindowedLeaderboards {
         if (!this.supabase || !this.currentUserId) return;
 
         try {
-            const { data, error } = await this.supabase
-                .from('society_members')
-                .select('society_id, societies(id, name)')
-                .eq('golfer_id', this.currentUserId)
-                .eq('status', 'active');
+            // Load ALL societies (not just user's memberships) so JOA and others appear
+            const { data: allSocieties, error: societiesError } = await this.supabase
+                .from('societies')
+                .select('id, name')
+                .order('name');
 
-            if (!error && data) {
-                // FIXED: Deduplicate societies by ID to prevent duplicates in dropdown
+            if (!societiesError && allSocieties) {
+                // CRITICAL FIX: Deduplicate by NAME (not just ID) to remove duplicate "Travellers Rest Golf Group" entries
                 const societyMap = new Map();
-                data.filter(m => m.societies).forEach(m => {
-                    if (!societyMap.has(m.societies.id)) {
-                        societyMap.set(m.societies.id, {
-                            id: m.societies.id,
-                            name: m.societies.name
-                        });
+                allSocieties.forEach(s => {
+                    if (s.id && s.name && !societyMap.has(s.name)) {
+                        societyMap.set(s.name, { id: s.id, name: s.name });
                     }
                 });
                 this.userSocieties = Array.from(societyMap.values());
-                console.log('[TimeWindowedLeaderboards] Loaded societies (deduplicated):', this.userSocieties.length);
+                console.log('[TimeWindowedLeaderboards] Loaded ALL societies (deduplicated by name):', this.userSocieties.map(s => s.name));
+            } else if (societiesError) {
+                console.log('[TimeWindowedLeaderboards] Could not load societies table, trying society_members:', societiesError.message);
+                // Fallback to user's memberships only
+                const { data, error } = await this.supabase
+                    .from('society_members')
+                    .select('society_id, societies(id, name)')
+                    .eq('golfer_id', this.currentUserId)
+                    .eq('status', 'active');
+
+                if (!error && data) {
+                    const societyMap = new Map();
+                    data.filter(m => m.societies).forEach(m => {
+                        // Deduplicate by name here too
+                        if (!societyMap.has(m.societies.name)) {
+                            societyMap.set(m.societies.name, {
+                                id: m.societies.id,
+                                name: m.societies.name
+                            });
+                        }
+                    });
+                    this.userSocieties = Array.from(societyMap.values());
+                }
             }
+            console.log('[TimeWindowedLeaderboards] Final societies count:', this.userSocieties.length);
         } catch (err) {
             console.error('[TimeWindowedLeaderboards] Error loading societies:', err);
         }
@@ -60,40 +80,45 @@ class TimeWindowedLeaderboards {
         const select = document.getElementById('leaderboardSocietyFilter');
         if (!select) return;
 
-        // Keep the first two options (Entire Platform, All My Societies)
-        while (select.options.length > 2) {
-            select.remove(2);
-        }
+        // Completely rebuild the dropdown
+        // Global Platform is the default - shows ALL players from ALL societies
+        select.innerHTML = `
+            <option value="platform" selected>🌍 Global Platform</option>
+        `;
 
-        // Add separator if there are societies
+        // Add separator and individual societies
         if (this.userSocieties.length > 0) {
             const separator = document.createElement('option');
             separator.disabled = true;
-            separator.textContent = '── My Societies ──';
+            separator.textContent = '── Society Standings ──';
             select.add(separator);
 
-            // Add each society
+            // Add each society for their own standings
             this.userSocieties.forEach(society => {
                 const option = document.createElement('option');
                 option.value = society.id;
-                option.textContent = society.name;
+                // Show society name with appropriate icon
+                const icon = society.name.includes('JOA') ? '🏌️' :
+                            society.name.includes('Travellers') ? '✈️' : '⛳';
+                option.textContent = `${icon} ${society.name}`;
                 select.add(option);
             });
         }
 
-        // Set default selection
+        // Set current selection (default to platform for global view)
+        this.currentFilter = 'platform';
         select.value = this.currentFilter;
+
+        console.log('[TimeWindowedLeaderboards] Dropdown populated with', this.userSocieties.length, 'societies:', this.userSocieties.map(s => s.name));
     }
 
     async setSocietyFilter(value) {
         this.currentFilter = value;
 
         if (value === 'platform') {
-            this.currentSociety = null; // All platform
-        } else if (value === 'my_societies') {
-            this.currentSociety = 'my_societies'; // Special marker for user's societies
+            this.currentSociety = null; // Global platform - all players from all societies
         } else {
-            this.currentSociety = value; // Specific society ID
+            this.currentSociety = value; // Specific society ID for society-only standings
         }
 
         // Reload the leaderboard
@@ -166,14 +191,45 @@ class TimeWindowedLeaderboards {
                 11: 5, 12: 4, 13: 3, 14: 2, 15: 1
             };
 
-            // Query completed scorecards with scores for the period
+            // Use the current society filter if not explicitly provided
+            const filterSociety = societyFilter || this.currentSociety;
+
+            // Query scorecards with scores for the period (no status filter - some may not have status set)
             const { data: scorecards, error } = await this.supabase
                 .from('scorecards')
                 .select('id, player_id, event_id, total_gross, total_net, created_at, scores(*)')
-                .gte('created_at', startDateStr + 'T00:00:00.000Z')
-                .eq('status', 'completed');
+                .gte('created_at', startDateStr + 'T00:00:00.000Z');
 
-            console.log('[TimeWindowedLeaderboards] Query:', { startDateStr, count: scorecards?.length || 0 });
+            console.log('[TimeWindowedLeaderboards] Query:', { startDateStr, count: scorecards?.length || 0, societyFilter: filterSociety });
+
+            // If filtering by a specific society, get the list of events for that society
+            let societyEventIds = null;
+            if (filterSociety && filterSociety !== 'platform') {
+                // Get society name from ID to match against organizer_name
+                const { data: society } = await this.supabase
+                    .from('societies')
+                    .select('name')
+                    .eq('id', filterSociety)
+                    .single();
+
+                if (society && society.name) {
+                    console.log('[TimeWindowedLeaderboards] Filtering by society:', society.name);
+
+                    // Get events from this society (by organizer_name since that's what links them)
+                    const { data: societyEvents } = await this.supabase
+                        .from('society_events')
+                        .select('id')
+                        .eq('organizer_name', society.name);
+
+                    if (societyEvents && societyEvents.length > 0) {
+                        societyEventIds = new Set(societyEvents.map(e => e.id));
+                        console.log('[TimeWindowedLeaderboards] Society has', societyEventIds.size, 'events');
+                    } else {
+                        console.log('[TimeWindowedLeaderboards] Society has no events');
+                        societyEventIds = new Set(); // Empty set = no events match
+                    }
+                }
+            }
 
             if (error) {
                 console.error('[TimeWindowedLeaderboards] Query error:', error);
@@ -189,6 +245,11 @@ class TimeWindowedLeaderboards {
             for (const card of scorecards) {
                 if (!card.event_id || !card.player_id) continue;
                 if (!card.total_gross && !card.total_net) continue;
+
+                // Filter by society if specified
+                if (societyEventIds !== null && !societyEventIds.has(card.event_id)) {
+                    continue; // Skip scorecards from other societies
+                }
 
                 // Calculate stableford for this card
                 let totalStableford = 0;
@@ -276,11 +337,31 @@ class TimeWindowedLeaderboards {
                     .select('line_user_id, name, display_name, society_name')
                     .in('line_user_id', playerIdsList);
 
-                const { data: memberships } = await this.supabase
+                // Get society memberships - use society_id join instead of societies(name)
+                const { data: memberships, error: memberError } = await this.supabase
                     .from('society_members')
-                    .select('golfer_id, is_primary, societies(name)')
+                    .select('golfer_id, society_id, is_primary_society')
                     .in('golfer_id', playerIdsList)
                     .eq('status', 'active');
+
+                if (memberError) {
+                    console.log('[TimeWindowedLeaderboards] Society membership query error (non-fatal):', memberError.message);
+                }
+
+                // Get society names separately if we have memberships
+                let societyNames = {};
+                if (memberships && memberships.length > 0) {
+                    const societyIds = [...new Set(memberships.map(m => m.society_id).filter(Boolean))];
+                    if (societyIds.length > 0) {
+                        const { data: societies } = await this.supabase
+                            .from('societies')
+                            .select('id, name')
+                            .in('id', societyIds);
+                        if (societies) {
+                            societies.forEach(s => { societyNames[s.id] = s.name; });
+                        }
+                    }
+                }
 
                 const nameMap = {};
                 const societyMap = {};
@@ -294,8 +375,9 @@ class TimeWindowedLeaderboards {
 
                 if (memberships) {
                     memberships.forEach(m => {
-                        if (m.societies?.name && (m.is_primary || !societyMap[m.golfer_id])) {
-                            societyMap[m.golfer_id] = m.societies.name;
+                        const societyName = societyNames[m.society_id];
+                        if (societyName && (m.is_primary_society || !societyMap[m.golfer_id])) {
+                            societyMap[m.golfer_id] = societyName;
                         }
                     });
                 }

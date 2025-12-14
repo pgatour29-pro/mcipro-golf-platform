@@ -27819,6 +27819,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     <select id="compose-type" onchange="MessagesSystem.onComposeTypeChange()" class="w-full rounded-lg border px-3 py-2 bg-white">
                         <option value="dm">Direct Message</option>
                         <option value="announcement">Society Announcement</option>
+                        <option value="platform" id="compose-type-platform" style="display: none;">🌐 Platform Announcement (Admin)</option>
                     </select>
                 </div>
 
@@ -27860,6 +27861,30 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-gray-700 mb-2">Priority</label>
                         <select id="compose-priority" class="w-full rounded-lg border px-3 py-2 bg-white">
+                            <option value="normal">Normal</option>
+                            <option value="important">Important</option>
+                            <option value="urgent">Urgent</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Platform Announcement Fields (Admin Only) -->
+                <div id="compose-platform-fields" style="display: none;">
+                    <div class="mb-4 p-3 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+                        <div class="flex items-center mb-2">
+                            <span class="material-symbols-outlined text-blue-600 mr-2">shield_person</span>
+                            <span class="font-bold text-blue-800">Platform Admin Announcement</span>
+                        </div>
+                        <p class="text-sm text-blue-700">This message will be sent to ALL members across ALL societies on MyCaddiPro.</p>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Title</label>
+                        <input type="text" id="compose-platform-title" placeholder="Platform announcement title..."
+                               class="w-full rounded-lg border px-3 py-2">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+                        <select id="compose-platform-priority" class="w-full rounded-lg border px-3 py-2 bg-white">
                             <option value="normal">Normal</option>
                             <option value="important">Important</option>
                             <option value="urgent">Urgent</option>
@@ -27935,6 +27960,49 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     <button onclick="MessagesSystem.createGroup()" class="btn-primary">
                         <span class="material-symbols-outlined text-sm">group_add</span>
                         <span>Create Group</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Announcement Modal -->
+    <div id="editAnnouncementModal" class="fixed inset-0 bg-black bg-opacity-75 z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg max-w-lg w-full mx-4 max-h-screen overflow-y-auto">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-900">Edit Announcement</h2>
+                    <button onclick="MessagesSystem.closeEditAnnouncementModal()" class="text-gray-500 hover:text-gray-700">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Title</label>
+                    <input type="text" id="edit-announcement-title" placeholder="Announcement title..."
+                           class="w-full rounded-lg border px-3 py-2">
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+                    <select id="edit-announcement-priority" class="w-full rounded-lg border px-3 py-2 bg-white">
+                        <option value="normal">Normal</option>
+                        <option value="important">Important</option>
+                        <option value="urgent">Urgent</option>
+                    </select>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Message</label>
+                    <textarea id="edit-announcement-message" rows="4" placeholder="Announcement message..."
+                              class="w-full rounded-lg border px-3 py-2 resize-none"></textarea>
+                </div>
+
+                <div class="flex justify-end space-x-3">
+                    <button onclick="MessagesSystem.closeEditAnnouncementModal()" class="btn-secondary">Cancel</button>
+                    <button onclick="MessagesSystem.saveAnnouncement()" class="btn-primary">
+                        <span class="material-symbols-outlined text-sm">save</span>
+                        <span>Save Changes</span>
                     </button>
                 </div>
             </div>
@@ -60120,6 +60188,13 @@ const MessagesSystem = {
     refreshInterval: null,
     REFRESH_INTERVAL_MS: 15000, // 15 seconds
 
+    // Platform Admin - Pete Park has full admin access for platform-wide announcements
+    PLATFORM_ADMIN_LINE_ID: 'U2b6d976f19bca4b2f4374ae0e10ed873', // Pete Park's LINE ID
+
+    isPlatformAdmin() {
+        return this.userLineId === this.PLATFORM_ADMIN_LINE_ID;
+    },
+
     async init() {
         console.log('[MessagesSystem] Initializing...');
         const user = AppState?.currentUser || window.currentUser;
@@ -60305,15 +60380,30 @@ const MessagesSystem = {
                 const priorityBadge = a.priority === 'urgent' ? '<span class="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full mr-2">URGENT</span>' :
                                       a.priority === 'important' ? '<span class="bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full mr-2">Important</span>' : '';
 
+                // Show edit/delete buttons if user is sender OR platform admin
+                const canManage = a.sender_line_id === this.userLineId || this.isPlatformAdmin();
+                const manageButtons = canManage ? `
+                    <div class="flex gap-1 ml-2" onclick="event.stopPropagation()">
+                        <button onclick="MessagesSystem.editAnnouncement('${a.id}')" class="p-1 text-blue-500 hover:bg-blue-50 rounded" title="Edit">
+                            <span class="material-symbols-outlined text-sm">edit</span>
+                        </button>
+                        <button onclick="MessagesSystem.deleteAnnouncement('${a.id}')" class="p-1 text-red-500 hover:bg-red-50 rounded" title="Delete">
+                            <span class="material-symbols-outlined text-sm">delete</span>
+                        </button>
+                    </div>` : '';
+
                 return `
                     <div class="rounded-lg shadow p-4 cursor-pointer transition-all ${isRead ? 'bg-white opacity-75 hover:opacity-100' : 'bg-yellow-100 border-l-4 border-yellow-500 hover:bg-yellow-200'}"
                          onclick="MessagesSystem.viewAnnouncement('${a.id}')">
                         <div class="flex items-start justify-between mb-2">
-                            <div>
+                            <div class="flex-1">
                                 ${priorityBadge}
                                 <span class="${!isRead ? 'font-bold' : 'font-medium'} text-gray-900">${this.escapeHtml(a.title)}</span>
                             </div>
-                            ${!isRead ? '<span class="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full animate-pulse">NEW</span>' : ''}
+                            <div class="flex items-center">
+                                ${!isRead ? '<span class="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full animate-pulse">NEW</span>' : ''}
+                                ${manageButtons}
+                            </div>
                         </div>
                         <p class="${!isRead ? 'text-gray-800 font-medium' : 'text-gray-600'} text-sm mb-2 line-clamp-2">${this.escapeHtml(a.message_text)}</p>
                         <div class="flex items-center justify-between text-xs text-gray-500">
@@ -60344,6 +60434,117 @@ const MessagesSystem = {
             await this.loadAnnouncements();
         } catch (err) {
             console.error('[MessagesSystem] Error marking announcement read:', err);
+        }
+    },
+
+    async deleteAnnouncement(announcementId) {
+        if (!confirm('Are you sure you want to delete this announcement? This cannot be undone.')) {
+            return;
+        }
+
+        try {
+            // First delete related reads
+            await window.SupabaseDB.client
+                .from('announcement_reads')
+                .delete()
+                .eq('announcement_id', announcementId);
+
+            // Then delete the announcement
+            const { error } = await window.SupabaseDB.client
+                .from('announcements')
+                .delete()
+                .eq('id', announcementId);
+
+            if (error) throw error;
+
+            NotificationManager.show('Announcement deleted', 'success');
+            await this.loadAnnouncements();
+            await this.refreshUnreadCounts();
+        } catch (err) {
+            console.error('[MessagesSystem] Error deleting announcement:', err);
+            NotificationManager.show('Failed to delete announcement', 'error');
+        }
+    },
+
+    async editAnnouncement(announcementId) {
+        try {
+            // Fetch the announcement
+            const { data: announcement, error } = await window.SupabaseDB.client
+                .from('announcements')
+                .select('*')
+                .eq('id', announcementId)
+                .single();
+
+            if (error || !announcement) {
+                NotificationManager.show('Failed to load announcement', 'error');
+                return;
+            }
+
+            // Store the announcement being edited
+            this.editingAnnouncementId = announcementId;
+
+            // Open edit modal
+            const modal = document.getElementById('editAnnouncementModal');
+            if (!modal) {
+                console.error('[MessagesSystem] Edit modal not found');
+                return;
+            }
+
+            // Populate fields
+            document.getElementById('edit-announcement-title').value = announcement.title || '';
+            document.getElementById('edit-announcement-message').value = announcement.message_text || '';
+            document.getElementById('edit-announcement-priority').value = announcement.priority || 'normal';
+
+            modal.classList.remove('hidden');
+        } catch (err) {
+            console.error('[MessagesSystem] Error loading announcement for edit:', err);
+            NotificationManager.show('Failed to load announcement', 'error');
+        }
+    },
+
+    closeEditAnnouncementModal() {
+        const modal = document.getElementById('editAnnouncementModal');
+        if (modal) modal.classList.add('hidden');
+        this.editingAnnouncementId = null;
+    },
+
+    async saveAnnouncement() {
+        if (!this.editingAnnouncementId) {
+            NotificationManager.show('No announcement selected', 'error');
+            return;
+        }
+
+        const title = document.getElementById('edit-announcement-title').value.trim();
+        const message = document.getElementById('edit-announcement-message').value.trim();
+        const priority = document.getElementById('edit-announcement-priority').value;
+
+        if (!title) {
+            NotificationManager.show('Please enter a title', 'error');
+            return;
+        }
+        if (!message) {
+            NotificationManager.show('Please enter a message', 'error');
+            return;
+        }
+
+        try {
+            const { error } = await window.SupabaseDB.client
+                .from('announcements')
+                .update({
+                    title: title,
+                    message_text: message,
+                    priority: priority
+                })
+                .eq('id', this.editingAnnouncementId);
+
+            if (error) throw error;
+
+            NotificationManager.show('Announcement updated', 'success');
+            this.closeEditAnnouncementModal();
+            await this.loadAnnouncements();
+        } catch (err) {
+            console.error('[MessagesSystem] Error saving announcement:', err);
+            NotificationManager.show('Failed to save announcement', 'error');
         }
     },
 
@@ -60928,15 +61129,28 @@ const MessagesSystem = {
     },
 
     // ========== COMPOSE MODAL ==========
-    openComposeModal() {
+    async openComposeModal() {
         document.getElementById('composeMessageModal').classList.remove('hidden');
         document.getElementById('compose-type').value = 'dm';
+
+        // Show/hide platform announcement option based on admin status
+        const platformOption = document.getElementById('compose-type-platform');
+        if (platformOption) {
+            platformOption.style.display = this.isPlatformAdmin() ? 'block' : 'none';
+        }
+
         this.onComposeTypeChange();
-        this.populateSocietySelector();
+        await this.populateSocietySelector();
         this.clearRecipient();
         document.getElementById('compose-message').value = '';
         document.getElementById('compose-title').value = '';
         document.getElementById('compose-search').value = '';
+
+        // Clear platform fields too
+        const platformTitle = document.getElementById('compose-platform-title');
+        if (platformTitle) platformTitle.value = '';
+        const platformPriority = document.getElementById('compose-platform-priority');
+        if (platformPriority) platformPriority.value = 'normal';
     },
 
     closeComposeModal() {
@@ -60948,10 +61162,34 @@ const MessagesSystem = {
         const type = document.getElementById('compose-type').value;
         document.getElementById('compose-dm-fields').style.display = type === 'dm' ? 'block' : 'none';
         document.getElementById('compose-announcement-fields').style.display = type === 'announcement' ? 'block' : 'none';
+        const platformFields = document.getElementById('compose-platform-fields');
+        if (platformFields) {
+            platformFields.style.display = type === 'platform' ? 'block' : 'none';
+        }
     },
 
-    populateSocietySelector() {
+    async populateSocietySelector() {
         const select = document.getElementById('compose-society');
+
+        // Platform admin can post to ANY society
+        if (this.isPlatformAdmin()) {
+            try {
+                const { data: allSocieties, error } = await window.SupabaseDB.client
+                    .from('society_profiles')
+                    .select('id, society_name')
+                    .order('society_name');
+
+                if (!error && allSocieties && allSocieties.length > 0) {
+                    select.innerHTML = '<option value="">Select a society (Admin: All societies)...</option>' +
+                        allSocieties.map(s => `<option value="${s.id}">${this.escapeHtml(s.society_name)}</option>`).join('');
+                    return;
+                }
+            } catch (err) {
+                console.error('[MessagesSystem] Error loading all societies for admin:', err);
+            }
+        }
+
+        // Regular organizers can only post to societies they organize
         const organizerSocieties = this.mySocieties.filter(s => s.isOrganizer);
 
         select.innerHTML = '<option value="">Select a society...</option>' +
@@ -61089,6 +61327,71 @@ const MessagesSystem = {
                 NotificationManager.show('Announcement sent!', 'success');
                 this.closeComposeModal();
                 this.showSubTab('announcements');
+
+            } else if (type === 'platform') {
+                // Platform-wide announcement (Admin only)
+                if (!this.isPlatformAdmin()) {
+                    NotificationManager.show('Unauthorized: Admin access required', 'error');
+                    return;
+                }
+
+                const title = document.getElementById('compose-platform-title').value.trim();
+                const priority = document.getElementById('compose-platform-priority').value;
+
+                if (!title) {
+                    NotificationManager.show('Please enter a title', 'error');
+                    return;
+                }
+
+                // Get ALL societies from the database
+                const { data: allSocieties, error: socError } = await window.SupabaseDB.client
+                    .from('society_profiles')
+                    .select('id, society_name');
+
+                if (socError) {
+                    console.error('[MessagesSystem] Error fetching societies:', socError);
+                    NotificationManager.show('Failed to fetch societies', 'error');
+                    return;
+                }
+
+                if (!allSocieties || allSocieties.length === 0) {
+                    NotificationManager.show('No societies found', 'error');
+                    return;
+                }
+
+                console.log('[MessagesSystem] Sending platform announcement to', allSocieties.length, 'societies');
+
+                // Insert announcement for EACH society
+                const announcements = allSocieties.map(soc => ({
+                    society_id: soc.id,
+                    sender_line_id: this.userLineId,
+                    title: `🌐 ${title}`,
+                    message_text: messageText,
+                    priority: priority,
+                    is_pinned: priority === 'urgent' // Auto-pin urgent platform announcements
+                }));
+
+                const { error: insertError } = await window.SupabaseDB.client
+                    .from('announcements')
+                    .insert(announcements);
+
+                if (insertError) {
+                    console.error('[MessagesSystem] Error inserting platform announcements:', insertError);
+                    NotificationManager.show('Failed to send announcement', 'error');
+                    return;
+                }
+
+                // Send LINE push notification
+                this.sendLinePushNotification('platform_announcement', {
+                    title: title,
+                    content: messageText,
+                    sender_id: this.userLineId,
+                    society_count: allSocieties.length
+                });
+
+                NotificationManager.show(`Platform announcement sent to ${allSocieties.length} societies!`, 'success');
+                this.closeComposeModal();
+                this.showSubTab('announcements');
             }
         } catch (err) {
             console.error('[MessagesSystem] Error sending message:', err);
@@ -61099,13 +61402,19 @@ const MessagesSystem = {
     // ========== LINE PUSH NOTIFICATION ==========
     async sendLinePushNotification(type, record) {
         try {
+            console.log('[MessagesSystem] Sending LINE push notification:', type, record);
             const response = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ type, record })
             });
             const result = await response.json();
-            console.log('[MessagesSystem] LINE push notification sent:', result);
+            console.log('[MessagesSystem] LINE push notification response:', response.status, result);
+            if (result.notified > 0) {
+                console.log('[MessagesSystem] ✅ LINE notification sent to', result.notified, 'users');
+            } else {
+                console.warn('[MessagesSystem] ⚠️ LINE notification sent but 0 users notified:', result);
+            }
         } catch (err) {
             console.error('[MessagesSystem] LINE push notification failed:', err);
             // Don't show error to user - notification is secondary
@@ -62379,8 +62688,17 @@ const MarketplaceSystem = {
         document.getElementById('createListingModal').classList.remove('hidden');
         document.getElementById('createListingForm').reset();
         this.uploadedImages = [];
+        this.editingListingId = null;
         this.renderImagePreviews();
         this.updatePriceVisibility();
+
+        // Reset modal header for create mode
+        const modalHeader = document.querySelector('#createListingModal h3');
+        if (modalHeader) modalHeader.textContent = 'Create Listing';
+
+        // Reset submit button text
+        const submitBtn = document.querySelector('#createListingForm button[type="submit"]');
+        if (submitBtn) submitBtn.innerHTML = '<span class="material-symbols-outlined text-sm">publish</span> Post Listing';
 
         document.getElementById('createListingForm').onsubmit = (e) => this.submitListing(e);
     },
@@ -62958,8 +63276,161 @@ const MarketplaceSystem = {
         }
     },
 
-    editListing(listingId) {
-        NotificationManager.show('Edit feature coming soon', 'info');
+    async editListing(listingId) {
+        try {
+            // Fetch the listing data
+            const { data: listing, error } = await window.SupabaseDB.client
+                .from('marketplace_listings')
+                .select('*')
+                .eq('id', listingId)
+                .single();
+
+            if (error || !listing) {
+                NotificationManager.show('Failed to load listing', 'error');
+                return;
+            }
+
+            // Store for update
+            this.editingListingId = listingId;
+
+            // Open modal
+            document.getElementById('createListingModal').classList.remove('hidden');
+
+            // Update modal header for edit mode
+            const modalHeader = document.querySelector('#createListingModal h3');
+            if (modalHeader) modalHeader.textContent = 'Edit Listing';
+
+            // Update submit button text
+            const submitBtn = document.querySelector('#createListingForm button[type="submit"]');
+            if (submitBtn) submitBtn.innerHTML = '<span class="material-symbols-outlined text-sm">save</span> Save Changes';
+
+            // Populate form fields
+            document.getElementById('listingTitle').value = listing.title || '';
+            document.getElementById('listingCategory').value = listing.category || '';
+            this.updateSubcategories(listing.category);
+            document.getElementById('listingSubcategory').value = listing.subcategory || '';
+            document.getElementById('listingDescription').value = listing.description || '';
+            document.getElementById('listingLocation').value = listing.location || '';
+            document.getElementById('listingPrice').value = listing.price || '';
+            document.getElementById('priceNegotiable').checked = listing.price_type === 'negotiable';
+            document.getElementById('listingCondition').value = listing.condition || 'good';
+
+            // Set listing type radio
+            const listingTypeRadio = document.querySelector(`input[name="listingType"][value="${listing.listing_type}"]`);
+            if (listingTypeRadio) {
+                listingTypeRadio.checked = true;
+                this.updatePriceVisibility();
+            }
+
+            // Load existing images
+            this.uploadedImages = (listing.images || []).map(url => ({
+                file: null,
+                preview: url,
+                uploaded: true,
+                url: url
+            }));
+            this.renderImagePreviews();
+
+            // Set form submit handler for edit
+            document.getElementById('createListingForm').onsubmit = (e) => this.submitListingEdit(e, listingId);
+
+        } catch (err) {
+            console.error('[Marketplace] Error loading listing for edit:', err);
+            NotificationManager.show('Failed to load listing', 'error');
+        }
+    },
+
+    async submitListingEdit(event, listingId) {
+        event.preventDefault();
+
+        const title = document.getElementById('listingTitle').value.trim();
+        const category = document.getElementById('listingCategory').value;
+        const subcategory = document.getElementById('listingSubcategory')?.value || null;
+        const listingType = document.querySelector('input[name="listingType"]:checked')?.value;
+        const price = document.getElementById('listingPrice')?.value || null;
+        const negotiable = document.getElementById('priceNegotiable')?.checked;
+        const condition = document.getElementById('listingCondition')?.value;
+        const description = document.getElementById('listingDescription').value.trim();
+        const location = document.getElementById('listingLocation').value.trim();
+
+        if (!title || !category || !listingType) {
+            NotificationManager.show('Please fill in required fields', 'warning');
+            return;
+        }
+
+        try {
+            NotificationManager.show('Saving changes...', 'info');
+
+            // Upload any new images
+            const imageUrls = [];
+            for (const img of this.uploadedImages) {
+                if (!img.uploaded && img.file) {
+                    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${img.file.name.split('.').pop()}`;
+                    const filePath = `listings/${this.userLineId}/${fileName}`;
+
+                    const { data, error } = await window.SupabaseDB.client.storage
+                        .from('marketplace-images')
+                        .upload(filePath, img.file, { contentType: img.file.type });
+
+                    if (error) {
+                        console.warn('[Marketplace] Image upload failed:', error);
+                        continue;
+                    }
+
+                    const { data: { publicUrl } } = window.SupabaseDB.client.storage
+                        .from('marketplace-images')
+                        .getPublicUrl(filePath);
+
+                    imageUrls.push(publicUrl);
+                } else if (img.url) {
+                    imageUrls.push(img.url);
+                }
+            }
+
+            let priceType = null;
+            if (listingType === 'sale') {
+                priceType = negotiable ? 'negotiable' : 'fixed';
+            } else if (listingType === 'swap') {
+                priceType = 'swap_only';
+            }
+
+            const { error } = await window.SupabaseDB.client
+                .from('marketplace_listings')
+                .update({
+                    title,
+                    description,
+                    category,
+                    subcategory,
+                    listing_type: listingType,
+                    price: listingType === 'sale' ? parseInt(price) || null : null,
+                    price_type: priceType,
+                    images: imageUrls,
+                    condition: ['sale', 'swap'].includes(listingType) ? condition : null,
+                    location,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', listingId);
+
+            if (error) throw error;
+
+            NotificationManager.show('Listing updated successfully!', 'success');
+            this.closeCreateModal();
+            this.editingListingId = null;
+
+            // Refresh the appropriate view
+            if (this.currentSubTab === 'mylistings') {
+                this.loadMyListings();
+            } else {
+                this.loadListings();
+            }
+
+            // Close detail modal if open
+            document.getElementById('listingDetailModal')?.classList.add('hidden');
+
+        } catch (err) {
+            console.error('[Marketplace] Error updating listing:', err);
+            NotificationManager.show('Failed to update listing', 'error');
+        }
     },
 
     shareListing(listingId) {

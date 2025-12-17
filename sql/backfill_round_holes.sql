@@ -114,7 +114,7 @@ AND (
     -- Match if total scores are similar (within 2 strokes)
     ABS(r.total_gross - (SELECT SUM(s2.gross_score) FROM scores s2 WHERE s2.scorecard_id = sc.id)) <= 2
 )
-ORDER BY r.id, s.hole_number, ABS(r.completed_at - sc.created_at);
+ORDER BY r.id, s.hole_number, ABS(EXTRACT(EPOCH FROM (r.completed_at - sc.created_at)));
 
 -- ============================================
 -- STEP 3: VERIFY RESULTS

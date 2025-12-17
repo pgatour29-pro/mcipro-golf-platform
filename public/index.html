@@ -71666,32 +71666,48 @@ class OrganizerScoringSystem {
     async loadEditCourseData() {
         // Get course from current event
         const event = this.allEvents.find(e => e.id === this.currentEventId);
-        let courseId = event?.course_id;
-        const courseName = event?.course_name || event?.course;
+        const courseName = event?.course_name || event?.course || '';
 
-        console.log('[OrganizerScoring] loadEditCourseData - event:', event?.id, 'course_id:', courseId, 'course_name:', courseName);
+        console.log('[OrganizerScoring] loadEditCourseData - event:', event?.id, 'course_name:', courseName);
 
-        // If no course_id, try to look up by course name
-        if (!courseId && courseName) {
-            try {
-                const { data: course } = await window.SupabaseDB.client
-                    .from('courses')
-                    .select('id')
-                    .ilike('name', `%${courseName.split(' ')[0]}%`)
-                    .limit(1)
-                    .single();
+        // Convert course display name to course_id string (e.g., "Royal Lakeside Golf Club" -> "royal_lakeside")
+        const courseNameToId = {
+            'bangpakong': ['bangpakong', 'riverside'],
+            'bangpra': ['bangpra', 'bang pra'],
+            'burapha': ['burapha'],
+            'crystal_bay': ['crystal bay', 'crystal'],
+            'eastern_star': ['eastern star'],
+            'grand_prix': ['grand prix'],
+            'greenwood': ['greenwood'],
+            'hermes': ['hermes'],
+            'khao_kheow': ['khao kheow', 'khao kiew'],
+            'laem_chabang': ['laem chabang'],
+            'mountain_shadow': ['mountain shadow'],
+            'pattana': ['pattana'],
+            'pattavia': ['pattavia'],
+            'pattaya_country_club': ['pattaya country', 'pattaya cc'],
+            'phoenix': ['phoenix'],
+            'pleasant_valley': ['pleasant valley'],
+            'plutaluang': ['plutaluang', 'navy'],
+            'royal_lakeside': ['royal lakeside', 'lakeside'],
+            'siam_cc_old': ['siam country', 'siam cc', 'old course'],
+            'siam_plantation': ['siam plantation', 'plantation'],
+            'treasure_hill': ['treasure hill']
+        };
 
-                if (course) {
-                    courseId = course.id;
-                    console.log('[OrganizerScoring] Found course by name:', courseName, '-> id:', courseId);
-                }
-            } catch (e) {
-                console.log('[OrganizerScoring] Could not find course by name:', courseName);
+        let courseId = null;
+        const lowerName = courseName.toLowerCase();
+        for (const [id, keywords] of Object.entries(courseNameToId)) {
+            if (keywords.some(kw => lowerName.includes(kw))) {
+                courseId = id;
+                break;
             }
         }
 
+        console.log('[OrganizerScoring] Mapped course name to ID:', courseName, '->', courseId);
+
         if (!courseId) {
-            console.warn('[OrganizerScoring] No course_id found, using defaults');
+            console.warn('[OrganizerScoring] No course_id found for:', courseName, '- using defaults');
             return { holes: Array.from({ length: 18 }, (_, i) => ({ hole_number: i + 1, par: 4, handicap: i + 1 })) };
         }
 

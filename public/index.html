@@ -218,6 +218,14 @@
             animation: slideUp 0.2s ease-out;
         }
 
+        /* Marketplace Sub-tabs - same pattern as main tabs */
+        .market-subcontent {
+            display: none;
+        }
+        .market-subcontent.active {
+            display: block;
+        }
+
         /* Premium UI Components */
         .glass-card {
             background: linear-gradient(135deg, 
@@ -5571,6 +5579,30 @@
             ]
         };
 
+        // OAuth Provider Configuration
+        const OAuthConfig = {
+            // LINE (existing)
+            line: {
+                channelId: '2008228481',
+                scopes: 'profile openid email'
+            },
+            // Kakao - Get credentials from https://developers.kakao.com/
+            kakao: {
+                clientId: 'b11fe82585e6928c03670c26b8b48deb', // Kakao REST API Key
+                scopes: 'profile_nickname profile_image' // No email - requires business verification
+            },
+            // Google - Get credentials from https://console.cloud.google.com/
+            google: {
+                clientId: '476344211951-f24coc64rjrq44p72kjul4vtrc4u8f1k.apps.googleusercontent.com',
+                scopes: 'email profile openid'
+            },
+            // Dynamic redirect based on current domain
+            getRedirectUri: function() {
+                return window.location.origin + '/';
+            },
+            redirectUri: 'https://www.mycaddipro.com/'
+        };
+
         // ===== CORE SYSTEM FUNCTIONS =====
 
         // Helper functions for sync operations
@@ -7548,8 +7580,12 @@
                 if (dashboardId === 'golferDashboard' && tabName === 'marketplace') {
                     setTimeout(() => {
                         if (typeof MarketplaceSystem !== 'undefined') {
+                            // Only show browse tab on first init, not if user already selected a tab
+                            const isFirstInit = !MarketplaceSystem._initialized;
                             MarketplaceSystem.init();
-                            MarketplaceSystem.showSubTab('browse');
+                            if (isFirstInit) {
+                                MarketplaceSystem.showSubTab('browse');
+                            }
                             console.log('[TabManager] Marketplace initialized');
                         } else {
                             console.warn('[TabManager] MarketplaceSystem not found');
@@ -9082,6 +9118,679 @@
         // Expose LineAuthentication to window for onclick handlers
         window.LineAuthentication = LineAuthentication;
 
+        // ===== MULTI-PROVIDER OAUTH SYSTEM =====
+        // Supports LINE (primary), KakaoTalk, and Google authentication
+
+        // Kakao OAuth using REST API (same approach as LINE)
+        function loginWithKakao() {
+            try {
+                LoadingManager.show('Connecting to KakaoTalk...');
+
+                // Create state with provider identifier
+                const stateData = {
+                    provider: 'kakao',
+                    nonce: Math.random().toString(36).substring(2) + Date.now().toString(36)
+                };
+                const state = btoa(JSON.stringify(stateData));
+                localStorage.setItem('oauth_state', state);
+
+                // Build Kakao OAuth URL using REST API
+                const authUrl = new URL('https://kauth.kakao.com/oauth/authorize');
+                authUrl.searchParams.set('response_type', 'code');
+                authUrl.searchParams.set('client_id', OAuthConfig.kakao.clientId);
+                authUrl.searchParams.set('redirect_uri', OAuthConfig.redirectUri);
+                authUrl.searchParams.set('state', state);
+                authUrl.searchParams.set('scope', OAuthConfig.kakao.scopes);
+
+                console.log('[Kakao OAuth] Redirecting to:', authUrl.toString());
+                window.location.href = authUrl.toString();
+            } catch (error) {
+                console.error('Kakao login failed:', error);
+                NotificationManager.show('KakaoTalk login failed. Please try again.', 'error');
+                LoadingManager.hide();
+            }
+        }
+
+        function loginWithGoogle() {
+            try {
+                LoadingManager.show('Connecting to Google...');
+
+                if (OAuthConfig.google.clientId === 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com') {
+                    NotificationManager.show('Google login not configured yet. Please contact admin.', 'warning');
+                    LoadingManager.hide();
+                    return;
+                }
+
+                // Create state with provider identifier
+                const stateData = {
+                    provider: 'google',
+                    nonce: Math.random().toString(36).substring(2) + Date.now().toString(36)
+                };
+                const state = btoa(JSON.stringify(stateData));
+                localStorage.setItem('oauth_state', state);
+
+                // Build Google OAuth URL
+                const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+                authUrl.searchParams.set('response_type', 'code');
+                authUrl.searchParams.set('client_id', OAuthConfig.google.clientId);
+                authUrl.searchParams.set('redirect_uri', OAuthConfig.getRedirectUri());
+                authUrl.searchParams.set('state', state);
+                authUrl.searchParams.set('scope', OAuthConfig.google.scopes);
+                authUrl.searchParams.set('access_type', 'offline');
+                authUrl.searchParams.set('prompt', 'select_account');
+
+                console.log('[Google OAuth] Redirecting to:', authUrl.toString());
+                window.location.href = authUrl.toString();
+            } catch (error) {
+                console.error('Google login failed:', error);
+                NotificationManager.show('Google login failed. Please try again.', 'error');
+                LoadingManager.hide();
+            }
+        }
+
+        // Handle OAuth profile from any provider
+        async function handleOAuthProfile(provider, profile) {
+            if (window.MobileDebug) window.MobileDebug.log(`handleOAuthProfile: ${provider}`, 'warn');
+            console.log(`%c[OAuth] handleOAuthProfile START`, 'background: #FF9800; color: white; font-weight: bold;');
+            console.log(`[OAuth] Provider: ${provider}`);
+            console.log(`[OAuth] Profile:`, profile);
+
+            const providerIdColumn = `${provider}_user_id`;
+            const providerId = profile.id || profile.userId;
+            if (window.MobileDebug) window.MobileDebug.log(`Looking for ${providerIdColumn}=${providerId}`, 'info');
+            console.log(`[OAuth] Looking for ${providerIdColumn} = ${providerId}`);
+
+            // Step 1: Check if this provider ID is already linked to an account
+            let existingUser = null;
+            try {
+                if (window.SupabaseDB) {
+                    await window.SupabaseDB.waitForReady();
+                    if (window.MobileDebug) window.MobileDebug.log('Querying database...', 'info');
+                    console.log(`[OAuth] Querying user_profiles for ${providerIdColumn}...`);
+
+                    // Try to query by provider ID column - may fail if column doesn't exist
+                    try {
+                        const { data, error } = await window.SupabaseDB.client
+                            .from('user_profiles')
+                            .select('*')
+                            .eq(providerIdColumn, providerId)
+                            .single();
+
+                        console.log(`[OAuth] Query result - data:`, data, 'error:', error);
+
+                        if (!error && data) {
+                            existingUser = data;
+                            if (window.MobileDebug) window.MobileDebug.log(`✓ Found: ${data.name || data.display_name}`, 'success');
+                            console.log(`%c[OAuth] ✓ FOUND existing user with ${provider} ID`, 'background: #4CAF50; color: white;');
+                        } else if (error && error.code !== 'PGRST116') {
+                            // PGRST116 = "No rows found" which is expected for new users
+                            // Check if it's a column doesn't exist error
+                            if (error.message && error.message.includes('does not exist')) {
+                                if (window.MobileDebug) window.MobileDebug.log(`Column ${providerIdColumn} not in DB yet`, 'warn');
+                                console.warn(`[OAuth] Column ${providerIdColumn} doesn't exist - treating as new user`);
+                            } else {
+                                if (window.MobileDebug) window.MobileDebug.log(`DB error: ${error.message}`, 'error');
+                                console.warn(`[OAuth] Database query error:`, error);
+                            }
+                        } else {
+                            if (window.MobileDebug) window.MobileDebug.log('No existing user (new user)', 'warn');
+                        }
+                    } catch (queryErr) {
+                        // Column might not exist - that's OK, treat as new user
+                        if (window.MobileDebug) window.MobileDebug.log(`Query failed (column may not exist): ${queryErr.message}`, 'warn');
+                        console.warn(`[OAuth] Query failed:`, queryErr);
+                    }
+                } else {
+                    if (window.MobileDebug) window.MobileDebug.log('SupabaseDB not available!', 'error');
+                    console.error('[OAuth] SupabaseDB not available!');
+                }
+            } catch (err) {
+                if (window.MobileDebug) window.MobileDebug.log(`Exception: ${err.message}`, 'error');
+                console.log(`[OAuth] Error checking for existing user:`, err);
+            }
+
+            if (existingUser) {
+                // Login as existing user
+                if (window.MobileDebug) window.MobileDebug.log('Existing user - logging in...', 'success');
+                return await setUserFromOAuthProfile(provider, profile, existingUser);
+            }
+
+            // Step 2: Check if currently logged in user wants to link account
+            if (AppState.currentUser?.lineUserId && AppState.session?.isAuthenticated) {
+                // User is logged in - link this provider to their account
+                if (window.MobileDebug) window.MobileDebug.log('Linking to current session...', 'info');
+                console.log(`[OAuth] Linking ${provider} to existing account:`, AppState.currentUser.lineUserId);
+
+                try {
+                    const { error } = await window.SupabaseDB.client
+                        .from('user_profiles')
+                        .update({ [providerIdColumn]: providerId })
+                        .eq('line_user_id', AppState.currentUser.lineUserId);
+
+                    if (error) throw error;
+
+                    NotificationManager.show(`${provider.charAt(0).toUpperCase() + provider.slice(1)} account linked successfully!`, 'success');
+                    return;
+                } catch (err) {
+                    console.error(`[OAuth] Failed to link ${provider}:`, err);
+                    NotificationManager.show(`Failed to link ${provider} account`, 'error');
+                    return;
+                }
+            }
+
+            // Step 3: New user - create account with this provider
+            if (window.MobileDebug) window.MobileDebug.log('NEW USER - calling createUserFromOAuthProfile', 'warn');
+            console.log(`[OAuth] Creating new user from ${provider} profile`);
+            return await createUserFromOAuthProfile(provider, profile);
+        }
+
+        // Set user state from OAuth profile
+        async function setUserFromOAuthProfile(provider, profile, existingUser) {
+            console.log(`%c[OAuth] setUserFromOAuthProfile START`, 'background: #673AB7; color: white; font-weight: bold;');
+            console.log(`[OAuth] Provider: ${provider}`);
+            console.log(`[OAuth] Existing user from DB:`, existingUser);
+            console.log(`[OAuth] Fresh profile from OAuth:`, profile);
+
+            // Use existing user data, update with fresh profile info
+            const userName = existingUser.name || existingUser.display_name || profile.displayName || profile.name || 'User';
+            console.log(`[OAuth] Using name: "${userName}"`);
+
+            AppState.currentUser = {
+                role: existingUser.role || 'golfer',
+                name: userName,
+                username: existingUser.username || existingUser.display_name || profile.displayName,
+                displayName: existingUser.display_name || existingUser.name || profile.displayName,
+                lineId: existingUser.line_user_id,
+                lineUserId: existingUser.line_user_id,
+                userId: existingUser.line_user_id || existingUser.google_user_id || existingUser.kakao_user_id,
+                avatar: profile.pictureUrl || profile.picture || existingUser.avatar_url,
+                email: profile.email || existingUser.email,
+                phone: existingUser.phone,
+                handicap: existingUser.handicap || existingUser.profile_data?.golfInfo?.handicap || null,
+                membershipLevel: existingUser.membership_level || 'free',
+                joinDate: existingUser.created_at,
+                stats: {},
+                permissions: [],
+                preferences: existingUser.profile_data?.preferences || {},
+                oauthProvider: provider
+            };
+
+            AppState.session.isAuthenticated = true;
+            AppState.session.authMethod = provider;
+            AppState.session.loginTime = new Date().toISOString();
+
+            console.log(`%c[OAuth] ✓ AppState.currentUser SET`, 'background: #4CAF50; color: white; font-weight: bold;');
+            console.log(`[OAuth] currentUser.name: "${AppState.currentUser.name}"`);
+            console.log(`[OAuth] currentUser.role: "${AppState.currentUser.role}"`);
+            console.log(`[OAuth] session.isAuthenticated: ${AppState.session.isAuthenticated}`);
+
+            // Update UI with user data
+            if (typeof UserInterface !== 'undefined' && UserInterface.updateUserDisplays) {
+                console.log('[OAuth] Calling UserInterface.updateUserDisplays()...');
+                UserInterface.updateUserDisplays();
+            } else {
+                console.warn('[OAuth] UserInterface.updateUserDisplays not available');
+            }
+
+            console.log(`%c[OAuth] setUserFromOAuthProfile COMPLETE`, 'background: #673AB7; color: white; font-weight: bold;');
+        }
+
+        // Create new user from OAuth profile - with intelligent matching like LINE
+        async function createUserFromOAuthProfile(provider, profile) {
+            if (window.MobileDebug) window.MobileDebug.log('createUserFromOAuthProfile...', 'warn');
+            console.log(`[OAuth] New ${provider} user - starting intelligent matching...`);
+
+            const providerIdColumn = `${provider}_user_id`;
+            const providerId = profile.id || profile.userId;
+            const uniqueUserId = `${provider.toUpperCase()}-${providerId}`;
+            const displayName = (profile.displayName || profile.name || '').trim();
+
+            // ========================================================================
+            // INTELLIGENT MATCHING SYSTEM - Same as LINE flow
+            // Check for existing profiles before creating new one
+            // ========================================================================
+            try {
+                await window.SupabaseDB.waitForReady();
+                if (window.MobileDebug) window.MobileDebug.log(`Searching for: "${displayName}"`, 'info');
+                console.log(`[OAuth] Searching for existing profiles matching name: "${displayName}"`);
+
+                // Search for ALL profiles - don't filter by provider column (may not exist)
+                // We'll filter in JS instead
+                const { data: allProfiles, error: profilesError } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('line_user_id, name, display_name, profile_data, society_name, society_id')
+                    .limit(500);
+
+                if (profilesError) {
+                    if (window.MobileDebug) window.MobileDebug.log(`Profile search error: ${profilesError.message}`, 'error');
+                    console.error(`[OAuth] Error loading profiles:`, profilesError);
+                    throw profilesError;
+                }
+
+                if (window.MobileDebug) window.MobileDebug.log(`Found ${allProfiles?.length || 0} profiles to check`, 'info');
+                console.log(`[OAuth] Loaded ${allProfiles?.length || 0} profiles to match against`);
+
+                // Use LINE's matching algorithm
+                const matches = LineAuthentication.findProfileMatches(displayName, allProfiles || []);
+                if (window.MobileDebug) window.MobileDebug.log(`${matches.length} potential matches`, matches.length > 0 ? 'success' : 'warn');
+                console.log(`[OAuth] Found ${matches.length} potential matches`);
+
+                if (matches.length > 0) {
+                    // MATCHES FOUND! Show confirmation modal
+                    if (window.MobileDebug) window.MobileDebug.log('Showing LINK modal...', 'success');
+                    LoadingManager.hide();
+                    await showOAuthMemberLinkConfirmation(provider, providerId, uniqueUserId, profile, matches);
+                    return; // Don't create new profile yet - wait for user choice
+                } else {
+                    // No matches - show manual search option
+                    if (window.MobileDebug) window.MobileDebug.log('Showing SEARCH modal...', 'success');
+                    console.log(`[OAuth] No automatic matches found, showing manual search...`);
+                    LoadingManager.hide();
+                    await showOAuthManualProfileSearch(provider, providerId, uniqueUserId, profile);
+                    return; // Don't create new profile yet - wait for user choice
+                }
+            } catch (error) {
+                if (window.MobileDebug) window.MobileDebug.log(`Match error: ${error.message}`, 'error');
+                console.error(`[OAuth] Intelligent matching failed:`, error);
+                // Fall through to create new profile
+            }
+
+            // If intelligent matching fails, create new profile directly
+            if (window.MobileDebug) window.MobileDebug.log('Creating new profile directly...', 'warn');
+            await createNewOAuthProfile(provider, providerId, uniqueUserId, profile);
+        }
+
+        // Show member link confirmation for OAuth providers (Kakao/Google)
+        async function showOAuthMemberLinkConfirmation(provider, providerId, uniqueUserId, profile, matches) {
+            if (window.MobileDebug) window.MobileDebug.log('showOAuthMemberLinkConfirmation called', 'success');
+            const providerName = provider === 'kakao' ? 'KakaoTalk' : provider === 'google' ? 'Google' : provider;
+
+            // Store data globally so onclick handlers can access it
+            window._oauthPendingData = { provider, providerId, uniqueUserId, profile, matches };
+
+            const modalHtml = `
+                <div id="oauthMemberLinkModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001] p-4">
+                    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+                        <div class="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-4xl">how_to_reg</span>
+                                <div>
+                                    <h2 class="text-2xl font-bold">Welcome!</h2>
+                                    <p class="text-sm text-blue-100">We found existing member profiles that might be you</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="p-6 space-y-4 max-h-96 overflow-y-auto">
+                            <p class="text-gray-600 text-sm">
+                                Your ${providerName} name "<strong>${profile.displayName || 'User'}</strong>" matches these existing profiles.
+                                Select one to link your account:
+                            </p>
+
+                            <div id="matchesList" class="space-y-3">
+                                ${matches.map((match, index) => `
+                                    <button data-match-index="${index}"
+                                            class="oauth-match-btn w-full p-4 border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all text-left">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <div class="font-semibold text-gray-900">${match.name || match.display_name || 'Unknown'}</div>
+                                                ${match.society_name ? `<div class="text-sm text-gray-500">${match.society_name}</div>` : ''}
+                                                ${match.handicap ? `<div class="text-sm text-green-600">Handicap: ${match.handicap}</div>` : ''}
+                                            </div>
+                                            <span class="material-symbols-outlined text-blue-500">chevron_right</span>
+                                        </div>
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <div class="p-6 bg-gray-50 border-t space-y-3">
+                            <button id="btnCreateNewOAuthProfile"
+                                    class="w-full py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition-colors">
+                                <span class="material-symbols-outlined align-middle mr-2">person_add</span>
+                                I'm a New User - Create New Profile
+                            </button>
+                            <button id="btnCancelOAuthModal"
+                                    class="w-full py-2 text-gray-500 hover:text-gray-700 text-sm">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+            // Attach event listeners after modal is in DOM
+            document.getElementById('btnCreateNewOAuthProfile').addEventListener('click', async () => {
+                console.log('[OAuth] Create new profile button clicked');
+                const data = window._oauthPendingData;
+                if (!data) {
+                    alert('Error: No OAuth data found. Please try logging in again.');
+                    return;
+                }
+                try {
+                    await createNewOAuthProfileFromModal(data.provider, data.providerId, data.uniqueUserId, data.profile);
+                } catch (err) {
+                    console.error('[OAuth] Create profile error:', err);
+                    alert('Error creating profile: ' + err.message);
+                }
+            });
+
+            document.getElementById('btnCancelOAuthModal').addEventListener('click', () => {
+                document.getElementById('oauthMemberLinkModal')?.remove();
+                ScreenManager.showScreen('loginScreen');
+            });
+
+            // Attach click handlers to match buttons
+            document.querySelectorAll('.oauth-match-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const index = parseInt(btn.dataset.matchIndex, 10);
+                    const match = matches[index];
+                    if (match) {
+                        console.log('[OAuth] Match selected:', match.name || match.display_name);
+                        linkOAuthToExistingProfile(provider, providerId, match.line_user_id, profile);
+                    }
+                });
+            });
+        }
+
+        // Show manual profile search for OAuth providers
+        async function showOAuthManualProfileSearch(provider, providerId, uniqueUserId, profile) {
+            if (window.MobileDebug) window.MobileDebug.log('showOAuthManualProfileSearch called', 'success');
+            const providerName = provider === 'kakao' ? 'KakaoTalk' : provider === 'google' ? 'Google' : provider;
+
+            const modalHtml = `
+                <div id="oauthManualSearchModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001] p-4">
+                    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+                        <div class="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-6">
+                            <div class="flex items-center gap-3">
+                                <span class="material-symbols-outlined text-4xl">person_search</span>
+                                <div>
+                                    <h2 class="text-2xl font-bold">Link Your Account</h2>
+                                    <p class="text-sm text-purple-100">Search for your existing profile or create a new one</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="p-6 space-y-4">
+                            <p class="text-gray-600 text-sm">
+                                Hi <strong>${profile.displayName || 'there'}</strong>! We couldn't find an automatic match.
+                                Search for your existing profile or create a new account.
+                            </p>
+
+                            <div class="relative">
+                                <input type="text" id="oauthProfileSearchInput"
+                                       placeholder="Search by name..."
+                                       class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:outline-none"
+                                       oninput="searchOAuthProfiles('${provider}', '${providerId}', this.value, ${JSON.stringify(profile).replace(/'/g, "\\'")})">
+                                <span class="material-symbols-outlined absolute right-3 top-3 text-gray-400">search</span>
+                            </div>
+
+                            <div id="oauthSearchResults" class="space-y-2 max-h-48 overflow-y-auto">
+                                <!-- Search results appear here -->
+                            </div>
+                        </div>
+
+                        <div class="p-6 bg-gray-50 border-t space-y-3">
+                            <button onclick="createNewOAuthProfileFromModal('${provider}', '${providerId}', '${uniqueUserId}', ${JSON.stringify(profile).replace(/'/g, "\\'")})"
+                                    class="w-full py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition-colors">
+                                <span class="material-symbols-outlined align-middle mr-2">person_add</span>
+                                Create New Profile
+                            </button>
+                            <button onclick="document.getElementById('oauthManualSearchModal').remove(); ScreenManager.showScreen('loginScreen');"
+                                    class="w-full py-2 text-gray-500 hover:text-gray-700 text-sm">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+
+        // Search for profiles in OAuth manual search
+        async function searchOAuthProfiles(provider, providerId, searchText, profile) {
+            const resultsContainer = document.getElementById('oauthSearchResults');
+            if (!resultsContainer) return;
+
+            if (!searchText || searchText.length < 2) {
+                resultsContainer.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">Type at least 2 characters to search</p>';
+                return;
+            }
+
+            try {
+                const { data: profiles, error } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('line_user_id, name, display_name, society_name, handicap')
+                    .is(`${provider}_user_id`, null) // Not linked to this provider
+                    .or(`name.ilike.%${searchText}%,display_name.ilike.%${searchText}%`)
+                    .limit(10);
+
+                if (error) throw error;
+
+                if (!profiles || profiles.length === 0) {
+                    resultsContainer.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">No profiles found</p>';
+                    return;
+                }
+
+                resultsContainer.innerHTML = profiles.map(p => `
+                    <button onclick="linkOAuthToExistingProfile('${provider}', '${providerId}', '${p.line_user_id}', ${JSON.stringify(profile).replace(/'/g, "\\'")})"
+                            class="w-full p-3 border border-gray-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-all text-left">
+                        <div class="font-medium text-gray-900">${p.name || p.display_name || 'Unknown'}</div>
+                        ${p.society_name ? `<div class="text-xs text-gray-500">${p.society_name}</div>` : ''}
+                    </button>
+                `).join('');
+            } catch (err) {
+                console.error('[OAuth] Search error:', err);
+                resultsContainer.innerHTML = '<p class="text-red-500 text-sm text-center py-4">Search failed</p>';
+            }
+        }
+
+        // Link OAuth account to existing profile
+        async function linkOAuthToExistingProfile(provider, providerId, existingLineUserId, profile) {
+            const providerIdColumn = `${provider}_user_id`;
+            const providerName = provider === 'kakao' ? 'KakaoTalk' : provider === 'google' ? 'Google' : provider;
+
+            LoadingManager.show(`Linking your ${providerName} account...`);
+
+            try {
+                // Update existing profile with provider ID
+                const { error } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .update({
+                        [providerIdColumn]: providerId,
+                        avatar_url: profile.pictureUrl || profile.picture || null,
+                        oauth_provider: provider
+                    })
+                    .eq('line_user_id', existingLineUserId);
+
+                if (error) throw error;
+
+                // Load the linked profile
+                const userProfile = await window.SupabaseDB.getUserProfile(existingLineUserId);
+
+                if (userProfile) {
+                    // Set AppState with the linked profile
+                    AppState.currentUser = {
+                        role: userProfile.role || 'golfer',
+                        name: userProfile.name || profile.displayName,
+                        username: userProfile.username || userProfile.name || profile.displayName,
+                        displayName: userProfile.name || profile.displayName,
+                        lineId: existingLineUserId,
+                        lineUserId: existingLineUserId,
+                        userId: existingLineUserId,
+                        avatar: profile.pictureUrl || userProfile.avatar_url,
+                        email: userProfile.email,
+                        phone: userProfile.phone,
+                        handicap: userProfile.handicap || userProfile.profile_data?.golfInfo?.handicap || null,
+                        membershipLevel: userProfile.role === 'golfer' ? 'premium' : 'staff',
+                        joinDate: userProfile.created_at || new Date().toISOString(),
+                        stats: {},
+                        permissions: LineAuthentication.getPermissions(userProfile.role || 'golfer'),
+                        oauthProvider: provider
+                    };
+
+                    AppState.session.isAuthenticated = true;
+                    AppState.session.authMethod = provider;
+                    AppState.session.loginTime = new Date().toISOString();
+                }
+
+                // Close modals
+                document.getElementById('oauthMemberLinkModal')?.remove();
+                document.getElementById('oauthManualSearchModal')?.remove();
+
+                NotificationManager.show(`Welcome back! Your ${providerName} account is now linked.`, 'success');
+
+                if (typeof UserInterface !== 'undefined' && UserInterface.updateUserDisplays) {
+                    UserInterface.updateUserDisplays();
+                }
+
+                LineAuthentication.redirectToDashboard();
+                LoadingManager.hide();
+
+            } catch (err) {
+                console.error('[OAuth] Link failed:', err);
+                NotificationManager.show('Failed to link account. Please try again.', 'error');
+                LoadingManager.hide();
+            }
+        }
+
+        // Create new profile from modal (exposed globally)
+        async function createNewOAuthProfileFromModal(provider, providerId, uniqueUserId, profile) {
+            document.getElementById('oauthMemberLinkModal')?.remove();
+            document.getElementById('oauthManualSearchModal')?.remove();
+            LoadingManager.show('Creating your profile...');
+            await createNewOAuthProfile(provider, providerId, uniqueUserId, profile);
+        }
+
+        // Actually create the new OAuth profile
+        async function createNewOAuthProfile(provider, providerId, uniqueUserId, profile) {
+            if (window.MobileDebug) window.MobileDebug.log(`createNewOAuthProfile: ${provider}`, 'info');
+            const providerName = provider === 'kakao' ? 'KakaoTalk' : provider === 'google' ? 'Google' : provider;
+
+            // Build profile - only use columns that exist in the table
+            const pictureUrl = profile.pictureUrl || profile.picture || null;
+            const newProfile = {
+                line_user_id: uniqueUserId,
+                name: profile.displayName || profile.name || `${providerName} User`,
+                display_name: profile.displayName || profile.name,
+                role: 'golfer',
+                profile_data: {
+                    username: profile.displayName || profile.name,
+                    linePictureUrl: pictureUrl,
+                    oauthProvider: provider,
+                    oauthProviderId: providerId,
+                    personalInfo: {
+                        firstName: profile.firstName || profile.displayName?.split(' ')[0] || '',
+                        lastName: profile.lastName || profile.displayName?.split(' ').slice(1).join(' ') || '',
+                        email: profile.email || ''
+                    },
+                    golfInfo: {},
+                    organizationInfo: {},
+                    preferences: { language: 'en' }
+                },
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            };
+
+            // Try to add provider-specific columns if they exist
+            try {
+                const providerIdColumn = `${provider}_user_id`;
+                newProfile[providerIdColumn] = providerId;
+                newProfile.oauth_provider = provider;
+            } catch (e) {
+                if (window.MobileDebug) window.MobileDebug.log(`Could not set provider column: ${e.message}`, 'warn');
+            }
+
+            if (window.MobileDebug) window.MobileDebug.log(`Inserting profile: ${newProfile.name}`, 'info');
+
+            try {
+                const { data, error } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .insert(newProfile)
+                    .select()
+                    .single();
+
+                if (error) {
+                    if (window.MobileDebug) window.MobileDebug.log(`Insert error: ${error.message}`, 'error');
+
+                    // If error is about unknown column, try without provider-specific columns
+                    if (error.message && error.message.includes('does not exist')) {
+                        if (window.MobileDebug) window.MobileDebug.log('Retrying without provider columns...', 'warn');
+                        delete newProfile.kakao_user_id;
+                        delete newProfile.google_user_id;
+                        delete newProfile.oauth_provider;
+
+                        const { data: data2, error: error2 } = await window.SupabaseDB.client
+                            .from('user_profiles')
+                            .insert(newProfile)
+                            .select()
+                            .single();
+
+                        if (error2) throw error2;
+                        if (window.MobileDebug) window.MobileDebug.log('Profile created (without provider cols)', 'success');
+                    } else {
+                        throw error;
+                    }
+                } else {
+                    if (window.MobileDebug) window.MobileDebug.log('Profile created successfully!', 'success');
+                }
+
+                console.log(`[OAuth] Created new user:`, data || newProfile);
+
+                AppState.currentUser = {
+                    role: 'golfer',
+                    name: newProfile.name,
+                    username: newProfile.name,
+                    displayName: newProfile.name,
+                    lineId: uniqueUserId,
+                    lineUserId: uniqueUserId,
+                    userId: uniqueUserId,
+                    avatar: pictureUrl,
+                    email: profile.email || '',
+                    phone: '',
+                    handicap: null,
+                    membershipLevel: 'free',
+                    joinDate: newProfile.created_at,
+                    stats: {},
+                    permissions: [],
+                    preferences: {},
+                    oauthProvider: provider
+                };
+
+                AppState.session.isAuthenticated = true;
+                AppState.session.authMethod = provider;
+                AppState.session.loginTime = new Date().toISOString();
+
+                if (typeof UserInterface !== 'undefined' && UserInterface.updateUserDisplays) {
+                    UserInterface.updateUserDisplays();
+                }
+
+                NotificationManager.show(`Welcome to MyCaddiPro! Your ${providerName} account has been created.`, 'success');
+                if (window.MobileDebug) window.MobileDebug.log('Redirecting to dashboard...', 'success');
+                LineAuthentication.redirectToDashboard();
+                LoadingManager.hide();
+
+            } catch (err) {
+                console.error(`[OAuth] Failed to create user:`, err);
+                alert('Failed to create account: ' + err.message);
+                NotificationManager.show('Failed to create account. Please try again.', 'error');
+                LoadingManager.hide();
+            }
+        }
+
+        // Expose new OAuth functions globally
+        window.linkOAuthToExistingProfile = linkOAuthToExistingProfile;
+        window.createNewOAuthProfileFromModal = createNewOAuthProfileFromModal;
+        window.searchOAuthProfiles = searchOAuthProfiles;
+
+        // Expose OAuth functions globally
+        window.loginWithKakao = loginWithKakao;
+        window.loginWithGoogle = loginWithGoogle;
+        window.handleOAuthProfile = handleOAuthProfile;
+
         // OTP Authentication System
         class OTPAuthentication {
             static currentPhoneNumber = null;
@@ -10410,61 +11119,134 @@
 
         // Application Initialization
         document.addEventListener('DOMContentLoaded', async function() {
-            // Handle LINE OAuth callback
+
+            // Handle OAuth callback (LINE, Kakao, Google)
             const urlParams = new URLSearchParams(window.location.search);
             const code = urlParams.get('code');
             const state = urlParams.get('state');
-            const storedState = localStorage.getItem('line_oauth_state');
+            const currentPath = window.location.pathname;
+
+            // Check both possible state storage locations
+            const lineStoredState = localStorage.getItem('line_oauth_state');
+            const oauthStoredState = localStorage.getItem('oauth_state');
+
+            console.log('[OAuth] Callback check - code:', !!code, 'state:', !!state);
+
+            // Determine which provider based on stored state
+            let provider = 'line'; // default
+            let storedState = lineStoredState;
+
+            // PRIORITY 1: Check if we have oauth_state (used by Kakao/Google)
+            if (oauthStoredState && state) {
+                try {
+                    const stateData = JSON.parse(atob(oauthStoredState));
+                    if (state === oauthStoredState) {
+                        provider = stateData.provider || 'kakao';
+                        storedState = oauthStoredState;
+                        console.log('[OAuth] Matched provider:', provider);
+                    }
+                } catch (e) {
+                    console.log('[OAuth] Could not parse oauth_state');
+                }
+            }
+
+            // PRIORITY 2: Check LINE state if oauth_state didn't match
+            if (provider === 'line' && lineStoredState && state === lineStoredState) {
+                console.log('[OAuth] LINE state matched');
+            }
 
             // Clean OAuth validation
             const currentCode = code;
-            const usedCode = sessionStorage.getItem('__line_code_used');
+            const usedCode = sessionStorage.getItem('__oauth_code_used');
             const statesMatch = state === storedState;
             const codeUnused = usedCode !== currentCode;
 
             if (currentCode && statesMatch && codeUnused) {
                 try {
-                    console.log('[LINE OAuth] Callback received, exchanging code for profile');
+                    console.log('[OAuth] Processing', provider, 'callback');
 
                     // Mark code as used immediately to prevent double-processing
-                    sessionStorage.setItem('__line_code_used', currentCode);
+                    sessionStorage.setItem('__oauth_code_used', currentCode);
 
                     try {
-                        LoadingManager.show('Completing LINE login...');
+                        const providerName = provider === 'line' ? 'LINE' : provider === 'kakao' ? 'KakaoTalk' : 'Google';
+                        LoadingManager.show(`Completing ${providerName} login...`);
                     } catch (loadErr) {
-                        console.error('[LINE OAuth] LoadingManager.show failed:', loadErr);
-                        // Continue anyway
+                        console.error('[OAuth] LoadingManager.show failed:', loadErr);
                     }
 
+                    // Determine which Edge Function to call
+                    let exchangeUrl = 'https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-oauth-exchange';
+                    if (provider === 'kakao') {
+                        exchangeUrl = 'https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/kakao-oauth-exchange';
+                    } else if (provider === 'google') {
+                        exchangeUrl = 'https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/google-oauth-exchange';
+                    }
+                    console.log('[OAuth] Calling edge function:', exchangeUrl);
+
                     // Call Supabase Edge Function to exchange code for profile
-                    const res = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-oauth-exchange', {
+                    const currentRedirectUri = window.location.origin + '/';
+                    const res = await fetch(exchangeUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ code, state, redirectUri: 'https://mycaddipro.com/' })
+                        body: JSON.stringify({ code, state, redirectUri: currentRedirectUri })
                     });
 
                     const raw = await res.clone().text();
-                    console.log('[LINE OAuth] Exchange response:', res.status);
-                    const data = JSON.parse(raw || '{}');
-                    if (data.profile) {
-                        await LineAuthentication.setUserFromLineProfile(data.profile);
-                        localStorage.removeItem('line_oauth_state');
+                    console.log('[OAuth] Response status:', res.status);
 
-                        // Clean URL without reloading (remove ?code= and ?state= params)
+                    let data;
+                    try {
+                        data = JSON.parse(raw || '{}');
+                    } catch (parseErr) {
+                        console.error('[OAuth] Failed to parse response:', parseErr);
+                        throw new Error('Invalid response from server');
+                    }
+
+                    if (data.profile) {
+                        console.log('[OAuth] Got profile:', data.profile.displayName);
+
+                        // Route to appropriate handler based on provider
+                        if (provider === 'line') {
+                            await LineAuthentication.setUserFromLineProfile(data.profile);
+                            localStorage.removeItem('line_oauth_state');
+                        } else {
+                            // Handle Kakao/Google via multi-provider handler
+                            console.log('[OAuth] Calling handleOAuthProfile for', provider);
+                            await handleOAuthProfile(provider, data.profile);
+                            localStorage.removeItem('oauth_state');
+                        }
+
+                        // Clean URL without reloading
                         const cleanUrl = window.location.origin + window.location.pathname;
                         history.replaceState(null, '', cleanUrl);
 
-                        // Navigate to appropriate dashboard based on user role
-                        LineAuthentication.redirectToDashboard();
+                        // Only redirect if user is authenticated (handleOAuthProfile may show modal instead)
+                        if (AppState.session.isAuthenticated) {
+                            console.log('[OAuth] Redirecting to dashboard...');
+                            LineAuthentication.redirectToDashboard();
+                        } else {
+                            console.log('[OAuth] Waiting for user choice (modal)');
+                        }
                         LoadingManager.hide();
                         return;
+                    } else if (data.error) {
+                        console.error('[OAuth] Server error:', data.error);
+                        NotificationManager.show(`Login failed: ${data.error}`, 'error');
+                    } else {
+                        console.error('[OAuth] No profile in response');
+                        NotificationManager.show('Login failed: No profile received', 'error');
                     }
                 } catch (error) {
-                    console.error('[LINE OAuth] Exchange failed:', error);
+                    console.error('[OAuth] Exception:', error);
                     NotificationManager.show('Login failed. Please try again.', 'error');
                 } finally {
                     LoadingManager.hide();
                 }
+            } else if (currentCode && !statesMatch) {
+                console.log('[OAuth] State mismatch - clearing states');
+                localStorage.removeItem('oauth_state');
+                localStorage.removeItem('line_oauth_state');
             }
 
             // Prevent target="_blank" links from opening Chrome (keep in WebView)
@@ -12101,34 +12883,57 @@
                             <p class="text-gray-600">Choose your preferred method</p>
                         </div>
 
-                        <div class="grid md:grid-cols-2 gap-6">
-                            <!-- QR Code Option -->
-                            <div class="border-2 border-gray-200 rounded-xl p-6 hover:border-primary-500 transition-all cursor-pointer" onclick="showQRCodeRegistration()">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <!-- LINE Login -->
+                            <div class="border-2 border-gray-200 rounded-xl p-4 hover:border-green-500 transition-all cursor-pointer" onclick="this.closest('.fixed').remove(); loginWithLINE();">
                                 <div class="text-center">
-                                    <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <span class="material-symbols-outlined text-3xl text-blue-600">qr_code_scanner</span>
-                                    </div>
-                                    <h3 class="font-bold text-gray-900 mb-2 text-lg">Scan QR Code</h3>
-                                    <p class="text-sm text-gray-600 mb-4">Use your mobile LINE app to scan and register instantly</p>
-                                    <div class="bg-blue-50 p-3 rounded-lg text-sm text-blue-700 font-medium">
-                                        ✓ Recommended for Mobile Users
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Direct LINE Login -->
-                            <div class="border-2 border-gray-200 rounded-xl p-6 hover:border-green-500 transition-all cursor-pointer" onclick="this.closest('.fixed').remove(); loginWithLINE();">
-                                <div class="text-center">
-                                    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="#00B900">
+                                    <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="#00B900">
                                             <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.628-.629.628M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
                                         </svg>
                                     </div>
-                                    <h3 class="font-bold text-gray-900 mb-2 text-lg">LINE Login</h3>
-                                    <p class="text-sm text-gray-600 mb-4">Sign in with your LINE account on this device</p>
-                                    <div class="bg-green-50 p-3 rounded-lg text-sm text-green-700 font-medium">
-                                        ✓ Desktop & Mobile
+                                    <h3 class="font-bold text-gray-900 mb-1 text-sm">LINE</h3>
+                                    <p class="text-xs text-gray-500">Thailand</p>
+                                </div>
+                            </div>
+
+                            <!-- Kakao Login -->
+                            <div class="border-2 border-gray-200 rounded-xl p-4 hover:border-yellow-500 transition-all cursor-pointer" onclick="this.closest('.fixed').remove(); loginWithKakao();">
+                                <div class="text-center">
+                                    <div class="w-14 h-14 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="#3C1E1E">
+                                            <path d="M12 3C6.477 3 2 6.463 2 10.714c0 2.747 1.81 5.156 4.513 6.493-.146.53-.944 3.408-.975 3.627 0 0-.02.163.086.225.106.062.23.014.23.014.303-.042 3.513-2.313 4.066-2.706.681.096 1.388.147 2.08.147 5.523 0 10-3.463 10-7.8C22 6.463 17.523 3 12 3z"/>
+                                        </svg>
                                     </div>
+                                    <h3 class="font-bold text-gray-900 mb-1 text-sm">Kakao</h3>
+                                    <p class="text-xs text-gray-500">Korea</p>
+                                </div>
+                            </div>
+
+                            <!-- Google Login -->
+                            <div class="border-2 border-gray-200 rounded-xl p-4 hover:border-blue-500 transition-all cursor-pointer" onclick="this.closest('.fixed').remove(); loginWithGoogle();">
+                                <div class="text-center">
+                                    <div class="w-14 h-14 bg-white rounded-full flex items-center justify-center mx-auto mb-3 border border-gray-200">
+                                        <svg width="24" height="24" viewBox="0 0 24 24">
+                                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                                        </svg>
+                                    </div>
+                                    <h3 class="font-bold text-gray-900 mb-1 text-sm">Google</h3>
+                                    <p class="text-xs text-gray-500">Worldwide</p>
+                                </div>
+                            </div>
+
+                            <!-- QR Code Option -->
+                            <div class="border-2 border-gray-200 rounded-xl p-4 hover:border-blue-500 transition-all cursor-pointer" onclick="showQRCodeRegistration()">
+                                <div class="text-center">
+                                    <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                        <span class="material-symbols-outlined text-2xl text-blue-600">qr_code_scanner</span>
+                                    </div>
+                                    <h3 class="font-bold text-gray-900 mb-1 text-sm">QR Code</h3>
+                                    <p class="text-xs text-gray-500">Scan to login</p>
                                 </div>
                             </div>
                         </div>
@@ -12327,13 +13132,8 @@
                 }, 100);
             }
 
-            // Initialize Marketplace when 19th Hole tab is shown
-            if (tabName === 'marketplace' && typeof MarketplaceSystem !== 'undefined') {
-                setTimeout(() => {
-                    MarketplaceSystem.init();
-                    MarketplaceSystem.showSubTab('browse');
-                }, 100);
-            }
+            // NOTE: Marketplace initialization removed here - handled by TabManager.loadTabData()
+            // This was causing double initialization and race conditions with sub-tab visibility
         }
 
         // Navigate directly to the Caddie Booking module within the Booking tab
@@ -15992,8 +16792,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('[ProfileSystem] 🔐 Checking edit permissions...');
                 console.log('[ProfileSystem] Current user:', AppState.currentUser);
 
-                // If user is logged in via AppState, they can edit their own profile
-                if (AppState.currentUser && AppState.currentUser.lineUserId) {
+                // If user is logged in via AppState (LINE, Kakao, or Google), they can edit their own profile
+                if (AppState.currentUser && (AppState.currentUser.lineUserId || AppState.currentUser.oauthProvider)) {
                     console.log('[ProfileSystem] ✅ User is logged in via AppState - allowing profile edit');
                     return true;
                 }
@@ -16589,6 +17389,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
                             // Update LINE notifications section
                             this.updateLineNotificationsSection();
+
+                            // Update Connected Accounts section
+                            this.updateConnectedAccountsSection();
                         } else {
                             console.warn('[ProfileSystem] ⚠️ Content div not found');
                         }
@@ -16709,6 +17512,95 @@ document.addEventListener('DOMContentLoaded', function() {
                 } catch (err) {
                     console.error('[ProfileSystem] Error checking LINE notification status:', err);
                     container.innerHTML = `<p class="text-red-500 text-sm">Error loading notification status.</p>`;
+                }
+            },
+
+            // Update Connected Accounts section in profile modal
+            async updateConnectedAccountsSection() {
+                const container = document.getElementById('connected-accounts-status');
+                if (!container) return;
+
+                const lineUserId = AppState.currentUser?.lineUserId;
+                if (!lineUserId) {
+                    container.innerHTML = `<p class="text-gray-500 text-sm">Account linking not available.</p>`;
+                    return;
+                }
+
+                try {
+                    // Fetch user's connected accounts from database
+                    const { data: profile, error } = await window.SupabaseDB.client
+                        .from('user_profiles')
+                        .select('line_user_id, google_user_id, kakao_user_id, oauth_provider')
+                        .eq('line_user_id', lineUserId)
+                        .single();
+
+                    if (error) throw error;
+
+                    const hasLine = !!profile?.line_user_id && !profile.line_user_id.startsWith('GOOGLE-') && !profile.line_user_id.startsWith('KAKAO-');
+                    const hasGoogle = !!profile?.google_user_id;
+                    const hasKakao = !!profile?.kakao_user_id;
+
+                    container.innerHTML = `
+                        <!-- LINE Account -->
+                        <div class="flex items-center justify-between p-4 bg-white rounded-lg border ${hasLine ? 'border-green-300' : 'border-gray-200'}">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-full flex items-center justify-center" style="background: #00C300;">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                                        <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.628-.629.628M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-gray-900">LINE</p>
+                                    <p class="text-xs text-gray-500">${hasLine ? 'Connected' : 'Not connected'}</p>
+                                </div>
+                            </div>
+                            ${hasLine
+                                ? '<span class="text-green-600 text-sm font-medium flex items-center gap-1"><span class="material-symbols-outlined text-sm">check_circle</span>Primary</span>'
+                                : '<button onclick="loginWithLINE()" class="px-4 py-2 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600">Connect</button>'
+                            }
+                        </div>
+
+                        <!-- KakaoTalk Account -->
+                        <div class="flex items-center justify-between p-4 bg-white rounded-lg border ${hasKakao ? 'border-yellow-400' : 'border-gray-200'}">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-full flex items-center justify-center" style="background: #FEE500;">
+                                    <img src="kakao-icon.svg" alt="Kakao" class="w-6 h-6">
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-gray-900">KakaoTalk</p>
+                                    <p class="text-xs text-gray-500">${hasKakao ? 'Connected' : 'Not connected'}</p>
+                                </div>
+                            </div>
+                            ${hasKakao
+                                ? '<span class="text-yellow-600 text-sm font-medium flex items-center gap-1"><span class="material-symbols-outlined text-sm">check_circle</span>Linked</span>'
+                                : '<button onclick="loginWithKakao()" class="px-4 py-2 bg-yellow-400 text-gray-900 text-sm rounded-lg hover:bg-yellow-500 font-medium">Link</button>'
+                            }
+                        </div>
+
+                        <!-- Google Account -->
+                        <div class="flex items-center justify-between p-4 bg-white rounded-lg border ${hasGoogle ? 'border-blue-400' : 'border-gray-200'}">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-white border border-gray-200 rounded-full flex items-center justify-center">
+                                    <img src="google-icon.svg" alt="Google" class="w-6 h-6">
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-gray-900">Google</p>
+                                    <p class="text-xs text-gray-500">${hasGoogle ? 'Connected' : 'Not connected'}</p>
+                                </div>
+                            </div>
+                            ${hasGoogle
+                                ? '<span class="text-blue-600 text-sm font-medium flex items-center gap-1"><span class="material-symbols-outlined text-sm">check_circle</span>Linked</span>'
+                                : '<button onclick="loginWithGoogle()" class="px-4 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600">Link</button>'
+                            }
+                        </div>
+
+                        <p class="text-xs text-gray-500 mt-2 text-center">
+                            Link accounts to sign in using any connected provider.
+                        </p>
+                    `;
+                } catch (err) {
+                    console.error('[ProfileSystem] Error loading connected accounts:', err);
+                    container.innerHTML = `<p class="text-red-500 text-sm">Error loading connected accounts.</p>`;
                 }
             },
 
@@ -16941,6 +17833,21 @@ document.addEventListener('DOMContentLoaded', function() {
                                 LINE Push Notifications
                             </h4>
                             <div id="line-notifications-status"></div>
+                        </div>
+
+                        <!-- Connected Accounts -->
+                        <div id="connected-accounts-section" class="bg-blue-50 rounded-xl p-6 border-2 border-blue-200">
+                            <h4 class="text-lg font-bold text-gray-900 mb-4">
+                                <span class="material-symbols-outlined text-blue-600 mr-2" style="vertical-align: middle;">link</span>
+                                Connected Accounts
+                            </h4>
+                            <p class="text-sm text-gray-600 mb-4">Link additional accounts to log in with different providers.</p>
+                            <div id="connected-accounts-status" class="space-y-3">
+                                <!-- Will be populated dynamically -->
+                                <div class="flex items-center justify-center p-4">
+                                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -24118,7 +25025,20 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <span data-i18n="quickstart.signin">Sign in with LINE</span>
                     </button>
 
-                    <div class="relative">
+                    <!-- Additional OAuth Login Options -->
+                    <div class="flex justify-center items-center space-x-4 mt-4">
+                        <span class="text-xs text-gray-400">Or sign in with:</span>
+                        <!-- KakaoTalk Button -->
+                        <button onclick="loginWithKakao()" class="w-12 h-12 rounded-full flex items-center justify-center transition-all hover:scale-110 shadow-md hover:shadow-lg" style="background: #FEE500;" title="Sign in with KakaoTalk">
+                            <img src="kakao-icon.svg" alt="KakaoTalk" class="w-7 h-7">
+                        </button>
+                        <!-- Google Button -->
+                        <button onclick="loginWithGoogle()" class="w-12 h-12 bg-white border border-gray-300 rounded-full flex items-center justify-center transition-all hover:scale-110 shadow-md hover:shadow-lg" title="Sign in with Google">
+                            <img src="google-icon.svg" alt="Google" class="w-7 h-7">
+                        </button>
+                    </div>
+
+                    <div class="relative mt-4">
                         <div class="absolute inset-0 flex items-center">
                             <div class="w-full border-t border-gray-300"></div>
                         </div>
@@ -25503,39 +26423,39 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         </button>
                     </div>
 
-                    <!-- Search and Filters (Browse tab) -->
-                    <div id="browse-filters" class="space-y-3">
-                        <!-- Search Bar -->
-                        <div class="relative">
-                            <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">search</span>
-                            <input type="text" id="marketplace-search" placeholder="Search listings..."
-                                   class="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                                   oninput="MarketplaceSystem.debounceSearch(this.value)">
+                    <!-- Browse Content (includes filters) -->
+                    <div id="market-content-browse" class="market-subcontent active">
+                        <!-- Search and Filters -->
+                        <div id="browse-filters" class="space-y-3 mb-4">
+                            <!-- Search Bar -->
+                            <div class="relative">
+                                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">search</span>
+                                <input type="text" id="marketplace-search" placeholder="Search listings..."
+                                       class="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                                       oninput="MarketplaceSystem.debounceSearch(this.value)">
+                            </div>
+
+                            <!-- Category Filters -->
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" onclick="MarketplaceSystem.filterByCategory('all', event)" id="cat-filter-all" class="px-3 py-1.5 text-sm rounded-full bg-primary-600 text-white flex items-center">
+                                    <span class="material-symbols-outlined text-sm mr-1">apps</span>
+                                    <span>All</span>
+                                </button>
+                                <button type="button" onclick="MarketplaceSystem.filterByCategory('golf_equipment', event)" id="cat-filter-golf_equipment" class="px-3 py-1.5 text-sm rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 flex items-center">
+                                    <span class="material-symbols-outlined text-sm mr-1">sports_golf</span>
+                                    <span>Golf</span>
+                                </button>
+                                <button type="button" onclick="MarketplaceSystem.filterByCategory('services', event)" id="cat-filter-services" class="px-3 py-1.5 text-sm rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 flex items-center">
+                                    <span class="material-symbols-outlined text-sm mr-1">handyman</span>
+                                    <span>Services</span>
+                                </button>
+                                <button type="button" onclick="MarketplaceSystem.filterByCategory('general', event)" id="cat-filter-general" class="px-3 py-1.5 text-sm rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 flex items-center">
+                                    <span class="material-symbols-outlined text-sm mr-1">category</span>
+                                    <span>General</span>
+                                </button>
+                            </div>
                         </div>
 
-                        <!-- Category Filters -->
-                        <div class="flex flex-wrap gap-2">
-                            <button onclick="MarketplaceSystem.filterByCategory('all')" id="cat-filter-all" class="px-3 py-1.5 text-sm rounded-full bg-primary-600 text-white flex items-center">
-                                <span class="material-symbols-outlined text-sm mr-1">apps</span>
-                                <span>All</span>
-                            </button>
-                            <button onclick="MarketplaceSystem.filterByCategory('golf_equipment')" id="cat-filter-golf_equipment" class="px-3 py-1.5 text-sm rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 flex items-center">
-                                <span class="material-symbols-outlined text-sm mr-1">sports_golf</span>
-                                <span>Golf</span>
-                            </button>
-                            <button onclick="MarketplaceSystem.filterByCategory('services')" id="cat-filter-services" class="px-3 py-1.5 text-sm rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 flex items-center">
-                                <span class="material-symbols-outlined text-sm mr-1">handyman</span>
-                                <span>Services</span>
-                            </button>
-                            <button onclick="MarketplaceSystem.filterByCategory('general')" id="cat-filter-general" class="px-3 py-1.5 text-sm rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 flex items-center">
-                                <span class="material-symbols-outlined text-sm mr-1">category</span>
-                                <span>General</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Browse Content -->
-                    <div id="market-content-browse" class="market-subcontent">
                         <div id="listings-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                             <!-- Listing cards rendered dynamically -->
                             <div class="text-center text-gray-500 py-12 col-span-full">
@@ -25553,7 +26473,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </div>
 
                     <!-- My Listings Content -->
-                    <div id="market-content-mylistings" class="market-subcontent hidden">
+                    <div id="market-content-mylistings" class="market-subcontent">
                         <div id="my-listings-list" class="space-y-3">
                             <div class="text-center text-gray-500 py-12">
                                 <span class="material-symbols-outlined text-4xl mb-2">inventory_2</span>
@@ -25567,7 +26487,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </div>
 
                     <!-- My Offers Content -->
-                    <div id="market-content-myoffers" class="market-subcontent hidden">
+                    <div id="market-content-myoffers" class="market-subcontent">
                         <!-- Sub-tabs for offers sent/received -->
                         <div class="flex space-x-2 mb-4">
                             <button onclick="MarketplaceSystem.showOfferTab('received')" id="offers-tab-received" class="px-4 py-2 text-sm font-medium rounded-lg bg-primary-100 text-primary-700">
@@ -25593,7 +26513,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </div>
 
                     <!-- Favorites Content -->
-                    <div id="market-content-favorites" class="market-subcontent hidden">
+                    <div id="market-content-favorites" class="market-subcontent">
                         <div id="favorites-list" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                             <div class="text-center text-gray-500 py-12 col-span-full">
                                 <span class="material-symbols-outlined text-4xl mb-2">favorite_border</span>
@@ -25824,10 +26744,6 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 <button onclick="GolferEventsSystem.showEventsView('myevents')" id="eventsViewMyEvents" class="events-subtab-btn border-b-2 border-transparent text-gray-600 hover:text-gray-900 font-medium flex items-center" style="padding: 8px; flex-shrink: 0;" title="My Registrations">
                                     <span class="material-symbols-outlined" style="font-size: 18px;">confirmation_number</span>
                                     <span class="hidden md:inline" style="margin-left: 8px; font-size: 14px;">My Registrations</span>
-                                </button>
-                                <button onclick="GolferEventsSystem.showEventsView('history')" id="eventsViewHistory" class="events-subtab-btn border-b-2 border-transparent text-gray-600 hover:text-gray-900 font-medium flex items-center" style="padding: 8px; flex-shrink: 0;" title="History">
-                                    <span class="material-symbols-outlined" style="font-size: 18px;">history</span>
-                                    <span class="hidden md:inline" style="margin-left: 8px; font-size: 14px;">History</span>
                                 </button>
                                 <button onclick="GolferEventsSystem.showEventsView('standings')" id="eventsViewStandings" class="events-subtab-btn border-b-2 border-transparent text-gray-600 hover:text-gray-900 font-medium flex items-center" style="padding: 8px; flex-shrink: 0;" title="My Standings">
                                     <span class="material-symbols-outlined" style="font-size: 18px;">leaderboard</span>
@@ -26070,13 +26986,6 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </div>
                     <!-- End My Registrations View -->
 
-                    <!-- History View -->
-                    <div id="eventsViewHistoryContent" class="events-view-content" style="display: none;">
-                        <div id="myHistoryList" class="space-y-4">
-                            <p class="text-center py-12 text-gray-500">Loading your history...</p>
-                        </div>
-                    </div>
-                    <!-- End History View -->
 
                     <!-- My Standings View -->
                     <div id="eventsViewStandingsContent" class="events-view-content" style="display: none;">
@@ -27214,12 +28123,12 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                     <p class="text-green-100" id="currentHoleInfo">Par 4 • Index 10</p>
                                 </div>
                                 <div class="text-right flex gap-2">
-                                    <button onclick="LiveScorecardManager.viewScorecardImage()" class="px-4 py-2 bg-white text-green-600 rounded-lg font-medium hover:bg-green-50 flex items-center gap-2">
-                                        <span class="material-symbols-outlined text-sm">image</span>
-                                        Scorecard
+                                    <button onclick="LiveScorecardManager.viewHolePreview()" class="px-3 py-2 bg-white text-green-600 rounded-lg font-medium hover:bg-green-50 flex items-center gap-1">
+                                        <span class="material-symbols-outlined text-sm">terrain</span>
+                                        Hole
                                     </button>
-                                    <button onclick="LiveScorecardManager.completeRound()" class="px-4 py-2 bg-white text-green-600 rounded-lg font-medium hover:bg-green-50">
-                                        End Round
+                                    <button onclick="LiveScorecardManager.completeRound()" class="px-3 py-2 bg-white text-green-600 rounded-lg font-medium hover:bg-green-50">
+                                        End
                                     </button>
                                 </div>
                             </div>
@@ -28112,6 +29021,61 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 </div>
                 <p class="text-xs text-gray-500 mt-4 text-center">Tap outside or click Close to return to round</p>
             </div>
+        </div>
+    </div>
+
+    <!-- Hole Preview Modal -->
+    <div id="holePreviewModal" class="fixed inset-0 bg-black bg-opacity-90 z-50 hidden flex items-center justify-center p-4" onclick="LiveScorecardManager.closeHolePreview()">
+        <div class="relative max-w-4xl w-full" onclick="event.stopPropagation()">
+            <!-- Navigation and Close buttons -->
+            <div class="absolute -top-14 left-0 right-0 flex justify-between items-center">
+                <button onclick="LiveScorecardManager.prevHolePreview()" class="text-white hover:text-gray-300 flex items-center gap-1 bg-black bg-opacity-50 px-4 py-2 rounded-lg">
+                    <span class="material-symbols-outlined">chevron_left</span>
+                    Prev
+                </button>
+                <span class="text-white text-xl font-bold" id="holePreviewTitle">Hole 1</span>
+                <button onclick="LiveScorecardManager.nextHolePreview()" class="text-white hover:text-gray-300 flex items-center gap-1 bg-black bg-opacity-50 px-4 py-2 rounded-lg">
+                    Next
+                    <span class="material-symbols-outlined">chevron_right</span>
+                </button>
+            </div>
+            <button onclick="LiveScorecardManager.closeHolePreview()" class="absolute -top-14 right-0 text-white hover:text-gray-300 flex items-center gap-2 bg-red-600 bg-opacity-80 px-4 py-2 rounded-lg z-10">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+            <div class="bg-white rounded-lg overflow-hidden">
+                <!-- Hole Info Bar -->
+                <div class="bg-gradient-to-r from-green-600 to-green-500 text-white px-4 py-3 flex justify-between items-center">
+                    <div class="flex items-center gap-4">
+                        <span class="text-2xl font-bold" id="holePreviewNumber">Hole 1</span>
+                        <div class="flex gap-3 text-sm">
+                            <span id="holePreviewPar">Par 4</span>
+                            <span id="holePreviewIndex">SI 10</span>
+                            <span id="holePreviewYardage">380 yds</span>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <span class="bg-white bg-opacity-20 px-2 py-1 rounded text-xs" id="holePreviewCourse">Course Name</span>
+                    </div>
+                </div>
+                <!-- Hole Image -->
+                <div class="relative bg-gray-100">
+                    <img id="holePreviewImage" src="" alt="Hole Layout" class="w-full h-auto max-h-[70vh] object-contain">
+                    <div id="holePreviewLoading" class="absolute inset-0 flex items-center justify-center bg-gray-100">
+                        <div class="text-center">
+                            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-2"></div>
+                            <p class="text-gray-500">Loading hole layout...</p>
+                        </div>
+                    </div>
+                    <div id="holePreviewNoImage" class="absolute inset-0 flex items-center justify-center bg-gray-100 hidden">
+                        <div class="text-center p-8">
+                            <span class="material-symbols-outlined text-6xl text-gray-300 mb-4">image_not_supported</span>
+                            <p class="text-gray-500 mb-2">No hole layout image available</p>
+                            <p class="text-xs text-gray-400">Upload hole images via Admin panel</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p class="text-xs text-gray-400 mt-2 text-center">Tap outside or click X to close | Use arrows to navigate holes</p>
         </div>
     </div>
 
@@ -46790,6 +47754,130 @@ class LiveScorecardSystem {
         modal.classList.add('hidden');
     }
 
+    // =====================================================
+    // HOLE PREVIEW VIEWER
+    // =====================================================
+
+    viewHolePreview(holeNumber = null) {
+        // Use current hole if not specified
+        const hole = holeNumber || this.currentHole;
+
+        if (!this.courseData) {
+            NotificationManager.show('No course selected', 'warning');
+            return;
+        }
+
+        const modal = document.getElementById('holePreviewModal');
+        const img = document.getElementById('holePreviewImage');
+        const loading = document.getElementById('holePreviewLoading');
+        const noImage = document.getElementById('holePreviewNoImage');
+        const title = document.getElementById('holePreviewTitle');
+        const number = document.getElementById('holePreviewNumber');
+        const par = document.getElementById('holePreviewPar');
+        const index = document.getElementById('holePreviewIndex');
+        const yardage = document.getElementById('holePreviewYardage');
+        const course = document.getElementById('holePreviewCourse');
+
+        // Get hole data
+        const holeData = this.courseData.holes?.find(h => h.hole_number === hole);
+
+        // Update UI
+        title.textContent = `Hole ${hole}`;
+        number.textContent = `Hole ${hole}`;
+        par.textContent = holeData ? `Par ${holeData.par}` : 'Par -';
+        index.textContent = holeData ? `SI ${holeData.stroke_index}` : 'SI -';
+        yardage.textContent = holeData?.yardage ? `${holeData.yardage} yds` : '';
+        course.textContent = this.courseData.name || 'Course';
+
+        // Show loading state
+        loading.classList.remove('hidden');
+        noImage.classList.add('hidden');
+        img.classList.add('hidden');
+
+        // Build image URL from Supabase storage
+        // Format: hole-layouts/{course_id}/hole{number}.png (or .jpg)
+        const courseId = this.courseData.id;
+        const baseUrl = `https://pyeeplwsnupmhgbguwqs.supabase.co/storage/v1/object/public/hole-layouts/${courseId}/hole${hole}`;
+
+        // Try PNG first, then WEBP, then JPG - multiple naming conventions
+        const imageFormats = ['.png', '.webp', '.jpg', '.jpeg'];
+        // Support various naming: hole1, hole_1, hole-1, hole-1-1086x1536, hote-1-1086x1536 (typo in bangpakong)
+        const imageVariants = [`hole${hole}`, `hole_${hole}`, `hole-${hole}`, `hole-${hole}-1086x1536`, `hote-${hole}-1086x1536`];
+        let currentFormatIndex = 0;
+        let currentVariantIndex = 0;
+
+        const tryNextImage = () => {
+            if (currentVariantIndex >= imageVariants.length) {
+                // All variants exhausted
+                loading.classList.add('hidden');
+                img.classList.add('hidden');
+                noImage.classList.remove('hidden');
+                console.log(`[LiveScorecard] No hole image found for hole ${hole}`);
+                return;
+            }
+
+            if (currentFormatIndex >= imageFormats.length) {
+                // Try next variant
+                currentFormatIndex = 0;
+                currentVariantIndex++;
+                tryNextImage();
+                return;
+            }
+
+            const variant = imageVariants[currentVariantIndex];
+            const format = imageFormats[currentFormatIndex];
+            const imageUrl = `https://pyeeplwsnupmhgbguwqs.supabase.co/storage/v1/object/public/hole-layouts/${courseId}/${variant}${format}`;
+
+            img.onload = () => {
+                loading.classList.add('hidden');
+                noImage.classList.add('hidden');
+                img.classList.remove('hidden');
+                console.log(`[LiveScorecard] Loaded hole image: ${imageUrl}`);
+            };
+
+            img.onerror = () => {
+                currentFormatIndex++;
+                tryNextImage();
+            };
+
+            img.src = imageUrl;
+        };
+
+        // Start trying images
+        tryNextImage();
+
+        // Show modal
+        modal.classList.remove('hidden');
+
+        // Store current preview hole for navigation
+        this.previewHole = hole;
+
+        console.log(`[LiveScorecard] Showing hole preview: Hole ${hole}, Course: ${courseId}`);
+    }
+
+    closeHolePreview() {
+        const modal = document.getElementById('holePreviewModal');
+        modal.classList.add('hidden');
+    }
+
+    prevHolePreview() {
+        if (this.previewHole > 1) {
+            this.viewHolePreview(this.previewHole - 1);
+        } else {
+            // Wrap to hole 18
+            this.viewHolePreview(18);
+        }
+    }
+
+    nextHolePreview() {
+        if (this.previewHole < 18) {
+            this.viewHolePreview(this.previewHole + 1);
+        } else {
+            // Wrap to hole 1
+            this.viewHolePreview(1);
+        }
+    }
+
     async loadAvailablePools() {
         const courseId = document.getElementById('scorecardCourseSelect')?.value;
         if (!courseId) {
@@ -54178,192 +55266,67 @@ This action cannot be undone.`);
         }
 
         return `
-            <div class="bg-white rounded-2xl shadow-lg border overflow-hidden hover:shadow-xl transition-shadow">
-                <!-- Society Branding Banner -->
-                <div class="bg-gradient-to-r from-gray-800 to-gray-600 text-white px-4 py-2">
-                    <div class="flex items-center space-x-3">
-                        ${societyLogo}
-                        <div class="flex-1">
-                            <div class="text-sm font-semibold">${societyName}</div>
-                            <div class="text-xs text-gray-300">${formatDisplay}</div>
+            <div class="bg-white rounded-xl shadow-md border overflow-hidden hover:shadow-lg transition-shadow">
+                <!-- Compact Header: Society + Status -->
+                <div class="bg-gradient-to-r from-gray-700 to-gray-500 text-white px-3 py-1.5 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <div class="w-6 h-6 md:w-7 md:h-7 rounded-full bg-white/20 flex items-center justify-center border border-white/50">
+                            <span class="material-symbols-outlined text-white text-xs md:text-sm">groups</span>
                         </div>
+                        <span class="text-xs font-medium truncate max-w-[120px] md:max-w-[150px]">${societyName}</span>
+                    </div>
+                    ${statusBadge}
+                </div>
+
+                <!-- Event Info - Compact -->
+                <div class="bg-gradient-to-r from-sky-600 to-sky-400 text-white px-3 py-2 md:py-2.5">
+                    <h3 class="text-sm md:text-base font-bold truncate">${event.name}</h3>
+                    <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-sky-100 mt-1">
+                        <span>📅 ${eventDate}</span>
+                        ${teeTimeDisplay ? `<span>⛳ ${teeTimeDisplay}</span>` : ''}
+                    </div>
+                    ${event.courseName ? `<div class="text-xs text-sky-200 mt-0.5 truncate">📍 ${event.courseName}</div>` : ''}
+                </div>
+
+                <!-- Compact Stats Row -->
+                <div class="px-3 py-2 bg-gray-50 flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-3">
+                        <span class="font-semibold text-gray-700">👥 ${registered}/${maxPlayers || '∞'}</span>
+                        <div class="w-16 md:w-20 bg-gray-200 h-1.5 rounded-full overflow-hidden">
+                            <div class="${progressBarColor} h-1.5 rounded-full" style="width: ${Math.min(percentage, 100)}%"></div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 text-gray-500">
+                        ${stats.waitlist > 0 ? `<span>⏳${stats.waitlist}</span>` : ''}
+                        ${stats.transportCount > 0 ? `<span>🚐${stats.transportCount}</span>` : ''}
+                        <span class="font-medium text-green-600">฿${(event.memberFee || event.baseFee || 0).toLocaleString()}</span>
                     </div>
                 </div>
 
-                <!-- Event Details -->
-                <div class="bg-gradient-to-r from-sky-600 to-sky-400 text-white p-4">
-                    <div class="flex justify-between items-start">
-                        <div class="flex-1">
-                            <h3 class="text-xl font-bold mb-2">${event.name}</h3>
-                            <div class="text-sm text-sky-100 space-y-0.5">
-                                <div>📅 ${eventDate}</div>
-                                ${departureTimeDisplay ? `<div>🚌 Departure: ${departureTimeDisplay}</div>` : ''}
-                                ${teeTimeDisplay ? `<div>🏌️ Tee Time: ${teeTimeDisplay}</div>` : ''}
-                                ${event.courseName ? `<div>⛳ ${event.courseName}</div>` : ''}
-                            </div>
-                        </div>
-                        ${statusBadge}
-                    </div>
-                </div>
-
-                <div class="p-4">
-                    <!-- ENHANCED: Registration Statistics -->
-                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 mb-3 border border-blue-100">
-                        <div class="flex justify-between items-center mb-2">
-                            <span class="text-sm font-semibold text-gray-700">📊 Registrations:</span>
-                            <span class="text-lg font-bold text-gray-900">${registered}/${maxPlayers || '∞'} <span class="text-sm font-normal text-gray-600">(${percentage}%)</span></span>
-                        </div>
-
-                        <!-- Progress Bar -->
-                        <div class="bg-gray-200 h-2 rounded-full mb-3 overflow-hidden">
-                            <div class="${progressBarColor} h-2 rounded-full transition-all" style="width: ${Math.min(percentage, 100)}%"></div>
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-2 text-xs">
-                            <div class="flex justify-between">
-                                <span class="text-gray-600">⏳ Waitlist:</span>
-                                <span class="font-semibold text-gray-900">${stats.waitlist}</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-gray-600">🚐 Transport:</span>
-                                <span class="font-semibold text-gray-900">${stats.transportCount}</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-gray-600">🏆 Competition:</span>
-                                <span class="font-semibold text-gray-900">${stats.competitionCount}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- ENHANCED: Revenue Tracking -->
-                    ${event.revenue ? `
-                    <div class="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 mb-3 border border-green-100">
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-sm font-semibold text-gray-700">💰 Revenue</span>
-                            <span class="text-xs font-medium ${
-                                event.revenue.percentagePaid >= 80 ? 'text-green-600' :
-                                event.revenue.percentagePaid >= 50 ? 'text-yellow-600' :
-                                'text-red-600'
-                            }">
-                                ${event.revenue.paidCount}/${event.revenue.totalCount} Paid
-                            </span>
-                        </div>
-
-                        <!-- Progress Bar -->
-                        <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
-                            <div class="h-2 rounded-full ${
-                                event.revenue.percentagePaid >= 80 ? 'bg-green-500' :
-                                event.revenue.percentagePaid >= 50 ? 'bg-yellow-500' :
-                                'bg-red-500'
-                            }" style="width: ${event.revenue.percentagePaid}%"></div>
-                        </div>
-
-                        <!-- Amount Display -->
-                        <div class="grid grid-cols-2 gap-2 text-xs">
-                            <div>
-                                <span class="text-gray-600">Collected:</span>
-                                <span class="font-bold text-green-700 ml-1">฿${event.revenue.totalPaid.toLocaleString()}</span>
-                            </div>
-                            <div class="text-right">
-                                <span class="text-gray-600">Expected:</span>
-                                <span class="font-medium text-gray-900 ml-1">฿${event.revenue.totalExpected.toLocaleString()}</span>
-                            </div>
-                        </div>
-
-                        ${event.revenue.totalUnpaid > 0 ? `
-                            <div class="mt-2 text-xs text-red-600 font-medium">
-                                ฿${event.revenue.totalUnpaid.toLocaleString()} outstanding
-                            </div>
-                        ` : `
-                            <div class="mt-2 text-xs text-green-600 font-medium">
-                                ✓ All payments collected
-                            </div>
-                        `}
-                    </div>
-                    ` : ''}
-
-                    <!-- Event Details -->
-                    <div class="bg-gray-50 rounded-lg p-3 mb-3 text-xs">
-                        <div class="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                            <div class="text-gray-600">Registration Closes:</div>
-                            <div class="font-medium text-gray-900">${cutoffDate} ${cutoffTime}</div>
-                            <div class="text-gray-600">Spots Remaining:</div>
-                            <div class="font-medium ${spotsRemaining === 0 ? 'text-red-600' : 'text-gray-900'}">${spotsRemaining}</div>
-                        </div>
-                    </div>
-
-                    <!-- Event Fees -->
-                    <div class="bg-green-50 rounded-lg p-3 mb-3 text-xs border border-green-100">
-                        <div class="font-semibold text-gray-700 mb-2">💰 Event Fees</div>
-                        <div class="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                            <div class="text-gray-600">Member Fee:</div>
-                            <div class="font-medium text-green-700">฿${(event.memberFee || event.baseFee || 0).toLocaleString()}</div>
-                            ${event.nonMemberFee ? `
-                            <div class="text-gray-600">Non-Member Fee:</div>
-                            <div class="font-medium text-orange-600">+฿${event.nonMemberFee.toLocaleString()}</div>
-                            ` : ''}
-                            ${event.transportFee ? `
-                            <div class="text-gray-600">🚐 Transport:</div>
-                            <div class="font-medium text-blue-600">฿${event.transportFee.toLocaleString()}</div>
-                            ` : ''}
-                            ${event.competitionFee ? `
-                            <div class="text-gray-600">🏆 Competition:</div>
-                            <div class="font-medium text-purple-600">฿${event.competitionFee.toLocaleString()}</div>
-                            ` : ''}
-                            ${event.otherFee ? `
-                            <div class="text-gray-600">📋 Other Fees:</div>
-                            <div class="font-medium text-gray-600">฿${event.otherFee.toLocaleString()}</div>
-                            ` : ''}
-                        </div>
-                    </div>
-
-                    <!-- ENHANCED: Quick Actions -->
-                    <div class="grid grid-cols-3 gap-2 mb-2">
-                        <button onclick="SocietyOrganizerSystem.openRegistrationManager('${event.id}')" class="btn-primary text-xs py-2 flex items-center justify-center gap-1">
-                            <span class="material-symbols-outlined text-sm">list_alt</span>
-                            <span>Registrations</span>
-                        </button>
-                        <button onclick="SocietyOrganizerSystem.showEventForm('${event.id}')" class="btn-secondary text-xs py-2 flex items-center justify-center gap-1">
-                            <span class="material-symbols-outlined text-sm">edit</span>
-                            <span>Edit</span>
-                        </button>
-                        <button onclick="SocietyOrganizerSystem.exportEventCSV('${event.id}')" class="btn-secondary text-xs py-2 flex items-center justify-center gap-1">
-                            <span class="material-symbols-outlined text-sm">download</span>
-                            <span>Export</span>
-                        </button>
-                    </div>
-
-                    <!-- Additional Actions -->
-                    <div class="grid grid-cols-3 gap-2 mb-2">
-                        <button onclick="SocietyOrganizerSystem.openPairingsModal('${event.id}')" class="btn-secondary text-xs py-2 flex items-center justify-center gap-1">
-                            <span class="material-symbols-outlined text-sm">grid_view</span>
-                            <span>Pairings</span>
-                        </button>
-                        <button onclick="SocietyOrganizerSystem.copyRegistrationLink('${event.id}')" class="btn-secondary text-xs py-2 flex items-center justify-center gap-1">
-                            <span class="material-symbols-outlined text-sm">link</span>
-                            <span>Share</span>
-                        </button>
-                        <button onclick="SocietyOrganizerSystem.deleteEventById('${event.id}', '${event.name.replace(/'/g, "\\'")}')" class="btn-danger text-xs py-2 flex items-center justify-center gap-1">
-                            <span class="material-symbols-outlined text-sm">delete</span>
-                            <span>Delete</span>
-                        </button>
-                    </div>
-
-                    <!-- Results Actions -->
+                <!-- Compact Action Buttons -->
+                <div class="px-2 py-2 flex gap-1.5">
+                    <button onclick="SocietyOrganizerSystem.openRegistrationManager('${event.id}')" class="flex-1 bg-sky-600 hover:bg-sky-700 text-white text-xs py-1.5 rounded-lg flex items-center justify-center gap-1">
+                        <span class="material-symbols-outlined text-sm">list_alt</span>
+                        <span class="hidden sm:inline">Registrations</span>
+                        <span class="sm:hidden">${registered}</span>
+                    </button>
+                    <button onclick="SocietyOrganizerSystem.showEventForm('${event.id}')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs px-2.5 py-1.5 rounded-lg flex items-center justify-center gap-1">
+                        <span class="material-symbols-outlined text-sm">edit</span>
+                    </button>
+                    <button onclick="SocietyOrganizerSystem.openPairingsModal('${event.id}')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs px-2.5 py-1.5 rounded-lg flex items-center justify-center gap-1">
+                        <span class="material-symbols-outlined text-sm">grid_view</span>
+                    </button>
+                    <button onclick="SocietyOrganizerSystem.copyRegistrationLink('${event.id}')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs px-2.5 py-1.5 rounded-lg flex items-center justify-center gap-1">
+                        <span class="material-symbols-outlined text-sm">link</span>
+                    </button>
                     ${event.resultsPublished ? `
-                    <div class="mb-2">
-                        <button onclick="SocietyOrganizerSystem.viewEventResults('${event.id}')" class="w-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white text-xs font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 shadow-md">
-                            <span class="material-symbols-outlined text-sm">emoji_events</span>
-                            <span>🏆 View Published Results</span>
-                        </button>
-                    </div>
+                    <button onclick="SocietyOrganizerSystem.viewEventResults('${event.id}')" class="bg-amber-500 hover:bg-amber-600 text-white text-xs px-2.5 py-1.5 rounded-lg flex items-center justify-center">
+                        <span class="material-symbols-outlined text-sm">emoji_events</span>
+                    </button>
                     ` : isPast ? `
-                    <div class="mb-2">
-                        <button onclick="SocietyOrganizerSystem.publishEventResults('${event.id}')" class="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white text-xs font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 shadow-md">
-                            <span class="material-symbols-outlined text-sm">publish</span>
-                            <span>Publish Results</span>
-                        </button>
-                    </div>
+                    <button onclick="SocietyOrganizerSystem.publishEventResults('${event.id}')" class="bg-green-600 hover:bg-green-700 text-white text-xs px-2.5 py-1.5 rounded-lg flex items-center justify-center">
+                        <span class="material-symbols-outlined text-sm">publish</span>
+                    </button>
                     ` : ''}
                 </div>
             </div>
@@ -60514,8 +61477,77 @@ const MessagesSystem = {
     },
 
     async viewAnnouncement(announcementId) {
-        // Mark as read
         try {
+            // Fetch the full announcement
+            const { data: announcement, error } = await window.SupabaseDB.client
+                .from('announcements')
+                .select('*')
+                .eq('id', announcementId)
+                .single();
+
+            if (error || !announcement) {
+                NotificationManager.show('Announcement not found', 'error');
+                return;
+            }
+
+            // Get society name
+            const society = this.mySocieties.find(s => s.id === announcement.society_id);
+            const societyName = society?.name || 'Unknown Society';
+
+            // Get sender name
+            let senderName = 'Organizer';
+            if (announcement.sender_line_id) {
+                const { data: sender } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('name')
+                    .eq('line_user_id', announcement.sender_line_id)
+                    .single();
+                if (sender) senderName = sender.name;
+            }
+
+            const timeAgo = this.formatTimeAgo(announcement.created_at);
+            const priorityBadge = announcement.priority === 'urgent' ? '<span class="bg-red-500 text-white text-xs px-2 py-1 rounded-full">URGENT</span>' :
+                                  announcement.priority === 'important' ? '<span class="bg-orange-500 text-white text-xs px-2 py-1 rounded-full">Important</span>' : '';
+
+            // Show full announcement modal
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4';
+            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+            modal.innerHTML = `
+                <div class="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-hidden shadow-2xl" onclick="event.stopPropagation()">
+                    <div class="bg-gradient-to-r from-blue-600 to-blue-500 text-white px-4 py-3 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined">campaign</span>
+                            <span class="font-semibold">Announcement</span>
+                        </div>
+                        <button onclick="this.closest('.fixed').remove()" class="p-1 hover:bg-white/20 rounded-full">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                    <div class="p-4 overflow-y-auto max-h-[calc(90vh-120px)]">
+                        <div class="flex items-start gap-2 mb-3">
+                            ${priorityBadge}
+                            <h2 class="text-xl font-bold text-gray-900">${this.escapeHtml(announcement.title)}</h2>
+                        </div>
+                        <div class="flex items-center gap-2 text-sm text-gray-500 mb-4 pb-3 border-b">
+                            <span class="font-medium text-gray-700">${societyName}</span>
+                            <span>•</span>
+                            <span>Posted by ${senderName}</span>
+                            <span>•</span>
+                            <span>${timeAgo}</span>
+                        </div>
+                        <div class="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">${this.escapeHtml(announcement.message_text)}</div>
+                    </div>
+                    <div class="px-4 py-3 bg-gray-50 border-t">
+                        <button onclick="this.closest('.fixed').remove()" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-2 px-4 rounded-lg">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            // Mark as read
             await window.SupabaseDB.client
                 .from('announcement_reads')
                 .upsert({
@@ -60527,7 +61559,8 @@ const MessagesSystem = {
             await this.refreshUnreadCounts();
             await this.loadAnnouncements();
         } catch (err) {
-            console.error('[MessagesSystem] Error marking announcement read:', err);
+            console.error('[MessagesSystem] Error viewing announcement:', err);
+            NotificationManager.show('Failed to load announcement', 'error');
         }
     },
 
@@ -62157,6 +63190,7 @@ console.log('[MessagesSystem] ✅ Module loaded');
 // 19TH HOLE MARKETPLACE SYSTEM
 // ==================================================================
 const MarketplaceSystem = {
+    _initialized: false,
     userLineId: null,
     currentSubTab: 'browse',
     currentCategory: 'all',
@@ -62181,6 +63215,12 @@ const MarketplaceSystem = {
     },
 
     async init() {
+        // Prevent duplicate initialization (fixes race condition with double setTimeout calls)
+        if (this._initialized) {
+            console.log('[Marketplace] Already initialized, skipping');
+            return;
+        }
+        this._initialized = true;
         console.log('[Marketplace] Initializing...');
         const user = AppState?.currentUser || window.currentUser;
         if (!user?.lineUserId) {
@@ -62302,29 +63342,44 @@ const MarketplaceSystem = {
     },
 
     // ========== SUB-TAB NAVIGATION ==========
+    // Uses same pattern as main navigation tabs (CSS .active class)
     showSubTab(tabName) {
+        console.log('[Marketplace] showSubTab:', tabName);
         this.currentSubTab = tabName;
 
+        // Update button styling
         ['browse', 'mylistings', 'myoffers', 'favorites'].forEach(t => {
             const btn = document.getElementById(`market-tab-${t}`);
             if (btn) {
                 if (t === tabName) {
                     btn.classList.add('bg-white', 'shadow', 'text-gray-900');
-                    btn.classList.remove('text-gray-600');
+                    btn.classList.remove('text-gray-600', 'hover:bg-gray-50');
                 } else {
                     btn.classList.remove('bg-white', 'shadow', 'text-gray-900');
-                    btn.classList.add('text-gray-600');
+                    btn.classList.add('text-gray-600', 'hover:bg-gray-50');
                 }
             }
         });
 
-        document.querySelectorAll('.market-subcontent').forEach(el => el.classList.add('hidden'));
+        // Use .active class pattern (same as main tabs) - CSS handles display
+        document.querySelectorAll('.market-subcontent').forEach(el => {
+            el.classList.remove('active');
+        });
+
         const content = document.getElementById(`market-content-${tabName}`);
-        if (content) content.classList.remove('hidden');
+        if (content) {
+            content.classList.add('active');
+        }
 
-        const filters = document.getElementById('browse-filters');
-        if (filters) filters.style.display = tabName === 'browse' ? 'block' : 'none';
+        // NOTE: browse-filters is now INSIDE market-content-browse, so CSS .active handles visibility
 
+        // Reset pagination when switching to browse tab
+        if (tabName === 'browse') {
+            this.currentPage = 0;
+            this.listings = [];
+        }
+
+        // Load content for selected tab
         switch (tabName) {
             case 'browse':
                 this.loadListings();
@@ -62342,11 +63397,19 @@ const MarketplaceSystem = {
     },
 
     // ========== CATEGORY FILTER ==========
-    filterByCategory(category) {
+    filterByCategory(category, event) {
+        // Prevent any default button behavior
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        console.log('[Marketplace] filterByCategory:', category);
+
         this.currentCategory = category;
         this.currentPage = 0;
         this.listings = [];
 
+        // Update category button styling
         ['all', 'golf_equipment', 'services', 'general'].forEach(cat => {
             const btn = document.getElementById(`cat-filter-${cat}`);
             if (btn) {
@@ -64214,138 +65277,74 @@ class GolferEventsManager {
         const notificationBadge = EventNotificationSystem.getEventBadgeHTML(event);
 
         return `
-            <div id="event-card-${event.id}" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer relative"
+            <div id="event-card-${event.id}" class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer relative"
                  onclick="GolferEventsSystem.openEventDetail('${event.id}')">
-                <!-- NEW/UPDATED Notification Badge -->
                 ${notificationBadge}
-                <!-- Header with Society Branding -->
-                <div class="bg-gradient-to-r from-green-500 to-green-400 px-4 py-3 text-white relative">
-                    <!-- Favorite Star (absolute positioned top-right) -->
+                <!-- Compact Header -->
+                <div class="bg-gradient-to-r from-green-500 to-green-400 px-3 py-2 text-white relative">
                     <button onclick="event.stopPropagation(); GolferEventsSystem.toggleFavorite('${event.id}')"
-                            class="absolute top-2 right-2 p-1 hover:bg-white/20 rounded-full transition-colors"
+                            class="absolute top-1.5 right-1.5 p-0.5 hover:bg-white/20 rounded-full transition-colors"
                             title="${isFavorited ? 'Remove from favorites' : 'Add to favorites'}">
-                        <span class="material-symbols-outlined text-yellow-300 ${isFavorited ? 'fill-icon' : ''}">${starIcon}</span>
+                        <span class="material-symbols-outlined text-yellow-300 text-lg ${isFavorited ? 'fill-icon' : ''}">${starIcon}</span>
                     </button>
-
-                    <div class="flex items-start justify-between mb-2 pr-8">
-                        <div class="flex items-center flex-1 pr-2">
-                            ${(() => {
-                                // TRGG logo takes priority - check by title prefix or organizer name
-                                if (event.name.startsWith('TRGG') || event.organizerId === 'trgg-pattaya' || event.organizerName === 'Travellers Rest Golf Group') {
-                                    return `<img src="societylogos/trgg.jpg" alt="Travellers Rest Golf Group" class="w-10 h-10 rounded-full border-2 border-white mr-3 object-cover bg-white">`;
-                                }
-                                // JOA Golf logo - check by title prefix or organizer name
-                                if (event.name.startsWith('JOA Golf') || event.organizerId === 'JOAGOLFPAT' || event.organizerName === 'JOA Golf Pattaya') {
-                                    return `<img src="./societylogos/JOAgolf.jpeg" alt="JOA Golf Pattaya" class="w-10 h-10 rounded-full border-2 border-white mr-3 object-cover bg-white">`;
-                                }
-                                // Society logos (for all society events)
-                                if (event.societyLogo) {
-                                    return `<img src="${event.societyLogo}" alt="${event.societyName}" class="w-10 h-10 rounded-full border-2 border-white mr-3 object-cover bg-white">`;
-                                }
-                                // Creator photo (only for personal events without society)
-                                if (event.creatorPhoto) {
-                                    return `<img src="${event.creatorPhoto}" alt="${event.creatorName}" class="w-10 h-10 rounded-full border-2 border-white mr-3 object-cover bg-white">`;
-                                }
-                                return '';
-                            })()}
-                            <div class="flex-1">
-                                <h3 class="font-bold text-lg">${event.name}</h3>
-                                <div class="text-xs text-green-50 mt-1">
-                                    ${event.name.startsWith('TRGG') || event.organizerId === 'trgg-pattaya' || event.organizerName === 'Travellers Rest Golf Group' ? 'Travellers Rest Golf Group' :
-                                      event.name.startsWith('JOA Golf') || event.organizerId === 'JOAGOLFPAT' || event.organizerName === 'JOA Golf Pattaya' ? 'JOA Golf Pattaya' :
-                                      event.societyName || (event.creatorType === 'golfer' && event.creatorName ? event.creatorName : event.organizerName || 'Society Golf')}
-                                </div>
+                    <div class="flex items-center gap-2 pr-7">
+                        ${(() => {
+                            if (event.name.startsWith('TRGG') || event.organizerId === 'trgg-pattaya' || event.organizerName === 'Travellers Rest Golf Group') {
+                                return `<img src="societylogos/trgg.jpg" alt="TRGG" class="w-7 h-7 md:w-8 md:h-8 rounded-full border border-white object-cover bg-white">`;
+                            }
+                            if (event.name.startsWith('JOA Golf') || event.organizerId === 'JOAGOLFPAT' || event.organizerName === 'JOA Golf Pattaya') {
+                                return `<img src="./societylogos/JOAgolf.jpeg" alt="JOA" class="w-7 h-7 md:w-8 md:h-8 rounded-full border border-white object-cover bg-white">`;
+                            }
+                            if (event.societyLogo) {
+                                return `<img src="${event.societyLogo}" alt="${event.societyName}" class="w-7 h-7 md:w-8 md:h-8 rounded-full border border-white object-cover bg-white">`;
+                            }
+                            if (event.creatorPhoto) {
+                                return `<img src="${event.creatorPhoto}" alt="${event.creatorName}" class="w-7 h-7 md:w-8 md:h-8 rounded-full border border-white object-cover bg-white">`;
+                            }
+                            return '';
+                        })()}
+                        <div class="flex-1 min-w-0">
+                            <h3 class="font-bold text-sm md:text-base truncate">${event.name}</h3>
+                            <div class="text-xs text-green-100 truncate">
+                                ${event.name.startsWith('TRGG') || event.organizerId === 'trgg-pattaya' || event.organizerName === 'Travellers Rest Golf Group' ? 'TRGG' :
+                                  event.name.startsWith('JOA Golf') || event.organizerId === 'JOAGOLFPAT' || event.organizerName === 'JOA Golf Pattaya' ? 'JOA Golf' :
+                                  event.societyName || event.creatorName || event.organizerName || ''}
                             </div>
                         </div>
                         ${statusBadge}
                     </div>
                 </div>
 
-                <!-- Body -->
-                <div class="p-4 space-y-3">
-                    <!-- Date & Time -->
-                    <div class="flex items-center text-sm">
-                        <span class="material-symbols-outlined text-gray-400 text-base mr-2">event</span>
-                        <div class="flex-1">
-                            <div class="font-medium text-gray-900">${this.formatDate(event.date)}</div>
-                            ${event.departureTime ? `<div class="text-xs text-gray-600 mt-0.5">🚌 Departure: ${this.formatTime(event.departureTime)}</div>` : ''}
-                            ${event.startTime ? `<div class="text-xs text-gray-600 ${event.departureTime ? '' : 'mt-0.5'}">🏌️ Tee Time: ${this.formatTime(event.startTime)}</div>` : ''}
-                        </div>
+                <!-- Compact Body -->
+                <div class="px-3 py-2 space-y-1.5 text-xs">
+                    <div class="flex items-center gap-4">
+                        <span class="text-gray-700"><span class="text-gray-400">📅</span> ${this.formatDate(event.date)}</span>
+                        ${event.startTime ? `<span class="text-gray-600">⛳ ${this.formatTime(event.startTime)}</span>` : ''}
                     </div>
-
-                    <!-- Course -->
-                    <div class="flex items-center text-sm">
-                        <span class="material-symbols-outlined text-gray-400 text-base mr-2">golf_course</span>
-                        <span class="text-gray-700">${event.courseName || 'TBD'}</span>
+                    <div class="flex items-center justify-between">
+                        <span class="text-gray-700 truncate flex-1"><span class="text-gray-400">📍</span> ${event.courseName || 'TBD'}</span>
+                        ${max > 0 ? `<span class="text-gray-600 ml-2">👥 ${registered}/${max}</span>` : ''}
                     </div>
-
-                    <!-- Event Format -->
-                    ${event.eventFormat && event.eventFormat !== 'strokeplay' ? `
-                    <div class="flex items-center text-sm">
-                        <span class="material-symbols-outlined text-gray-400 text-base mr-2">sports_golf</span>
-                        <span class="text-gray-700 font-medium">${this.formatEventFormat(event.eventFormat)}</span>
-                    </div>
-                    ` : ''}
-
-                    <!-- Availability -->
-                    ${max > 0 ? `
-                    <div class="flex items-center text-sm">
-                        <span class="material-symbols-outlined text-gray-400 text-base mr-2">groups</span>
-                        <span class="text-gray-700">${registered}/${max} registered</span>
-                        <span class="ml-auto text-xs ${availability > 0 ? 'text-green-600' : 'text-red-600'} font-medium">
-                            ${availability > 0 ? `${availability} spots left` : 'Full'}
-                        </span>
-                    </div>
-                    ` : ''}
-
-                    <!-- Fee -->
-                    ${totalFee > 0 ? `
-                    <div class="flex items-center text-sm">
-                        <span class="material-symbols-outlined text-gray-400 text-base mr-2">payments</span>
-                        <span class="text-gray-700">฿${totalFee.toLocaleString()}</span>
-                    </div>
-                    ` : ''}
+                    ${totalFee > 0 ? `<div class="text-green-600 font-medium">฿${totalFee.toLocaleString()}</div>` : ''}
                 </div>
 
-                <!-- Footer -->
-                <div class="px-4 py-3 bg-gray-50 border-t">
+                <!-- Compact Footer -->
+                <div class="px-2 py-2 bg-gray-50 border-t flex gap-1.5">
                     ${event.resultsPublished ? `
-                    <div class="mb-2">
-                        <button class="w-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 shadow-md"
-                                onclick="event.stopPropagation(); GolferEventsSystem.viewEventResults('${event.id}')">
-                            <span class="material-symbols-outlined text-base">emoji_events</span>
-                            <span>🏆 View Results</span>
-                        </button>
-                    </div>
+                    <button class="bg-amber-500 hover:bg-amber-600 text-white text-xs py-1.5 px-2 rounded-md flex items-center gap-1"
+                            onclick="event.stopPropagation(); GolferEventsSystem.viewEventResults('${event.id}')">
+                        <span class="material-symbols-outlined text-sm">emoji_events</span>
+                        <span class="hidden sm:inline">Results</span>
+                    </button>
                     ` : ''}
-                    ${isUserRegistered && !isPast ? `
-                    <div class="grid grid-cols-2 gap-2 mb-2">
-                        <button class="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white text-sm py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1 shadow-md"
-                                onclick="event.stopPropagation(); GolferEventsSystem.quickBookFromEvent('${event.id}')"
-                                title="Book tee time">
-                            <span class="material-symbols-outlined text-sm">golf_course</span>
-                            Book Tee Time
-                        </button>
-                        <button class="bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white text-sm py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1 shadow-md"
-                                onclick="event.stopPropagation(); GolferEventsSystem.quickBookFromEvent('${event.id}')"
-                                title="Request caddy">
-                            <span class="material-symbols-outlined text-sm">person</span>
-                            Request Caddy
-                        </button>
-                    </div>
-                    ` : ''}
-                    <div class="grid grid-cols-3 gap-2">
-                        <button class="col-span-2 btn-primary text-sm py-2" onclick="event.stopPropagation(); GolferEventsSystem.openEventDetail('${event.id}')">
-                            <span class="material-symbols-outlined text-sm">info</span>
-                            View Details
-                        </button>
-                        <button class="bg-blue-500 hover:bg-blue-600 text-white text-sm py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-1"
-                                onclick="event.stopPropagation(); GolferEventsSystem.openShareModal('${event.id}')"
-                                title="Share with friends">
-                            <span class="material-symbols-outlined text-sm">share</span>
-                            Share
-                        </button>
-                    </div>
+                    <button class="flex-1 btn-primary text-xs py-1.5" onclick="event.stopPropagation(); GolferEventsSystem.openEventDetail('${event.id}')">
+                        View Details
+                    </button>
+                    <button class="bg-blue-500 hover:bg-blue-600 text-white text-xs py-1.5 px-2 rounded-md"
+                            onclick="event.stopPropagation(); GolferEventsSystem.openShareModal('${event.id}')"
+                            title="Share">
+                        <span class="material-symbols-outlined text-sm">share</span>
+                    </button>
                 </div>
             </div>
         `;
@@ -65839,6 +66838,7 @@ class GolferEventsManager {
     async loadMyHistory() {
         const container = document.getElementById('myHistoryList');
         const playerId = AppState.currentUser?.lineUserId;
+        const playerName = AppState.currentUser?.displayName || AppState.currentUser?.name;
 
         if (!playerId) {
             container.innerHTML = `
@@ -65853,16 +66853,35 @@ class GolferEventsManager {
         try {
             container.innerHTML = '<p class="text-center py-12 text-gray-500">Loading your history...</p>';
 
-            // Query all registrations for this player
-            const { data: regData, error: regError } = await window.SupabaseDB.client
-                .from('event_registrations')
-                .select('*')
-                .eq('player_id', playerId)
-                .order('created_at', { ascending: false });
+            // Get history from BOTH scorecards (actual played rounds) AND registrations
+            const [scorecardsResult, registrationsResult] = await Promise.all([
+                // Get scorecards where player has actually played
+                window.SupabaseDB.client
+                    .from('scorecards')
+                    .select('id, player_id, player_name, event_id, course_name, total_gross, total_net, total_stableford, handicap, created_at')
+                    .or(`player_id.eq.${playerId},player_name.ilike.%${playerName}%`)
+                    .not('event_id', 'is', null)
+                    .order('created_at', { ascending: false }),
+                // Also get event registrations
+                window.SupabaseDB.client
+                    .from('event_registrations')
+                    .select('*')
+                    .eq('player_id', playerId)
+                    .order('created_at', { ascending: false })
+            ]);
 
-            if (regError) throw regError;
+            const scorecards = scorecardsResult.data || [];
+            const registrations = registrationsResult.data || [];
 
-            if (!regData || regData.length === 0) {
+            console.log('[History] Found scorecards:', scorecards.length, 'registrations:', registrations.length);
+
+            // Collect all unique event IDs from both sources
+            const allEventIds = new Set([
+                ...scorecards.map(s => s.event_id).filter(id => id),
+                ...registrations.map(r => r.event_id).filter(id => id)
+            ]);
+
+            if (allEventIds.size === 0) {
                 container.innerHTML = `
                     <div class="text-center py-12">
                         <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">history</span>
@@ -65873,56 +66892,83 @@ class GolferEventsManager {
                 return;
             }
 
-            // Get unique event IDs
-            const eventIds = [...new Set(regData.map(r => r.event_id))];
-
             // Get events data
             const { data: eventsData, error: eventsError } = await window.SupabaseDB.client
                 .from('society_events')
                 .select('*')
-                .in('id', eventIds);
+                .in('id', [...allEventIds]);
 
             if (eventsError) throw eventsError;
 
             // Get society profiles for organizers
-            const organizerIds = [...new Set(eventsData.map(e => e.organizer_id).filter(id => id))];
-            const { data: societyProfiles } = await window.SupabaseDB.client
-                .from('society_profiles')
-                .select('organizer_id, society_name, society_logo')
-                .in('organizer_id', organizerIds);
+            const organizerIds = [...new Set((eventsData || []).map(e => e.organizer_id).filter(id => id))];
+            let societyProfiles = [];
+            if (organizerIds.length > 0) {
+                const { data: profiles } = await window.SupabaseDB.client
+                    .from('society_profiles')
+                    .select('organizer_id, society_name, society_logo')
+                    .in('organizer_id', organizerIds);
+                societyProfiles = profiles || [];
+            }
 
             // Create maps
             const eventsMap = {};
-            eventsData.forEach(e => {
-                eventsMap[e.id] = e;
-            });
+            (eventsData || []).forEach(e => { eventsMap[e.id] = e; });
 
             const societyMap = {};
-            if (societyProfiles) {
-                societyProfiles.forEach(s => {
-                    societyMap[s.organizer_id] = s;
+            societyProfiles.forEach(s => { societyMap[s.organizer_id] = s; });
+
+            // Create scorecard map by event_id
+            const scorecardMap = {};
+            scorecards.forEach(sc => {
+                if (sc.event_id && !scorecardMap[sc.event_id]) {
+                    scorecardMap[sc.event_id] = sc;
+                }
+            });
+
+            // Build history entries - prioritize scorecards (actual played data)
+            const historyEntries = [];
+            const seenEvents = new Set();
+
+            // First add events where we have scorecards
+            for (const sc of scorecards) {
+                if (!sc.event_id || seenEvents.has(sc.event_id)) continue;
+                const event = eventsMap[sc.event_id];
+                if (!event) continue;
+
+                seenEvents.add(sc.event_id);
+                const society = societyMap[event.organizer_id];
+                historyEntries.push({
+                    event_id: sc.event_id,
+                    player_id: sc.player_id,
+                    hasScorecard: true,
+                    scorecard: sc,
+                    society_events: { ...event, society_profiles: society || null }
                 });
             }
 
-            // Combine data
-            const data = regData.map(reg => {
+            // Then add registrations for events without scorecards
+            for (const reg of registrations) {
+                if (!reg.event_id || seenEvents.has(reg.event_id)) continue;
                 const event = eventsMap[reg.event_id];
-                if (!event) return null;
+                if (!event) continue;
 
+                seenEvents.add(reg.event_id);
                 const society = societyMap[event.organizer_id];
-                return {
+                historyEntries.push({
                     ...reg,
-                    society_events: {
-                        ...event,
-                        society_profiles: society || null
-                    }
-                };
-            }).filter(r => r !== null);
+                    hasScorecard: false,
+                    society_events: { ...event, society_profiles: society || null }
+                });
+            }
 
             // Filter to ONLY past events
             const now = new Date();
             now.setHours(0, 0, 0, 0);
-            const past = data.filter(r => new Date(r.society_events.date) < now);
+            const past = historyEntries.filter(r => new Date(r.society_events.date) < now);
+
+            // Sort by event date descending
+            past.sort((a, b) => new Date(b.society_events.date) - new Date(a.society_events.date));
 
             if (past.length === 0) {
                 container.innerHTML = `
@@ -65937,7 +66983,7 @@ class GolferEventsManager {
 
             let html = `
                 <div class="space-y-3">
-                    ${past.map(reg => this.renderMyRegistrationCard(reg, true)).join('')}
+                    ${past.map(entry => this.renderHistoryCard(entry)).join('')}
                 </div>
             `;
 
@@ -65947,10 +66993,49 @@ class GolferEventsManager {
             container.innerHTML = `
                 <div class="text-center py-12 text-red-500">
                     <span class="material-symbols-outlined text-5xl mb-3">error</span>
-                    <p>Failed to load history</p>
+                    <p>Failed to load history: ${error.message}</p>
                 </div>
             `;
         }
+    }
+
+    renderHistoryCard(entry) {
+        const event = entry.society_events;
+        const society = event.society_profiles;
+        const scorecard = entry.scorecard;
+
+        const eventDate = new Date(event.date);
+        const formattedDate = eventDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+        return `
+            <div class="bg-white rounded-lg shadow-sm border p-3 hover:shadow-md transition-shadow cursor-pointer"
+                 onclick="GolferEventsSystem.openEventDetail('${event.id}')">
+                <div class="flex items-start gap-3">
+                    <div class="flex-shrink-0">
+                        ${society?.society_logo
+                            ? `<img src="${society.society_logo}" class="w-10 h-10 rounded-full object-cover border">`
+                            : `<div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center"><span class="material-symbols-outlined text-green-600">golf_course</span></div>`
+                        }
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h4 class="font-semibold text-gray-900 truncate">${event.name}</h4>
+                        <div class="text-xs text-gray-500 mt-0.5">${formattedDate} • ${event.course_name || 'Unknown Course'}</div>
+                        ${society ? `<div class="text-xs text-gray-400">${society.society_name}</div>` : ''}
+                    </div>
+                    ${scorecard ? `
+                    <div class="text-right flex-shrink-0">
+                        <div class="text-lg font-bold text-gray-900">${scorecard.total_gross || '-'}</div>
+                        <div class="text-xs text-gray-500">Gross</div>
+                        ${scorecard.total_stableford ? `<div class="text-xs text-green-600 font-medium">${scorecard.total_stableford} pts</div>` : ''}
+                    </div>
+                    ` : `
+                    <div class="text-right flex-shrink-0">
+                        <span class="text-xs text-gray-400">Registered</span>
+                    </div>
+                    `}
+                </div>
+            </div>
+        `;
     }
 
     async loadPlayerStandings() {

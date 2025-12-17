@@ -71664,12 +71664,34 @@ class OrganizerScoringSystem {
     }
 
     async loadEditCourseData() {
-        // Get course from current event, not QSE
+        // Get course from current event
         const event = this.allEvents.find(e => e.id === this.currentEventId);
-        const courseId = event?.course_id;
+        let courseId = event?.course_id;
+        const courseName = event?.course_name || event?.course;
+
+        console.log('[OrganizerScoring] loadEditCourseData - event:', event?.id, 'course_id:', courseId, 'course_name:', courseName);
+
+        // If no course_id, try to look up by course name
+        if (!courseId && courseName) {
+            try {
+                const { data: course } = await window.SupabaseDB.client
+                    .from('courses')
+                    .select('id')
+                    .ilike('name', `%${courseName.split(' ')[0]}%`)
+                    .limit(1)
+                    .single();
+
+                if (course) {
+                    courseId = course.id;
+                    console.log('[OrganizerScoring] Found course by name:', courseName, '-> id:', courseId);
+                }
+            } catch (e) {
+                console.log('[OrganizerScoring] Could not find course by name:', courseName);
+            }
+        }
 
         if (!courseId) {
-            // Return default course data
+            console.warn('[OrganizerScoring] No course_id found, using defaults');
             return { holes: Array.from({ length: 18 }, (_, i) => ({ hole_number: i + 1, par: 4, handicap: i + 1 })) };
         }
 
@@ -71681,7 +71703,10 @@ class OrganizerScoringSystem {
                 .order('hole_number')
                 .limit(18);
 
+            console.log('[OrganizerScoring] Loaded course_holes for', courseId, ':', holes?.length, 'holes');
+
             if (error || !holes || holes.length === 0) {
+                console.warn('[OrganizerScoring] No holes found for course:', courseId);
                 return { holes: Array.from({ length: 18 }, (_, i) => ({ hole_number: i + 1, par: 4, handicap: i + 1 })) };
             }
 
@@ -71795,8 +71820,7 @@ class OrganizerScoringSystem {
                 .from('rounds').update({
                     total_gross: totalGross,
                     total_net: totalGross - Math.round(handicap),
-                    total_stableford: totalStableford,
-                    updated_at: new Date().toISOString()
+                    total_stableford: totalStableford
                 }).eq('id', this.editingRoundId);
 
             if (roundError) throw roundError;

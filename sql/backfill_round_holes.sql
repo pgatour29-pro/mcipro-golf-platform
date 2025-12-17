@@ -64,9 +64,9 @@ SELECT DISTINCT ON (r.id, s.hole_number)
     COALESCE(s.stableford_points, 0) as stableford_points,
     0 as handicap_strokes
 FROM rounds r
-JOIN scorecards sc ON sc.player_id = r.golfer_id AND sc.event_id = r.society_event_id
+JOIN scorecards sc ON sc.player_id::text = r.golfer_id::text AND sc.event_id::text = r.society_event_id::text
 JOIN scores s ON s.scorecard_id = sc.id AND s.gross_score > 0
-LEFT JOIN course_holes ch ON ch.course_id = r.course_id AND ch.hole_number = s.hole_number
+LEFT JOIN course_holes ch ON ch.course_id::text = r.course_id::text AND ch.hole_number = s.hole_number
 WHERE r.status = 'completed'
 AND r.society_event_id IS NOT NULL
 AND NOT EXISTS (SELECT 1 FROM round_holes rh WHERE rh.round_id = r.id)
@@ -84,10 +84,10 @@ SELECT DISTINCT ON (r.id, s.hole_number)
     COALESCE(s.stableford_points, 0) as stableford_points,
     0 as handicap_strokes
 FROM rounds r
-JOIN scorecards sc ON sc.player_id = r.golfer_id
+JOIN scorecards sc ON sc.player_id::text = r.golfer_id::text
     AND sc.created_at::date = r.played_at::date
 JOIN scores s ON s.scorecard_id = sc.id AND s.gross_score > 0
-LEFT JOIN course_holes ch ON ch.course_id = r.course_id AND ch.hole_number = s.hole_number
+LEFT JOIN course_holes ch ON ch.course_id::text = r.course_id::text AND ch.hole_number = s.hole_number
 WHERE r.status = 'completed'
 AND r.society_event_id IS NULL
 AND NOT EXISTS (SELECT 1 FROM round_holes rh WHERE rh.round_id = r.id)
@@ -105,9 +105,9 @@ SELECT DISTINCT ON (r.id, s.hole_number)
     COALESCE(s.stableford_points, 0) as stableford_points,
     0 as handicap_strokes
 FROM rounds r
-JOIN scorecards sc ON sc.player_id = r.golfer_id
+JOIN scorecards sc ON sc.player_id::text = r.golfer_id::text
 JOIN scores s ON s.scorecard_id = sc.id AND s.gross_score > 0
-LEFT JOIN course_holes ch ON ch.course_id = r.course_id AND ch.hole_number = s.hole_number
+LEFT JOIN course_holes ch ON ch.course_id::text = r.course_id::text AND ch.hole_number = s.hole_number
 WHERE r.status = 'completed'
 AND NOT EXISTS (SELECT 1 FROM round_holes rh WHERE rh.round_id = r.id)
 AND (

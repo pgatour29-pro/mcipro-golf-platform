@@ -22,6 +22,8 @@ window.GolfBuddiesSystem = {
     suggestions: [],
     recentPartners: [],
     currentUserId: null,
+    editingGroupId: null,
+    selectedGroupMembers: [],
 
     /**
      * Initialize the system
@@ -236,7 +238,8 @@ window.GolfBuddiesSystem = {
         const modal = document.getElementById('buddiesModal');
         if (modal) {
             modal.classList.add('hidden');
-            modal.classList.remove('flex');
+            // Re-enable body scroll
+            document.body.style.overflow = '';
         }
     },
 
@@ -246,110 +249,110 @@ window.GolfBuddiesSystem = {
     createBuddiesModal() {
         const modalHTML = `
             <!-- Buddies Modal -->
-            <div id="buddiesModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-start sm:items-center justify-center z-[99999] p-2 sm:p-4 overflow-auto" onclick="event.target.id === 'buddiesModal' && GolfBuddiesSystem.closeBuddiesModal()">
-                <div class="bg-white rounded-lg shadow-xl max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl w-full max-h-[100vh] sm:max-h-[90vh] overflow-hidden flex flex-col mx-auto mt-0 sm:my-auto" onclick="event.stopPropagation()">
-                    <!-- Header -->
-                    <div class="px-3 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-green-50 to-blue-50">
-                        <div class="flex items-center gap-2 sm:gap-3">
-                            <span class="material-symbols-outlined text-green-600 text-xl sm:text-3xl">group</span>
-                            <div>
-                                <h2 class="text-lg sm:text-xl font-bold text-gray-900">My Golf Buddies</h2>
-                                <p class="text-xs sm:text-sm text-gray-600 hidden sm:block">Manage your playing partners & groups</p>
-                            </div>
-                        </div>
-                        <button onclick="GolfBuddiesSystem.closeBuddiesModal()" class="text-gray-400 hover:text-gray-600 p-1">
-                            <span class="material-symbols-outlined text-2xl sm:text-3xl">close</span>
-                        </button>
-                    </div>
-
-                    <!-- Tabs -->
-                    <div class="border-b border-gray-200">
-                        <div class="flex gap-1 sm:gap-2 px-2 sm:px-6 overflow-x-auto">
-                            <button onclick="GolfBuddiesSystem.showBuddiesTab('myBuddies')"
-                                    id="buddiesTab-myBuddies"
-                                    class="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 border-green-500 text-green-600 whitespace-nowrap">
-                                <span class="material-symbols-outlined text-xs align-middle">people</span>
-                                <span class="hidden xs:inline">My </span>Buddies
-                            </button>
-                            <button onclick="GolfBuddiesSystem.showBuddiesTab('suggestions')"
-                                    id="buddiesTab-suggestions"
-                                    class="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 border-transparent text-gray-600 hover:text-gray-900 whitespace-nowrap">
-                                <span class="material-symbols-outlined text-xs align-middle">auto_awesome</span>
-                                Suggestions
-                            </button>
-                            <button onclick="GolfBuddiesSystem.showBuddiesTab('savedGroups')"
-                                    id="buddiesTab-savedGroups"
-                                    class="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 border-transparent text-gray-600 hover:text-gray-900 whitespace-nowrap">
-                                <span class="material-symbols-outlined text-xs align-middle">groups_2</span>
-                                <span class="hidden xs:inline">Saved </span>Groups
-                            </button>
-                            <button onclick="GolfBuddiesSystem.showBuddiesTab('addBuddy')"
-                                    id="buddiesTab-addBuddy"
-                                    class="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 border-transparent text-gray-600 hover:text-gray-900 whitespace-nowrap">
-                                <span class="material-symbols-outlined text-xs align-middle">person_add</span>
-                                Add
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Content -->
-                    <div class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-6">
-                        <!-- My Buddies Tab -->
-                        <div id="buddiesContent-myBuddies" class="buddies-tab-content w-full max-w-full overflow-x-hidden">
-                            <div id="myBuddiesList" class="space-y-3 w-full max-w-full">
-                                <!-- Populated by renderMyBuddies() -->
-                            </div>
-                        </div>
-
-                        <!-- Suggestions Tab -->
-                        <div id="buddiesContent-suggestions" class="buddies-tab-content w-full max-w-full overflow-x-hidden" style="display: none;">
-                            <div class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                                <div class="flex items-start gap-2">
-                                    <span class="material-symbols-outlined text-blue-600">info</span>
-                                    <div class="text-sm text-blue-800">
-                                        <strong>Auto-suggested buddies</strong> based on your play history.
-                                        These are players you've played with 2+ times but haven't added as buddies yet.
-                                    </div>
+            <div id="buddiesModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-[99999] overflow-y-auto" onclick="event.target.id === 'buddiesModal' && GolfBuddiesSystem.closeBuddiesModal()">
+                <div class="min-h-screen px-2 py-4 sm:p-4 flex items-start sm:items-center justify-center">
+                    <div class="bg-white rounded-lg shadow-xl w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl mx-auto" onclick="event.stopPropagation()">
+                        <!-- Header -->
+                        <div class="px-3 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-green-50 to-blue-50 rounded-t-lg">
+                            <div class="flex items-center gap-2 sm:gap-3">
+                                <span class="material-symbols-outlined text-green-600 text-xl sm:text-3xl">group</span>
+                                <div>
+                                    <h2 class="text-lg sm:text-xl font-bold text-gray-900">My Golf Buddies</h2>
+                                    <p class="text-xs sm:text-sm text-gray-600 hidden sm:block">Manage your playing partners & groups</p>
                                 </div>
                             </div>
-                            <div id="suggestionsList" class="space-y-3 w-full max-w-full">
-                                <!-- Populated by renderSuggestions() -->
-                            </div>
+                            <button onclick="GolfBuddiesSystem.closeBuddiesModal()" class="text-gray-400 hover:text-gray-600 p-1">
+                                <span class="material-symbols-outlined text-2xl sm:text-3xl">close</span>
+                            </button>
                         </div>
 
-                        <!-- Saved Groups Tab -->
-                        <div id="buddiesContent-savedGroups" class="buddies-tab-content w-full max-w-full overflow-x-hidden" style="display: none;">
-                            <div class="mb-4 flex justify-between items-center">
-                                <p class="text-sm text-gray-600">Quick-load groups of players for common rounds</p>
-                                <button onclick="GolfBuddiesSystem.createNewGroup()" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
-                                    <span class="material-symbols-outlined text-sm align-middle">add</span>
-                                    New Group
+                        <!-- Tabs -->
+                        <div class="border-b border-gray-200">
+                            <div class="flex gap-1 sm:gap-2 px-2 sm:px-6 overflow-x-auto">
+                                <button onclick="GolfBuddiesSystem.showBuddiesTab('myBuddies')"
+                                        id="buddiesTab-myBuddies"
+                                        class="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 border-green-500 text-green-600 whitespace-nowrap">
+                                    <span class="material-symbols-outlined text-xs align-middle">people</span>
+                                    <span class="hidden xs:inline">My </span>Buddies
+                                </button>
+                                <button onclick="GolfBuddiesSystem.showBuddiesTab('suggestions')"
+                                        id="buddiesTab-suggestions"
+                                        class="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 border-transparent text-gray-600 hover:text-gray-900 whitespace-nowrap">
+                                    <span class="material-symbols-outlined text-xs align-middle">auto_awesome</span>
+                                    Suggestions
+                                </button>
+                                <button onclick="GolfBuddiesSystem.showBuddiesTab('savedGroups')"
+                                        id="buddiesTab-savedGroups"
+                                        class="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 border-transparent text-gray-600 hover:text-gray-900 whitespace-nowrap">
+                                    <span class="material-symbols-outlined text-xs align-middle">groups_2</span>
+                                    <span class="hidden xs:inline">Saved </span>Groups
+                                </button>
+                                <button onclick="GolfBuddiesSystem.showBuddiesTab('addBuddy')"
+                                        id="buddiesTab-addBuddy"
+                                        class="px-2 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium border-b-2 border-transparent text-gray-600 hover:text-gray-900 whitespace-nowrap">
+                                    <span class="material-symbols-outlined text-xs align-middle">person_add</span>
+                                    Add
                                 </button>
                             </div>
-                            <div id="savedGroupsList" class="space-y-3 w-full max-w-full">
-                                <!-- Populated by renderSavedGroups() -->
+                        </div>
+
+                        <!-- Content - now scrolls naturally with page on mobile -->
+                        <div class="p-3 sm:p-6">
+                            <!-- My Buddies Tab -->
+                            <div id="buddiesContent-myBuddies" class="buddies-tab-content w-full max-w-full overflow-x-hidden">
+                                <div id="myBuddiesList" class="space-y-3 w-full max-w-full">
+                                    <!-- Populated by renderMyBuddies() -->
+                                </div>
+                            </div>
+
+                            <!-- Suggestions Tab -->
+                            <div id="buddiesContent-suggestions" class="buddies-tab-content w-full max-w-full overflow-x-hidden" style="display: none;">
+                                <div class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <div class="flex items-start gap-2">
+                                        <span class="material-symbols-outlined text-blue-600">info</span>
+                                        <div class="text-sm text-blue-800">
+                                            <strong>Auto-suggested buddies</strong> based on your play history.
+                                            These are players you've played with 2+ times but haven't added as buddies yet.
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="suggestionsList" class="space-y-3 w-full max-w-full">
+                                    <!-- Populated by renderSuggestions() -->
+                                </div>
+                            </div>
+
+                            <!-- Saved Groups Tab -->
+                            <div id="buddiesContent-savedGroups" class="buddies-tab-content w-full max-w-full overflow-x-hidden" style="display: none;">
+                                <div class="mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                    <p class="text-sm text-gray-600">Quick-load groups of players for common rounds</p>
+                                    <button onclick="GolfBuddiesSystem.createNewGroup()" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
+                                        <span class="material-symbols-outlined text-sm align-middle">add</span>
+                                        New Group
+                                    </button>
+                                </div>
+                                <div id="savedGroupsList" class="space-y-3 w-full max-w-full">
+                                    <!-- Populated by renderSavedGroups() -->
+                                </div>
+                            </div>
+
+                            <!-- Add Buddy Tab -->
+                            <div id="buddiesContent-addBuddy" class="buddies-tab-content w-full max-w-full overflow-x-hidden" style="display: none;">
+                                <div class="mb-4 w-full max-w-full">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Search for players</label>
+                                    <input type="text" id="buddySearchInput" placeholder="Search by name..."
+                                           class="w-full max-w-full px-3 sm:px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 box-border"
+                                           onkeyup="GolfBuddiesSystem.searchPlayers(this.value)">
+                                </div>
+                                <div id="buddySearchResults" class="space-y-2 sm:space-y-3 w-full max-w-full overflow-x-hidden">
+                                    <p class="text-center text-gray-500 py-8">Start typing to search for players...</p>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- Add Buddy Tab -->
-                        <div id="buddiesContent-addBuddy" class="buddies-tab-content w-full max-w-full overflow-x-hidden" style="display: none;">
-                            <div class="mb-4 w-full max-w-full">
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Search for players</label>
-                                <input type="text" id="buddySearchInput" placeholder="Search by name..."
-                                       class="w-full max-w-full px-3 sm:px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 box-border"
-                                       onkeyup="GolfBuddiesSystem.searchPlayers(this.value)">
-                            </div>
-                            <div id="buddySearchResults" class="space-y-2 sm:space-y-3 w-full max-w-full overflow-x-hidden">
-                                <p class="text-center text-gray-500 py-8">Start typing to search for players...</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Footer with Recent Partners -->
-                    <div class="px-6 py-4 border-t border-gray-200 bg-gray-50">
-                        <div class="flex items-center justify-between">
+                        <!-- Footer with Recent Partners -->
+                        <div class="px-3 sm:px-6 py-3 sm:py-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
                             <div>
-                                <h4 class="text-sm font-semibold text-gray-700 mb-1">Recent Partners</h4>
+                                <h4 class="text-sm font-semibold text-gray-700 mb-2">Recent Partners</h4>
                                 <div id="recentPartnersList" class="flex gap-2 flex-wrap">
                                     <!-- Populated by renderRecentPartners() -->
                                 </div>
@@ -841,19 +844,269 @@ window.GolfBuddiesSystem = {
     },
 
     /**
-     * Create new group (placeholder - full implementation would open form)
+     * Create new group - opens the group creation/edit modal
      */
     createNewGroup() {
-        NotificationManager?.show?.('Create Group feature coming soon!', 'info');
-        // TODO: Open group creation form
+        this.openGroupModal(null); // null = create new
     },
 
     /**
-     * Edit group (placeholder)
+     * Edit existing group
      */
     editGroup(groupId) {
-        NotificationManager?.show?.('Edit Group feature coming soon!', 'info');
-        // TODO: Open group edit form
+        const group = this.savedGroups.find(g => g.id === groupId);
+        if (!group) {
+            NotificationManager?.show?.('Group not found', 'error');
+            return;
+        }
+        this.openGroupModal(group);
+    },
+
+    /**
+     * Open the group creation/edit modal
+     */
+    openGroupModal(existingGroup = null) {
+        // Create modal if it doesn't exist
+        if (!document.getElementById('groupEditModal')) {
+            this.createGroupEditModal();
+        }
+
+        const modal = document.getElementById('groupEditModal');
+        const title = document.getElementById('groupModalTitle');
+        const nameInput = document.getElementById('groupNameInput');
+        const saveBtn = document.getElementById('saveGroupBtn');
+
+        // Reset state
+        this.editingGroupId = existingGroup?.id || null;
+        this.selectedGroupMembers = existingGroup?.member_ids ? [...existingGroup.member_ids] : [];
+
+        // Set title and values
+        title.textContent = existingGroup ? 'Edit Group' : 'Create New Group';
+        nameInput.value = existingGroup?.group_name || '';
+        saveBtn.textContent = existingGroup ? 'Save Changes' : 'Create Group';
+
+        // Render buddy selection
+        this.renderGroupBuddySelection();
+
+        // Show modal
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        nameInput.focus();
+    },
+
+    /**
+     * Close group edit modal
+     */
+    closeGroupModal() {
+        const modal = document.getElementById('groupEditModal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+        this.editingGroupId = null;
+        this.selectedGroupMembers = [];
+    },
+
+    /**
+     * Create the group edit modal HTML
+     */
+    createGroupEditModal() {
+        const modalHTML = `
+            <div id="groupEditModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-[999999] overflow-y-auto" onclick="event.target.id === 'groupEditModal' && GolfBuddiesSystem.closeGroupModal()">
+                <div class="min-h-screen px-2 py-4 sm:p-4 flex items-start sm:items-center justify-center">
+                    <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-auto" onclick="event.stopPropagation()">
+                        <!-- Header -->
+                        <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-green-50 to-blue-50 rounded-t-lg">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined text-green-600">groups_2</span>
+                                <h3 id="groupModalTitle" class="text-lg font-bold text-gray-900">Create New Group</h3>
+                            </div>
+                            <button onclick="GolfBuddiesSystem.closeGroupModal()" class="text-gray-400 hover:text-gray-600 p-1">
+                                <span class="material-symbols-outlined">close</span>
+                            </button>
+                        </div>
+
+                        <!-- Content -->
+                        <div class="p-4">
+                            <!-- Group Name -->
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Group Name</label>
+                                <input type="text" id="groupNameInput"
+                                       placeholder="e.g., Sunday Regulars, Work Crew..."
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                            </div>
+
+                            <!-- Select Buddies -->
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
+                                    Select Members <span id="selectedMemberCount" class="text-green-600">(0 selected)</span>
+                                </label>
+                                <div id="groupBuddySelection" class="max-h-64 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-2">
+                                    <!-- Populated by renderGroupBuddySelection() -->
+                                </div>
+                            </div>
+
+                            <!-- Info -->
+                            <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                <div class="flex items-start gap-2 text-sm text-blue-800">
+                                    <span class="material-symbols-outlined text-blue-600 text-sm">info</span>
+                                    <span>Groups let you quickly load your regular playing partners into a scorecard with one tap.</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Footer -->
+                        <div class="px-4 py-3 border-t border-gray-200 flex justify-end gap-2">
+                            <button onclick="GolfBuddiesSystem.closeGroupModal()"
+                                    class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+                                Cancel
+                            </button>
+                            <button id="saveGroupBtn" onclick="GolfBuddiesSystem.saveGroup()"
+                                    class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
+                                Create Group
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    },
+
+    /**
+     * Render buddy selection checkboxes in group modal
+     */
+    renderGroupBuddySelection() {
+        const container = document.getElementById('groupBuddySelection');
+        const countSpan = document.getElementById('selectedMemberCount');
+
+        if (!container) return;
+
+        if (this.buddies.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-6">
+                    <span class="material-symbols-outlined text-4xl text-gray-300 mb-2">person_off</span>
+                    <p class="text-gray-500 text-sm">No buddies yet</p>
+                    <p class="text-gray-400 text-xs mt-1">Add buddies first to create groups</p>
+                </div>
+            `;
+            return;
+        }
+
+        const html = this.buddies.map(buddy => {
+            const buddyProfile = buddy.buddy?.[0];
+            const name = buddyProfile?.name || 'Unknown';
+            const handicap = buddyProfile?.profile_data?.golfInfo?.handicap || buddyProfile?.profile_data?.handicap || '-';
+            const isSelected = this.selectedGroupMembers.includes(buddy.buddy_id);
+
+            return `
+                <label class="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-green-50 border border-green-200' : 'border border-transparent'}">
+                    <input type="checkbox"
+                           value="${buddy.buddy_id}"
+                           ${isSelected ? 'checked' : ''}
+                           onchange="GolfBuddiesSystem.toggleGroupMember('${buddy.buddy_id}')"
+                           class="w-5 h-5 text-green-600 rounded focus:ring-green-500">
+                    <div class="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white font-bold">
+                        ${name.charAt(0).toUpperCase()}
+                    </div>
+                    <div class="flex-1">
+                        <div class="font-medium text-gray-900">${name}</div>
+                        <div class="text-xs text-gray-500">HCP: ${handicap}</div>
+                    </div>
+                </label>
+            `;
+        }).join('');
+
+        container.innerHTML = html;
+
+        // Update count
+        if (countSpan) {
+            countSpan.textContent = `(${this.selectedGroupMembers.length} selected)`;
+        }
+    },
+
+    /**
+     * Toggle member selection in group
+     */
+    toggleGroupMember(buddyId) {
+        const index = this.selectedGroupMembers.indexOf(buddyId);
+        if (index > -1) {
+            this.selectedGroupMembers.splice(index, 1);
+        } else {
+            this.selectedGroupMembers.push(buddyId);
+        }
+
+        // Update UI
+        this.renderGroupBuddySelection();
+    },
+
+    /**
+     * Save group (create or update)
+     */
+    async saveGroup() {
+        const nameInput = document.getElementById('groupNameInput');
+        const groupName = nameInput?.value?.trim();
+
+        // Validation
+        if (!groupName) {
+            NotificationManager?.show?.('Please enter a group name', 'warning');
+            nameInput?.focus();
+            return;
+        }
+
+        if (this.selectedGroupMembers.length === 0) {
+            NotificationManager?.show?.('Please select at least one member', 'warning');
+            return;
+        }
+
+        try {
+            if (this.editingGroupId) {
+                // Update existing group
+                const { error } = await window.SupabaseDB.client
+                    .from('saved_groups')
+                    .update({
+                        group_name: groupName,
+                        member_ids: this.selectedGroupMembers,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', this.editingGroupId);
+
+                if (error) {
+                    console.error('[Buddies] Error updating group:', error);
+                    NotificationManager?.show?.('Error updating group', 'error');
+                    return;
+                }
+
+                NotificationManager?.show?.('Group updated successfully!', 'success');
+            } else {
+                // Create new group
+                const { error } = await window.SupabaseDB.client
+                    .from('saved_groups')
+                    .insert({
+                        user_id: this.currentUserId,
+                        group_name: groupName,
+                        member_ids: this.selectedGroupMembers
+                    });
+
+                if (error) {
+                    console.error('[Buddies] Error creating group:', error);
+                    NotificationManager?.show?.('Error creating group', 'error');
+                    return;
+                }
+
+                NotificationManager?.show?.('Group created successfully!', 'success');
+            }
+
+            // Reload and refresh UI
+            await this.loadSavedGroups();
+            this.closeGroupModal();
+            this.renderSavedGroups();
+
+        } catch (error) {
+            console.error('[Buddies] Exception saving group:', error);
+            NotificationManager?.show?.('Error saving group', 'error');
+        }
     },
 
     /**
@@ -887,11 +1140,75 @@ window.GolfBuddiesSystem = {
     },
 
     /**
-     * Load group to scorecard (placeholder)
+     * Load all group members to the current scorecard
      */
-    loadGroupToScorecard(groupId) {
-        NotificationManager?.show?.('Load Group feature coming soon!', 'info');
-        // TODO: Load all group members to Live Scoring
+    async loadGroupToScorecard(groupId) {
+        const group = this.savedGroups.find(g => g.id === groupId);
+        if (!group) {
+            NotificationManager?.show?.('Group not found', 'error');
+            return;
+        }
+
+        // Check if LiveScorecardManager is available
+        if (typeof LiveScorecardManager === 'undefined' || !LiveScorecardManager.players) {
+            NotificationManager?.show?.('Start a round first to load the group', 'warning');
+            return;
+        }
+
+        try {
+            // Ensure profiles are loaded
+            if (!LiveScorecardManager.allPlayerProfiles || LiveScorecardManager.allPlayerProfiles.length === 0) {
+                console.log('[Buddies] Loading player profiles for group load...');
+                LiveScorecardManager.allPlayerProfiles = await window.SupabaseDB.getAllProfiles();
+            }
+
+            // Get current player IDs already in the scorecard
+            const existingIds = new Set(LiveScorecardManager.players.map(p => p.id));
+            let addedCount = 0;
+            let skippedCount = 0;
+
+            // Add each member from the group
+            for (const memberId of group.member_ids) {
+                if (existingIds.has(memberId)) {
+                    console.log(`[Buddies] Skipping ${memberId} - already in scorecard`);
+                    skippedCount++;
+                    continue;
+                }
+
+                // Use the existing selectExistingPlayer method
+                LiveScorecardManager.selectExistingPlayer(memberId);
+                addedCount++;
+            }
+
+            // Update last_used timestamp
+            await window.SupabaseDB.client
+                .from('saved_groups')
+                .update({ last_used: new Date().toISOString() })
+                .eq('id', groupId);
+
+            // Reload groups to update UI
+            await this.loadSavedGroups();
+
+            // Close the buddies modal
+            this.closeBuddiesModal();
+
+            // Show result
+            if (addedCount > 0) {
+                const totalPlayers = LiveScorecardManager.players.length;
+                let message = `Added ${addedCount} player${addedCount !== 1 ? 's' : ''} from "${group.group_name}"`;
+                if (skippedCount > 0) {
+                    message += ` (${skippedCount} already in round)`;
+                }
+                message += ` - ${totalPlayers} total`;
+                NotificationManager?.show?.(message, 'success');
+            } else if (skippedCount > 0) {
+                NotificationManager?.show?.(`All ${skippedCount} members already in the round`, 'info');
+            }
+
+        } catch (error) {
+            console.error('[Buddies] Error loading group:', error);
+            NotificationManager?.show?.('Error loading group to scorecard', 'error');
+        }
     }
 };
 

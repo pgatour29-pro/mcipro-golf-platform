@@ -131,7 +131,7 @@
         const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NDM2NjksImV4cCI6MjA3NTQxOTY2OX0.KVQ6WvDKz9s77lxn3AhSA_YTMCN6rsht9kDkMIDhngk';
 
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // State
         let allEvents = [];
@@ -199,7 +199,7 @@
                 thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
                 const cutoffDate = thirtyDaysAgo.toISOString().split('T')[0];
 
-                const { data: events, error: eventError } = await supabase
+                const { data: events, error: eventError } = await supabaseClientClient
                     .from('society_events')
                     .select('id, title, event_date, course_name, organizer_name, format')
                     .gte('event_date', cutoffDate)
@@ -208,7 +208,7 @@
                 if (eventError) throw eventError;
 
                 // Also get pools from last 30 days
-                const { data: pools, error: poolError } = await supabase
+                const { data: pools, error: poolError } = await supabaseClientClient
                     .from('side_game_pools')
                     .select(`
                         id, name, type, date_iso, created_at,
@@ -480,7 +480,7 @@
 
         // Get event leaderboard
         async function getEventLeaderboard(eventId, format = 'stableford') {
-            const { data: scorecards, error } = await supabase
+            const { data: scorecards, error } = await supabaseClient
                 .from('scorecards')
                 .select(`
                     id, player_id, total_gross, total_net, status, created_at,
@@ -492,7 +492,7 @@
 
             // Get player names
             const playerIds = [...new Set(scorecards.map(s => s.player_id))];
-            const { data: profiles } = await supabase
+            const { data: profiles } = await supabaseClient
                 .from('user_profiles')
                 .select('line_user_id, name')
                 .in('line_user_id', playerIds);
@@ -567,7 +567,7 @@
 
             const poolDate = pool.date_iso;
 
-            const { data: scorecards, error } = await supabase
+            const { data: scorecards, error } = await supabaseClient
                 .from('scorecards')
                 .select(`
                     id, player_id, created_at,
@@ -579,7 +579,7 @@
 
             if (error || !scorecards) return [];
 
-            const { data: profiles } = await supabase
+            const { data: profiles } = await supabaseClient
                 .from('user_profiles')
                 .select('line_user_id, name')
                 .in('line_user_id', entrantIds);

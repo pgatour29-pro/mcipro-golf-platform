@@ -47386,22 +47386,54 @@ class LiveScorecardSystem {
                 return round.id; // Round saved successfully, handicap adjusted, just skip hole details
             }
 
+            // FIX: Read hole scores from DATABASE (scores table) instead of unreliable scoresCache
+            // This ensures hole-by-hole data is always saved to round_holes
+            let holeScoresMap = {};
+            if (scorecardId) {
+                const { data: dbHoleScores, error: holeScoresError } = await window.SupabaseDB.client
+                    .from('scores')
+                    .select('hole_number, gross_score, net_score, stableford_points, par')
+                    .eq('scorecard_id', scorecardId)
+                    .order('hole_number');
+
+                if (holeScoresError) {
+                    console.warn('[LiveScorecard] Could not read hole scores from DB:', holeScoresError);
+                } else if (dbHoleScores && dbHoleScores.length > 0) {
+                    for (const s of dbHoleScores) {
+                        holeScoresMap[s.hole_number] = s;
+                    }
+                    console.log(`[LiveScorecard] ✅ Read ${dbHoleScores.length} hole scores from database`);
+                }
+            }
+
+            // Fallback to cache if DB read failed
+            if (Object.keys(holeScoresMap).length === 0) {
+                console.warn('[LiveScorecard] No hole scores from DB, falling back to scoresCache...');
+                for (let h = 1; h <= 18; h++) {
+                    const cacheScore = this.scoresCache[player.id]?.[h];
+                    if (cacheScore) {
+                        holeScoresMap[h] = { hole_number: h, gross_score: cacheScore };
+                    }
+                }
+            }
+
             const holeInserts = [];
             for (let holeNum = 1; holeNum <= 18; holeNum++) {
-                const grossScore = this.scoresCache[player.id]?.[holeNum];
-                if (!grossScore) {
+                const holeScore = holeScoresMap[holeNum];
+                if (!holeScore || !holeScore.gross_score) {
                     console.log(`[LiveScorecard] No score for hole ${holeNum}, skipping...`);
                     continue; // Skip holes with no score
                 }
 
+                const grossScore = holeScore.gross_score;
                 const holeData = this.courseData.holes?.[holeNum - 1];
-                const par = holeData?.par || 4;
-                const strokeIndex = holeData?.stroke_index || holeNum;
+                const par = holeScore.par || holeData?.par || 4;
+                const strokeIndex = holeData?.stroke_index || holeData?.handicap || holeNum;
 
                 // Calculate net score and stableford using proper shot allocation
                 const shotsReceived = shotAllocation[holeNum] || 0;
-                const netScore = grossScore - shotsReceived;
-                const stablefordPoints = Math.max(0, (par - netScore) + 2);
+                const netScore = holeScore.net_score || (grossScore - shotsReceived);
+                const stablefordPoints = holeScore.stableford_points || Math.max(0, (par - netScore) + 2);
 
                 // Get scramble tracking data for this hole
                 const driveData = this.scrambleDriveData?.[holeNum];
@@ -47423,10 +47455,8 @@ class LiveScorecardSystem {
                 });
             }
 
-            console.log(`[LiveScorecard] Prepared ${holeInserts.length} holes for insert`);
-            console.log(`[LiveScorecard] Scores cache keys:`, Object.keys(this.scoresCache));
-            console.log(`[LiveScorecard] Player ID being saved:`, player.id);
-            console.log(`[LiveScorecard] Scores for this player:`, this.scoresCache[player.id]);
+            console.log(`[LiveScorecard] Prepared ${holeInserts.length} holes for insert (from DB: ${Object.keys(holeScoresMap).length} scores)`);
+            console.log(`[LiveScorecard] Player ID being saved:`, player.id, 'Scorecard ID:', scorecardId);
 
             // Insert all holes at once
             if (holeInserts.length > 0) {

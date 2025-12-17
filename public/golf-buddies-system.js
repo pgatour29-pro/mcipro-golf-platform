@@ -24,6 +24,7 @@ window.GolfBuddiesSystem = {
     currentUserId: null,
     editingGroupId: null,
     selectedGroupMembers: [],
+    groupMemberProfiles: {},
 
     /**
      * Initialize the system
@@ -875,18 +876,26 @@ window.GolfBuddiesSystem = {
         const title = document.getElementById('groupModalTitle');
         const nameInput = document.getElementById('groupNameInput');
         const saveBtn = document.getElementById('saveGroupBtn');
+        const searchInput = document.getElementById('groupPlayerSearchInput');
+        const searchResults = document.getElementById('groupPlayerSearchResults');
 
         // Reset state
         this.editingGroupId = existingGroup?.id || null;
         this.selectedGroupMembers = existingGroup?.member_ids ? [...existingGroup.member_ids] : [];
+        this.groupMemberProfiles = {}; // Reset profile cache
 
         // Set title and values
         title.textContent = existingGroup ? 'Edit Group' : 'Create New Group';
         nameInput.value = existingGroup?.group_name || '';
         saveBtn.textContent = existingGroup ? 'Save Changes' : 'Create Group';
 
-        // Render buddy selection
-        this.renderGroupBuddySelection();
+        // Clear search
+        if (searchInput) searchInput.value = '';
+        if (searchResults) searchResults.innerHTML = '';
+
+        // Render components
+        this.renderSelectedMembers();
+        this.renderBuddyQuickAdd();
 
         // Show modal
         modal.classList.remove('hidden');
@@ -905,6 +914,7 @@ window.GolfBuddiesSystem = {
         }
         this.editingGroupId = null;
         this.selectedGroupMembers = [];
+        this.groupMemberProfiles = {};
     },
 
     /**
@@ -914,7 +924,7 @@ window.GolfBuddiesSystem = {
         const modalHTML = `
             <div id="groupEditModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-[999999] overflow-y-auto" onclick="event.target.id === 'groupEditModal' && GolfBuddiesSystem.closeGroupModal()">
                 <div class="min-h-screen px-2 py-4 sm:p-4 flex items-start sm:items-center justify-center">
-                    <div class="bg-white rounded-lg shadow-xl w-full max-w-md mx-auto" onclick="event.stopPropagation()">
+                    <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-auto" onclick="event.stopPropagation()">
                         <!-- Header -->
                         <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-green-50 to-blue-50 rounded-t-lg">
                             <div class="flex items-center gap-2">
@@ -927,7 +937,7 @@ window.GolfBuddiesSystem = {
                         </div>
 
                         <!-- Content -->
-                        <div class="p-4">
+                        <div class="p-4 max-h-[70vh] overflow-y-auto">
                             <!-- Group Name -->
                             <div class="mb-4">
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Group Name</label>
@@ -936,18 +946,44 @@ window.GolfBuddiesSystem = {
                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
                             </div>
 
-                            <!-- Select Buddies -->
+                            <!-- Selected Members -->
                             <div class="mb-4">
                                 <label class="block text-sm font-medium text-gray-700 mb-1">
-                                    Select Members <span id="selectedMemberCount" class="text-green-600">(0 selected)</span>
+                                    Group Members <span id="selectedMemberCount" class="text-green-600">(0 selected)</span>
                                 </label>
-                                <div id="groupBuddySelection" class="max-h-64 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-2">
-                                    <!-- Populated by renderGroupBuddySelection() -->
+                                <div id="selectedMembersList" class="min-h-[60px] border border-gray-200 rounded-lg p-2 bg-gray-50">
+                                    <!-- Populated by renderSelectedMembers() -->
+                                </div>
+                            </div>
+
+                            <!-- Search Players -->
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
+                                    <span class="material-symbols-outlined text-sm align-middle">search</span>
+                                    Search & Add Players
+                                </label>
+                                <input type="text" id="groupPlayerSearchInput"
+                                       placeholder="Search by name..."
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                       onkeyup="GolfBuddiesSystem.searchPlayersForGroup(this.value)">
+                                <div id="groupPlayerSearchResults" class="mt-2 max-h-40 overflow-y-auto">
+                                    <!-- Search results appear here -->
+                                </div>
+                            </div>
+
+                            <!-- Quick Add from Buddies -->
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">
+                                    <span class="material-symbols-outlined text-sm align-middle">people</span>
+                                    Quick Add from Buddies
+                                </label>
+                                <div id="groupBuddyQuickAdd" class="flex flex-wrap gap-2">
+                                    <!-- Populated by renderBuddyQuickAdd() -->
                                 </div>
                             </div>
 
                             <!-- Info -->
-                            <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                                 <div class="flex items-start gap-2 text-sm text-blue-800">
                                     <span class="material-symbols-outlined text-blue-600 text-sm">info</span>
                                     <span>Groups let you quickly load your regular playing partners into a scorecard with one tap.</span>
@@ -975,70 +1011,237 @@ window.GolfBuddiesSystem = {
     },
 
     /**
-     * Render buddy selection checkboxes in group modal
+     * Render selected members as removable chips
      */
-    renderGroupBuddySelection() {
-        const container = document.getElementById('groupBuddySelection');
+    async renderSelectedMembers() {
+        const container = document.getElementById('selectedMembersList');
         const countSpan = document.getElementById('selectedMemberCount');
 
         if (!container) return;
 
-        if (this.buddies.length === 0) {
+        if (this.selectedGroupMembers.length === 0) {
             container.innerHTML = `
-                <div class="text-center py-6">
-                    <span class="material-symbols-outlined text-4xl text-gray-300 mb-2">person_off</span>
-                    <p class="text-gray-500 text-sm">No buddies yet</p>
-                    <p class="text-gray-400 text-xs mt-1">Add buddies first to create groups</p>
-                </div>
+                <p class="text-gray-400 text-sm text-center py-2">No members added yet. Search or select from buddies below.</p>
             `;
+            if (countSpan) countSpan.textContent = '(0 selected)';
             return;
         }
 
-        const html = this.buddies.map(buddy => {
-            const buddyProfile = buddy.buddy?.[0];
-            const name = buddyProfile?.name || 'Unknown';
-            const handicap = buddyProfile?.profile_data?.golfInfo?.handicap || buddyProfile?.profile_data?.handicap || '-';
-            const isSelected = this.selectedGroupMembers.includes(buddy.buddy_id);
+        // Load member profiles if not cached
+        if (!this.groupMemberProfiles) {
+            this.groupMemberProfiles = {};
+        }
+
+        // Fetch profiles for members we don't have cached
+        const missingIds = this.selectedGroupMembers.filter(id => !this.groupMemberProfiles[id]);
+        if (missingIds.length > 0) {
+            const { data: profiles } = await window.SupabaseDB.client
+                .from('user_profiles')
+                .select('line_user_id, name, profile_data')
+                .in('line_user_id', missingIds);
+
+            if (profiles) {
+                profiles.forEach(p => {
+                    this.groupMemberProfiles[p.line_user_id] = p;
+                });
+            }
+        }
+
+        const html = this.selectedGroupMembers.map(memberId => {
+            const profile = this.groupMemberProfiles[memberId];
+            const name = profile?.name || 'Unknown';
+            const handicap = profile?.profile_data?.golfInfo?.handicap || profile?.profile_data?.handicap || '-';
 
             return `
-                <label class="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-green-50 border border-green-200' : 'border border-transparent'}">
-                    <input type="checkbox"
-                           value="${buddy.buddy_id}"
-                           ${isSelected ? 'checked' : ''}
-                           onchange="GolfBuddiesSystem.toggleGroupMember('${buddy.buddy_id}')"
-                           class="w-5 h-5 text-green-600 rounded focus:ring-green-500">
-                    <div class="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white font-bold">
-                        ${name.charAt(0).toUpperCase()}
+                <div class="flex items-center justify-between p-2 bg-white border border-gray-200 rounded-lg mb-2">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white font-bold text-sm">
+                            ${name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                            <div class="font-medium text-gray-900 text-sm">${name}</div>
+                            <div class="text-xs text-gray-500">HCP: ${handicap}</div>
+                        </div>
                     </div>
-                    <div class="flex-1">
-                        <div class="font-medium text-gray-900">${name}</div>
-                        <div class="text-xs text-gray-500">HCP: ${handicap}</div>
-                    </div>
-                </label>
+                    <button onclick="GolfBuddiesSystem.removeGroupMember('${memberId}')"
+                            class="p-1 text-red-500 hover:bg-red-50 rounded-full" title="Remove">
+                        <span class="material-symbols-outlined text-sm">close</span>
+                    </button>
+                </div>
             `;
         }).join('');
 
         container.innerHTML = html;
 
-        // Update count
         if (countSpan) {
             countSpan.textContent = `(${this.selectedGroupMembers.length} selected)`;
         }
     },
 
     /**
-     * Toggle member selection in group
+     * Render buddy quick-add buttons
      */
-    toggleGroupMember(buddyId) {
-        const index = this.selectedGroupMembers.indexOf(buddyId);
-        if (index > -1) {
-            this.selectedGroupMembers.splice(index, 1);
-        } else {
-            this.selectedGroupMembers.push(buddyId);
+    renderBuddyQuickAdd() {
+        const container = document.getElementById('groupBuddyQuickAdd');
+        if (!container) return;
+
+        if (this.buddies.length === 0) {
+            container.innerHTML = '<p class="text-gray-400 text-xs">No buddies yet</p>';
+            return;
         }
 
-        // Update UI
-        this.renderGroupBuddySelection();
+        const html = this.buddies.map(buddy => {
+            const buddyProfile = buddy.buddy?.[0];
+            const name = buddyProfile?.name || 'Unknown';
+            const isSelected = this.selectedGroupMembers.includes(buddy.buddy_id);
+
+            // Cache the profile
+            if (buddyProfile && !this.groupMemberProfiles?.[buddy.buddy_id]) {
+                if (!this.groupMemberProfiles) this.groupMemberProfiles = {};
+                this.groupMemberProfiles[buddy.buddy_id] = buddyProfile;
+            }
+
+            if (isSelected) {
+                return `
+                    <span class="inline-flex items-center gap-1 px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-xs">
+                        <span class="material-symbols-outlined text-xs">check</span>
+                        ${name}
+                    </span>
+                `;
+            }
+
+            return `
+                <button onclick="GolfBuddiesSystem.addGroupMember('${buddy.buddy_id}')"
+                        class="inline-flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 rounded-full text-xs hover:bg-gray-50 hover:border-green-500">
+                    <span class="material-symbols-outlined text-xs">add</span>
+                    ${name}
+                </button>
+            `;
+        }).join('');
+
+        container.innerHTML = html;
+    },
+
+    /**
+     * Search players for group (from directory)
+     */
+    async searchPlayersForGroup(query) {
+        const container = document.getElementById('groupPlayerSearchResults');
+        if (!container) return;
+
+        if (!query || query.trim().length < 2) {
+            container.innerHTML = '';
+            return;
+        }
+
+        container.innerHTML = '<p class="text-gray-500 text-xs py-2">Searching...</p>';
+
+        try {
+            const searchWords = query.trim().split(/\s+/).filter(w => w.length > 0);
+            let dbQuery = window.SupabaseDB.client
+                .from('user_profiles')
+                .select('line_user_id, name, profile_data');
+
+            if (searchWords.length === 1) {
+                dbQuery = dbQuery.ilike('name', `%${searchWords[0]}%`);
+            } else if (searchWords.length === 2) {
+                const word1 = searchWords[0];
+                const word2 = searchWords[1];
+                dbQuery = dbQuery.or(`name.ilike.%${word1} ${word2}%,name.ilike.%${word2}, ${word1}%,name.ilike.%${word2} ${word1}%`);
+            } else {
+                dbQuery = dbQuery.ilike('name', `%${query}%`);
+            }
+
+            const { data, error } = await dbQuery.limit(10);
+
+            if (error || !data || data.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-xs py-2">No players found</p>';
+                return;
+            }
+
+            // Filter out current user and already selected members
+            const filtered = data.filter(p =>
+                p.line_user_id !== this.currentUserId &&
+                !this.selectedGroupMembers.includes(p.line_user_id)
+            );
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-xs py-2">No new players found</p>';
+                return;
+            }
+
+            const html = filtered.map(player => {
+                const name = (player.name || 'Unknown').replace(/'/g, '&apos;');
+                const handicap = player.profile_data?.golfInfo?.handicap || player.profile_data?.handicap || '-';
+
+                // Cache the profile
+                if (!this.groupMemberProfiles) this.groupMemberProfiles = {};
+                this.groupMemberProfiles[player.line_user_id] = player;
+
+                return `
+                    <div class="flex items-center justify-between p-2 bg-white border border-gray-200 rounded-lg mb-1 hover:border-green-400">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 h-7 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center text-white font-bold text-xs">
+                                ${name.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <div class="font-medium text-gray-900 text-sm">${name}</div>
+                                <div class="text-xs text-gray-500">HCP: ${handicap}</div>
+                            </div>
+                        </div>
+                        <button onclick="GolfBuddiesSystem.addGroupMember('${player.line_user_id}')"
+                                class="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700">
+                            <span class="material-symbols-outlined text-xs">add</span> Add
+                        </button>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = html;
+
+        } catch (error) {
+            console.error('[Buddies] Search error:', error);
+            container.innerHTML = '<p class="text-red-500 text-xs py-2">Search error</p>';
+        }
+    },
+
+    /**
+     * Add member to group
+     */
+    addGroupMember(memberId) {
+        if (!this.selectedGroupMembers.includes(memberId)) {
+            this.selectedGroupMembers.push(memberId);
+            this.renderSelectedMembers();
+            this.renderBuddyQuickAdd();
+            // Clear search results
+            const searchInput = document.getElementById('groupPlayerSearchInput');
+            const searchResults = document.getElementById('groupPlayerSearchResults');
+            if (searchInput) searchInput.value = '';
+            if (searchResults) searchResults.innerHTML = '';
+        }
+    },
+
+    /**
+     * Remove member from group
+     */
+    removeGroupMember(memberId) {
+        const index = this.selectedGroupMembers.indexOf(memberId);
+        if (index > -1) {
+            this.selectedGroupMembers.splice(index, 1);
+            this.renderSelectedMembers();
+            this.renderBuddyQuickAdd();
+        }
+    },
+
+    /**
+     * Toggle member selection in group (legacy - kept for compatibility)
+     */
+    toggleGroupMember(memberId) {
+        if (this.selectedGroupMembers.includes(memberId)) {
+            this.removeGroupMember(memberId);
+        } else {
+            this.addGroupMember(memberId);
+        }
     },
 
     /**

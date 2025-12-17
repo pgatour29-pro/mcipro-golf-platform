@@ -71712,14 +71712,32 @@ class OrganizerScoringSystem {
         }
 
         try {
-            const { data: holes, error } = await window.SupabaseDB.client
+            // Try white tee first (most common), then fallback to any tee
+            let { data: holes, error } = await window.SupabaseDB.client
                 .from('course_holes')
                 .select('hole_number, par, stroke_index')
                 .eq('course_id', courseId)
+                .eq('tee_marker', 'white')
                 .order('hole_number')
                 .limit(18);
 
+            // Fallback: if no white tee data, try without tee filter
+            if (!error && (!holes || holes.length === 0)) {
+                console.log('[OrganizerScoring] No white tee data, trying any tee...');
+                const fallback = await window.SupabaseDB.client
+                    .from('course_holes')
+                    .select('hole_number, par, stroke_index')
+                    .eq('course_id', courseId)
+                    .order('hole_number')
+                    .limit(18);
+                holes = fallback.data;
+                error = fallback.error;
+            }
+
             console.log('[OrganizerScoring] Loaded course_holes for', courseId, ':', holes?.length, 'holes');
+            if (holes?.length > 0) {
+                console.log('[OrganizerScoring] Sample hole data:', holes[0], holes[7]);
+            }
 
             if (error || !holes || holes.length === 0) {
                 console.warn('[OrganizerScoring] No holes found for course:', courseId);

@@ -71559,7 +71559,7 @@ class OrganizerScoringSystem {
                 holeScoresByRound[hole.round_id][hole.hole_number] = hole;
             }
 
-            const courseData = await this.loadCourseData();
+            const courseData = await this.loadEditCourseData();
             let html = `<div class="overflow-x-auto"><table class="w-full text-xs border-collapse">
                 <thead><tr class="bg-gray-100 border-b-2 border-gray-300">
                     <th class="px-2 py-2 text-left font-semibold sticky left-0 bg-gray-100 z-10 min-w-[100px]">Player</th>
@@ -71663,9 +71663,38 @@ class OrganizerScoringSystem {
         this.editScoreData = {};
     }
 
+    async loadEditCourseData() {
+        // Get course from current event, not QSE
+        const event = this.allEvents.find(e => e.id === this.currentEventId);
+        const courseId = event?.course_id;
+
+        if (!courseId) {
+            // Return default course data
+            return { holes: Array.from({ length: 18 }, (_, i) => ({ hole_number: i + 1, par: 4, handicap: i + 1 })) };
+        }
+
+        try {
+            const { data: holes, error } = await window.SupabaseDB.client
+                .from('course_holes')
+                .select('hole_number, par, stroke_index')
+                .eq('course_id', courseId)
+                .order('hole_number')
+                .limit(18);
+
+            if (error || !holes || holes.length === 0) {
+                return { holes: Array.from({ length: 18 }, (_, i) => ({ hole_number: i + 1, par: 4, handicap: i + 1 })) };
+            }
+
+            return { holes: holes.map(h => ({ hole_number: h.hole_number, par: h.par, handicap: h.stroke_index })) };
+        } catch (err) {
+            console.error('[OrganizerScoring] Error loading course data:', err);
+            return { holes: Array.from({ length: 18 }, (_, i) => ({ hole_number: i + 1, par: 4, handicap: i + 1 })) };
+        }
+    }
+
     async renderEditScorecard() {
         const container = document.getElementById('editScoreScorecardContainer');
-        const courseData = await this.loadCourseData();
+        const courseData = await this.loadEditCourseData();
         const handicap = this.editingRound.handicap_used || 0;
 
         const renderNine = (start, end, label) => {
@@ -71715,7 +71744,7 @@ class OrganizerScoringSystem {
     async updateEditHoleScore(holeNumber, value) {
         this.editScoreData[holeNumber] = value ? parseInt(value) : null;
         this.updateEditScoreTotals();
-        const courseData = await this.loadCourseData();
+        const courseData = await this.loadEditCourseData();
         const handicap = this.editingRound.handicap_used || 0;
         const pts = this.calcStablefordPts(this.editScoreData[holeNumber], courseData.holes[holeNumber - 1]?.par || 4, handicap, courseData.holes[holeNumber - 1]?.handicap || holeNumber);
         const ptsEl = document.getElementById(`editPts${holeNumber}`);
@@ -71726,7 +71755,7 @@ class OrganizerScoringSystem {
     }
 
     async updateEditScoreTotals() {
-        const courseData = await this.loadCourseData();
+        const courseData = await this.loadEditCourseData();
         const handicap = this.editingRound?.handicap_used || 0;
         let totalGross = 0, totalStableford = 0, holesCompleted = 0;
 
@@ -71749,7 +71778,7 @@ class OrganizerScoringSystem {
         if (!this.editingRoundId) { NotificationManager.show('No round selected', 'error'); return; }
 
         try {
-            const courseData = await this.loadCourseData();
+            const courseData = await this.loadEditCourseData();
             const handicap = this.editingRound.handicap_used || 0;
             let totalGross = 0, totalStableford = 0, holesCompleted = 0;
 

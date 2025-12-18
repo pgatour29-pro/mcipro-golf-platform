@@ -71711,27 +71711,37 @@ class OrganizerScoringSystem {
             return { holes: Array.from({ length: 18 }, (_, i) => ({ hole_number: i + 1, par: 4, handicap: i + 1 })) };
         }
 
-        // PRIORITY 1: Load from verified local JSON files (most reliable source)
-        try {
-            const jsonUrl = `scorecard_profiles/${courseId}_data.json`;
-            console.log('[OrganizerScoring] Trying to load from JSON:', jsonUrl);
-            const response = await fetch(jsonUrl);
-            if (response.ok) {
-                const jsonData = await response.json();
-                const allHoles = [
-                    ...(jsonData.front_nine?.holes || []),
-                    ...(jsonData.back_nine?.holes || [])
-                ];
-                if (allHoles.length === 18) {
-                    console.log('[OrganizerScoring] Loaded from JSON - Hole 2 SI:', allHoles[1]?.handicap);
-                    return { holes: allHoles.map(h => ({ hole_number: h.hole, par: h.par, handicap: h.handicap })) };
-                }
-            }
-        } catch (jsonErr) {
-            console.log('[OrganizerScoring] JSON not available, falling back to database');
+        // HARDCODED VERIFIED DATA - Royal Lakeside (database has wrong SI for hole 2)
+        const verifiedCourseData = {
+            'royal_lakeside': [
+                { hole_number: 1, par: 5, handicap: 7 },
+                { hole_number: 2, par: 4, handicap: 3 },  // SI 3 NOT 4!
+                { hole_number: 3, par: 3, handicap: 17 },
+                { hole_number: 4, par: 4, handicap: 13 },
+                { hole_number: 5, par: 4, handicap: 5 },
+                { hole_number: 6, par: 3, handicap: 15 },
+                { hole_number: 7, par: 5, handicap: 9 },
+                { hole_number: 8, par: 4, handicap: 1 },
+                { hole_number: 9, par: 4, handicap: 11 },
+                { hole_number: 10, par: 5, handicap: 12 },
+                { hole_number: 11, par: 4, handicap: 8 },
+                { hole_number: 12, par: 3, handicap: 16 },
+                { hole_number: 13, par: 4, handicap: 6 },
+                { hole_number: 14, par: 4, handicap: 4 },
+                { hole_number: 15, par: 3, handicap: 18 },
+                { hole_number: 16, par: 4, handicap: 2 },
+                { hole_number: 17, par: 4, handicap: 14 },
+                { hole_number: 18, par: 5, handicap: 10 }
+            ]
+        };
+
+        // Use hardcoded data if available (most reliable)
+        if (verifiedCourseData[courseId]) {
+            console.log('[OrganizerScoring] Using VERIFIED hardcoded data for', courseId, '- Hole 2 SI:', verifiedCourseData[courseId][1].handicap);
+            return { holes: verifiedCourseData[courseId] };
         }
 
-        // PRIORITY 2: Fallback to database (may have stale data)
+        // PRIORITY 2: Fallback to database
         try {
             let { data: holes, error } = await window.SupabaseDB.client
                 .from('course_holes')

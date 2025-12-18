@@ -72730,12 +72730,13 @@ class OrganizerScoringSystem {
         const grossScore = parseInt(score);
         const holePar = parseInt(par) || 4;
         const holeHandicap = parseInt(holeHcp) || 1;
-        const handicap = parseInt(playerHcp) || 0;
+        // CRITICAL: Round handicap to integer (2.8 -> 3, not truncate to 2)
+        const handicap = Math.round(parseFloat(playerHcp) || 0);
 
-        // Calculate shots received on this hole
-        let shots = 0;
-        if (handicap >= holeHandicap) shots = 1;
-        if (handicap >= (holeHandicap + 18)) shots = 2;
+        // Calculate shots received on this hole using WHS formula
+        const fullStrokes = Math.floor(handicap / 18);
+        const remainingStrokes = handicap % 18;
+        const shots = fullStrokes + (holeHandicap <= remainingStrokes ? 1 : 0);
 
         // Net score
         const netScore = grossScore - shots;

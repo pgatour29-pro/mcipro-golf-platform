@@ -71593,10 +71593,6 @@ class OrganizerScoringSystem {
                     const holeData = holeScores[h];
                     const par = courseData.holes[h - 1]?.par || 4;
                     const si = courseData.holes[h - 1]?.handicap || h;
-                    // DEBUG: Log hole 2 data
-                    if (h === 2) {
-                        console.log(`[LEADERBOARD H2] Player: ${playerName} par=${par} si=${si} hcp=${handicap} gross=${holeData?.gross_score}`);
-                    }
                     if (holeData && holeData.gross_score) {
                         const score = holeData.gross_score;
                         if (h <= 9) outTotal += score; else inTotal += score;
@@ -71789,7 +71785,7 @@ class OrganizerScoringSystem {
     async renderEditScorecard() {
         const container = document.getElementById('editScoreScorecardContainer');
         const courseData = await this.loadEditCourseData();
-        const handicap = this.editingRound.handicap_used || 0;
+        const handicap = Math.round(this.editingRound.handicap_used || 0);
 
         const renderNine = (start, end, label) => {
             let html = `<div class="mb-3"><h4 class="font-semibold mb-2 text-gray-800">${label}</h4>
@@ -71823,19 +71819,13 @@ class OrganizerScoringSystem {
 
     calcStablefordPts(score, par, handicap, si) {
         if (!score) return 0;
-        // CRITICAL: Round handicap to integer for stroke allocation!
+        // Round handicap to integer for stroke allocation
         const roundedHcp = Math.round(handicap);
         const fullStrokes = Math.floor(roundedHcp / 18);
         const remainingStrokes = roundedHcp % 18;
         const shotsOnHole = fullStrokes + (si <= remainingStrokes ? 1 : 0);
         const netScore = score - shotsOnHole;
         const scoreToPar = netScore - par;
-
-        // DEBUG: Log hole 2 calculation
-        if (si === 3 && par === 4) {
-            console.log(`[HOLE 2 DEBUG] score=${score} par=${par} hcp=${handicap}→${roundedHcp} si=${si} fullStrokes=${fullStrokes} remaining=${remainingStrokes} shotsOnHole=${shotsOnHole} net=${netScore} toPar=${scoreToPar}`);
-        }
-
         if (scoreToPar <= -2) return 4;
         if (scoreToPar === -1) return 3;
         if (scoreToPar === 0) return 2;
@@ -71847,7 +71837,7 @@ class OrganizerScoringSystem {
         this.editScoreData[holeNumber] = value ? parseInt(value) : null;
         this.updateEditScoreTotals();
         const courseData = await this.loadEditCourseData();
-        const handicap = this.editingRound.handicap_used || 0;
+        const handicap = Math.round(this.editingRound.handicap_used || 0);
         const pts = this.calcStablefordPts(this.editScoreData[holeNumber], courseData.holes[holeNumber - 1]?.par || 4, handicap, courseData.holes[holeNumber - 1]?.handicap || holeNumber);
         const ptsEl = document.getElementById(`editPts${holeNumber}`);
         if (ptsEl) {
@@ -71858,7 +71848,7 @@ class OrganizerScoringSystem {
 
     async updateEditScoreTotals() {
         const courseData = await this.loadEditCourseData();
-        const handicap = this.editingRound?.handicap_used || 0;
+        const handicap = Math.round(this.editingRound?.handicap_used || 0);
         let totalGross = 0, totalStableford = 0, holesCompleted = 0;
 
         for (let h = 1; h <= 18; h++) {
@@ -71881,7 +71871,7 @@ class OrganizerScoringSystem {
 
         try {
             const courseData = await this.loadEditCourseData();
-            const handicap = this.editingRound.handicap_used || 0;
+            const handicap = Math.round(this.editingRound.handicap_used || 0);
             let totalGross = 0, totalStableford = 0, holesCompleted = 0;
 
             for (let h = 1; h <= 18; h++) {

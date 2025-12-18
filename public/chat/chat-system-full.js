@@ -1,5 +1,5 @@
 // Full chat UI glue (vanilla JS) wired to Supabase helpers
-import { openOrCreateDM, listRooms, fetchMessages, sendMessage, subscribeToConversation, markRead, typing, subscribeTyping, getUnreadCount, updateUnreadBadge, deleteRoom, archiveRoom, unarchiveRoom, isRoomArchived } from './chat-database-functions.js?v=c00b0504';
+import { openOrCreateDM, listRooms, fetchMessages, sendMessage, subscribeToConversation, markRead, typing, subscribeTyping, getUnreadCount, updateUnreadBadge, deleteRoom, archiveRoom, unarchiveRoom, isRoomArchived, getGroupReadCount, getGroupLatestReadCount, subscribeToReadReceipts } from './chat-database-functions.js?v=c00b0504';
 import { getSupabaseClient } from './supabaseClient.js?v=c00b0504';
 import { ensureSupabaseSessionWithLIFF } from './auth-bridge-v2.js?v=c00b0504';
 
@@ -17,10 +17,12 @@ import { ensureSupabaseSessionWithLIFF } from './auth-bridge-v2.js?v=c00b0504';
 const state = {
   currentConversationId: null,
   currentUserId: null, // Store current user ID
+  currentRoomType: null, // 'group' or 'direct' - for read receipt display
   channels: {},
   userRoomMap: {}, // Maps user IDs to room IDs for badge updates
   globalSub: null, // Singleton global subscription
   roomSubs: new Map(), // roomId -> channel (singleton per room)
+  readReceiptChannel: null, // Channel for read receipt updates
   lastRealtimeAt: 0, // Timestamp of last realtime message
   backfillInFlight: false, // Prevent concurrent backfills
   lastBackfillAt: 0, // Timestamp of last backfill
@@ -202,12 +204,16 @@ function renderMessage(m, currentUserId) {
   const wrapper = document.createElement('div');
   wrapper.className = 'msg';
   wrapper.dataset.mid = m.id;
+  wrapper.dataset.createdAt = m.created_at; // Store for read receipt updates
   wrapper.style.cssText = `display: flex; justify-content: ${isSelf ? 'flex-end' : 'flex-start'}; margin: 0.5rem 0;`;
+
+  // Container for bubble + read receipt
+  const messageContainer = document.createElement('div');
+  messageContainer.style.cssText = 'display: flex; flex-direction: column; align-items: flex-end; max-width: 70%;';
 
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
   bubble.style.cssText = `
-    max-width: 70%;
     padding: 0.5rem 0.875rem;
     border-radius: 1rem;
     background: ${isSelf ? '#10b981' : '#f3f4f6'};
@@ -219,9 +225,112 @@ function renderMessage(m, currentUserId) {
 
   // Production schema: text-only messages
   bubble.innerHTML = escapeHTML(m.content || '');
+  messageContainer.appendChild(bubble);
 
-  wrapper.appendChild(bubble);
+  // Add read receipt indicator for sent messages in group chats
+  if (isSelf && state.currentRoomType === 'group') {
+    const readReceipt = document.createElement('div');
+    readReceipt.className = 'read-receipt';
+    readReceipt.id = `read-receipt-${m.id}`;
+    readReceipt.style.cssText = `
+      font-size: 11px;
+      color: #9ca3af;
+      margin-top: 2px;
+      padding-right: 4px;
+    `;
+    readReceipt.textContent = '...'; // Placeholder while loading
+    messageContainer.appendChild(readReceipt);
+
+    // Async load read count (don't block render)
+    loadReadReceiptForMessage(m.id, m.room_id, m.created_at, currentUserId);
+  }
+
+  wrapper.appendChild(messageContainer);
   return wrapper;
+}
+
+/**
+ * Async load read receipt count for a message
+ */
+async function loadReadReceiptForMessage(messageId, roomId, createdAt, senderId) {
+  try {
+    const { read, total } = await getGroupReadCount(roomId, createdAt, senderId);
+    const readReceiptEl = document.getElementById(`read-receipt-${messageId}`);
+    if (readReceiptEl) {
+      if (total === 0) {
+        readReceiptEl.textContent = ''; // No other members
+      } else {
+        readReceiptEl.textContent = `✓ ${read}/${total}`;
+        // Green checkmark if all have read
+        if (read === total) {
+          readReceiptEl.style.color = '#10b981';
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Chat] Error loading read receipt:', err);
+  }
+}
+
+/**
+ * Update all visible read receipts (called when someone reads messages)
+ */
+async function updateAllReadReceipts() {
+  if (state.currentRoomType !== 'group' || !state.currentConversationId || !cachedUserId) {
+    return;
+  }
+
+  const readReceipts = document.querySelectorAll('.read-receipt');
+  for (const el of readReceipts) {
+    const messageId = el.id.replace('read-receipt-', '');
+    const msgWrapper = document.querySelector(`[data-mid="${messageId}"]`);
+    if (msgWrapper) {
+      const createdAt = msgWrapper.dataset.createdAt;
+      if (createdAt) {
+        loadReadReceiptForMessage(messageId, state.currentConversationId, createdAt, cachedUserId);
+      }
+    }
+  }
+}
+
+/**
+ * Load read count for a group room in the sidebar
+ * Shows X/Y where X = members who read latest message, Y = total members (excluding sender)
+ */
+async function loadSidebarReadCount(roomId, userId, readCountEl) {
+  try {
+    const result = await getGroupLatestReadCount(roomId, userId);
+    if (!result || result.total === 0) {
+      readCountEl.style.display = 'none';
+      return;
+    }
+
+    readCountEl.textContent = `✓ ${result.read}/${result.total}`;
+    readCountEl.style.display = 'inline';
+
+    // Green if all members have read
+    if (result.read === result.total) {
+      readCountEl.style.color = '#10b981';
+    } else {
+      readCountEl.style.color = '#9ca3af';
+    }
+  } catch (err) {
+    console.error('[Chat] Error loading sidebar read count:', err);
+    readCountEl.style.display = 'none';
+  }
+}
+
+/**
+ * Update sidebar read counts for all group rooms (called after sending a message)
+ */
+async function updateSidebarReadCounts() {
+  const readCountEls = document.querySelectorAll('.group-read-count');
+  for (const el of readCountEls) {
+    const roomId = el.id.replace('group-read-count-', '');
+    if (roomId && cachedUserId) {
+      loadSidebarReadCount(roomId, cachedUserId, el);
+    }
+  }
 }
 
 async function openConversation(conversationId) {
@@ -231,6 +340,40 @@ async function openConversation(conversationId) {
   // Clean up previously opened conversation channel (prevents duplicate subscriptions)
   const previousConversationId = state.currentConversationId;
   state.currentConversationId = conversationId;
+
+  // Fetch room type to enable read receipts for groups
+  try {
+    const { data: roomData } = await supabase
+      .from('chat_rooms')
+      .select('type')
+      .eq('id', conversationId)
+      .single();
+    state.currentRoomType = roomData?.type || 'direct';
+    console.log('[Chat] Room type:', state.currentRoomType);
+  } catch (err) {
+    console.warn('[Chat] Could not determine room type:', err);
+    state.currentRoomType = 'direct';
+  }
+
+  // Clean up previous read receipt subscription
+  if (state.readReceiptChannel) {
+    try {
+      await supabase.removeChannel(state.readReceiptChannel);
+    } catch (err) {
+      console.warn('[Chat] Error removing read receipt channel:', err);
+    }
+    state.readReceiptChannel = null;
+  }
+
+  // Subscribe to read receipt updates for group chats
+  if (state.currentRoomType === 'group') {
+    state.readReceiptChannel = await subscribeToReadReceipts(conversationId, () => {
+      // When a member reads messages, update all visible read receipts
+      updateAllReadReceipts();
+      // Also update sidebar read counts
+      updateSidebarReadCounts();
+    });
+  }
 
   // CRITICAL FIX: Retry if DOM elements not ready yet
   let listEl = document.querySelector('#messages');
@@ -443,6 +586,11 @@ async function sendCurrent() {
     await sendMessage(state.currentConversationId, body);
     console.log('[Chat] ✅ Message sent successfully to database');
 
+    // Update sidebar read counts for groups (new message = 0 reads initially)
+    if (state.currentRoomType === 'group') {
+      setTimeout(() => updateSidebarReadCounts(), 500);
+    }
+
     // Remove temp message when real one arrives (realtime subscription will add it)
     // The dedup logic will prevent the realtime message from being added twice
   } catch (error) {
@@ -578,6 +726,22 @@ function createRoomListItem(room, userId) {
     display: none;
   `;
 
+  // Read receipt count for groups (shows X/Y members who read latest message)
+  let readCountEl = null;
+  if (room.type === 'group') {
+    readCountEl = document.createElement('span');
+    readCountEl.id = `group-read-count-${room.id}`;
+    readCountEl.className = 'group-read-count';
+    readCountEl.style.cssText = `
+      font-size: 11px;
+      color: #9ca3af;
+      padding: 2px 6px;
+      display: none;
+    `;
+    // Load read count async (don't block UI)
+    loadSidebarReadCount(room.id, userId, readCountEl);
+  }
+
   // Archive button
   const archiveBtn = document.createElement('button');
   archiveBtn.textContent = isArchived ? '📂' : '🗂';
@@ -636,6 +800,9 @@ function createRoomListItem(room, userId) {
   };
 
   rightContainer.appendChild(badge);
+  if (readCountEl) {
+    rightContainer.appendChild(readCountEl);
+  }
   rightContainer.appendChild(archiveBtn);
   rightContainer.appendChild(deleteBtn);
 
@@ -1245,7 +1412,7 @@ function removeUIEventListeners() {
  */
 export async function initChat() {
   // Show version indicator (visible on mobile)
-  console.log('[Chat] ⚡ VERSION: 2025-10-15-INSTANT-LOAD-FIX');
+  console.log('[Chat] ⚡ VERSION: 2025-12-18-GROUP-READ-RECEIPTS');
   const startTime = performance.now();
 
   // Initialize UI element references and clear any stale listeners from prior init
@@ -1862,6 +2029,17 @@ export async function teardownChat() {
     }
   }
   state.roomSubs.clear();
+
+  // Unsubscribe read receipt channel
+  if (state.readReceiptChannel) {
+    try {
+      const supabase = await getSupabaseClient();
+      await supabase.removeChannel(state.readReceiptChannel);
+    } catch (err) {
+      console.warn('[Chat] Error removing read receipt channel:', err);
+    }
+    state.readReceiptChannel = null;
+  }
 
   // Clear old channels map
   const supabase = await getSupabaseClient();

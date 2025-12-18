@@ -525,3 +525,101 @@ export function isRoomArchived(roomId, userId) {
   const archived = JSON.parse(localStorage.getItem(archiveKey) || '[]');
   return archived.includes(roomId);
 }
+
+/**
+ * Get read count for a group message
+ * @param {string} roomId - The room ID
+ * @param {string} messageCreatedAt - The message created_at timestamp
+ * @param {string} senderId - The message sender ID (to exclude from count)
+ * @returns {Promise<{read: number, total: number}>} - Read count and total members (excluding sender)
+ */
+export async function getGroupReadCount(roomId, messageCreatedAt, senderId) {
+  const supabase = await getSupabaseClient();
+
+  // Get all members in the room (excluding the sender)
+  const { data: members, error } = await supabase
+    .from('chat_room_members')
+    .select('user_id, last_read_at')
+    .eq('room_id', roomId)
+    .eq('status', 'approved')
+    .neq('user_id', senderId);
+
+  if (error) {
+    console.error('[Chat] Error getting group read count:', error);
+    return { read: 0, total: 0 };
+  }
+
+  const total = members?.length || 0;
+  const messageTime = new Date(messageCreatedAt).getTime();
+
+  // Count members who have read (last_read_at >= message created_at)
+  const read = (members || []).filter(m => {
+    if (!m.last_read_at) return false;
+    return new Date(m.last_read_at).getTime() >= messageTime;
+  }).length;
+
+  return { read, total };
+}
+
+/**
+ * Get read count for the latest message in a group room (for sidebar display)
+ * @param {string} roomId - The room ID
+ * @param {string} currentUserId - Current user ID
+ * @returns {Promise<{read: number, total: number, hasUnread: boolean} | null>} - Read info or null if not a group/no messages
+ */
+export async function getGroupLatestReadCount(roomId, currentUserId) {
+  const supabase = await getSupabaseClient();
+
+  // Get the latest message sent by current user in this room
+  const { data: latestMessage, error: msgError } = await supabase
+    .from('chat_messages')
+    .select('id, created_at, sender')
+    .eq('room_id', roomId)
+    .eq('sender', currentUserId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (msgError || !latestMessage) {
+    // No messages sent by current user in this room
+    return null;
+  }
+
+  // Get read count for this message
+  const { read, total } = await getGroupReadCount(roomId, latestMessage.created_at, currentUserId);
+
+  return {
+    read,
+    total,
+    hasUnread: read < total
+  };
+}
+
+/**
+ * Subscribe to read receipt updates for a room
+ * @param {string} roomId - The room ID
+ * @param {function} onUpdate - Callback when read counts change
+ * @returns {Promise<object>} - Supabase channel
+ */
+export async function subscribeToReadReceipts(roomId, onUpdate) {
+  const supabase = await getSupabaseClient();
+
+  const channel = supabase.channel(`read-receipts:${roomId}`)
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'chat_room_members',
+      filter: `room_id=eq.${roomId}`
+    }, (payload) => {
+      console.log('[Chat] Read receipt update:', payload);
+      onUpdate && onUpdate(payload.new);
+    });
+
+  channel.subscribe((status) => {
+    if (status === 'SUBSCRIBED') {
+      console.log('[Chat] Subscribed to read receipts for room:', roomId);
+    }
+  });
+
+  return channel;
+}

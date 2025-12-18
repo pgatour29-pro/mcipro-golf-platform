@@ -275,7 +275,7 @@ LiveScorecardManager.renderHoleByHoleLeaderboard = function(leaderboard) {
         const totalScore = entry.total_gross || 0;
 
         html += `
-            <tr class="border-b border-gray-200 hover:bg-gray-50">
+            <tr class="border-b border-gray-200">
                 <td class="px-3 py-2 font-semibold text-gray-900 sticky left-0 bg-white z-10">${entry.player_name}</td>
                 <td class="px-2 py-2 text-center text-gray-600">${entry.handicap || 0}</td>
         `;
@@ -386,7 +386,7 @@ LiveScorecardManager.renderGroupLeaderboard = function(leaderboard) {
                 </button>
                 <button onclick="LiveScorecardManager.switchLeaderboardView('holeByHole')"
                         id="leaderboardViewHoleByHole"
-                        class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-600 hover:text-gray-900">
+                        class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-600">
                     <span class="material-symbols-outlined text-xs align-middle">grid_view</span>
                     Hole-by-Hole
                 </button>

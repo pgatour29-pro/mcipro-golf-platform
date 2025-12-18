@@ -71583,6 +71583,7 @@ class OrganizerScoringSystem {
                 const playerName = this.getPlayerName(round.golfer_id);
                 const handicap = Math.round(round.handicap_used || 0);
                 let outTotal = 0, inTotal = 0;
+                let recalculatedStableford = 0;  // RECALCULATE using correct SI!
 
                 html += `<tr class="border-b border-gray-200 hover:bg-gray-50">
                     <td class="px-2 py-1 font-semibold sticky left-0 bg-white z-10">${playerName}</td>
@@ -71591,9 +71592,13 @@ class OrganizerScoringSystem {
                 for (let h = 1; h <= 18; h++) {
                     const holeData = holeScores[h];
                     const par = courseData.holes[h - 1]?.par || 4;
+                    const si = courseData.holes[h - 1]?.handicap || h;
                     if (holeData && holeData.gross_score) {
                         const score = holeData.gross_score;
                         if (h <= 9) outTotal += score; else inTotal += score;
+                        // Recalculate stableford points using correct SI
+                        const pts = this.calcStablefordPts(score, par, handicap, si);
+                        recalculatedStableford += pts;
                         let bgClass = '';
                         if (score < par - 1) bgClass = 'bg-yellow-500 text-white font-bold';
                         else if (score === par - 1) bgClass = 'bg-red-500 text-white font-bold';
@@ -71607,7 +71612,7 @@ class OrganizerScoringSystem {
                 }
 
                 const totalGross = round.total_gross || (outTotal + inTotal) || '-';
-                const stableford = round.total_stableford || '-';
+                const stableford = recalculatedStableford || '-';  // USE RECALCULATED VALUE!
                 html += `<td class="px-2 py-1 text-center font-semibold border-l-2 border-gray-300 bg-gray-50">${outTotal || '-'}</td>
                          <td class="px-2 py-1 text-center font-semibold bg-gray-50">${inTotal || '-'}</td>
                          <td class="px-2 py-1 text-center font-bold bg-green-50">${totalGross}</td>
@@ -71705,7 +71710,6 @@ class OrganizerScoringSystem {
         }
 
         console.log('[OrganizerScoring] Mapped course name to ID:', courseName, '->', courseId);
-        alert('DEBUG: Course mapped to: ' + courseId);
 
         if (!courseId) {
             console.warn('[OrganizerScoring] No course_id found for:', courseName, '- using defaults');
@@ -71739,7 +71743,6 @@ class OrganizerScoringSystem {
         // Use hardcoded data if available (most reliable)
         if (verifiedCourseData[courseId]) {
             console.log('[OrganizerScoring] Using VERIFIED hardcoded data for', courseId, '- Hole 2 SI:', verifiedCourseData[courseId][1].handicap);
-            alert('USING HARDCODED DATA - Hole 2 SI = ' + verifiedCourseData[courseId][1].handicap);
             return { holes: verifiedCourseData[courseId] };
         }
 

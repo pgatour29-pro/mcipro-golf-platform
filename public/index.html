@@ -71711,8 +71711,28 @@ class OrganizerScoringSystem {
             return { holes: Array.from({ length: 18 }, (_, i) => ({ hole_number: i + 1, par: 4, handicap: i + 1 })) };
         }
 
+        // PRIORITY 1: Load from verified local JSON files (most reliable source)
         try {
-            // Try white tee first (most common), then fallback to any tee
+            const jsonUrl = `scorecard_profiles/${courseId}_data.json`;
+            console.log('[OrganizerScoring] Trying to load from JSON:', jsonUrl);
+            const response = await fetch(jsonUrl);
+            if (response.ok) {
+                const jsonData = await response.json();
+                const allHoles = [
+                    ...(jsonData.front_nine?.holes || []),
+                    ...(jsonData.back_nine?.holes || [])
+                ];
+                if (allHoles.length === 18) {
+                    console.log('[OrganizerScoring] Loaded from JSON - Hole 2 SI:', allHoles[1]?.handicap);
+                    return { holes: allHoles.map(h => ({ hole_number: h.hole, par: h.par, handicap: h.handicap })) };
+                }
+            }
+        } catch (jsonErr) {
+            console.log('[OrganizerScoring] JSON not available, falling back to database');
+        }
+
+        // PRIORITY 2: Fallback to database (may have stale data)
+        try {
             let { data: holes, error } = await window.SupabaseDB.client
                 .from('course_holes')
                 .select('hole_number, par, stroke_index')
@@ -71721,7 +71741,6 @@ class OrganizerScoringSystem {
                 .order('hole_number')
                 .limit(18);
 
-            // Fallback: if no white tee data, try without tee filter
             if (!error && (!holes || holes.length === 0)) {
                 console.log('[OrganizerScoring] No white tee data, trying any tee...');
                 const fallback = await window.SupabaseDB.client
@@ -71735,9 +71754,6 @@ class OrganizerScoringSystem {
             }
 
             console.log('[OrganizerScoring] Loaded course_holes for', courseId, ':', holes?.length, 'holes');
-            if (holes?.length > 0) {
-                console.log('[OrganizerScoring] Sample hole data:', holes[0], holes[7]);
-            }
 
             if (error || !holes || holes.length === 0) {
                 console.warn('[OrganizerScoring] No holes found for course:', courseId);

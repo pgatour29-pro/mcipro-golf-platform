@@ -191,55 +191,12 @@ class TimeWindowedLeaderboards {
 
             console.log('[TimeWindowedLeaderboards] Query event_results:', { period, startDateStr, endDateStr, societyFilter: filterSociety });
 
-            // Build event filter based on society
-            let eventIds = [];
-
-            if (filterSociety && filterSociety !== 'platform') {
-                // Get society name for prefix matching
-                const { data: society } = await this.supabase
-                    .from('societies')
-                    .select('name')
-                    .eq('id', filterSociety)
-                    .single();
-
-                if (society && society.name) {
-                    // Derive prefix from society name
-                    const prefix = society.name.includes('Travellers') ? 'TRGG -' :
-                                  society.name.includes('JOA') ? 'JOA Golf' :
-                                  society.name.split(' ').map(w => w[0]).join('').toUpperCase() + ' -';
-
-                    // Get events for this society in the date range
-                    const { data: events } = await this.supabase
-                        .from('society_events')
-                        .select('id')
-                        .ilike('title', `${prefix}%`)
-                        .gte('event_date', startDateStr)
-                        .lt('event_date', endDateStr);
-
-                    eventIds = (events || []).map(e => e.id);
-                    console.log('[TimeWindowedLeaderboards] Society', society.name, 'has', eventIds.length, 'events in period');
-                }
-            } else {
-                // Platform-wide: Get all events in the date range
-                const { data: events } = await this.supabase
-                    .from('society_events')
-                    .select('id')
-                    .gte('event_date', startDateStr)
-                    .lt('event_date', endDateStr);
-
-                eventIds = (events || []).map(e => e.id);
-                console.log('[TimeWindowedLeaderboards] Platform has', eventIds.length, 'events in period');
-            }
-
-            if (eventIds.length === 0) {
-                return { success: true, standings: [] };
-            }
-
-            // Query event_results for these events (same table as My Standings)
+            // Query event_results directly by event_date (no society_events dependency)
             const { data: results, error } = await this.supabase
                 .from('event_results')
                 .select('*')
-                .in('event_id', eventIds);
+                .gte('event_date', startDateStr)
+                .lt('event_date', endDateStr);
 
             if (error) {
                 console.error('[TimeWindowedLeaderboards] Query error:', error);

@@ -72053,9 +72053,126 @@ class OrganizerScoringSystem {
         }
     }
 
-    assignPoints() {
-        this.renderLeaderboard();
-        NotificationManager.show('Points assigned to leaderboard!', 'success');
+    async assignPoints() {
+        if (!this.currentEventId) {
+            NotificationManager.show('Please select an event first', 'warning');
+            return;
+        }
+
+        // Check if point allocation is empty - apply default linear system
+        const hasPoints = Object.keys(this.pointAllocation).length > 0 &&
+                          Object.values(this.pointAllocation).some(p => p > 0);
+
+        if (!hasPoints) {
+            // Apply default linear point system (10, 9, 8, 7...)
+            const count = this.leaderboardData.length || 10;
+            for (let i = 1; i <= count; i++) {
+                this.pointAllocation[i] = Math.max(0, 11 - i);
+            }
+            this.updatePointsTable();
+            console.log('[OrganizerScoring] Applied default linear point system');
+        }
+
+        try {
+            // Get event details
+            const event = this.allEvents.find(e => e.id === this.currentEventId);
+
+            // Save point allocation to the event
+            const { error: allocError } = await window.SupabaseDB.client
+                .from('society_events')
+                .update({ point_allocation: this.pointAllocation })
+                .eq('id', this.currentEventId);
+
+            if (allocError) {
+                console.error('[OrganizerScoring] Error saving point allocation:', allocError);
+            }
+
+            // Calculate leaderboard with positions
+            const leaderboard = this.calculatePositions(this.leaderboardData);
+
+            if (leaderboard.length === 0) {
+                NotificationManager.show('No scores to assign points to', 'warning');
+                return;
+            }
+
+            // Prepare results for database
+            const resultsToSave = leaderboard.map(entry => ({
+                event_id: this.currentEventId,
+                round_id: entry.id || null,
+                player_id: entry.golfer_id,
+                player_name: entry.player_name || this.getPlayerName(entry.golfer_id, entry),
+                division: entry.division || null,
+                position: entry.position,
+                score: this.getScoreForFormat(entry, this.currentFormat),
+                score_type: this.currentFormat,
+                points_earned: this.pointAllocation[entry.position] || 0,
+                status: entry.status || 'completed',
+                is_counted: true,
+                event_date: event?.event_date?.split('T')[0] || new Date().toISOString().split('T')[0]
+            }));
+
+            // Delete existing results for this event (allows re-assigning)
+            await window.SupabaseDB.client
+                .from('event_results')
+                .delete()
+                .eq('event_id', this.currentEventId);
+
+            // Insert new results
+            const { error: resultsError } = await window.SupabaseDB.client
+                .from('event_results')
+                .insert(resultsToSave);
+
+            if (resultsError) {
+                console.error('[OrganizerScoring] Error saving results:', resultsError);
+                NotificationManager.show('Points displayed but save failed: ' + resultsError.message, 'warning');
+            } else {
+                console.log('[OrganizerScoring] Saved', resultsToSave.length, 'results with points');
+            }
+
+            // Re-render to show points
+            this.renderLeaderboard();
+
+            // Build summary message
+            const pointsSummary = leaderboard
+                .filter(e => this.pointAllocation[e.position] > 0)
+                .slice(0, 5)
+                .map(e => `${e.position}. ${e.player_name || this.getPlayerName(e.golfer_id, e)}: +${this.pointAllocation[e.position]}pts`)
+                .join('\n');
+
+            NotificationManager.show(
+                `Championship points assigned!\n${leaderboard.length} players scored.`,
+                'success'
+            );
+
+        } catch (error) {
+            console.error('[OrganizerScoring] Error assigning points:', error);
+            NotificationManager.show('Error assigning points: ' + error.message, 'error');
+        }
+    }
+
+    // Helper to calculate positions from sorted leaderboard data
+    calculatePositions(data) {
+        if (!data || data.length === 0) return [];
+
+        // Sort based on current format
+        const sorted = [...data];
+        switch (this.currentFormat) {
+            case 'stableford':
+                sorted.sort((a, b) => (b.total_stableford || 0) - (a.total_stableford || 0));
+                break;
+            case 'strokeplay':
+            case 'scramble':
+                sorted.sort((a, b) => (a.total_gross || 999) - (b.total_gross || 999));
+                break;
+            default:
+                sorted.sort((a, b) => (b.total_stableford || 0) - (a.total_stableford || 0));
+        }
+
+        // Assign positions
+        return sorted.map((entry, index) => ({
+            ...entry,
+            position: index + 1
+        }));
     }
 
     async publishResults() {

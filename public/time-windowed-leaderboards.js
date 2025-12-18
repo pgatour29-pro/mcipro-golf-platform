@@ -205,29 +205,44 @@ class TimeWindowedLeaderboards {
             // If filtering by a specific society, get the list of events for that society
             let societyEventIds = null;
             if (filterSociety && filterSociety !== 'platform') {
-                // Get society name from ID to match against organizer_name
+                console.log('[TimeWindowedLeaderboards] Filtering by society ID:', filterSociety);
+
+                // Get events from this society using society_id (direct FK relationship)
+                // Also try organizer_name match as fallback for legacy events
                 const { data: society } = await this.supabase
                     .from('societies')
                     .select('name')
                     .eq('id', filterSociety)
                     .single();
 
-                if (society && society.name) {
-                    console.log('[TimeWindowedLeaderboards] Filtering by society:', society.name);
+                // Query by society_id first (correct way)
+                const { data: eventsBySocietyId } = await this.supabase
+                    .from('society_events')
+                    .select('id')
+                    .eq('society_id', filterSociety);
 
-                    // Get events from this society (by organizer_name since that's what links them)
-                    const { data: societyEvents } = await this.supabase
+                // Also query by organizer_name as fallback for legacy events
+                let eventsByOrganizerName = [];
+                if (society && society.name) {
+                    const { data: legacyEvents } = await this.supabase
                         .from('society_events')
                         .select('id')
                         .eq('organizer_name', society.name);
+                    eventsByOrganizerName = legacyEvents || [];
+                }
 
-                    if (societyEvents && societyEvents.length > 0) {
-                        societyEventIds = new Set(societyEvents.map(e => e.id));
-                        console.log('[TimeWindowedLeaderboards] Society has', societyEventIds.size, 'events');
-                    } else {
-                        console.log('[TimeWindowedLeaderboards] Society has no events');
-                        societyEventIds = new Set(); // Empty set = no events match
-                    }
+                // Combine both result sets (deduplicated)
+                const allEventIds = new Set([
+                    ...(eventsBySocietyId || []).map(e => e.id),
+                    ...eventsByOrganizerName.map(e => e.id)
+                ]);
+
+                if (allEventIds.size > 0) {
+                    societyEventIds = allEventIds;
+                    console.log('[TimeWindowedLeaderboards] Society has', societyEventIds.size, 'events (by society_id:', (eventsBySocietyId || []).length, ', by organizer_name:', eventsByOrganizerName.length, ')');
+                } else {
+                    console.log('[TimeWindowedLeaderboards] Society has no events');
+                    societyEventIds = new Set(); // Empty set = no events match
                 }
             }
 

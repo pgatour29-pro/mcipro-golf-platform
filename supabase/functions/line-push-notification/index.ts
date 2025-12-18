@@ -40,8 +40,23 @@ serve(async (req) => {
       return new Response(null, { headers: corsHeaders });
     }
 
-    const payload: NotificationPayload = await req.json();
-    console.log("[LINE Push] Received payload:", payload.type);
+    const rawBody = await req.text();
+    console.log("[LINE Push] RAW BODY:", rawBody.substring(0, 500));
+
+    const payload = JSON.parse(rawBody);
+    console.log("[LINE Push] Received payload type:", payload.type);
+
+    // FIX: record might be a JSON string instead of object - parse it if so
+    let record = payload.record;
+    if (typeof record === 'string') {
+      console.log("[LINE Push] Record is a string, parsing...");
+      record = JSON.parse(record);
+    }
+    payload.record = record;
+
+    console.log("[LINE Push] Record keys:", Object.keys(record || {}));
+    console.log("[LINE Push] Record room_id:", record?.room_id);
+    console.log("[LINE Push] Record sender:", record?.sender);
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -62,6 +77,9 @@ serve(async (req) => {
         break;
       case "platform_announcement":
         result = await handlePlatformAnnouncement(supabase, payload.record);
+        break;
+      case "group_message":
+        result = await handleGroupMessage(supabase, payload.record);
         break;
       default:
         return new Response(JSON.stringify({ error: "Unknown notification type" }), {
@@ -295,18 +313,86 @@ async function handleEventUpdate(supabase: any, newEvent: any, oldEvent: any) {
 }
 
 // ============================================================================
+// DIRECT MESSAGE HANDLER (for direct_messages table with recipient_id)
+// ============================================================================
+async function handleDirectMessage(supabase: any, message: any) {
+  const recipientId = message.recipient_id;
+
+  // Only notify LINE users
+  if (!recipientId?.startsWith("U")) {
+    return { success: true, notified: 0, reason: "not_line_user" };
+  }
+
+  // Get recipient's messaging_user_id
+  const { data: recipient } = await supabase
+    .from("user_profiles")
+    .select("messaging_user_id, name")
+    .eq("line_user_id", recipientId)
+    .single();
+
+  if (!recipient?.messaging_user_id) {
+    console.log("[LINE Push] Recipient has no messaging_user_id:", recipientId);
+    return { success: true, notified: 0, reason: "no_messaging_id" };
+  }
+
+  // Check if user wants message notifications
+  const { data: prefs } = await supabase
+    .from("notification_preferences")
+    .select("notify_messages")
+    .eq("user_id", recipientId)
+    .single();
+
+  if (prefs?.notify_messages === false) {
+    return { success: true, notified: 0, reason: "opted_out" };
+  }
+
+  // Get sender name
+  const { data: sender } = await supabase
+    .from("user_profiles")
+    .select("name, display_name")
+    .eq("line_user_id", message.sender_id)
+    .single();
+
+  const senderName = sender?.display_name || sender?.name || "Someone";
+
+  // Truncate message preview
+  const preview = message.content?.substring(0, 50) + (message.content?.length > 50 ? "..." : "");
+
+  const lineMessage: LineMessage = {
+    type: "text",
+    text: `💬 New message from ${senderName}\n\n"${preview}"\n\nOpen MyCaddiPro to reply.`,
+  };
+
+  const sent = await sendPushMessage(recipient.messaging_user_id, [lineMessage]);
+  return { success: sent, notified: sent ? 1 : 0 };
+}
+
+// ============================================================================
 // NEW MESSAGE NOTIFICATION (Direct Messages AND Group Messages)
 // ============================================================================
 async function handleNewMessage(supabase: any, message: any) {
+  // DEBUG: Log the raw message object to see what we're receiving
+  console.log("[LINE Push] RAW MESSAGE OBJECT:", JSON.stringify(message));
+
   const roomId = message.room_id;
+  const recipientId = message.recipient_id;
   const senderId = message.sender || message.sender_id;
 
-  console.log("[LINE Push] New message - room_id:", roomId, "sender:", senderId);
+  console.log("[LINE Push] New message - room_id:", roomId, "recipient_id:", recipientId, "sender:", senderId);
 
-  if (!roomId) {
-    console.log("[LINE Push] No room_id, skipping");
-    return { success: true, notified: 0, reason: "no_room_id" };
+  // CASE 1: Direct message from direct_messages table (has recipient_id)
+  if (recipientId) {
+    console.log("[LINE Push] Handling as direct message (recipient_id found)");
+    return await handleDirectMessage(supabase, message);
   }
+
+  // CASE 2: Chat message from chat_messages table (has room_id)
+  if (!roomId) {
+    console.log("[LINE Push] No room_id or recipient_id, skipping");
+    return { success: true, notified: 0, reason: "no_room_id_or_recipient" };
+  }
+
+  console.log("[LINE Push] Processing chat_messages - room_id:", roomId, "sender (UUID):", senderId);
 
   // Get room info to determine type (group or direct)
   const { data: room, error: roomError } = await supabase
@@ -327,7 +413,6 @@ async function handleNewMessage(supabase: any, message: any) {
     .from("chat_room_members")
     .select("user_id")
     .eq("room_id", roomId)
-    .eq("status", "approved")
     .neq("user_id", senderId);
 
   if (membersError) {
@@ -340,36 +425,36 @@ async function handleNewMessage(supabase: any, message: any) {
     return { success: true, notified: 0, reason: "no_members" };
   }
 
-  console.log("[LINE Push] Found", members.length, "members to notify");
+  console.log("[LINE Push] Found", members.length, "members to notify:", members.map((m: any) => m.user_id));
 
-  // Get user_ids
+  // Get user_ids (these are UUIDs from chat_room_members)
   const userIds = members.map((m: any) => m.user_id);
 
-  // Look up LINE user IDs from profiles table
-  // First try to find via profiles.id (Supabase auth user id)
-  const { data: profiles } = await supabase
-    .from("profiles")
+  // Look up LINE user IDs from user_profiles table using UUID
+  const { data: profiles, error: profilesError } = await supabase
+    .from("user_profiles")
     .select("id, line_user_id")
     .in("id", userIds);
 
-  // Build a map of user_id -> line_user_id
-  const lineUserIdMap: Record<string, string> = {};
-  (profiles || []).forEach((p: any) => {
-    if (p.line_user_id?.startsWith("U")) {
-      lineUserIdMap[p.id] = p.line_user_id;
-    }
-  });
+  console.log("[LINE Push] Profiles lookup:", profiles?.length || 0, "found, error:", profilesError?.message || "none");
 
   // Collect LINE user IDs to notify
   let lineUserIds: string[] = [];
 
   for (const userId of userIds) {
-    // If user_id is already a LINE ID (starts with U), use it
+    // If user_id is already a LINE ID (starts with U), use it directly
     if (userId?.startsWith("U")) {
       lineUserIds.push(userId);
-    } else if (lineUserIdMap[userId]) {
-      // Otherwise, look up the LINE ID
-      lineUserIds.push(lineUserIdMap[userId]);
+      console.log("[LINE Push] User", userId, "is already a LINE ID");
+    } else {
+      // Look up LINE ID from profiles
+      const profile = (profiles || []).find((p: any) => p.id === userId);
+      if (profile?.line_user_id?.startsWith("U")) {
+        lineUserIds.push(profile.line_user_id);
+        console.log("[LINE Push] User", userId, "-> LINE ID:", profile.line_user_id);
+      } else {
+        console.log("[LINE Push] User", userId, "has no LINE ID in profile");
+      }
     }
   }
 
@@ -381,13 +466,15 @@ async function handleNewMessage(supabase: any, message: any) {
     return { success: true, notified: 0, reason: "no_line_users" };
   }
 
-  console.log("[LINE Push] LINE users to notify:", lineUserIds.length);
+  console.log("[LINE Push] LINE users to notify:", lineUserIds);
 
   // Look up messaging_user_ids from user_profiles
   const { data: userProfiles } = await supabase
     .from("user_profiles")
     .select("line_user_id, messaging_user_id")
     .in("line_user_id", lineUserIds);
+
+  console.log("[LINE Push] user_profiles lookup:", userProfiles?.length || 0, "found");
 
   // Use messaging_user_id if available, otherwise use line_user_id
   const messagingUserIds = (userProfiles || [])
@@ -398,6 +485,8 @@ async function handleNewMessage(supabase: any, message: any) {
   const profileLineIds = new Set((userProfiles || []).map((p: any) => p.line_user_id));
   const missingLineIds = lineUserIds.filter(id => !profileLineIds.has(id));
   const allTargetIds = [...new Set([...messagingUserIds, ...missingLineIds])];
+
+  console.log("[LINE Push] Final target IDs:", allTargetIds);
 
   if (allTargetIds.length === 0) {
     console.log("[LINE Push] No messaging user IDs found");
@@ -419,19 +508,19 @@ async function handleNewMessage(supabase: any, message: any) {
     return { success: true, notified: 0, reason: "all_opted_out" };
   }
 
-  // Get sender name
+  // Get sender name (sender is a UUID, need to look up in user_profiles)
   let senderName = "Someone";
-  // Try profiles table first
   const { data: senderProfile } = await supabase
-    .from("profiles")
-    .select("display_name, username")
+    .from("user_profiles")
+    .select("name, display_name")
     .eq("id", senderId)
     .single();
 
   if (senderProfile) {
-    senderName = senderProfile.display_name || senderProfile.username || "Someone";
+    senderName = senderProfile.display_name || senderProfile.name || "Someone";
+    console.log("[LINE Push] Sender name from user_profiles:", senderName);
   } else {
-    // Try user_profiles table
+    // Sender might be a LINE ID, try user_profiles
     const { data: senderUserProfile } = await supabase
       .from("user_profiles")
       .select("name, display_name")
@@ -440,6 +529,7 @@ async function handleNewMessage(supabase: any, message: any) {
 
     if (senderUserProfile) {
       senderName = senderUserProfile.display_name || senderUserProfile.name || "Someone";
+      console.log("[LINE Push] Sender name from user_profiles:", senderName);
     }
   }
 
@@ -473,6 +563,103 @@ async function handleNewMessage(supabase: any, message: any) {
 
   console.log(`[LINE Push] Notified ${totalSent} users about new ${room.type} message`);
   return { success: true, notified: totalSent, roomType: room.type };
+}
+
+// ============================================================================
+// GROUP MESSAGE NOTIFICATION (from group_chat_messages table)
+// ============================================================================
+async function handleGroupMessage(supabase: any, message: any) {
+  console.log("[LINE Push] Group message - group_id:", message.group_id, "sender:", message.sender_line_id);
+
+  // Get group info
+  const { data: group } = await supabase
+    .from("group_chats")
+    .select("name")
+    .eq("id", message.group_id)
+    .single();
+
+  const groupName = group?.name || "Group Chat";
+
+  // Get all group members except sender
+  const { data: members, error: membersError } = await supabase
+    .from("group_chat_members")
+    .select("member_line_id")
+    .eq("group_id", message.group_id)
+    .neq("member_line_id", message.sender_line_id);
+
+  if (membersError) {
+    console.error("[LINE Push] Error fetching group members:", membersError);
+    return { success: false, error: membersError.message };
+  }
+
+  if (!members || members.length === 0) {
+    console.log("[LINE Push] No group members to notify");
+    return { success: true, notified: 0, reason: "no_members" };
+  }
+
+  // Filter to valid LINE IDs
+  const memberLineIds = members
+    .map((m: any) => m.member_line_id)
+    .filter((id: string) => id?.startsWith("U"));
+
+  console.log("[LINE Push] Group member LINE IDs:", memberLineIds);
+
+  if (memberLineIds.length === 0) {
+    return { success: true, notified: 0, reason: "no_line_users" };
+  }
+
+  // Look up messaging_user_id from user_profiles (same as direct messages)
+  const { data: profiles } = await supabase
+    .from("user_profiles")
+    .select("line_user_id, messaging_user_id")
+    .in("line_user_id", memberLineIds);
+
+  console.log("[LINE Push] Found profiles:", profiles?.length || 0);
+
+  // Use messaging_user_id if available, otherwise line_user_id
+  const lineUserIds = (profiles || [])
+    .map((p: any) => p.messaging_user_id || p.line_user_id)
+    .filter((id: string) => id?.startsWith("U"));
+
+  // Also include LINE IDs without profiles
+  const profileLineIds = new Set((profiles || []).map((p: any) => p.line_user_id));
+  const missingIds = memberLineIds.filter((id: string) => !profileLineIds.has(id));
+  const allTargetIds = [...new Set([...lineUserIds, ...missingIds])];
+
+  console.log("[LINE Push] Final target IDs:", allTargetIds);
+
+  if (allTargetIds.length === 0) {
+    return { success: true, notified: 0, reason: "no_target_ids" };
+  }
+
+  // Get sender name
+  const { data: sender } = await supabase
+    .from("user_profiles")
+    .select("name, display_name")
+    .eq("line_user_id", message.sender_line_id)
+    .single();
+
+  const senderName = sender?.display_name || sender?.name || "Someone";
+
+  // Build message
+  const preview = message.message_text?.substring(0, 50) + (message.message_text?.length > 50 ? "..." : "");
+
+  const lineMessage: LineMessage = {
+    type: "text",
+    text: `👥 ${groupName}\n\n${senderName}: "${preview}"\n\nOpen MyCaddiPro to reply.`,
+  };
+
+  // Send via multicast
+  const batches = chunkArray(allTargetIds, 500);
+  let totalSent = 0;
+
+  for (const batch of batches) {
+    const sent = await sendMulticast(batch, [lineMessage]);
+    totalSent += sent;
+  }
+
+  console.log(`[LINE Push] Notified ${totalSent} users about group message`);
+  return { success: true, notified: totalSent };
 }
 
 // ============================================================================

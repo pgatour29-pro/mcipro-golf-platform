@@ -42,15 +42,20 @@ CREATE OR REPLACE FUNCTION calculate_stableford_points(
     p_stroke_index INT
 ) RETURNS INT AS $$
 DECLARE
+    rounded_hcp INT;
     full_strokes INT;
     remaining_strokes INT;
     shots_received INT;
     net_score INT;
     score_to_par INT;
 BEGIN
+    -- CRITICAL: Round handicap to integer first (2.8 -> 3, not truncate to 2)
+    -- This matches the JavaScript: Math.round(handicap)
+    rounded_hcp := ROUND(p_handicap)::INT;
+
     -- Calculate shots received on this hole
-    full_strokes := FLOOR(p_handicap / 18);
-    remaining_strokes := (p_handicap::INT) % 18;
+    full_strokes := FLOOR(rounded_hcp / 18);
+    remaining_strokes := rounded_hcp % 18;
 
     IF p_stroke_index <= remaining_strokes THEN
         shots_received := full_strokes + 1;
@@ -60,8 +65,9 @@ BEGIN
 
     -- Handle plus handicaps (negative)
     IF p_handicap < 0 THEN
-        full_strokes := FLOOR(ABS(p_handicap) / 18);
-        remaining_strokes := (ABS(p_handicap)::INT) % 18;
+        rounded_hcp := ROUND(ABS(p_handicap))::INT;
+        full_strokes := FLOOR(rounded_hcp / 18);
+        remaining_strokes := rounded_hcp % 18;
         IF p_stroke_index > (18 - remaining_strokes) THEN
             shots_received := -(full_strokes + 1);
         ELSE

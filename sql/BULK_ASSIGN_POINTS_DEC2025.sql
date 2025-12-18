@@ -17,7 +17,7 @@ SELECT
     COUNT(DISTINCT sc.id) as scorecards_count
 FROM society_events se
 LEFT JOIN rounds r ON r.society_event_id = se.id
-LEFT JOIN scorecards sc ON sc.society_event_id = se.id
+LEFT JOIN scorecards sc ON sc.event_id = se.id::text
 WHERE se.event_date >= '2025-12-01'
 GROUP BY se.id, se.title, se.event_date, se.scoring_format
 ORDER BY se.event_date DESC;
@@ -120,9 +120,9 @@ INSERT INTO event_results (
     event_date
 )
 SELECT
-    ranked.society_event_id as event_id,
+    ranked.event_id,
     NULL as round_id,
-    ranked.golfer_id as player_id,
+    ranked.player_id,
     ranked.player_name,
     NULL as division,
     ranked.position,
@@ -134,32 +134,32 @@ SELECT
     ranked.event_date
 FROM (
     SELECT
-        sc.society_event_id,
-        sc.golfer_id,
-        COALESCE(sc.player_name, up.display_name, up.name, sc.golfer_id) as player_name,
+        se.id as event_id,
+        sc.player_id,
+        COALESCE(sc.player_name, up.display_name, up.name, sc.player_id) as player_name,
         sc.total_stableford as score,
         'stableford' as score_type,
         se.event_date::date as event_date,
         ROW_NUMBER() OVER (
-            PARTITION BY sc.society_event_id
+            PARTITION BY se.id
             ORDER BY sc.total_stableford DESC NULLS LAST
         ) as position
     FROM scorecards sc
-    JOIN society_events se ON se.id = sc.society_event_id
-    LEFT JOIN user_profiles up ON up.line_user_id = sc.golfer_id
+    JOIN society_events se ON se.id::text = sc.event_id
+    LEFT JOIN user_profiles up ON up.line_user_id = sc.player_id
     WHERE se.event_date >= '2025-12-01'
     AND sc.status = 'completed'
     AND sc.total_stableford IS NOT NULL
     -- Only include scorecards where there's no corresponding round already inserted
     AND NOT EXISTS (
         SELECT 1 FROM event_results er
-        WHERE er.event_id = sc.society_event_id
-        AND er.player_id = sc.golfer_id
+        WHERE er.event_id = se.id
+        AND er.player_id = sc.player_id
     )
 ) ranked
 -- Also exclude if the event already has results (prefer rounds data)
 WHERE NOT EXISTS (
-    SELECT 1 FROM event_results er WHERE er.event_id = ranked.society_event_id
+    SELECT 1 FROM event_results er WHERE er.event_id = ranked.event_id
 );
 
 -- =====================================================================

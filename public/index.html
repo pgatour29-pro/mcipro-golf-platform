@@ -67853,51 +67853,14 @@ class GolferEventsManager {
 
             const selectedSociety = societyFilter?.value || '';
 
-            // Build list of society prefixes to query
-            const prefixes = societyProfiles
-                .filter(sp => !selectedSociety || sp.society_name === selectedSociety)
-                .map(sp => {
-                    const name = sp.society_name;
-                    return name.includes('Travellers') ? 'TRGG -' :
-                           name.includes('JOA') ? 'JOA Golf' :
-                           name.split(' ').map(w => w[0]).join('').toUpperCase() + ' -';
-                });
+            console.log('[PlayerStandings] Querying event_results directly for year:', selectedYear);
 
-            if (prefixes.length === 0) {
-                if (emptyState) emptyState.style.display = 'block';
-                if (tableBody) tableBody.innerHTML = '';
-                return;
-            }
-
-            console.log('[PlayerStandings] Querying events with prefixes:', prefixes);
-
-            // Get all society events for these societies
-            let allEvents = [];
-            for (const prefix of prefixes) {
-                const { data: events } = await window.SupabaseDB.client
-                    .from('society_events')
-                    .select('id, title, event_date')
-                    .ilike('title', `${prefix}%`)
-                    .gte('event_date', yearStart)
-                    .lte('event_date', yearEnd);
-                if (events) allEvents = allEvents.concat(events);
-            }
-
-            if (allEvents.length === 0) {
-                if (emptyState) emptyState.style.display = 'block';
-                if (tableBody) tableBody.innerHTML = '';
-                this.updatePlayerStatsCards(null, 0, 0);
-                return;
-            }
-
-            const eventIds = allEvents.map(e => e.id);
-            console.log('[PlayerStandings] Found', eventIds.length, 'events');
-
-            // Get all results from event_results
+            // Query event_results directly by date (no society_events dependency)
             const { data: results, error: resultsError } = await window.SupabaseDB.client
                 .from('event_results')
                 .select('*')
-                .in('event_id', eventIds);
+                .gte('event_date', yearStart)
+                .lte('event_date', yearEnd);
 
             if (resultsError) throw resultsError;
 

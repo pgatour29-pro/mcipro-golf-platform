@@ -62426,7 +62426,7 @@ const MessagesSystem = {
                 const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
                 if (isMine) {
-                    // Read receipt for sent messages (DMs only)
+                    // Read receipt for sent messages
                     let readReceipt = '';
                     if (this.currentConversation.type === 'dm') {
                         if (m.is_read) {
@@ -62440,6 +62440,9 @@ const MessagesSystem = {
                                 <span class="material-symbols-outlined" style="font-size: 14px;">check</span>
                             </span>`;
                         }
+                    } else if (this.currentConversation.type === 'group') {
+                        // Group read receipt placeholder - will be updated async
+                        readReceipt = `<span id="group-read-${m.id}" class="text-gray-400 ml-1 text-xs" data-created="${m.created_at}">...</span>`;
                     }
                     return `
                         <div class="flex justify-end mb-3">
@@ -62469,10 +62472,63 @@ const MessagesSystem = {
             // Scroll to bottom
             container.scrollTop = container.scrollHeight;
 
+            // Update group read receipts async (don't block rendering)
+            if (this.currentConversation.type === 'group') {
+                this.updateGroupReadReceipts(this.currentConversation.id);
+            }
+
         } catch (err) {
             console.error('[MessagesSystem] Error loading messages:', err);
             container.innerHTML = '<div class="text-center text-red-500 py-4">Failed to load messages</div>';
         }
+    },
+
+    // Update all group read receipt placeholders
+    async updateGroupReadReceipts(groupId) {
+        const placeholders = document.querySelectorAll('[id^="group-read-"]');
+        if (placeholders.length === 0) return;
+
+        // Get total member count (excluding self)
+        const { data: members } = await window.SupabaseDB.client
+            .from('group_chat_members')
+            .select('member_line_id')
+            .eq('group_id', groupId)
+            .neq('member_line_id', this.userLineId);
+
+        const total = members?.length || 0;
+        if (total === 0) {
+            // No other members, hide all receipts
+            placeholders.forEach(el => el.textContent = '');
+            return;
+        }
+
+        // Get all read timestamps for this group
+        const memberIds = members.map(m => m.member_line_id);
+        const { data: reads } = await window.SupabaseDB.client
+            .from('group_chat_reads')
+            .select('reader_line_id, last_read_at')
+            .eq('group_id', groupId)
+            .in('reader_line_id', memberIds);
+
+        const readMap = {};
+        (reads || []).forEach(r => {
+            readMap[r.reader_line_id] = new Date(r.last_read_at).getTime();
+        });
+
+        // Update each placeholder
+        placeholders.forEach(el => {
+            const createdAt = el.dataset.created;
+            if (!createdAt) return;
+
+            const messageTime = new Date(createdAt).getTime();
+            const readCount = memberIds.filter(id => {
+                const readTime = readMap[id];
+                return readTime && readTime >= messageTime;
+            }).length;
+
+            el.textContent = `✓ ${readCount}/${total}`;
+            el.style.color = readCount === total ? '#10b981' : '#9ca3af'; // Green if all read
+        });
     },
 
     async sendMessage() {
@@ -63227,6 +63283,49 @@ const MessagesSystem = {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    },
+
+    // Get read count for a group message (how many members have read it)
+    async getGroupReadCount(groupId, messageCreatedAt) {
+        try {
+            // Get total members in group (excluding sender)
+            const { data: members, error: membersError } = await window.SupabaseDB.client
+                .from('group_chat_members')
+                .select('member_line_id')
+                .eq('group_id', groupId)
+                .neq('member_line_id', this.userLineId);
+
+            if (membersError || !members) {
+                return { read: 0, total: 0 };
+            }
+
+            const total = members.length;
+            if (total === 0) return { read: 0, total: 0 };
+
+            // Get read timestamps for all members
+            const memberIds = members.map(m => m.member_line_id);
+            const { data: reads, error: readsError } = await window.SupabaseDB.client
+                .from('group_chat_reads')
+                .select('reader_line_id, last_read_at')
+                .eq('group_id', groupId)
+                .in('reader_line_id', memberIds);
+
+            if (readsError) {
+                return { read: 0, total };
+            }
+
+            // Count members who have read (last_read_at >= message created_at)
+            const messageTime = new Date(messageCreatedAt).getTime();
+            const readCount = (reads || []).filter(r => {
+                if (!r.last_read_at) return false;
+                return new Date(r.last_read_at).getTime() >= messageTime;
+            }).length;
+
+            return { read: readCount, total };
+        } catch (err) {
+            console.error('[MessagesSystem] Error getting group read count:', err);
+            return { read: 0, total: 0 };
+        }
     },
 
     // ========== GROUP CHATS ==========

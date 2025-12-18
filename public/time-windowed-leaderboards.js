@@ -148,8 +148,8 @@ class TimeWindowedLeaderboards {
     }
 
     async getStandings(period, societyFilter = null) {
-        // LEADERBOARD RESET: Starting fresh from 2025-12-12
-        const LEADERBOARD_START_DATE = '2025-12-12';
+        // UNIFIED LEADERBOARD: Uses event_results table (same as My Standings)
+        // Points come from assignPoints() in scoring page (linear: 10, 9, 8, 7...)
 
         if (!this.supabase) {
             return { success: false, error: 'Supabase not initialized' };
@@ -157,194 +157,149 @@ class TimeWindowedLeaderboards {
 
         try {
             const now = new Date();
-            const currentYear = now.getFullYear();
-            let startDate;
+            let startDate, endDate;
 
             switch (period) {
                 case 'daily':
                     startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
                     break;
                 case 'weekly':
                     const dayOfWeek = now.getDay();
                     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
                     startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
+                    endDate = new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000);
                     break;
                 case 'monthly':
                     startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
                     break;
                 case 'yearly':
                     startDate = new Date(now.getFullYear(), 0, 1);
+                    endDate = new Date(now.getFullYear() + 1, 0, 1);
                     break;
                 default:
                     startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
             }
 
-            let startDateStr = startDate.toISOString().split('T')[0];
-            if (startDateStr < LEADERBOARD_START_DATE) {
-                startDateStr = LEADERBOARD_START_DATE;
-            }
-
-            // FedEx Cup style point system
-            const FEDEX_POINTS = {
-                1: 100, 2: 50, 3: 35, 4: 25, 5: 20,
-                6: 15, 7: 12, 8: 10, 9: 8, 10: 6,
-                11: 5, 12: 4, 13: 3, 14: 2, 15: 1
-            };
+            const startDateStr = startDate.toISOString().split('T')[0];
+            const endDateStr = endDate.toISOString().split('T')[0];
 
             // Use the current society filter if not explicitly provided
             const filterSociety = societyFilter || this.currentSociety;
 
-            // Query scorecards with scores for the period (no status filter - some may not have status set)
-            const { data: scorecards, error } = await this.supabase
-                .from('scorecards')
-                .select('id, player_id, event_id, total_gross, total_net, created_at, scores(*)')
-                .gte('created_at', startDateStr + 'T00:00:00.000Z');
+            console.log('[TimeWindowedLeaderboards] Query event_results:', { period, startDateStr, endDateStr, societyFilter: filterSociety });
 
-            console.log('[TimeWindowedLeaderboards] Query:', { startDateStr, count: scorecards?.length || 0, societyFilter: filterSociety });
+            // Build event filter based on society
+            let eventIds = [];
 
-            // If filtering by a specific society, get the list of events for that society
-            let societyEventIds = null;
             if (filterSociety && filterSociety !== 'platform') {
-                console.log('[TimeWindowedLeaderboards] Filtering by society ID:', filterSociety);
-
-                // Get events from this society using society_id (direct FK relationship)
-                // Also try organizer_name match as fallback for legacy events
+                // Get society name for prefix matching
                 const { data: society } = await this.supabase
                     .from('societies')
                     .select('name')
                     .eq('id', filterSociety)
                     .single();
 
-                // Query by society_id first (correct way)
-                const { data: eventsBySocietyId } = await this.supabase
-                    .from('society_events')
-                    .select('id')
-                    .eq('society_id', filterSociety);
-
-                // Also query by organizer_name as fallback for legacy events
-                let eventsByOrganizerName = [];
                 if (society && society.name) {
-                    const { data: legacyEvents } = await this.supabase
+                    // Derive prefix from society name
+                    const prefix = society.name.includes('Travellers') ? 'TRGG -' :
+                                  society.name.includes('JOA') ? 'JOA Golf' :
+                                  society.name.split(' ').map(w => w[0]).join('').toUpperCase() + ' -';
+
+                    // Get events for this society in the date range
+                    const { data: events } = await this.supabase
                         .from('society_events')
                         .select('id')
-                        .eq('organizer_name', society.name);
-                    eventsByOrganizerName = legacyEvents || [];
-                }
+                        .ilike('title', `${prefix}%`)
+                        .gte('event_date', startDateStr)
+                        .lt('event_date', endDateStr);
 
-                // Combine both result sets (deduplicated)
-                const allEventIds = new Set([
-                    ...(eventsBySocietyId || []).map(e => e.id),
-                    ...eventsByOrganizerName.map(e => e.id)
-                ]);
-
-                if (allEventIds.size > 0) {
-                    societyEventIds = allEventIds;
-                    console.log('[TimeWindowedLeaderboards] Society has', societyEventIds.size, 'events (by society_id:', (eventsBySocietyId || []).length, ', by organizer_name:', eventsByOrganizerName.length, ')');
-                } else {
-                    console.log('[TimeWindowedLeaderboards] Society has no events');
-                    societyEventIds = new Set(); // Empty set = no events match
+                    eventIds = (events || []).map(e => e.id);
+                    console.log('[TimeWindowedLeaderboards] Society', society.name, 'has', eventIds.length, 'events in period');
                 }
+            } else {
+                // Platform-wide: Get all events in the date range
+                const { data: events } = await this.supabase
+                    .from('society_events')
+                    .select('id')
+                    .gte('event_date', startDateStr)
+                    .lt('event_date', endDateStr);
+
+                eventIds = (events || []).map(e => e.id);
+                console.log('[TimeWindowedLeaderboards] Platform has', eventIds.length, 'events in period');
             }
+
+            if (eventIds.length === 0) {
+                return { success: true, standings: [] };
+            }
+
+            // Query event_results for these events (same table as My Standings)
+            const { data: results, error } = await this.supabase
+                .from('event_results')
+                .select('*')
+                .in('event_id', eventIds);
 
             if (error) {
                 console.error('[TimeWindowedLeaderboards] Query error:', error);
                 return { success: false, error: error.message };
             }
 
-            if (!scorecards || scorecards.length === 0) {
+            if (!results || results.length === 0) {
                 return { success: true, standings: [] };
             }
 
-            // Group scorecards by event to calculate positions and award FedEx points
-            const eventGroups = {};
-            for (const card of scorecards) {
-                if (!card.event_id || !card.player_id) continue;
-                if (!card.total_gross && !card.total_net) continue;
+            console.log('[TimeWindowedLeaderboards] Found', results.length, 'results in event_results');
 
-                // Filter by society if specified
-                if (societyEventIds !== null && !societyEventIds.has(card.event_id)) {
-                    continue; // Skip scorecards from other societies
-                }
-
-                // Calculate stableford for this card
-                let totalStableford = 0;
-                if (card.scores && Array.isArray(card.scores)) {
-                    for (const score of card.scores) {
-                        totalStableford += score.stableford_points || 0;
-                    }
-                }
-
-                if (!eventGroups[card.event_id]) {
-                    eventGroups[card.event_id] = [];
-                }
-                eventGroups[card.event_id].push({
-                    ...card,
-                    total_stableford: totalStableford
-                });
-            }
-
-            // Calculate positions within each event and award FedEx points
+            // Aggregate by player (same logic as My Standings)
             const playerStats = {};
 
-            for (const eventId of Object.keys(eventGroups)) {
-                const eventCards = eventGroups[eventId];
+            results.forEach(result => {
+                const playerId = result.player_id;
 
-                // Sort by stableford (higher is better) to determine positions
-                eventCards.sort((a, b) => b.total_stableford - a.total_stableford);
+                if (!playerStats[playerId]) {
+                    playerStats[playerId] = {
+                        player_id: playerId,
+                        player_name: result.player_name || playerId,
+                        total_points: 0,
+                        total_stableford: 0,
+                        events_played: 0,
+                        wins: 0,
+                        top_3: 0,
+                        best_finish: 999,
+                        finishes: []
+                    };
+                }
 
-                // Award FedEx points based on position
-                eventCards.forEach((card, index) => {
-                    const position = index + 1;
-                    const fedexPoints = FEDEX_POINTS[position] || 0;
+                const stats = playerStats[playerId];
+                stats.total_points += (result.points_earned || 0);
+                stats.total_stableford += (result.score || 0);
+                stats.events_played += 1;
+                stats.finishes.push({ position: result.position, points: result.points_earned, eventId: result.event_id });
 
-                    if (!playerStats[card.player_id]) {
-                        playerStats[card.player_id] = {
-                            player_id: card.player_id,
-                            total_fedex_points: 0,
-                            total_gross: 0,
-                            total_net: 0,
-                            total_stableford: 0,
-                            events_played: 0,
-                            wins: 0,
-                            top_3: 0,
-                            best_finish: 999,
-                            finishes: []
-                        };
-                    }
+                if (result.position === 1) stats.wins += 1;
+                if (result.position <= 3) stats.top_3 += 1;
+                if (result.position < stats.best_finish) stats.best_finish = result.position;
+            });
 
-                    playerStats[card.player_id].total_fedex_points += fedexPoints;
-                    playerStats[card.player_id].total_gross += card.total_gross || 0;
-                    playerStats[card.player_id].total_net += card.total_net || 0;
-                    playerStats[card.player_id].total_stableford += card.total_stableford || 0;
-                    playerStats[card.player_id].events_played += 1;
-                    playerStats[card.player_id].finishes.push({ position, points: fedexPoints, eventId });
-
-                    if (position === 1) playerStats[card.player_id].wins += 1;
-                    if (position <= 3) playerStats[card.player_id].top_3 += 1;
-                    if (position < playerStats[card.player_id].best_finish) {
-                        playerStats[card.player_id].best_finish = position;
-                    }
-                });
-            }
-
-            // Convert to array and sort by FedEx points (higher is better)
+            // Convert to array and sort by total points (higher is better)
             let standings = Object.values(playerStats)
                 .filter(p => p.events_played > 0)
                 .map(p => ({
                     ...p,
-                    display_gross: p.events_played === 1 ? p.total_gross : Math.round(p.total_gross / p.events_played * 10) / 10,
-                    display_net: p.events_played === 1 ? p.total_net : Math.round(p.total_net / p.events_played * 10) / 10,
+                    total_fedex_points: p.total_points, // For compatibility with existing render code
                     display_stableford: p.total_stableford,
                     rounds_played: p.events_played
                 }))
                 .sort((a, b) => {
-                    // Sort by FedEx points, then wins, then best finish
-                    if (b.total_fedex_points !== a.total_fedex_points) return b.total_fedex_points - a.total_fedex_points;
+                    // Sort by total points, then wins, then best finish
+                    if (b.total_points !== a.total_points) return b.total_points - a.total_points;
                     if (b.wins !== a.wins) return b.wins - a.wins;
                     return a.best_finish - b.best_finish;
                 });
 
-            // Get player names AND society affiliations
+            // Get player names and society affiliations
             const playerIdsList = standings.map(s => s.player_id);
             if (playerIdsList.length > 0) {
                 const { data: profiles } = await this.supabase
@@ -352,18 +307,12 @@ class TimeWindowedLeaderboards {
                     .select('line_user_id, name, display_name, society_name')
                     .in('line_user_id', playerIdsList);
 
-                // Get society memberships - use society_id join instead of societies(name)
-                const { data: memberships, error: memberError } = await this.supabase
+                const { data: memberships } = await this.supabase
                     .from('society_members')
                     .select('golfer_id, society_id, is_primary_society')
                     .in('golfer_id', playerIdsList)
                     .eq('status', 'active');
 
-                if (memberError) {
-                    console.log('[TimeWindowedLeaderboards] Society membership query error (non-fatal):', memberError.message);
-                }
-
-                // Get society names separately if we have memberships
                 let societyNames = {};
                 if (memberships && memberships.length > 0) {
                     const societyIds = [...new Set(memberships.map(m => m.society_id).filter(Boolean))];
@@ -399,15 +348,14 @@ class TimeWindowedLeaderboards {
 
                 standings = standings.map((s, index) => ({
                     ...s,
-                    player_name: nameMap[s.player_id] || 'Unknown',
+                    player_name: nameMap[s.player_id] || s.player_name || 'Unknown',
                     society_name: societyMap[s.player_id] || null,
                     rank: index + 1,
-                    rank_change: 0,
-                    total_points: s.total_fedex_points // FedEx points for display
+                    rank_change: 0
                 }));
             }
 
-            console.log(`[TimeWindowedLeaderboards] ${period} standings:`, standings.length, `players (from ${startDateStr})`);
+            console.log(`[TimeWindowedLeaderboards] ${period} standings:`, standings.length, 'players');
             return { success: true, standings };
 
         } catch (err) {

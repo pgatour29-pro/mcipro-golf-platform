@@ -5566,6 +5566,116 @@
 
         };
 
+        // PWA State Manager - Persists navigation state for app resume
+        window.PWAStateManager = {
+            STORAGE_KEY: 'mcipro_pwa_state',
+
+            // Save current navigation state
+            save() {
+                try {
+                    const state = {
+                        screen: AppState.navigation.currentScreen,
+                        tab: AppState.navigation.activeTab,
+                        dashboard: this._currentDashboard,
+                        timestamp: Date.now(),
+                        userId: AppState.currentUser?.userId || AppState.currentUser?.lineId
+                    };
+                    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(state));
+                    console.log('[PWAState] Saved:', state.screen, state.dashboard, state.tab);
+                } catch (e) {
+                    console.warn('[PWAState] Save failed:', e);
+                }
+            },
+
+            // Load saved state (returns null if invalid/expired)
+            load() {
+                try {
+                    const saved = localStorage.getItem(this.STORAGE_KEY);
+                    if (!saved) return null;
+
+                    const state = JSON.parse(saved);
+
+                    // Expire after 24 hours
+                    if (Date.now() - state.timestamp > 24 * 60 * 60 * 1000) {
+                        this.clear();
+                        return null;
+                    }
+
+                    // Don't restore if it's the login screen
+                    if (state.screen === 'loginScreen') {
+                        return null;
+                    }
+
+                    console.log('[PWAState] Loaded:', state.screen, state.dashboard, state.tab);
+                    return state;
+                } catch (e) {
+                    console.warn('[PWAState] Load failed:', e);
+                    return null;
+                }
+            },
+
+            // Check if saved state belongs to current user
+            isValidForUser(userId) {
+                const state = this.load();
+                if (!state) return false;
+                return state.userId === userId;
+            },
+
+            // Clear saved state
+            clear() {
+                localStorage.removeItem(this.STORAGE_KEY);
+                console.log('[PWAState] Cleared');
+            },
+
+            // Track current dashboard
+            _currentDashboard: null,
+            setDashboard(dashboardId) {
+                this._currentDashboard = dashboardId;
+                this.save();
+            },
+
+            // Restore state (call after authentication)
+            async restore() {
+                const state = this.load();
+                if (!state) return false;
+
+                const currentUserId = AppState.currentUser?.userId || AppState.currentUser?.lineId;
+                if (state.userId && state.userId !== currentUserId) {
+                    console.log('[PWAState] Different user, not restoring');
+                    this.clear();
+                    return false;
+                }
+
+                console.log('[PWAState] Restoring to:', state.screen, state.dashboard, state.tab);
+
+                // Restore screen
+                if (state.screen && state.screen !== 'loginScreen') {
+                    ScreenManager.showScreen(state.screen, true); // true = skip save
+
+                    // Restore tab after a delay to let the screen render
+                    if (state.dashboard && state.tab) {
+                        setTimeout(() => {
+                            TabManager.showTab(state.dashboard, state.tab);
+                        }, 100);
+                    }
+                    return true;
+                }
+                return false;
+            }
+        };
+
+        // Save state when app goes to background
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') {
+                PWAStateManager.save();
+            }
+        });
+
+        // Save state before unload
+        window.addEventListener('beforeunload', () => {
+            PWAStateManager.save();
+        });
+
         // LINE LIFF Configuration
         const LineConfig = {
             liffId: '2008228481-xBBwXqp1',
@@ -7074,8 +7184,12 @@
 
         // Screen Management System
         class ScreenManager {
-            static showScreen(screenId, data = null) {
+            static showScreen(screenId, dataOrSkipSave = null) {
                 try {
+                    // Handle second parameter - can be data object or skipSave boolean
+                    const skipSave = dataOrSkipSave === true;
+                    const data = (typeof dataOrSkipSave === 'object') ? dataOrSkipSave : null;
+
                     console.log(`ScreenManager: Navigating to ${screenId}`);
 
                     // Hide all screens
@@ -7106,6 +7220,11 @@
 
                     // Update session activity
                     AppState.session.lastActivity = new Date().toISOString();
+
+                    // Save PWA state for resume (skip during restore)
+                    if (!skipSave && window.PWAStateManager && screenId !== 'loginScreen') {
+                        PWAStateManager.save();
+                    }
 
                     console.log(`ScreenManager: Successfully navigated to ${screenId}`);
 
@@ -7441,6 +7560,11 @@
 
                         // Load tab-specific data
                         this.loadTabData(dashboardId, tabName);
+
+                        // Save PWA state for resume
+                        if (window.PWAStateManager) {
+                            PWAStateManager.setDashboard(dashboardId);
+                        }
                     } else {
                         console.warn(`Tab content '${dashboardId.replace('Dashboard', '')}-${tabName}' not found`);
                     }
@@ -8096,7 +8220,23 @@
                     }
                 }
 
-                ScreenManager.showScreen(targetDashboard);
+                // Try to restore PWA state (resume where user left off)
+                let restored = false;
+                if (window.PWAStateManager) {
+                    try {
+                        restored = await PWAStateManager.restore();
+                        if (restored) {
+                            console.log('[redirectToDashboard] PWA state restored successfully');
+                        }
+                    } catch (e) {
+                        console.warn('[redirectToDashboard] PWA restore failed:', e);
+                    }
+                }
+
+                // If not restored, go to default dashboard for role
+                if (!restored) {
+                    ScreenManager.showScreen(targetDashboard);
+                }
 
                 const userName = AppState.currentUser.name || AppState.currentUser.displayName || 'User';
 

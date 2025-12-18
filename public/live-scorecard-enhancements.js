@@ -156,27 +156,35 @@ LiveScorecardManager.saveRoundToHistoryNew = async function(player) {
             };
         }
 
-        // Only save for current logged-in user OR if player has LINE ID
+        // Determine if we should save this player's score
         const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
         const isCurrentPlayer = (currentUser.userId === player.lineUserId || player.id === currentUser.userId);
 
-        if (!isCurrentPlayer && !player.lineUserId) {
-            console.log(`[LiveScorecard] Skipping database save for ${player.name} - not logged in and no LINE ID`);
+        // For SOCIETY EVENTS: Save ALL players' scores regardless of LINE ID
+        // This ensures all 5 players in Pete's group get posted to Travellers Rest dashboard
+        // For PRIVATE rounds: Only save if player is logged in or has LINE ID
+        if (!isCurrentPlayer && !player.lineUserId && !eventId) {
+            console.log(`[LiveScorecard] Skipping database save for ${player.name} - private round and no LINE ID`);
             return null;
         }
+
+        // Use player.id as fallback for guests without LINE ID (e.g., "player_1702932456789")
+        const golferIdForDb = player.lineUserId || player.id;
+        console.log(`[LiveScorecard] Saving round for ${player.name} (golfer_id: ${golferIdForDb}, society_event_id: ${eventId || 'none'})`);
 
         // Use Supabase database function to save
         const { data: roundId, error } = await window.SupabaseDB.client.rpc(
             'archive_scorecard_to_history',
             {
                 p_scorecard_id: scorecardId && !scorecardId.startsWith('local_') ? scorecardId : null,
-                p_golfer_id: player.lineUserId || player.id,
+                p_golfer_id: golferIdForDb,
                 p_round_type: roundType,
                 p_society_event_id: eventId,
                 p_scoring_formats: this.scoringFormats,
                 p_format_scores: formatScores,
                 p_posted_formats: this.scoringFormats, // Default: post all formats
-                p_scramble_config: scrambleConfig
+                p_scramble_config: scrambleConfig,
+                p_player_name: player.name  // Pass player name for dashboard display
             }
         );
 
@@ -211,10 +219,14 @@ LiveScorecardManager.saveRoundToHistoryNew = async function(player) {
  */
 LiveScorecardManager.saveRoundManually = async function(player, roundData) {
     try {
+        // Use player.id as fallback golfer_id for guests
+        const golferIdForDb = player.lineUserId || player.id;
+
         const { data: round, error } = await window.SupabaseDB.client
             .from('rounds')
             .insert({
-                golfer_id: player.lineUserId || player.id,
+                golfer_id: golferIdForDb,
+                player_name: player.name,  // Store player name for dashboard display
                 course_id: roundData.courseId,
                 course_name: roundData.courseName,
                 type: roundData.roundType,

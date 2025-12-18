@@ -71311,7 +71311,7 @@ class OrganizerScoringSystem {
             return `
                 <tr class="border-b border-gray-200 hover:bg-gray-50">
                     <td class="py-2 px-3 font-bold">${position}</td>
-                    <td class="py-2 px-3">${this.getPlayerName(round.golfer_id)}</td>
+                    <td class="py-2 px-3">${this.getPlayerName(round.golfer_id, round)}</td>
                     <td class="py-2 px-3">${Math.round(round.handicap_used || 0)}</td>
                     <td class="py-2 px-3">${round.total_gross || '-'}</td>
                     <td class="py-2 px-3">${netScore}</td>
@@ -71391,7 +71391,7 @@ class OrganizerScoringSystem {
                 html += `
                     <tr class="border-b border-gray-200 hover:bg-gray-50">
                         <td class="py-2 px-3 font-bold">${position}</td>
-                        <td class="py-2 px-3">${this.getPlayerName(round.golfer_id)}</td>
+                        <td class="py-2 px-3">${this.getPlayerName(round.golfer_id, round)}</td>
                         <td class="py-2 px-3">${Math.round(round.handicap_used || 0)}</td>
                         <td class="py-2 px-3">${round.total_gross || '-'}</td>
                         <td class="py-2 px-3">${netScore}</td>
@@ -71437,16 +71437,25 @@ class OrganizerScoringSystem {
         }
     }
 
-    getPlayerName(golferId) {
-        // Try to find player in cached profiles
+    getPlayerName(golferId, round = null) {
+        // Priority 1: Check if round has player_name stored (for guests)
+        if (round && round.player_name) {
+            return round.player_name;
+        }
+
+        // Priority 2: Check cached profiles (for registered users)
         if (!golferId) return 'Unknown';
 
-        // Check if we have cached profiles
         if (this.playerProfileCache && this.playerProfileCache[golferId]) {
             return this.playerProfileCache[golferId];
         }
 
-        // Return truncated ID as fallback
+        // Priority 3: For guest IDs like "player_1702932456789", show "Guest Player"
+        if (golferId.startsWith('player_')) {
+            return 'Guest Player';
+        }
+
+        // Fallback: truncated ID
         return golferId.substring(0, 15) + '...';
     }
 
@@ -71580,7 +71589,7 @@ class OrganizerScoringSystem {
 
             for (const round of sorted) {
                 const holeScores = holeScoresByRound[round.id] || {};
-                const playerName = this.getPlayerName(round.golfer_id);
+                const playerName = this.getPlayerName(round.golfer_id, round);
                 const handicap = Math.round(round.handicap_used || 0);
                 let outTotal = 0, inTotal = 0;
                 let recalculatedStableford = 0;  // RECALCULATE using correct SI!
@@ -71644,7 +71653,7 @@ class OrganizerScoringSystem {
         this.editScoreData = {};
 
         const event = this.allEvents.find(e => e.id === this.currentEventId);
-        document.getElementById('editScorePlayerName').textContent = this.getPlayerName(round.golfer_id);
+        document.getElementById('editScorePlayerName').textContent = this.getPlayerName(round.golfer_id, round);
         document.getElementById('editScorePlayerHandicap').textContent = Math.round(round.handicap_used || 0);
         document.getElementById('editScoreEventName').textContent = event?.title || 'Unknown';
         document.getElementById('editScoreCourseName').textContent = event?.course || round.course_name || 'Unknown';
@@ -72161,7 +72170,7 @@ class OrganizerScoringSystem {
             return {
                 round_id: round.id,
                 player_id: round.golfer_id,
-                player_name: this.getPlayerName(round.golfer_id),
+                player_name: this.getPlayerName(round.golfer_id, round),
                 position: currentPosition,
                 score: this.currentFormat === 'stableford' ?
                     (round.total_stableford || 0) : (round.total_gross || 0),

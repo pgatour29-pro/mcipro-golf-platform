@@ -201,27 +201,52 @@ ORDER BY points_difference DESC;
 -- STEP 5: FIX ALL ROUND_HOLES STABLEFORD POINTS
 -- =====================================================================
 -- This updates all round_holes with correct stableford points
+-- Uses a subquery to get correct course data, falling back to stored values
 
 UPDATE round_holes rh
 SET stableford_points = calculate_stableford_points(
     rh.gross_score,
-    COALESCE(ch.par, rh.par),
+    COALESCE(
+        (SELECT ch.par FROM course_holes ch
+         WHERE ch.course_id = (
+            CASE
+                WHEN LOWER(r.course_name) LIKE '%royal lakeside%' THEN 'royal_lakeside'
+                WHEN LOWER(r.course_name) LIKE '%bangpakong%' THEN 'bangpakong'
+                WHEN LOWER(r.course_name) LIKE '%pleasant valley%' THEN 'pleasant_valley'
+                WHEN LOWER(r.course_name) LIKE '%pattaya country%' THEN 'pattaya_country_club'
+                WHEN LOWER(r.course_name) LIKE '%greenwood%' THEN 'greenwood'
+                WHEN LOWER(r.course_name) LIKE '%khao kheow%' THEN 'khao_kheow'
+                WHEN LOWER(r.course_name) LIKE '%siam%' THEN 'siam_cc_old'
+                ELSE NULL
+            END
+         )
+         AND ch.hole_number = rh.hole_number
+         AND ch.tee_marker = 'white'
+         LIMIT 1),
+        rh.par
+    ),
     r.handicap_used,
-    COALESCE(ch.stroke_index, rh.stroke_index)
+    COALESCE(
+        (SELECT ch.stroke_index FROM course_holes ch
+         WHERE ch.course_id = (
+            CASE
+                WHEN LOWER(r.course_name) LIKE '%royal lakeside%' THEN 'royal_lakeside'
+                WHEN LOWER(r.course_name) LIKE '%bangpakong%' THEN 'bangpakong'
+                WHEN LOWER(r.course_name) LIKE '%pleasant valley%' THEN 'pleasant_valley'
+                WHEN LOWER(r.course_name) LIKE '%pattaya country%' THEN 'pattaya_country_club'
+                WHEN LOWER(r.course_name) LIKE '%greenwood%' THEN 'greenwood'
+                WHEN LOWER(r.course_name) LIKE '%khao kheow%' THEN 'khao_kheow'
+                WHEN LOWER(r.course_name) LIKE '%siam%' THEN 'siam_cc_old'
+                ELSE NULL
+            END
+         )
+         AND ch.hole_number = rh.hole_number
+         AND ch.tee_marker = 'white'
+         LIMIT 1),
+        rh.stroke_index
+    )
 )
 FROM rounds r
-LEFT JOIN course_holes ch ON ch.course_id = (
-    CASE
-        WHEN LOWER(r.course_name) LIKE '%royal lakeside%' THEN 'royal_lakeside'
-        WHEN LOWER(r.course_name) LIKE '%bangpakong%' THEN 'bangpakong'
-        WHEN LOWER(r.course_name) LIKE '%pleasant valley%' THEN 'pleasant_valley'
-        WHEN LOWER(r.course_name) LIKE '%pattaya country%' THEN 'pattaya_country_club'
-        WHEN LOWER(r.course_name) LIKE '%greenwood%' THEN 'greenwood'
-        WHEN LOWER(r.course_name) LIKE '%khao kheow%' THEN 'khao_kheow'
-        WHEN LOWER(r.course_name) LIKE '%siam%' THEN 'siam_cc_old'
-        ELSE NULL
-    END
-) AND ch.hole_number = rh.hole_number AND ch.tee_marker = 'white'
 WHERE rh.round_id = r.id
 AND rh.gross_score IS NOT NULL
 AND rh.gross_score > 0;

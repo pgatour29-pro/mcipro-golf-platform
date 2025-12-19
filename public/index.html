@@ -10356,7 +10356,9 @@
 
         // Loading Management System
         class LoadingManager {
-            static show(message = 'Loading...') {
+            static _timeout = null;
+
+            static show(message = 'Loading...', timeoutMs = 30000) {
                 let overlay = document.getElementById('loadingOverlay');
 
                 if (!overlay) {
@@ -10374,14 +10376,41 @@
                 `;
 
                 overlay.style.display = 'flex';
+
+                // Auto-hide after timeout to prevent infinite loading
+                if (this._timeout) clearTimeout(this._timeout);
+                this._timeout = setTimeout(() => {
+                    console.warn('[LoadingManager] Timeout after', timeoutMs, 'ms - auto-hiding');
+                    this.hide();
+                    NotificationManager.show('Operation timed out. Please try again.', 'warning');
+                }, timeoutMs);
             }
 
             static hide() {
+                if (this._timeout) {
+                    clearTimeout(this._timeout);
+                    this._timeout = null;
+                }
                 const overlay = document.getElementById('loadingOverlay');
                 if (overlay) {
                     overlay.style.display = 'none';
                 }
             }
+        }
+
+        // Utility: Promise with timeout wrapper
+        function withTimeout(promise, ms, fallbackValue = null) {
+            let timeoutId;
+            const timeoutPromise = new Promise((resolve) => {
+                timeoutId = setTimeout(() => {
+                    console.warn('[withTimeout] Operation timed out after', ms, 'ms');
+                    resolve(fallbackValue);
+                }, ms);
+            });
+
+            return Promise.race([promise, timeoutPromise]).finally(() => {
+                clearTimeout(timeoutId);
+            });
         }
 
         // User Interface Management
@@ -11629,17 +11658,31 @@
 
                 // Check if user is already logged in via LINE - do this IMMEDIATELY
                 if (typeof liff !== 'undefined') {
-                    liff.init({ liffId: LineConfig.liffId })
-                        .then(() => {
+                    // Use timeout wrapper to prevent infinite hang on slow networks
+                    const LIFF_INIT_TIMEOUT = 8000; // 8 seconds for LIFF init
+                    const PROFILE_FETCH_TIMEOUT = 10000; // 10 seconds for profile fetch
+
+                    withTimeout(liff.init({ liffId: LineConfig.liffId }), LIFF_INIT_TIMEOUT, { timeout: true })
+                        .then(async (initResult) => {
+                            // Check if LIFF init timed out
+                            if (initResult && initResult.timeout) {
+                                console.warn('[INIT] LIFF init timed out after', LIFF_INIT_TIMEOUT, 'ms');
+                                ScreenManager.showScreen('loginScreen');
+                                return;
+                            }
+
                             console.log('[INIT] LIFF initialized, checking login status...');
                             console.log('[INIT] liff.isLoggedIn():', liff.isLoggedIn());
 
                             if (liff.isLoggedIn()) {
                                 console.log('[INIT] User IS logged in via LINE, loading profile...');
-                                LoadingManager.show('Loading your profile...');
+                                LoadingManager.show('Loading your profile...', 15000); // 15s timeout
 
-                                // Try to get profile, but if permission is missing, check Supabase session instead
-                                liff.getProfile().then(async (profile) => {
+                                // Try to get profile with timeout
+                                const profile = await withTimeout(liff.getProfile(), PROFILE_FETCH_TIMEOUT, null);
+
+                                if (profile) {
+                                    // Profile fetch succeeded - continue with normal flow
                                     console.log('[INIT] Got LINE profile:', profile.userId);
                                     await LineAuthentication.setUserFromLineProfile(profile);
                                     console.log('[INIT] Profile loaded, redirecting to dashboard...');
@@ -11669,10 +11712,13 @@
 
                                     LineAuthentication.redirectToDashboard();
                                     LoadingManager.hide();
-                                }).catch(async (err) => {
-                                    console.error('[INIT] Failed to get LINE profile:', err);
+                                } else {
+                                    // Profile fetch failed or timed out - try Supabase fallback
+                                    console.warn('[INIT] LINE profile fetch failed/timed out, trying Supabase fallback...');
 
-                                    // If profile permission is missing, check for existing Supabase session
+                                    let fallbackSucceeded = false;
+
+                                    // Try Supabase session as fallback
                                     try {
                                         if (window.SupabaseDB) {
                                             await window.SupabaseDB.waitForReady();
@@ -11772,6 +11818,7 @@
                                                         });
                                                     }
 
+                                                    fallbackSucceeded = true;
                                                     LineAuthentication.redirectToDashboard();
                                                     LoadingManager.hide();
                                                     return;
@@ -11782,9 +11829,22 @@
                                         console.error('[INIT] Supabase session check failed:', supabaseErr);
                                     }
 
+                                    // If fallback failed, clear stale LIFF session to prevent double-login loop
+                                    if (!fallbackSucceeded) {
+                                        console.warn('[INIT] Both LINE and Supabase auth failed - clearing stale LIFF session');
+                                        try {
+                                            if (liff.isLoggedIn()) {
+                                                liff.logout();
+                                                console.log('[INIT] Stale LIFF session cleared');
+                                            }
+                                        } catch (logoutErr) {
+                                            console.warn('[INIT] LIFF logout failed:', logoutErr);
+                                        }
+                                    }
+
                                     LoadingManager.hide();
                                     ScreenManager.showScreen('loginScreen');
-                                });
+                                }
                             } else {
                                 console.log('[INIT] User NOT logged in, showing login screen');
                                 ScreenManager.showScreen('loginScreen');

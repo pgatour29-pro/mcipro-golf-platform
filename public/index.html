@@ -28015,6 +28015,22 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <p class="text-xs text-gray-500 mt-1">Available tees for selected course</p>
                         </div>
 
+                        <!-- Starting Nine (for 2-way shotgun starts) -->
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Starting Nine</label>
+                            <div class="flex flex-wrap gap-3">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio" name="startingNine" value="front" checked class="mr-2">
+                                    <span class="px-4 py-2 border-2 border-green-500 bg-green-50 text-green-700 rounded-lg font-medium">Front 9 First</span>
+                                </label>
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio" name="startingNine" value="back" class="mr-2">
+                                    <span class="px-4 py-2 border-2 border-orange-500 bg-orange-50 text-orange-700 rounded-lg font-medium">Back 9 First</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">For 2-way shotgun starts - select Back 9 if starting on hole 10</p>
+                        </div>
+
                         <!-- Scoring Format -->
                         <div class="mb-4">
                             <div class="flex items-center justify-between mb-2">
@@ -43970,6 +43986,9 @@ class LiveScorecardSystem {
         this.availableCourses = []; // List of courses from database
         this.matchPlayTeams = null; // Team assignments for 2-man team Match Play: { teamA: [id1, id2], teamB: [id3, id4] }
         this.roundRobinMatches = null; // Match assignments for round robin 1v1: { playerId: [opponent1Id, opponent2Id] }
+        this.startingNine = 'front'; // 'front' (1-9 first) or 'back' (10-18 first) for shotgun starts
+        this.holeOrder = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18]; // Hole play order
+        this.currentHoleIndex = 0; // Index into holeOrder array
     }
 
     // FORCE CACHE CLEAR: Remove all old course caches with tee markers in key
@@ -46519,8 +46538,23 @@ class LiveScorecardSystem {
                 NotificationManager.show('🔌 Starting round OFFLINE - will sync when online', 'warning');
         }
 
+        // Get starting nine selection (for 2-way shotgun starts)
+        this.startingNine = document.querySelector('input[name="startingNine"]:checked')?.value || 'front';
+
+        // Set up hole order based on starting nine
+        if (this.startingNine === 'back') {
+            // Back 9 first: 10-18, then 1-9
+            this.holeOrder = [10,11,12,13,14,15,16,17,18,1,2,3,4,5,6,7,8,9];
+            console.log('[LiveScorecard] Starting on Back 9 (hole 10) - shotgun start');
+        } else {
+            // Front 9 first: 1-18 (normal order)
+            this.holeOrder = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
+            console.log('[LiveScorecard] Starting on Front 9 (hole 1) - normal start');
+        }
+
         // Reset round state
-        this.currentHole = 1;
+        this.currentHoleIndex = 0;
+        this.currentHole = this.holeOrder[0]; // Start on first hole in order (1 or 10)
         this.currentScore = '';
         this.scoresCache = {}; // Clear any old scores from previous rounds
 
@@ -46892,7 +46926,7 @@ class LiveScorecardSystem {
             clearTimeout(this.autoAdvanceTimeout);
             this.autoAdvanceTimeout = setTimeout(() => {
                 this.autoAdvanceTimeout = null;
-                if (this.currentHole < 18) {
+                if (this.currentHoleIndex < 17) {
                     this.nextHole();
                 }
             }, 1500);
@@ -46935,7 +46969,7 @@ class LiveScorecardSystem {
         } else {
             // All players done, advance to next hole (scramble tracking is now integrated in the UI)
             const allDone = this.players.every(p => this.getPlayerScore(p.id, this.currentHole));
-            if (allDone && this.currentHole < 18) {
+            if (allDone && this.currentHoleIndex < 17) {
                 // Auto-advance to next hole after a short delay
                 // FIX: Store timeout reference to prevent race condition
                 this.autoAdvanceTimeout = setTimeout(() => {
@@ -46985,8 +47019,10 @@ class LiveScorecardSystem {
             this.autoAdvanceTimeout = null;
         }
 
-        if (this.currentHole > 1) {
-            this.currentHole--;
+        // Use holeOrder array for navigation (supports back-9-first shotgun starts)
+        if (this.currentHoleIndex > 0) {
+            this.currentHoleIndex--;
+            this.currentHole = this.holeOrder[this.currentHoleIndex];
             this.renderHole();
         }
     }
@@ -46998,8 +47034,10 @@ class LiveScorecardSystem {
             this.autoAdvanceTimeout = null;
         }
 
-        if (this.currentHole < 18) {
-            this.currentHole++;
+        // Use holeOrder array for navigation (supports back-9-first shotgun starts)
+        if (this.currentHoleIndex < 17) {
+            this.currentHoleIndex++;
+            this.currentHole = this.holeOrder[this.currentHoleIndex];
             this.currentPlayerId = this.players[0].id;
             this.renderHole();
         } else {
@@ -47083,7 +47121,7 @@ class LiveScorecardSystem {
         document.getElementById('scrambleTrackingSection').style.display = 'none';
 
         // Continue to next hole or finish
-        if (this.currentHole < 18) {
+        if (this.currentHoleIndex < 17) {
             this.nextHole();
         } else {
             this.completeRound();

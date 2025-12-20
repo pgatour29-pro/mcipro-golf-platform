@@ -46550,6 +46550,17 @@ class LiveScorecardSystem {
                 this.scorecards[playerId] = scorecardId;
             });
 
+            // FIX: Validate all players have scorecard IDs
+            const missingScorecardsPlayers = this.players.filter(p => !this.scorecards[p.id]);
+            if (missingScorecardsPlayers.length > 0) {
+                console.error('[LiveScorecard] ❌ Some players missing scorecard IDs after creation:',
+                    missingScorecardsPlayers.map(p => ({ name: p.name, id: p.id })));
+                console.error('[LiveScorecard] this.scorecards:', this.scorecards);
+                console.error('[LiveScorecard] this.players:', this.players.map(p => ({ name: p.name, id: p.id })));
+            } else {
+                console.log('[LiveScorecard] ✅ All players have scorecard IDs:', this.scorecards);
+            }
+
         } catch (error) {
             console.warn('[LiveScorecard] Online scorecard creation failed, switching to OFFLINE mode:', error);
 
@@ -46928,13 +46939,21 @@ class LiveScorecardSystem {
 
         // SCRAMBLE MODE: Apply score to ALL players
         if (this.scoringFormats.includes('scramble')) {
-            console.log(`[LiveScorecard] SCRAMBLE: Applying team score ${score} to all ${this.players.length} players`);
+            console.log(`[LiveScorecard] SCRAMBLE: Applying team score ${score} to all ${this.players.length} players on Hole ${this.currentHole}`);
+
+            // Check if any players are missing scorecard IDs
+            const missingScorecardsPlayers = this.players.filter(p => !this.scorecards[p.id]);
+            if (missingScorecardsPlayers.length > 0) {
+                console.error('[LiveScorecard] ❌ SCRAMBLE: Some players missing scorecard IDs:',
+                    missingScorecardsPlayers.map(p => p.name));
+                console.error('[LiveScorecard] this.scorecards:', this.scorecards);
+            }
 
             // Save score for ALL players
             for (const player of this.players) {
                 const scorecardId = this.scorecards[player.id];
 
-                // Update local cache
+                // Update local cache (always do this so UI works)
                 if (!this.scoresCache[player.id]) {
                     this.scoresCache[player.id] = {};
                 }
@@ -46946,10 +46965,16 @@ class LiveScorecardSystem {
                 const par = holeData?.par || 4;
                 const strokeIndex = holeData?.stroke_index || this.currentHole;
 
-                console.log(`[LiveScorecard] Saving score: Hole ${this.currentHole}, Score ${score}, Par ${par}, SI ${strokeIndex}, HCP ${player.handicap}`);
+                // FIX: Validate scorecardId before saving to database
+                if (!scorecardId) {
+                    console.warn(`[LiveScorecard] ⚠️ SCRAMBLE: No scorecard ID for ${player.name} - score saved to cache only`);
+                    continue;
+                }
+
+                console.log(`[LiveScorecard] 📝 SCRAMBLE: ${player.name} - Hole ${this.currentHole}, Score ${score}, Par ${par}, SI ${strokeIndex}, HCP ${player.handicap}`);
 
                 // Save to database if online
-                if (scorecardId && !scorecardId.startsWith('local_')) {
+                if (!scorecardId.startsWith('local_')) {
                     window.SocietyGolfDB.saveScore(
                         scorecardId,
                         this.currentHole,
@@ -46957,10 +46982,12 @@ class LiveScorecardSystem {
                         par,
                         strokeIndex,
                         player.handicap
-                    ).catch(err => {
-                        console.error(`[LiveScorecard] Error saving score for ${player.name}:`, err);
+                    ).then(() => {
+                        console.log(`[LiveScorecard] ✅ SCRAMBLE: ${player.name} score saved to DB`);
+                    }).catch(err => {
+                        console.error(`[LiveScorecard] ❌ SCRAMBLE: Error saving score for ${player.name}:`, err);
                     });
-                } else if (scorecardId && scorecardId.startsWith('local_')) {
+                } else {
                     // Save offline
                     const localScores = JSON.parse(localStorage.getItem(`scores_${scorecardId}`) || '{}');
                     localScores[this.currentHole] = {
@@ -46972,6 +46999,7 @@ class LiveScorecardSystem {
                         recorded_at: new Date().toISOString()
                     };
                     localStorage.setItem(`scores_${scorecardId}`, JSON.stringify(localScores));
+                    console.log(`[LiveScorecard] 💾 SCRAMBLE: ${player.name} score saved OFFLINE`);
                 }
             }
 
@@ -46998,10 +47026,25 @@ class LiveScorecardSystem {
         const scorecardId = this.scorecards[this.currentPlayerId];
         const player = this.players.find(p => p.id === this.currentPlayerId);
 
-        // Get hole data from courseData
-        const holeData = this.courseData?.holes?.[this.currentHole - 1];
+        // =============================================================
+        // FIX: Validate scorecardId exists before saving
+        // This prevents silent failures when scorecard creation failed
+        // =============================================================
+        if (!scorecardId) {
+            console.error(`[LiveScorecard] ❌ NO SCORECARD ID for player ${player?.name || this.currentPlayerId}!`);
+            console.error('[LiveScorecard] this.scorecards:', this.scorecards);
+            console.error('[LiveScorecard] this.currentPlayerId:', this.currentPlayerId);
+            NotificationManager.show('Error: Scorecard not found. Please restart the round.', 'error');
+            // Still save to cache so UI works, but warn user
+        }
+
+        // Get hole data from courseData - use .find() for robustness with combined nines
+        const holeData = this.courseData?.holes?.find(h => h.hole_number === this.currentHole)
+                      || this.courseData?.holes?.[this.currentHole - 1];
         const par = holeData?.par || 4;
         const strokeIndex = holeData?.stroke_index || this.currentHole;
+
+        console.log(`[LiveScorecard] 📝 Saving score: Player=${player?.name}, Hole=${this.currentHole}, Score=${score}, Par=${par}, SI=${strokeIndex}, ScorecardID=${scorecardId || 'MISSING!'}`);
 
         // ===== INSTANT UI UPDATE (Optimistic) =====
         // Store score in local cache immediately
@@ -47040,6 +47083,12 @@ class LiveScorecardSystem {
         }
 
         // ===== BACKGROUND DATABASE SAVE (Don't wait) =====
+        // FIX: Check scorecardId exists before trying to save
+        if (!scorecardId) {
+            console.warn('[LiveScorecard] ⚠️ Score saved to cache only (no scorecard ID)');
+            return; // Exit early - score is in cache for UI but not saved to DB
+        }
+
         // Check if this is a local offline scorecard
         if (scorecardId.startsWith('local_')) {
             // OFFLINE MODE: Save score to localStorage
@@ -71953,7 +72002,38 @@ class OrganizerScoringSystem {
                 await this.loadPlayerProfiles();
             }
 
-            // Fetch all rounds for this event
+            // Get current event status to decide data source
+            const currentEvent = this.allEvents.find(e => e.id === this.currentEventId);
+            const eventStatus = currentEvent?.status;
+
+            let leaderboardData = [];
+
+            // =============================================================
+            // FIX: For in-progress events, query SCORECARDS for LIVE data
+            // This fixes the disconnect where Live Scorecard saves to
+            // scorecards/scores but Spectate Live was only reading rounds
+            // =============================================================
+            if (eventStatus !== 'completed') {
+                console.log('[OrganizerScoring] 🔴 LIVE EVENT - Querying scorecards for real-time data');
+
+                const { data: scorecards, error: scError } = await window.SupabaseDB.client
+                    .from('scorecards')
+                    .select(`
+                        *,
+                        scores (*)
+                    `)
+                    .eq('event_id', this.currentEventId);
+
+                if (scError) {
+                    console.error('[OrganizerScoring] Error loading scorecards:', scError);
+                } else if (scorecards && scorecards.length > 0) {
+                    // Transform scorecards to match rounds format for rendering
+                    leaderboardData = this.transformScorecardsToLeaderboard(scorecards);
+                    console.log(`[OrganizerScoring] ✅ Loaded ${scorecards.length} live scorecards`);
+                }
+            }
+
+            // Also fetch archived rounds (for completed rounds or as fallback)
             console.log('[OrganizerScoring] 🔍 Querying rounds for society_event_id:', this.currentEventId);
 
             const { data: rounds, error } = await window.SupabaseDB.client
@@ -71963,42 +72043,74 @@ class OrganizerScoringSystem {
                 .order('total_stableford', { ascending: false });
 
             if (error) {
-                console.error('[OrganizerScoring] ❌ Error loading scores:', error);
-                return;
+                console.error('[OrganizerScoring] ❌ Error loading rounds:', error);
+            } else if (rounds && rounds.length > 0) {
+                console.log(`[OrganizerScoring] ✅ Loaded ${rounds.length} archived rounds`);
+
+                // Merge rounds data, preferring live scorecards over archived rounds
+                const existingPlayerIds = new Set(leaderboardData.map(d => d.golfer_id || d.player_id));
+                for (const round of rounds) {
+                    if (!existingPlayerIds.has(round.golfer_id)) {
+                        leaderboardData.push(round);
+                    }
+                }
             }
 
-            console.log(`[OrganizerScoring] ✅ Loaded ${rounds?.length || 0} rounds for event ${this.currentEventId}`);
-
-            // DIAGNOSTIC: Show what rounds were found
-            if (rounds && rounds.length > 0) {
-                console.log('[OrganizerScoring] Rounds found:', rounds.map(r => ({
-                    id: r.id,
-                    golfer_id: r.golfer_id,
-                    society_event_id: r.society_event_id,
-                    total_gross: r.total_gross,
-                    total_stableford: r.total_stableford
-                })));
-            } else {
-                console.warn('[OrganizerScoring] ⚠️ No rounds found for this event. Checking if any rounds exist without society_event_id...');
-
-                // DIAGNOSTIC: Check if there are ANY rounds in the database
-                const { data: allRounds } = await window.SupabaseDB.client
-                    .from('rounds')
-                    .select('id, golfer_id, society_event_id, type, total_gross, total_stableford')
-                    .order('created_at', { ascending: false })
-                    .limit(10);
-
-                console.log('[OrganizerScoring] Recent rounds in database:', allRounds);
+            // If still no data, log diagnostic info
+            if (leaderboardData.length === 0) {
+                console.warn('[OrganizerScoring] ⚠️ No scores found from scorecards or rounds');
             }
 
-            this.leaderboardData = rounds || [];
+            this.leaderboardData = leaderboardData;
             this.renderLeaderboard();
             this.updateStats();
 
-            console.log(`[OrganizerScoring] ✅ Leaderboard updated with ${rounds?.length || 0} scores`);
+            console.log(`[OrganizerScoring] ✅ Leaderboard updated with ${leaderboardData.length} scores`);
         } catch (error) {
             console.error('[OrganizerScoring] Error in refreshScores:', error);
         }
+    }
+
+    /**
+     * Transform live scorecards to match rounds format for unified rendering
+     * This allows the leaderboard to show real-time scores from in-progress rounds
+     */
+    transformScorecardsToLeaderboard(scorecards) {
+        return scorecards.map(card => {
+            // Calculate totals from individual hole scores
+            let totalGross = 0;
+            let totalStableford = 0;
+            let holesPlayed = 0;
+
+            if (card.scores && card.scores.length > 0) {
+                for (const score of card.scores) {
+                    if (score.gross_score) {
+                        totalGross += score.gross_score;
+                        holesPlayed++;
+                    }
+                    if (score.stableford_points !== undefined) {
+                        totalStableford += score.stableford_points;
+                    }
+                }
+            }
+
+            // Transform to match rounds format for existing render functions
+            return {
+                id: card.id,
+                golfer_id: card.player_id,
+                player_name: card.player_name,
+                handicap_used: card.handicap || card.playing_handicap || 0,
+                total_gross: holesPlayed > 0 ? totalGross : null,
+                total_stableford: totalStableford,
+                total_net: holesPlayed > 0 ? totalGross - Math.round(card.handicap || 0) : null,
+                holes_played: holesPlayed,
+                status: card.status || 'in_progress',
+                // Mark as live data for UI indication
+                is_live: true,
+                // Include scores array for hole-by-hole view
+                scores: (card.scores || []).sort((a, b) => a.hole_number - b.hole_number)
+            };
+        });
     }
 
     renderLeaderboard() {
@@ -72053,8 +72165,18 @@ class OrganizerScoringSystem {
             const position = index + 1;
             const points = this.pointAllocation[position] || 0;
             const score = this.getScoreForFormat(round, this.currentFormat);
-            const status = round.status === 'completed' ? '<span class="text-green-600">✓ Complete</span>' : '<span class="text-blue-600">In Progress</span>';
             const netScore = round.total_gross ? round.total_gross - Math.round(round.handicap_used || 0) : '-';
+
+            // FIX: Show live status with holes played for in-progress scorecards
+            let status;
+            if (round.status === 'completed') {
+                status = '<span class="text-green-600">✓ Complete</span>';
+            } else if (round.is_live) {
+                const holesPlayed = round.holes_played || 0;
+                status = `<span class="text-red-600 font-medium">🔴 Live (${holesPlayed}/18)</span>`;
+            } else {
+                status = '<span class="text-blue-600">In Progress</span>';
+            }
 
             return `
                 <tr class="border-b border-gray-200 hover:bg-gray-50">

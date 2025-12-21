@@ -72438,6 +72438,7 @@ const RegistrationsManager = {
         const transportCount = regs.filter(r => r.wantTransport).length;
         const competitionCount = regs.filter(r => r.wantCompetition).length;
         const paidCount = regs.filter(r => r.paymentStatus === 'paid').length;
+        const paidRevenue = regs.filter(r => r.paymentStatus === 'paid').reduce((sum, r) => sum + (parseFloat(r.totalFee) || 0), 0);
         const totalRevenue = regs.reduce((sum, r) => sum + (parseFloat(r.totalFee) || 0), 0);
         const { vans, details } = this.calculateVans(transportCount, totalPlayers);
 
@@ -72450,7 +72451,15 @@ const RegistrationsManager = {
         if (el('regStatTotalPlayers')) el('regStatTotalPlayers').textContent = regs.length;
         if (el('regStatTransportCount')) el('regStatTransportCount').textContent = transportCount;
         if (el('regStatCompetitionCount')) el('regStatCompetitionCount').textContent = competitionCount;
-        if (el('regStatTotalRevenue')) el('regStatTotalRevenue').textContent = '฿' + totalRevenue.toLocaleString();
+        if (el('regStatTotalRevenue')) {
+            // Show paid revenue (actual collected) with outstanding in smaller text
+            const outstanding = totalRevenue - paidRevenue;
+            if (outstanding > 0) {
+                el('regStatTotalRevenue').innerHTML = `฿${paidRevenue.toLocaleString()} <span class="text-xs text-red-500">(฿${outstanding.toLocaleString()} unpaid)</span>`;
+            } else {
+                el('regStatTotalRevenue').textContent = '฿' + paidRevenue.toLocaleString();
+            }
+        }
         if (el('regStatVansNeeded')) el('regStatVansNeeded').textContent = vans;
         if (el('regStatVansDetails')) el('regStatVansDetails').textContent = details;
 

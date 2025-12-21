@@ -41743,7 +41743,7 @@ class SocietyGolfSupabase {
                 date: e.event_date,              // ACTUAL: event_date
                 departureTime: e.departure_time,
                 startTime: e.start_time,
-                cutoff: e.cutoff,
+                cutoff: e.registration_cutoff || e.cutoff,
                 eventFormat: e.format,           // ACTUAL: format
                 baseFee: e.entry_fee || 0,       // ACTUAL: entry_fee
                 memberFee: e.member_fee || e.entry_fee || 0,
@@ -56003,7 +56003,7 @@ This action cannot be undone.`);
 
                 NotificationManager.show('Event updated successfully', 'success');
 
-                // Send LINE alert for event edit
+                // Send LINE alert for event edit (to organizer)
                 try {
                     await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
                         method: 'POST',
@@ -56019,9 +56019,43 @@ This action cannot be undone.`);
                                 `Time: ${new Date().toLocaleString()}`
                         })
                     });
-                    console.log('[SocietyOrganizer] LINE edit alert sent');
+                    console.log('[SocietyOrganizer] LINE edit alert sent to organizer');
                 } catch (lineErr) {
                     console.error('[SocietyOrganizer] LINE edit alert failed:', lineErr);
+                }
+
+                // Notify all registered golfers of the event update
+                try {
+                    const registrations = await SocietyGolfDB.getRegistrations(this.currentEvent.id);
+                    console.log(`[SocietyOrganizer] Notifying ${registrations.length} registered golfers of event update`);
+
+                    const cutoffStr = eventData.cutoff ? new Date(eventData.cutoff).toLocaleString() : '';
+
+                    for (const reg of registrations) {
+                        if (reg.playerId && reg.playerId !== AppState.currentUser?.lineUserId) {
+                            try {
+                                await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        type: 'system_alert',
+                                        recipient_id: reg.playerId,
+                                        message: `📢 EVENT UPDATE\n\n` +
+                                            `"${eventData.name}" has been updated.\n\n` +
+                                            `📅 Date: ${eventData.date}\n` +
+                                            `📍 Course: ${eventData.courseName}\n` +
+                                            `${cutoffStr ? '⏰ Cutoff: ' + cutoffStr + '\n' : ''}` +
+                                            `\nPlease check the app for details.`
+                                    })
+                                });
+                            } catch (regNotifErr) {
+                                console.warn('[SocietyOrganizer] Failed to notify golfer:', reg.playerId, regNotifErr);
+                            }
+                        }
+                    }
+                    console.log('[SocietyOrganizer] Notified registered golfers of event update');
+                } catch (regErr) {
+                    console.error('[SocietyOrganizer] Failed to notify registered golfers:', regErr);
                 }
             } else {
                 // Create new event
@@ -66708,6 +66742,7 @@ class GolferEventsManager {
                         <span class="text-gray-700"><span class="text-gray-400">📅</span> ${this.formatDate(event.date)}</span>
                         ${event.startTime ? `<span class="text-gray-600">⛳ ${this.formatTime(event.startTime)}</span>` : ''}
                     </div>
+                    ${event.cutoff ? `<div class="text-orange-600"><span class="text-orange-400">⏰</span> Cutoff: ${this.formatDateTime(event.cutoff)}</div>` : ''}
                     <div class="flex items-center justify-between">
                         <span class="text-gray-700 truncate flex-1"><span class="text-gray-400">📍</span> ${event.courseName || 'TBD'}</span>
                         ${max > 0 ? `<span class="text-gray-600 ml-2">👥 ${registered}/${max}</span>` : ''}
@@ -66756,6 +66791,20 @@ class GolferEventsManager {
         const ampm = hour >= 12 ? 'PM' : 'AM';
         const hour12 = hour % 12 || 12;
         return `${hour12}:${minutes} ${ampm}`;
+    }
+
+    formatDateTime(dateTimeStr) {
+        if (!dateTimeStr) return '';
+        const dt = new Date(dateTimeStr);
+        const datePart = dt.toLocaleDateString('en-GB', {
+            month: 'short',
+            day: 'numeric'
+        });
+        const hours = dt.getHours();
+        const minutes = dt.getMinutes().toString().padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const hour12 = hours % 12 || 12;
+        return `${datePart}, ${hour12}:${minutes} ${ampm}`;
     }
 
     formatEventFormat(format) {

@@ -55730,13 +55730,23 @@ class SocietyOrganizerManager {
 
         try {
             console.log('[SocietyOrganizer] Deleting event by ID:', eventId);
+
+            // IMPORTANT: Fetch registrations BEFORE deleting (they'll be cascade deleted)
+            let registrations = [];
+            try {
+                registrations = await SocietyGolfDB.getRegistrations(eventId);
+                console.log(`[SocietyOrganizer] Found ${registrations.length} registrations to notify`);
+            } catch (regErr) {
+                console.warn('[SocietyOrganizer] Could not fetch registrations:', regErr);
+            }
+
             await SocietyGolfDB.deleteEvent(eventId);
             this.events = this.events.filter(e => e.id !== eventId);
             this.renderEvents();
             this.renderCalendar();
             NotificationManager.show('Event deleted successfully', 'success');
 
-            // Send LINE alert for event deletion
+            // Send LINE alert to organizer for event deletion
             try {
                 await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
                     method: 'POST',
@@ -55751,9 +55761,36 @@ class SocietyOrganizerManager {
                             `Time: ${new Date().toLocaleString()}`
                     })
                 });
-                console.log('[SocietyOrganizer] LINE delete alert sent');
+                console.log('[SocietyOrganizer] LINE delete alert sent to organizer');
             } catch (lineErr) {
                 console.error('[SocietyOrganizer] LINE delete alert failed:', lineErr);
+            }
+
+            // Notify all registered golfers that the event has been cancelled
+            for (const reg of registrations) {
+                if (reg.playerId && reg.playerId !== AppState.currentUser?.lineUserId) {
+                    try {
+                        await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                type: 'system_alert',
+                                recipient_id: reg.playerId,
+                                message: `❌ EVENT CANCELLED\n\n` +
+                                    `"${eventName || 'Unknown'}" has been cancelled.\n\n` +
+                                    `Your registration has been removed.\n\n` +
+                                    `Please check the app for other upcoming events.`
+                            })
+                        });
+                        console.log(`[SocietyOrganizer] Cancellation notice sent to: ${reg.playerName || reg.playerId}`);
+                    } catch (notifyErr) {
+                        console.error(`[SocietyOrganizer] Failed to notify ${reg.playerName}:`, notifyErr);
+                    }
+                }
+            }
+
+            if (registrations.length > 0) {
+                console.log(`[SocietyOrganizer] Sent cancellation notices to ${registrations.length} registered golfers`);
             }
         } catch (error) {
             console.error('[SocietyOrganizer] Error deleting event:', error);
@@ -55786,6 +55823,10 @@ This action cannot be undone.`);
             const deletedEventId = this.currentEvent.id;
             const deletedEventDate = this.currentEvent.date;
 
+            // IMPORTANT: Fetch registrations BEFORE deleting (they'll be cascade deleted)
+            const registrations = await SocietyGolfDB.getRegistrations(this.currentEvent.id);
+            console.log(`[SocietyOrganizer] Event has ${registrations.length} registered golfers to notify`);
+
             // Delete from database
             await SocietyGolfDB.deleteEvent(this.currentEvent.id);
 
@@ -55801,7 +55842,7 @@ This action cannot be undone.`);
 
             NotificationManager.show('Event deleted successfully', 'success');
 
-            // Send LINE alert for event deletion
+            // Send LINE alert for event deletion (to organizer/creator)
             try {
                 await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
                     method: 'POST',
@@ -55816,10 +55857,33 @@ This action cannot be undone.`);
                             `Time: ${new Date().toLocaleString()}`
                     })
                 });
-                console.log('[SocietyOrganizer] LINE delete alert sent');
+                console.log('[SocietyOrganizer] LINE delete alert sent to organizer');
             } catch (lineErr) {
                 console.error('[SocietyOrganizer] LINE delete alert failed:', lineErr);
             }
+
+            // Notify all registered golfers that the event has been cancelled
+            for (const reg of registrations) {
+                if (reg.playerId && reg.playerId !== AppState.currentUser?.lineUserId) {
+                    try {
+                        await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                type: 'system_alert',
+                                recipient_id: reg.playerId,
+                                message: `❌ EVENT CANCELLED\n\n` +
+                                    `"${deletedEventName}" has been cancelled.\n\n` +
+                                    `📅 Was scheduled for: ${deletedEventDate}\n\n` +
+                                    `We apologize for any inconvenience.`
+                            })
+                        });
+                    } catch (regNotifErr) {
+                        console.warn('[SocietyOrganizer] Failed to notify golfer of cancellation:', reg.playerId);
+                    }
+                }
+            }
+            console.log(`[SocietyOrganizer] Notified ${registrations.length} golfers of event cancellation`);
         } catch (error) {
             console.error('[SocietyOrganizer] Error deleting event:', error);
             NotificationManager.show('Failed to delete event: ' + error.message, 'error');

@@ -25271,7 +25271,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     // BUILD ID - Injected at deploy time for cache busting
     window.__BUILD_ID__ = 'f9a3b5c7';
 
-    console.log('%c🚀 PAGE VERSION: 2025-12-21-REG-AUTO-FEE', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-12-21-REG-VAN-ASSIGN', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
@@ -72693,16 +72693,33 @@ const RegistrationsManager = {
         const isLocked = !!this.pairingsData.lockedAt;
         this.updateLockStatus(isLocked);
 
+        // Calculate max vans needed
+        const maxVans = Math.max(5, Math.ceil(this.registrations.length / 9));
+
         container.innerHTML = this.pairingsData.groups.map((group, idx) => {
             const groupNum = idx + 1;
             const teeTime = group.teeTime || '';
+            const vanNum = group.vanNumber || 0;
             const players = group.players || [];
 
+            // Van selector options
+            const vanOptions = Array.from({length: maxVans}, (_, i) =>
+                `<option value="${i+1}" ${vanNum === (i+1) ? 'selected' : ''}>Van ${i+1}</option>`
+            ).join('');
+
             return `
-                <div class="pairing-group border rounded-lg p-3 bg-gray-50" data-group="${groupNum}"
+                <div class="pairing-group border rounded-lg p-3 ${vanNum > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50'}" data-group="${groupNum}"
                      ondragover="RegistrationsManager.onDragOver(event)" ondrop="RegistrationsManager.onDrop(event, ${groupNum})">
                     <div class="flex justify-between items-center mb-2">
-                        <span class="font-medium text-sm text-gray-700">Group ${groupNum}</span>
+                        <div class="flex items-center gap-2">
+                            <span class="font-medium text-sm text-gray-700">Group ${groupNum}</span>
+                            <select onchange="RegistrationsManager.updateGroupVan(${groupNum}, this.value)"
+                                    class="text-xs border rounded px-1 py-0.5 ${vanNum > 0 ? 'bg-blue-100 text-blue-700 font-medium' : 'bg-white'}"
+                                    ${isLocked ? 'disabled' : ''}>
+                                <option value="0" ${vanNum === 0 ? 'selected' : ''}>-</option>
+                                ${vanOptions}
+                            </select>
+                        </div>
                         <input type="time" value="${teeTime}"
                                onchange="RegistrationsManager.updateGroupTeeTime(${groupNum}, this.value)"
                                class="text-xs border rounded px-2 py-1 w-24"
@@ -72930,6 +72947,16 @@ const RegistrationsManager = {
         if (group) { group.teeTime = time; await this.savePairings(); }
     },
 
+    async updateGroupVan(groupNumber, vanNumber) {
+        if (!this.pairingsData || !this.pairingsData.groups) return;
+        const group = this.pairingsData.groups[groupNumber - 1];
+        if (group) {
+            group.vanNumber = parseInt(vanNumber) || 0;
+            await this.savePairings();
+            this.renderPairings();  // Re-render to update colors
+        }
+    },
+
     async savePairings() {
         try { await SocietyGolfDB.savePairings(this.currentEventId, this.pairingsData); }
         catch (error) { console.error('[RegistrationsManager] Error saving pairings:', error); }
@@ -72950,18 +72977,18 @@ const RegistrationsManager = {
             const reg = this.registrations.find(r => r.id === regId);
             if (!reg) return;
             const isPaid = reg.paymentStatus === 'paid';
-            const newStatus = isPaid ? 'unpaid' : 'paid';
+            const newStatus = isPaid ? 'pending' : 'paid';  // Database uses 'pending' not 'unpaid'
 
-            // Confirm before marking as unpaid (in case of accidental click)
+            // Confirm before marking as pending (in case of accidental click)
             if (isPaid) {
                 if (!confirm(`Mark ${reg.playerName} as UNPAID? This will clear their payment record.`)) return;
             }
 
-            // Update directly by registration ID (more reliable than event_id + player_id)
+            // Update directly by registration ID
             const currentUser = AppState?.currentUser?.lineUserId;
             const updateData = newStatus === 'paid'
                 ? { payment_status: 'paid', amount_paid: reg.totalFee || 0, paid_at: new Date().toISOString(), paid_by: currentUser }
-                : { payment_status: 'unpaid', amount_paid: 0 };
+                : { payment_status: 'pending', amount_paid: 0 };
 
             const { error } = await window.SupabaseDB.client
                 .from('event_registrations')

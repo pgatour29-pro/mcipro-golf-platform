@@ -72786,11 +72786,14 @@ const RegistrationsManager = {
                         ${players.length === 0 ? '<div class="text-xs text-gray-400 italic py-2">Drop players here</div>' :
                         players.map(p => {
                             const hcp = this.currentHandicaps?.[p.playerId] || p.handicap;
+                            const reg = this.registrations.find(r => r.playerId === p.playerId);
+                            const isPaid = reg?.paymentStatus === 'paid';
+                            const textColor = isPaid ? 'text-blue-600 font-medium' : 'text-red-600';
                             return `
                             <div class="pairing-player bg-white rounded px-2 py-1 text-xs flex justify-between items-center border"
                                  draggable="${!isLocked}" data-player-id="${p.playerId}"
                                  ondragstart="RegistrationsManager.onDragStart(event, '${p.playerId}')">
-                                <span>${p.playerName} (${hcp})</span>
+                                <span class="${textColor}">${p.playerName} (${hcp})</span>
                                 ${!isLocked ? `<button onclick="RegistrationsManager.removeFromGroup(${groupNum}, '${p.playerId}')" class="text-red-500 hover:text-red-700">×</button>` : ''}
                             </div>
                         `}).join('')}
@@ -72807,11 +72810,14 @@ const RegistrationsManager = {
                     <div class="space-y-1">
                         ${unassigned.map(p => {
                             const hcp = this.currentHandicaps?.[p.playerId] || p.handicap;
+                            const reg = this.registrations.find(r => r.playerId === p.playerId);
+                            const isPaid = reg?.paymentStatus === 'paid';
+                            const textColor = isPaid ? 'text-blue-600 font-medium' : 'text-red-600';
                             return `
                             <div class="pairing-player bg-yellow-50 rounded px-2 py-1 text-xs flex justify-between items-center border border-yellow-200"
                                  draggable="true" data-player-id="${p.playerId}"
                                  ondragstart="RegistrationsManager.onDragStart(event, '${p.playerId}')">
-                                <span>${p.playerName} (${hcp})</span>
+                                <span class="${textColor}">${p.playerName} (${hcp})</span>
                             </div>
                         `}).join('')}
                     </div>
@@ -73645,6 +73651,7 @@ const RegistrationsManager = {
 
             reg.paymentStatus = newStatus;
             this.renderPlayerTable();
+            this.renderPairings();  // Update pairings colors in real-time (red=unpaid, blue=paid)
             this.renderStats();  // Update revenue stats in real-time
             console.log(`[RegistrationsManager] ✅ ${reg.playerName} marked as ${newStatus}`);
         } catch (error) { console.error('[RegistrationsManager] Error toggling payment:', error); }

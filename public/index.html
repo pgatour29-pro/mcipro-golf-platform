@@ -72242,15 +72242,38 @@ const RegistrationsManager = {
 
         try {
             const events = window.SocietyOrganizerSystem?.events || [];
-            const sortedEvents = [...events].sort((a, b) => new Date(b.date) - new Date(a.date));
+            const now = new Date();
+            const todayStr = now.toISOString().split('T')[0];
+
+            // Sort by date ascending (upcoming first)
+            const sortedEvents = [...events].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            // Find the first upcoming event (today or future)
+            this.upcomingEventId = null;
+            for (const e of sortedEvents) {
+                if (e.date >= todayStr) {
+                    this.upcomingEventId = e.id;
+                    break;
+                }
+            }
+
+            // Resort by date descending for display (newest first)
+            const displayEvents = [...events].sort((a, b) => new Date(b.date) - new Date(a.date));
 
             selector.innerHTML = '<option value="">-- Select an event --</option>' +
-                sortedEvents.map(e => {
+                displayEvents.map(e => {
                     const dateStr = new Date(e.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                    return `<option value="${e.id}">${e.name} - ${dateStr}</option>`;
+                    // Determine status: red dot = active (today), green dot = upcoming
+                    let statusDot = '';
+                    if (e.date === todayStr) {
+                        statusDot = '🔴 '; // Active (today)
+                    } else if (e.date > todayStr) {
+                        statusDot = '🟢 '; // Upcoming
+                    }
+                    return `<option value="${e.id}">${statusDot}${e.name} - ${dateStr}</option>`;
                 }).join('');
 
-            console.log(`[RegistrationsManager] Populated selector with ${sortedEvents.length} events`);
+            console.log(`[RegistrationsManager] Populated selector with ${displayEvents.length} events, upcoming: ${this.upcomingEventId}`);
         } catch (error) {
             console.error('[RegistrationsManager] Error populating events:', error);
         }
@@ -72279,13 +72302,22 @@ const RegistrationsManager = {
 
         const savedEventId = localStorage.getItem(this.STORAGE_SELECTED_EVENT);
         const lastDate = localStorage.getItem(this.STORAGE_SELECTION_DATE);
+        const selector = document.getElementById('registrationsEventSelector');
 
+        // Try to restore saved selection from same day
         if (savedEventId && lastDate === new Date().toDateString()) {
-            const selector = document.getElementById('registrationsEventSelector');
             if (selector) {
                 selector.value = savedEventId;
                 this.selectEvent(savedEventId, true);
+                return;
             }
+        }
+
+        // Otherwise auto-select the upcoming event
+        if (this.upcomingEventId && selector) {
+            console.log('[RegistrationsManager] Auto-selecting upcoming event:', this.upcomingEventId);
+            selector.value = this.upcomingEventId;
+            this.selectEvent(this.upcomingEventId, true);
         }
     },
 

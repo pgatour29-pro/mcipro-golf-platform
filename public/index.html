@@ -25271,7 +25271,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     // BUILD ID - Injected at deploy time for cache busting
     window.__BUILD_ID__ = 'f9a3b5c7';
 
-    console.log('%c🚀 PAGE VERSION: 2025-11-04-HANDICAP-WHS-INTEGRATION', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-12-21-SOCIETY-HANDICAP-FIX', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
@@ -44218,18 +44218,26 @@ class LiveScorecardSystem {
     // If no society (casual): returns universal handicap (society_id = null)
     getHandicapForSociety(societyHandicaps, selectedSocietyId) {
         if (!societyHandicaps || societyHandicaps.length === 0) {
+            console.log('[LiveScorecard] No society handicaps found for player');
             return 0; // No handicaps recorded
         }
+
+        // Debug logging
+        console.log(`[LiveScorecard] Looking for society: "${selectedSocietyId}"`);
+        console.log(`[LiveScorecard] Player has ${societyHandicaps.length} handicap records:`,
+            societyHandicaps.map(h => ({ society_id: h.society_id, hcp: h.handicap_index })));
 
         // If society selected, find that society's handicap
         if (selectedSocietyId) {
             const match = societyHandicaps.find(h => h.society_id === selectedSocietyId);
             if (match) {
-                console.log(`[LiveScorecard] Using ${this.getSocietyName(selectedSocietyId)} handicap: ${match.handicap_index}`);
+                console.log(`[LiveScorecard] ✅ MATCH FOUND - Using ${this.getSocietyName(selectedSocietyId)} handicap: ${match.handicap_index}`);
                 return match.handicap_index;
             }
             // Society selected but no handicap for it - fall back to universal
-            console.log(`[LiveScorecard] No handicap for selected society, checking universal...`);
+            console.log(`[LiveScorecard] ⚠️ No handicap for selected society "${selectedSocietyId}", checking universal...`);
+        } else {
+            console.log('[LiveScorecard] No society selected (casual round)');
         }
 
         // Use universal handicap (society_id = null)
@@ -46070,9 +46078,12 @@ class LiveScorecardSystem {
 
         // Get selected society for this round
         const selectedSociety = document.getElementById('roundSocietySelect')?.value;
+        console.log(`[LiveScorecard] Adding player: ${profile.name}`);
+        console.log(`[LiveScorecard] Selected society from dropdown: "${selectedSociety}" (empty = casual)`);
 
         // Fetch all society handicaps for this player
         const societyHandicaps = await this.getPlayerSocietyHandicaps(lineUserId);
+        console.log(`[LiveScorecard] Fetched ${societyHandicaps.length} handicap records for ${profile.name}`);
 
         // Get handicap for selected society (or most recent if casual)
         let handicap;

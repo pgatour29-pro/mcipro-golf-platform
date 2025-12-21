@@ -36239,6 +36239,22 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                 </div>
 
                 <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        <span class="material-symbols-outlined text-sm align-middle text-purple-600">groups</span>
+                        Handicap Scope
+                    </label>
+                    <select id="editUserHandicapScope"
+                            onchange="SocietyOrganizerSystem.onHandicapScopeChanged()"
+                            class="w-full px-4 py-3 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-purple-50">
+                        <option value="">Universal Handicap</option>
+                        <!-- Societies populated dynamically -->
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500" id="editHandicapScopeHelp">
+                        Universal handicap is used for casual rounds
+                    </p>
+                </div>
+
+                <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Handicap *</label>
                     <input type="text" id="editUserHandicap"
                            placeholder="Enter handicap (+5 to 54)"
@@ -55384,6 +55400,9 @@ class SocietyOrganizerManager {
             const homeClub = profile.profile_data?.golfInfo?.homeClub || '';
             document.getElementById('editUserHomeClub').value = homeClub;
 
+            // Load societies and player's society handicaps for the scope dropdown
+            await this.loadEditHandicapScopes(golferId, handicap);
+
             console.log('[EditMember] Modal populated, showing now');
             // Show modal
             document.getElementById('editUserModal').style.display = 'flex';
@@ -55395,6 +55414,101 @@ class SocietyOrganizerManager {
 
     closeEditUserModal() {
         document.getElementById('editUserModal').style.display = 'none';
+        // Clear cached handicaps
+        this._editPlayerHandicaps = null;
+    }
+
+    // Cache for player's society handicaps during edit session
+    _editPlayerHandicaps = null;
+
+    // Load society options for the handicap scope dropdown
+    async loadEditHandicapScopes(golferId, universalHandicap) {
+        const select = document.getElementById('editUserHandicapScope');
+        if (!select) return;
+
+        try {
+            // Load society profiles
+            const { data: societies, error: socError } = await window.SupabaseDB.client
+                .from('society_profiles')
+                .select('id, society_name')
+                .order('society_name');
+
+            if (socError) throw socError;
+
+            // Load this player's society handicaps
+            const { data: handicaps, error: hcpError } = await window.SupabaseDB.client
+                .from('society_handicaps')
+                .select('society_id, handicap_index, last_calculated_at')
+                .eq('golfer_id', golferId)
+                .order('last_calculated_at', { ascending: false });
+
+            if (hcpError) throw hcpError;
+
+            // Cache the handicaps for scope changes
+            this._editPlayerHandicaps = handicaps || [];
+
+            // Find universal handicap (society_id = null)
+            const universalHcp = this._editPlayerHandicaps.find(h => h.society_id === null);
+            const universalValue = universalHcp ? universalHcp.handicap_index : universalHandicap;
+
+            // Build dropdown options
+            let html = `<option value="">Universal Handicap (${universalValue})</option>`;
+
+            if (societies) {
+                societies.forEach(s => {
+                    const societyHcp = this._editPlayerHandicaps.find(h => h.society_id === s.id);
+                    const hcpDisplay = societyHcp
+                        ? societyHcp.handicap_index
+                        : `${universalValue} - using universal`;
+                    html += `<option value="${s.id}">${s.society_name} (${hcpDisplay})</option>`;
+                });
+            }
+
+            select.innerHTML = html;
+            console.log(`[EditMember] Loaded ${societies?.length || 0} societies for handicap scope`);
+        } catch (err) {
+            console.error('[EditMember] Error loading handicap scopes:', err);
+            select.innerHTML = '<option value="">Universal Handicap</option>';
+        }
+    }
+
+    // Called when handicap scope dropdown changes
+    onHandicapScopeChanged() {
+        const scopeSelect = document.getElementById('editUserHandicapScope');
+        const handicapInput = document.getElementById('editUserHandicap');
+        const helpText = document.getElementById('editHandicapScopeHelp');
+
+        if (!scopeSelect || !handicapInput) return;
+
+        const selectedSociety = scopeSelect.value;
+
+        if (!selectedSociety) {
+            // Universal selected
+            const universalHcp = this._editPlayerHandicaps?.find(h => h.society_id === null);
+            if (universalHcp) {
+                handicapInput.value = universalHcp.handicap_index;
+            }
+            if (helpText) {
+                helpText.textContent = 'Universal handicap is used for casual rounds';
+            }
+        } else {
+            // Society selected
+            const societyHcp = this._editPlayerHandicaps?.find(h => h.society_id === selectedSociety);
+            if (societyHcp) {
+                handicapInput.value = societyHcp.handicap_index;
+            } else {
+                // No society-specific handicap yet - show universal as starting point
+                const universalHcp = this._editPlayerHandicaps?.find(h => h.society_id === null);
+                if (universalHcp) {
+                    handicapInput.value = universalHcp.handicap_index;
+                }
+            }
+            // Get society name
+            const societyName = scopeSelect.options[scopeSelect.selectedIndex]?.text?.split(' (')[0] || 'Society';
+            if (helpText) {
+                helpText.textContent = `This handicap applies only to ${societyName} events`;
+            }
+        }
     }
 
     async saveUserEdits() {
@@ -55435,7 +55549,97 @@ class SocietyOrganizerManager {
                 handicap = isPlus ? `+${handicapValue}` : handicapValue.toString();
             }
 
-            console.log('[SaveUserEdits] Saving:', { golferId, name, handicap, homeClub });
+            // Get the selected handicap scope (society or universal)
+            const handicapScope = document.getElementById('editUserHandicapScope')?.value || '';
+
+            console.log('[SaveUserEdits] Saving:', { golferId, name, handicap, homeClub, handicapScope });
+
+            // Convert handicap to numeric for society_handicaps table
+            let handicapNumeric = null;
+            if (handicap !== null) {
+                if (handicap.startsWith('+')) {
+                    handicapNumeric = -parseFloat(handicap.substring(1)); // Plus handicaps are negative
+                } else {
+                    handicapNumeric = parseFloat(handicap);
+                }
+            }
+
+            // If a society is selected, save ONLY to society_handicaps (NOT universal)
+            if (handicapScope && handicapNumeric !== null) {
+                console.log('[SaveUserEdits] Saving society-specific handicap to society_handicaps...');
+
+                // Upsert to society_handicaps table for this specific society
+                const { error: societyHcpError } = await window.SupabaseDB.client
+                    .from('society_handicaps')
+                    .upsert({
+                        golfer_id: golferId,
+                        society_id: handicapScope,
+                        handicap_index: handicapNumeric,
+                        calculation_method: 'MANUAL',
+                        last_calculated_at: new Date().toISOString()
+                    }, {
+                        onConflict: 'golfer_id,society_id'
+                    });
+
+                if (societyHcpError) {
+                    console.error('[SaveUserEdits] Error saving society handicap:', societyHcpError);
+                    throw new Error('Failed to save society handicap');
+                }
+
+                console.log(`[SaveUserEdits] ✅ Society handicap saved: ${handicapNumeric} for society ${handicapScope}`);
+
+                // Also update name and home club if changed (but NOT the universal handicap)
+                const existingProfile = await window.SupabaseDB.getUserProfile(golferId);
+                const existingProfileData = existingProfile?.profile_data || {};
+
+                // Only update profile if name or homeClub changed
+                if (name !== existingProfile?.name || homeClub !== existingProfileData?.golfInfo?.homeClub) {
+                    const updatedProfileData = {
+                        ...existingProfileData,
+                        golfInfo: {
+                            ...(existingProfileData.golfInfo || {}),
+                            // Keep existing handicap - don't change it!
+                            homeClub: homeClub
+                        }
+                    };
+
+                    await window.SupabaseDB.client
+                        .from('user_profiles')
+                        .upsert({
+                            line_user_id: golferId,
+                            name: name,
+                            profile_data: updatedProfileData
+                        }, { onConflict: 'line_user_id' });
+                }
+
+                DevMode.showNotification(`Society handicap updated to ${handicap}`, 'success');
+                this.closeEditUserModal();
+                await this.loadPlayerDirectory();
+                return; // Done - don't update universal handicap in profile
+            }
+
+            // Universal handicap selected - save to society_handicaps (society_id = null) AND update profile
+            if (handicapNumeric !== null) {
+                console.log('[SaveUserEdits] Saving universal handicap to society_handicaps...');
+
+                // Upsert to society_handicaps with society_id = null (universal)
+                const { error: universalHcpError } = await window.SupabaseDB.client
+                    .from('society_handicaps')
+                    .upsert({
+                        golfer_id: golferId,
+                        society_id: null,
+                        handicap_index: handicapNumeric,
+                        calculation_method: 'MANUAL',
+                        last_calculated_at: new Date().toISOString()
+                    }, {
+                        onConflict: 'golfer_id,society_id'
+                    });
+
+                if (universalHcpError) {
+                    console.error('[SaveUserEdits] Error saving universal handicap:', universalHcpError);
+                    // Continue anyway - try to update profile
+                }
+            }
 
             // Check if this is a GUEST ID (not a LINE user)
             const isGuestUser = !golferId.startsWith('U') || golferId.includes('GUEST');

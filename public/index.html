@@ -73822,19 +73822,78 @@ const RegistrationsManager = {
         } catch (error) { console.error('[RegistrationsManager] Error updating fee:', error); }
     },
 
+    // OPTIMIZED: Update only the specific row instead of rebuilding entire table
+    updateRowUI(regId) {
+        const reg = this.registrations.find(r => r.id === regId);
+        if (!reg) return;
+
+        const row = document.querySelector(`tr[data-reg-id="${regId}"]`);
+        if (!row) return;
+
+        const isPaid = reg.paymentStatus === 'paid';
+        const transportFeeAmt = this.eventFees?.transportFee || 300;
+        const compFeeAmt = this.eventFees?.compFee || 250;
+
+        // Update row background
+        row.className = `border-t hover:bg-gray-100 ${isPaid ? 'bg-green-50' : ''}`;
+
+        // Update fee input
+        const feeInput = row.querySelector('input[type="number"]');
+        if (feeInput) feeInput.value = reg.totalFee || 0;
+
+        // Update comp button
+        const compBtn = row.querySelectorAll('button')[0];
+        if (compBtn && compBtn.textContent.trim() == compFeeAmt) {
+            compBtn.className = `px-1.5 py-0.5 rounded text-xs font-medium border cursor-pointer ${reg.wantCompetition ? 'bg-green-500 text-white border-green-600' : 'bg-red-500 text-white border-red-600'}`;
+        }
+
+        // Update transport button
+        const transBtn = row.querySelectorAll('button')[1];
+        if (transBtn && transBtn.textContent.trim() == transportFeeAmt) {
+            transBtn.className = `px-1.5 py-0.5 rounded text-xs font-medium border cursor-pointer ${reg.wantTransport ? 'bg-green-500 text-white border-green-600' : 'bg-red-500 text-white border-red-600'}`;
+        }
+
+        // Update paid button
+        const paidBtn = row.querySelector('button[onclick*="togglePaymentStatus"]');
+        if (paidBtn) {
+            paidBtn.className = `${isPaid ? 'text-green-600' : 'text-gray-400'} hover:opacity-75`;
+            paidBtn.innerHTML = `<span class="material-symbols-outlined">${isPaid ? 'check_circle' : 'radio_button_unchecked'}</span>`;
+        }
+    },
+
+    // OPTIMIZED: Update only pairings player color, not entire panel
+    updatePairingPlayerColor(playerId) {
+        const reg = this.registrations.find(r => r.playerId === playerId);
+        if (!reg) return;
+
+        const isPaid = reg.paymentStatus === 'paid';
+        const textColor = isPaid ? 'text-blue-600 font-medium' : 'text-red-600';
+
+        // Find all instances of this player in pairings
+        document.querySelectorAll(`.pairing-player[data-player-id="${playerId}"] span`).forEach(span => {
+            span.className = textColor;
+        });
+    },
+
     async togglePaymentStatus(regId) {
         try {
             const reg = this.registrations.find(r => r.id === regId);
             if (!reg) return;
             const isPaid = reg.paymentStatus === 'paid';
-            const newStatus = isPaid ? 'pending' : 'paid';  // Database uses 'pending' not 'unpaid'
+            const newStatus = isPaid ? 'pending' : 'paid';
 
             // Confirm before marking as pending (in case of accidental click)
             if (isPaid) {
                 if (!confirm(`Mark ${reg.playerName} as UNPAID? This will clear their payment record.`)) return;
             }
 
-            // Update directly by registration ID
+            // Update local state FIRST for instant UI feedback
+            reg.paymentStatus = newStatus;
+            this.updateRowUI(regId);
+            this.updatePairingPlayerColor(reg.playerId);
+            this.renderStats();
+
+            // Then update database in background
             const currentUser = AppState?.currentUser?.lineUserId;
             const updateData = newStatus === 'paid'
                 ? { payment_status: 'paid', amount_paid: reg.totalFee || 0, paid_at: new Date().toISOString(), paid_by: currentUser }
@@ -73845,12 +73904,15 @@ const RegistrationsManager = {
                 .update(updateData)
                 .eq('id', regId);
 
-            if (error) throw error;
+            if (error) {
+                // Revert on error
+                reg.paymentStatus = isPaid ? 'paid' : 'pending';
+                this.updateRowUI(regId);
+                this.updatePairingPlayerColor(reg.playerId);
+                this.renderStats();
+                throw error;
+            }
 
-            reg.paymentStatus = newStatus;
-            this.renderPlayerTable();
-            this.renderPairings();  // Update pairings colors in real-time (red=unpaid, blue=paid)
-            this.renderStats();  // Update revenue stats in real-time
             console.log(`[RegistrationsManager] ✅ ${reg.playerName} marked as ${newStatus}`);
         } catch (error) { console.error('[RegistrationsManager] Error toggling payment:', error); }
     },
@@ -73862,25 +73924,30 @@ const RegistrationsManager = {
 
             const newValue = !reg.wantCompetition;
             const compFee = this.eventFees?.compFee || 250;
-
-            // Calculate new fee
             const currentFee = parseFloat(reg.totalFee) || 0;
             const newFee = newValue ? currentFee + compFee : currentFee - compFee;
 
-            // Update database
+            // Update local state FIRST for instant UI feedback
+            reg.wantCompetition = newValue;
+            reg.totalFee = newFee;
+            this.updateRowUI(regId);
+            this.renderStats();
+
+            // Then update database in background
             const { error } = await window.SupabaseDB.client
                 .from('event_registrations')
                 .update({ want_competition: newValue, total_fee: newFee })
                 .eq('id', regId);
 
-            if (error) throw error;
+            if (error) {
+                // Revert on error
+                reg.wantCompetition = !newValue;
+                reg.totalFee = currentFee;
+                this.updateRowUI(regId);
+                this.renderStats();
+                throw error;
+            }
 
-            // Update local state
-            reg.wantCompetition = newValue;
-            reg.totalFee = newFee;
-
-            this.renderPlayerTable();
-            this.renderStats();
             console.log(`[RegistrationsManager] ✅ ${reg.playerName} competition: ${newValue ? 'YES' : 'NO'}, fee: ฿${newFee}`);
         } catch (error) { console.error('[RegistrationsManager] Error toggling competition:', error); }
     },
@@ -73892,25 +73959,30 @@ const RegistrationsManager = {
 
             const newValue = !reg.wantTransport;
             const transportFee = this.eventFees?.transportFee || 300;
-
-            // Calculate new fee
             const currentFee = parseFloat(reg.totalFee) || 0;
             const newFee = newValue ? currentFee + transportFee : currentFee - transportFee;
 
-            // Update database
+            // Update local state FIRST for instant UI feedback
+            reg.wantTransport = newValue;
+            reg.totalFee = newFee;
+            this.updateRowUI(regId);
+            this.renderStats();
+
+            // Then update database in background
             const { error } = await window.SupabaseDB.client
                 .from('event_registrations')
                 .update({ want_transport: newValue, total_fee: newFee })
                 .eq('id', regId);
 
-            if (error) throw error;
+            if (error) {
+                // Revert on error
+                reg.wantTransport = !newValue;
+                reg.totalFee = currentFee;
+                this.updateRowUI(regId);
+                this.renderStats();
+                throw error;
+            }
 
-            // Update local state
-            reg.wantTransport = newValue;
-            reg.totalFee = newFee;
-
-            this.renderPlayerTable();
-            this.renderStats();
             console.log(`[RegistrationsManager] ✅ ${reg.playerName} transport: ${newValue ? 'YES' : 'NO'}, fee: ฿${newFee}`);
         } catch (error) { console.error('[RegistrationsManager] Error toggling transport:', error); }
     },

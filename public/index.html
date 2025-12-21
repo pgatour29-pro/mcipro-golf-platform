@@ -73012,9 +73012,77 @@ const RegistrationsManager = {
         catch (error) { console.error('[RegistrationsManager] Error saving pairings:', error); }
     },
 
+    // Fetch current handicaps from society_handicaps table for all players in pairings
+    async fetchCurrentHandicaps() {
+        if (!this.pairingsData || !this.pairingsData.groups) return {};
+
+        // Collect all player IDs from pairings
+        const playerIds = [];
+        this.pairingsData.groups.forEach(group => {
+            (group.players || []).forEach(p => {
+                if (p.playerId && p.playerId.startsWith('U')) {
+                    playerIds.push(p.playerId);
+                }
+            });
+        });
+
+        if (playerIds.length === 0) return {};
+
+        // Determine society from event title (TRGG, JOA, etc.)
+        const event = SocietyOrganizerSystem.events?.find(e => e.id === this.currentEventId);
+        const eventTitle = event?.title || '';
+        let societyId = null;
+
+        if (eventTitle.toLowerCase().includes('trgg') || eventTitle.toLowerCase().includes('travellers rest')) {
+            societyId = '7c0e4b72-d925-44bc-afda-38259a7ba346'; // TRGG
+        } else if (eventTitle.toLowerCase().includes('joa') || eventTitle.toLowerCase().includes('japan open')) {
+            societyId = '72d8444a-56bf-4441-86f2-22087f0e6b27'; // JOA
+        }
+
+        console.log(`[Pairings] Fetching current handicaps for ${playerIds.length} players, society: ${societyId ? eventTitle : 'Universal'}`);
+
+        try {
+            // Fetch all handicaps for these players
+            const { data, error } = await window.SupabaseDB.client
+                .from('society_handicaps')
+                .select('golfer_id, society_id, handicap_index')
+                .in('golfer_id', playerIds);
+
+            if (error) throw error;
+
+            // Build handicap map: playerId -> current handicap
+            const handicapMap = {};
+            playerIds.forEach(pid => {
+                // Find the best handicap for this player
+                const playerRecords = (data || []).filter(r => r.golfer_id === pid);
+
+                // Priority: society-specific > universal > registration value
+                const societyRecord = societyId ? playerRecords.find(r => r.society_id === societyId) : null;
+                const universalRecord = playerRecords.find(r => r.society_id === null);
+
+                if (societyRecord) {
+                    handicapMap[pid] = parseFloat(societyRecord.handicap_index).toFixed(1);
+                    console.log(`[Pairings] ${pid}: Using ${eventTitle} handicap: ${handicapMap[pid]}`);
+                } else if (universalRecord) {
+                    handicapMap[pid] = parseFloat(universalRecord.handicap_index).toFixed(1);
+                    console.log(`[Pairings] ${pid}: Using universal handicap: ${handicapMap[pid]}`);
+                }
+                // If no record found, handicapMap[pid] stays undefined, we'll use registration value
+            });
+
+            return handicapMap;
+        } catch (err) {
+            console.error('[Pairings] Error fetching current handicaps:', err);
+            return {};
+        }
+    },
+
     // Generate pairing sheet text for print/share
-    generatePairingSheetText() {
+    async generatePairingSheetText() {
         if (!this.pairingsData || !this.pairingsData.groups) return '';
+
+        // Fetch current handicaps from database
+        const currentHandicaps = await this.fetchCurrentHandicaps();
 
         const event = SocietyOrganizerSystem.events?.find(e => e.id === this.currentEventId);
         const eventName = event?.title || 'Golf Event';
@@ -73052,7 +73120,8 @@ const RegistrationsManager = {
                 const teeTime = group.teeTime ? ` ⏰ ${group.teeTime}` : '';
                 text += `Group ${group.groupNum}${teeTime}\n`;
                 (group.players || []).forEach(p => {
-                    text += `  • ${p.playerName} (${p.handicap})\n`;
+                    const hcp = currentHandicaps[p.playerId] || p.handicap;
+                    text += `  • ${p.playerName} (${hcp})\n`;
                 });
                 text += '\n';
             });
@@ -73067,7 +73136,8 @@ const RegistrationsManager = {
             const teeTime = group.teeTime ? ` ⏰ ${group.teeTime}` : '';
             text += `Group ${group.groupNum}${teeTime}\n`;
             (group.players || []).forEach(p => {
-                text += `  • ${p.playerName} (${p.handicap})\n`;
+                const hcp = currentHandicaps[p.playerId] || p.handicap;
+                text += `  • ${p.playerName} (${hcp})\n`;
             });
             text += '\n';
         });
@@ -73076,16 +73146,22 @@ const RegistrationsManager = {
         return text;
     },
 
-    printPairingSheet() {
+    async printPairingSheet() {
         if (!this.pairingsData || !this.pairingsData.groups || this.pairingsData.groups.length === 0) {
             alert('No pairings to print. Create pairings first.');
             return;
         }
 
+        // Fetch current handicaps from database
+        const currentHandicaps = await this.fetchCurrentHandicaps();
+
         const event = SocietyOrganizerSystem.events?.find(e => e.id === this.currentEventId);
         const eventName = event?.title || 'Golf Event';
         const eventDate = event?.event_date ? new Date(event.event_date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '';
         const courseName = event?.course_name || '';
+
+        // Helper to get current handicap or fallback to registration value
+        const getHcp = (p) => currentHandicaps[p.playerId] || p.handicap;
 
         // Group by van
         const vanGroups = {};
@@ -73138,7 +73214,7 @@ const RegistrationsManager = {
             vanGroups[vanNum].forEach(group => {
                 html += `<div class="group">
                     <div class="group-header">Group ${group.groupNum}${group.teeTime ? ` <span class="tee-time">⏰ ${group.teeTime}</span>` : ''}</div>
-                    ${(group.players || []).map(p => `<div class="player">${p.playerName} <span class="player-hcp">(${p.handicap})</span></div>`).join('')}
+                    ${(group.players || []).map(p => `<div class="player">${p.playerName} <span class="player-hcp">(${getHcp(p)})</span></div>`).join('')}
                 </div>`;
             });
             html += `</div></div>`;
@@ -73152,7 +73228,7 @@ const RegistrationsManager = {
             noVanGroups.forEach(group => {
                 html += `<div class="group">
                     <div class="group-header">Group ${group.groupNum}${group.teeTime ? ` <span class="tee-time">⏰ ${group.teeTime}</span>` : ''}</div>
-                    ${(group.players || []).map(p => `<div class="player">${p.playerName} <span class="player-hcp">(${p.handicap})</span></div>`).join('')}
+                    ${(group.players || []).map(p => `<div class="player">${p.playerName} <span class="player-hcp">(${getHcp(p)})</span></div>`).join('')}
                 </div>`;
             });
             html += `</div></div>`;
@@ -73187,7 +73263,7 @@ const RegistrationsManager = {
 
         if (playerLineIds.length === 0) {
             alert('No registered players with LINE accounts found.');
-            this.copyPairingsToClipboard(this.generatePairingSheetText());
+            this.copyPairingsToClipboard(await this.generatePairingSheetText());
             return;
         }
 
@@ -73198,12 +73274,12 @@ const RegistrationsManager = {
 
         if (!confirmed) {
             // Just copy to clipboard instead
-            this.copyPairingsToClipboard(this.generatePairingSheetText());
+            this.copyPairingsToClipboard(await this.generatePairingSheetText());
             return;
         }
 
         try {
-            const text = this.generatePairingSheetText();
+            const text = await this.generatePairingSheetText();
             const event = SocietyOrganizerSystem.events?.find(e => e.id === this.currentEventId);
             const eventName = event?.title || event?.name || 'Golf Event';
 
@@ -73247,7 +73323,7 @@ const RegistrationsManager = {
         } catch (error) {
             console.error('[Pairings] LINE share error:', error);
             alert('❌ Error sending pairings. Copying to clipboard instead.');
-            this.copyPairingsToClipboard(this.generatePairingSheetText());
+            this.copyPairingsToClipboard(await this.generatePairingSheetText());
         }
     },
 

@@ -28543,6 +28543,19 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             </div>
                         </div>
 
+                        <!-- Society Selection for Handicaps -->
+                        <div class="mb-4" id="societyHandicapSection">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                <span class="material-symbols-outlined text-sm align-middle text-purple-600">groups</span>
+                                Round Society (for handicaps)
+                            </label>
+                            <select id="roundSocietySelect" class="w-full rounded-lg border-2 border-purple-300 px-3 py-2" onchange="LiveScorecardManager.onSocietyChanged()">
+                                <option value="">Casual Round (use most recent handicap)</option>
+                                <!-- Dynamically populated from society_profiles -->
+                            </select>
+                            <p class="text-xs text-gray-500 mt-1">Each society tracks separate handicaps. Scores update BOTH the selected society AND universal handicap.</p>
+                        </div>
+
                         <!-- Add Players (1-7) -->
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 mb-2">Add Players (1-7)</label>
@@ -44098,6 +44111,118 @@ class LiveScorecardSystem {
     }
 
     // ============================================
+    // MULTI-SOCIETY HANDICAP SUPPORT
+    // Fetches and manages per-society handicaps for each golfer
+    // ============================================
+
+    // Cache for society profiles (fetched once per session)
+    societyProfilesCache = null;
+
+    // Load society options into the dropdown
+    async loadSocietyOptions() {
+        const select = document.getElementById('roundSocietySelect');
+        if (!select) return;
+
+        try {
+            // Use cache if available
+            if (!this.societyProfilesCache) {
+                const { data, error } = await window.SupabaseDB.client
+                    .from('society_profiles')
+                    .select('id, society_name')
+                    .order('society_name');
+
+                if (error) throw error;
+                this.societyProfilesCache = data || [];
+            }
+
+            // Keep the casual option, add societies
+            let html = '<option value="">Casual Round (use most recent handicap)</option>';
+            this.societyProfilesCache.forEach(s => {
+                html += `<option value="${s.id}">${s.society_name}</option>`;
+            });
+
+            select.innerHTML = html;
+            console.log(`[LiveScorecard] Loaded ${this.societyProfilesCache.length} societies for handicap selection`);
+        } catch (err) {
+            console.error('[LiveScorecard] Error loading societies:', err);
+        }
+    }
+
+    // Fetch all society handicaps for a player
+    async getPlayerSocietyHandicaps(golferId) {
+        try {
+            const { data, error } = await window.SupabaseDB.client
+                .from('society_handicaps')
+                .select('society_id, handicap_index, last_calculated_at')
+                .eq('golfer_id', golferId)
+                .order('last_calculated_at', { ascending: false });
+
+            if (error) throw error;
+            return data || [];
+        } catch (err) {
+            console.error('[LiveScorecard] Error loading society handicaps:', err);
+            return [];
+        }
+    }
+
+    // Get handicap for specific society, falling back to most recent
+    getHandicapForSociety(societyHandicaps, selectedSocietyId) {
+        if (!societyHandicaps || societyHandicaps.length === 0) {
+            return 0; // No handicaps recorded
+        }
+
+        // If society selected, find matching handicap
+        if (selectedSocietyId) {
+            const match = societyHandicaps.find(h => h.society_id === selectedSocietyId);
+            if (match) {
+                console.log(`[LiveScorecard] Using ${this.getSocietyName(selectedSocietyId)} handicap: ${match.handicap_index}`);
+                return match.handicap_index;
+            }
+        }
+
+        // Fallback: most recent (already sorted by last_calculated_at desc)
+        console.log(`[LiveScorecard] Using most recent handicap: ${societyHandicaps[0].handicap_index}`);
+        return societyHandicaps[0].handicap_index;
+    }
+
+    // Get society name from ID (for display)
+    getSocietyName(societyId) {
+        if (!societyId) return 'Universal';
+        if (!this.societyProfilesCache) return 'Society';
+        const society = this.societyProfilesCache.find(s => s.id === societyId);
+        return society ? society.society_name : 'Society';
+    }
+
+    // Update player handicap (called from dropdown)
+    updatePlayerHandicap(playerIndex, newHandicap) {
+        if (this.players[playerIndex]) {
+            this.players[playerIndex].handicap = parseFloat(newHandicap);
+            console.log(`[LiveScorecard] Updated ${this.players[playerIndex].name} handicap to ${newHandicap}`);
+            // Recalculate scramble handicap if applicable
+            if (window.calculateScrambleHcp) {
+                window.calculateScrambleHcp();
+            }
+        }
+    }
+
+    // Called when society dropdown changes (updates any already-added players)
+    onSocietyChanged() {
+        const selectedSociety = document.getElementById('roundSocietySelect')?.value;
+        console.log(`[LiveScorecard] Society changed to: ${selectedSociety || 'Casual'}`);
+
+        // Update handicaps for already-added players
+        this.players.forEach((player, index) => {
+            if (player.societyHandicaps && player.societyHandicaps.length > 0) {
+                const newHcp = this.getHandicapForSociety(player.societyHandicaps, selectedSociety);
+                player.handicap = newHcp;
+            }
+        });
+
+        // Re-render player list with updated handicaps
+        this.renderPlayersList();
+    }
+
+    // ============================================
     // GOLF SCORING ENGINE
     // Professional scoring engine supporting multiple formats
     // Converted from golfScoring.ts
@@ -44940,6 +45065,9 @@ class LiveScorecardSystem {
 
         await this.loadEvents();
         // No longer load courses on init - dropdown is static!
+
+        // Load society options for handicap selection
+        await this.loadSocietyOptions();
 
         // Auto-sync offline data when connection is restored
         window.addEventListener('online', () => {
@@ -45867,21 +45995,35 @@ class LiveScorecardSystem {
         console.log(`[LiveScorecard] Filtered to ${filteredProfiles.length} profiles`);
     }
 
-    selectExistingPlayer(lineUserId) {
+    async selectExistingPlayer(lineUserId) {
         const profile = this.allPlayerProfiles.find(p => p.line_user_id === lineUserId);
         if (!profile) {
             NotificationManager.show('Player not found', 'error');
             return;
         }
 
-        // FIXED: Prioritize golfInfo.handicap (canonical location) over legacy profile_data.handicap
-        const handicap = profile.profile_data?.golfInfo?.handicap || profile.profile_data?.handicap || 0;
+        // Get selected society for this round
+        const selectedSociety = document.getElementById('roundSocietySelect')?.value;
+
+        // Fetch all society handicaps for this player
+        const societyHandicaps = await this.getPlayerSocietyHandicaps(lineUserId);
+
+        // Get handicap for selected society (or most recent if casual)
+        let handicap;
+        if (societyHandicaps.length > 0) {
+            handicap = this.getHandicapForSociety(societyHandicaps, selectedSociety);
+        } else {
+            // Fallback to profile handicap if no society handicaps exist
+            handicap = profile.profile_data?.golfInfo?.handicap || profile.profile_data?.handicap || 0;
+            console.log(`[LiveScorecard] No society handicaps found for ${profile.name}, using profile handicap: ${handicap}`);
+        }
 
         this.players.push({
             id: profile.line_user_id,
             lineUserId: profile.line_user_id,
             name: profile.name,
             handicap: handicap,
+            societyHandicaps: societyHandicaps,  // Store for potential override
             profileData: profile.profile_data
         });
 
@@ -45980,11 +46122,33 @@ class LiveScorecardSystem {
         container.innerHTML = this.players.map((p, index) => {
             // Format handicap: negative values are plus handicaps (e.g., -2.5 → +2.5)
             const handicapDisplay = p.handicap < 0 ? `+${Math.abs(p.handicap)}` : p.handicap;
+
+            // Build handicap HTML - show dropdown if player has multiple society handicaps
+            let handicapHtml;
+            if (p.societyHandicaps && p.societyHandicaps.length > 1) {
+                // Build dropdown with all available society handicaps
+                const options = p.societyHandicaps.map(sh => {
+                    const hcpVal = sh.handicap_index;
+                    const hcpDisplay = hcpVal < 0 ? `+${Math.abs(hcpVal)}` : hcpVal;
+                    const societyName = this.getSocietyName(sh.society_id);
+                    const selected = sh.handicap_index === p.handicap ? 'selected' : '';
+                    return `<option value="${sh.handicap_index}" ${selected}>${societyName}: ${hcpDisplay}</option>`;
+                }).join('');
+                handicapHtml = `
+                    <select onchange="LiveScorecardManager.updatePlayerHandicap(${index}, this.value)"
+                            class="ml-2 text-sm rounded border px-1 py-0.5 bg-yellow-50 border-yellow-300 cursor-pointer">
+                        ${options}
+                    </select>`;
+            } else {
+                // Just show static handicap
+                handicapHtml = `<span class="text-sm text-gray-600 ml-2">(HCP ${handicapDisplay})</span>`;
+            }
+
             return `
             <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div>
+                <div class="flex items-center">
                     <span class="font-medium">${p.name}</span>
-                    <span class="text-sm text-gray-600 ml-2">(HCP ${handicapDisplay})</span>
+                    ${handicapHtml}
                 </div>
                 <button onclick="LiveScorecardManager.removePlayer(${index})" class="text-red-600 hover:text-red-700">
                     <span class="material-symbols-outlined text-sm">delete</span>
@@ -47735,6 +47899,9 @@ class LiveScorecardSystem {
                 throw new Error(`Cannot save round: Player "${player.name}" has no valid ID`);
             }
 
+            // Get selected society for handicap tracking
+            const primarySocietyId = document.getElementById('roundSocietySelect')?.value || null;
+
             // Save to Supabase database using golfer ID (LINE ID or generated ID)
             let round, error;
             try {
@@ -47747,6 +47914,7 @@ class LiveScorecardSystem {
                         course_name: courseName, // FIX: Use local variable instead of this.courseData?.name
                         type: this.roundType || (this.isPrivateRound ? 'private' : (this.eventId ? 'society' : 'private')),
                         society_event_id: this.eventId || null,
+                        primary_society_id: primarySocietyId, // Society for handicap calculation (triggers update both this society AND universal)
                         organizer_id: organizerId,
                         played_at: new Date().toISOString(), // CRITICAL: Add played_at for NOT NULL constraint
                         started_at: new Date().toISOString(),
@@ -47777,6 +47945,7 @@ class LiveScorecardSystem {
                         round_id: round.id,
                         golfer_id: round.golfer_id,
                         society_event_id: round.society_event_id,
+                        primary_society_id: round.primary_society_id, // For handicap triggers
                         organizer_id: round.organizer_id,
                         type: round.type,
                         total_gross: round.total_gross,
@@ -47802,6 +47971,7 @@ class LiveScorecardSystem {
                             golfer_id: golferId, // FIX: Use golferId (LINE ID or player.id for manually added players)
                             course_id: courseId || null,
                             course_name: courseName, // FIX: Add course_name for legacy schema
+                            primary_society_id: primarySocietyId, // Society for handicap calculation
                             played_at: new Date().toISOString(),
                             holes_played: holesPlayed,
                             tee_used: teeMarker,

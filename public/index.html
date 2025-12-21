@@ -55984,8 +55984,61 @@ This action cannot be undone.`);
             console.log('[SocietyOrganizer] Hiding form...');
             this.hideEventForm();
             console.log('[SocietyOrganizer] Reloading events...');
+
+            // Save the event ID before reloading
+            const savedEventId = this.currentEvent?.id;
+            const savedEventName = eventData.name;
+
             await this.loadEvents();
             console.log('[SocietyOrganizer] ✅ Events reloaded successfully');
+
+            // POST-SAVE VALIDATION: Check if the event is still visible after reload
+            if (savedEventId) {
+                const eventStillVisible = this.events.some(e => e.id === savedEventId);
+                if (!eventStillVisible) {
+                    console.error('[SocietyOrganizer] ⚠️ CRITICAL: Event disappeared after save!');
+                    console.error('[SocietyOrganizer] Event ID:', savedEventId);
+                    console.error('[SocietyOrganizer] Event Name:', savedEventName);
+                    console.error('[SocietyOrganizer] Loaded events:', this.events.map(e => ({ id: e.id, name: e.name })));
+
+                    // Show prominent error to user
+                    NotificationManager.show(
+                        '⚠️ WARNING: Event may not be visible! The event was saved but is not showing in the list. ' +
+                        'This may be a data issue. Event: ' + savedEventName,
+                        'error',
+                        10000  // Show for 10 seconds
+                    );
+
+                    // Also show an alert for critical visibility
+                    alert('⚠️ EVENT VISIBILITY WARNING\n\n' +
+                        'The event was saved to the database but is NOT appearing in your events list.\n\n' +
+                        'Event: ' + savedEventName + '\n\n' +
+                        'This is likely a data issue. Please contact support or check the event title prefix.');
+
+                    // Send LINE notification to admin about the issue
+                    try {
+                        const adminUserId = AppState.currentUser?.lineUserId;
+                        if (adminUserId) {
+                            await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    type: 'system_alert',
+                                    recipient_id: adminUserId,
+                                    message: `⚠️ SYSTEM ALERT: Event Visibility Issue\n\n` +
+                                        `Event "${savedEventName}" was saved but is NOT visible in the events list.\n\n` +
+                                        `Event ID: ${savedEventId}\n` +
+                                        `Time: ${new Date().toLocaleString()}\n\n` +
+                                        `This may indicate a database or query issue. Please check immediately.`
+                                })
+                            });
+                            console.log('[SocietyOrganizer] LINE alert sent to admin');
+                        }
+                    } catch (lineErr) {
+                        console.error('[SocietyOrganizer] Failed to send LINE alert:', lineErr);
+                    }
+                }
+            }
         } catch (error) {
             console.error('[SocietyOrganizer] ❌ Error saving event:', error);
             console.error('[SocietyOrganizer] Error message:', error.message);

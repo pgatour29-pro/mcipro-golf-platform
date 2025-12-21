@@ -7360,22 +7360,28 @@
                     }, 1000);
                 }
 
+                // MOBILE OPTIMIZATION: Defer non-critical initialization longer on mobile
+                const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 1024;
+                const deferDelay = isMobile ? 3000 : 500; // 3s on mobile, 0.5s on desktop
+
                 // Initialize Messages badge (async, doesn't block)
-                if (typeof MessagesSystem !== 'undefined' && MessagesSystem.init) {
-                    MessagesSystem.init().then(() => {
-                        console.log('[Dashboard] Messages badge initialized');
-                    }).catch(err => {
-                        console.warn('[Dashboard] Messages init error:', err);
-                    });
-                }
+                setTimeout(() => {
+                    if (typeof MessagesSystem !== 'undefined' && MessagesSystem.init) {
+                        MessagesSystem.init().then(() => {
+                            console.log('[Dashboard] Messages badge initialized');
+                        }).catch(err => {
+                            console.warn('[Dashboard] Messages init error:', err);
+                        });
+                    }
+                }, deferDelay);
 
                 // Initialize Marketplace badge (pending offers count)
-                if (typeof MarketplaceSystem !== 'undefined' && MarketplaceSystem.refreshOfferCounts) {
-                    setTimeout(() => {
+                setTimeout(() => {
+                    if (typeof MarketplaceSystem !== 'undefined' && MarketplaceSystem.refreshOfferCounts) {
                         MarketplaceSystem.refreshOfferCounts();
                         console.log('[Dashboard] Marketplace badge initialized');
-                    }, 1000);
-                }
+                    }
+                }, deferDelay + 1000);
 
                 // Initialize Dashboard Widgets (Upcoming Events, Caddy Booking, Performance)
                 setTimeout(() => {
@@ -7395,7 +7401,7 @@
                     } else {
                         console.log('[Dashboard] No user ID yet, widgets will load on retry');
                     }
-                }, 1500);
+                }, deferDelay + 2000);
 
                 // CRITICAL: Render caddy bookings widget on dashboard
                 if (typeof GolferCaddyBooking !== 'undefined' && GolferCaddyBooking.renderDashboardWidget) {
@@ -11706,30 +11712,34 @@
                                     await LineAuthentication.setUserFromLineProfile(profile);
                                     console.log('[INIT] Profile loaded, redirecting to dashboard...');
 
-                                    // Initialize native push notifications
-                                    try {
-                                        const { data: { user } } = await window.SupabaseDB.client.auth.getUser();
-                                        if (window.NativePush && user?.id) {
-                                            await window.NativePush.init(user.id);
-                                        }
-                                    } catch (pushErr) {
-                                        console.error('[INIT] Push init failed:', pushErr);
-                                    }
-
-                                    // Attempt to create Supabase session from LINE id_token (if not already signed in)
-                                    try {
-                                        const { data: { session } } = await window.SupabaseDB.client.auth.getSession();
-                                        if (!session?.user) {
-                                            const idToken = (typeof liff.getIDToken === 'function') ? liff.getIDToken() : null;
-                                            if (idToken && window.SupabaseDB?.signInWithLineIdToken) {
-                                                await window.SupabaseDB.signInWithLineIdToken(idToken, 'line'); // provider slug must match Supabase config
-                                            }
-                                        }
-                                    } catch (authErr) {
-                                        console.warn('[INIT] Supabase auth via LINE token failed or not configured:', authErr);
-                                    }
-
+                                    // REDIRECT IMMEDIATELY - don't block on push/auth setup
                                     LineAuthentication.redirectToDashboard();
+
+                                    // DEFER non-critical initialization (runs in background AFTER dashboard shows)
+                                    setTimeout(async () => {
+                                        // Initialize native push notifications
+                                        try {
+                                            const { data: { user } } = await window.SupabaseDB.client.auth.getUser();
+                                            if (window.NativePush && user?.id) {
+                                                await window.NativePush.init(user.id);
+                                            }
+                                        } catch (pushErr) {
+                                            console.error('[INIT] Push init failed:', pushErr);
+                                        }
+
+                                        // Attempt to create Supabase session from LINE id_token (if not already signed in)
+                                        try {
+                                            const { data: { session } } = await window.SupabaseDB.client.auth.getSession();
+                                            if (!session?.user) {
+                                                const idToken = (typeof liff.getIDToken === 'function') ? liff.getIDToken() : null;
+                                                if (idToken && window.SupabaseDB?.signInWithLineIdToken) {
+                                                    await window.SupabaseDB.signInWithLineIdToken(idToken, 'line');
+                                                }
+                                            }
+                                        } catch (authErr) {
+                                            console.warn('[INIT] Supabase auth via LINE token failed:', authErr);
+                                        }
+                                    }, 100); // Run after dashboard is visible
                                     LoadingManager.hide();
                                 } else {
                                     // Profile fetch failed or timed out - try Supabase fallback
@@ -25323,7 +25333,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
         }
     })();
 
-    console.log('%c🚀 PAGE VERSION: 2025-12-22-MOBILE-PERF', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-12-22-MOBILE-FAST-LOAD', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 

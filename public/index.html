@@ -25207,13 +25207,23 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     // ALWAYS require PIN verification (even in fallback mode for testing)
                     SocietySelectorSystem.requirePinVerification = true;
 
-                    // Show modal immediately (fast UX)
+                    // Show modal immediately with loading state (fast UX)
                     const modal = document.getElementById('societySelectorModal');
                     if (modal) {
                         modal.style.display = 'flex';
+                        // Show loading indicator while societies load
+                        const cardsContainer = document.getElementById('societyCardsContainer');
+                        if (cardsContainer) {
+                            cardsContainer.innerHTML = `
+                                <div class="col-span-full flex flex-col items-center justify-center py-12">
+                                    <div class="animate-spin rounded-full h-12 w-12 border-4 border-orange-500 border-t-transparent mb-4"></div>
+                                    <p class="text-gray-600 font-medium">Loading societies...</p>
+                                </div>
+                            `;
+                        }
                     }
 
-                    // Load societies and render
+                    // Load societies and render (parallel count queries for speed)
                     await SocietySelectorSystem.init();
                     SocietySelectorSystem.renderSocietyCards();
 
@@ -25271,7 +25281,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     // BUILD ID - Injected at deploy time for cache busting
     window.__BUILD_ID__ = 'f9a3b5c7';
 
-    console.log('%c🚀 PAGE VERSION: 2025-12-22-GOLFER-EVENTS-FILTER', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-12-22-SOCIETY-SELECTOR-FAST', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
@@ -78651,7 +78661,9 @@ showOrganizerTab = function(tabName) {
 
             
 
-                        for (const society of this.societies) {
+                        // Run ALL count queries in PARALLEL (not sequential) for faster loading
+                        console.log('[SocietySelectorSystem] Fetching event counts in parallel...');
+                        const countPromises = this.societies.map(async (society) => {
 
     
 
@@ -78711,17 +78723,9 @@ showOrganizerTab = function(tabName) {
             
 
                             }
-
-    
-
-            
-
-                        }
-
-    
-
-            
-
+                        });
+                        await Promise.all(countPromises);
+                        console.log('[SocietySelectorSystem] All event counts loaded');
                     },
 
     

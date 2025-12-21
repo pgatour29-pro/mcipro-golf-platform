@@ -25281,7 +25281,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     // BUILD ID - Injected at deploy time for cache busting
     window.__BUILD_ID__ = 'f9a3b5c7';
 
-    console.log('%c🚀 PAGE VERSION: 2025-12-22-COMP-TRANSPORT-FIX', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-12-22-SCORING-DEDUPE', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
@@ -75257,14 +75257,25 @@ class OrganizerScoringSystem {
                         *,
                         scores (*)
                     `)
-                    .eq('event_id', this.currentEventId);
+                    .eq('event_id', this.currentEventId)
+                    .order('created_at', { ascending: false }); // Get newest first
 
                 if (scError) {
                     console.error('[OrganizerScoring] Error loading scorecards:', scError);
                 } else if (scorecards && scorecards.length > 0) {
+                    // DEDUPLICATE: Keep only the LATEST scorecard for each player
+                    // (fixes bug where multiple scorecards were created per player)
+                    const latestByPlayer = new Map();
+                    for (const card of scorecards) {
+                        if (!latestByPlayer.has(card.player_id)) {
+                            latestByPlayer.set(card.player_id, card);
+                        }
+                    }
+                    const uniqueScorecards = Array.from(latestByPlayer.values());
+                    console.log(`[OrganizerScoring] ✅ Loaded ${scorecards.length} scorecards, deduplicated to ${uniqueScorecards.length} unique players`);
+
                     // Transform scorecards to match rounds format for rendering
-                    leaderboardData = this.transformScorecardsToLeaderboard(scorecards);
-                    console.log(`[OrganizerScoring] ✅ Loaded ${scorecards.length} live scorecards`);
+                    leaderboardData = this.transformScorecardsToLeaderboard(uniqueScorecards);
                 }
             }
 

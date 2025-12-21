@@ -41,6 +41,25 @@
 
     <!-- Native App Styles -->
     <style>
+        /* MOBILE PERFORMANCE: Reduce animations on mobile/tablet */
+        @media (max-width: 1024px), (hover: none) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+            /* Keep spinners working */
+            .animate-spin { animation-duration: 1s !important; animation-iteration-count: infinite !important; }
+        }
+        /* Also respect user preference for reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
         /* Remove browser chrome and make fullscreen */
         html, body {
             -webkit-touch-callout: none;
@@ -25281,7 +25300,30 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     // BUILD ID - Injected at deploy time for cache busting
     window.__BUILD_ID__ = 'f9a3b5c7';
 
-    console.log('%c🚀 PAGE VERSION: 2025-12-22-SCORING-DEDUPE', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    // MOBILE PERFORMANCE: Disable console.log on mobile/tablet to reduce overhead
+    // 1398 console.log calls were killing mobile performance
+    (function() {
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+                         || window.innerWidth < 1024;
+        const isProduction = window.location.hostname !== 'localhost';
+
+        if (isMobile && isProduction) {
+            // Store original for debugging when needed
+            window.__originalConsole = {
+                log: console.log,
+                warn: console.warn,
+                error: console.error
+            };
+            // Disable non-critical logging on mobile
+            console.log = function() {};
+            console.warn = function() {};
+            // Keep console.error for critical issues
+            console.info = function() {};
+            console.debug = function() {};
+        }
+    })();
+
+    console.log('%c🚀 PAGE VERSION: 2025-12-22-MOBILE-PERF', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 

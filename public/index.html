@@ -56325,6 +56325,11 @@ class SocietyOrganizerManager {
             // Refresh events list to update revenue display
             await this.loadEvents();
 
+            // SYNC: Also refresh Registrations tab if viewing same event
+            if (window.RegistrationsManager && RegistrationsManager.currentEventId === this.currentRosterEvent?.id) {
+                RegistrationsManager.loadEventData(this.currentRosterEvent.id);
+            }
+
         } catch (error) {
             console.error('[EditFee] Error:', error);
             NotificationManager.show('Failed to update fee', 'error');
@@ -56385,6 +56390,12 @@ class SocietyOrganizerManager {
 
             // Refresh events list to update revenue display
             await this.loadEvents();
+
+            // SYNC: Also refresh Registrations tab if it's viewing the same event
+            if (window.RegistrationsManager && RegistrationsManager.currentEventId === eventId) {
+                console.log('[PaymentToggle] Syncing with Registrations tab...');
+                await RegistrationsManager.loadEventData(eventId);
+            }
 
         } catch (error) {
             console.error('[PaymentToggle] Error:', error);
@@ -57843,6 +57854,12 @@ This action cannot be undone.`);
             await SocietyGolfDB.deleteRegistration(regId);
             NotificationManager.show('Player removed', 'success');
             await this.loadRosterData(this.currentRosterEvent.id);
+            await this.loadEvents();
+
+            // SYNC: Also refresh Registrations tab if viewing same event
+            if (window.RegistrationsManager && RegistrationsManager.currentEventId === this.currentRosterEvent?.id) {
+                RegistrationsManager.loadEventData(this.currentRosterEvent.id);
+            }
         } catch (error) {
             console.error('[SocietyOrganizer] Error removing registration:', error);
             NotificationManager.show('Failed to remove player', 'error');
@@ -57856,6 +57873,11 @@ This action cannot be undone.`);
             await SocietyGolfDB.removeFromWaitlist(waitId);
             NotificationManager.show('Player removed from waitlist', 'success');
             await this.loadRosterData(this.currentRosterEvent.id);
+
+            // SYNC: Also refresh Registrations tab if viewing same event
+            if (window.RegistrationsManager && RegistrationsManager.currentEventId === this.currentRosterEvent?.id) {
+                RegistrationsManager.loadEventData(this.currentRosterEvent.id);
+            }
         } catch (error) {
             console.error('[SocietyOrganizer] Error removing from waitlist:', error);
             NotificationManager.show('Failed to remove from waitlist', 'error');
@@ -58158,6 +58180,12 @@ This action cannot be undone.`);
 
             // Refresh roster
             await this.loadRosterData(this.currentRosterEvent.id);
+            await this.loadEvents();
+
+            // SYNC: Also refresh Registrations tab if viewing same event
+            if (window.RegistrationsManager && RegistrationsManager.currentEventId === this.currentRosterEvent?.id) {
+                RegistrationsManager.loadEventData(this.currentRosterEvent.id);
+            }
 
             // Close modal
             this.closeManualPlayerModal();
@@ -58243,6 +58271,12 @@ This action cannot be undone.`);
 
             // Refresh roster
             await this.loadRosterData(this.currentRosterEvent.id);
+            await this.loadEvents();
+
+            // SYNC: Also refresh Registrations tab if viewing same event
+            if (window.RegistrationsManager && RegistrationsManager.currentEventId === this.currentRosterEvent?.id) {
+                RegistrationsManager.loadEventData(this.currentRosterEvent.id);
+            }
 
             // Close modal
             this.closeManualPlayerModal();
@@ -73941,6 +73975,11 @@ const RegistrationsManager = {
             const reg = this.registrations.find(r => r.id === regId);
             if (reg) reg.totalFee = fee;
             this.renderStats();
+
+            // SYNC: Refresh Roster Modal if open
+            if (window.SocietyOrganizerSystem && SocietyOrganizerSystem.currentRosterEvent?.id === this.currentEventId) {
+                SocietyOrganizerSystem.loadRosterData(this.currentEventId);
+            }
         } catch (error) { console.error('[RegistrationsManager] Error updating fee:', error); }
     },
 
@@ -74038,6 +74077,13 @@ const RegistrationsManager = {
             }
 
             console.log(`[RegistrationsManager] ✅ ${reg.playerName} marked as ${newStatus}`);
+
+            // SYNC: Also refresh Roster Modal if it's open for the same event
+            if (window.SocietyOrganizerSystem && SocietyOrganizerSystem.currentRosterEvent?.id === this.currentEventId) {
+                console.log('[RegistrationsManager] Syncing with Roster Modal...');
+                SocietyOrganizerSystem.loadRosterData(this.currentEventId);
+                SocietyOrganizerSystem.loadEvents();
+            }
         } catch (error) { console.error('[RegistrationsManager] Error toggling payment:', error); }
     },
 
@@ -74073,6 +74119,11 @@ const RegistrationsManager = {
             }
 
             console.log(`[RegistrationsManager] ✅ ${reg.playerName} competition: ${newValue ? 'YES' : 'NO'}, fee: ฿${newFee}`);
+
+            // SYNC: Also refresh Roster Modal if open
+            if (window.SocietyOrganizerSystem && SocietyOrganizerSystem.currentRosterEvent?.id === this.currentEventId) {
+                SocietyOrganizerSystem.loadRosterData(this.currentEventId);
+            }
         } catch (error) { console.error('[RegistrationsManager] Error toggling competition:', error); }
     },
 
@@ -74108,6 +74159,11 @@ const RegistrationsManager = {
             }
 
             console.log(`[RegistrationsManager] ✅ ${reg.playerName} transport: ${newValue ? 'YES' : 'NO'}, fee: ฿${newFee}`);
+
+            // SYNC: Also refresh Roster Modal if open
+            if (window.SocietyOrganizerSystem && SocietyOrganizerSystem.currentRosterEvent?.id === this.currentEventId) {
+                SocietyOrganizerSystem.loadRosterData(this.currentEventId);
+            }
         } catch (error) { console.error('[RegistrationsManager] Error toggling transport:', error); }
     },
 
@@ -74119,6 +74175,10 @@ const RegistrationsManager = {
             try {
                 await SocietyGolfDB.updateRegistration(regId, { handicap: parseFloat(newHcp) || 0 });
                 await this.loadEventData(this.currentEventId);
+                // SYNC: Refresh Roster Modal if open
+                if (window.SocietyOrganizerSystem && SocietyOrganizerSystem.currentRosterEvent?.id === this.currentEventId) {
+                    SocietyOrganizerSystem.loadRosterData(this.currentEventId);
+                }
             } catch (error) { console.error('[RegistrationsManager] Error updating player:', error); }
         }
     },
@@ -74128,6 +74188,11 @@ const RegistrationsManager = {
         try {
             await SocietyGolfDB.removeRegistration(regId);
             await this.loadEventData(this.currentEventId);
+            // SYNC: Refresh Roster Modal and Events list if open
+            if (window.SocietyOrganizerSystem && SocietyOrganizerSystem.currentRosterEvent?.id === this.currentEventId) {
+                SocietyOrganizerSystem.loadRosterData(this.currentEventId);
+                SocietyOrganizerSystem.loadEvents();
+            }
         } catch (error) { console.error('[RegistrationsManager] Error removing player:', error); }
     },
 
@@ -74140,6 +74205,11 @@ const RegistrationsManager = {
             await SocietyGolfDB.registerForEvent(this.currentEventId, { playerName: w.playerName, playerId: w.playerId, handicap: w.handicap, wantTransport: w.wantTransport, wantCompetition: w.wantCompetition });
             await SocietyGolfDB.removeFromWaitlist(waitId);
             await this.loadEventData(this.currentEventId);
+            // SYNC: Refresh Roster Modal and Events list
+            if (window.SocietyOrganizerSystem && SocietyOrganizerSystem.currentRosterEvent?.id === this.currentEventId) {
+                SocietyOrganizerSystem.loadRosterData(this.currentEventId);
+                SocietyOrganizerSystem.loadEvents();
+            }
         } catch (error) { console.error('[RegistrationsManager] Error promoting from waitlist:', error); }
     },
 
@@ -74148,6 +74218,10 @@ const RegistrationsManager = {
         try {
             await SocietyGolfDB.removeFromWaitlist(waitId);
             await this.loadEventData(this.currentEventId);
+            // SYNC: Refresh Roster Modal
+            if (window.SocietyOrganizerSystem && SocietyOrganizerSystem.currentRosterEvent?.id === this.currentEventId) {
+                SocietyOrganizerSystem.loadRosterData(this.currentEventId);
+            }
         } catch (error) { console.error('[RegistrationsManager] Error removing from waitlist:', error); }
     },
 

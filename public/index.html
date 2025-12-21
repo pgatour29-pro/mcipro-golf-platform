@@ -25271,7 +25271,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     // BUILD ID - Injected at deploy time for cache busting
     window.__BUILD_ID__ = 'f9a3b5c7';
 
-    console.log('%c🚀 PAGE VERSION: 2025-12-21-REG-PROPERTY-FIX', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-12-21-REG-DEBUG-FEES', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
@@ -72348,7 +72348,19 @@ const RegistrationsManager = {
 
     renderEventDetails() {
         const e = this.currentEvent;
-        if (!e) return;
+        if (!e) {
+            console.log('[Registrations] renderEventDetails: No event');
+            return;
+        }
+
+        console.log('[Registrations] Event object keys:', Object.keys(e));
+        console.log('[Registrations] Event fees data:', {
+            entry_fee: e.entry_fee,
+            transport_fee: e.transport_fee,
+            competition_fee: e.competition_fee,
+            start_time: e.start_time,
+            departure_time: e.departure_time
+        });
 
         const el = (id) => document.getElementById(id);
 
@@ -72363,11 +72375,13 @@ const RegistrationsManager = {
         if (el('regEventDeparture')) el('regEventDeparture').textContent = formatTime(e.departureTime || e.departure_time);
         if (el('regEventCourse')) el('regEventCourse').textContent = e.courseName || e.course_name || e.course || '--';
 
-        // Fee breakdown
-        const baseFee = parseFloat(e.baseFee || e.entry_fee || e.memberFee || 0);
-        const transportFee = parseFloat(e.transportFee || e.transport_fee || 0);
-        const compFee = parseFloat(e.competitionFee || e.competition_fee || 0);
+        // Fee breakdown - use snake_case from database
+        const baseFee = parseFloat(e.entry_fee || e.member_fee || e.baseFee || e.memberFee || 0);
+        const transportFee = parseFloat(e.transport_fee || e.transportFee || 0);
+        const compFee = parseFloat(e.competition_fee || e.competitionFee || 0);
         const totalFee = baseFee + transportFee + compFee;
+
+        console.log('[Registrations] Parsed fees:', { baseFee, transportFee, compFee, totalFee });
 
         if (el('regEventBaseFee')) el('regEventBaseFee').textContent = '฿' + baseFee.toLocaleString();
         if (el('regEventTransportFee')) el('regEventTransportFee').textContent = '฿' + transportFee.toLocaleString();
@@ -72376,6 +72390,7 @@ const RegistrationsManager = {
 
         // Store fees for auto-calculation
         this.eventFees = { baseFee, transportFee, compFee, totalFee };
+        console.log('[Registrations] eventFees stored:', this.eventFees);
     },
 
     clearView() {
@@ -72443,9 +72458,18 @@ const RegistrationsManager = {
             transport: transportCount,
             competition: competitionCount,
             vans,
-            details,
-            transportFee: fees.transportFee,
-            compFee: fees.compFee
+            vansDetails: details,
+            eventFees: fees,
+            transportFeeTotal,
+            compFeeTotal
+        });
+
+        // Debug: Check if HTML elements exist
+        console.log('[Registrations] HTML elements exist:', {
+            regStatVansNeeded: !!el('regStatVansNeeded'),
+            regStatVansDetails: !!el('regStatVansDetails'),
+            regStatCompFeeTotal: !!el('regStatCompFeeTotal'),
+            regStatTransportFeeTotal: !!el('regStatTransportFeeTotal')
         });
     },
 

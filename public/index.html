@@ -25271,7 +25271,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     // BUILD ID - Injected at deploy time for cache busting
     window.__BUILD_ID__ = 'f9a3b5c7';
 
-    console.log('%c🚀 PAGE VERSION: 2025-12-21-REGISTRATIONS-TAB-FIX', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-12-21-REGISTRATIONS-INLINE', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
@@ -41512,7 +41512,6 @@ window.AdminSystem = AdminSystem;
 
     <!-- Society Golf Analytics -->
     <script src="society-golf-analytics.js"></script>
-    <script src="society-organizer-manager.js"></script>
     <script src="admin-pricing-control.js"></script>
 
     <!-- Payment Tracking System -->
@@ -72148,6 +72147,677 @@ showOrganizerTab = function(tabName) {
         }, 100);
     }
 };
+
+// =====================================================================
+// REGISTRATIONS MANAGER - Single-event registration management
+// =====================================================================
+const RegistrationsManager = {
+    currentEventId: null,
+    currentEvent: null,
+    registrations: [],
+    waitlist: [],
+    pairingsData: null,
+    pairingsPanelCollapsed: false,
+    waitlistExpanded: false,
+    groupSize: 4,
+    filterText: '',
+
+    STORAGE_SELECTED_EVENT: 'reg_selected_event',
+    STORAGE_SELECTION_DATE: 'reg_selection_date',
+
+    async init() {
+        console.log('[RegistrationsManager] Initializing...');
+        await this.populateEventSelector();
+        this.checkAutoSwitch();
+        this.restoreSelection();
+    },
+
+    async populateEventSelector() {
+        const selector = document.getElementById('registrationsEventSelector');
+        if (!selector) return;
+
+        try {
+            const events = window.SocietyOrganizerSystem?.events || [];
+            const sortedEvents = [...events].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            selector.innerHTML = '<option value="">-- Select an event --</option>' +
+                sortedEvents.map(e => {
+                    const dateStr = new Date(e.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    return `<option value="${e.id}">${e.name} - ${dateStr}</option>`;
+                }).join('');
+
+            console.log(`[RegistrationsManager] Populated selector with ${sortedEvents.length} events`);
+        } catch (error) {
+            console.error('[RegistrationsManager] Error populating events:', error);
+        }
+    },
+
+    checkAutoSwitch() {
+        const now = new Date();
+        const hour = now.getHours();
+        if (hour < 15) return;
+
+        const lastDate = localStorage.getItem(this.STORAGE_SELECTION_DATE);
+        if (lastDate === now.toDateString()) return;
+
+        const todayStr = now.toISOString().split('T')[0];
+        const events = window.SocietyOrganizerSystem?.events || [];
+        const todayEvent = events.find(e => e.date === todayStr);
+
+        if (todayEvent) {
+            console.log('[RegistrationsManager] Auto-switching to today\'s event:', todayEvent.name);
+            this.selectEvent(todayEvent.id, true);
+        }
+    },
+
+    restoreSelection() {
+        if (this.currentEventId) return;
+
+        const savedEventId = localStorage.getItem(this.STORAGE_SELECTED_EVENT);
+        const lastDate = localStorage.getItem(this.STORAGE_SELECTION_DATE);
+
+        if (savedEventId && lastDate === new Date().toDateString()) {
+            const selector = document.getElementById('registrationsEventSelector');
+            if (selector) {
+                selector.value = savedEventId;
+                this.selectEvent(savedEventId, true);
+            }
+        }
+    },
+
+    async selectEvent(eventId, isAutomatic = false) {
+        if (!eventId) {
+            this.clearView();
+            return;
+        }
+
+        this.currentEventId = eventId;
+
+        if (!isAutomatic) {
+            localStorage.setItem(this.STORAGE_SELECTED_EVENT, eventId);
+            localStorage.setItem(this.STORAGE_SELECTION_DATE, new Date().toDateString());
+        }
+
+        const selector = document.getElementById('registrationsEventSelector');
+        if (selector && selector.value !== eventId) {
+            selector.value = eventId;
+        }
+
+        await this.loadEventData(eventId);
+    },
+
+    async loadEventData(eventId) {
+        try {
+            const events = window.SocietyOrganizerSystem?.events || [];
+            this.currentEvent = events.find(e => e.id === eventId);
+
+            if (!this.currentEvent) {
+                console.error('[RegistrationsManager] Event not found:', eventId);
+                return;
+            }
+
+            const [registrations, waitlist, pairings] = await Promise.all([
+                SocietyGolfDB.getRegistrations(eventId),
+                SocietyGolfDB.getWaitlist(eventId),
+                SocietyGolfDB.getPairings(eventId)
+            ]);
+
+            this.registrations = registrations || [];
+            this.waitlist = waitlist || [];
+            this.pairingsData = pairings;
+
+            console.log(`[RegistrationsManager] Loaded: ${this.registrations.length} registrations, ${this.waitlist.length} waitlist`);
+
+            this.showEventView();
+            this.renderStats();
+            this.renderPlayerTable();
+            this.renderWaitlist();
+            this.renderPairings();
+
+        } catch (error) {
+            console.error('[RegistrationsManager] Error loading event data:', error);
+        }
+    },
+
+    async refreshData() {
+        if (!this.currentEventId) return;
+        await this.loadEventData(this.currentEventId);
+        if (typeof NotificationManager !== 'undefined') NotificationManager.show('Data refreshed', 'success');
+    },
+
+    showEventView() {
+        const noEvent = document.getElementById('registrationsNoEventState');
+        const stats = document.getElementById('registrationsStatsContainer');
+        const content = document.getElementById('registrationsMainContent');
+        if (noEvent) noEvent.style.display = 'none';
+        if (stats) stats.style.display = 'grid';
+        if (content) content.style.display = 'flex';
+    },
+
+    clearView() {
+        const noEvent = document.getElementById('registrationsNoEventState');
+        const stats = document.getElementById('registrationsStatsContainer');
+        const content = document.getElementById('registrationsMainContent');
+        if (noEvent) noEvent.style.display = 'block';
+        if (stats) stats.style.display = 'none';
+        if (content) content.style.display = 'none';
+        this.currentEventId = null;
+        this.currentEvent = null;
+        this.registrations = [];
+        this.waitlist = [];
+    },
+
+    renderStats() {
+        const regs = this.registrations;
+        const transportCount = regs.filter(r => r.wantTransport).length;
+        const competitionCount = regs.filter(r => r.wantCompetition).length;
+        const totalRevenue = regs.reduce((sum, r) => sum + (parseFloat(r.totalFee) || 0), 0);
+        const { vans, details } = this.calculateVans(transportCount);
+
+        const el = (id) => document.getElementById(id);
+        if (el('regStatTotalPlayers')) el('regStatTotalPlayers').textContent = regs.length;
+        if (el('regStatTransportCount')) el('regStatTransportCount').textContent = transportCount;
+        if (el('regStatCompetitionCount')) el('regStatCompetitionCount').textContent = competitionCount;
+        if (el('regStatTotalRevenue')) el('regStatTotalRevenue').textContent = '฿' + totalRevenue.toLocaleString();
+        if (el('regStatVansNeeded')) el('regStatVansNeeded').textContent = vans;
+        if (el('regStatVansDetails')) el('regStatVansDetails').textContent = details;
+    },
+
+    calculateVans(transportCount) {
+        if (transportCount === 0) return { vans: 0, details: '' };
+        if (transportCount % 10 === 0) {
+            return { vans: transportCount / 10, details: `${transportCount} @ 10/van` };
+        }
+        return { vans: Math.ceil(transportCount / 9), details: `${transportCount} @ 9/van` };
+    },
+
+    renderPlayerTable() {
+        const tbody = document.getElementById('registrationsPlayerTableBody');
+        if (!tbody) return;
+
+        let regs = this.registrations;
+        if (this.filterText) {
+            const search = this.filterText.toLowerCase();
+            regs = regs.filter(r => r.playerName.toLowerCase().includes(search));
+        }
+
+        if (!regs || regs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="py-8 text-center text-gray-500">No registrations yet</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = regs.map((reg, idx) => {
+            const isPaid = reg.paymentStatus === 'paid';
+            const rowClass = isPaid ? 'bg-green-50' : '';
+            const specialRequests = reg.specialRequests || {};
+            const requestIcons = this.getRequestIcons(specialRequests);
+
+            return `
+                <tr class="border-t hover:bg-gray-100 ${rowClass}" data-reg-id="${reg.id}">
+                    <td class="px-3 py-2 text-gray-600">${idx + 1}</td>
+                    <td class="px-3 py-2 font-medium">${reg.playerName}</td>
+                    <td class="px-3 py-2 text-center">${Math.round(reg.handicap)}</td>
+                    <td class="px-3 py-2 text-center">${reg.wantTransport ? '<span class="text-green-600">✓</span>' : '<span class="text-gray-300">-</span>'}</td>
+                    <td class="px-3 py-2 text-center">${reg.wantCompetition ? '<span class="text-green-600">✓</span>' : '<span class="text-gray-300">-</span>'}</td>
+                    <td class="px-3 py-2">
+                        <button onclick="RegistrationsManager.editSpecialRequests('${reg.id}')" class="text-gray-600 hover:text-gray-900" title="Edit special requests">
+                            ${requestIcons || '<span class="text-gray-300">-</span>'}
+                        </button>
+                    </td>
+                    <td class="px-3 py-2 text-right">
+                        <input type="number" value="${reg.totalFee || 0}"
+                               onchange="RegistrationsManager.updateFee('${reg.id}', this.value)"
+                               class="w-20 px-2 py-1 text-right border rounded text-sm">
+                    </td>
+                    <td class="px-3 py-2 text-center">
+                        <button onclick="RegistrationsManager.togglePaymentStatus('${reg.id}')"
+                                class="${isPaid ? 'text-green-600' : 'text-gray-400'} hover:opacity-75">
+                            <span class="material-symbols-outlined">${isPaid ? 'check_circle' : 'radio_button_unchecked'}</span>
+                        </button>
+                    </td>
+                    <td class="px-3 py-2 text-center">
+                        <button onclick="RegistrationsManager.editPlayer('${reg.id}')" class="text-blue-600 hover:underline text-xs mr-1">Edit</button>
+                        <button onclick="RegistrationsManager.removePlayer('${reg.id}')" class="text-red-600 hover:underline text-xs">Del</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    },
+
+    getRequestIcons(sr) {
+        const icons = [];
+        if (sr.earlyTeeTime) icons.push('<span title="Early Tee Time" class="text-yellow-500">⏰</span>');
+        if (sr.dietaryRestriction) icons.push('<span title="Dietary Restriction" class="text-orange-500">🍽️</span>');
+        if (sr.mobilityAssistance) icons.push('<span title="Mobility Assistance" class="text-blue-500">♿</span>');
+        if (sr.otherNotes) icons.push(`<span title="${sr.otherNotes}" class="text-gray-500">📝</span>`);
+        return icons.join(' ');
+    },
+
+    filterPlayers(searchText) {
+        this.filterText = searchText;
+        this.renderPlayerTable();
+    },
+
+    renderWaitlist() {
+        const countEl = document.getElementById('registrationsWaitlistCount');
+        const tbody = document.getElementById('registrationsWaitlistTableBody');
+
+        if (countEl) countEl.textContent = this.waitlist.length;
+        if (!tbody) return;
+
+        if (!this.waitlist || this.waitlist.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="py-4 text-center text-gray-500">No players on waitlist</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = this.waitlist.map((w, idx) => {
+            const requestedDate = new Date(w.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            return `
+                <tr class="border-t hover:bg-orange-100">
+                    <td class="px-3 py-2 font-medium text-orange-600">#${w.position || idx + 1}</td>
+                    <td class="px-3 py-2 font-medium">${w.playerName}</td>
+                    <td class="px-3 py-2 text-center">${Math.round(w.handicap)}</td>
+                    <td class="px-3 py-2 text-gray-500 text-xs">${requestedDate}</td>
+                    <td class="px-3 py-2 text-center">
+                        <button onclick="RegistrationsManager.promoteFromWaitlist('${w.id}')" class="text-green-600 hover:underline text-xs mr-1">Promote</button>
+                        <button onclick="RegistrationsManager.removeFromWaitlist('${w.id}')" class="text-red-600 hover:underline text-xs">Remove</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    },
+
+    toggleWaitlist() {
+        this.waitlistExpanded = !this.waitlistExpanded;
+        const section = document.getElementById('registrationsWaitlistSection');
+        const chevron = document.getElementById('registrationsWaitlistChevron');
+        if (section) section.style.display = this.waitlistExpanded ? 'block' : 'none';
+        if (chevron) chevron.textContent = this.waitlistExpanded ? 'expand_less' : 'expand_more';
+    },
+
+    renderPairings() {
+        const container = document.getElementById('pairingsGroupsContainer');
+        if (!container) return;
+
+        if (!this.pairingsData || !this.pairingsData.groups || this.pairingsData.groups.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-8 text-gray-500">
+                    <span class="material-symbols-outlined text-4xl mb-2">grid_view</span>
+                    <p class="text-sm">No pairings yet</p>
+                    <p class="text-xs text-gray-400 mt-1">Click "Auto" to create pairings</p>
+                </div>
+            `;
+            return;
+        }
+
+        const isLocked = !!this.pairingsData.lockedAt;
+        this.updateLockStatus(isLocked);
+
+        container.innerHTML = this.pairingsData.groups.map((group, idx) => {
+            const groupNum = idx + 1;
+            const teeTime = group.teeTime || '';
+            const players = group.players || [];
+
+            return `
+                <div class="pairing-group border rounded-lg p-3 bg-gray-50" data-group="${groupNum}"
+                     ondragover="RegistrationsManager.onDragOver(event)" ondrop="RegistrationsManager.onDrop(event, ${groupNum})">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-medium text-sm text-gray-700">Group ${groupNum}</span>
+                        <input type="time" value="${teeTime}"
+                               onchange="RegistrationsManager.updateGroupTeeTime(${groupNum}, this.value)"
+                               class="text-xs border rounded px-2 py-1 w-24"
+                               ${isLocked ? 'disabled' : ''}>
+                    </div>
+                    <div class="space-y-1">
+                        ${players.length === 0 ? '<div class="text-xs text-gray-400 italic py-2">Drop players here</div>' :
+                        players.map(p => `
+                            <div class="pairing-player bg-white rounded px-2 py-1 text-xs flex justify-between items-center border"
+                                 draggable="${!isLocked}" data-player-id="${p.playerId}"
+                                 ondragstart="RegistrationsManager.onDragStart(event, '${p.playerId}')">
+                                <span>${p.playerName} (${p.handicap})</span>
+                                ${!isLocked ? `<button onclick="RegistrationsManager.removeFromGroup(${groupNum}, '${p.playerId}')" class="text-red-500 hover:text-red-700">×</button>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        const unassigned = this.getUnassignedPlayers();
+        if (unassigned.length > 0) {
+            container.innerHTML += `
+                <div class="border-t pt-3 mt-3">
+                    <div class="text-xs font-medium text-gray-500 mb-2">Unassigned (${unassigned.length})</div>
+                    <div class="space-y-1">
+                        ${unassigned.map(p => `
+                            <div class="pairing-player bg-yellow-50 rounded px-2 py-1 text-xs flex justify-between items-center border border-yellow-200"
+                                 draggable="true" data-player-id="${p.playerId}"
+                                 ondragstart="RegistrationsManager.onDragStart(event, '${p.playerId}')">
+                                <span>${p.playerName} (${p.handicap})</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+    },
+
+    getUnassignedPlayers() {
+        if (!this.pairingsData || !this.pairingsData.groups) {
+            return this.registrations.map(r => ({ playerId: r.playerId, playerName: r.playerName, handicap: r.handicap }));
+        }
+        const assignedIds = new Set();
+        this.pairingsData.groups.forEach(g => { (g.players || []).forEach(p => assignedIds.add(p.playerId)); });
+        return this.registrations.filter(r => !assignedIds.has(r.playerId)).map(r => ({ playerId: r.playerId, playerName: r.playerName, handicap: r.handicap }));
+    },
+
+    updateLockStatus(isLocked) {
+        const statusEl = document.getElementById('pairingsLockStatus');
+        const lockBtn = document.getElementById('pairingsLockBtn');
+        if (statusEl) {
+            statusEl.innerHTML = isLocked ?
+                '<span class="material-symbols-outlined text-xs align-middle text-red-600">lock</span> <span class="text-red-600">Locked</span>' :
+                '<span class="material-symbols-outlined text-xs align-middle">lock_open</span> Unlocked';
+        }
+        if (lockBtn) {
+            lockBtn.innerHTML = isLocked ?
+                '<span class="material-symbols-outlined text-sm">lock_open</span> Unlock' :
+                '<span class="material-symbols-outlined text-sm">lock</span> Lock';
+        }
+    },
+
+    togglePairingsPanel() {
+        this.pairingsPanelCollapsed = !this.pairingsPanelCollapsed;
+        const panel = document.getElementById('registrationsPairingsPanel');
+        const content = document.getElementById('pairingsPanelContent');
+        const chevron = document.getElementById('pairingsPanelChevron');
+        if (this.pairingsPanelCollapsed) {
+            if (panel) panel.style.width = '60px';
+            if (content) content.style.display = 'none';
+            if (chevron) chevron.textContent = 'chevron_left';
+        } else {
+            if (panel) panel.style.width = '';
+            if (content) content.style.display = 'block';
+            if (chevron) chevron.textContent = 'chevron_right';
+        }
+    },
+
+    onDragStart(event, playerId) {
+        event.dataTransfer.setData('text/plain', JSON.stringify({ type: 'player', playerId }));
+        event.target.classList.add('opacity-50');
+    },
+
+    onDragOver(event) {
+        event.preventDefault();
+        event.currentTarget.classList.add('bg-green-100');
+    },
+
+    onDrop(event, groupNumber) {
+        event.preventDefault();
+        event.currentTarget.classList.remove('bg-green-100');
+        try {
+            const data = JSON.parse(event.dataTransfer.getData('text/plain'));
+            if (data.type === 'player') this.movePlayerToGroup(data.playerId, groupNumber);
+        } catch (e) { console.error('[RegistrationsManager] Drop error:', e); }
+    },
+
+    async movePlayerToGroup(playerId, groupNumber) {
+        if (!this.pairingsData || !this.pairingsData.groups) return;
+        const playerReg = this.registrations.find(r => r.playerId === playerId);
+        if (!playerReg) return;
+        const playerData = { playerId: playerReg.playerId, playerName: playerReg.playerName, handicap: playerReg.handicap };
+        this.pairingsData.groups.forEach(g => { g.players = (g.players || []).filter(p => p.playerId !== playerId); });
+        const targetGroup = this.pairingsData.groups[groupNumber - 1];
+        if (targetGroup) {
+            if (!targetGroup.players) targetGroup.players = [];
+            if (targetGroup.players.length < this.groupSize) {
+                targetGroup.players.push(playerData);
+            } else {
+                if (typeof NotificationManager !== 'undefined') NotificationManager.show('Group is full', 'warning');
+                return;
+            }
+        }
+        await this.savePairings();
+        this.renderPairings();
+    },
+
+    async removeFromGroup(groupNumber, playerId) {
+        if (!this.pairingsData || !this.pairingsData.groups) return;
+        const group = this.pairingsData.groups[groupNumber - 1];
+        if (group && group.players) {
+            group.players = group.players.filter(p => p.playerId !== playerId);
+            await this.savePairings();
+            this.renderPairings();
+        }
+    },
+
+    setGroupSize(size) { this.groupSize = parseInt(size) || 4; },
+
+    async autoPairByHandicap() {
+        if (!this.registrations || this.registrations.length === 0) return;
+        const sorted = [...this.registrations].sort((a, b) => a.handicap - b.handicap);
+        const groups = [];
+        for (let i = 0; i < sorted.length; i += this.groupSize) {
+            const groupPlayers = sorted.slice(i, i + this.groupSize).map(r => ({ playerId: r.playerId, playerName: r.playerName, handicap: r.handicap }));
+            groups.push({ players: groupPlayers, teeTime: '' });
+        }
+        this.pairingsData = { eventId: this.currentEventId, groupSize: this.groupSize, groups: groups, lockedAt: null, lockedBy: null };
+        await this.savePairings();
+        this.renderPairings();
+        if (typeof NotificationManager !== 'undefined') NotificationManager.show(`Created ${groups.length} groups by handicap`, 'success');
+    },
+
+    async pairByPartnerRequests() {
+        if (!this.registrations || this.registrations.length === 0) return;
+        const byId = {};
+        this.registrations.forEach(r => { byId[r.playerId] = r; });
+        const used = new Set();
+        const packs = [];
+        this.registrations.forEach(a => {
+            if (used.has(a.playerId)) return;
+            const prefs = a.partnerPrefs || [];
+            for (const prefId of prefs) {
+                const b = byId[prefId];
+                if (!b || used.has(b.playerId)) continue;
+                const bPrefs = b.partnerPrefs || [];
+                if (bPrefs.includes(a.playerId)) {
+                    packs.push([a, b]);
+                    used.add(a.playerId);
+                    used.add(b.playerId);
+                    return;
+                }
+            }
+        });
+        this.registrations.forEach(r => { if (!used.has(r.playerId)) packs.push([r]); });
+        const groups = [];
+        let currentGroup = [];
+        packs.forEach(pack => {
+            if (currentGroup.length + pack.length <= this.groupSize) {
+                currentGroup.push(...pack);
+            } else {
+                if (currentGroup.length > 0) {
+                    groups.push({ players: currentGroup.map(r => ({ playerId: r.playerId, playerName: r.playerName, handicap: r.handicap })), teeTime: '' });
+                }
+                currentGroup = [...pack];
+            }
+        });
+        if (currentGroup.length > 0) {
+            groups.push({ players: currentGroup.map(r => ({ playerId: r.playerId, playerName: r.playerName, handicap: r.handicap })), teeTime: '' });
+        }
+        const mutualPairs = packs.filter(p => p.length === 2).length;
+        this.pairingsData = { eventId: this.currentEventId, groupSize: this.groupSize, groups: groups, lockedAt: null, lockedBy: null };
+        await this.savePairings();
+        this.renderPairings();
+        if (typeof NotificationManager !== 'undefined') NotificationManager.show(`Created ${groups.length} groups (${mutualPairs} pairs)`, 'success');
+    },
+
+    async toggleLockPairings() {
+        if (!this.pairingsData) return;
+        const isCurrentlyLocked = !!this.pairingsData.lockedAt;
+        const currentUser = AppState?.currentUser?.lineUserId;
+        if (isCurrentlyLocked) {
+            this.pairingsData.lockedAt = null;
+            this.pairingsData.lockedBy = null;
+        } else {
+            this.pairingsData.lockedAt = new Date().toISOString();
+            this.pairingsData.lockedBy = currentUser;
+        }
+        await this.savePairings();
+        this.renderPairings();
+    },
+
+    async updateGroupTeeTime(groupNumber, time) {
+        if (!this.pairingsData || !this.pairingsData.groups) return;
+        const group = this.pairingsData.groups[groupNumber - 1];
+        if (group) { group.teeTime = time; await this.savePairings(); }
+    },
+
+    async savePairings() {
+        try { await SocietyGolfDB.savePairings(this.currentEventId, this.pairingsData); }
+        catch (error) { console.error('[RegistrationsManager] Error saving pairings:', error); }
+    },
+
+    async updateFee(regId, newFee) {
+        try {
+            const fee = parseFloat(newFee) || 0;
+            await SocietyGolfDB.updateRegistrationFee(regId, fee);
+            const reg = this.registrations.find(r => r.id === regId);
+            if (reg) reg.totalFee = fee;
+            this.renderStats();
+        } catch (error) { console.error('[RegistrationsManager] Error updating fee:', error); }
+    },
+
+    async togglePaymentStatus(regId) {
+        try {
+            const reg = this.registrations.find(r => r.id === regId);
+            if (!reg) return;
+            const isPaid = reg.paymentStatus === 'paid';
+            const newStatus = isPaid ? 'unpaid' : 'paid';
+            const currentUser = AppState?.currentUser?.lineUserId;
+            if (newStatus === 'paid') {
+                await SocietyGolfDB.markPlayerPaid(this.currentEventId, reg.playerId, reg.totalFee || 0, currentUser);
+            } else {
+                await SocietyGolfDB.markPlayerUnpaid(this.currentEventId, reg.playerId);
+            }
+            reg.paymentStatus = newStatus;
+            this.renderPlayerTable();
+        } catch (error) { console.error('[RegistrationsManager] Error toggling payment:', error); }
+    },
+
+    async editPlayer(regId) {
+        const reg = this.registrations.find(r => r.id === regId);
+        if (!reg) return;
+        const newHcp = prompt(`Edit handicap for ${reg.playerName}:`, reg.handicap);
+        if (newHcp !== null) {
+            try {
+                await SocietyGolfDB.updateRegistration(regId, { handicap: parseFloat(newHcp) || 0 });
+                await this.loadEventData(this.currentEventId);
+            } catch (error) { console.error('[RegistrationsManager] Error updating player:', error); }
+        }
+    },
+
+    async removePlayer(regId) {
+        if (!confirm('Remove this player from the event?')) return;
+        try {
+            await SocietyGolfDB.removeRegistration(regId);
+            await this.loadEventData(this.currentEventId);
+        } catch (error) { console.error('[RegistrationsManager] Error removing player:', error); }
+    },
+
+    async promoteFromWaitlist(waitId) {
+        try {
+            const w = this.waitlist.find(item => item.id === waitId);
+            if (!w) return;
+            const maxPlayers = this.currentEvent?.maxPlayers || 999;
+            if (this.registrations.length >= maxPlayers) return;
+            await SocietyGolfDB.registerForEvent(this.currentEventId, { playerName: w.playerName, playerId: w.playerId, handicap: w.handicap, wantTransport: w.wantTransport, wantCompetition: w.wantCompetition });
+            await SocietyGolfDB.removeFromWaitlist(waitId);
+            await this.loadEventData(this.currentEventId);
+        } catch (error) { console.error('[RegistrationsManager] Error promoting from waitlist:', error); }
+    },
+
+    async removeFromWaitlist(waitId) {
+        if (!confirm('Remove this player from the waitlist?')) return;
+        try {
+            await SocietyGolfDB.removeFromWaitlist(waitId);
+            await this.loadEventData(this.currentEventId);
+        } catch (error) { console.error('[RegistrationsManager] Error removing from waitlist:', error); }
+    },
+
+    editSpecialRequests(regId) {
+        const reg = this.registrations.find(r => r.id === regId);
+        if (!reg) return;
+        this._editingRegId = regId;
+        const sr = reg.specialRequests || {};
+        const el = (id) => document.getElementById(id);
+        if (el('srEarlyTeeTime')) el('srEarlyTeeTime').checked = sr.earlyTeeTime || false;
+        if (el('srDietaryRestriction')) el('srDietaryRestriction').checked = sr.dietaryRestriction || false;
+        if (el('srMobilityAssistance')) el('srMobilityAssistance').checked = sr.mobilityAssistance || false;
+        if (el('srOtherNotes')) el('srOtherNotes').value = sr.otherNotes || '';
+        if (el('editSpecialRequestsPlayerName')) el('editSpecialRequestsPlayerName').textContent = reg.playerName;
+        if (el('editSpecialRequestsModal')) el('editSpecialRequestsModal').style.display = 'flex';
+    },
+
+    closeSpecialRequestsModal() {
+        const modal = document.getElementById('editSpecialRequestsModal');
+        if (modal) modal.style.display = 'none';
+        this._editingRegId = null;
+    },
+
+    async saveSpecialRequests() {
+        if (!this._editingRegId) return;
+        const el = (id) => document.getElementById(id);
+        const specialRequests = {
+            earlyTeeTime: el('srEarlyTeeTime')?.checked || false,
+            dietaryRestriction: el('srDietaryRestriction')?.checked || false,
+            mobilityAssistance: el('srMobilityAssistance')?.checked || false,
+            otherNotes: el('srOtherNotes')?.value?.trim() || ''
+        };
+        try {
+            await SocietyGolfDB.updateRegistration(this._editingRegId, { specialRequests });
+            const reg = this.registrations.find(r => r.id === this._editingRegId);
+            if (reg) reg.specialRequests = specialRequests;
+            this.closeSpecialRequestsModal();
+            this.renderPlayerTable();
+        } catch (error) { console.error('[RegistrationsManager] Error saving special requests:', error); }
+    },
+
+    openAddPlayerModal() {
+        if (window.SocietyOrganizerSystem && this.currentEventId) {
+            window.SocietyOrganizerSystem.currentRosterEvent = this.currentEvent;
+            window.SocietyOrganizerSystem.openAddPlayerModal();
+        }
+    },
+
+    async exportRoster() {
+        if (!this.currentEvent || !this.registrations.length) return;
+        try {
+            const csv = [['#', 'Name', 'Handicap', 'Transport', 'Competition', 'Fee', 'Paid', 'Special Requests'].join(',')];
+            this.registrations.forEach((reg, idx) => {
+                const sr = reg.specialRequests || {};
+                const requests = [];
+                if (sr.earlyTeeTime) requests.push('Early Tee');
+                if (sr.dietaryRestriction) requests.push('Dietary');
+                if (sr.mobilityAssistance) requests.push('Mobility');
+                if (sr.otherNotes) requests.push(sr.otherNotes);
+                csv.push([idx + 1, `"${reg.playerName}"`, reg.handicap, reg.wantTransport ? 'Yes' : 'No', reg.wantCompetition ? 'Yes' : 'No', reg.totalFee || 0, reg.paymentStatus === 'paid' ? 'Paid' : 'Unpaid', `"${requests.join('; ')}"`].join(','));
+            });
+            const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${this.currentEvent.name}_registrations.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        } catch (error) { console.error('[RegistrationsManager] Error exporting:', error); }
+    },
+
+    openFromEvent(eventId) {
+        showOrganizerTab('registrations');
+        setTimeout(() => { this.selectEvent(eventId); }, 100);
+    }
+};
+window.RegistrationsManager = RegistrationsManager;
 
 // =====================================================================
 // SEASON STANDINGS - Aggregates points from event_results table

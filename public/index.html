@@ -44142,20 +44142,34 @@ class LiveScorecardSystem {
 
             // Load current user's handicaps for all societies
             const currentUserId = window.AppState?.currentUser?.lineUserId;
+            console.log(`[LiveScorecard] Loading society options for user: ${currentUserId}`);
+
             if (currentUserId) {
                 this.currentUserSocietyHandicaps = await this.getPlayerSocietyHandicaps(currentUserId);
+                console.log(`[LiveScorecard] Found ${this.currentUserSocietyHandicaps?.length || 0} handicap records:`, this.currentUserSocietyHandicaps);
+            } else {
+                console.log('[LiveScorecard] No currentUserId available yet');
             }
 
             // Get universal handicap (society_id = null)
             const universalHcp = this.currentUserSocietyHandicaps?.find(h => h.society_id === null);
             const universalDisplay = universalHcp ? universalHcp.handicap_index : 'N/A';
+            console.log(`[LiveScorecard] Universal HCP: ${universalDisplay}`, universalHcp);
 
             // Build dropdown with handicap values shown
             let html = `<option value="">Universal Only (HCP: ${universalDisplay}) - Updates universal only</option>`;
 
             this.societyProfilesCache.forEach(s => {
                 const societyHcp = this.currentUserSocietyHandicaps?.find(h => h.society_id === s.id);
-                const hcpDisplay = societyHcp ? societyHcp.handicap_index : 'N/A';
+                // If no society-specific HCP, show universal with note
+                let hcpDisplay;
+                if (societyHcp) {
+                    hcpDisplay = societyHcp.handicap_index;
+                } else if (universalHcp) {
+                    hcpDisplay = `${universalHcp.handicap_index} - using universal`;
+                } else {
+                    hcpDisplay = 'will start tracking';
+                }
                 html += `<option value="${s.id}">${s.society_name} (HCP: ${hcpDisplay})</option>`;
             });
 
@@ -46169,20 +46183,33 @@ class LiveScorecardSystem {
 
                 // Always add Universal option first
                 const universalHcp = p.societyHandicaps.find(h => h.society_id === null);
-                if (universalHcp) {
-                    const uHcpDisplay = universalHcp.handicap_index < 0 ? `+${Math.abs(universalHcp.handicap_index)}` : universalHcp.handicap_index;
-                    const uSelected = universalHcp.handicap_index === p.handicap ? 'selected' : '';
-                    options += `<option value="${universalHcp.handicap_index}" ${uSelected}>Universal: ${uHcpDisplay}</option>`;
-                }
+                const universalValue = universalHcp ? universalHcp.handicap_index : p.handicap;
+                const uHcpDisplay = universalValue < 0 ? `+${Math.abs(universalValue)}` : universalValue;
+                const uSelected = universalValue === p.handicap ? 'selected' : '';
+                options += `<option value="${universalValue}" ${uSelected}>Universal: ${uHcpDisplay}</option>`;
 
-                // Add society-specific handicaps
-                p.societyHandicaps.filter(sh => sh.society_id !== null).forEach(sh => {
-                    const hcpVal = sh.handicap_index;
-                    const hcpDisplay = hcpVal < 0 ? `+${Math.abs(hcpVal)}` : hcpVal;
-                    const societyName = this.getSocietyName(sh.society_id);
-                    const selected = sh.handicap_index === p.handicap ? 'selected' : '';
-                    options += `<option value="${sh.handicap_index}" ${selected}>${societyName}: ${hcpDisplay}</option>`;
-                });
+                // Add ALL societies from cache (not just ones with existing handicaps)
+                if (this.societyProfilesCache) {
+                    this.societyProfilesCache.forEach(society => {
+                        const societyHcp = p.societyHandicaps.find(h => h.society_id === society.id);
+                        let hcpVal, hcpDisplay, displayLabel;
+
+                        if (societyHcp) {
+                            // Society-specific handicap exists
+                            hcpVal = societyHcp.handicap_index;
+                            hcpDisplay = hcpVal < 0 ? `+${Math.abs(hcpVal)}` : hcpVal;
+                            displayLabel = `${society.society_name}: ${hcpDisplay}`;
+                        } else {
+                            // No society HCP - use universal with indicator
+                            hcpVal = universalValue;
+                            hcpDisplay = universalValue < 0 ? `+${Math.abs(universalValue)}` : universalValue;
+                            displayLabel = `${society.society_name}: ${hcpDisplay} (using universal)`;
+                        }
+
+                        const selected = hcpVal === p.handicap && selectedSociety === society.id ? 'selected' : '';
+                        options += `<option value="${hcpVal}" ${selected}>${displayLabel}</option>`;
+                    });
+                }
 
                 handicapHtml = `
                     <select onchange="LiveScorecardManager.updatePlayerHandicap(${index}, this.value)"

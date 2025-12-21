@@ -25271,7 +25271,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     // BUILD ID - Injected at deploy time for cache busting
     window.__BUILD_ID__ = 'f9a3b5c7';
 
-    console.log('%c🚀 PAGE VERSION: 2025-12-21-REG-PAYMENT-FIX', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-12-21-REG-AUTO-FEE', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
@@ -72323,6 +72323,12 @@ const RegistrationsManager = {
 
             console.log(`[RegistrationsManager] Loaded: ${this.registrations.length} registrations, ${this.waitlist.length} waitlist`);
 
+            // Store event fees for calculations
+            this.renderEventDetails(this.currentEvent);
+
+            // Auto-recalculate fees based on player options
+            await this.recalculateFees();
+
             this.showEventView();
             this.renderStats();
             this.renderPlayerTable();
@@ -72507,6 +72513,44 @@ const RegistrationsManager = {
             return { vans: transportCount / 10, details: `${transportCount} @ 10/van` };
         }
         return { vans: Math.ceil(transportCount / 9), details: `${transportCount} @ 9/van` };
+    },
+
+    // Auto-recalculate fees for all registrations if they don't match player options
+    async recalculateFees() {
+        if (!this.eventFees || !this.registrations.length) return;
+
+        const updates = [];
+        for (const reg of this.registrations) {
+            const expectedFee = this.calculatePlayerFee(reg.wantTransport, reg.wantCompetition);
+            const storedFee = parseFloat(reg.totalFee) || 0;
+
+            if (storedFee !== expectedFee) {
+                console.log(`[Registrations] Fee mismatch for ${reg.playerName}: stored ฿${storedFee} vs expected ฿${expectedFee}`);
+                updates.push({ id: reg.id, playerName: reg.playerName, newFee: expectedFee });
+            }
+        }
+
+        // Update fees in database
+        for (const update of updates) {
+            try {
+                await window.SupabaseDB.client
+                    .from('event_registrations')
+                    .update({ total_fee: update.newFee })
+                    .eq('id', update.id);
+
+                // Update local data
+                const reg = this.registrations.find(r => r.id === update.id);
+                if (reg) reg.totalFee = update.newFee;
+
+                console.log(`[Registrations] ✅ Updated ${update.playerName} fee to ฿${update.newFee}`);
+            } catch (error) {
+                console.error(`[Registrations] Failed to update fee for ${update.playerName}:`, error);
+            }
+        }
+
+        if (updates.length > 0) {
+            console.log(`[Registrations] Auto-recalculated ${updates.length} player fees`);
+        }
     },
 
     // Calculate expected fee for a player based on their options
@@ -72913,14 +72957,22 @@ const RegistrationsManager = {
                 if (!confirm(`Mark ${reg.playerName} as UNPAID? This will clear their payment record.`)) return;
             }
 
+            // Update directly by registration ID (more reliable than event_id + player_id)
             const currentUser = AppState?.currentUser?.lineUserId;
-            if (newStatus === 'paid') {
-                await SocietyGolfDB.markPlayerPaid(this.currentEventId, reg.playerId, reg.totalFee || 0, currentUser);
-            } else {
-                await SocietyGolfDB.markPlayerUnpaid(this.currentEventId, reg.playerId);
-            }
+            const updateData = newStatus === 'paid'
+                ? { payment_status: 'paid', amount_paid: reg.totalFee || 0, paid_at: new Date().toISOString(), paid_by: currentUser }
+                : { payment_status: 'unpaid', amount_paid: 0 };
+
+            const { error } = await window.SupabaseDB.client
+                .from('event_registrations')
+                .update(updateData)
+                .eq('id', regId);
+
+            if (error) throw error;
+
             reg.paymentStatus = newStatus;
             this.renderPlayerTable();
+            console.log(`[RegistrationsManager] ✅ ${reg.playerName} marked as ${newStatus}`);
         } catch (error) { console.error('[RegistrationsManager] Error toggling payment:', error); }
     },
 

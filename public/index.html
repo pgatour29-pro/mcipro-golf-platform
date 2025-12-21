@@ -25271,7 +25271,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     // BUILD ID - Injected at deploy time for cache busting
     window.__BUILD_ID__ = 'f9a3b5c7';
 
-    console.log('%c🚀 PAGE VERSION: 2025-12-21-REG-VAN-FIX', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-12-21-REG-FEE-BREAKDOWN', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
@@ -34340,8 +34340,17 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 <span class="text-orange-600">Competition</span>
                                 <span id="regEventCompFee" class="font-bold text-orange-700">฿0</span>
                             </div>
+                            <div class="border-t border-gray-200 my-2"></div>
+                            <div class="flex justify-between p-2 bg-gray-50 rounded">
+                                <span class="text-gray-600">Package Only</span>
+                                <span id="regEventPackageOnly" class="font-bold text-gray-700">฿0</span>
+                            </div>
+                            <div class="flex justify-between p-2 bg-indigo-50 rounded">
+                                <span class="text-indigo-600">Package + Comp</span>
+                                <span id="regEventPackageComp" class="font-bold text-indigo-700">฿0</span>
+                            </div>
                             <div class="flex justify-between p-2 bg-purple-50 rounded">
-                                <span class="text-purple-600">Total (with all)</span>
+                                <span class="text-purple-600">Package + All</span>
                                 <span id="regEventTotalFee" class="font-bold text-purple-700">฿0</span>
                             </div>
                         </div>
@@ -72390,6 +72399,11 @@ const RegistrationsManager = {
         if (el('regEventBaseFee')) el('regEventBaseFee').textContent = '฿' + baseFee.toLocaleString();
         if (el('regEventTransportFee')) el('regEventTransportFee').textContent = '฿' + transportFee.toLocaleString();
         if (el('regEventCompFee')) el('regEventCompFee').textContent = '฿' + compFee.toLocaleString();
+        // Fee totals
+        const packageOnly = baseFee;
+        const packageComp = baseFee + compFee;
+        if (el('regEventPackageOnly')) el('regEventPackageOnly').textContent = '฿' + packageOnly.toLocaleString();
+        if (el('regEventPackageComp')) el('regEventPackageComp').textContent = '฿' + packageComp.toLocaleString();
         if (el('regEventTotalFee')) el('regEventTotalFee').textContent = '฿' + totalFee.toLocaleString();
 
         // Store fees for auto-calculation
@@ -72526,11 +72540,13 @@ const RegistrationsManager = {
             const specialRequests = reg.specialRequests || {};
             const requestIcons = this.getRequestIcons(specialRequests);
 
-            // Calculate expected fee if not set, or use stored fee
-            let displayFee = parseFloat(reg.totalFee) || 0;
-            if (displayFee === 0 && this.eventFees) {
-                displayFee = this.calculatePlayerFee(reg.wantTransport, reg.wantCompetition);
-            }
+            // Always calculate expected fee based on player's options
+            const calculatedFee = this.eventFees ? this.calculatePlayerFee(reg.wantTransport, reg.wantCompetition) : 0;
+            const storedFee = parseFloat(reg.totalFee) || 0;
+            // Show calculated fee if no stored fee, otherwise show stored fee
+            let displayFee = storedFee > 0 ? storedFee : calculatedFee;
+            // Highlight yellow if fee was calculated (not stored) OR if stored fee doesn't match calculated
+            const needsUpdate = storedFee === 0 || (storedFee > 0 && storedFee !== calculatedFee);
 
             return `
                 <tr class="border-t hover:bg-gray-100 ${rowClass}" data-reg-id="${reg.id}">
@@ -72547,7 +72563,8 @@ const RegistrationsManager = {
                     <td class="px-3 py-2 text-right">
                         <input type="number" value="${displayFee}"
                                onchange="RegistrationsManager.updateFee('${reg.id}', this.value)"
-                               class="w-20 px-2 py-1 text-right border rounded text-sm ${displayFee > 0 && !reg.totalFee ? 'bg-yellow-50' : ''}">
+                               class="w-20 px-2 py-1 text-right border rounded text-sm ${needsUpdate ? 'bg-yellow-50' : ''}"
+                               title="${needsUpdate ? 'Calculated: ฿' + calculatedFee.toLocaleString() + ' (click to save)' : '฿' + displayFee.toLocaleString()}">
                     </td>
                     <td class="px-3 py-2 text-center">
                         <button onclick="RegistrationsManager.togglePaymentStatus('${reg.id}')"
@@ -72891,6 +72908,12 @@ const RegistrationsManager = {
             if (!reg) return;
             const isPaid = reg.paymentStatus === 'paid';
             const newStatus = isPaid ? 'unpaid' : 'paid';
+
+            // Confirm before marking as unpaid (in case of accidental click)
+            if (isPaid) {
+                if (!confirm(`Mark ${reg.playerName} as UNPAID? This will clear their payment record.`)) return;
+            }
+
             const currentUser = AppState?.currentUser?.lineUserId;
             if (newStatus === 'paid') {
                 await SocietyGolfDB.markPlayerPaid(this.currentEventId, reg.playerId, reg.totalFee || 0, currentUser);

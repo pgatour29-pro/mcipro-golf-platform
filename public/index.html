@@ -34528,6 +34528,15 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                     <span class="material-symbols-outlined text-xs">group_add</span>
                                     Partners
                                 </button>
+                                <div class="flex-1"></div>
+                                <button onclick="RegistrationsManager.printPairingSheet()" class="btn-secondary text-xs py-1 px-2" title="Print Pairing Sheet">
+                                    <span class="material-symbols-outlined text-xs">print</span>
+                                    Print
+                                </button>
+                                <button onclick="RegistrationsManager.sharePairingsToLine()" class="btn-secondary text-xs py-1 px-2 bg-green-100 hover:bg-green-200 text-green-700" title="Share to LINE">
+                                    <span class="material-symbols-outlined text-xs">share</span>
+                                    LINE
+                                </button>
                             </div>
 
                             <!-- Groups Container (Drag-Drop) - Tall for 80-100 golfers (20-25 groups) -->
@@ -72969,6 +72978,210 @@ const RegistrationsManager = {
     async savePairings() {
         try { await SocietyGolfDB.savePairings(this.currentEventId, this.pairingsData); }
         catch (error) { console.error('[RegistrationsManager] Error saving pairings:', error); }
+    },
+
+    // Generate pairing sheet text for print/share
+    generatePairingSheetText() {
+        if (!this.pairingsData || !this.pairingsData.groups) return '';
+
+        const event = SocietyOrganizerSystem.events?.find(e => e.id === this.currentEventId);
+        const eventName = event?.title || 'Golf Event';
+        const eventDate = event?.event_date ? new Date(event.event_date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '';
+        const courseName = event?.course_name || '';
+
+        let text = `${eventName}\n`;
+        text += `${eventDate}\n`;
+        if (courseName) text += `${courseName}\n`;
+        text += `${'─'.repeat(40)}\n\n`;
+
+        // Group by van first if any van assignments
+        const vanGroups = {};
+        const noVanGroups = [];
+
+        this.pairingsData.groups.forEach((group, idx) => {
+            const groupNum = idx + 1;
+            const vanNum = group.vanNumber || 0;
+            const groupData = { groupNum, ...group };
+
+            if (vanNum > 0) {
+                if (!vanGroups[vanNum]) vanGroups[vanNum] = [];
+                vanGroups[vanNum].push(groupData);
+            } else {
+                noVanGroups.push(groupData);
+            }
+        });
+
+        // Print van-assigned groups first
+        const vanNumbers = Object.keys(vanGroups).sort((a, b) => parseInt(a) - parseInt(b));
+        vanNumbers.forEach(vanNum => {
+            text += `🚐 VAN ${vanNum}\n`;
+            text += `${'─'.repeat(20)}\n`;
+            vanGroups[vanNum].forEach(group => {
+                const teeTime = group.teeTime ? ` ⏰ ${group.teeTime}` : '';
+                text += `Group ${group.groupNum}${teeTime}\n`;
+                (group.players || []).forEach(p => {
+                    text += `  • ${p.playerName} (${p.handicap})\n`;
+                });
+                text += '\n';
+            });
+        });
+
+        // Then groups without van assignment
+        if (noVanGroups.length > 0 && vanNumbers.length > 0) {
+            text += `\n📍 OWN TRANSPORT\n`;
+            text += `${'─'.repeat(20)}\n`;
+        }
+        noVanGroups.forEach(group => {
+            const teeTime = group.teeTime ? ` ⏰ ${group.teeTime}` : '';
+            text += `Group ${group.groupNum}${teeTime}\n`;
+            (group.players || []).forEach(p => {
+                text += `  • ${p.playerName} (${p.handicap})\n`;
+            });
+            text += '\n';
+        });
+
+        text += `\n${this.registrations.length} players in ${this.pairingsData.groups.length} groups`;
+        return text;
+    },
+
+    printPairingSheet() {
+        if (!this.pairingsData || !this.pairingsData.groups || this.pairingsData.groups.length === 0) {
+            alert('No pairings to print. Create pairings first.');
+            return;
+        }
+
+        const event = SocietyOrganizerSystem.events?.find(e => e.id === this.currentEventId);
+        const eventName = event?.title || 'Golf Event';
+        const eventDate = event?.event_date ? new Date(event.event_date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '';
+        const courseName = event?.course_name || '';
+
+        // Group by van
+        const vanGroups = {};
+        const noVanGroups = [];
+        this.pairingsData.groups.forEach((group, idx) => {
+            const groupData = { groupNum: idx + 1, ...group };
+            if (group.vanNumber > 0) {
+                if (!vanGroups[group.vanNumber]) vanGroups[group.vanNumber] = [];
+                vanGroups[group.vanNumber].push(groupData);
+            } else {
+                noVanGroups.push(groupData);
+            }
+        });
+
+        // Build HTML for print
+        let html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Pairing Sheet - ${eventName}</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; }
+                    h1 { margin-bottom: 5px; font-size: 24px; }
+                    .event-info { color: #666; margin-bottom: 20px; }
+                    .van-section { margin-bottom: 30px; }
+                    .van-header { background: #3b82f6; color: white; padding: 8px 12px; font-weight: bold; margin-bottom: 10px; }
+                    .group { display: inline-block; width: 220px; vertical-align: top; margin: 5px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; }
+                    .group-header { font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+                    .player { padding: 3px 0; font-size: 14px; }
+                    .player-hcp { color: #888; font-size: 12px; }
+                    .tee-time { color: #059669; font-size: 12px; }
+                    .summary { margin-top: 30px; padding-top: 15px; border-top: 2px solid #333; font-weight: bold; }
+                    @media print { body { padding: 0; } }
+                </style>
+            </head>
+            <body>
+                <h1>${eventName}</h1>
+                <div class="event-info">
+                    ${eventDate}${courseName ? ' • ' + courseName : ''}<br>
+                    ${this.registrations.length} players • ${this.pairingsData.groups.length} groups
+                </div>
+        `;
+
+        // Van-assigned groups
+        const vanNumbers = Object.keys(vanGroups).sort((a, b) => parseInt(a) - parseInt(b));
+        vanNumbers.forEach(vanNum => {
+            html += `<div class="van-section">
+                <div class="van-header">🚐 Van ${vanNum}</div>
+                <div class="groups">`;
+            vanGroups[vanNum].forEach(group => {
+                html += `<div class="group">
+                    <div class="group-header">Group ${group.groupNum}${group.teeTime ? ` <span class="tee-time">⏰ ${group.teeTime}</span>` : ''}</div>
+                    ${(group.players || []).map(p => `<div class="player">${p.playerName} <span class="player-hcp">(${p.handicap})</span></div>`).join('')}
+                </div>`;
+            });
+            html += `</div></div>`;
+        });
+
+        // No van groups
+        if (noVanGroups.length > 0) {
+            html += `<div class="van-section">
+                ${vanNumbers.length > 0 ? '<div class="van-header" style="background:#6b7280;">📍 Own Transport</div>' : ''}
+                <div class="groups">`;
+            noVanGroups.forEach(group => {
+                html += `<div class="group">
+                    <div class="group-header">Group ${group.groupNum}${group.teeTime ? ` <span class="tee-time">⏰ ${group.teeTime}</span>` : ''}</div>
+                    ${(group.players || []).map(p => `<div class="player">${p.playerName} <span class="player-hcp">(${p.handicap})</span></div>`).join('')}
+                </div>`;
+            });
+            html += `</div></div>`;
+        }
+
+        html += `
+                <div class="summary">
+                    Total: ${this.registrations.length} players in ${this.pairingsData.groups.length} groups
+                </div>
+            </body>
+            </html>
+        `;
+
+        // Open print window
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(html);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => printWindow.print(), 250);
+    },
+
+    async sharePairingsToLine() {
+        if (!this.pairingsData || !this.pairingsData.groups || this.pairingsData.groups.length === 0) {
+            alert('No pairings to share. Create pairings first.');
+            return;
+        }
+
+        const text = this.generatePairingSheetText();
+
+        // Use LINE Share if available via LIFF
+        if (window.liff && liff.isInClient && liff.isInClient()) {
+            try {
+                await liff.shareTargetPicker([{
+                    type: 'text',
+                    text: text
+                }]);
+                showNotification('success', 'Pairings shared to LINE');
+            } catch (error) {
+                console.error('[Pairings] LINE share error:', error);
+                // Fallback to clipboard
+                this.copyPairingsToClipboard(text);
+            }
+        } else {
+            // Not in LINE app - copy to clipboard for manual sharing
+            this.copyPairingsToClipboard(text);
+        }
+    },
+
+    copyPairingsToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            showNotification('success', 'Pairing sheet copied to clipboard! Paste in LINE to share.');
+        }).catch(() => {
+            // Fallback for older browsers
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            showNotification('success', 'Pairing sheet copied! Paste in LINE to share.');
+        });
     },
 
     async updateFee(regId, newFee) {

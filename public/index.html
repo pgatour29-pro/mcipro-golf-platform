@@ -25271,7 +25271,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     // BUILD ID - Injected at deploy time for cache busting
     window.__BUILD_ID__ = 'f9a3b5c7';
 
-    console.log('%c🚀 PAGE VERSION: 2025-12-21-REG-DEBUG-FEES', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-12-21-REG-VAN-FIX', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
@@ -72375,12 +72375,16 @@ const RegistrationsManager = {
         if (el('regEventDeparture')) el('regEventDeparture').textContent = formatTime(e.departureTime || e.departure_time);
         if (el('regEventCourse')) el('regEventCourse').textContent = e.courseName || e.course_name || e.course || '--';
 
-        // Fee breakdown - use snake_case from database
-        const baseFee = parseFloat(e.entry_fee || e.member_fee || e.baseFee || e.memberFee || 0);
-        const transportFee = parseFloat(e.transport_fee || e.transportFee || 0);
-        const compFee = parseFloat(e.competition_fee || e.competitionFee || 0);
+        // Fee breakdown - event object uses camelCase
+        const baseFee = parseFloat(e.baseFee || e.memberFee || e.entry_fee || e.member_fee || 0);
+        const transportFee = parseFloat(e.transportFee || e.transport_fee || 0);
+        const compFee = parseFloat(e.competitionFee || e.competition_fee || 0);
         const totalFee = baseFee + transportFee + compFee;
 
+        console.log('[Registrations] Raw event fees:', {
+            baseFee: e.baseFee, memberFee: e.memberFee,
+            transportFee: e.transportFee, competitionFee: e.competitionFee
+        });
         console.log('[Registrations] Parsed fees:', { baseFee, transportFee, compFee, totalFee });
 
         if (el('regEventBaseFee')) el('regEventBaseFee').textContent = '฿' + baseFee.toLocaleString();
@@ -72411,11 +72415,12 @@ const RegistrationsManager = {
 
     renderStats() {
         const regs = this.registrations;
+        const totalPlayers = regs.length;
         const transportCount = regs.filter(r => r.wantTransport).length;
         const competitionCount = regs.filter(r => r.wantCompetition).length;
         const paidCount = regs.filter(r => r.paymentStatus === 'paid').length;
         const totalRevenue = regs.reduce((sum, r) => sum + (parseFloat(r.totalFee) || 0), 0);
-        const { vans, details } = this.calculateVans(transportCount);
+        const { vans, details } = this.calculateVans(transportCount, totalPlayers);
 
         // Calculate fee totals based on event fees
         const fees = this.eventFees || {};
@@ -72473,12 +72478,17 @@ const RegistrationsManager = {
         });
     },
 
-    calculateVans(transportCount) {
-        if (transportCount === 0) return { vans: 0, details: 'No transport needed' };
-        // Always recommend at least 1 van if anyone needs transport
+    calculateVans(transportCount, totalPlayers = 0) {
         // Van capacity: 9 comfortable, 10 max
+        // Always recommend at least 1 van for planning if there are registered players
+        if (transportCount === 0) {
+            if (totalPlayers > 0) {
+                return { vans: 1, details: `Plan for ${totalPlayers} players` };
+            }
+            return { vans: 0, details: 'No players yet' };
+        }
         if (transportCount <= 10) {
-            return { vans: 1, details: `${transportCount} players` };
+            return { vans: 1, details: `${transportCount} need transport` };
         }
         if (transportCount % 10 === 0) {
             return { vans: transportCount / 10, details: `${transportCount} @ 10/van` };

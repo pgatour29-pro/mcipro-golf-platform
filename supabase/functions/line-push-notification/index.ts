@@ -81,6 +81,9 @@ serve(async (req) => {
       case "group_message":
         result = await handleGroupMessage(supabase, payload.record);
         break;
+      case "system_alert":
+        result = await handleSystemAlert(supabase, payload);
+        break;
       default:
         return new Response(JSON.stringify({ error: "Unknown notification type" }), {
           status: 400,
@@ -902,6 +905,56 @@ async function handlePlatformAnnouncement(supabase: any, announcement: any) {
 
   console.log(`[LINE Push] Platform announcement sent to ${totalSent} users`);
   return { success: true, notified: totalSent };
+}
+
+// ============================================================================
+// SYSTEM ALERT NOTIFICATION (Direct message to a single user)
+// ============================================================================
+async function handleSystemAlert(supabase: any, payload: any) {
+  const recipientId = payload.recipient_id;
+  const message = payload.message;
+
+  console.log("[LINE Push] System alert to:", recipientId);
+  console.log("[LINE Push] Message:", message?.substring(0, 100));
+
+  if (!recipientId || !message) {
+    console.log("[LINE Push] Missing recipient_id or message");
+    return { success: false, error: "Missing recipient_id or message" };
+  }
+
+  // Validate recipient is a LINE user ID
+  if (!recipientId.startsWith("U")) {
+    console.log("[LINE Push] Recipient is not a LINE user ID:", recipientId);
+    return { success: true, notified: 0, reason: "not_line_user" };
+  }
+
+  // Look up messaging_user_id from user_profiles
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("messaging_user_id")
+    .eq("line_user_id", recipientId)
+    .single();
+
+  // Use messaging_user_id if available, otherwise use line_user_id directly
+  const targetId = profile?.messaging_user_id || recipientId;
+  console.log("[LINE Push] Target ID:", targetId);
+
+  if (!targetId?.startsWith("U")) {
+    console.log("[LINE Push] No valid target ID");
+    return { success: true, notified: 0, reason: "no_valid_target" };
+  }
+
+  // Build simple text message
+  const lineMessage: LineMessage = {
+    type: "text",
+    text: message,
+  };
+
+  // Send directly to the user
+  const sent = await sendPushMessage(targetId, [lineMessage]);
+
+  console.log("[LINE Push] System alert result:", sent ? "SUCCESS" : "FAILED");
+  return { success: sent, notified: sent ? 1 : 0 };
 }
 
 // ============================================================================

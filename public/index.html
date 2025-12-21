@@ -55735,6 +55735,26 @@ class SocietyOrganizerManager {
             this.renderEvents();
             this.renderCalendar();
             NotificationManager.show('Event deleted successfully', 'success');
+
+            // Send LINE alert for event deletion
+            try {
+                await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'system_alert',
+                        recipient_id: AppState.currentUser?.lineUserId,
+                        message: `🗑️ EVENT DELETED\n\n` +
+                            `Event: ${eventName || 'Unknown'}\n` +
+                            `Event ID: ${eventId}\n` +
+                            `By: ${AppState.currentUser?.name || 'Organizer'}\n` +
+                            `Time: ${new Date().toLocaleString()}`
+                    })
+                });
+                console.log('[SocietyOrganizer] LINE delete alert sent');
+            } catch (lineErr) {
+                console.error('[SocietyOrganizer] LINE delete alert failed:', lineErr);
+            }
         } catch (error) {
             console.error('[SocietyOrganizer] Error deleting event:', error);
             NotificationManager.show('Failed to delete event: ' + error.message, 'error');
@@ -55761,6 +55781,11 @@ This action cannot be undone.`);
         try {
             console.log('[SocietyOrganizer] Deleting event:', this.currentEvent.id);
 
+            // Save event details before deletion for the alert
+            const deletedEventName = this.currentEvent.name;
+            const deletedEventId = this.currentEvent.id;
+            const deletedEventDate = this.currentEvent.date;
+
             // Delete from database
             await SocietyGolfDB.deleteEvent(this.currentEvent.id);
 
@@ -55775,6 +55800,26 @@ This action cannot be undone.`);
             this.renderCalendar();
 
             NotificationManager.show('Event deleted successfully', 'success');
+
+            // Send LINE alert for event deletion
+            try {
+                await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'system_alert',
+                        recipient_id: AppState.currentUser?.lineUserId,
+                        message: `🗑️ EVENT DELETED\n\n` +
+                            `Event: ${deletedEventName}\n` +
+                            `Date: ${deletedEventDate}\n` +
+                            `By: ${AppState.currentUser?.name || 'Organizer'}\n` +
+                            `Time: ${new Date().toLocaleString()}`
+                    })
+                });
+                console.log('[SocietyOrganizer] LINE delete alert sent');
+            } catch (lineErr) {
+                console.error('[SocietyOrganizer] LINE delete alert failed:', lineErr);
+            }
         } catch (error) {
             console.error('[SocietyOrganizer] Error deleting event:', error);
             NotificationManager.show('Failed to delete event: ' + error.message, 'error');
@@ -55957,6 +56002,27 @@ This action cannot be undone.`);
                 }
 
                 NotificationManager.show('Event updated successfully', 'success');
+
+                // Send LINE alert for event edit
+                try {
+                    await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 'system_alert',
+                            recipient_id: AppState.currentUser?.lineUserId,
+                            message: `📝 EVENT EDITED\n\n` +
+                                `Event: ${eventData.name}\n` +
+                                `Date: ${eventData.date}\n` +
+                                `Course: ${eventData.courseName}\n` +
+                                `By: ${AppState.currentUser?.name || 'Organizer'}\n` +
+                                `Time: ${new Date().toLocaleString()}`
+                        })
+                    });
+                    console.log('[SocietyOrganizer] LINE edit alert sent');
+                } catch (lineErr) {
+                    console.error('[SocietyOrganizer] LINE edit alert failed:', lineErr);
+                }
             } else {
                 // Create new event
                 console.log('[SocietyOrganizer] ➕ Creating new event');
@@ -55964,7 +56030,6 @@ This action cannot be undone.`);
                 const result = await SocietyGolfDB.createEvent(eventData);
                 console.log('[DEBUG] createEvent returned:', result);
                 console.log('[SocietyOrganizer] ✅ Event created in database');
-                // LINE notification is now sent automatically in SocietyGolfDB.createEvent()
 
                 // If recurring, create additional events in the database
                 if (isRecurring) {
@@ -55978,6 +56043,27 @@ This action cannot be undone.`);
                     NotificationManager.show(`Event created with ${recurringEvents.length} recurring instances`, 'success', 3000);
                 } else {
                     NotificationManager.show('Event created successfully', 'success');
+                }
+
+                // Send LINE alert for new event
+                try {
+                    await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 'system_alert',
+                            recipient_id: AppState.currentUser?.lineUserId,
+                            message: `✅ NEW EVENT CREATED\n\n` +
+                                `Event: ${eventData.name}\n` +
+                                `Date: ${eventData.date}\n` +
+                                `Course: ${eventData.courseName}\n` +
+                                `By: ${AppState.currentUser?.name || 'Organizer'}\n` +
+                                `Time: ${new Date().toLocaleString()}`
+                        })
+                    });
+                    console.log('[SocietyOrganizer] LINE create alert sent');
+                } catch (lineErr) {
+                    console.error('[SocietyOrganizer] LINE create alert failed:', lineErr);
                 }
             }
 

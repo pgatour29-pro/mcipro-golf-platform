@@ -28553,7 +28553,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                                 <option value="">Casual Round (use most recent handicap)</option>
                                 <!-- Dynamically populated from society_profiles -->
                             </select>
-                            <p class="text-xs text-gray-500 mt-1">Each society tracks separate handicaps. Scores update BOTH the selected society AND universal handicap.</p>
+                            <p class="text-xs text-gray-500 mt-1">
+                                <strong>Universal:</strong> Only updates universal HCP<br>
+                                <strong>Society:</strong> Updates BOTH society AND universal HCP
+                            </p>
                         </div>
 
                         <!-- Add Players (1-7) -->
@@ -44117,14 +44120,16 @@ class LiveScorecardSystem {
 
     // Cache for society profiles (fetched once per session)
     societyProfilesCache = null;
+    // Cache for current user's society handicaps
+    currentUserSocietyHandicaps = null;
 
-    // Load society options into the dropdown
+    // Load society options into the dropdown with handicap values
     async loadSocietyOptions() {
         const select = document.getElementById('roundSocietySelect');
         if (!select) return;
 
         try {
-            // Use cache if available
+            // Load society profiles
             if (!this.societyProfilesCache) {
                 const { data, error } = await window.SupabaseDB.client
                     .from('society_profiles')
@@ -44135,10 +44140,23 @@ class LiveScorecardSystem {
                 this.societyProfilesCache = data || [];
             }
 
-            // Keep the casual option, add societies
-            let html = '<option value="">Casual Round (use most recent handicap)</option>';
+            // Load current user's handicaps for all societies
+            const currentUserId = window.AppState?.currentUser?.lineUserId;
+            if (currentUserId) {
+                this.currentUserSocietyHandicaps = await this.getPlayerSocietyHandicaps(currentUserId);
+            }
+
+            // Get universal handicap (society_id = null)
+            const universalHcp = this.currentUserSocietyHandicaps?.find(h => h.society_id === null);
+            const universalDisplay = universalHcp ? universalHcp.handicap_index : 'N/A';
+
+            // Build dropdown with handicap values shown
+            let html = `<option value="">Universal Only (HCP: ${universalDisplay}) - Updates universal only</option>`;
+
             this.societyProfilesCache.forEach(s => {
-                html += `<option value="${s.id}">${s.society_name}</option>`;
+                const societyHcp = this.currentUserSocietyHandicaps?.find(h => h.society_id === s.id);
+                const hcpDisplay = societyHcp ? societyHcp.handicap_index : 'N/A';
+                html += `<option value="${s.id}">${s.society_name} (HCP: ${hcpDisplay})</option>`;
             });
 
             select.innerHTML = html;
@@ -44148,7 +44166,7 @@ class LiveScorecardSystem {
         }
     }
 
-    // Fetch all society handicaps for a player
+    // Fetch all society handicaps for a player (includes universal where society_id is null)
     async getPlayerSocietyHandicaps(golferId) {
         try {
             const { data, error } = await window.SupabaseDB.client
@@ -44165,24 +44183,42 @@ class LiveScorecardSystem {
         }
     }
 
-    // Get handicap for specific society, falling back to most recent
+    // Get handicap for specific society
+    // If society selected: returns that society's handicap
+    // If no society (casual): returns universal handicap (society_id = null)
     getHandicapForSociety(societyHandicaps, selectedSocietyId) {
         if (!societyHandicaps || societyHandicaps.length === 0) {
             return 0; // No handicaps recorded
         }
 
-        // If society selected, find matching handicap
+        // If society selected, find that society's handicap
         if (selectedSocietyId) {
             const match = societyHandicaps.find(h => h.society_id === selectedSocietyId);
             if (match) {
                 console.log(`[LiveScorecard] Using ${this.getSocietyName(selectedSocietyId)} handicap: ${match.handicap_index}`);
                 return match.handicap_index;
             }
+            // Society selected but no handicap for it - fall back to universal
+            console.log(`[LiveScorecard] No handicap for selected society, checking universal...`);
         }
 
-        // Fallback: most recent (already sorted by last_calculated_at desc)
-        console.log(`[LiveScorecard] Using most recent handicap: ${societyHandicaps[0].handicap_index}`);
+        // Use universal handicap (society_id = null)
+        const universal = societyHandicaps.find(h => h.society_id === null);
+        if (universal) {
+            console.log(`[LiveScorecard] Using Universal handicap: ${universal.handicap_index}`);
+            return universal.handicap_index;
+        }
+
+        // Last resort: use most recent handicap
+        console.log(`[LiveScorecard] No universal found, using most recent: ${societyHandicaps[0].handicap_index}`);
         return societyHandicaps[0].handicap_index;
+    }
+
+    // Get universal handicap from player's society handicaps array
+    getUniversalHandicap(societyHandicaps) {
+        if (!societyHandicaps || societyHandicaps.length === 0) return null;
+        const universal = societyHandicaps.find(h => h.society_id === null);
+        return universal ? universal.handicap_index : null;
     }
 
     // Get society name from ID (for display)
@@ -46119,28 +46155,42 @@ class LiveScorecardSystem {
 
     renderPlayersList() {
         const container = document.getElementById('scorecardPlayersList');
+        const selectedSociety = document.getElementById('roundSocietySelect')?.value;
+
         container.innerHTML = this.players.map((p, index) => {
             // Format handicap: negative values are plus handicaps (e.g., -2.5 → +2.5)
             const handicapDisplay = p.handicap < 0 ? `+${Math.abs(p.handicap)}` : p.handicap;
 
-            // Build handicap HTML - show dropdown if player has multiple society handicaps
+            // Build handicap HTML - show dropdown if player has society handicaps
             let handicapHtml;
-            if (p.societyHandicaps && p.societyHandicaps.length > 1) {
-                // Build dropdown with all available society handicaps
-                const options = p.societyHandicaps.map(sh => {
+            if (p.societyHandicaps && p.societyHandicaps.length > 0) {
+                // Build dropdown with Universal + all society handicaps
+                let options = '';
+
+                // Always add Universal option first
+                const universalHcp = p.societyHandicaps.find(h => h.society_id === null);
+                if (universalHcp) {
+                    const uHcpDisplay = universalHcp.handicap_index < 0 ? `+${Math.abs(universalHcp.handicap_index)}` : universalHcp.handicap_index;
+                    const uSelected = universalHcp.handicap_index === p.handicap ? 'selected' : '';
+                    options += `<option value="${universalHcp.handicap_index}" ${uSelected}>Universal: ${uHcpDisplay}</option>`;
+                }
+
+                // Add society-specific handicaps
+                p.societyHandicaps.filter(sh => sh.society_id !== null).forEach(sh => {
                     const hcpVal = sh.handicap_index;
                     const hcpDisplay = hcpVal < 0 ? `+${Math.abs(hcpVal)}` : hcpVal;
                     const societyName = this.getSocietyName(sh.society_id);
                     const selected = sh.handicap_index === p.handicap ? 'selected' : '';
-                    return `<option value="${sh.handicap_index}" ${selected}>${societyName}: ${hcpDisplay}</option>`;
-                }).join('');
+                    options += `<option value="${sh.handicap_index}" ${selected}>${societyName}: ${hcpDisplay}</option>`;
+                });
+
                 handicapHtml = `
                     <select onchange="LiveScorecardManager.updatePlayerHandicap(${index}, this.value)"
                             class="ml-2 text-sm rounded border px-1 py-0.5 bg-yellow-50 border-yellow-300 cursor-pointer">
                         ${options}
                     </select>`;
             } else {
-                // Just show static handicap
+                // No society handicaps - just show static handicap from profile
                 handicapHtml = `<span class="text-sm text-gray-600 ml-2">(HCP ${handicapDisplay})</span>`;
             }
 

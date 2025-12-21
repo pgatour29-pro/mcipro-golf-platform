@@ -191,12 +191,19 @@ async function handleNewEvent(supabase: any, event: any) {
     .select("line_user_id, messaging_user_id")
     .in("line_user_id", golferIds);
 
-  // Use messaging_user_id if available, otherwise use line_user_id directly
-  const lineUserIds = (profiles || [])
+  // Use messaging_user_id if available, otherwise fall back to line_user_id
+  const messagingUserIds = (profiles || [])
     .map((p: any) => p.messaging_user_id || p.line_user_id)
     .filter((id: string) => id?.startsWith("U"));
 
-  if (!lineUserIds || lineUserIds.length === 0) {
+  // FIX: Also include golfer IDs that don't have profiles (fallback)
+  const profileLineIds = new Set((profiles || []).map((p: any) => p.line_user_id));
+  const missingIds = golferIds.filter((id: string) => !profileLineIds.has(id));
+  const lineUserIds = [...new Set([...messagingUserIds, ...missingIds])];
+
+  console.log("[LINE Push] New event targets:", lineUserIds.length, "(profiles:", messagingUserIds.length, ", fallback:", missingIds.length, ")");
+
+  if (lineUserIds.length === 0) {
     console.log("[LINE Push] No LINE users to notify");
     return { success: true, notified: 0 };
   }
@@ -260,24 +267,48 @@ async function handleEventUpdate(supabase: any, newEvent: any, oldEvent: any) {
     return { success: true, notified: 0, reason: "no_significant_change" };
   }
 
-  // Get registered players for this event
+  // Get ALL registered players for this event (removed status filter - notify everyone)
   const { data: registrations, error } = await supabase
     .from("event_registrations")
     .select("player_id")
-    .eq("event_id", newEvent.id)
-    .eq("status", "confirmed");
+    .eq("event_id", newEvent.id);
 
   if (error) {
     console.error("[LINE Push] Error fetching registrations:", error);
     return { success: false, error: error.message };
   }
 
-  const lineUserIds = registrations
+  // Filter to valid LINE IDs
+  const golferIds = registrations
     ?.filter((r: any) => r.player_id?.startsWith("U"))
-    .map((r: any) => r.player_id);
+    .map((r: any) => r.player_id) || [];
 
-  if (!lineUserIds || lineUserIds.length === 0) {
-    return { success: true, notified: 0 };
+  console.log("[LINE Push] Event update: found", golferIds.length, "registered golfers with LINE IDs");
+
+  if (golferIds.length === 0) {
+    return { success: true, notified: 0, reason: "no_line_users" };
+  }
+
+  // FIX: Look up messaging_user_ids (consistent with other handlers)
+  const { data: profiles } = await supabase
+    .from("user_profiles")
+    .select("line_user_id, messaging_user_id")
+    .in("line_user_id", golferIds);
+
+  // Use messaging_user_id if available, otherwise fall back to line_user_id
+  const messagingUserIds = (profiles || [])
+    .map((p: any) => p.messaging_user_id || p.line_user_id)
+    .filter((id: string) => id?.startsWith("U"));
+
+  // Also include golfer IDs that don't have profiles (fallback)
+  const profileLineIds = new Set((profiles || []).map((p: any) => p.line_user_id));
+  const missingIds = golferIds.filter((id: string) => !profileLineIds.has(id));
+  const allTargetIds = [...new Set([...messagingUserIds, ...missingIds])];
+
+  console.log("[LINE Push] Event update targets:", allTargetIds.length, "(profiles:", messagingUserIds.length, ", fallback:", missingIds.length, ")");
+
+  if (allTargetIds.length === 0) {
+    return { success: true, notified: 0, reason: "no_valid_targets" };
   }
 
   // Build update message
@@ -304,7 +335,7 @@ async function handleEventUpdate(supabase: any, newEvent: any, oldEvent: any) {
     text: updateText,
   };
 
-  const batches = chunkArray(lineUserIds, 500);
+  const batches = chunkArray(allTargetIds, 500);
   let totalSent = 0;
 
   for (const batch of batches) {
@@ -312,6 +343,7 @@ async function handleEventUpdate(supabase: any, newEvent: any, oldEvent: any) {
     totalSent += sent;
   }
 
+  console.log("[LINE Push] Event update sent to", totalSent, "users");
   return { success: true, notified: totalSent };
 }
 
@@ -321,22 +353,28 @@ async function handleEventUpdate(supabase: any, newEvent: any, oldEvent: any) {
 async function handleDirectMessage(supabase: any, message: any) {
   const recipientId = message.recipient_id;
 
-  // Only notify LINE users
+  // Only notify LINE users (must start with U)
   if (!recipientId?.startsWith("U")) {
+    console.log("[LINE Push] Recipient is not a LINE user:", recipientId);
     return { success: true, notified: 0, reason: "not_line_user" };
   }
 
-  // Get recipient's messaging_user_id
+  // Validate LINE ID format (U + 32 hex chars)
+  if (recipientId.length !== 33 || !/^U[a-f0-9]{32}$/i.test(recipientId)) {
+    console.log("[LINE Push] Invalid LINE ID format:", recipientId);
+    return { success: true, notified: 0, reason: "invalid_line_id" };
+  }
+
+  // Get recipient's messaging_user_id (may be null)
   const { data: recipient } = await supabase
     .from("user_profiles")
     .select("messaging_user_id, name")
     .eq("line_user_id", recipientId)
     .single();
 
-  if (!recipient?.messaging_user_id) {
-    console.log("[LINE Push] Recipient has no messaging_user_id:", recipientId);
-    return { success: true, notified: 0, reason: "no_messaging_id" };
-  }
+  // FIX: Fall back to line_user_id if messaging_user_id is null
+  const targetId = recipient?.messaging_user_id || recipientId;
+  console.log("[LINE Push] Direct message target:", targetId, "(messaging_user_id:", recipient?.messaging_user_id, ", line_user_id:", recipientId, ")");
 
   // Check if user wants message notifications
   const { data: prefs } = await supabase
@@ -346,6 +384,7 @@ async function handleDirectMessage(supabase: any, message: any) {
     .single();
 
   if (prefs?.notify_messages === false) {
+    console.log("[LINE Push] User opted out of message notifications:", recipientId);
     return { success: true, notified: 0, reason: "opted_out" };
   }
 
@@ -366,7 +405,8 @@ async function handleDirectMessage(supabase: any, message: any) {
     text: `💬 New message from ${senderName}\n\n"${preview}"\n\nOpen MyCaddiPro to reply.`,
   };
 
-  const sent = await sendPushMessage(recipient.messaging_user_id, [lineMessage]);
+  const sent = await sendPushMessage(targetId, [lineMessage]);
+  console.log("[LINE Push] Direct message send result:", sent ? "SUCCESS" : "FAILED");
   return { success: sent, notified: sent ? 1 : 0 };
 }
 

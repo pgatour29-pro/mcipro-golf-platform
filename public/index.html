@@ -73180,24 +73180,74 @@ const RegistrationsManager = {
             return;
         }
 
-        const text = this.generatePairingSheetText();
+        // Get all registered players' LINE IDs
+        const playerLineIds = this.registrations
+            .map(r => r.lineUserId || r.player_id || r.playerId)
+            .filter(id => id && id.startsWith('U'));
 
-        // Use LINE Share if available via LIFF
-        if (window.liff && liff.isInClient && liff.isInClient()) {
-            try {
-                await liff.shareTargetPicker([{
-                    type: 'text',
-                    text: text
-                }]);
-                alert('✅ Pairings shared to LINE!');
-            } catch (error) {
-                console.error('[Pairings] LINE share error:', error);
-                // Fallback to clipboard
+        if (playerLineIds.length === 0) {
+            alert('No registered players with LINE accounts found.');
+            this.copyPairingsToClipboard(this.generatePairingSheetText());
+            return;
+        }
+
+        const confirmed = confirm(
+            `Send pairings to ${playerLineIds.length} registered players via LINE?\n\n` +
+            `Players will receive their group assignment directly in LINE.`
+        );
+
+        if (!confirmed) {
+            // Just copy to clipboard instead
+            this.copyPairingsToClipboard(this.generatePairingSheetText());
+            return;
+        }
+
+        try {
+            const text = this.generatePairingSheetText();
+            const event = SocietyOrganizerSystem.events?.find(e => e.id === this.currentEventId);
+            const eventName = event?.title || event?.name || 'Golf Event';
+
+            // Send to each player via Edge Function
+            let successCount = 0;
+            let failCount = 0;
+
+            for (const lineUserId of playerLineIds) {
+                try {
+                    const response = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 'system_alert',
+                            recipientId: lineUserId,
+                            message: `📋 PAIRINGS ANNOUNCED\n\n${text}`
+                        })
+                    });
+
+                    if (response.ok) {
+                        successCount++;
+                    } else {
+                        failCount++;
+                        console.warn(`[Pairings] Failed to send to ${lineUserId}:`, await response.text());
+                    }
+                } catch (err) {
+                    failCount++;
+                    console.error(`[Pairings] Error sending to ${lineUserId}:`, err);
+                }
+            }
+
+            if (successCount > 0) {
+                alert(`✅ Pairings sent to ${successCount} players via LINE!${failCount > 0 ? `\n\n⚠️ ${failCount} failed (may not have LINE linked)` : ''}`);
+            } else {
+                alert('❌ Failed to send pairings. Copying to clipboard instead.');
                 this.copyPairingsToClipboard(text);
             }
-        } else {
-            // Not in LINE app - copy to clipboard for manual sharing
-            this.copyPairingsToClipboard(text);
+
+            console.log(`[Pairings] LINE push complete: ${successCount} success, ${failCount} failed`);
+
+        } catch (error) {
+            console.error('[Pairings] LINE share error:', error);
+            alert('❌ Error sending pairings. Copying to clipboard instead.');
+            this.copyPairingsToClipboard(this.generatePairingSheetText());
         }
     },
 

@@ -25271,7 +25271,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
     // BUILD ID - Injected at deploy time for cache busting
     window.__BUILD_ID__ = 'f9a3b5c7';
 
-    console.log('%c🚀 PAGE VERSION: 2025-12-21-REGISTRATIONS-INLINE', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
+    console.log('%c🚀 PAGE VERSION: 2025-12-21-REG-EVENT-FEES', 'background: #ff0080; color: #fff; font-size: 20px; font-weight: bold; padding: 10px;');
     console.log('[VERSION] BUILD ID:', window.__BUILD_ID__);
     console.log('[VERSION] Multiple format selection with inline handlers loaded');
 
@@ -34305,6 +34305,49 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </div>
                 </div>
 
+                <!-- Event Details Card -->
+                <div id="registrationsEventDetails" class="bg-white rounded-xl shadow-sm p-4 mb-4" style="display: none;">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <!-- Tee Time -->
+                        <div class="text-center p-3 bg-green-50 rounded-lg">
+                            <div class="text-xs text-green-600 font-medium uppercase mb-1">Tee Time</div>
+                            <div id="regEventTeeTime" class="text-lg font-bold text-green-700">--:--</div>
+                        </div>
+                        <!-- Departure Time -->
+                        <div class="text-center p-3 bg-blue-50 rounded-lg">
+                            <div class="text-xs text-blue-600 font-medium uppercase mb-1">Van Departure</div>
+                            <div id="regEventDeparture" class="text-lg font-bold text-blue-700">--:--</div>
+                        </div>
+                        <!-- Course -->
+                        <div class="text-center p-3 bg-gray-50 rounded-lg md:col-span-2">
+                            <div class="text-xs text-gray-600 font-medium uppercase mb-1">Course</div>
+                            <div id="regEventCourse" class="text-sm font-bold text-gray-700 truncate">--</div>
+                        </div>
+                    </div>
+                    <!-- Fee Breakdown -->
+                    <div class="mt-4 pt-4 border-t">
+                        <div class="text-xs text-gray-500 font-medium uppercase mb-2">Fee Structure</div>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                            <div class="flex justify-between p-2 bg-gray-50 rounded">
+                                <span class="text-gray-600">Package (G+C+Cart)</span>
+                                <span id="regEventBaseFee" class="font-bold">฿0</span>
+                            </div>
+                            <div class="flex justify-between p-2 bg-green-50 rounded">
+                                <span class="text-green-600">Transport</span>
+                                <span id="regEventTransportFee" class="font-bold text-green-700">฿0</span>
+                            </div>
+                            <div class="flex justify-between p-2 bg-orange-50 rounded">
+                                <span class="text-orange-600">Competition</span>
+                                <span id="regEventCompFee" class="font-bold text-orange-700">฿0</span>
+                            </div>
+                            <div class="flex justify-between p-2 bg-purple-50 rounded">
+                                <span class="text-purple-600">Total (with all)</span>
+                                <span id="regEventTotalFee" class="font-bold text-purple-700">฿0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Quick Stats Cards -->
                 <div id="registrationsStatsContainer" class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6" style="display: none;">
                     <!-- Total Players -->
@@ -34322,6 +34365,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <span id="regStatTransportCount" class="text-2xl font-bold text-gray-900">0</span>
                         </div>
                         <div class="text-xs font-medium text-gray-500 uppercase tracking-wide">Transport</div>
+                        <div id="regStatTransportFeeTotal" class="text-xs text-green-600 mt-1"></div>
                     </div>
                     <!-- Competition Count -->
                     <div class="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition">
@@ -34330,6 +34374,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <span id="regStatCompetitionCount" class="text-2xl font-bold text-gray-900">0</span>
                         </div>
                         <div class="text-xs font-medium text-gray-500 uppercase tracking-wide">Competition</div>
+                        <div id="regStatCompFeeTotal" class="text-xs text-orange-600 mt-1"></div>
                     </div>
                     <!-- Total Revenue -->
                     <div class="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition">
@@ -34338,6 +34383,7 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                             <span id="regStatTotalRevenue" class="text-2xl font-bold text-gray-900">฿0</span>
                         </div>
                         <div class="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Revenue</div>
+                        <div id="regStatPaidCount" class="text-xs text-green-600 mt-1"></div>
                     </div>
                     <!-- Vans Needed -->
                     <div class="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition">
@@ -72287,32 +72333,78 @@ const RegistrationsManager = {
 
     showEventView() {
         const noEvent = document.getElementById('registrationsNoEventState');
+        const details = document.getElementById('registrationsEventDetails');
         const stats = document.getElementById('registrationsStatsContainer');
         const content = document.getElementById('registrationsMainContent');
         if (noEvent) noEvent.style.display = 'none';
+        if (details) details.style.display = 'block';
         if (stats) stats.style.display = 'grid';
         if (content) content.style.display = 'flex';
+
+        // Populate event details
+        this.renderEventDetails();
+    },
+
+    renderEventDetails() {
+        const e = this.currentEvent;
+        if (!e) return;
+
+        const el = (id) => document.getElementById(id);
+
+        // Format time for display (handles both "07:00" and "07:00:00" formats)
+        const formatTime = (time) => {
+            if (!time) return '--:--';
+            return time.substring(0, 5);
+        };
+
+        // Tee time and departure
+        if (el('regEventTeeTime')) el('regEventTeeTime').textContent = formatTime(e.startTime || e.start_time);
+        if (el('regEventDeparture')) el('regEventDeparture').textContent = formatTime(e.departureTime || e.departure_time);
+        if (el('regEventCourse')) el('regEventCourse').textContent = e.courseName || e.course_name || e.course || '--';
+
+        // Fee breakdown
+        const baseFee = parseFloat(e.baseFee || e.entry_fee || e.memberFee || 0);
+        const transportFee = parseFloat(e.transportFee || e.transport_fee || 0);
+        const compFee = parseFloat(e.competitionFee || e.competition_fee || 0);
+        const totalFee = baseFee + transportFee + compFee;
+
+        if (el('regEventBaseFee')) el('regEventBaseFee').textContent = '฿' + baseFee.toLocaleString();
+        if (el('regEventTransportFee')) el('regEventTransportFee').textContent = '฿' + transportFee.toLocaleString();
+        if (el('regEventCompFee')) el('regEventCompFee').textContent = '฿' + compFee.toLocaleString();
+        if (el('regEventTotalFee')) el('regEventTotalFee').textContent = '฿' + totalFee.toLocaleString();
+
+        // Store fees for auto-calculation
+        this.eventFees = { baseFee, transportFee, compFee, totalFee };
     },
 
     clearView() {
         const noEvent = document.getElementById('registrationsNoEventState');
+        const details = document.getElementById('registrationsEventDetails');
         const stats = document.getElementById('registrationsStatsContainer');
         const content = document.getElementById('registrationsMainContent');
         if (noEvent) noEvent.style.display = 'block';
+        if (details) details.style.display = 'none';
         if (stats) stats.style.display = 'none';
         if (content) content.style.display = 'none';
         this.currentEventId = null;
         this.currentEvent = null;
         this.registrations = [];
         this.waitlist = [];
+        this.eventFees = null;
     },
 
     renderStats() {
         const regs = this.registrations;
         const transportCount = regs.filter(r => r.wantTransport).length;
         const competitionCount = regs.filter(r => r.wantCompetition).length;
+        const paidCount = regs.filter(r => r.paymentStatus === 'paid').length;
         const totalRevenue = regs.reduce((sum, r) => sum + (parseFloat(r.totalFee) || 0), 0);
         const { vans, details } = this.calculateVans(transportCount);
+
+        // Calculate fee totals based on event fees
+        const fees = this.eventFees || {};
+        const transportFeeTotal = transportCount * (fees.transportFee || 0);
+        const compFeeTotal = competitionCount * (fees.compFee || 0);
 
         const el = (id) => document.getElementById(id);
         if (el('regStatTotalPlayers')) el('regStatTotalPlayers').textContent = regs.length;
@@ -72321,14 +72413,39 @@ const RegistrationsManager = {
         if (el('regStatTotalRevenue')) el('regStatTotalRevenue').textContent = '฿' + totalRevenue.toLocaleString();
         if (el('regStatVansNeeded')) el('regStatVansNeeded').textContent = vans;
         if (el('regStatVansDetails')) el('regStatVansDetails').textContent = details;
+
+        // Show fee totals
+        if (el('regStatTransportFeeTotal') && transportFeeTotal > 0) {
+            el('regStatTransportFeeTotal').textContent = '฿' + transportFeeTotal.toLocaleString();
+        }
+        if (el('regStatCompFeeTotal') && compFeeTotal > 0) {
+            el('regStatCompFeeTotal').textContent = '฿' + compFeeTotal.toLocaleString();
+        }
+        if (el('regStatPaidCount')) {
+            el('regStatPaidCount').textContent = `${paidCount}/${regs.length} paid`;
+        }
     },
 
     calculateVans(transportCount) {
-        if (transportCount === 0) return { vans: 0, details: '' };
+        if (transportCount === 0) return { vans: 0, details: 'No transport needed' };
+        // Always recommend at least 1 van if anyone needs transport
+        // Van capacity: 9 comfortable, 10 max
+        if (transportCount <= 10) {
+            return { vans: 1, details: `${transportCount} players` };
+        }
         if (transportCount % 10 === 0) {
             return { vans: transportCount / 10, details: `${transportCount} @ 10/van` };
         }
         return { vans: Math.ceil(transportCount / 9), details: `${transportCount} @ 9/van` };
+    },
+
+    // Calculate expected fee for a player based on their options
+    calculatePlayerFee(wantTransport, wantCompetition) {
+        const fees = this.eventFees || {};
+        let total = fees.baseFee || 0;
+        if (wantTransport) total += fees.transportFee || 0;
+        if (wantCompetition) total += fees.compFee || 0;
+        return total;
     },
 
     renderPlayerTable() {
@@ -72352,6 +72469,12 @@ const RegistrationsManager = {
             const specialRequests = reg.specialRequests || {};
             const requestIcons = this.getRequestIcons(specialRequests);
 
+            // Calculate expected fee if not set, or use stored fee
+            let displayFee = parseFloat(reg.totalFee) || 0;
+            if (displayFee === 0 && this.eventFees) {
+                displayFee = this.calculatePlayerFee(reg.wantTransport, reg.wantCompetition);
+            }
+
             return `
                 <tr class="border-t hover:bg-gray-100 ${rowClass}" data-reg-id="${reg.id}">
                     <td class="px-3 py-2 text-gray-600">${idx + 1}</td>
@@ -72365,9 +72488,9 @@ const RegistrationsManager = {
                         </button>
                     </td>
                     <td class="px-3 py-2 text-right">
-                        <input type="number" value="${reg.totalFee || 0}"
+                        <input type="number" value="${displayFee}"
                                onchange="RegistrationsManager.updateFee('${reg.id}', this.value)"
-                               class="w-20 px-2 py-1 text-right border rounded text-sm">
+                               class="w-20 px-2 py-1 text-right border rounded text-sm ${displayFee > 0 && !reg.totalFee ? 'bg-yellow-50' : ''}">
                     </td>
                     <td class="px-3 py-2 text-center">
                         <button onclick="RegistrationsManager.togglePaymentStatus('${reg.id}')"

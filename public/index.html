@@ -33903,6 +33903,10 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <span class="material-symbols-outlined text-sm mr-1">event</span>
                         Events
                     </button>
+                    <button onclick="showOrganizerTab('registrations')" id="organizer-registrations-tab" class="organizer-tab-button px-4 md:px-6 py-3 text-sm font-medium text-gray-600 hover:text-gray-900">
+                        <span class="material-symbols-outlined text-sm mr-1">how_to_reg</span>
+                        Registrations
+                    </button>
                     <button onclick="showOrganizerTab('calendar')" id="organizer-calendar-tab" class="organizer-tab-button px-4 md:px-6 py-3 text-sm font-medium text-gray-600 hover:text-gray-900">
                         <span class="material-symbols-outlined text-sm mr-1">calendar_month</span>
                         Calendar
@@ -34273,6 +34277,287 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                         <span class="material-symbols-outlined text-sm">add</span>
                         Create Event
                     </button>
+                </div>
+            </div>
+
+            <!-- Tab: Registrations -->
+            <div id="organizerTab-registrations" class="organizer-tab-content" style="display: none;">
+                <!-- Header with Event Selector -->
+                <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                <span class="material-symbols-outlined text-sm align-middle text-sky-600">event</span>
+                                Select Event to Manage
+                            </label>
+                            <select id="registrationsEventSelector"
+                                    onchange="RegistrationsManager.selectEvent(this.value)"
+                                    class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-sky-500 bg-white">
+                                <option value="">-- Select an event --</option>
+                            </select>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="RegistrationsManager.refreshData()" class="btn-secondary text-sm">
+                                <span class="material-symbols-outlined text-sm">refresh</span>
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Stats Cards -->
+                <div id="registrationsStatsContainer" class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6" style="display: none;">
+                    <!-- Total Players -->
+                    <div class="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="material-symbols-outlined text-blue-600 text-xl">groups</span>
+                            <span id="regStatTotalPlayers" class="text-2xl font-bold text-gray-900">0</span>
+                        </div>
+                        <div class="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Players</div>
+                    </div>
+                    <!-- Transport Count -->
+                    <div class="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="material-symbols-outlined text-green-600 text-xl">directions_bus</span>
+                            <span id="regStatTransportCount" class="text-2xl font-bold text-gray-900">0</span>
+                        </div>
+                        <div class="text-xs font-medium text-gray-500 uppercase tracking-wide">Transport</div>
+                    </div>
+                    <!-- Competition Count -->
+                    <div class="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="material-symbols-outlined text-orange-600 text-xl">emoji_events</span>
+                            <span id="regStatCompetitionCount" class="text-2xl font-bold text-gray-900">0</span>
+                        </div>
+                        <div class="text-xs font-medium text-gray-500 uppercase tracking-wide">Competition</div>
+                    </div>
+                    <!-- Total Revenue -->
+                    <div class="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="material-symbols-outlined text-purple-600 text-xl">payments</span>
+                            <span id="regStatTotalRevenue" class="text-2xl font-bold text-gray-900">฿0</span>
+                        </div>
+                        <div class="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Revenue</div>
+                    </div>
+                    <!-- Vans Needed -->
+                    <div class="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="material-symbols-outlined text-red-600 text-xl">airport_shuttle</span>
+                            <span id="regStatVansNeeded" class="text-2xl font-bold text-gray-900">0</span>
+                        </div>
+                        <div class="text-xs font-medium text-gray-500 uppercase tracking-wide">Vans Needed</div>
+                        <div id="regStatVansDetails" class="text-xs text-gray-500 mt-1"></div>
+                    </div>
+                </div>
+
+                <!-- Main Content: Split View -->
+                <div class="flex flex-col lg:flex-row gap-6" id="registrationsMainContent" style="display: none;">
+                    <!-- Left: Player List (expandable) -->
+                    <div id="registrationsPlayerListPanel" class="flex-1 bg-white rounded-xl shadow-sm overflow-hidden">
+                        <!-- Player List Header -->
+                        <div class="bg-gradient-to-r from-sky-600 to-sky-400 text-white px-4 py-3">
+                            <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-2">
+                                <h3 class="font-bold text-lg">
+                                    <span class="material-symbols-outlined text-sm align-middle">groups</span>
+                                    Registered Players
+                                </h3>
+                                <div class="flex gap-2">
+                                    <button onclick="RegistrationsManager.openAddPlayerModal()" class="bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded-lg text-sm font-medium">
+                                        <span class="material-symbols-outlined text-sm align-middle">person_add</span>
+                                        Add
+                                    </button>
+                                    <button onclick="RegistrationsManager.exportRoster()" class="bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded-lg text-sm font-medium">
+                                        <span class="material-symbols-outlined text-sm align-middle">download</span>
+                                        Export
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Search Bar -->
+                        <div class="p-3 border-b">
+                            <div class="relative">
+                                <input type="text" id="registrationsPlayerSearch"
+                                       placeholder="Search players by name..."
+                                       oninput="RegistrationsManager.filterPlayers(this.value)"
+                                       class="w-full px-4 py-2 pl-10 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500">
+                                <span class="material-symbols-outlined absolute left-3 top-2 text-gray-400">search</span>
+                            </div>
+                        </div>
+
+                        <!-- Player Table -->
+                        <div class="overflow-x-auto max-h-[500px] overflow-y-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-50 sticky top-0">
+                                    <tr>
+                                        <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">#</th>
+                                        <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Name</th>
+                                        <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600">HCP</th>
+                                        <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600">
+                                            <span class="material-symbols-outlined text-xs">directions_bus</span>
+                                        </th>
+                                        <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600">
+                                            <span class="material-symbols-outlined text-xs">emoji_events</span>
+                                        </th>
+                                        <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Requests</th>
+                                        <th class="px-3 py-2 text-right text-xs font-semibold text-gray-600">Fee (฿)</th>
+                                        <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600">Paid</th>
+                                        <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="registrationsPlayerTableBody">
+                                    <tr>
+                                        <td colspan="9" class="py-8 text-center text-gray-500">Select an event to view registrations</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Waitlist Section (Expandable) -->
+                        <div class="border-t">
+                            <button onclick="RegistrationsManager.toggleWaitlist()"
+                                    class="w-full px-4 py-3 flex justify-between items-center text-left hover:bg-gray-50">
+                                <span class="font-medium text-gray-700">
+                                    <span class="material-symbols-outlined text-sm align-middle text-orange-500">hourglass_top</span>
+                                    Waitlist (<span id="registrationsWaitlistCount">0</span>)
+                                </span>
+                                <span id="registrationsWaitlistChevron" class="material-symbols-outlined text-gray-400">expand_more</span>
+                            </button>
+                            <div id="registrationsWaitlistSection" class="border-t bg-orange-50" style="display: none;">
+                                <table class="w-full text-sm">
+                                    <thead class="bg-orange-100">
+                                        <tr>
+                                            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Pos</th>
+                                            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Name</th>
+                                            <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600">HCP</th>
+                                            <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600">Requested</th>
+                                            <th class="px-3 py-2 text-center text-xs font-semibold text-gray-600">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="registrationsWaitlistTableBody">
+                                        <tr><td colspan="5" class="py-4 text-center text-gray-500">No players on waitlist</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Pairings Panel (Collapsible) -->
+                    <div id="registrationsPairingsPanel" class="w-full lg:w-96 bg-white rounded-xl shadow-sm overflow-hidden transition-all duration-300">
+                        <!-- Pairings Header -->
+                        <div class="bg-gradient-to-r from-green-600 to-green-400 text-white px-4 py-3">
+                            <div class="flex justify-between items-center">
+                                <h3 class="font-bold text-lg">
+                                    <span class="material-symbols-outlined text-sm align-middle">grid_view</span>
+                                    Pairings
+                                </h3>
+                                <button onclick="RegistrationsManager.togglePairingsPanel()" class="bg-white/20 hover:bg-white/30 text-white p-1 rounded-lg">
+                                    <span id="pairingsPanelChevron" class="material-symbols-outlined">chevron_right</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Pairings Content -->
+                        <div id="pairingsPanelContent">
+                            <!-- Pairings Controls -->
+                            <div class="p-3 border-b flex gap-2 flex-wrap">
+                                <select id="groupSizeSelector" onchange="RegistrationsManager.setGroupSize(this.value)" class="px-3 py-1 border rounded text-sm">
+                                    <option value="3">3-somes</option>
+                                    <option value="4" selected>4-somes</option>
+                                </select>
+                                <button onclick="RegistrationsManager.autoPairByHandicap()" class="btn-secondary text-xs py-1 px-2">
+                                    <span class="material-symbols-outlined text-xs">auto_fix</span>
+                                    Auto
+                                </button>
+                                <button onclick="RegistrationsManager.pairByPartnerRequests()" class="btn-secondary text-xs py-1 px-2">
+                                    <span class="material-symbols-outlined text-xs">group_add</span>
+                                    Partners
+                                </button>
+                            </div>
+
+                            <!-- Groups Container (Drag-Drop) -->
+                            <div id="pairingsGroupsContainer" class="p-3 space-y-3 max-h-[400px] overflow-y-auto">
+                                <div class="text-center py-8 text-gray-500">
+                                    <span class="material-symbols-outlined text-4xl mb-2">grid_view</span>
+                                    <p class="text-sm">No pairings yet</p>
+                                    <p class="text-xs text-gray-400 mt-1">Select an event to view/create pairings</p>
+                                </div>
+                            </div>
+
+                            <!-- Lock Pairings -->
+                            <div class="p-3 border-t flex justify-between items-center">
+                                <span id="pairingsLockStatus" class="text-sm text-gray-600">
+                                    <span class="material-symbols-outlined text-xs align-middle">lock_open</span>
+                                    Unlocked
+                                </span>
+                                <button onclick="RegistrationsManager.toggleLockPairings()" id="pairingsLockBtn" class="btn-primary text-sm">
+                                    <span class="material-symbols-outlined text-sm">lock</span>
+                                    Lock
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- No Event Selected State -->
+                <div id="registrationsNoEventState" class="bg-white rounded-xl shadow-sm text-center py-12">
+                    <span class="material-symbols-outlined text-6xl text-gray-300 mb-4">event_available</span>
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">No Event Selected</h3>
+                    <p class="text-sm text-gray-500 mb-4">Select an event from the dropdown above to manage registrations</p>
+                    <p class="text-xs text-gray-400">Or click "Manage Registrations" on any event card in the Events tab</p>
+                </div>
+            </div>
+
+            <!-- Edit Special Requests Modal -->
+            <div id="editSpecialRequestsModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" style="display: none;">
+                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+                    <div class="bg-gradient-to-r from-purple-600 to-purple-400 text-white px-6 py-4 flex justify-between items-center">
+                        <div>
+                            <h2 class="text-lg font-bold">Special Requests</h2>
+                            <p class="text-xs text-purple-100" id="editSpecialRequestsPlayerName"></p>
+                        </div>
+                        <button onclick="RegistrationsManager.closeSpecialRequestsModal()" class="text-white hover:bg-white/20 rounded-lg p-1">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                    <div class="p-6">
+                        <div class="space-y-4">
+                            <label class="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded-lg">
+                                <input type="checkbox" id="srEarlyTeeTime" class="w-5 h-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500">
+                                <div>
+                                    <span class="text-sm font-medium text-gray-700">Early Tee Time Preferred</span>
+                                    <p class="text-xs text-gray-500">Player prefers to start in the first groups</p>
+                                </div>
+                            </label>
+                            <label class="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded-lg">
+                                <input type="checkbox" id="srDietaryRestriction" class="w-5 h-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500">
+                                <div>
+                                    <span class="text-sm font-medium text-gray-700">Dietary Restriction</span>
+                                    <p class="text-xs text-gray-500">Special meal requirements</p>
+                                </div>
+                            </label>
+                            <label class="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded-lg">
+                                <input type="checkbox" id="srMobilityAssistance" class="w-5 h-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500">
+                                <div>
+                                    <span class="text-sm font-medium text-gray-700">Mobility Assistance Needed</span>
+                                    <p class="text-xs text-gray-500">May need cart or walking assistance</p>
+                                </div>
+                            </label>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Other Notes</label>
+                                <textarea id="srOtherNotes" rows="3"
+                                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                          placeholder="Any other special requirements or notes..."></textarea>
+                            </div>
+                        </div>
+                        <div class="flex justify-end gap-3 mt-6">
+                            <button onclick="RegistrationsManager.closeSpecialRequestsModal()" class="btn-secondary">Cancel</button>
+                            <button onclick="RegistrationsManager.saveSpecialRequests()" class="btn-primary bg-purple-600 hover:bg-purple-700">
+                                <span class="material-symbols-outlined text-sm">save</span>
+                                Save
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 

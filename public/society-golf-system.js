@@ -312,9 +312,17 @@ class SocietyGolfSupabase {
             eventId: r.event_id,
             playerName: r.player_name,
             playerId: r.player_id,
+            handicap: r.handicap || 0,
             wantTransport: r.want_transport,
             wantCompetition: r.want_competition,
+            partnerPrefs: r.partner_prefs || [],
             pairedGroup: r.paired_group,
+            paymentStatus: r.payment_status || 'unpaid',
+            totalFee: r.total_fee || 0,
+            amountPaid: r.amount_paid || 0,
+            paidAt: r.paid_at,
+            paidBy: r.paid_by,
+            specialRequests: r.special_requests || {},
             createdAt: r.created_at
         }));
     }
@@ -358,6 +366,9 @@ class SocietyGolfSupabase {
         if (updates.pairedGroup !== undefined) dbUpdates.paired_group = updates.pairedGroup;
         if (updates.wantTransport !== undefined) dbUpdates.want_transport = updates.wantTransport;
         if (updates.wantCompetition !== undefined) dbUpdates.want_competition = updates.wantCompetition;
+        if (updates.handicap !== undefined) dbUpdates.handicap = updates.handicap;
+        if (updates.specialRequests !== undefined) dbUpdates.special_requests = updates.specialRequests;
+        if (updates.partnerPrefs !== undefined) dbUpdates.partner_prefs = updates.partnerPrefs;
 
         const { error } = await SupabaseManager.client
             .from('event_registrations')

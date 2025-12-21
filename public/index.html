@@ -33959,14 +33959,73 @@ Total Rounds: ${ningCaddy.totalRounds}`;
                     </div>
                 </div>
 
-                <!-- Search Field -->
-                <div class="mb-6">
-                    <div class="relative">
-                        <span class="material-symbols-outlined absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">search</span>
-                        <input type="text" id="eventsSearchInput"
-                            placeholder="Search events by name, course, or date..."
-                            oninput="SocietyOrganizerSystem.filterEvents(this.value)"
-                            class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent">
+                <!-- Search and Filters -->
+                <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+                    <!-- Row 1: Search + Date + Status + Sort -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+                        <!-- Search -->
+                        <div class="md:col-span-2">
+                            <div class="relative">
+                                <span class="material-symbols-outlined absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">search</span>
+                                <input type="text" id="eventsSearchInput"
+                                    placeholder="Search events by name or course..."
+                                    oninput="SocietyOrganizerSystem.applyFilters()"
+                                    class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent">
+                            </div>
+                        </div>
+
+                        <!-- Date Filter -->
+                        <div>
+                            <select id="eventsDateFilter" onchange="SocietyOrganizerSystem.applyFilters()"
+                                    class="w-full py-2 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500">
+                                <option value="upcoming">📅 Upcoming</option>
+                                <option value="thisweek">📆 This Week</option>
+                                <option value="thismonth">🗓️ This Month</option>
+                                <option value="nextmonth">➡️ Next Month</option>
+                                <option value="past">⏮️ Past Events</option>
+                                <option value="all">📋 All Events</option>
+                            </select>
+                        </div>
+
+                        <!-- Sort -->
+                        <div>
+                            <select id="eventsSortOrder" onchange="SocietyOrganizerSystem.applyFilters()"
+                                    class="w-full py-2 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-sky-500">
+                                <option value="date_asc">🔼 Date (Soonest)</option>
+                                <option value="date_desc">🔽 Date (Latest)</option>
+                                <option value="name_asc">🔤 Name (A-Z)</option>
+                                <option value="regs_desc">👥 Most Registered</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Quick Filter Chips -->
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="SocietyOrganizerSystem.setQuickFilter('all')" id="eventsChipAll"
+                                class="px-3 py-1 rounded-full text-sm font-medium bg-sky-100 text-sky-700 border-2 border-sky-500">
+                            All
+                        </button>
+                        <button onclick="SocietyOrganizerSystem.setQuickFilter('open')" id="eventsChipOpen"
+                                class="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 hover:bg-green-50 hover:text-green-700">
+                            🟢 Open
+                        </button>
+                        <button onclick="SocietyOrganizerSystem.setQuickFilter('filling')" id="eventsChipFilling"
+                                class="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 hover:bg-yellow-50 hover:text-yellow-700">
+                            🟡 Filling Up
+                        </button>
+                        <button onclick="SocietyOrganizerSystem.setQuickFilter('full')" id="eventsChipFull"
+                                class="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 hover:bg-red-50 hover:text-red-700">
+                            🔴 Full
+                        </button>
+                        <button onclick="SocietyOrganizerSystem.setQuickFilter('needsattention')" id="eventsChipAttention"
+                                class="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 hover:bg-orange-50 hover:text-orange-700">
+                            ⚠️ Needs Attention
+                        </button>
+
+                        <!-- Event Count Badge -->
+                        <span id="eventsFilterCount" class="ml-auto px-3 py-1 rounded-full text-sm font-medium bg-gray-200 text-gray-700">
+                            0 events
+                        </span>
                     </div>
                 </div>
 
@@ -57134,50 +57193,181 @@ This action cannot be undone.`);
     // =====================================================
 
     renderEventsList() {
-        const container = document.getElementById('eventsListContainer');
-        const emptyState = document.getElementById('eventsEmptyState');
+        // Use the new filter system which includes sorting
+        this.applyFilters();
+    },
 
-        if (!this.events || this.events.length === 0) {
-            container.innerHTML = '';
-            emptyState.style.display = 'block';
-            return;
-        }
-
-        emptyState.style.display = 'none';
-        container.innerHTML = this.events.map(event => this.renderEventCard(event)).join('');
-    }
+    // Current quick filter state
+    currentQuickFilter: 'all',
 
     filterEvents(searchText) {
+        // Legacy function - redirect to new applyFilters
+        this.applyFilters();
+    },
+
+    setQuickFilter(filter) {
+        this.currentQuickFilter = filter;
+
+        // Update chip styles
+        const chips = ['all', 'open', 'filling', 'full', 'needsattention'];
+        const chipColors = {
+            all: 'bg-sky-100 text-sky-700 border-2 border-sky-500',
+            open: 'bg-green-100 text-green-700 border-2 border-green-500',
+            filling: 'bg-yellow-100 text-yellow-700 border-2 border-yellow-500',
+            full: 'bg-red-100 text-red-700 border-2 border-red-500',
+            needsattention: 'bg-orange-100 text-orange-700 border-2 border-orange-500'
+        };
+        const inactiveClass = 'bg-gray-100 text-gray-600 hover:bg-gray-200';
+
+        chips.forEach(c => {
+            const chip = document.getElementById('eventsChip' + c.charAt(0).toUpperCase() + c.slice(1));
+            if (chip) {
+                chip.className = `px-3 py-1 rounded-full text-sm font-medium ${c === filter ? chipColors[c] : inactiveClass}`;
+            }
+        });
+
+        this.applyFilters();
+    },
+
+    applyFilters() {
         const container = document.getElementById('eventsListContainer');
         const emptyState = document.getElementById('eventsEmptyState');
+        const countBadge = document.getElementById('eventsFilterCount');
 
         if (!this.events || this.events.length === 0) {
             container.innerHTML = '';
             emptyState.style.display = 'block';
+            if (countBadge) countBadge.textContent = '0 events';
             return;
         }
 
-        const search = searchText.toLowerCase().trim();
-        const filteredEvents = search === ''
-            ? this.events
-            : this.events.filter(event => {
+        // Get filter values
+        const searchText = (document.getElementById('eventsSearchInput')?.value || '').toLowerCase().trim();
+        const dateFilter = document.getElementById('eventsDateFilter')?.value || 'upcoming';
+        const sortOrder = document.getElementById('eventsSortOrder')?.value || 'date_asc';
+        const quickFilter = this.currentQuickFilter || 'all';
+
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+
+        let filteredEvents = this.events.filter(event => {
+            const eventDate = event.date ? new Date(event.date) : null;
+            if (eventDate) eventDate.setHours(0, 0, 0, 0);
+
+            // Text search filter
+            if (searchText) {
                 const name = (event.name || '').toLowerCase();
                 const courseName = (event.courseName || '').toLowerCase();
-                const eventDate = event.date ? new Date(event.date).toLocaleDateString().toLowerCase() : '';
+                if (!name.includes(searchText) && !courseName.includes(searchText)) {
+                    return false;
+                }
+            }
 
-                return name.includes(search) ||
-                       courseName.includes(search) ||
-                       eventDate.includes(search);
-            });
+            // Date filter
+            if (dateFilter !== 'all' && eventDate) {
+                const weekEnd = new Date(now);
+                weekEnd.setDate(weekEnd.getDate() + 7);
 
+                const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+                const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+                const nextMonthEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+
+                switch (dateFilter) {
+                    case 'upcoming':
+                        if (eventDate < now) return false;
+                        break;
+                    case 'thisweek':
+                        if (eventDate < now || eventDate > weekEnd) return false;
+                        break;
+                    case 'thismonth':
+                        if (eventDate < monthStart || eventDate > monthEnd) return false;
+                        break;
+                    case 'nextmonth':
+                        if (eventDate < nextMonthStart || eventDate > nextMonthEnd) return false;
+                        break;
+                    case 'past':
+                        if (eventDate >= now) return false;
+                        break;
+                }
+            }
+
+            // Quick filter (status-based)
+            if (quickFilter !== 'all') {
+                const registered = event.registeredCount || 0;
+                const maxPlayers = event.maxPlayers || 40;
+                const fillPercent = (registered / maxPlayers) * 100;
+                const isPast = eventDate && eventDate < now;
+                const hasWaitlist = (event.waitlistCount || 0) > 0;
+
+                switch (quickFilter) {
+                    case 'open':
+                        if (isPast || registered >= maxPlayers) return false;
+                        break;
+                    case 'filling':
+                        if (isPast || fillPercent < 70 || registered >= maxPlayers) return false;
+                        break;
+                    case 'full':
+                        if (registered < maxPlayers) return false;
+                        break;
+                    case 'needsattention':
+                        // Events that need attention: happening soon with low registration, or has waitlist
+                        const daysTillEvent = eventDate ? Math.ceil((eventDate - now) / (1000 * 60 * 60 * 24)) : 999;
+                        const lowRegistration = daysTillEvent <= 7 && registered < 10;
+                        if (!lowRegistration && !hasWaitlist) return false;
+                        break;
+                }
+            }
+
+            return true;
+        });
+
+        // Sort events
+        filteredEvents.sort((a, b) => {
+            switch (sortOrder) {
+                case 'date_asc':
+                    return new Date(a.date || 0) - new Date(b.date || 0);
+                case 'date_desc':
+                    return new Date(b.date || 0) - new Date(a.date || 0);
+                case 'name_asc':
+                    return (a.name || '').localeCompare(b.name || '');
+                case 'regs_desc':
+                    return (b.registeredCount || 0) - (a.registeredCount || 0);
+                default:
+                    return new Date(a.date || 0) - new Date(b.date || 0);
+            }
+        });
+
+        // Update count badge
+        if (countBadge) {
+            countBadge.textContent = `${filteredEvents.length} event${filteredEvents.length !== 1 ? 's' : ''}`;
+        }
+
+        // Render results
         if (filteredEvents.length === 0) {
-            container.innerHTML = '<div class="col-span-2 text-center py-8 text-gray-500">No events match your search</div>';
+            container.innerHTML = `
+                <div class="col-span-2 text-center py-12 bg-gray-50 rounded-xl">
+                    <span class="material-symbols-outlined text-4xl text-gray-400 mb-2">event_busy</span>
+                    <p class="text-gray-500">No events match your filters</p>
+                    <button onclick="SocietyOrganizerSystem.resetFilters()" class="mt-3 text-sm text-sky-600 hover:underline">
+                        Reset filters
+                    </button>
+                </div>
+            `;
             emptyState.style.display = 'none';
         } else {
             container.innerHTML = filteredEvents.map(event => this.renderEventCard(event)).join('');
             emptyState.style.display = 'none';
         }
-    }
+    },
+
+    resetFilters() {
+        document.getElementById('eventsSearchInput').value = '';
+        document.getElementById('eventsDateFilter').value = 'upcoming';
+        document.getElementById('eventsSortOrder').value = 'date_asc';
+        this.setQuickFilter('all');
+    },
 
     renderEventCard(event) {
         const eventDate = event.date ? new Date(event.date).toLocaleDateString() : '-';

@@ -42315,26 +42315,50 @@ class SocietyGolfSupabase {
 
         // Load all events for this society by checking title prefix
         // Many events have NULL organizer_id but start with society prefix (e.g., "TRGG -", "JOA Golf -")
+        // FIX: Also match "Travellers Rest Golf -" prefix which saveEvent adds when editing
         const societyName = AppState.selectedSociety?.name;
-        const societyPrefix = societyName?.includes('Travellers') ? 'TRGG -' :
-                             societyName?.includes('JOA') ? 'JOA Golf' : null;
+
+        // Define primary and secondary prefixes for each society
+        let primaryPrefix, secondaryPrefix;
+        if (societyName?.includes('Travellers')) {
+            primaryPrefix = 'TRGG -';
+            secondaryPrefix = 'Travellers Rest Golf -';  // saveEvent adds this
+        } else if (societyName?.includes('JOA')) {
+            primaryPrefix = 'JOA Golf';
+            secondaryPrefix = null;
+        } else {
+            primaryPrefix = null;
+            secondaryPrefix = null;
+        }
 
         console.log('[SocietyGolfDB] ===== QUERY DEBUG =====');
         console.log('[SocietyGolfDB] Society name:', societyName);
-        console.log('[SocietyGolfDB] Society prefix:', societyPrefix);
+        console.log('[SocietyGolfDB] Primary prefix:', primaryPrefix);
+        console.log('[SocietyGolfDB] Secondary prefix:', secondaryPrefix);
 
-        if (!societyPrefix) {
+        if (!primaryPrefix) {
             console.error('[SocietyGolfDB] ERROR: Unknown society, cannot determine prefix!');
             return [];
         }
 
-        const eventsQuery = window.SupabaseDB.client
-            .from('society_events')
-            .select('*')
-            .ilike('title', `${societyPrefix}%`)
-            .order('event_date', { ascending: true });  // Sort by date to keep events in order
+        // FIX: Use OR to match both prefixes (primary OR secondary)
+        let eventsQuery;
+        if (secondaryPrefix) {
+            // Use PostgreSQL OR condition for multiple prefixes
+            eventsQuery = window.SupabaseDB.client
+                .from('society_events')
+                .select('*')
+                .or(`title.ilike.${primaryPrefix}%,title.ilike.${secondaryPrefix}%`)
+                .order('event_date', { ascending: true });
+        } else {
+            eventsQuery = window.SupabaseDB.client
+                .from('society_events')
+                .select('*')
+                .ilike('title', `${primaryPrefix}%`)
+                .order('event_date', { ascending: true });
+        }
 
-        console.log('[SocietyGolfDB] Query: title starts with', societyPrefix);
+        console.log('[SocietyGolfDB] Query: title starts with', primaryPrefix, 'OR', secondaryPrefix);
         const { data: events, error: eventsError } = await eventsQuery;
         console.log('[SocietyGolfDB] Query completed. Events:', events?.length || 0, 'Error:', eventsError);
 
@@ -55818,11 +55842,28 @@ This action cannot be undone.`);
                 eventData.organizerId = null;
                 // Use society name, not the admin's personal name
                 eventData.organizerName = AppState.selectedSociety?.name || 'Society Event';
-                // Ensure event title has society prefix for query filtering
+
+                // FIX: Only add prefix if event doesn't already have a society prefix
+                // This prevents double-prefixing when editing events (e.g., "Travellers Rest Golf - TRGG - ...")
                 const societyName = AppState.selectedSociety?.name || '';
-                const prefix = societyName.replace(/\s*(Golf\s*)?(Society|Group|Club|Pattaya|Thailand).*$/i, '') + ' Golf';
-                if (eventData.name && !eventData.name.startsWith(prefix)) {
-                    eventData.name = `${prefix} - ${eventData.name}`;
+                const isTRGG = societyName.includes('Travellers');
+                const isJOA = societyName.includes('JOA');
+
+                // Check if event already has a known society prefix
+                const hasTRGGPrefix = eventData.name?.toUpperCase().startsWith('TRGG -') ||
+                                      eventData.name?.startsWith('Travellers Rest Golf -');
+                const hasJOAPrefix = eventData.name?.toUpperCase().startsWith('JOA GOLF');
+
+                if (eventData.name && !hasTRGGPrefix && !hasJOAPrefix) {
+                    // Event doesn't have a society prefix - add the canonical one
+                    if (isTRGG) {
+                        eventData.name = `TRGG - ${eventData.name}`;
+                    } else if (isJOA) {
+                        eventData.name = `JOA Golf - ${eventData.name}`;
+                    }
+                    console.log('[SocietyOrganizer] Added society prefix to event name:', eventData.name);
+                } else {
+                    console.log('[SocietyOrganizer] Event already has society prefix, not adding another');
                 }
             }
 

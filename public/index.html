@@ -56029,7 +56029,18 @@ This action cannot be undone.`);
                     const registrations = await SocietyGolfDB.getRegistrations(this.currentEvent.id);
                     console.log(`[SocietyOrganizer] Notifying ${registrations.length} registered golfers of event update`);
 
-                    const cutoffStr = eventData.cutoff ? new Date(eventData.cutoff).toLocaleString() : '';
+                    // Format cutoff without timezone shift (same as display)
+                    let cutoffStr = '';
+                    if (eventData.cutoff) {
+                        const cutoffLocal = eventData.cutoff.substring(0, 16);
+                        const dt = new Date(cutoffLocal);
+                        const datePart = dt.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' });
+                        const hours = dt.getHours();
+                        const minutes = dt.getMinutes().toString().padStart(2, '0');
+                        const ampm = hours >= 12 ? 'PM' : 'AM';
+                        const hour12 = hours % 12 || 12;
+                        cutoffStr = `${datePart}, ${hour12}:${minutes} ${ampm}`;
+                    }
 
                     for (const reg of registrations) {
                         if (reg.playerId && reg.playerId !== AppState.currentUser?.lineUserId) {

@@ -500,7 +500,22 @@
             const nameMap = {};
             (profiles || []).forEach(p => nameMap[p.line_user_id] = p.name);
 
-            const leaderboard = scorecards.map(sc => {
+            // DEDUPLICATE: Keep only the best scorecard per player (most holes played, or latest if tied)
+            const bestByPlayer = new Map();
+            for (const sc of scorecards) {
+                const existing = bestByPlayer.get(sc.player_id);
+                const scHoles = (sc.scores || []).length;
+                const existingHoles = existing ? (existing.scores || []).length : 0;
+
+                if (!existing || scHoles > existingHoles ||
+                    (scHoles === existingHoles && new Date(sc.created_at) > new Date(existing.created_at))) {
+                    bestByPlayer.set(sc.player_id, sc);
+                }
+            }
+            const uniqueScorecards = Array.from(bestByPlayer.values());
+            console.log(`[Live] Deduplicated ${scorecards.length} scorecards to ${uniqueScorecards.length} unique players`);
+
+            const leaderboard = uniqueScorecards.map(sc => {
                 // Store both gross and par for each hole
                 const holeScores = new Array(18).fill(null);
                 const holePars = new Array(18).fill(null);

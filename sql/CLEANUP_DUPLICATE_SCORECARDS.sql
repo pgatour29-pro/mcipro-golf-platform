@@ -53,11 +53,11 @@ HAVING COUNT(*) > 1;
 DELETE FROM scores
 WHERE scorecard_id NOT IN (SELECT id FROM scorecards);
 
--- Show final count per event
+-- Show final count per event (only for valid UUID event_ids)
 SELECT
-    e.title as event_name,
+    COALESCE(e.title, s.event_id) as event_name,
     COUNT(s.id) as player_count
 FROM scorecards s
-JOIN society_events e ON s.event_id::uuid = e.id
-GROUP BY e.title
-ORDER BY e.title;
+LEFT JOIN society_events e ON s.event_id::text = e.id::text
+GROUP BY COALESCE(e.title, s.event_id)
+ORDER BY event_name;

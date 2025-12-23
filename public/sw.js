@@ -1,7 +1,7 @@
 // SERVICE WORKER - UNREGISTRATION VERSION
 // This version clears all caches and unregisters itself
 
-const SW_VERSION = 'refresh-buttons-fix-v1';
+const SW_VERSION = 'society-switch-fix-v1';
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing unregistration version');

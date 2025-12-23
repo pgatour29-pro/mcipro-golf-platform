@@ -1200,8 +1200,14 @@ const RegistrationsManager = {
     async init() {
         console.log('[RegistrationsManager] Initializing...');
         await this.populateEventSelector();
-        this.checkAutoSwitch();
-        this.restoreSelection();
+
+        // Try to restore previous selection first
+        const restored = this.restoreSelection();
+
+        // If nothing restored, auto-select the upcoming/current event
+        if (!restored && !this.currentEventId) {
+            this.autoSelectUpcomingEvent();
+        }
     },
 
     async populateEventSelector() {
@@ -1224,50 +1230,124 @@ const RegistrationsManager = {
         }
     },
 
-    checkAutoSwitch() {
+    /**
+     * Get current Thailand time (ICT, UTC+7)
+     * Returns { hour, dateStr } where dateStr is YYYY-MM-DD in Thailand time
+     */
+    getThailandTime() {
         const now = new Date();
-        const hour = now.getHours();
+        // Thailand is UTC+7
+        const thailandOffset = 7 * 60; // 7 hours in minutes
+        const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+        const thailandTime = new Date(utcTime + (thailandOffset * 60000));
 
-        // Only auto-switch after 3pm
-        if (hour < 15) {
-            console.log('[RegistrationsManager] Before 3pm, skipping auto-switch');
-            return;
-        }
+        return {
+            hour: thailandTime.getHours(),
+            minute: thailandTime.getMinutes(),
+            dateStr: thailandTime.toISOString().split('T')[0],
+            date: thailandTime
+        };
+    },
 
-        // Check if user already selected something today
-        const lastDate = localStorage.getItem(this.STORAGE_SELECTION_DATE);
-        const today = now.toDateString();
-        if (lastDate === today) {
-            console.log('[RegistrationsManager] User already made selection today, skipping auto-switch');
-            return;
-        }
+    /**
+     * Find the upcoming or current event based on 6pm Thailand time cutoff
+     * - Before 6pm Thailand: show today's event (or next upcoming if no event today)
+     * - After 6pm Thailand: show next upcoming event (skip today's)
+     */
+    findUpcomingOrCurrentEvent() {
+        const events = window.SocietyOrganizerSystem.events || [];
+        if (events.length === 0) return null;
+
+        const thailand = this.getThailandTime();
+        const isAfter6pm = thailand.hour >= 18;
+        const todayStr = thailand.dateStr;
+
+        console.log(`[RegistrationsManager] Thailand time: ${thailand.hour}:${thailand.minute}, date: ${todayStr}, after 6pm: ${isAfter6pm}`);
+
+        // Sort events by date ascending
+        const sortedEvents = [...events].sort((a, b) => new Date(a.date) - new Date(b.date));
 
         // Find today's event
-        const todayStr = now.toISOString().split('T')[0];
-        const events = window.SocietyOrganizerSystem.events || [];
-        const todayEvent = events.find(e => e.date === todayStr);
+        const todayEvent = sortedEvents.find(e => e.date === todayStr);
 
-        if (todayEvent) {
-            console.log('[RegistrationsManager] Auto-switching to today\'s event:', todayEvent.name);
-            this.selectEvent(todayEvent.id, true);
+        if (isAfter6pm) {
+            // After 6pm: find next event AFTER today
+            const nextEvent = sortedEvents.find(e => e.date > todayStr);
+            if (nextEvent) {
+                console.log(`[RegistrationsManager] After 6pm, selecting next event: ${nextEvent.name} (${nextEvent.date})`);
+                return nextEvent;
+            }
+            // If no future event, fall back to today's event or most recent
+            if (todayEvent) return todayEvent;
+            return sortedEvents[sortedEvents.length - 1]; // Most recent past event
+        } else {
+            // Before 6pm: prefer today's event
+            if (todayEvent) {
+                console.log(`[RegistrationsManager] Before 6pm, selecting today's event: ${todayEvent.name}`);
+                return todayEvent;
+            }
+            // If no event today, find next upcoming
+            const nextEvent = sortedEvents.find(e => e.date > todayStr);
+            if (nextEvent) {
+                console.log(`[RegistrationsManager] No event today, selecting next upcoming: ${nextEvent.name} (${nextEvent.date})`);
+                return nextEvent;
+            }
+            // Fall back to most recent past event
+            return sortedEvents[sortedEvents.length - 1];
         }
     },
 
-    restoreSelection() {
-        if (this.currentEventId) return; // Already selected via auto-switch
+    /**
+     * Auto-select the upcoming/current event on page load
+     */
+    autoSelectUpcomingEvent() {
+        const upcomingEvent = this.findUpcomingOrCurrentEvent();
+        if (upcomingEvent) {
+            console.log(`[RegistrationsManager] Auto-selecting event: ${upcomingEvent.name}`);
+            this.selectEvent(upcomingEvent.id, true);
+        } else {
+            console.log('[RegistrationsManager] No events available to auto-select');
+        }
+    },
 
+    /**
+     * Restore previous selection (returns true if restored)
+     */
+    restoreSelection() {
         const savedEventId = localStorage.getItem(this.STORAGE_SELECTED_EVENT);
         const lastDate = localStorage.getItem(this.STORAGE_SELECTION_DATE);
-        const today = new Date().toDateString();
 
-        // Only restore if same day
-        if (savedEventId && lastDate === today) {
+        // Get Thailand date for comparison
+        const thailand = this.getThailandTime();
+        const todayStr = thailand.dateStr;
+
+        // Check if we need to auto-switch due to 6pm Thailand time
+        if (thailand.hour >= 18) {
+            // After 6pm - check if stored selection is for today's event
+            const events = window.SocietyOrganizerSystem.events || [];
+            const savedEvent = events.find(e => e.id === savedEventId);
+
+            if (savedEvent && savedEvent.date === todayStr) {
+                // Today's event is complete (after 6pm), don't restore it
+                console.log('[RegistrationsManager] After 6pm, not restoring today\'s event - will auto-select next');
+                localStorage.removeItem(this.STORAGE_SELECTED_EVENT);
+                localStorage.removeItem(this.STORAGE_SELECTION_DATE);
+                return false;
+            }
+        }
+
+        // Only restore if selection was made today (in Thailand time)
+        if (savedEventId && lastDate === todayStr) {
             const selector = document.getElementById('registrationsEventSelector');
             if (selector) {
                 selector.value = savedEventId;
                 this.selectEvent(savedEventId, true);
+                console.log('[RegistrationsManager] Restored previous selection:', savedEventId);
+                return true;
             }
         }
+
+        return false;
     },
 
     async selectEvent(eventId, isAutomatic = false) {
@@ -1278,10 +1358,11 @@ const RegistrationsManager = {
 
         this.currentEventId = eventId;
 
-        // Save selection (unless automatic)
+        // Save selection (unless automatic) - use Thailand date
         if (!isAutomatic) {
+            const thailand = this.getThailandTime();
             localStorage.setItem(this.STORAGE_SELECTED_EVENT, eventId);
-            localStorage.setItem(this.STORAGE_SELECTION_DATE, new Date().toDateString());
+            localStorage.setItem(this.STORAGE_SELECTION_DATE, thailand.dateStr);
         }
 
         // Update selector

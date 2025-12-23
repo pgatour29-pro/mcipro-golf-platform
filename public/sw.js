@@ -1,7 +1,7 @@
 // SERVICE WORKER - UNREGISTRATION VERSION
 // This version clears all caches and unregisters itself
 
-const SW_VERSION = 'badge-polling-v2';
+const SW_VERSION = 'player-select-highlight-v1';
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing unregistration version');

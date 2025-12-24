@@ -42,14 +42,14 @@ function renderHomeTab() {
                      <div class="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-2">
                          <span class="material-symbols-outlined text-green-600">golf_course</span>
                      </div>
-                    <p class="metric-value">12</p>
+                    <p class="metric-value" id="golfer-rounds-count">${state.rounds?.length || 0}</p>
                     <p class="metric-label">Rounds Played</p>
                 </div>
                  <div class="metric-card text-center">
                      <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-2">
                          <span class="material-symbols-outlined text-blue-600">trending_up</span>
                      </div>
-                    <p class="metric-value">-2.4</p>
+                    <p class="metric-value user-handicap" id="golfer-handicap">${state.currentUser?.handicap || 'N/A'}</p>
                     <p class="metric-label">Handicap</p>
                 </div>
             </div>
@@ -174,11 +174,11 @@ function renderProfileTab() {
             </div>
             <div class="grid grid-cols-2 gap-4 text-center">
                 <div>
-                    <p class="font-bold text-xl">12</p>
+                    <p class="font-bold text-xl" id="profile-rounds-count">${state.rounds?.length || 0}</p>
                     <p class="text-sm text-gray-500">Rounds</p>
                 </div>
                  <div>
-                    <p class="font-bold text-xl">-2.4</p>
+                    <p class="font-bold text-xl user-handicap" id="profile-handicap">${user.handicap || 'N/A'}</p>
                     <p class="text-sm text-gray-500">Handicap</p>
                 </div>
             </div>

@@ -2,7 +2,30 @@
 
 This index catalogs the contents of `Documents/MciPro/compacted` and records the latest work completed so you can quickly resume.
 
-## Recent Work (This Session - October 17, 2025)
+## Recent Work (December 27, 2025)
+
+**Society Handicap Round Start Fix**
+
+- Fixed critical bug where universal handicap was used instead of society-specific handicap
+- Added handicap refresh in `startRound()` before creating scorecards
+- Example: Pete Park 3.6 universal → 2.5 Travellers Rest was showing -4 strokes instead of -3
+- File: `2025-12-27_SOCIETY_HANDICAP_ROUND_START_FIX.md`
+
+---
+
+## Recent Work (December 26, 2025)
+
+**Handicap System Overhaul**
+
+- Created HandicapManager class for centralized handicap management
+- Fixed match play handicap calculation algorithm
+- Fixed auto handicap adjustment sync after rounds
+- Added Photo Score feature (AI scorecard analysis)
+- File: `CHANGES_2025-12-26.md`
+
+---
+
+## Previous Work (October 17, 2025)
 
 **Live Scorecard Multi-Format & Scramble Tracking**
 
@@ -121,16 +144,22 @@ Media
 
 —
 Generated: 2025‑10‑16
+Updated: 2025-12-27
 
-**Updated Next Steps (2025-10-17):**
+**Updated Next Steps (2025-12-27):**
 
-**Immediate (from this session):**
-- Fix Supabase 400 errors when creating scorecards online
-- Add drive requirement validation at round completion
-- Add Nassau/Skins dedicated score rows
-- Test multi-format display with all formats
+**Completed:**
+- [x] Society handicap round start fix
+- [x] HandicapManager class
+- [x] Match play handicap calculation fix
+- [x] Photo Score feature (pending API key)
 
-**Future Enhancements:**
-- Multi-format leaderboards
-- Scramble team score display with highlights
-- Export multi-format scorecards (PDF/CSV)
+**Immediate:**
+- Deploy ANTHROPIC_API_KEY for Photo Score feature
+- Test society handicap fix in live round
+
+**Key Files for Handicap System:**
+- `LINE_NUMBERS.md` - Line number reference
+- `HANDICAP_SYSTEM.md` - System overview
+- `CHANGES_2025-12-26.md` - Handicap overhaul details
+- `2025-12-27_SOCIETY_HANDICAP_ROUND_START_FIX.md` - Round start fix

@@ -13,6 +13,7 @@ This index catalogs the contents of `Documents/MciPro/compacted` and records the
 | 3 | Pete Park handicap showing 1.5/2.5/3.6 | Updated PeteFix to 3.0, expanded watch list |
 | 4 | Alan Thomas handicap showing 4.0 | Added AlanFix code blocks (same as PeteFix pattern) |
 | 5 | iOS LINE OAuth double-login | Added sessionStorage backup + iOS fallback for state |
+| 6 | Brad Gaddes missing from database | Manually added as MANUAL-GADDES-BRAD-1101 with handicap 12.0 |
 
 **File:** `2025-12-30_SESSION_FIXES.md`
 

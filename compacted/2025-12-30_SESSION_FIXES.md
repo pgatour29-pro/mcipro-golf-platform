@@ -293,3 +293,52 @@ if (lineOAuthMissingState && isIOS) {
 ## Deployment
 - Git commit: `Fix: iOS Safari LINE OAuth double-login issue - add sessionStorage backup for state`
 - Deployed to Vercel production
+
+---
+
+## Fix 6: Brad Gaddes Missing from Database
+**Issue:** Brad Gaddes not appearing in system despite being in TRGG golfers.json
+
+## Problem
+Brad Gaddes existed in local `TRGGplayers/golfers.json` with handicap 11, but was skipped during the TRGG member import on 2025-11-04.
+
+Import sequence showed gap:
+- TRGG-GUEST-0305: gabryoung,cho
+- ❌ Brad Gaddes missing (should be here alphabetically)
+- TRGG-GUEST-0306: gale,bradley
+
+## Root Cause
+Unknown import error - record was skipped during bulk insert of TRGG guest players.
+
+## Fix Applied
+Manually added Brad Gaddes to database:
+
+### 1. User Profile Created
+```
+ID: MANUAL-GADDES-BRAD-1101
+display_name: Brad Gaddes
+name: Brad Gaddes
+username: gaddes,brad
+home_course_name: Travellers Rest Golf Group
+profile_data.personalInfo: {firstName: "Brad", lastName: "Gaddes"}
+```
+
+### 2. Society Handicaps Created
+```sql
+-- TRGG Society handicap
+INSERT INTO society_handicaps (golfer_id, society_id, handicap_index)
+VALUES ('MANUAL-GADDES-BRAD-1101', '7c0e4b72-d925-44bc-afda-38259a7ba346', 12.0);
+
+-- Universal handicap
+INSERT INTO society_handicaps (golfer_id, society_id, handicap_index)
+VALUES ('MANUAL-GADDES-BRAD-1101', null, 12.0);
+```
+
+## Note on TRGG-GUEST Trigger
+Database has a trigger preventing new `TRGG-GUEST-*` IDs. Used `MANUAL-GADDES-BRAD-1101` prefix instead.
+
+## Verification
+Brad Gaddes now appears in:
+- Players directory
+- Live Scorecard player search
+- Event registration player list

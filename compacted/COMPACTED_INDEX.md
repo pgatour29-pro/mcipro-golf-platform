@@ -2,7 +2,132 @@
 
 This index catalogs the contents of `Documents/MciPro/compacted` and records the latest work completed so you can quickly resume.
 
-## Recent Work (December 27, 2025)
+## Recent Work (December 30, 2025)
+
+**Session Fixes (5 total):**
+
+| Fix | Issue | Solution |
+|-----|-------|----------|
+| 1 | Caddy booking showing "pending" | Treat null/undefined availability_status as "available" |
+| 2 | Event edit badge not showing | Added `setupEarlyEventSubscription()` on page load |
+| 3 | Pete Park handicap showing 1.5/2.5/3.6 | Updated PeteFix to 3.0, expanded watch list |
+| 4 | Alan Thomas handicap showing 4.0 | Added AlanFix code blocks (same as PeteFix pattern) |
+| 5 | iOS LINE OAuth double-login | Added sessionStorage backup + iOS fallback for state |
+
+**File:** `2025-12-30_SESSION_FIXES.md`
+
+---
+
+**CRITICAL BUG: Handicap Corruption After Society Event**
+
+After Eastern Star event on Dec 29, handicaps were corrupted:
+- Pete Park: Universal went to 5.0 (should be 3.6), TRGG went to 9.9 (should be 2.5)
+- Alan Thomas: Dashboard showed 4.0 (should be 11.1)
+
+**Root Issue:** Pete's TRGG jumped +7.4 in one round despite ±1.0 cap in code. Bug not identified.
+
+**Fix Applied:** Manual database correction via PowerShell REST API.
+
+**Diagnostic Scripts Created:**
+- `fix_handicaps_now.ps1` - Manual fix script
+- `check_alan_hcp.ps1`, `check_pete_hcp.ps1` - Verification scripts
+- `check_event_players.ps1`, `check_hcp_history.ps1`, `check_today_round.ps1`, `check_hcp_dupes.ps1`
+
+**File:** `2025-12-30_HANDICAP_CORRUPTION_BUG.md`
+
+**Status:** Data fixed, root cause still needs investigation.
+
+---
+
+## Recent Work (December 28, 2025)
+
+**UI Fixes Session**
+
+Three UI fixes deployed:
+
+| Fix | Description |
+|-----|-------------|
+| Mobile Language Dropdown | Fixed globe icon dropdown being clipped by `overflow-x-auto` parent - now uses fixed positioning on mobile |
+| Caddy Book Link | Fixed "Caddy Book →" link going to blank page - changed tab name from `myCaddies` to `caddies` |
+| Back to Top Buttons | Added floating scroll-to-top buttons on Golfer Society Events (green) and Organizer Events (sky blue) pages |
+
+**Key Lines:**
+- Language dropdown CSS: 1779-1787
+- Language dropdown JS: 5861-5868
+- Caddy Book link: 27210
+- Golfer back-to-top: 29435-29438, 14464-14506
+- Organizer back-to-top: 37056-37059
+
+**File:** `2025-12-28_UI_FIXES_SESSION.md`
+
+---
+
+**Scoring Format Stableford Update**
+
+Updated all game formats to use **Stableford points as default** instead of stroke play (Thailand golf convention):
+
+| Function | Change |
+|----------|--------|
+| `calculateBetterBall` | Now uses highest Stableford points (was lowest strokes) |
+| `calculateSkins` | Winner = highest Stableford points per hole |
+| `calculateScramble` | Team Stableford with handicap support |
+| Nassau tie handling | Losers now split payment among tied winners |
+| Scramble drive validation | Enforces min drives with confirmation dialog |
+
+**Key Lines:**
+- `calculateBetterBall`: 49467-49522
+- `calculateSkins`: 48958-49052
+- `calculateScramble`: 49524-49552
+- Nassau tie fix: 54566-54604
+- Scramble validation: 52270-52296
+
+**File:** `2025-12-28_SCORING_FORMAT_STABLEFORD_UPDATE.md`
+
+---
+
+**Event Card Border Highlighting**
+
+Added visual border highlighting to event cards to quickly identify event status:
+
+| Status | Border |
+|--------|--------|
+| Today/Tomorrow | Thick green double ring (`ring-4 ring-green-400 border-2 border-green-600`) |
+| Filling Up (≤30% spots) | Thick yellow double ring (`ring-4 ring-yellow-400`) |
+| Full | Thick red double ring (`ring-4 ring-red-500`) |
+| Past/Future | Default gray (no highlight) |
+
+**Locations Updated:**
+1. Golfer Society Events - `GolferEventsManager.renderEventCard()` lines 73106-73124
+2. Organizer Calendar Sidebar - `showEventsForDate()` lines 83566-83588
+3. Organizer Dashboard Events - `SocietyOrganizerSystem.renderEventCard()` lines 61854-61875
+
+**File:** `2025-12-28_EVENT_CARD_HIGHLIGHTING.md`
+
+---
+
+## Recent Work (December 27, 2025 - Afternoon Session)
+
+**1. Pete Park Handicap Display Fix**
+- Fixed +1.0 showing on initial load before switching to 3.6
+- Added 4-layer protection with MutationObserver
+- Lines: 6456-6502, 8443-8451, 11153-11163, 19352-19360
+
+**2. Admin User Activity Report Redesign**
+- Now shows only LINE-verified users (excludes TRGG-GUEST-*)
+- Stats bar: Total, Active Today, This Week, New Users
+- Detailed table with exact timestamps (DD/MM/YY HH:MM Bangkok)
+- Status badges: Active Today, This Week, Inactive
+- Lines: 36435-36513 (HTML), 45287-45420 (JS)
+
+**3. Project Documentation Catalog**
+- Created 8 documentation files in \compacted
+- INDEX.md, PROJECT_STRUCTURE.md, DATABASE_SCHEMA.md, etc.
+
+**File:** `2025-12-27_SESSION_CATALOG.md`
+
+---
+
+## Recent Work (December 27, 2025 - Morning)
 
 **Society Handicap Round Start Fix**
 
@@ -153,6 +278,8 @@ Updated: 2025-12-27
 - [x] HandicapManager class
 - [x] Match play handicap calculation fix
 - [x] Photo Score feature (pending API key)
+- [x] Pete Park handicap display fix (4-layer protection)
+- [x] Project documentation catalog created
 
 **Immediate:**
 - Deploy ANTHROPIC_API_KEY for Photo Score feature
@@ -163,3 +290,26 @@ Updated: 2025-12-27
 - `HANDICAP_SYSTEM.md` - System overview
 - `CHANGES_2025-12-26.md` - Handicap overhaul details
 - `2025-12-27_SOCIETY_HANDICAP_ROUND_START_FIX.md` - Round start fix
+
+---
+
+## NEW: Project Documentation (2025-12-27)
+
+Comprehensive project catalog files:
+
+| File | Description |
+|------|-------------|
+| `INDEX.md` | Documentation index |
+| `PROJECT_STRUCTURE.md` | Overall project structure and directories |
+| `INDEX_HTML_SECTIONS.md` | Main index.html sections with line numbers |
+| `DATABASE_SCHEMA.md` | Supabase PostgreSQL tables |
+| `SUPABASE_FUNCTIONS.md` | Edge functions catalog |
+| `SCRIPTS_CATALOG.md` | Utility scripts reference |
+| `COURSE_PROFILES.md` | Golf course data files |
+| `QUICK_REFERENCE.md` | Common operations and fixes |
+
+**Pete Park Handicap Fix Locations (index.html):**
+- Line 6456-6502: Early DOM watcher + MutationObserver
+- Line 8443-8451: After LINE login
+- Line 11153-11163: In updateRoleSpecificDisplays()
+- Line 19352-19360: In updateDashboardData()

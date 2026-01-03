@@ -73,6 +73,7 @@
         const MciProBridge = {
             isInMciPro: false,
             parent: null,
+            settings: null,
 
             init() {
                 try {
@@ -80,7 +81,19 @@
                     if (window.parent && window.parent !== window && window.parent.CaddySystem) {
                         this.isInMciPro = true;
                         this.parent = window.parent;
+                        this.loadSettings();
                         console.log('[TeeSheet] Connected to MciPro - using live data');
+
+                        // Listen for settings updates from parent
+                        window.addEventListener('message', (event) => {
+                            if (event.data?.type === 'TEESHEET_SETTINGS_UPDATE') {
+                                this.settings = event.data.settings;
+                                console.log('[TeeSheet] Settings updated from parent:', this.settings);
+                                // Trigger re-render by dispatching custom event
+                                window.dispatchEvent(new CustomEvent('teesheet-settings-changed'));
+                            }
+                        });
+
                         return true;
                     }
                 } catch (e) {
@@ -89,21 +102,45 @@
                 return false;
             },
 
-            // Get all courses with their lane configuration
+            // Load settings from parent's ProShopTeeSheetSettings
+            loadSettings() {
+                if (!this.isInMciPro || !this.parent.ProShopTeeSheetSettings) {
+                    this.settings = null;
+                    return;
+                }
+                this.settings = this.parent.ProShopTeeSheetSettings.getSettings();
+                console.log('[TeeSheet] Loaded settings from Pro Shop:', this.settings);
+            },
+
+            // Get the configured course lanes from Pro Shop settings
             getCourses() {
                 if (!this.isInMciPro) return null;
 
-                // MciPro's 8 courses with lane configuration
-                return [
-                    { courseId: 'pattana-golf-resort', label: 'Pattana Resort', labelEn: 'Pattana Resort', labelTh: 'พัทนา รีสอร์ท', labelKo: '파타나 리조트', color: '#86efac', lanes: ['A', 'B', 'C'] }, // 27 holes
-                    { courseId: 'pattaya-golf', label: 'Pattaya Golf', labelEn: 'Pattaya Golf', labelTh: 'พัทยา กอล์ฟ', labelKo: '파타야 골프', color: '#7dd3fc', lanes: null },
-                    { courseId: 'thai-country-club', label: 'Thai Country', labelEn: 'Thai Country Club', labelTh: 'ไทย คันทรี คลับ', labelKo: '타이 컨트리 클럽', color: '#fde047', lanes: null },
-                    { courseId: 'siam-plantation', label: 'Siam Plantation', labelEn: 'Siam Plantation', labelTh: 'สยาม แพลนเทชั่น', labelKo: '시암 플랜테이션', color: '#c4b5fd', lanes: null },
-                    { courseId: 'royal-garden', label: 'Royal Garden', labelEn: 'Royal Garden', labelTh: 'รอยัล การ์เด้น', labelKo: '로열 가든', color: '#fca5a5', lanes: null },
-                    { courseId: 'bangpra-international', label: 'Bangpra Intl', labelEn: 'Bangpra International', labelTh: 'บางพระ อินเตอร์', labelKo: '방프라 인터내셔널', color: '#a5b4fc', lanes: null },
-                    { courseId: 'crystal-bay', label: 'Crystal Bay', labelEn: 'Crystal Bay', labelTh: 'คริสตัล เบย์', labelKo: '크리스탈 베이', color: '#99f6e4', lanes: null },
-                    { courseId: 'cheechan', label: 'Chee Chan', labelEn: 'Chee Chan', labelTh: 'ชีจัน', labelKo: '치찬', color: '#fcd34d', lanes: null }
-                ];
+                // Get lanes from parent's ProShopTeeSheetSettings
+                if (this.parent.ProShopTeeSheetSettings) {
+                    const lanes = this.parent.ProShopTeeSheetSettings.getLanes();
+                    if (lanes && lanes.length > 0) {
+                        return lanes;
+                    }
+                }
+
+                // No course configured - return empty to show "Please configure course" message
+                return [];
+            },
+
+            // Get tee sheet time settings
+            getTimeSettings() {
+                if (!this.settings) return null;
+                return {
+                    startTime: this.settings.startTime || '06:00',
+                    endTime: this.settings.endTime || '17:00',
+                    interval: this.settings.interval || 10
+                };
+            },
+
+            // Check if course is configured
+            isCourseConfigured() {
+                return this.settings?.courseId && this.settings.courseId.length > 0;
             },
 
             // Get caddies from MciPro's CaddySystem, mapped to tee sheet format
@@ -2747,15 +2784,54 @@
           const [selectedSlot, setSelectedSlot] = useState(null);
           const [demoRows, setDemoRows] = useState([]);
           const [language, setLanguage] = useState('en');
-          
+          const [settingsVersion, setSettingsVersion] = useState(0); // For triggering re-renders on settings change
+
+          // Get initial time settings from MciPro if available
+          const getInitialTimeSettings = () => {
+            const mciSettings = MciProBridge.getTimeSettings();
+            if (mciSettings) {
+              return {
+                startTime: mciSettings.startTime,
+                endTime: mciSettings.endTime,
+                interval: `${mciSettings.interval} min`
+              };
+            }
+            return {
+              startTime: '06:00',
+              endTime: '17:00',
+              interval: '10 min'
+            };
+          };
+
+          const initialTimeSettings = getInitialTimeSettings();
+
           const [filters, setFilters] = useState({
-            complex: '36 holes (A/B/C/D)',
-            startTime: '08:00',
-            endTime: '12:00',
-            interval: '10 min',
+            complex: MciProBridge.isInMciPro ? 'Pro Shop Course' : '36 holes (A/B/C/D)',
+            startTime: initialTimeSettings.startTime,
+            endTime: initialTimeSettings.endTime,
+            interval: initialTimeSettings.interval,
             teesPerCourse: 2,
             date: new Date().toISOString().split('T')[0]
           });
+
+          // Listen for settings changes from parent
+          useEffect(() => {
+            const handleSettingsChange = () => {
+              console.log('[TeeSheet] Settings changed, reloading...');
+              MciProBridge.loadSettings();
+              const newTimeSettings = getInitialTimeSettings();
+              setFilters(prev => ({
+                ...prev,
+                startTime: newTimeSettings.startTime,
+                endTime: newTimeSettings.endTime,
+                interval: newTimeSettings.interval
+              }));
+              setSettingsVersion(v => v + 1); // Trigger re-render
+            };
+
+            window.addEventListener('teesheet-settings-changed', handleSettingsChange);
+            return () => window.removeEventListener('teesheet-settings-changed', handleSettingsChange);
+          }, []);
 
           const getInstructionText = (lang) => {
             const mciProMode = MciProBridge.isInMciPro;
@@ -2918,7 +2994,7 @@
             }));
 
             setDemoRows(initialRows);
-          }, [filters.startTime, filters.endTime, filters.interval, filters.teesPerCourse, filters.date]);
+          }, [filters.startTime, filters.endTime, filters.interval, filters.teesPerCourse, filters.date, settingsVersion]);
 
           const handleSelectSlot = (slot) => {
             setSelectedSlot(slot);
@@ -3041,6 +3117,49 @@
           // Use MciPro courses when available
           const activeLanes = MciProBridge.getCourses() || demoLanes;
           const totalTees = activeLanes.length * filters.teesPerCourse;
+          const needsCourseConfig = MciProBridge.isInMciPro && !MciProBridge.isCourseConfigured();
+
+          // Show configuration required message if in MciPro but no course set
+          if (needsCourseConfig) {
+            return React.createElement('div', {
+              style: {
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: '400px',
+                padding: '40px',
+                textAlign: 'center'
+              }
+            },
+              React.createElement('div', {
+                style: {
+                  backgroundColor: '#fef3c7',
+                  border: '2px solid #f59e0b',
+                  borderRadius: '12px',
+                  padding: '32px',
+                  maxWidth: '500px'
+                }
+              },
+                React.createElement('span', {
+                  className: 'material-symbols-outlined',
+                  style: { fontSize: '48px', color: '#f59e0b', marginBottom: '16px', display: 'block' }
+                }, 'settings'),
+                React.createElement('h2', {
+                  style: { fontSize: '1.5rem', fontWeight: 'bold', color: '#92400e', marginBottom: '12px' }
+                }, 'Tee Sheet Configuration Required'),
+                React.createElement('p', {
+                  style: { color: '#a16207', marginBottom: '20px', lineHeight: '1.5' }
+                }, 'Please configure your golf course in Pro Shop Settings before using the Tee Sheet.'),
+                React.createElement('div', {
+                  style: { fontSize: '0.875rem', color: '#92400e' }
+                },
+                  React.createElement('strong', null, 'Go to: '),
+                  'Settings Tab → Tee Sheet Configuration → Select Golf Course'
+                )
+              )
+            );
+          }
 
           return React.createElement('div', null,
             // Show MciPro mode indicator

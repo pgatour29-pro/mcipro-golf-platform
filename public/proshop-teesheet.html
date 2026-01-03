@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enhanced Multilang Golf Tee Sheet Demo</title>
+    <title>MciPro Tee Sheet</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -66,6 +66,181 @@
     
     <script type="text/babel">
         const { useState, useMemo, useCallback, useRef, useEffect } = React;
+
+        // ============= MCIPRO BRIDGE =============
+        // Bridge to connect tee sheet with MciPro's data systems when running in iframe
+
+        const MciProBridge = {
+            isInMciPro: false,
+            parent: null,
+
+            init() {
+                try {
+                    // Check if we're in an iframe inside MciPro
+                    if (window.parent && window.parent !== window && window.parent.CaddySystem) {
+                        this.isInMciPro = true;
+                        this.parent = window.parent;
+                        console.log('[TeeSheet] Connected to MciPro - using live data');
+                        return true;
+                    }
+                } catch (e) {
+                    console.log('[TeeSheet] Not in MciPro iframe - using demo data');
+                }
+                return false;
+            },
+
+            // Get all courses with their lane configuration
+            getCourses() {
+                if (!this.isInMciPro) return null;
+
+                // MciPro's 8 courses with lane configuration
+                return [
+                    { courseId: 'pattana-golf-resort', label: 'Pattana Resort', labelEn: 'Pattana Resort', labelTh: 'พัทนา รีสอร์ท', labelKo: '파타나 리조트', color: '#86efac', lanes: ['A', 'B', 'C'] }, // 27 holes
+                    { courseId: 'pattaya-golf', label: 'Pattaya Golf', labelEn: 'Pattaya Golf', labelTh: 'พัทยา กอล์ฟ', labelKo: '파타야 골프', color: '#7dd3fc', lanes: null },
+                    { courseId: 'thai-country-club', label: 'Thai Country', labelEn: 'Thai Country Club', labelTh: 'ไทย คันทรี คลับ', labelKo: '타이 컨트리 클럽', color: '#fde047', lanes: null },
+                    { courseId: 'siam-plantation', label: 'Siam Plantation', labelEn: 'Siam Plantation', labelTh: 'สยาม แพลนเทชั่น', labelKo: '시암 플랜테이션', color: '#c4b5fd', lanes: null },
+                    { courseId: 'royal-garden', label: 'Royal Garden', labelEn: 'Royal Garden', labelTh: 'รอยัล การ์เด้น', labelKo: '로열 가든', color: '#fca5a5', lanes: null },
+                    { courseId: 'bangpra-international', label: 'Bangpra Intl', labelEn: 'Bangpra International', labelTh: 'บางพระ อินเตอร์', labelKo: '방프라 인터내셔널', color: '#a5b4fc', lanes: null },
+                    { courseId: 'crystal-bay', label: 'Crystal Bay', labelEn: 'Crystal Bay', labelTh: 'คริสตัล เบย์', labelKo: '크리스탈 베이', color: '#99f6e4', lanes: null },
+                    { courseId: 'cheechan', label: 'Chee Chan', labelEn: 'Chee Chan', labelTh: 'ชีจัน', labelKo: '치찬', color: '#fcd34d', lanes: null }
+                ];
+            },
+
+            // Get caddies from MciPro's CaddySystem, mapped to tee sheet format
+            getCaddies(courseId = null) {
+                if (!this.isInMciPro || !this.parent.CaddySystem) return null;
+
+                try {
+                    let caddies = this.parent.CaddySystem.allCaddys || [];
+
+                    // Filter by course if specified
+                    if (courseId) {
+                        caddies = caddies.filter(c => c.homeClub === courseId);
+                    }
+
+                    // Map to tee sheet format
+                    return caddies.map(c => ({
+                        id: c.id,
+                        number: c.number || c.id.replace(/[^0-9]/g, '').padStart(3, '0'),
+                        name: c.name,
+                        nameEn: c.name,
+                        nameTh: c.name, // MciPro doesn't have Thai names yet
+                        nameKo: c.name, // MciPro doesn't have Korean names yet
+                        rating: c.rating || 4.5,
+                        languages: c.languages || ['Thai', 'English'],
+                        status: c.availability || 'available',
+                        photo: c.photo,
+                        specialty: c.specialty,
+                        homeClub: c.homeClub
+                    }));
+                } catch (e) {
+                    console.error('[TeeSheet] Error getting caddies:', e);
+                    return null;
+                }
+            },
+
+            // Get bookings from MciPro's BookingManager for a specific date and course
+            getBookings(date, courseId = null) {
+                if (!this.isInMciPro || !this.parent.BookingManager) return null;
+
+                try {
+                    let bookings = this.parent.BookingManager.bookings || [];
+
+                    // Filter by date
+                    if (date) {
+                        bookings = bookings.filter(b => b.date === date);
+                    }
+
+                    // Filter by course if specified
+                    if (courseId) {
+                        bookings = bookings.filter(b => b.course === courseId || b.courseId === courseId);
+                    }
+
+                    // Map to tee sheet format
+                    return bookings.map(b => ({
+                        id: b.id,
+                        golfers: b.players ? [{ id: 'g1', name: b.golferName, handicap: 0 }] :
+                                 (b.golfers || [{ id: 'g1', name: b.golferName || 'Guest', handicap: 0 }]),
+                        notes: b.notes || '',
+                        bookingType: b.type || b.bookingType || 'regular',
+                        status: b.status || 'confirmed',
+                        caddyBookings: b.caddyBookings || [],
+                        time: b.time,
+                        courseId: b.courseId || b.course
+                    }));
+                } catch (e) {
+                    console.error('[TeeSheet] Error getting bookings:', e);
+                    return null;
+                }
+            },
+
+            // Save a booking to MciPro's BookingManager
+            async saveBooking(booking, slot) {
+                if (!this.isInMciPro || !this.parent.BookingManager) {
+                    console.log('[TeeSheet] Demo mode - booking not saved to MciPro');
+                    return { success: true, demoMode: true };
+                }
+
+                try {
+                    // Convert to MciPro booking format
+                    const mciProBooking = {
+                        id: booking.id || `tee-${Date.now()}`,
+                        type: 'tee_time',
+                        golferName: booking.golfers?.[0]?.name || 'Guest',
+                        course: slot.courseId,
+                        courseId: slot.courseId,
+                        date: slot.time.split('T')[0] || new Date().toISOString().split('T')[0],
+                        time: slot.time,
+                        players: booking.golfers?.length || 1,
+                        status: booking.status || 'confirmed',
+                        notes: booking.notes,
+                        bookingType: booking.bookingType || 'regular',
+                        caddyBookings: booking.caddyBookings || [],
+                        golfers: booking.golfers,
+                        createdAt: new Date(),
+                        source: 'proshop-teesheet'
+                    };
+
+                    // Add to BookingManager
+                    if (this.parent.BookingManager.addBooking) {
+                        this.parent.BookingManager.addBooking(mciProBooking);
+                    } else {
+                        this.parent.BookingManager.bookings.push(mciProBooking);
+                        this.parent.BookingManager.saveToLocalStorage?.();
+                    }
+
+                    // Sync to cloud if SimpleCloudSync is available
+                    if (this.parent.SimpleCloudSync?.saveToCloud) {
+                        await this.parent.SimpleCloudSync.saveToCloud();
+                    }
+
+                    console.log('[TeeSheet] Booking saved to MciPro:', mciProBooking.id);
+                    return { success: true, bookingId: mciProBooking.id };
+                } catch (e) {
+                    console.error('[TeeSheet] Error saving booking:', e);
+                    return { success: false, error: e.message };
+                }
+            },
+
+            // Update caddy status in MciPro
+            updateCaddyStatus(caddyId, status) {
+                if (!this.isInMciPro || !this.parent.CaddySystem) return false;
+
+                try {
+                    const caddy = this.parent.CaddySystem.allCaddys.find(c => c.id === caddyId);
+                    if (caddy) {
+                        caddy.availability = status;
+                        return true;
+                    }
+                } catch (e) {
+                    console.error('[TeeSheet] Error updating caddy status:', e);
+                }
+                return false;
+            }
+        };
+
+        // Initialize bridge
+        MciProBridge.init();
 
         // ============= ENHANCED SCHEDULE SYNC INTERFACES =============
 
@@ -2583,9 +2758,10 @@
           });
 
           const getInstructionText = (lang) => {
+            const mciProMode = MciProBridge.isInMciPro;
             const instructions = {
               en: {
-                title: 'Enhanced Golf Tee Sheet Demo',
+                title: mciProMode ? 'MciPro Tee Sheet' : 'Golf Tee Sheet Demo',
                 content: `
                   <strong>NEW Multi-Language Features:</strong><br/>
                   • Each golfer name has individual language setting<br/>
@@ -2662,52 +2838,78 @@
           useEffect(() => {
             const intervalMinutes = parseInt(filters.interval?.replace(/\D/g, '') || '10');
             const timeSlots = buildTimes(filters.startTime, filters.endTime, intervalMinutes);
-            
+
+            // Use MciPro data when available, otherwise use demo data
+            const activeLanes = MciProBridge.getCourses() || demoLanes;
+            const activeCaddies = MciProBridge.getCaddies() || demoCaddies;
+            const mciProBookings = MciProBridge.getBookings(filters.date) || [];
+
+            // Create a map of MciPro bookings by time for quick lookup
+            const bookingsByTime = new Map();
+            mciProBookings.forEach(b => {
+              const key = `${b.time}-${b.courseId}`;
+              bookingsByTime.set(key, b);
+            });
+
             const initialRows = timeSlots.map(time => ({
               time,
-              slots: demoLanes.flatMap(lane => 
+              slots: activeLanes.flatMap(lane =>
                 Array.from({length: filters.teesPerCourse}, (_, teeIndex) => {
                   const teeNum = teeIndex + 1;
                   const slotId = `${time}-${lane.courseId}-${teeNum}`;
+
+                  // Get caddies for this specific course when in MciPro mode
+                  const courseCaddies = MciProBridge.isInMciPro
+                    ? (MciProBridge.getCaddies(lane.courseId) || activeCaddies)
+                    : activeCaddies;
+
                   const slot = {
                     id: slotId,
                     courseId: lane.courseId,
                     time,
                     capacity: 4,
                     players: 0,
-                    availableCaddies: demoCaddies,
-                    locked: Math.random() < 0.05
+                    availableCaddies: courseCaddies,
+                    locked: false // Don't randomly lock in production
                   };
 
-                  if (time === '08:30' && lane.courseId === 'course-a' && teeNum === 1) {
-                    slot.booking = sampleBookings[0];
-                  } else if (time === '09:00' && lane.courseId === 'course-b' && teeNum === 1) {
-                    slot.booking = sampleBookings[1];
-                  } else if (Math.random() < 0.12) {
-                    const languages = ['en', 'th', 'ko'];
-                    const randomLang = languages[Math.floor(Math.random() * languages.length)];
-                    const randomNames = {
-                      en: ['Player', 'Golfer', 'Member'],
-                      th: ['ผู้เล่น', 'นักกอล์ฟ', 'สมาชิก'],
-                      ko: ['플레이어', '골퍼', '회원']
-                    };
-                    
-                    const randomBooking = {
-                      id: `random-${Math.random()}`,
-                      golfers: [
-                        { 
-                          id: 'rg1', 
-                          name: `${randomNames[randomLang][Math.floor(Math.random() * randomNames[randomLang].length)]} ${Math.floor(Math.random() * 100)}`,
-                          handicap: Math.floor(Math.random() * 28),
-                          inputLang: randomLang
-                        }
-                      ],
-                      bookingType: ['regular', 'vip', 'society'][Math.floor(Math.random() * 3)],
-                      status: 'confirmed',
-                      notes: Math.random() < 0.3 ? 'Special requests noted' : undefined,
-                      notesLang: randomLang
-                    };
-                    slot.booking = randomBooking;
+                  // Check for MciPro booking at this slot first
+                  const mciBookingKey = `${time}-${lane.courseId}`;
+                  const mciBooking = bookingsByTime.get(mciBookingKey);
+                  if (mciBooking) {
+                    slot.booking = mciBooking;
+                  } else if (!MciProBridge.isInMciPro) {
+                    // Only show demo bookings when not in MciPro mode
+                    if (time === '08:30' && lane.courseId === 'course-a' && teeNum === 1) {
+                      slot.booking = sampleBookings[0];
+                    } else if (time === '09:00' && lane.courseId === 'course-b' && teeNum === 1) {
+                      slot.booking = sampleBookings[1];
+                    } else if (Math.random() < 0.12) {
+                      const languages = ['en', 'th', 'ko'];
+                      const randomLang = languages[Math.floor(Math.random() * languages.length)];
+                      const randomNames = {
+                        en: ['Player', 'Golfer', 'Member'],
+                        th: ['ผู้เล่น', 'นักกอล์ฟ', 'สมาชิก'],
+                        ko: ['플레이어', '골퍼', '회원']
+                      };
+
+                      const randomBooking = {
+                        id: `random-${Math.random()}`,
+                        golfers: [
+                          {
+                            id: 'rg1',
+                            name: `${randomNames[randomLang][Math.floor(Math.random() * randomNames[randomLang].length)]} ${Math.floor(Math.random() * 100)}`,
+                            handicap: Math.floor(Math.random() * 28),
+                            inputLang: randomLang
+                          }
+                        ],
+                        bookingType: ['regular', 'vip', 'society'][Math.floor(Math.random() * 3)],
+                        status: 'confirmed',
+                        notes: Math.random() < 0.3 ? 'Special requests noted' : undefined,
+                        notesLang: randomLang
+                      };
+                      slot.booking = randomBooking;
+                    }
                   }
 
                   return slot;
@@ -2716,7 +2918,7 @@
             }));
 
             setDemoRows(initialRows);
-          }, [filters.startTime, filters.endTime, filters.interval, filters.teesPerCourse]);
+          }, [filters.startTime, filters.endTime, filters.interval, filters.teesPerCourse, filters.date]);
 
           const handleSelectSlot = (slot) => {
             setSelectedSlot(slot);
@@ -2727,12 +2929,12 @@
             if (booking.status === 'cancelled') {
               const syncManager = ScheduleSyncManager.getInstance();
               await syncManager.cancelBooking(booking.id);
-              
-              setDemoRows(prevRows => 
+
+              setDemoRows(prevRows =>
                 prevRows.map(row => ({
                   ...row,
-                  slots: row.slots.map(s => 
-                    s.id === slot.id 
+                  slots: row.slots.map(s =>
+                    s.id === slot.id
                       ? { ...s, booking: undefined }
                       : s
                   )
@@ -2741,11 +2943,29 @@
               return;
             }
 
-            setDemoRows(prevRows => 
+            // Save to MciPro when available
+            if (MciProBridge.isInMciPro) {
+              const result = await MciProBridge.saveBooking(booking, slot);
+              if (!result.success) {
+                console.error('[TeeSheet] Failed to save booking to MciPro:', result.error);
+                alert('Failed to save booking. Please try again.');
+                return;
+              }
+              console.log('[TeeSheet] Booking saved to MciPro:', result.bookingId);
+
+              // Update caddy status if caddies were assigned
+              if (booking.caddyBookings?.length > 0) {
+                booking.caddyBookings.forEach(cb => {
+                  MciProBridge.updateCaddyStatus(cb.caddyId, 'booked');
+                });
+              }
+            }
+
+            setDemoRows(prevRows =>
               prevRows.map(row => ({
                 ...row,
-                slots: row.slots.map(s => 
-                  s.id === slot.id 
+                slots: row.slots.map(s =>
+                  s.id === slot.id
                     ? { ...s, booking }
                     : s
                 )
@@ -2818,12 +3038,31 @@
           };
 ;
 
-          const totalTees = demoLanes.length * filters.teesPerCourse;
+          // Use MciPro courses when available
+          const activeLanes = MciProBridge.getCourses() || demoLanes;
+          const totalTees = activeLanes.length * filters.teesPerCourse;
 
           return React.createElement('div', null,
+            // Show MciPro mode indicator
+            MciProBridge.isInMciPro && React.createElement('div', {
+              style: {
+                position: 'fixed',
+                top: '10px',
+                left: '10px',
+                backgroundColor: '#10b981',
+                color: 'white',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                fontWeight: '600',
+                zIndex: 9999,
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+              }
+            }, '✓ Connected to MciPro'),
+
             React.createElement(TeeSheet, {
               date: filters.date,
-              lanes: demoLanes,
+              lanes: activeLanes,
               rows: demoRows,
               filters: filters,
               totalTees: totalTees,

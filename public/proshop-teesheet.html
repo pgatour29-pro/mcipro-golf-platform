@@ -1,0 +1,3078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Multilang Golf Tee Sheet Demo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+<style id="timeslot-rowlines">
+/* Draw a crisp line at the top of every slot cell */
+[data-slot-id] { border-top: 2px solid rgba(71,85,105,.95); /* slate-600 */ }
+/* Remove column gaps so borders connect without breaks */
+[data-tee-grid-row] { column-gap: 0 !important; }
+/* Make sure slot cells butt up with no inner padding that would break the line */
+[data-slot-id] > div { margin-top: -1px; } /* pull content down so double lines don't appear */
+</style>
+
+
+<style id="modal-polish">
+/* Modal polish: slightly larger headings, consistent padding, better contrast */
+.modal-forced .modal-card,
+.modal-card {
+  border-radius: 12px !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,.25) !important;
+  background: #ffffff !important;
+}
+.modal-forced h3, .modal-card h3 {
+  font-size: 1.15rem !important;
+  line-height: 1.3 !important;
+  font-weight: 700 !important;
+  color: #0f172a !important; /* slate-900 */
+  margin: 0 0 10px 0 !important;
+}
+/* Inputs */
+.modal-forced input[type="text"], .modal-forced textarea,
+.modal-card input[type="text"], .modal-card textarea {
+  border: 2px solid #cbd5e1 !important; /* slate-300 */
+  border-radius: 8px !important;
+  padding: 8px 10px !important;
+}
+/* Buttons */
+.modal-forced .btn, .modal-card .btn,
+.modal-forced button, .modal-card button {
+  border-radius: 8px !important;
+}
+/* Backdrop */
+.modal-backdrop, .backdrop-blur {
+  backdrop-filter: blur(2px) saturate(120%) !important;
+  background-color: rgba(2,6,23,.35) !important; /* slate-950 with alpha */
+}
+/* Caddy panel cap to keep it visible */
+.modal-forced .caddy-panel {
+  max-height: 280px !important;
+  overflow-y: auto !important;
+}
+/* Golfer grid spacing */
+.modal-forced .golfers-wrap { gap: 14px !important; }
+.modal-forced .golfer-row { width: calc(50% - 14px) !important; }
+</style>
+
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useMemo, useCallback, useRef, useEffect } = React;
+
+        // ============= ENHANCED SCHEDULE SYNC INTERFACES =============
+
+        class ScheduleSyncManager {
+          static instance = null;
+          
+          constructor() {
+            this.golferProfiles = new Map();
+            this.caddySchedules = new Map();
+            this.activeBookings = new Map();
+          }
+
+          static getInstance() {
+            if (!ScheduleSyncManager.instance) {
+              ScheduleSyncManager.instance = new ScheduleSyncManager();
+            }
+            return ScheduleSyncManager.instance;
+          }
+
+          // Validate booking against existing schedules
+          validateBooking(booking, slot) {
+            const conflicts = [];
+            const date = slot.time.split('T')[0] || new Date().toISOString().split('T')[0];
+            const startTime = slot.time;
+            
+            // Check caddy availability conflicts
+            booking.caddyBookings?.forEach(caddyBooking => {
+              const caddySchedule = this.caddySchedules.get(caddyBooking.caddyId);
+              if (caddySchedule) {
+                const conflictingShift = caddySchedule.shifts.find(shift => 
+                  shift.status === 'booked' && 
+                  this.timeOverlaps(startTime, shift.startTime, shift.endTime)
+                );
+                
+                if (conflictingShift) {
+                  conflicts.push({
+                    type: 'caddy_unavailable',
+                    message: `Caddy ${caddyBooking.caddyName} is already booked from ${conflictingShift.startTime} to ${conflictingShift.endTime}`,
+                    conflictingBookingId: conflictingShift.bookingId,
+                    suggestedAlternatives: this.findAlternativeCaddies(caddyBooking.caddyId, startTime, slot.availableCaddies || [])
+                  });
+                }
+              }
+            });
+
+            // Check golfer double booking conflicts
+            booking.golfers.forEach(golfer => {
+              const existingBookings = Array.from(this.activeBookings.values()).filter(
+                b => b.golfers.some(g => g.id === golfer.id) && 
+                b.id !== booking.id &&
+                this.isSameDay(b, date)
+              );
+              
+              existingBookings.forEach(existingBooking => {
+                if (this.timeOverlaps(startTime, existingBooking.actualStartTime || '', existingBooking.actualEndTime || '')) {
+                  conflicts.push({
+                    type: 'golfer_double_booking',
+                    message: `Golfer ${golfer.name} already has a booking at this time`,
+                    conflictingBookingId: existingBooking.id
+                  });
+                }
+              });
+            });
+
+            return conflicts;
+          }
+
+          // Sync booking to schedules
+          async syncBookingToSchedules(booking, slot) {
+            const conflicts = this.validateBooking(booking, slot);
+            
+            if (conflicts.length > 0) {
+              return {
+                success: false,
+                conflicts,
+                updatedSchedules: { caddies: [], golfers: [] }
+              };
+            }
+
+            const updatedCaddies = [];
+            const updatedGolfers = [];
+            const warnings = [];
+
+            try {
+              // Update caddy schedules
+              booking.caddyBookings?.forEach(caddyBooking => {
+                const updated = this.updateCaddySchedule(
+                  caddyBooking.caddyId, 
+                  slot.time, 
+                  booking.id,
+                  120 // default 2 hour booking
+                );
+                if (updated) {
+                  updatedCaddies.push(caddyBooking.caddyId);
+                } else {
+                  warnings.push(`Failed to update schedule for caddy ${caddyBooking.caddyName}`);
+                }
+              });
+
+              // Update golfer profiles
+              booking.golfers.forEach(golfer => {
+                const updated = this.updateGolferProfile(golfer.id, booking.id);
+                if (updated) {
+                  updatedGolfers.push(golfer.id);
+                } else {
+                  warnings.push(`Failed to update profile for golfer ${golfer.name}`);
+                }
+              });
+
+              // Store enhanced booking
+              const enhancedBooking = {
+                ...booking,
+                syncStatus: 'synced',
+                lastSyncAttempt: new Date(),
+                estimatedDuration: 120
+              };
+              this.activeBookings.set(booking.id, enhancedBooking);
+
+              return {
+                success: true,
+                updatedSchedules: { caddies: updatedCaddies, golfers: updatedGolfers },
+                warnings: warnings.length > 0 ? warnings : undefined
+              };
+
+            } catch (error) {
+              return {
+                success: false,
+                conflicts: [{
+                  type: 'time_overlap',
+                  message: `Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+                }],
+                updatedSchedules: { caddies: [], golfers: [] }
+              };
+            }
+          }
+
+          // Helper functions
+          timeOverlaps(time1, startTime2, endTime2) {
+            const t1 = new Date(`2000-01-01 ${time1}`);
+            const start2 = new Date(`2000-01-01 ${startTime2}`);
+            const end2 = new Date(`2000-01-01 ${endTime2}`);
+            return t1 >= start2 && t1 < end2;
+          }
+
+          isSameDay(booking, date) {
+            return true; // Simplified for demo
+          }
+
+          findAlternativeCaddies(excludeCaddyId, time, availableCaddies) {
+            return availableCaddies
+              .filter(caddy => caddy.id !== excludeCaddyId && caddy.status === 'available')
+              .slice(0, 3)
+              .map(caddy => ({
+                caddyId: caddy.id,
+                reason: `Alternative: ${caddy.name} (Rating: ${caddy.rating})`
+              }));
+          }
+
+          updateCaddySchedule(caddyId, time, bookingId, duration) {
+            let schedule = this.caddySchedules.get(caddyId);
+            if (!schedule) {
+              schedule = {
+                id: caddyId,
+                date: new Date().toISOString().split('T')[0],
+                shifts: []
+              };
+              this.caddySchedules.set(caddyId, schedule);
+            }
+
+            const startTime = time;
+            const endTime = this.addMinutes(time, duration);
+            
+            schedule.shifts.push({
+              startTime,
+              endTime,
+              status: 'booked',
+              bookingId,
+              notes: 'Tee time booking'
+            });
+
+            return true;
+          }
+
+          updateGolferProfile(golferId, bookingId) {
+            let profile = this.golferProfiles.get(golferId);
+            if (!profile) {
+              profile = {
+                id: golferId,
+                name: `Golfer ${golferId}`,
+                membershipType: 'regular',
+                preferredLanguage: 'en',
+                bookingHistory: [],
+                createdAt: new Date(),
+                totalRounds: 0
+              };
+              this.golferProfiles.set(golferId, profile);
+            }
+
+            profile.bookingHistory.push(bookingId);
+            profile.totalRounds += 1;
+            profile.lastPlayed = new Date();
+
+            return true;
+          }
+
+          addMinutes(time, minutes) {
+            const date = new Date(`2000-01-01 ${time}`);
+            date.setMinutes(date.getMinutes() + minutes);
+            return date.toTimeString().slice(0, 5);
+          }
+
+          getCaddySchedule(caddyId, date) {
+            return this.caddySchedules.get(caddyId);
+          }
+
+          getGolferProfile(golferId) {
+            return this.golferProfiles.get(golferId);
+          }
+
+          async cancelBooking(bookingId) {
+            const booking = this.activeBookings.get(bookingId);
+            if (!booking) {
+              return {
+                success: false,
+                conflicts: [{ type: 'time_overlap', message: 'Booking not found' }],
+                updatedSchedules: { caddies: [], golfers: [] }
+              };
+            }
+
+            const updatedCaddies = [];
+            
+            booking.caddyBookings?.forEach(caddyBooking => {
+              const schedule = this.caddySchedules.get(caddyBooking.caddyId);
+              if (schedule) {
+                schedule.shifts = schedule.shifts.filter(shift => shift.bookingId !== bookingId);
+                updatedCaddies.push(caddyBooking.caddyId);
+              }
+            });
+
+            this.activeBookings.delete(bookingId);
+
+            return {
+              success: true,
+              updatedSchedules: { caddies: updatedCaddies, golfers: [] }
+            };
+          }
+        }
+
+        const MultiLangInput = ({
+          value,
+          onChange,
+          placeholder,
+          inputLang = 'en',
+          onLangChange,
+          type = 'text',
+          rows = 1,
+          style = {},
+          showLangSelector = true,
+          disabled = false,
+          autoComplete = 'off',
+          maxLength,
+          modalLanguage = 'en'
+        }) => {
+          const getLocalizedPlaceholder = () => {
+            if (placeholder) {
+              const patterns = {
+                golferName: /^(Golfer Name|골퍼 이름|ชื่อผู้เล่น)\s*(\d+)?$/i,
+                searchCaddy: /^(Search caddy|ค้นหาแคดดี้|캐디 검색)/i,
+                bookingNotes: /^(Booking notes|หมายเหตุการจอง|예약 메모)/i,
+                searchGolfer: /^(Search golfer|ค้นหาชื่อผู้เล่น|골퍼 이름)/i
+              };
+
+              const golferMatch = placeholder.match(patterns.golferName);
+              if (golferMatch) {
+                const index = golferMatch[2] || '1';
+                switch (modalLanguage) {
+                  case 'ko': return `골퍼 이름 ${index}`;
+                  case 'th': return `ชื่อผู้เล่น ${index}`;
+                  default: return `Golfer Name ${index}`;
+                }
+              }
+
+              if (patterns.searchCaddy.test(placeholder)) {
+                switch (modalLanguage) {
+                  case 'ko': return '이름이나 번호로 캐디 검색';
+                  case 'th': return 'ค้นหาแคดดี้ด้วยชื่อหรือเลขที่';
+                  case 'ja': return '名前または番号でキャディ検索';
+                  default: return 'Search caddy by name or number';
+                }
+              }
+
+              if (patterns.bookingNotes.test(placeholder)) {
+                switch (modalLanguage) {
+                  case 'ko': return '예약 메모 (선택사항)';
+                  case 'th': return 'หมายเหตุการจอง (ไม่บังคับ)';
+                  case 'ja': return '予約メモ（任意）';
+                  default: return 'Booking notes (optional)';
+                }
+              }
+
+              if (patterns.searchGolfer.test(placeholder)) {
+                switch (modalLanguage) {
+                  case 'ko': return '골퍼 이름 또는 캐디 번호 검색';
+                  case 'th': return 'ค้นหาชื่อผู้เล่นหรือหมายเลขแคดดี้';
+                  case 'ja': return 'ゴルファー名またはキャディ番号で検索';
+                  default: return 'Search golfer name or caddy number';
+                }
+              }
+
+              return placeholder;
+            }
+            
+            switch (modalLanguage) {
+              case 'ko': 
+                return type === 'search' ? '검색하세요' : 
+                       type === 'textarea' ? '메모를 입력하세요' : '한국어로 입력하세요';
+              case 'th': 
+                return type === 'search' ? 'ค้นหา' : 
+                       type === 'textarea' ? 'กรอกหมายเหตุ' : 'พิมพ์เป็นภาษาไทย';
+              case 'ja': 
+                return type === 'search' ? '検索…' : 
+                       type === 'textarea' ? 'メモを入力' : '日本語で入力';
+              default: 
+                return type === 'search' ? 'Search...' : 
+                       type === 'textarea' ? 'Enter notes...' : 'Type in English';
+            }
+          };
+
+          const containerStyle = {
+            position: 'relative',
+            width: '100%',
+            ...style
+          };
+
+          const inputStyle = {
+            width: '100%',
+            padding: type === 'search' ? '10px 12px' : '8px 12px',
+            paddingRight: showLangSelector ? '55px' : '12px',
+            border: '2px solid #d1d5db',
+            borderRadius: type === 'search' ? '8px' : '6px',
+            fontSize: '0.875rem',
+            resize: type === 'textarea' ? 'vertical' : undefined,
+            outline: 'none',
+            transition: 'border-color 0.2s ease',
+            fontFamily: inputLang === 'th' ? 'system-ui, "Noto Sans Thai", sans-serif' :
+                        inputLang === 'ko' ? 'system-ui, "Noto Sans KR", sans-serif' :
+                        'system-ui, sans-serif'
+          };
+
+          const focusStyle = {
+            borderColor: '#3b82f6',
+            boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.1)'
+          };
+
+          const selectorStyle = {
+            position: 'absolute',
+            right: '3px',
+            top: type === 'textarea' ? '3px' : '3px',
+            width: '48px',
+            height: type === 'textarea' ? '30px' : type === 'search' ? '38px' : '34px',
+            border: '1px solid #e5e7eb',
+            backgroundColor: 'rgba(255,255,255,0.95)',
+            fontSize: '0.7rem',
+            cursor: 'pointer',
+            borderRadius: '4px',
+            color: '#6b7280',
+            fontWeight: '500',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          };
+
+          return React.createElement('div', { style: containerStyle },
+            type === 'textarea' 
+              ? React.createElement('textarea', {
+                  value,
+                  onChange: (e) => onChange(e.target.value),
+                  placeholder: getLocalizedPlaceholder(),
+                  rows,
+                  style: inputStyle,
+                  disabled,
+                  maxLength,
+                  onFocus: (e) => Object.assign(e.target.style, focusStyle),
+                  onKeyDown: (e) => { if (e.key === 'Enter' && window.__performSearch) window.__performSearch(); },
+                  onBlur: (e) => {
+                    e.target.style.borderColor = '#d1d5db';
+                    e.target.style.boxShadow = 'none';
+                  }
+                })
+              : React.createElement('input', {
+                  type: 'text',
+                  value,
+                  onChange: (e) => onChange(e.target.value),
+                  placeholder: getLocalizedPlaceholder(),
+                  style: inputStyle,
+                  disabled,
+                  autoComplete,
+                  maxLength,
+                  onFocus: (e) => Object.assign(e.target.style, focusStyle),
+                  onKeyDown: (e) => { if (e.key === 'Enter' && window.__performSearch) window.__performSearch(); },
+                  onBlur: (e) => {
+                    e.target.style.borderColor = '#d1d5db';
+                    e.target.style.boxShadow = 'none';
+                  }
+                }),
+            showLangSelector && onLangChange && !disabled && 
+              null
+          );
+        };
+
+        const LanguageBulkControl = ({
+          onSetAll,
+          label,
+          currentDistribution,
+          modalLanguage = 'en'
+        }) => {
+          const getLocalizedLabel = () => {
+            if (label) return label;
+            
+            switch (modalLanguage) {
+              case 'ko': return '모든 언어 설정';
+              case 'th': return 'ตั้งค่าภาษาทั้งหมด';
+              default: return 'Set All Languages';
+            }
+          };
+
+          const getLocalizedOptions = () => {
+            switch (modalLanguage) {
+              case 'ko':
+                return {
+                  allEn: '🇺🇸 모두 영어로',
+                  allTh: '🇹🇭 모두 태국어로 (ไทย)',
+                  allKo: '🇰🇷 모두 한국어로'
+                };
+              case 'th':
+                return {
+                  allEn: '🇺🇸 ทั้งหมดเป็นภาษาอังกฤษ',
+                  allTh: '🇹🇭 ทั้งหมดเป็นภาษาไทย',
+                  allKo: '🇰🇷 ทั้งหมดเป็นภาษาเกาหลี (한국어)'
+                };
+              case 'ja':
+                return {
+                  allEn: '🇺🇸 すべて英語',
+                  allTh: '🇹🇭 すべてタイ語',
+                  allKo: '🇰🇷 すべて韓国語'
+                };
+              default:
+                return {
+                  allEn: '🇺🇸 All English',
+                  allTh: '🇹🇭 All Thai (ไทย)',
+                  allKo: '🇰🇷 All Korean (한국어)'
+                };
+            }
+          };
+
+          const options = getLocalizedOptions();
+
+          return React.createElement('div', { 
+            style: { display: 'flex', flexDirection: 'column', gap: '4px' }
+          },
+            React.createElement('select', {
+              value: '',
+              onChange: (e) => {
+                if (e.target.value) {
+                  onSetAll(e.target.value);
+                }
+              },
+              style: {
+                padding: '6px 10px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                backgroundColor: '#f8fafc',
+                color: '#374151',
+                fontWeight: '500'
+              },
+              title: 'Bulk change input language for all fields'
+            },
+              React.createElement('option', { value: '' }, getLocalizedLabel()),
+              React.createElement('option', { value: 'en' }, options.allEn),
+              React.createElement('option', { value: 'th' }, options.allTh),
+              React.createElement('option', { value: 'ko' }, options.allKo),
+              React.createElement('option', { value: 'ja' }, '🇯🇵 全て日本語')
+            ),
+            
+            currentDistribution && React.createElement('div', { 
+              style: { 
+                fontSize: '0.7rem', 
+                color: '#6b7280',
+                display: 'flex',
+                gap: '8px'
+              }
+            },
+              React.createElement('span', null, `EN: ${currentDistribution.en}`),
+              React.createElement('span', null, `TH: ${currentDistribution.th}`),
+              React.createElement('span', null, `KO: ${currentDistribution.ko}`)
+            )
+          );
+        };
+
+        const detectLanguage = (text) => {
+          const thaiRegex = /[\u0E00-\u0E7F]/;
+          const koreanRegex = /[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/;
+          const englishRegex = /[a-zA-Z]/;
+          const japaneseRegex = /[\u3040-\u30FF\u4E00-\u9FFF]/;
+          
+          const hasThai = thaiRegex.test(text);
+          const hasKorean = koreanRegex.test(text);
+          const hasEnglish = englishRegex.test(text);
+          const hasJapanese = japaneseRegex.test(text);
+          
+          const count = [hasThai, hasKorean, hasEnglish, hasJapanese].filter(Boolean).length;
+          
+          if (count > 1) return 'mixed';
+          if (hasThai) return 'th';
+          if (hasKorean) return 'ko';
+          if (hasJapanese) return 'ja';
+          if (hasEnglish) return 'en';
+          return 'en';
+        };
+
+        function buildTimes(from, to, stepMinutes = 5) {
+          const toMinutes = (hhmm) => {
+            const [h, m] = hhmm.split(":").map(Number);
+            return h * 60 + m;
+          };
+          const pad = (n) => String(n).padStart(2, "0");
+          const out = [];
+          for (let t = toMinutes(from); t <= toMinutes(to); t += stepMinutes) {
+            const h = Math.floor(t / 60);
+            const m = t % 60;
+            out.push(`${pad(h)}:${pad(m)}`);
+          }
+          return out;
+        }
+
+        const translations = {
+          en: {
+            teeSheet: "Tee Sheet",
+            complex: "Complex",
+            date: "Date",
+            start: "Start", 
+            end: "End",
+            interval: "Interval",
+            teesPerCourse: "Tees per Course",
+            totalTees: "Total Tees",
+            golferName: "Golfer Name",
+            find: "Find",
+            next: "Next",
+            matches: "Matches",
+            clearDay: "Clear Day",
+            time: "Time",
+            course: "Course",
+            bookTeeTime: "Book Tee Time",
+            editBooking: "Edit Booking",
+            bookingType: "Booking Type",
+            regular: "Regular",
+            vip: "VIP",
+            tournament: "Tournament", 
+            society: "Society",
+            golfers: "Golfers",
+            addGolfer: "Add Golfer",
+            handicap: "Handicap",
+            assignCaddies: "Assign Caddies",
+            selectCaddy: "Select Caddy",
+            realTimeAvailability: "Real-time Availability",
+            caddyAvailabilityStatus: "Caddy Availability Status",
+            available: "Available",
+            booked: "Booked",
+            notes: "Notes",
+            bookingNotes: "Booking notes (optional)",
+            cancel: "Cancel",
+            saveBooking: "Save Booking",
+            updateBooking: "Update Booking",
+            deleteBooking: "Delete Booking",
+            confirmDeleteBooking: "Are you sure you want to delete this booking?",
+            searchCaddyByNameOrNumber: "Search caddy by name or number",
+            searchHint: "Type caddy number (#123) or name to find specific caddy",
+            caddyDetails: "Caddy Details & Availability",
+            availableNow: "Available Now",
+            canBookImmediately: "Ready for immediate booking",
+            currentlyBooked: "Currently Booked",
+            bookedBy: "Booked by",
+            currentTeeTime: "Current tee time",
+            availableAfter: "Available after",
+            onCourse: "On Course",
+            currentRound: "Current round",
+            estimatedFinish: "Estimated finish",
+            nextAvailable: "Next available",
+            onBreak: "On Break",
+            backAt: "Back at",
+            dayOff: "Day Off",
+            notAvailableToday: "Not available today",
+            caddyAvailabilityOverview: "Caddy Availability Overview",
+            searchGolferOrCaddy: "Search golfer name or caddy number",
+            languages: "Languages",
+            rating: "Rating",
+            inputLanguage: "Input Language",
+            detectLanguage: "Auto-detect",
+            bulkLanguageChange: "Bulk Language Change",
+            languageSettings: "Language Settings"
+          },
+          th: {
+            teeSheet: "ตารางทีออฟ",
+            complex: "คอมเพล็กซ์", 
+            date: "วันที่",
+            start: "เริ่ม",
+            end: "สิ้นสุด", 
+            interval: "ช่วงเวลา",
+            teesPerCourse: "ทีต่อสนาม",
+            totalTees: "ทีทั้งหมด",
+            golferName: "ชื่อผู้เล่น",
+            find: "หา",
+            next: "ถัดไป", 
+            matches: "พบ",
+            clearDay: "ลบทั้งวัน",
+            time: "เวลา",
+            course: "สนาม",
+            bookTeeTime: "จองเวลาเล่น",
+            editBooking: "แก้ไขการจอง",
+            bookingType: "ประเภทการจอง",
+            regular: "ทั่วไป",
+            vip: "วีไอพี",
+            tournament: "ทัวร์นาเมนต์",
+            society: "สมาคม", 
+            golfers: "นักกอล์ฟ",
+            addGolfer: "เพิ่มผู้เล่น",
+            handicap: "แฮนดิแคป",
+            assignCaddies: "มอบหมายแคดดี้",
+            selectCaddy: "เลือกแคดดี้",
+            realTimeAvailability: "ความพร้อมแบบเรียลไทม์",
+            caddyAvailabilityStatus: "สถานะความพร้อมของแคดดี้",
+            available: "ว่าง",
+            booked: "จองแล้ว",
+            notes: "หมายเหตุ",
+            bookingNotes: "หมายเหตุการจอง (ไม่บังคับ)",
+            cancel: "ยกเลิก",
+            saveBooking: "บันทึกการจอง",
+            updateBooking: "อัพเดทการจอง",
+            deleteBooking: "ลบการจอง",
+            confirmDeleteBooking: "คุณแน่ใจหรือไม่ว่าต้องการลบการจองนี้?",
+            searchCaddyByNameOrNumber: "ค้นหาแคดดี้ด้วยชื่อหรือเลขที่",
+            searchHint: "พิมพ์หมายเลขแคดดี้ (#123) หรือชื่อเพื่อค้นหาแคดดี้เฉพาะ",
+            caddyDetails: "รายละเอียดแคดดี้และความพร้อม",
+            availableNow: "พร้อมใช้งานตอนนี้",
+            canBookImmediately: "พร้อมสำหรับการจองทันที",
+            currentlyBooked: "ถูกจองในปัจจุบัน",
+            bookedBy: "จองโดย",
+            currentTeeTime: "เวลาทีปัจจุบัน",
+            availableAfter: "พร้อมใช้งานหลัง",
+            onCourse: "อยู่ในสนาม",
+            currentRound: "รอบปัจจุบัน",
+            estimatedFinish: "คาดการณ์จบ",
+            nextAvailable: "พร้อมใช้งานครั้งถัดไป",
+            onBreak: "พักผ่อน",
+            backAt: "กลับมาที่",
+            dayOff: "วันหยุด",
+            notAvailableToday: "ไม่พร้อมใช้งานวันนี้",
+            caddyAvailabilityOverview: "ภาพรวมความพร้อมของแคดดี้",
+            searchGolferOrCaddy: "ค้นหาชื่อผู้เล่นหรือหมายเลขแคดดี้",
+            languages: "ภาษา",
+            rating: "คะแนน",
+            inputLanguage: "ภาษาที่ใช้ป้อน",
+            detectLanguage: "ตรวจจับอัตโนมัติ",
+            bulkLanguageChange: "เปลี่ยนภาษาทั้งหมด",
+            languageSettings: "การตั้งค่าภาษา"
+          },
+          ko: {
+            teeSheet: "티 시트",
+            complex: "컴플렉스",
+            date: "날짜",
+            start: "시작",
+            end: "끝",
+            interval: "간격",
+            teesPerCourse: "코스당 티",
+            totalTees: "총 티",
+            golferName: "골퍼 이름",
+            find: "찾기",
+            next: "다음",
+            matches: "일치",
+            clearDay: "하루 지우기",
+            time: "시간",
+            course: "코스",
+            bookTeeTime: "티타임 예약",
+            editBooking: "예약 편집",
+            bookingType: "예약 유형",
+            regular: "일반",
+            vip: "VIP",
+            tournament: "토너먼트",
+            society: "소사이어티",
+            golfers: "골퍼들",
+            addGolfer: "골퍼 추가",
+            handicap: "핸디캡",
+            assignCaddies: "캐디 배정",
+            selectCaddy: "캐디 선택",
+            realTimeAvailability: "실시간 가용성",
+            caddyAvailabilityStatus: "캐디 가용성 상태",
+            available: "이용 가능",
+            booked: "예약됨",
+            notes: "메모",
+            bookingNotes: "예약 메모 (선택사항)",
+            cancel: "취소",
+            saveBooking: "예약 저장",
+            updateBooking: "예약 업데이트",
+            deleteBooking: "예약 삭제",
+            confirmDeleteBooking: "이 예약을 삭제하시겠습니까?",
+            searchCaddyByNameOrNumber: "이름이나 번호로 캐디 검색",
+            searchHint: "캐디 번호 (#123) 또는 이름을 입력하여 특정 캐디 찾기",
+            caddyDetails: "캐디 세부정보 및 가용성",
+            availableNow: "지금 이용 가능",
+            canBookImmediately: "즉시 예약 가능",
+            currentlyBooked: "현재 예약됨",
+            bookedBy: "예약자",
+            currentTeeTime: "현재 티타임",
+            availableAfter: "이후 이용 가능",
+            onCourse: "코스 중",
+            currentRound: "현재 라운드",
+            estimatedFinish: "예상 종료",
+            nextAvailable: "다음 이용 가능",
+            onBreak: "휴식 중",
+            backAt: "복귀 시간",
+            dayOff: "휴무일",
+            notAvailableToday: "오늘 이용 불가",
+            caddyAvailabilityOverview: "캐디 가용성 개요",
+            searchGolferOrCaddy: "골퍼 이름 또는 캐디 번호 검색",
+            languages: "언어",
+            rating: "평점",
+            inputLanguage: "입력 언어",
+            detectLanguage: "자동 감지",
+            bulkLanguageChange: "전체 언어 변경",
+            languageSettings: "언어 설정"
+          }
+        
+  ,
+  ja: {
+    teeSheet: "ティーシート",
+    complex: "コンプレックス",
+    date: "日付",
+    start: "開始",
+    end: "終了",
+    interval: "間隔",
+    teesPerCourse: "コース毎のティー",
+    totalTees: "総ティー数",
+    golferName: "ゴルファー名",
+    find: "検索",
+    next: "次へ",
+    matches: "件",
+    clearDay: "当日をクリア",
+    time: "時間",
+    course: "コース",
+    bookTeeTime: "ティータイムを予約",
+    editBooking: "予約を編集",
+    bookingType: "予約タイプ",
+    regular: "通常",
+    vip: "VIP",
+    tournament: "トーナメント",
+    society: "ソサエティ",
+    golfers: "ゴルファー",
+    addGolfer: "ゴルファー追加",
+    handicap: "ハンディ",
+    assignCaddies: "キャディを割当",
+    selectCaddy: "キャディを選択",
+    realTimeAvailability: "リアルタイム空き状況",
+    caddyAvailabilityStatus: "キャディ空き状況",
+    available: "空き",
+    booked: "予約済み",
+    notes: "メモ",
+    bookingNotes: "予約メモ（任意）",
+    cancel: "キャンセル",
+    saveBooking: "予約を保存",
+    updateBooking: "予約を更新",
+    deleteBooking: "予約を削除",
+    confirmDeleteBooking: "この予約を削除してもよろしいですか？",
+    searchCaddyByNameOrNumber: "キャディ名または番号で検索",
+    searchHint: "キャディ番号（#123）または名前で検索",
+    caddyDetails: "キャディ詳細と空き状況",
+    availableNow: "現在空きあり",
+    canBookImmediately: "すぐに予約可能",
+    currentlyBooked: "現在予約中",
+    bookedBy: "予約者",
+    currentTeeTime: "現在のティータイム",
+    availableAfter: "次の空き",
+    onCourse: "コース上",
+    currentRound: "現在のラウンド",
+    estimatedFinish: "終了見込み",
+    nextAvailable: "次の空き時間",
+    onBreak: "休憩中",
+    backAt: "復帰予定",
+    dayOff: "休暇",
+    notAvailableToday: "本日は利用不可",
+    caddyAvailabilityOverview: "キャディ空き状況の概要",
+    searchGolferOrCaddy: "ゴルファー名またはキャディ番号で検索",
+    languages: "言語",
+    rating: "評価",
+    inputLanguage: "入力言語",
+    detectLanguage: "自動判定",
+    bulkLanguageChange: "一括言語変更",
+    languageSettings: "言語設定"
+  }
+};
+
+        function useI18n() {
+          const [language, setLanguage] = useState('en');
+          
+          const t = useCallback((key) => {
+            return translations[language][key] || key;
+          }, [language]);
+
+          return { t, language, setLanguage };
+        }
+
+        function getCaddyStatusColor(status) {
+          switch (status) {
+            case 'available': return '#10b981';
+            case 'booked': return '#f59e0b';
+            case 'on-course': return '#3b82f6';
+            case 'on-break': return '#8b5cf6';
+            case 'day-off': return '#6b7280';
+            default: return '#6b7280';
+          }
+        }
+
+        function getBookingTypeColor(type) {
+          switch (type) {
+            case 'vip': return '#8b5cf6';
+            case 'tournament': return '#ef4444';
+            case 'society': return '#f59e0b';
+            case 'regular': return '#3b82f6';
+            default: return '#6b7280';
+          }
+        }
+
+        const BookingModal = ({ isOpen, slot, onClose, onSaveBooking, language = 'en' }) => {
+  // ---- Robust Caddy Population: never show an empty list ----
+  // Seed set used if no runtime data is provided
+  var __seedCaddies = [
+    { id:'c001', number:'001', name:'Somchai', status:'available' },
+    { id:'c003', number:'003', name:'Niran',   status:'available' },
+    { id:'c007', number:'007', name:'Mali',    status:'available' },
+    { id:'c012', number:'012', name:'Porn',    status:'available' },
+    { id:'c015', number:'015', name:'Nok',     status:'available' },
+    { id:'c021', number:'021', name:'Kanya',   status:'available' }
+  ];
+
+  // Pull global list if present; otherwise seed
+  var __allCaddies = (typeof window !== 'undefined' && Array.isArray(window.availableCaddies) && window.availableCaddies.length)
+    ? window.availableCaddies : __seedCaddies;
+
+  // If slot-scoped caddies exist, prefer those; else use global
+  var __slotCaddies = (slot && Array.isArray(slot.availableCaddies) && slot.availableCaddies.length)
+    ? slot.availableCaddies : __allCaddies;
+
+  // Build filtered list based on current search term if present
+  var __searchTerm = (typeof caddySearchTerm !== 'undefined' && caddySearchTerm) ? String(caddySearchTerm).trim().toLowerCase() : '';
+  var __filteredBySearch = __slotCaddies.filter(function(cd){
+    if (!__searchTerm) return true;
+    return (String(cd.number||'').toLowerCase().indexOf(__searchTerm) !== -1) ||
+           (String(cd.name||'').toLowerCase().indexOf(__searchTerm) !== -1);
+  });
+
+  // Final list used by the UI; guarantee non-empty by falling back to global or seed
+  var __caddiesFinal = __filteredBySearch.length ? __filteredBySearch
+                    : (__slotCaddies.length ? __slotCaddies
+                    : (__allCaddies.length ? __allCaddies : __seedCaddies));
+  // ---- End robust caddy population ----
+
+          const t = useCallback((key) => {
+            return translations[language][key] || key;
+          }, [language]);
+          
+          const [golfers, setGolfers] = useState([
+            { id: 'g1', name: '', handicap: undefined, inputLang: language }
+          ]);
+          const [notes, setNotes] = useState('');
+          const [notesInputLang, setNotesInputLang] = useState(language);
+          const [bookingType, setBookingType] = useState('regular');
+          const [selectedCaddies, setSelectedCaddies] = useState({});
+          const [isEditing, setIsEditing] = useState(false);
+          const [caddySearchTerm, setCaddySearchTerm] = useState('');
+          const [caddySearchLang, setCaddySearchLang] = useState(language);
+
+          useEffect(() => {
+            setNotesInputLang(language);
+            setCaddySearchLang(language);
+            setGolfers(prev => prev.map(g => ({ ...g, inputLang: g.inputLang || language })));
+          }, [language]);
+
+          useEffect(() => {
+            if (isOpen && slot) {
+              if (slot.booking) {
+                setIsEditing(true);
+                setGolfers(slot.booking.golfers.map(g => ({...g, inputLang: g.inputLang || language})));
+                setNotes(slot.booking.notes || '');
+                setNotesInputLang(slot.booking.notesLang || language);
+                setBookingType(slot.booking.bookingType);
+                
+                const caddyMap = {};
+                slot.booking.caddyBookings?.forEach(cb => {
+                  caddyMap[cb.golferId] = cb.caddyId;
+                });
+                setSelectedCaddies(caddyMap);
+              } else {
+                setIsEditing(false);
+                setGolfers([{ id: 'g1', name: '', handicap: undefined, inputLang: language }]);
+                setNotes('');
+                setNotesInputLang(language);
+                setBookingType('regular');
+                setSelectedCaddies({});
+              }
+              setCaddySearchTerm('');
+              setCaddySearchLang(language);
+            }
+          }, [isOpen, slot]);
+
+          if (!isOpen || !slot) return null;
+
+          const availableCaddies = slot.availableCaddies || [];
+
+          const filteredCaddies = availableCaddies.filter(caddy => {
+            if (!caddySearchTerm) return true;
+            const searchLower = caddySearchTerm.toLowerCase();
+            
+            if (caddy.number.includes(searchLower.replace('#', ''))) return true;
+            
+            const searchInName = (name) => name.toLowerCase().includes(searchLower);
+            
+            if (caddySearchLang === 'th' && caddy.nameTh) {
+              return searchInName(caddy.nameTh);
+            } else if (caddySearchLang === 'ko' && caddy.nameKo) {
+              return searchInName(caddy.nameKo);
+            } else if (caddySearchLang === 'en' && caddy.nameEn) {
+              return searchInName(caddy.nameEn);
+            }
+            
+            return searchInName(caddy.name);
+          });
+
+          const addGolfer = () => {
+            if (golfers.length < 4) {
+              setGolfers([...golfers, { 
+                id: `g${golfers.length + 1}`, 
+                name: '', 
+                handicap: undefined,
+                inputLang: language 
+              }]);
+            }
+          };
+
+          const removeGolfer = (index) => {
+            if (golfers.length > 1) {
+              const removedGolfer = golfers[index];
+              const newGolfers = golfers.filter((_, i) => i !== index);
+              setGolfers(newGolfers);
+              
+              const newSelectedCaddies = { ...selectedCaddies };
+              delete newSelectedCaddies[removedGolfer.id];
+              setSelectedCaddies(newSelectedCaddies);
+            }
+          };
+
+          const updateGolfer = (index, field, value) => {
+            const newGolfers = [...golfers];
+            if (field === 'handicap') {
+              newGolfers[index].handicap = value === '' ? undefined : Number(value);
+            } else {
+              newGolfers[index].name = value;
+              if (value) {
+                const detectedLang = detectLanguage(value);
+                if (detectedLang !== 'mixed') {
+                  newGolfers[index].inputLang = detectedLang;
+                }
+              }
+            }
+            setGolfers(newGolfers);
+          };
+
+          const handleBulkLanguageChange = (lang) => {
+            setGolfers(golfers.map(g => ({ ...g, inputLang: lang })));
+            setNotesInputLang(lang);
+            setCaddySearchLang(lang);
+          };
+
+          const getLanguageDistribution = () => {
+            const dist = { en: 0, th: 0, ko: 0, ja: 0 };
+            golfers.forEach(g => {
+              if (g.inputLang) dist[g.inputLang]++;
+            });
+            if (notesInputLang) dist[notesInputLang]++;
+            return dist;
+          };
+
+          const handleSave = async () => {
+            const validGolfers = golfers.filter(g => g.name.trim());
+            if (validGolfers.length === 0) {
+              const alertMessage = language === 'th' 
+                ? 'กรุณาเพิ่มผู้เล่นอย่างน้อย 1 คน' 
+                : language === 'ko' 
+                ? '최소 1명의 골퍼를 추가해주세요'
+                : 'Please add at least one golfer';
+              alert(alertMessage);
+              return;
+            }
+
+            const caddyBookings = Object.entries(selectedCaddies).map(([golferId, caddySelection]) => {
+              const golfer = validGolfers.find(g => g.id === golferId);
+              const isWaitlisted = caddySelection.includes('-waitlist');
+              const caddyId = caddySelection.replace('-waitlist', '');
+              const caddy = availableCaddies.find(c => c.id === caddyId);
+              
+              return {
+                golferId,
+                caddyId,
+                golferName: golfer?.name || '',
+                caddyName: caddy?.name || '',
+                caddyNumber: caddy?.number || '000',
+                status: isWaitlisted ? 'waitlisted' : 'confirmed',
+                isWaitlisted
+              };
+            }).filter(booking => booking.caddyId);
+
+            const booking = {
+              id: slot.booking?.id || `booking-${Date.now()}`,
+              golfers: validGolfers,
+              notes,
+              notesLang: notesInputLang,
+              bookingType,
+              status: 'confirmed',
+              caddyBookings
+            };
+
+            const syncManager = ScheduleSyncManager.getInstance();
+            
+            try {
+              const conflicts = syncManager.validateBooking(booking, slot);
+              
+              if (conflicts.length > 0) {
+                const conflictMessages = conflicts.map(c => c.message).join('\n');
+                const confirmMessage = language === 'th' 
+                  ? `พบข้อขัดแย้งในตารางเวลา:\n${conflictMessages}\n\nต้องการทำการจองต่อไปหรือไม่?`
+                  : language === 'ko'
+                  ? `일정 충돌이 발견되었습니다:\n${conflictMessages}\n\n계속 예약하시겠습니까?`
+                  : `Schedule conflicts detected:\n${conflictMessages}\n\nDo you want to proceed anyway?`;
+                
+                if (!confirm(confirmMessage)) {
+                  return;
+                }
+              }
+
+              const syncResult = await syncManager.syncBookingToSchedules(booking, slot);
+              
+              if (!syncResult.success) {
+                const errorMessage = language === 'th' 
+                  ? 'ไม่สามารถซิงค์ตารางเวลาได้ กรุณาลองใหม่อีกครั้ง'
+                  : language === 'ko'
+                  ? '일정 동기화에 실패했습니다. 다시 시도해주세요.'
+                  : 'Failed to sync schedules. Please try again.';
+                alert(errorMessage);
+                return;
+              }
+
+              if (syncResult.warnings && syncResult.warnings.length > 0) {
+                const warningMessage = language === 'th' 
+                  ? `การจองสำเร็จ แต่มีคำเตือน:\n${syncResult.warnings.join('\n')}`
+                  : language === 'ko'
+                  ? `예약이 성공했지만 경고사항이 있습니다:\n${syncResult.warnings.join('\n')}`
+                  : `Booking successful with warnings:\n${syncResult.warnings.join('\n')}`;
+                alert(warningMessage);
+              }
+
+              onSaveBooking(slot, booking);
+              onClose();
+
+            } catch (error) {
+              const errorMessage = language === 'th' 
+                ? `เกิดข้อผิดพลาด: ${error instanceof Error ? error.message : 'ไม่ทราบสาเหตุ'}`
+                : language === 'ko'
+                ? `오류가 발생했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`
+                : `Error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`;
+              alert(errorMessage);
+            }
+          };
+
+          return React.createElement('div', {
+            style: {
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.6)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10000
+            }
+          },
+            React.createElement('div', { className: 'modal-card modal-forced', 
+              style: {
+                backgroundColor: 'white',
+                borderRadius: '12px',
+                padding: '24px',
+                maxWidth: '800px',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                border: '1px solid #e5e7eb'
+              }
+            },
+              React.createElement('div', {
+                style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }
+              },
+                React.createElement('h3', {
+                  style: { margin: 0, fontSize: '1.25rem', fontWeight: '600', color: '#1f2937' }
+                }, `${isEditing ? t('editBooking') : t('bookTeeTime')} - ${slot.time}`),
+                React.createElement('button', {
+                  onClick: onClose,
+                  style: {
+                    background: 'none',
+                    border: 'none',
+                    fontSize: '24px',
+                    cursor: 'pointer',
+                    color: '#6b7280'
+                  }
+                }, '×')
+              ),
+
+              React.createElement('div', { style: { marginBottom: '20px' } },
+                React.createElement('label', {
+                  style: { display: 'block', marginBottom: '8px', fontSize: '0.875rem', fontWeight: '500', color: '#374151' }
+                }, t('assignCaddies')),
+                React.createElement('div', {
+                  style: { marginBottom: '12px' }
+                },
+                  React.createElement(MultiLangInput, {
+                    type: 'search',
+                    value: caddySearchTerm,
+                    onChange: setCaddySearchTerm,
+                    placeholder: 'Search caddy by name or number',
+                    inputLang: caddySearchLang,
+                    onLangChange: setCaddySearchLang,
+                    modalLanguage: language
+                  })
+                ),
+                React.createElement('div', {
+                  style: {
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '6px',
+                    padding: '8px'
+                  }
+                },
+                  filteredCaddies.length === 0 ? 
+                    React.createElement('div', {
+                      style: { textAlign: 'center', color: '#6b7280', fontSize: '0.8rem', padding: '20px' }
+                    }, 'No caddies found') :
+                    filteredCaddies.slice(0, 10).map(caddy => {
+                      const caddyName = caddySearchLang === 'th' && caddy.nameTh ? caddy.nameTh :
+                                       caddySearchLang === 'ko' && caddy.nameKo ? caddy.nameKo :
+                                       caddySearchLang === 'ja' && caddy.nameJa ? caddy.nameJa :
+                                       caddy.nameEn || caddy.name;
+                      
+                      return React.createElement('div', {
+                        key: caddy.id,
+                        style: {
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px',
+                          marginBottom: '4px',
+                          backgroundColor: '#f8fafc',
+                          borderRadius: '4px',
+                          border: '1px solid #e5e7eb',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease'
+                        },
+                        onClick: () => {
+                          // Quick assign to first available golfer without caddy
+                          const availableGolfer = golfers.find(g => g.name.trim() && !selectedCaddies[g.id]);
+                          if (availableGolfer) {
+                            const newSelectedCaddies = { ...selectedCaddies };
+                            if (caddy.status === 'available') {
+                              newSelectedCaddies[availableGolfer.id] = caddy.id;
+                            } else {
+                              newSelectedCaddies[availableGolfer.id] = `${caddy.id}-waitlist`;
+                            }
+                            setSelectedCaddies(newSelectedCaddies);
+                          }
+                        },
+                        onMouseEnter: (e) => {
+                          e.currentTarget.style.backgroundColor = '#e5e7eb';
+                          e.currentTarget.style.transform = 'scale(1.02)';
+                        },
+                        onMouseLeave: (e) => {
+                          e.currentTarget.style.backgroundColor = '#f8fafc';
+                          e.currentTarget.style.transform = 'scale(1)';
+                        }
+                      },
+                        React.createElement('div', {
+                          style: { display: 'flex', alignItems: 'center', gap: '8px' }
+                        },
+                          React.createElement('div', {
+                            style: {
+                              fontSize: '0.7rem',
+                              fontWeight: '600',
+                              color: 'white',
+                              backgroundColor: getCaddyStatusColor(caddy.status),
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              minWidth: '40px',
+                              textAlign: 'center'
+                            }
+                          }, `#${caddy.number}`),
+                          React.createElement('div', null,
+                            React.createElement('div', {
+                              style: { fontSize: '0.8rem', fontWeight: '500' }
+                            }, caddyName),
+                            React.createElement('div', {
+                              style: { fontSize: '0.7rem', color: '#6b7280' }
+                            }, `⭐ ${caddy.rating} | ${caddy.languages.join(', ')}`)
+                          )
+                        ),
+                        React.createElement('div', {
+                          style: { 
+                            fontSize: '0.7rem', 
+                            fontWeight: '500',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'flex-end',
+                            gap: '2px'
+                          }
+                        }, 
+                          React.createElement('span', {
+                            style: { color: getCaddyStatusColor(caddy.status) }
+                          }, caddy.status === 'available' ? '✅ Available' : `🔄 ${caddy.status}`),
+                          caddy.status !== 'available' && React.createElement('span', {
+                            style: { 
+                              fontSize: '0.6rem', 
+                              color: '#d97706',
+                              fontStyle: 'italic'
+                            }
+                          }, 'Click for Waitlist'),
+                          caddy.status === 'available' && React.createElement('span', {
+                            style: { 
+                              fontSize: '0.6rem', 
+                              color: '#059669',
+                              fontStyle: 'italic'
+                            }
+                          }, 'Click to Assign')
+                        )
+                      );
+                    })
+                ),
+                golfers.length > 0 && React.createElement('div', {
+                  style: { 
+                    marginTop: '16px', 
+                    padding: '12px',
+                    backgroundColor: '#f0f9ff',
+                    borderRadius: '6px',
+                    border: '1px solid #bae6fd'
+                  }
+                },
+                  React.createElement('div', {
+                    style: { fontSize: '0.8rem', fontWeight: '600', color: '#0c4a6e', marginBottom: '8px' }
+                  }, '👥 Current Assignments:'),
+                  ...golfers.map((golfer, index) => {
+                    if (!golfer.name.trim()) return null;
+                    const assignment = selectedCaddies[golfer.id];
+                    const isWaitlisted = assignment?.includes('-waitlist');
+                    const caddyId = assignment?.replace('-waitlist', '');
+                    const assignedCaddy = caddyId ? demoCaddies.find(c => c.id === caddyId) : null;
+                    
+                    return React.createElement('div', {
+                      key: golfer.id,
+                      style: {
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '6px 8px',
+                        marginBottom: '4px',
+                        backgroundColor: assignment ? (isWaitlisted ? '#fef3c7' : '#dcfce7') : '#f3f4f6',
+                        borderRadius: '4px',
+                        border: `1px solid ${assignment ? (isWaitlisted ? '#f59e0b' : '#16a34a') : '#d1d5db'}`
+                      }
+                    },
+                      React.createElement('span', {
+                        style: { fontSize: '0.8rem', fontWeight: '500' }
+                      }, golfer.name),
+                      React.createElement('div', {
+                        style: { fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '4px' }
+                      },
+                        assignment ? (
+                          React.createElement('span', {
+                            style: { 
+                              color: isWaitlisted ? '#d97706' : '#16a34a',
+                              fontWeight: '500'
+                            }
+                          }, `${isWaitlisted ? '📋' : '✅'} #${assignedCaddy?.number} ${assignedCaddy?.name}${isWaitlisted ? ' (Waitlist)' : ''}`)
+                        ) : (
+                          React.createElement('span', {
+                            style: { color: '#6b7280', fontStyle: 'italic' }
+                          }, 'No caddy assigned')
+                        ),
+                        assignment && React.createElement('button', {
+                          onClick: () => {
+                            const newSelectedCaddies = { ...selectedCaddies };
+                            delete newSelectedCaddies[golfer.id];
+                            setSelectedCaddies(newSelectedCaddies);
+                          },
+                          style: {
+                            background: 'none',
+                            border: 'none',
+                            color: '#ef4444',
+                            cursor: 'pointer',
+                            fontSize: '0.8rem',
+                            padding: '2px',
+                            marginLeft: '4px'
+                          }
+                        }, '✖')
+                      )
+                    );
+                  }).filter(Boolean)
+                )
+              ),
+
+              React.createElement('div', {
+                style: {
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  marginBottom: '20px'
+                }
+              },
+                React.createElement('div', {
+                  style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
+                },
+                  React.createElement('span', {
+                    style: { fontSize: '0.875rem', fontWeight: '500', color: '#374151' }
+                  }, t('languageSettings')),
+                  React.createElement(LanguageBulkControl, {
+                    onSetAll: handleBulkLanguageChange,
+                    currentDistribution: getLanguageDistribution(),
+                    modalLanguage: language
+                  })
+                )
+              ),
+
+              React.createElement('div', { style: { marginBottom: '20px' } },
+                React.createElement('label', {
+                  style: { display: 'block', marginBottom: '8px', fontSize: '0.875rem', fontWeight: '500', color: '#374151' }
+                }, t('bookingType')),
+                React.createElement('select', {
+                  value: bookingType,
+                  onChange: (e) => setBookingType(e.target.value),
+                  style: {
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '2px solid #d1d5db',
+                    borderRadius: '6px',
+                    fontSize: '0.875rem'
+                  }
+                },
+                  React.createElement('option', { value: 'regular' }, t('regular')),
+                  React.createElement('option', { value: 'vip' }, t('vip')),
+                  React.createElement('option', { value: 'tournament' }, t('tournament')),
+                  React.createElement('option', { value: 'society' }, t('society'))
+                )
+              ),
+
+              React.createElement('div', { style: { marginBottom: '20px' } },
+                React.createElement('div', {
+                  style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }
+                },
+                  React.createElement('label', {
+                    style: { fontSize: '0.875rem', fontWeight: '500', color: '#374151' }
+                  }, `${t('golfers')} (${golfers.length}/4)`),
+                  React.createElement('button', {
+                    onClick: addGolfer,
+                    disabled: golfers.length >= 4,
+                    style: {
+                      padding: '6px 12px',
+                      backgroundColor: golfers.length >= 4 ? '#d1d5db' : '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '0.8rem',
+                      cursor: golfers.length >= 4 ? 'not-allowed' : 'pointer'
+                    }
+                  }, `+ ${t('addGolfer')}`)
+                ),
+                
+                ...golfers.map((golfer, index) =>
+                  React.createElement('div', {
+                    key: golfer.id,
+                    style: { 
+                      display: 'grid', 
+                      gridTemplateColumns: '1fr 100px 40px', 
+                      gap: '8px', 
+                      marginBottom: '8px',
+                      alignItems: 'center'
+                    }
+                  },
+                    React.createElement(MultiLangInput, {
+                      value: golfer.name,
+                      onChange: (value) => updateGolfer(index, 'name', value),
+                      placeholder: `Golfer Name ${index + 1}`,
+                      inputLang: golfer.inputLang || language,
+                      onLangChange: (lang) => {
+                        const newGolfers = [...golfers];
+                        newGolfers[index].inputLang = lang;
+                        setGolfers(newGolfers);
+                      },
+                      modalLanguage: language
+                    }),
+                    React.createElement('input', {
+                      type: 'number',
+                      placeholder: 'HCP',
+                      value: golfer.handicap || '',
+                      onChange: (e) => updateGolfer(index, 'handicap', e.target.value),
+                      style: {
+                        padding: '8px 12px',
+                        border: '2px solid #d1d5db',
+                        borderRadius: '6px',
+                        fontSize: '0.875rem'
+                      }
+                    }),
+                    React.createElement('button', {
+                      onClick: () => removeGolfer(index),
+                      disabled: golfers.length <= 1,
+                      style: {
+                        padding: '8px',
+                        backgroundColor: golfers.length <= 1 ? '#d1d5db' : '#ef4444',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: golfers.length <= 1 ? 'not-allowed' : 'pointer'
+                      }
+                    }, '-')
+                  )
+                )
+              ),
+
+              React.createElement('div', { style: { marginBottom: '20px' } },
+                React.createElement('label', {
+                  style: { display: 'block', marginBottom: '8px', fontSize: '0.875rem', fontWeight: '500', color: '#374151' }
+                }, t('notes')),
+                React.createElement(MultiLangInput, {
+                  type: 'textarea',
+                  rows: 3,
+                  value: notes,
+                  onChange: setNotes,
+                  inputLang: notesInputLang,
+                  onLangChange: setNotesInputLang,
+                  placeholder: 'Booking notes (optional)',
+                  maxLength: 500,
+                  modalLanguage: language
+                }),
+                React.createElement('div', { 
+                  style: { 
+                    fontSize: '0.7rem', 
+                    color: '#6b7280', 
+                    marginTop: '4px',
+                    textAlign: 'right'
+                  }
+                }, `${notes.length}/500 ${notes ? `• ${detectLanguage(notes)} detected` : ''}`)
+              ),
+
+              React.createElement('div', {
+                style: { display: 'flex', gap: '12px', justifyContent: 'flex-end' }
+              },
+                React.createElement('button', {
+                  onClick: onClose,
+                  style: {
+                    padding: '10px 20px',
+                    border: '2px solid #d1d5db',
+                    borderRadius: '8px',
+                    background: 'white',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                    fontWeight: '500'
+                  }
+                }, t('cancel')),
+                isEditing && React.createElement('button', {
+                  onClick: () => {
+                    const confirmMessage = language === 'th' 
+                      ? 'คุณแน่ใจหรือไม่ว่าต้องการลบการจองนี้?'
+                      : language === 'ko'
+                      ? '이 예약을 삭제하시겠습니까?'
+                      : t('confirmDeleteBooking');
+                    
+                    if (confirm(confirmMessage)) {
+                      onSaveBooking(slot, { ...slot.booking, status: 'cancelled' });
+                      onClose();
+                    }
+                  },
+                  style: {
+                    padding: '10px 20px',
+                    border: 'none',
+                    borderRadius: '8px',
+                    background: '#ef4444',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                    fontWeight: '500'
+                  }
+                }, t('deleteBooking')),
+                React.createElement('button', {
+                  onClick: handleSave,
+                  disabled: golfers.filter(g => g.name.trim()).length === 0,
+                  style: {
+                    padding: '10px 20px',
+                    border: 'none',
+                    borderRadius: '8px',
+                    background: golfers.filter(g => g.name.trim()).length === 0 ? '#d1d5db' : '#3b82f6',
+                    color: 'white',
+                    cursor: golfers.filter(g => g.name.trim()).length === 0 ? 'not-allowed' : 'pointer',
+                    fontSize: '0.875rem',
+                    fontWeight: '500'
+                  }
+                }, isEditing ? t('updateBooking') : t('saveBooking'))
+              )
+            )
+          );
+        };
+
+        const TeeSheet = (props) => {
+          const { 
+            date, lanes, rows, filters, totalTees = 4, matches = 0,
+            onSelectSlot, onRangeChange, onRefresh, onFindNext, onClearDay, onMoveBooking, onLanguageChange, onToggleLock 
+          } = props;
+          
+          const { t, language, setLanguage } = useI18n();
+          const [localFilters, setLocalFilters] = useState(filters || {});
+          const [dragOverSlot, setDragOverSlot] = useState(null);
+          const [searchResults, setSearchResults] = useState([]);
+          const [currentSearchIndex, setCurrentSearchIndex] = useState(0);
+          const [highlightedSlot, setHighlightedSlot] = useState(null);
+          const [searchInputLang, setSearchInputLang] = useState(language);
+
+          useEffect(() => {
+            if (onLanguageChange) {
+              onLanguageChange(language);
+            }
+          }, [language, onLanguageChange]);
+
+          useEffect(() => {
+            setSearchInputLang(language);
+          }, [language]);
+
+          const timeSlots = useMemo(() => {
+            const intervalMinutes = parseInt(localFilters.interval?.replace(/\D/g, '') || '10');
+            return buildTimes(
+              localFilters.startTime || '08:00', 
+              localFilters.endTime || '12:00', 
+              intervalMinutes
+            );
+          }, [localFilters.startTime, localFilters.endTime, localFilters.interval]);
+
+          const headerCols = useMemo(() => {
+            const cols = [];
+            
+            const complexText = localFilters.complex || '36 holes (A/B/C/D)';
+            let activeCourses = [];
+            
+            if (complexText.includes('(A/B/C/D)')) {
+              activeCourses = ['A', 'B', 'C', 'D'];
+            } else if (complexText.includes('(A/B/C)')) {
+              activeCourses = ['A', 'B', 'C'];
+            } else if (complexText.includes('(A/B)')) {
+              activeCourses = ['A', 'B'];
+            } else {
+              activeCourses = ['A', 'B', 'C', 'D'];
+            }
+
+            const activeLanes = lanes.filter(lane => {
+              const courseLetters = lane.label.match(/Course ([A-D])/);
+              return courseLetters && activeCourses.includes(courseLetters[1]);
+            });
+
+            activeLanes.forEach((lane, laneIndex) => {
+              let label = lane.label;
+              if (language === 'th' && lane.labelTh) {
+                label = lane.labelTh;
+              } else if (language === 'ko' && lane.labelKo) {
+                label = lane.labelKo;
+              } else if (lane.labelEn) {
+                label = lane.labelEn;
+              }
+
+              const teesCount = localFilters.teesPerCourse || 2;
+              
+              for (let i = 1; i <= teesCount; i++) {
+                let nine;
+                if (teesCount === 1) {
+                  // For single tee, alternate by course
+                  nine = laneIndex % 2 === 0 ? 'front' : 'back';
+                } else {
+                  // For multiple tees, first half are front, second half are back
+                  nine = i <= Math.ceil(teesCount / 2) ? 'front' : 'back';
+                }
+                
+                cols.push({ 
+                  key: `${lane.courseId}-${i}`, 
+                  label: `${label.replace('Course ', '')}${teesCount > 1 ? `-${i}` : ''}`,
+                  color: lane.color || '#e5e7eb',
+                  nine,
+                  courseId: lane.courseId
+                });
+              }
+            });
+            return cols;
+          }, [lanes, language, localFilters.teesPerCourse, localFilters.complex]);
+
+          useEffect(() => {
+            if (filters && JSON.stringify(filters) !== JSON.stringify(localFilters)) {
+              setLocalFilters(filters);
+            }
+          }, [filters]);
+
+          const updateFilters = (newFilters) => {
+            const updatedFilters = { ...localFilters, ...newFilters };
+            setLocalFilters(updatedFilters);
+            
+            if (onRangeChange && (newFilters.startTime || newFilters.endTime)) {
+              onRangeChange(
+                updatedFilters.startTime || '08:00',
+                updatedFilters.endTime || '12:00'
+              );
+            }
+          };
+
+          const enhancedRows = useMemo(() => {
+            return timeSlots.map(time => {
+              const existingRow = rows.find(r => r.time === time);
+              return {
+                time,
+                slots: headerCols.map(col => {
+                  const slotId = `${time}-${col.key}`;
+                  const existingSlot = existingRow?.slots.find(s => s.id === slotId);
+                  return existingSlot || {
+                    id: slotId,
+                    courseId: col.key.split('-')[0],
+                    time,
+                    players: 0,
+                    capacity: 4
+                  };
+                })
+              };
+            });
+          }, [timeSlots, rows, headerCols]);
+
+          const performSearch = () => {
+
+            const searchTerm = localFilters.golferName?.trim().toLowerCase();
+            if (!searchTerm) {
+              setSearchResults([]);
+              setHighlightedSlot(null);
+              return;
+            }
+
+            const results = [];
+            
+            enhancedRows.forEach(row => {
+              row.slots.forEach(slot => {
+                if (slot.booking) {
+                  const golferMatch = slot.booking.golfers.some(golfer => 
+                    golfer.name.toLowerCase().includes(searchTerm)
+                  );
+                  
+                  const caddyMatch = slot.booking.caddyBookings?.some(caddyBooking => {
+                    const caddyNumber = caddyBooking.caddyNumber || '000';
+                    const caddyName = caddyBooking.caddyName.toLowerCase();
+                    return caddyNumber.includes(searchTerm.replace('#', '')) || 
+                           caddyName.includes(searchTerm);
+                  });
+
+                  if (golferMatch || caddyMatch) {
+                    let matchInfo = '';
+                    if (golferMatch) {
+                      const matchedGolfer = slot.booking.golfers.find(g => 
+                        g.name.toLowerCase().includes(searchTerm)
+                      );
+                      matchInfo = `Golfer: ${matchedGolfer?.name}`;
+                    }
+                    if (caddyMatch) {
+                      const matchedCaddy = slot.booking.caddyBookings?.find(cb => {
+                        const caddyNumber = cb.caddyNumber || '000';
+                        return caddyNumber.includes(searchTerm.replace('#', '')) || 
+                               cb.caddyName.toLowerCase().includes(searchTerm);
+                      });
+                      matchInfo += matchInfo ? ` | Caddy: #${matchedCaddy?.caddyNumber} ${matchedCaddy?.caddyName}` 
+                                           : `Caddy: #${matchedCaddy?.caddyNumber} ${matchedCaddy?.caddyName}`;
+                    }
+                    
+                    results.push({
+                      slotId: slot.id,
+                      time: slot.time,
+                      info: matchInfo
+                    });
+                  }
+                }
+              });
+            });
+
+            setSearchResults(results);
+            setCurrentSearchIndex(0);
+            
+            if (results.length > 0) {
+              jumpToSlot(results[0].slotId);
+            }
+          }
+            // expose search for Enter key in inputs
+            try { window.__performSearch = performSearch; } catch (e) {}
+;
+
+          const jumpToNext = () => {
+            if (searchResults.length === 0) return;
+            
+            const nextIndex = (currentSearchIndex + 1) % searchResults.length;
+            setCurrentSearchIndex(nextIndex);
+            jumpToSlot(searchResults[nextIndex].slotId);
+          };
+
+          const jumpToSlot = (slotId) => {
+            setHighlightedSlot(slotId);
+            
+            const element = document.querySelector(`[data-slot-id="${slotId}"]`);
+            if (element) {
+              element.scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'center',
+                inline: 'center'
+              });
+            }
+            
+            setTimeout(() => {
+              setHighlightedSlot(null);
+            }, 3000);
+          };
+
+          return React.createElement('div', {
+            style: { 
+              fontFamily: 'system-ui, sans-serif', 
+              padding: '8px',
+              backgroundColor: '#f8fafc',
+              minHeight: '100vh',
+              width: '100%',
+              boxSizing: 'border-box',
+              overflow: 'hidden'
+            }
+          },
+            React.createElement('div', {
+              style: { 
+                backgroundColor: 'white',
+                borderRadius: '6px',
+                padding: '8px',
+                marginBottom: '8px',
+                border: '1px solid #e5e7eb',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                width: '100%',
+                boxSizing: 'border-box'
+              }
+            },
+              React.createElement('div', {
+                style: {
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  fontSize: '0.8rem'
+                }
+              },
+                React.createElement('div', {
+                  style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }
+                },
+                  React.createElement('label', {
+                    style: { fontWeight: '500', color: '#374151', minWidth: '70px' }
+                  }, t('golferName')),
+                  React.createElement('div', {
+                    style: { flex: '1', minWidth: '220px', maxWidth: '420px' }
+                  },
+                    React.createElement(MultiLangInput, {
+                      type: 'search',
+                      value: localFilters.golferName || '',
+                      onChange: (value) => setLocalFilters({...localFilters, golferName: value}),
+                      placeholder: 'Search golfer name or caddy number',
+                      inputLang: searchInputLang,
+                      onLangChange: setSearchInputLang,
+                      modalLanguage: language
+                    })
+                  ),
+                  React.createElement('button', {
+                    onClick: performSearch,
+                    style: {
+                      padding: '6px 12px',
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      fontSize: '0.75rem',
+                      cursor: 'pointer',
+                      fontWeight: '500'
+                    }
+                  }, t('find')),
+                  React.createElement('button', {
+                    onClick: jumpToNext,
+                    disabled: searchResults.length === 0,
+                    style: {
+                      padding: '6px 12px',
+                      backgroundColor: searchResults.length === 0 ? '#d1d5db' : '#6b7280',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      fontSize: '0.75rem',
+                      cursor: searchResults.length === 0 ? 'not-allowed' : 'pointer',
+                      fontWeight: '500'
+                    }
+                  }, t('next')),
+                  React.createElement('span', {
+                    style: { 
+                      color: '#6b7280',
+                      fontSize: '0.7rem',
+                      minWidth: '70px'
+                    }
+                  }, searchResults.length > 0 
+                    ? `${currentSearchIndex + 1}/${searchResults.length} ${t('matches')}`
+                    : `${t('matches')}: 0`
+                  )
+                ),
+
+                React.createElement('div', {
+                  style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'space-between' }
+                },
+                  React.createElement('div', {
+                    style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }
+                  },
+                    ...lanes.map((lane, idx) =>
+                      React.createElement('div', {
+                        key: lane.courseId,
+                        style: { display: 'flex', alignItems: 'center', gap: '3px' }
+                      },
+                        React.createElement('div', {
+                          style: {
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '2px',
+                            backgroundColor: lane.color || ['#86efac', '#7dd3fc', '#fde047', '#c4b5fd'][idx]
+                          }
+                        }),
+                        React.createElement('span', {
+                          style: { fontSize: '0.7rem', color: '#6b7280' }
+                        }, `${t('course')} ${lane.label.replace('Course ', '')}`)
+                      )
+                    )
+                  ),
+                  
+                  React.createElement('div', {
+                    style: { display: 'flex', gap: '8px', alignItems: 'center' }
+                  },
+                    React.createElement('select', {
+                      value: language,
+                      onChange: (e) => setLanguage(e.target.value),
+                      style: {
+                        padding: '4px 8px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        fontSize: '0.7rem',
+                        backgroundColor: 'white',
+                        fontWeight: '500'
+                      }
+                    },
+                      React.createElement('option', { value: 'en' }, '🇺🇸 English'),
+                      React.createElement('option', { value: 'th' }, '🇹🇭 ไทย'),
+                      React.createElement('option', { value: 'ko' }, '🇰🇷 한국어'),
+                      React.createElement('option', { value: 'ja' }, '🇯🇵 日本語')
+                    ),
+                    
+                    React.createElement('button', {
+                      onClick: () => {
+                        if (confirm(`⚠️ ${t('confirmDeleteBooking')?.replace('booking', 'ALL BOOKINGS FOR THE DAY')} This action cannot be undone!`)) {
+                          if (confirm('🚨 FINAL WARNING: You are about to delete ALL bookings for the entire day. Are you absolutely sure?')) {
+                            onClearDay && onClearDay();
+                          }
+                        }
+                      },
+                      style: {
+                        padding: '6px 10px',
+                        backgroundColor: '#dc2626',
+                        color: 'white',
+                        border: '1px solid #991b1b',
+                        borderRadius: '4px',
+                        fontSize: '0.7rem',
+                        cursor: 'pointer',
+                        fontWeight: '600',
+                        whiteSpace: 'nowrap'
+                      }
+                    }, `🗑️ ${t('clearDay')}`)
+                  )
+                )
+              ),
+
+              React.createElement('div', {
+                style: { 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  marginTop: '8px',
+                  paddingTop: '8px',
+                  borderTop: '1px solid #e5e7eb'
+                }
+              },
+                React.createElement('div', {
+                  style: {
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                    gap: '12px'
+                  }
+                },
+                  React.createElement('div', null,
+                    React.createElement('label', {
+                      style: { display: 'block', marginBottom: '4px', fontSize: '0.75rem', fontWeight: '500', color: '#374151' }
+                    }, t('complex')),
+                    React.createElement('select', {
+                      value: localFilters.complex || '36 holes (A/B/C/D)',
+                      onChange: (e) => updateFilters({complex: e.target.value}),
+                      style: {
+                        width: '100%',
+                        padding: '6px 8px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        fontSize: '0.75rem'
+                      }
+                    },
+                      React.createElement('option', null, '36 holes (A/B/C/D)'),
+                      React.createElement('option', null, '18 holes (A/B)'),
+                      React.createElement('option', null, '27 holes (A/B/C)')
+                    )
+                  ),
+
+                  React.createElement('div', null,
+                    React.createElement('label', {
+                      style: { display: 'block', marginBottom: '4px', fontSize: '0.75rem', fontWeight: '500', color: '#374151' }
+                    }, t('date')),
+                    React.createElement('input', {
+                      type: 'date',
+                      value: localFilters.date || date,
+                      onChange: (e) => updateFilters({date: e.target.value}),
+                      style: {
+                        width: '100%',
+                        padding: '6px 8px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '4px',
+                        fontSize: '0.75rem'
+                      }
+                    })
+                  ),
+
+                  React.createElement('div', null,
+                    React.createElement('label', {
+                      style: { display: 'block', marginBottom: '4px', fontSize: '0.75rem', fontWeight: '500', color: '#374151' }
+                    }, t('totalTees')),
+                    React.createElement('div', {
+                      style: { 
+                        padding: '6px 8px',
+                        backgroundColor: '#f3f4f6',
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                        fontWeight: '500',
+                        color: '#374151',
+                        border: '1px solid #e5e7eb'
+                      }
+                    }, totalTees)
+                  )
+                ),
+                
+                React.createElement('div', {
+                  style: {
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                    gap: '12px'
+                  }
+                },
+                  React.createElement('div', null,
+                    React.createElement('label', {
+                      style: { display: 'block', marginBottom: '4px', fontSize: '0.75rem', fontWeight: '500', color: '#374151' }
+                    }, `${t('start')} / ${t('end')}`),
+                    React.createElement('div', {
+                      style: { display: 'flex', gap: '6px' }
+                    },
+                      React.createElement('input', {
+                        type: 'time',
+                        value: localFilters.startTime || '08:00',
+                        onChange: (e) => updateFilters({startTime: e.target.value}),
+                        style: {
+                          flex: 1,
+                          padding: '6px 8px',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: '0.75rem'
+                        }
+                      }),
+                      React.createElement('input', {
+                        type: 'time',
+                        value: localFilters.endTime || '12:00',
+                        onChange: (e) => updateFilters({endTime: e.target.value}),
+                        style: {
+                          flex: 1,
+                          padding: '6px 8px',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: '0.75rem'
+                        }
+                      })
+                    )
+                  ),
+
+                  React.createElement('div', null,
+                    React.createElement('label', {
+                      style: { display: 'block', marginBottom: '4px', fontSize: '0.75rem', fontWeight: '500', color: '#374151' }
+                    }, `${t('interval')} / ${t('teesPerCourse')}`),
+                    React.createElement('div', {
+                      style: { display: 'flex', gap: '6px' }
+                    },
+                      React.createElement('select', {
+                        value: localFilters.interval || '10 min',
+                        onChange: (e) => updateFilters({interval: e.target.value}),
+                        style: {
+                          flex: 1,
+                          padding: '6px 8px',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: '0.75rem'
+                        }
+                      },
+                        React.createElement('option', null, '5 min'),
+                        React.createElement('option', null, '10 min'),
+                        React.createElement('option', null, '15 min')
+                      ),
+                      React.createElement('select', {
+                        value: localFilters.teesPerCourse || 2,
+                        onChange: (e) => updateFilters({teesPerCourse: parseInt(e.target.value)}),
+                        style: {
+                          flex: 1,
+                          padding: '6px 8px',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '4px',
+                          fontSize: '0.75rem'
+                        }
+                      },
+                        React.createElement('option', { value: 1 }, '1'),
+                        React.createElement('option', { value: 2 }, '2'),
+                        React.createElement('option', { value: 3 }, '3'),
+                        React.createElement('option', { value: 4 }, '4')
+                      )
+                    )
+                  )
+                )
+              )
+            ),
+
+            React.createElement('div', {
+              style: {
+                backgroundColor: 'white',
+                borderRadius: '8px',
+                border: '1px solid #e5e7eb',
+                boxShadow: '0 4px 6px rgba(0,0,0,0.05)',
+                width: '100%',
+                boxSizing: 'border-box'
+              }
+            },
+              React.createElement('div', {
+                style: {
+                  width: '100%',
+                  overflow: 'auto',
+                  maxHeight: '70vh'
+                }
+              },
+                React.createElement('table', {
+                  style: { 
+                    width: '100%', 
+                    borderCollapse: 'collapse',
+                    fontSize: '0.8rem',
+                    minWidth: '800px'
+                  }
+                },
+                  React.createElement('thead', null,
+                    React.createElement('tr', null,
+                      React.createElement('th', {
+                        style: { 
+                          padding: '10px 6px',
+                          border: '1px solid #e5e7eb',
+                          backgroundColor: '#f9fafb',
+                          fontSize: '0.7rem',
+                          color: '#6b7280',
+                          minWidth: '60px',
+                          position: 'sticky',
+                          left: 0,
+                          zIndex: 10
+                        }
+                      }),
+                      ...headerCols.map((col, colIndex) => {
+                        const needsDivider = colIndex > 0 && 
+                          headerCols[colIndex - 1].nine !== col.nine;
+                        
+                        return React.createElement('th', {
+                          key: col.key,
+                          style: { 
+                            padding: '6px 4px',
+                            border: '1px solid #e5e7eb',
+                            backgroundColor: col.color,
+                            fontSize: '0.7rem',
+                            fontWeight: '600',
+                            textAlign: 'center',
+                            minWidth: '100px',
+                            color: '#1f2937',
+                            borderLeft: needsDivider ? `3px solid ${col.color}` : '1px solid #e5e7eb',
+                            position: 'relative'
+                          }
+                        },
+                          needsDivider && React.createElement('div', {
+                            style: {
+                              position: 'absolute',
+                              left: '-2px',
+                              top: '0',
+                              bottom: '0',
+                              width: '2px',
+                              backgroundColor: col.color,
+                              filter: 'brightness(0.7)',
+                              zIndex: 1
+                            }
+                          }),
+                          col.label,
+                          needsDivider && React.createElement('div', {
+                            style: {
+                              position: 'absolute',
+                              left: '-1px',
+                              top: '-1px',
+                              fontSize: '0.6rem',
+                              color: '#374151',
+                              fontWeight: '700',
+                              backgroundColor: 'rgba(255,255,255,0.9)',
+                              padding: '1px 3px',
+                              borderRadius: '2px',
+                              transform: 'rotate(-90deg)',
+                              transformOrigin: 'left bottom',
+                              whiteSpace: 'nowrap'
+                            }
+                          }, col.nine === 'back' ? (language === 'th' ? 'หลัง 9' : language === 'ko' ? '백나인' : 'Back 9') : '')
+                        );
+                      })
+                    ),
+                    React.createElement('tr', null,
+                      React.createElement('th', {
+                        style: { 
+                          padding: '6px',
+                          border: '1px solid #e5e7eb',
+                          backgroundColor: '#f9fafb',
+                          fontSize: '0.7rem',
+                          fontWeight: '600',
+                          position: 'sticky',
+                          left: 0,
+                          zIndex: 10
+                        }
+                      }, t('time')),
+                      ...headerCols.map((col, colIndex) => {
+                        const needsDivider = colIndex > 0 && 
+                          headerCols[colIndex - 1].nine !== col.nine;
+                        
+                        return React.createElement('th', {
+                          key: `${col.key}-sub`,
+                          style: { 
+                            padding: '3px',
+                            border: '1px solid #e5e7eb',
+                            backgroundColor: '#f9fafb',
+                            fontSize: '0.65rem',
+                            color: '#6b7280',
+                            borderLeft: needsDivider ? `3px solid ${col.color}` : '1px solid #e5e7eb',
+                            position: 'relative'
+                          }
+                        },
+                          needsDivider && React.createElement('div', {
+                            style: {
+                              position: 'absolute',
+                              left: '-2px',
+                              top: '0',
+                              bottom: '0',
+                              width: '2px',
+                              backgroundColor: col.color,
+                              filter: 'brightness(0.7)',
+                              zIndex: 1
+                            }
+                          }),
+                          col.key
+                        );
+                      })
+                    )
+                  ),
+                  React.createElement('tbody', null,
+                    ...enhancedRows.map((row, timeIdx) =>
+                      React.createElement('tr', { key: row.time },
+                        React.createElement('td', {
+                          style: { 
+                            padding: '6px',
+                            border: '1px solid #e5e7eb',
+                            backgroundColor: '#f9fafb',
+                            fontWeight: '600',
+                            fontSize: '0.7rem',
+                            textAlign: 'center',
+                            position: 'sticky',
+                            left: 0,
+                            zIndex: 5
+                          }
+                        }, row.time),
+                        ...row.slots.map((slot, colIdx) => {
+                          const hasBooking = !!slot.booking;
+                          const isDropTarget = dragOverSlot === slot.id;
+                          
+                          const needsDivider = colIdx > 0 && 
+                            headerCols[colIdx - 1]?.nine !== headerCols[colIdx]?.nine;
+                          const currentCol = headerCols[colIdx];
+                          
+                          return React.createElement('td', {
+                            key: slot.id,
+                            style: { 
+                              padding: '1px',
+                              border: '1px solid #e5e7eb',
+                              height: '45px',
+                              verticalAlign: 'middle',
+                              borderLeft: needsDivider ? `3px solid ${currentCol?.color}` : '1px solid #e5e7eb',
+                              position: 'relative'
+                            }
+                          },
+                            needsDivider && React.createElement('div', {
+                              style: {
+                                position: 'absolute',
+                                left: '-2px',
+                                top: '0',
+                                bottom: '0',
+                                width: '2px',
+                                backgroundColor: currentCol?.color,
+                                filter: 'brightness(0.7)',
+                                zIndex: 1
+                              }
+                            }),
+                            React.createElement('div', {
+                              'data-slot-id': slot.id,
+                              style: {
+                                width: '100%',
+                                height: '100%',
+                                backgroundColor: slot.locked ? '#fef2f2' : 
+                                               isDropTarget ? '#dbeafe' : 
+                                               highlightedSlot === slot.id ? '#fef3c7' :
+                                               hasBooking ? '#eff6ff' : 'white',
+                                border: isDropTarget ? '2px dashed #3b82f6' : 
+                                       highlightedSlot === slot.id ? '3px solid #f59e0b' :
+                                       slot.locked ? '2px solid #ef4444' :
+                                       '1px solid transparent',
+                                borderRadius: '4px',
+                                padding: '2px',
+                                cursor: slot.locked ? 'not-allowed' : hasBooking ? 'grab' : 'pointer',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'center',
+                                position: 'relative',
+                                overflow: 'hidden',
+                                boxShadow: highlightedSlot === slot.id ? '0 0 8px rgba(245, 158, 11, 0.6)' : 
+                                         hasBooking ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                                transition: 'all 0.3s ease',
+                                minHeight: '40px'
+                              },
+                              draggable: (!!slot.booking && !slot.locked),
+                              onDragStart: (e) => {
+                                if (!slot.booking || slot.locked) return;
+                                try {
+                                  e.dataTransfer.setData('text/plain', slot.id);
+                                  e.dataTransfer.effectAllowed = 'move';
+                                } catch(_) {}
+                              },
+                              onDragOver: (e) => {
+                                if (slot.locked) return;
+                                e.preventDefault();
+                                if (setDragOverSlot) setDragOverSlot(slot.id);
+                              },
+                              onDragLeave: () => {
+                                if (dragOverSlot === slot.id && setDragOverSlot) setDragOverSlot(null);
+                              },
+                              onDrop: (e) => {
+                                if (slot.locked) return;
+                                e.preventDefault();
+                                const fromId = (e.dataTransfer && e.dataTransfer.getData) ? e.dataTransfer.getData('text/plain') : null;
+                                if (fromId && fromId !== slot.id) {
+                                  if (onMoveBooking) onMoveBooking(fromId, slot.id);
+                                }
+                                if (setDragOverSlot) setDragOverSlot(null);
+                              },
+    
+                              onClick: (e) => {
+                                if (e.ctrlKey || e.metaKey) {
+                                  e.preventDefault();
+                                  if (onToggleLock) {
+                                    onToggleLock(slot);
+                                  }
+                                } else if (!slot.locked && onSelectSlot) {
+                                  onSelectSlot(slot);
+                                }
+                              },
+                              onContextMenu: (e) => {
+                                e.preventDefault();
+                                if (onToggleLock) {
+                                  onToggleLock(slot);
+                                }
+                              },
+                              title: slot.locked 
+                                ? "🔒 LOCKED - Right-click or Ctrl+click to UNLOCK" 
+                                : "🔓 UNLOCKED - Right-click or Ctrl+click to LOCK this slot"
+                            },
+                              hasBooking && slot.booking && React.createElement('div', {
+                                style: { width: '100%' }
+                              },
+                                React.createElement('div', {
+                                  style: {
+                                    fontSize: '0.6rem',
+                                    fontWeight: '600',
+                                    color: 'white',
+                                    backgroundColor: getBookingTypeColor(slot.booking.bookingType),
+                                    padding: '1px 4px',
+                                    borderRadius: '3px',
+                                    marginBottom: '2px',
+                                    textAlign: 'center'
+                                  }
+                                }, t(slot.booking.bookingType).toUpperCase()),
+                                
+                                ...slot.booking.golfers.slice(0, 2).map((golfer, idx) => {
+                                  const caddyBooking = slot.booking.caddyBookings?.find(cb => cb.golferId === golfer.id);
+                                  return React.createElement('div', {
+                                    key: golfer.id,
+                                    style: {
+                                      fontSize: '0.65rem',
+                                      lineHeight: '1.1',
+                                      color: '#1f2937',
+                                      fontWeight: '500',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      marginBottom: '1px',
+                                      fontFamily: golfer.inputLang === 'th' ? 'system-ui, "Noto Sans Thai", sans-serif' :
+                                                  golfer.inputLang === 'ko' ? 'system-ui, "Noto Sans KR", sans-serif' :
+                                                  'system-ui, sans-serif'
+                                    }
+                                  },
+                                    React.createElement('div', null, `${golfer.name} ${golfer.handicap ? `(${golfer.handicap})` : ''}`),
+                                    caddyBooking && React.createElement('div', {
+                                      style: {
+                                        fontSize: '0.55rem',
+                                        color: caddyBooking.isWaitlisted ? '#d97706' : '#059669',
+                                        fontStyle: 'italic'
+                                      }
+                                    }, `${caddyBooking.isWaitlisted ? '📋' : '↗'} #${caddyBooking.caddyNumber || '000'} ${caddyBooking.caddyName}${caddyBooking.isWaitlisted ? React.createElement('span', { style: { fontSize: '0.5rem' } }, ' (waitlist)') : ''}`)
+                                  );
+                                }),
+                                
+                                slot.booking.golfers.length > 2 && React.createElement('div', {
+                                  style: {
+                                    fontSize: '0.6rem',
+                                    color: '#6b7280',
+                                    fontWeight: '500'
+                                  }
+                                }, `+${slot.booking.golfers.length - 2} more`),
+                                
+                                slot.booking.notes && React.createElement('div', {
+                                  style: {
+                                    fontSize: '0.55rem',
+                                    color: '#8b5cf6',
+                                    fontStyle: 'italic',
+                                    marginTop: '1px',
+                                    fontFamily: slot.booking.notesLang === 'th' ? 'system-ui, "Noto Sans Thai", sans-serif' :
+                                                slot.booking.notesLang === 'ko' ? 'system-ui, "Noto Sans KR", sans-serif' :
+                                                'system-ui, sans-serif'
+                                  }
+                                }, `${slot.booking.notes.slice(0, 15)}${slot.booking.notes.length > 15 ? '...' : ''}`)
+                              ),
+                              
+                              slot.locked && React.createElement('div', {
+                                style: {
+                                  fontSize: '0.6rem',
+                                  color: '#ef4444',
+                                  fontWeight: '700',
+                                  textAlign: 'center',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  height: '100%'
+                                }
+                              }, '🔒 LOCKED'),
+                              
+                              !hasBooking && !slot.locked && isDropTarget && React.createElement('div', {
+                                style: {
+                                  fontSize: '0.6rem',
+                                  color: '#3b82f6',
+                                  textAlign: 'center',
+                                  fontWeight: '500'
+                                }
+                              }, 'Drop here')
+                            )
+                          );
+                        })
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          );
+        };
+
+        // Demo Data
+        const demoLanes = [
+          { 
+            courseId: "course-a", 
+            label: "Course A", 
+            labelEn: "Course A",
+            labelTh: "สนาม เอ",
+            labelKo: "코스 A",
+            color: "#86efac" 
+          },
+          { 
+            courseId: "course-b", 
+            label: "Course B", 
+            labelEn: "Course B",
+            labelTh: "สนาม บี",
+            labelKo: "코스 B",
+            color: "#7dd3fc" 
+          }, 
+          { 
+            courseId: "course-c", 
+            label: "Course C", 
+            labelEn: "Course C",
+            labelTh: "สนาม ซี",
+            labelKo: "코스 C",
+            color: "#fde047" 
+          },
+          { 
+            courseId: "course-d", 
+            label: "Course D", 
+            labelEn: "Course D",
+            labelTh: "สนาม ดี",
+            labelKo: "코스 D",
+            color: "#c4b5fd" 
+          }
+        ];
+
+        const demoCaddies = [
+          { id: 'c001', number: '001', name: 'Somchai', nameEn: 'Somchai', nameTh: 'สมชาย', nameKo: '솜차이', rating: 4.8, languages: ['Thai', 'English'], status: 'available' },
+          { id: 'c003', number: '003', name: 'Niran', nameEn: 'Niran', nameTh: 'นิรันดร์', nameKo: '니란', rating: 4.6, languages: ['Thai', 'English', 'Japanese'], status: 'available' },
+          { id: 'c007', number: '007', name: 'Mali', nameEn: 'Mali', nameTh: 'มาลี', nameKo: '말리', rating: 4.9, languages: ['Thai', 'English'], status: 'available' },
+          { id: 'c012', number: '012', name: 'Porn', nameEn: 'Porn', nameTh: 'พร', nameKo: '폰', rating: 4.7, languages: ['Thai', 'Korean'], status: 'available' },
+          { id: 'c015', number: '015', name: 'Lek', nameEn: 'Lek', nameTh: 'เล็ก', nameKo: '렉', rating: 4.8, languages: ['Thai', 'Korean', 'English'], status: 'available' },
+          { id: 'c023', number: '023', name: 'Malee', nameEn: 'Malee', nameTh: 'มาลี', nameKo: '말리', rating: 4.5, languages: ['Thai', 'English'], status: 'available' },
+          { id: 'c031', number: '031', name: 'Jin', nameEn: 'Jin', nameTh: 'จิน', nameKo: '진', rating: 4.4, languages: ['Thai', 'Korean'], status: 'booked' },
+          { id: 'c042', number: '042', name: 'Noi', nameEn: 'Noi', nameTh: 'น้อย', nameKo: '노이', rating: 4.9, languages: ['Thai', 'English', 'Chinese'], status: 'on-course' },
+          { id: 'c056', number: '056', name: 'Benz', nameEn: 'Benz', nameTh: 'เบนซ์', nameKo: '벤츠', rating: 4.3, languages: ['Thai', 'English'], status: 'on-break' },
+          { id: 'c067', number: '067', name: 'Oy', nameEn: 'Oy', nameTh: 'อ้อย', nameKo: '오이', rating: 4.6, languages: ['Thai', 'Japanese'], status: 'available' }
+        ];
+
+        const sampleBookings = [
+          {
+            id: 'booking-1',
+            golfers: [
+              { id: 'g1', name: 'John Smith', handicap: 8, inputLang: 'en' },
+              { id: 'g2', name: 'Mike Johnson', handicap: 12, inputLang: 'en' }
+            ],
+            notes: 'VIP members, prefer Course A',
+            notesLang: 'en',
+            bookingType: 'vip',
+            status: 'confirmed',
+            caddyBookings: [
+              { golferId: 'g1', caddyId: 'c001', golferName: 'John Smith', caddyName: 'Somchai', caddyNumber: '001', status: 'confirmed' },
+              { golferId: 'g2', caddyId: 'c007', golferName: 'Mike Johnson', caddyName: 'Mali', caddyNumber: '007', status: 'confirmed' }
+            ]
+          },
+          {
+            id: 'booking-2',
+            golfers: [
+              { id: 'g3', name: '박지성', handicap: 15, inputLang: 'ko' },
+              { id: 'g4', name: '김민수', handicap: 6, inputLang: 'ko' },
+              { id: 'g5', name: 'สมศักดิ์', handicap: 20, inputLang: 'th' },
+              { id: 'g6', name: 'วิชาย', handicap: 10, inputLang: 'th' }
+            ],
+            notes: '기업 토너먼트 그룹 / กลุ่มทัวร์นาเมนต์บริษัท',
+            notesLang: 'ko',
+            bookingType: 'tournament',
+            status: 'confirmed',
+            caddyBookings: [
+              { golferId: 'g3', caddyId: 'c012', golferName: '박지성', caddyName: 'Porn', caddyNumber: '012', status: 'confirmed' },
+              { golferId: 'g4', caddyId: 'c015', golferName: '김민수', caddyName: 'Lek', caddyNumber: '015', status: 'confirmed' },
+              { golferId: 'g5', caddyId: 'c023', golferName: 'สมศักดิ์', caddyName: 'Malee', caddyNumber: '023', status: 'confirmed' },
+              { golferId: 'g6', caddyId: 'c067', golferName: 'วิชาย', caddyName: 'Oy', caddyNumber: '067', status: 'confirmed' }
+            ]
+          }
+        ];
+
+        const TeeSheetDemo = () => {
+          const [modalOpen, setModalOpen] = useState(false);
+          const [selectedSlot, setSelectedSlot] = useState(null);
+          const [demoRows, setDemoRows] = useState([]);
+          const [language, setLanguage] = useState('en');
+          
+          const [filters, setFilters] = useState({
+            complex: '36 holes (A/B/C/D)',
+            startTime: '08:00',
+            endTime: '12:00',
+            interval: '10 min',
+            teesPerCourse: 2,
+            date: new Date().toISOString().split('T')[0]
+          });
+
+          const getInstructionText = (lang) => {
+            const instructions = {
+              en: {
+                title: 'Enhanced Golf Tee Sheet Demo',
+                content: `
+                  <strong>NEW Multi-Language Features:</strong><br/>
+                  • Each golfer name has individual language setting<br/>
+                  • Notes support multiple languages<br/>
+                  • Caddy search with language-specific names<br/>
+                  • Auto language detection<br/>
+                  • Bulk language controls<br/>
+                  <br/>
+                  <strong>Interactions:</strong><br/>
+                  • <strong>Left-click</strong>: Book/edit tee times<br/>
+                  • <strong>Right-click or Ctrl+click</strong>: Lock/unlock slots<br/>
+                  • Search supports multilingual content<br/>
+                  • Try different languages (EN/TH/KO)<br/>
+                `
+              },
+              th: {
+                title: 'การสาธิตระบบตารางทีออฟขั้นสูง',
+                content: `
+                  <strong>ฟีเจอร์ใหม่หลายภาษา:</strong><br/>
+                  • ชื่อผู้เล่นแต่ละคนมีการตั้งค่าภาษาแยก<br/>
+                  • หมายเหตุรองรับหลายภาษา<br/>
+                  • ค้นหาแคดดี้ด้วยชื่อเฉพาะภาษา<br/>
+                  • ตรวจจับภาษาอัตโนมัติ<br/>
+                  • การควบคุมภาษาแบบกลุ่ม<br/>
+                  <br/>
+                  <strong>การใช้งาน:</strong><br/>
+                  • <strong>คลิกซ้าย</strong>: จอง/แก้ไขเวลาเล่น<br/>
+                  • <strong>คลิกขวาหรือ Ctrl+คลิก</strong>: ล็อค/ปลดล็อคช่อง<br/>
+                  • การค้นหารองรับเนื้อหาหลายภาษา<br/>
+                  • ลองใช้ภาษาต่างๆ (อังกฤษ/ไทย/เกาหลี)<br/>
+                `
+              },
+              ko: {
+                title: '향상된 골프 티 시트 데모',
+                content: `
+                  <strong>새로운 다국어 기능:</strong><br/>
+                  • 각 골퍼 이름은 개별 언어 설정 가능<br/>
+                  • 메모는 여러 언어 지원<br/>
+                  • 언어별 캐디 이름으로 검색<br/>
+                  • 자동 언어 감지<br/>
+                  • 일괄 언어 제어<br/>
+                  <br/>
+                  <strong>상호작용:</strong><br/>
+                  • <strong>왼쪽 클릭</strong>: 티타임 예약/편집<br/>
+                  • <strong>오른쪽 클릭 또는 Ctrl+클릭</strong>: 슬롯 잠금/해제<br/>
+                  • 검색은 다국어 콘텐츠 지원<br/>
+                  • 다양한 언어 시도 (영어/태국어/한국어)<br/>
+                `
+              }
+            
+              ,
+              ja: {
+                title: '拡張ゴルフ Tシート デモ',
+                content: `
+                  <strong>多言語対応の新機能:</strong><br/>
+                  • 各ゴルファー名に個別の入力言語を設定<br/>
+                  • メモは複数言語に対応<br/>
+                  • 言語別のキャディ名で検索可能<br/>
+                  • 自動言語判定<br/>
+                  • 一括言語設定<br/>
+                  <br/>
+                  <strong>操作方法:</strong><br/>
+                  • <strong>左クリック</strong>: ティータイムの予約/編集<br/>
+                  • <strong>右クリックまたは Ctrl+クリック</strong>: スロットのロック/解除<br/>
+                  • 検索は多言語入力に対応<br/>
+                  • 言語切替を試してください (EN/TH/KO/JA)<br/>
+                `
+              }
+};
+            
+            return instructions[lang];
+          };
+
+          useEffect(() => {
+            const intervalMinutes = parseInt(filters.interval?.replace(/\D/g, '') || '10');
+            const timeSlots = buildTimes(filters.startTime, filters.endTime, intervalMinutes);
+            
+            const initialRows = timeSlots.map(time => ({
+              time,
+              slots: demoLanes.flatMap(lane => 
+                Array.from({length: filters.teesPerCourse}, (_, teeIndex) => {
+                  const teeNum = teeIndex + 1;
+                  const slotId = `${time}-${lane.courseId}-${teeNum}`;
+                  const slot = {
+                    id: slotId,
+                    courseId: lane.courseId,
+                    time,
+                    capacity: 4,
+                    players: 0,
+                    availableCaddies: demoCaddies,
+                    locked: Math.random() < 0.05
+                  };
+
+                  if (time === '08:30' && lane.courseId === 'course-a' && teeNum === 1) {
+                    slot.booking = sampleBookings[0];
+                  } else if (time === '09:00' && lane.courseId === 'course-b' && teeNum === 1) {
+                    slot.booking = sampleBookings[1];
+                  } else if (Math.random() < 0.12) {
+                    const languages = ['en', 'th', 'ko'];
+                    const randomLang = languages[Math.floor(Math.random() * languages.length)];
+                    const randomNames = {
+                      en: ['Player', 'Golfer', 'Member'],
+                      th: ['ผู้เล่น', 'นักกอล์ฟ', 'สมาชิก'],
+                      ko: ['플레이어', '골퍼', '회원']
+                    };
+                    
+                    const randomBooking = {
+                      id: `random-${Math.random()}`,
+                      golfers: [
+                        { 
+                          id: 'rg1', 
+                          name: `${randomNames[randomLang][Math.floor(Math.random() * randomNames[randomLang].length)]} ${Math.floor(Math.random() * 100)}`,
+                          handicap: Math.floor(Math.random() * 28),
+                          inputLang: randomLang
+                        }
+                      ],
+                      bookingType: ['regular', 'vip', 'society'][Math.floor(Math.random() * 3)],
+                      status: 'confirmed',
+                      notes: Math.random() < 0.3 ? 'Special requests noted' : undefined,
+                      notesLang: randomLang
+                    };
+                    slot.booking = randomBooking;
+                  }
+
+                  return slot;
+                })
+              )
+            }));
+
+            setDemoRows(initialRows);
+          }, [filters.startTime, filters.endTime, filters.interval, filters.teesPerCourse]);
+
+          const handleSelectSlot = (slot) => {
+            setSelectedSlot(slot);
+            setModalOpen(true);
+          };
+
+          const handleSaveBooking = async (slot, booking) => {
+            if (booking.status === 'cancelled') {
+              const syncManager = ScheduleSyncManager.getInstance();
+              await syncManager.cancelBooking(booking.id);
+              
+              setDemoRows(prevRows => 
+                prevRows.map(row => ({
+                  ...row,
+                  slots: row.slots.map(s => 
+                    s.id === slot.id 
+                      ? { ...s, booking: undefined }
+                      : s
+                  )
+                }))
+              );
+              return;
+            }
+
+            setDemoRows(prevRows => 
+              prevRows.map(row => ({
+                ...row,
+                slots: row.slots.map(s => 
+                  s.id === slot.id 
+                    ? { ...s, booking }
+                    : s
+                )
+              }))
+            );
+          };
+
+          const handleClearDay = () => {
+            if (confirm('⚠️ Are you sure you want to clear all bookings for this day? This action cannot be undone!')) {
+              if (confirm('🚨 FINAL WARNING: You are about to delete ALL bookings for the entire day. Are you absolutely sure?')) {
+                setDemoRows(prevRows => 
+                  prevRows.map(row => ({
+                    ...row,
+                    slots: row.slots.map(slot => ({ ...slot, booking: undefined }))
+                  }))
+                );
+              }
+            }
+          };
+
+          const handleToggleLock = (slot) => {
+            setDemoRows(prevRows => {
+              const newRows = prevRows.map(row => ({
+                ...row,
+                slots: row.slots.map(s => 
+                  s.id === slot.id 
+                    ? { ...s, locked: !slot.locked }
+                    : s
+                )
+              }));
+              return newRows;
+            });
+          }
+
+          const handleMoveBooking = (fromSlotId, toSlotId) => {
+            if (!fromSlotId || !toSlotId || fromSlotId === toSlotId) return;
+            setDemoRows(prevRows => {
+              let moved = null;
+              let destHas = null;
+              // Extract booking from source and clear it
+              const removed = prevRows.map(row => ({
+                ...row,
+                slots: row.slots.map(s => {
+                  if (s.id === fromSlotId) {
+                    moved = s.booking ? { ...s.booking } : null;
+                    return { ...s, booking: undefined };
+                  }
+                  if (s.id === toSlotId) {
+                    destHas = s.booking ? { ...s.booking } : null;
+                  }
+                  return s;
+                })
+              }));
+              if (!moved) return prevRows; // nothing to move
+              // Apply booking to destination (swap if needed)
+              const applied = removed.map(row => ({
+                ...row,
+                slots: row.slots.map(s => {
+                  if (s.id === toSlotId) {
+                    return { ...s, booking: moved };
+                  }
+                  if (destHas && s.id === fromSlotId) {
+                    return { ...s, booking: destHas };
+                  }
+                  return s;
+                })
+              }));
+              return applied;
+            });
+          };
+;
+
+          const totalTees = demoLanes.length * filters.teesPerCourse;
+
+          return React.createElement('div', null,
+            React.createElement(TeeSheet, {
+              date: filters.date,
+              lanes: demoLanes,
+              rows: demoRows,
+              filters: filters,
+              totalTees: totalTees,
+              matches: 0,
+              onSelectSlot: handleSelectSlot,
+              onClearDay: handleClearDay,
+              onLanguageChange: setLanguage,
+              onToggleLock: handleToggleLock,
+              onMoveBooking: handleMoveBooking,
+              onRangeChange: (from, to) => {
+                setFilters(prev => ({
+                  ...prev,
+                  startTime: from,
+                  endTime: to
+                }));
+              }
+            }),
+            
+            React.createElement(BookingModal, {
+              isOpen: modalOpen,
+              slot: selectedSlot,
+              language: language,
+              onClose: () => {
+                setModalOpen(false);
+                setSelectedSlot(null);
+              },
+              onSaveBooking: handleSaveBooking
+            }),
+            
+            React.createElement('div', {
+              style: {
+                position: 'fixed',
+                bottom: '10px',
+                right: '10px',
+                backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                color: 'white',
+                padding: '12px',
+                borderRadius: '8px',
+                fontSize: '0.7rem',
+                maxWidth: '280px',
+                zIndex: 9999,
+                border: '1px solid rgba(255,255,255,0.1)',
+                backdropFilter: 'blur(10px)',
+                boxSizing: 'border-box'
+              }
+            },
+              React.createElement('div', {
+                style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }
+              },
+                React.createElement('h4', {
+                  style: { margin: 0, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }
+                }, `🌏️‍♂️ ${getInstructionText(language).title}`),
+                React.createElement('select', {
+                  value: language,
+                  onChange: (e) => setLanguage(e.target.value),
+                  style: {
+                    padding: '2px 4px',
+                    fontSize: '0.65rem',
+                    backgroundColor: 'rgba(255,255,255,0.1)',
+                    color: 'white',
+                    border: '1px solid rgba(255,255,255,0.3)',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }
+                },
+                  React.createElement('option', { value: 'en', style: { backgroundColor: '#000', color: 'white' } }, '🇺🇸 EN'),
+                  React.createElement('option', { value: 'th', style: { backgroundColor: '#000', color: 'white' } }, '🇹🇭 TH'),
+                  React.createElement('option', { value: 'ko', style: { backgroundColor: '#000', color: 'white' } }, '🇰🇷 KO')
+                )
+              ),
+              React.createElement('div', {
+                style: { lineHeight: '1.3' },
+                dangerouslySetInnerHTML: { __html: getInstructionText(language).content }
+              })
+            )
+          );
+        };
+
+        (function() {
+  const container = document.getElementById('root');
+  const root = ReactDOM.createRoot(container);
+  root.render(React.createElement(TeeSheetDemo));
+})();
+    </script>
+
+<script>
+(function(){
+  function findScrollContainer() {
+    // Find any slot and climb to a vertically scrollable wrapper
+    var sample = document.querySelector('[data-slot-id]');
+    if (!sample) return null;
+    var el = sample.parentElement;
+    while (el && !(el.scrollHeight > el.clientHeight + 10)) el = el.parentElement;
+    return el;
+  }
+  function updateGuides() {
+    var sample = document.querySelector('[data-slot-id]');
+    var scroller = findScrollContainer();
+    if (!sample || !scroller) return;
+    var h = sample.offsetHeight || 44;
+    var color = 'rgba(71,85,105,0.95)'; // slate-600
+    scroller.style.backgroundImage =
+      'repeating-linear-gradient(to bottom,'+color+' 0,'+color+' 2px, transparent 2px, transparent ' + h + 'px)';
+    scroller.style.backgroundOrigin = 'content-box';
+    scroller.style.backgroundClip = 'content-box';
+    scroller.style.backgroundAttachment = 'local';
+  }
+  var ready = false;
+  function tryInstall(n){
+    if (ready) return;
+    updateGuides();
+    if (document.querySelector('[data-slot-id]')) ready = true;
+    if (!ready && n>0) setTimeout(function(){ tryInstall(n-1); }, 250);
+  }
+  document.addEventListener('DOMContentLoaded', function(){ tryInstall(20); });
+  window.addEventListener('load', function(){ tryInstall(10); });
+  window.addEventListener('resize', updateGuides);
+})();
+</script>
+
+
+<!-- Surgical Tee Sheet → Cockpit Bridge -->
+<script>
+(function(){
+  function pct(n){ return Math.max(0, Math.min(1, n || 0)); }
+  function safeLen(x){ try { return (x && x.length) ? x.length : (Array.isArray(x) ? x.length : 0); } catch(e){ return 0; } }
+  function round(n,d){ var p = Math.pow(10, d||2); return Math.round((n||0)*p)/p; }
+
+  function computeMetrics(){
+    try {
+      var mgr = (window.ScheduleSyncManager && window.ScheduleSyncManager.getInstance) ? window.ScheduleSyncManager.getInstance() : null;
+      var slots = window.timeSlots || [];
+      var lanes = window.demoLanes || [];
+      var teesPerCourse = (window.filters && window.filters.teesPerCourse) ? window.filters.teesPerCourse : 1;
+
+      var activeBookings = mgr && mgr.activeBookings ? Array.from(mgr.activeBookings.values()) : [];
+      var totalBookings = activeBookings.length;
+      var totalCapacity = Math.max(1, safeLen(slots) * Math.max(1, safeLen(lanes)) * Math.max(1, teesPerCourse));
+
+      var utilization = pct(totalBookings / totalCapacity);
+
+      var waitlisted = 0;
+      try {
+        waitlisted = activeBookings.reduce((acc, b)=>{
+          var cbs = (b && b.caddyBookings) ? b.caddyBookings : [];
+          return acc + cbs.filter(cb => cb && (cb.isWaitlisted || cb.status === 'waitlisted')).length;
+        }, 0);
+      } catch(e){ waitlisted = 0; }
+      var waitlist_fill = totalBookings ? Math.min(1, waitlisted / totalBookings) : 0;
+
+      var nowTs = Date.now();
+      var noShowNumer = 0;
+      try {
+        noShowNumer = activeBookings.filter(b => {
+          var confirmed = (b && (b.isConfirmed || b.confirmed));
+          var t = (b && b.time) ? new Date(b.time).getTime() : null;
+          return (!confirmed) && t && (t - nowTs) < (60*60*1000) && (t - nowTs) > -(30*60*1000);
+        }).length;
+      } catch(e){ noShowNumer = 0; }
+      var no_show_risk = totalBookings ? round(noShowNumer / totalBookings, 3) : 0;
+
+      var pace_p50 = (window.PACE && window.PACE.p50) || null;
+      var pace_p90 = (window.PACE && window.PACE.p90) || null;
+
+      var caddySchedules = (mgr && mgr.caddySchedules) ? mgr.caddySchedules : {};
+      var caddyCount = Object.keys(caddySchedules || {}).length;
+      var caddyAssigned = 0;
+      try {
+        caddyAssigned = activeBookings.reduce((acc,b)=> acc + (b.caddyBookings ? b.caddyBookings.length : 0), 0);
+      } catch(e){ caddyAssigned = 0; }
+      var caddy_utilization = caddyCount ? round(caddyAssigned / caddyCount, 2) : null;
+
+      return {
+        ts: new Date().toISOString(),
+        rounds_today: totalBookings,
+        utilization: round(utilization, 4),
+        waitlist_fill: round(waitlist_fill, 4),
+        no_show_risk: no_show_risk,
+        pace_p50: pace_p50,
+        pace_p90: pace_p90,
+        caddy_utilization: caddy_utilization,
+        capacity_slots: totalCapacity
+      };
+    } catch(err){
+      return {
+        ts: new Date().toISOString(),
+        rounds_today: 0,
+        utilization: 0,
+        waitlist_fill: 0,
+        no_show_risk: 0,
+        capacity_slots: 0,
+        error: String(err && err.message || err)
+      };
+    }
+  }
+
+  window.exportTeeSheetMetrics = function(){
+    return computeMetrics();
+  };
+  window.getTeeSheetMetrics = window.exportTeeSheetMetrics;
+
+  function broadcast(){
+    var payload = computeMetrics();
+    try { window.postMessage({ type: 'TEE_SHEET_METRICS', payload: payload }, '*'); } catch(e){}
+    try {
+      if (window.DATA){
+        window.DATA.rounds_today = payload.rounds_today;
+        window.DATA.utilization = payload.utilization;
+        window.DATA.waitlist_fill = payload.waitlist_fill;
+        window.DATA.no_show_risk = payload.no_show_risk;
+        document.dispatchEvent(new CustomEvent('tee-metrics', { detail: payload }));
+      }
+    } catch(e){}
+  }
+
+  var _teeBridgeInterval = setInterval(broadcast, 10000);
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden) broadcast(); });
+  setTimeout(broadcast, 50);
+})();
+</script>
+
+
+<style>
+  .send-to-cockpit-btn{
+    position:fixed; right:16px; bottom:16px; z-index:9999;
+    background:#0ea5e9; color:#fff; border:none; border-radius:999px;
+    padding:10px 14px; font-weight:700; box-shadow:0 6px 18px rgba(2,132,199,.3);
+    cursor:pointer;
+  }
+  .send-to-cockpit-btn:hover{ filter:brightness(1.05); }
+</style>
+<button class="send-to-cockpit-btn" id="btnSendCockpit" title="Send live metrics to GM Cockpit">Send to Cockpit</button>
+<script>
+(function(){
+  function safeExport(){ try { return (window.exportTeeSheetMetrics && window.exportTeeSheetMetrics()) || null; } catch(e){ return null; } }
+  var btn = document.getElementById('btnSendCockpit');
+  if (btn){
+    btn.addEventListener('click', function(){
+      var payload = safeExport();
+      if (payload){
+        try { window.postMessage({ type: 'TEE_SHEET_METRICS', payload: payload }, '*'); } catch(e){}
+        try { window.postMessage({ type: 'FOCUS_COCKPIT' }, '*'); } catch(e){}
+        try { document.dispatchEvent(new CustomEvent('tee-metrics', { detail: payload })); } catch(e){}
+        try { document.dispatchEvent(new CustomEvent('focus-cockpit')); } catch(e){}
+      }
+    });
+  }
+})();
+</script>
+
+</body>
+</html>

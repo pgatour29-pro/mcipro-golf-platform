@@ -3076,43 +3076,85 @@
             });
           }
 
-          const handleMoveBooking = (fromSlotId, toSlotId) => {
+          const handleMoveBooking = async (fromSlotId, toSlotId) => {
             if (!fromSlotId || !toSlotId || fromSlotId === toSlotId) return;
+
+            // Find the slots first to get booking data
+            let fromSlot = null;
+            let toSlot = null;
+            demoRows.forEach(row => {
+              row.slots.forEach(s => {
+                if (s.id === fromSlotId) fromSlot = s;
+                if (s.id === toSlotId) toSlot = s;
+              });
+            });
+
+            if (!fromSlot || !fromSlot.booking) {
+              console.log('[TeeSheet] No booking to move from slot:', fromSlotId);
+              return;
+            }
+
+            const movedBooking = { ...fromSlot.booking };
+            const destBooking = toSlot?.booking ? { ...toSlot.booking } : null;
+
+            // Update local state immediately for responsive UI
             setDemoRows(prevRows => {
-              let moved = null;
-              let destHas = null;
-              // Extract booking from source and clear it
-              const removed = prevRows.map(row => ({
+              return prevRows.map(row => ({
                 ...row,
                 slots: row.slots.map(s => {
                   if (s.id === fromSlotId) {
-                    moved = s.booking ? { ...s.booking } : null;
-                    return { ...s, booking: undefined };
+                    // Source slot gets destination's booking (swap) or cleared
+                    return { ...s, booking: destBooking || undefined };
                   }
                   if (s.id === toSlotId) {
-                    destHas = s.booking ? { ...s.booking } : null;
+                    // Destination gets the moved booking
+                    return { ...s, booking: movedBooking };
                   }
                   return s;
                 })
               }));
-              if (!moved) return prevRows; // nothing to move
-              // Apply booking to destination (swap if needed)
-              const applied = removed.map(row => ({
-                ...row,
-                slots: row.slots.map(s => {
-                  if (s.id === toSlotId) {
-                    return { ...s, booking: moved };
-                  }
-                  if (destHas && s.id === fromSlotId) {
-                    return { ...s, booking: destHas };
-                  }
-                  return s;
-                })
-              }));
-              return applied;
             });
+
+            // Sync to MciPro if connected
+            if (MciProBridge.isInMciPro) {
+              try {
+                // Update moved booking with new time/slot info
+                const newSlotParts = toSlotId.split('-');
+                const newTime = newSlotParts[0];
+                const newCourseId = newSlotParts.slice(1, -1).join('-');
+
+                movedBooking.time = newTime;
+                movedBooking.courseId = newCourseId;
+
+                // Save the moved booking to its new slot
+                await MciProBridge.saveBooking(movedBooking, {
+                  id: toSlotId,
+                  time: newTime,
+                  courseId: newCourseId
+                });
+
+                // If there was a swap, save the swapped booking too
+                if (destBooking) {
+                  const oldSlotParts = fromSlotId.split('-');
+                  const oldTime = oldSlotParts[0];
+                  const oldCourseId = oldSlotParts.slice(1, -1).join('-');
+
+                  destBooking.time = oldTime;
+                  destBooking.courseId = oldCourseId;
+
+                  await MciProBridge.saveBooking(destBooking, {
+                    id: fromSlotId,
+                    time: oldTime,
+                    courseId: oldCourseId
+                  });
+                }
+
+                console.log('[TeeSheet] Move synced to MciPro');
+              } catch (e) {
+                console.error('[TeeSheet] Failed to sync move to MciPro:', e);
+              }
+            }
           };
-;
 
           // Use MciPro courses when available
           const activeLanes = MciProBridge.getCourses() || demoLanes;

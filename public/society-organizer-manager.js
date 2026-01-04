@@ -771,6 +771,9 @@ class SocietyOrganizerManager {
         // Add new modal
         document.body.insertAdjacentHTML('beforeend', modal);
         document.getElementById('pairingsModal').style.display = 'flex';
+
+        // Initialize time pickers in modal
+        if (window.TimePickerUtils) window.TimePickerUtils.initAll(document.getElementById('pairingsModal'));
     }
 
     renderPairings(groups) {
@@ -782,10 +785,9 @@ class SocietyOrganizerManager {
             <div class="bg-white border rounded-lg p-4">
                 <div class="flex justify-between items-center mb-3">
                     <h4 class="font-semibold text-gray-900">Group ${group.groupNumber}</h4>
-                    <input type="time" value="${group.teeTime || ''}"
+                    <select data-time-picker data-default="${group.teeTime || ''}"
                            onchange="updateTeeTime('${group.groupNumber}', this.value)"
-                           class="text-sm border rounded px-2 py-1"
-                           placeholder="Tee time">
+                           class="text-sm border rounded px-2 py-1"></select>
                 </div>
                 <div class="space-y-2">
                     ${group.players.map((p, idx) => `
@@ -1618,10 +1620,10 @@ const RegistrationsManager = {
                      ondragover="RegistrationsManager.onDragOver(event)" ondrop="RegistrationsManager.onDrop(event, ${groupNum})">
                     <div class="flex justify-between items-center mb-2">
                         <span class="font-medium text-sm text-gray-700">Group ${groupNum}</span>
-                        <input type="time" value="${teeTime}"
+                        <select data-time-picker data-default="${teeTime}"
                                onchange="RegistrationsManager.updateGroupTeeTime(${groupNum}, this.value)"
                                class="text-xs border rounded px-2 py-1 w-24"
-                               ${isLocked ? 'disabled' : ''}>
+                               ${isLocked ? 'disabled' : ''}></select>
                     </div>
                     <div class="space-y-1">
                         ${players.length === 0 ? '<div class="text-xs text-gray-400 italic py-2">Drop players here</div>' :
@@ -1656,6 +1658,9 @@ const RegistrationsManager = {
                 </div>
             `;
         }
+
+        // Initialize time pickers
+        if (window.TimePickerUtils) window.TimePickerUtils.initAll(container);
     },
 
     getUnassignedPlayers() {

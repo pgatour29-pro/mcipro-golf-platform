@@ -14,6 +14,8 @@ class TimeWindowedLeaderboards {
         this.currentFilter = 'my_societies'; // 'platform', 'my_societies', or specific society ID
         this.userSocieties = [];
         this.refreshInterval = null;
+        this.selectedYear = new Date().getFullYear(); // Track selected year for yearly view
+        this.availableYears = []; // Cache of available years
     }
 
     async init(supabaseClient, userId, societyId = null) {
@@ -25,6 +27,75 @@ class TimeWindowedLeaderboards {
         // Load user's societies for the filter dropdown
         await this.loadUserSocieties();
         this.populateSocietyDropdown();
+
+        // Populate year dropdown for yearly standings
+        await this.populateYearDropdown();
+    }
+
+    // =========================================================================
+    // YEAR SELECTION FOR YEARLY LEADERBOARD
+    // =========================================================================
+
+    async populateYearDropdown() {
+        const yearSelect = document.getElementById('leaderboardYearSelect');
+        if (!yearSelect || !this.supabase) return;
+
+        try {
+            console.log('[TimeWindowedLeaderboards] Populating year dropdown...');
+
+            // Get all unique years from event_results
+            const { data: yearData, error } = await this.supabase
+                .from('event_results')
+                .select('event_date')
+                .order('event_date', { ascending: false });
+
+            if (error) {
+                console.error('[TimeWindowedLeaderboards] Error loading years:', error);
+                return;
+            }
+
+            if (yearData && yearData.length > 0) {
+                // Extract unique years
+                const years = [...new Set(yearData.map(r => {
+                    const date = r.event_date;
+                    if (date) return date.substring(0, 4);
+                    return null;
+                }).filter(Boolean))].sort((a, b) => b - a); // Sort descending (newest first)
+
+                // Ensure current year is included
+                const currentYear = new Date().getFullYear().toString();
+                if (!years.includes(currentYear)) {
+                    years.unshift(currentYear);
+                }
+
+                this.availableYears = years;
+                console.log('[TimeWindowedLeaderboards] Available years:', years);
+
+                // Populate dropdown
+                yearSelect.innerHTML = years.map(year =>
+                    `<option value="${year}"${year === currentYear ? ' selected' : ''}>${year}</option>`
+                ).join('');
+
+                this.selectedYear = parseInt(currentYear);
+            } else {
+                // Fallback: just add current year
+                const currentYear = new Date().getFullYear();
+                yearSelect.innerHTML = `<option value="${currentYear}">${currentYear}</option>`;
+                this.selectedYear = currentYear;
+            }
+        } catch (err) {
+            console.error('[TimeWindowedLeaderboards] Error populating years:', err);
+        }
+    }
+
+    setYear(year) {
+        this.selectedYear = parseInt(year);
+        console.log('[TimeWindowedLeaderboards] Year changed to:', this.selectedYear);
+
+        // If currently viewing yearly, refresh the leaderboard
+        if (this.currentPeriod === 'yearly') {
+            this.showPeriod('yearly');
+        }
     }
 
     async loadUserSocieties() {
@@ -175,8 +246,10 @@ class TimeWindowedLeaderboards {
                     endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
                     break;
                 case 'yearly':
-                    startDate = new Date(now.getFullYear(), 0, 1);
-                    endDate = new Date(now.getFullYear() + 1, 0, 1);
+                    // Use selectedYear for yearly standings (allows viewing historical years like 2025)
+                    const year = this.selectedYear || now.getFullYear();
+                    startDate = new Date(year, 0, 1);
+                    endDate = new Date(year + 1, 0, 1);
                     break;
                 default:
                     startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -777,6 +850,15 @@ window.timeWindowedLeaderboards.showPeriod = async function(period) {
         activeBtn.classList.remove('bg-gray-100', 'text-gray-600');
         activeBtn.classList.add('bg-green-600', 'text-white');
     }
+
+    // Show/hide year dropdown based on period
+    const yearSelect = document.getElementById('leaderboardYearSelect');
+    if (yearSelect) {
+        yearSelect.style.display = period === 'yearly' ? 'inline-block' : 'none';
+    }
+
+    // Store current period
+    this.currentPeriod = period;
 
     // Load the specified period
     await this.loadAndRenderPeriod(period, 'timeWindowedLeaderboardContainer');

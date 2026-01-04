@@ -311,8 +311,27 @@ async function handleEventUpdate(supabase: any, newEvent: any, oldEvent: any) {
     return { success: true, notified: 0, reason: "no_valid_targets" };
   }
 
+  // Get the name of who made the change
+  let modifierName = newEvent.updated_by_name || null;
+
+  // If no name stored, try to look up from user_profiles
+  if (!modifierName && newEvent.updated_by) {
+    const { data: modifier } = await supabase
+      .from("user_profiles")
+      .select("name, display_name")
+      .eq("line_user_id", newEvent.updated_by)
+      .single();
+
+    modifierName = modifier?.display_name || modifier?.name || null;
+  }
+
   // Build update message
   let updateText = `📢 Event Update: ${newEvent.title}\n\n`;
+
+  // Show who made the change
+  if (modifierName) {
+    updateText += `👤 Changed by: ${modifierName}\n\n`;
+  }
 
   if (newEvent.status === "cancelled") {
     updateText += "⚠️ This event has been CANCELLED.\n";

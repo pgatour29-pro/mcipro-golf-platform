@@ -1,7 +1,7 @@
 // SERVICE WORKER - UNREGISTRATION VERSION
 // This version clears all caches and unregisters itself
 
-const SW_VERSION = 'dashboard-overhaul-v2';
+const SW_VERSION = 'hcp-tiered-reduction-v4';
 
 self.addEventListener('install', event => {
     console.log('[ServiceWorker] Installing unregistration version');

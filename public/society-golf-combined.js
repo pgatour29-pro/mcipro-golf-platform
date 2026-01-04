@@ -139,6 +139,16 @@ class SocietyGolfSupabase {
         if (updates.courseName !== undefined) dbUpdates.course_name = updates.courseName;
         if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
 
+        // CRITICAL: Always update updated_at so golfers see badge notifications for event changes
+        dbUpdates.updated_at = new Date().toISOString();
+
+        // Track WHO made the change for notifications
+        const currentUser = window.AppState?.currentUser || window.currentUser;
+        if (currentUser) {
+            dbUpdates.updated_by = currentUser.lineUserId || currentUser.id || null;
+            dbUpdates.updated_by_name = currentUser.displayName || currentUser.name || 'Admin';
+        }
+
         const { error } = await SupabaseManager.client
             .from('society_events')
             .update(dbUpdates)

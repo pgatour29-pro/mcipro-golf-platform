@@ -2,6 +2,48 @@
 
 This index catalogs the contents of `Documents/MciPro/compacted` and records the latest work completed so you can quickly resume.
 
+## Recent Work (January 4, 2026)
+
+### Login & Promo Mobile Responsive
+**File:** `2026-01-04_LOGIN_PROMO_MOBILE_RESPONSIVE.md`
+
+Made login page promo and presentation fully mobile responsive:
+- Login promo banner: vertical stack on mobile
+- Promo slides: internal scrolling, scaled elements
+- Slide 5 comparison table: converted to card layout
+- Slide 6 booking flow: horizontal compact (3 side-by-side)
+- Phone mockup: 255px → 180px on mobile
+- Fixed slide transition bug (kept absolute positioning)
+
+---
+
+### Tee Sheet Multilingual Caddy Names
+**File:** `2026-01-04_TEESHEET_MULTILINGUAL_CADDY_NAMES.md`
+
+Implemented full multilingual support for caddy names:
+- Added `localName` field to 30+ caddies with Thai script names
+- Search works with Thai (สมชาย), Korean, Japanese characters
+- Dropdown shows local names when language is not English
+- Booking data stores both `caddyName` and `caddyLocalName`
+
+### Tee Sheet Session Complete
+**File:** `2026-01-04_TEESHEET_SESSION_COMPLETE.md`
+
+| Fix/Feature | Description |
+|-------------|-------------|
+| Caddy double-booking | Prevented same caddy for multiple golfers in one booking |
+| Back-to-top button | Fixed scroll listener for full-screen layout |
+| Duplicate settings btn | Removed redundant settings button |
+| Clear caddy button | Added × button for first golfer's caddy |
+| Course dropdown | Hidden from main sheet (Settings only) |
+| Recurring booking | Added standing tee time feature with frequency options |
+| Translations | Completed 100% coverage for EN/TH/KO/JA |
+| Multilingual caddies | Thai names searchable in caddy dropdown |
+
+**Deployed:** https://mycaddipro.com
+
+---
+
 ## Recent Work (December 30, 2025)
 
 **Session Fixes (5 total):**

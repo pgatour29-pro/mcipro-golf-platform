@@ -32,6 +32,20 @@ Created `notify-caddy-booking` Supabase edge function for LINE notifications:
 
 ---
 
+### Caddy Booking - Event/Group Selection
+**File:** `2026-01-04_CADDY_BOOKING_EVENT_SELECTION.md`
+
+Enhanced golfer caddy booking modal with two booking modes:
+- **My Tee Time**: Golfer sets date/time for their own round
+- **Joining Event**: Select from registered society events (auto-fills date/time/course)
+- Manual group name entry for private groups
+- Booking data includes `event_id`, `event_name`, `group_name`
+- Events loaded from `event_registrations` joined with `society_events`
+
+**Key Methods:** `setBookingType()`, `loadUserEventsForBooking()`, `onEventSelected()`
+
+---
+
 ### Login & Promo Mobile Responsive
 **File:** `2026-01-04_LOGIN_PROMO_MOBILE_RESPONSIVE.md`
 

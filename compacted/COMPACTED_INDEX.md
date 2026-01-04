@@ -2,6 +2,27 @@
 
 This index catalogs the contents of `Documents/MciPro/compacted` and records the latest work completed so you can quickly resume.
 
+## Recent Work (January 5, 2026)
+
+### Marketing Promo Slides Reorder
+**File:** `2026-01-05_PROMO_SLIDES_REORDER.md`
+
+Reordered marketing promo slides to lead with the visual "Three Taps. Done." slide:
+
+| New # | Content | Old # |
+|-------|---------|-------|
+| 1 | Three Taps. Done. (visual flow) | 6 |
+| 2 | Mobile Demo (phone mockup) | 7 |
+| 3 | Zero Cost. Zero Risk. | 8 |
+| 4 | Get Started Free (CTA) | 9 |
+| 5-9 | Revenue slides & comparison | 1-5 |
+
+**Rationale:** Viewers understand value in 3 seconds without reading. Counter now shows natural 1/9 to 9/9 flow.
+
+**File Modified:** `public/MycaddiPro Promo/mycaddipro-4lang.html`
+
+---
+
 ## Recent Work (January 4, 2026)
 
 ### Pro Shop Tee Sheet - Caddy Booking Integration

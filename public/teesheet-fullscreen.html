@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tee Sheet - Pro Shop Display</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --ink: #f1f5f9;
+      --muted: #94a3b8;
+      --brand: #22c55e;
+      --border: #334155;
+      --course-a: #166534;
+      --course-a-text: #bbf7d0;
+      --course-b: #1e40af;
+      --course-b-text: #bfdbfe;
+      --course-c: #a16207;
+      --course-c-text: #fef08a;
+      --course-d: #7c3aed;
+      --course-d-text: #ddd6fe;
+      --regular: #166534;
+      --vip: #ca8a04;
+      --society: #2563eb;
+      --tournament: #db2777;
+      --available: #1e293b;
+      --booked: #334155;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Full Screen Layout */
+    .fullscreen-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    /* Slim Header */
+    .header-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      background: linear-gradient(90deg, #166534 0%, #15803d 50%, #166534 100%);
+      border-bottom: 2px solid #22c55e;
+      flex-shrink: 0;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .logo-section {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-section svg {
+      width: 32px;
+      height: 32px;
+      fill: #22c55e;
+    }
+    .course-name {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .course-name span {
+      color: #86efac;
+      font-weight: 400;
+    }
+    .live-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0,0,0,0.3);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      background: #ef4444;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.2); }
+    }
+    .header-center {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .date-display {
+      font-size: 20px;
+      font-weight: 600;
+      color: #fff;
+      background: rgba(0,0,0,0.3);
+      padding: 6px 16px;
+      border-radius: 8px;
+    }
+    .date-nav {
+      display: flex;
+      gap: 4px;
+    }
+    .date-nav button {
+      background: rgba(255,255,255,0.1);
+      border: none;
+      color: #fff;
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 18px;
+      transition: background 0.15s;
+    }
+    .date-nav button:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .header-btn:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    .header-btn.primary {
+      background: #22c55e;
+      border-color: #22c55e;
+    }
+    .header-btn.primary:hover {
+      background: #16a34a;
+    }
+    .current-time {
+      font-size: 24px;
+      font-weight: 700;
+      color: #22c55e;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Controls Strip */
+    .controls-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .control-group label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .control-group select,
+    .control-group input {
+      padding: 6px 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--ink);
+      font-size: 13px;
+    }
+    .control-group select:focus,
+    .control-group input:focus {
+      outline: none;
+      border-color: var(--brand);
+    }
+    .legend-strip {
+      display: flex;
+      gap: 16px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+    }
+    .legend-dot.regular { background: var(--regular); }
+    .legend-dot.vip { background: var(--vip); }
+    .legend-dot.society { background: var(--society); }
+    .legend-dot.tournament { background: var(--tournament); }
+    .stats-strip {
+      display: flex;
+      gap: 20px;
+    }
+    .stat-item {
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--brand);
+    }
+    .stat-label {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    /* Main Grid Area */
+    .grid-area {
+      flex: 1;
+      overflow: auto;
+      padding: 8px;
+    }
+    .teesheet-grid {
+      display: flex;
+      flex-direction: column;
+      min-width: 100%;
+    }
+
+    /* Grid Header */
+    .grid-header {
+      display: grid;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--card);
+      border-bottom: 2px solid var(--border);
+    }
+    .grid-header-cell {
+      padding: 10px 8px;
+      font-size: 13px;
+      font-weight: 700;
+      text-align: center;
+      text-transform: uppercase;
+    }
+    .time-header {
+      background: var(--card);
+      color: var(--muted);
+      position: sticky;
+      left: 0;
+      z-index: 11;
+      min-width: 70px;
+    }
+    .course-a-header { background: var(--course-a); color: var(--course-a-text); }
+    .course-b-header { background: var(--course-b); color: var(--course-b-text); }
+    .course-c-header { background: var(--course-c); color: var(--course-c-text); }
+    .course-d-header { background: var(--course-d); color: var(--course-d-text); }
+
+    /* Grid Rows */
+    .grid-row {
+      display: grid;
+      border-bottom: 1px solid var(--border);
+    }
+    .grid-row:hover {
+      background: rgba(34, 197, 94, 0.05);
+    }
+    .time-cell {
+      padding: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--brand);
+      background: var(--card);
+      position: sticky;
+      left: 0;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 70px;
+      border-right: 1px solid var(--border);
+    }
+    .slot-cell {
+      padding: 4px;
+      min-height: 50px;
+      border-right: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .slot-cell:hover {
+      background: rgba(34, 197, 94, 0.1);
+    }
+    .slot-cell.course-a { background: rgba(22, 101, 52, 0.1); }
+    .slot-cell.course-b { background: rgba(30, 64, 175, 0.1); }
+    .slot-cell.course-c { background: rgba(161, 98, 7, 0.1); }
+    .slot-cell.course-d { background: rgba(124, 58, 237, 0.1); }
+
+    /* Booking Pills */
+    .booking-pill {
+      background: var(--booked);
+      border-radius: 6px;
+      padding: 6px 8px;
+      margin-bottom: 2px;
+      border-left: 3px solid var(--brand);
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+    .booking-pill:hover {
+      transform: scale(1.02);
+    }
+    .booking-pill.regular { border-left-color: #22c55e; background: rgba(22, 197, 94, 0.15); }
+    .booking-pill.vip { border-left-color: #eab308; background: rgba(234, 179, 8, 0.15); }
+    .booking-pill.society { border-left-color: #3b82f6; background: rgba(59, 130, 246, 0.15); }
+    .booking-pill.tournament { border-left-color: #ec4899; background: rgba(236, 72, 153, 0.15); }
+    .booking-pill .golfer-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .booking-pill .caddy-badge {
+      font-size: 10px;
+      color: var(--brand);
+      font-weight: 600;
+    }
+    .booking-pill .extra-count {
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    /* Group Booking Indicators */
+    .booking-pill.range-start {
+      border-top-left-radius: 6px;
+      border-top-right-radius: 6px;
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      margin-bottom: 0;
+    }
+    .booking-pill.range-middle {
+      border-radius: 0;
+      margin-bottom: 0;
+      border-top: 1px dashed rgba(255,255,255,0.2);
+    }
+    .booking-pill.range-end {
+      border-top-left-radius: 0;
+      border-top-right-radius: 0;
+      border-bottom-left-radius: 6px;
+      border-bottom-right-radius: 6px;
+      border-top: 1px dashed rgba(255,255,255,0.2);
+    }
+
+    /* Empty Slot */
+    .empty-slot {
+      height: 100%;
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--border);
+      font-size: 20px;
+      opacity: 0.3;
+    }
+
+    /* Booking Modal */
+    dialog {
+      background: var(--card);
+      color: var(--ink);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0;
+      max-width: 500px;
+      width: 95%;
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+    }
+    dialog::backdrop {
+      background: rgba(0,0,0,0.7);
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .modal-header h2 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 24px;
+      cursor: pointer;
+    }
+    .modal-body {
+      padding: 20px;
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .form-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .form-group {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .form-group label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      padding: 10px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--ink);
+      font-size: 14px;
+    }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: var(--brand);
+    }
+    .btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--ink);
+      transition: all 0.15s;
+    }
+    .btn:hover {
+      background: var(--bg);
+    }
+    .btn-primary {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: #fff;
+    }
+    .btn-primary:hover {
+      background: #16a34a;
+    }
+    .btn-delete {
+      background: #ef4444;
+      border-color: #ef4444;
+      color: #fff;
+    }
+    .btn-delete:hover {
+      background: #dc2626;
+    }
+
+    /* Golfer Row */
+    .golfer-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      padding: 10px;
+      background: var(--bg);
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .golfer-row .form-group {
+      margin-bottom: 0;
+    }
+    .golfer-row .remove-golfer {
+      width: 36px;
+      height: 36px;
+      background: #ef4444;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .add-golfer-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 16px;
+      background: rgba(34, 197, 94, 0.1);
+      border: 1px dashed var(--brand);
+      border-radius: 8px;
+      color: var(--brand);
+      font-size: 14px;
+      cursor: pointer;
+      width: 100%;
+      justify-content: center;
+    }
+    .add-golfer-btn:hover {
+      background: rgba(34, 197, 94, 0.2);
+    }
+
+    /* Caddy Dropdown */
+    .caddy-dropdown {
+      position: relative;
+    }
+    .caddy-dropdown-list {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 100;
+      display: none;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+    }
+    .caddy-dropdown-list.show {
+      display: block;
+    }
+    .caddy-option {
+      padding: 10px 12px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+    .caddy-option:last-child {
+      border-bottom: none;
+    }
+    .caddy-option:hover {
+      background: var(--bg);
+    }
+    .caddy-option.booked {
+      background: rgba(239, 68, 68, 0.1);
+      opacity: 0.6;
+    }
+    .caddy-option.booked .caddy-option-name {
+      text-decoration: line-through;
+      color: #ef4444;
+    }
+    .caddy-booked-badge {
+      font-size: 9px;
+      background: #ef4444;
+      color: #fff;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .caddy-option-number {
+      font-weight: 600;
+      color: var(--brand);
+    }
+    .caddy-option-name {
+      color: var(--ink);
+    }
+    .caddy-option-rating {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* Range Toggle */
+    .range-toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      background: var(--bg);
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+    .range-toggle input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--brand);
+    }
+    .range-toggle label {
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .range-hint {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .header-bar {
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .controls-strip {
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="fullscreen-container">
+    <!-- Header Bar -->
+    <div class="header-bar">
+      <div class="header-left">
+        <div class="logo-section">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+          <div class="course-name" id="course-name">Pattana Golf Club <span>& Resort</span></div>
+        </div>
+        <div class="live-badge">
+          <div class="live-dot"></div>
+          <span>LIVE TEE SHEET</span>
+        </div>
+      </div>
+      <div class="header-center">
+        <div class="date-nav">
+          <button id="prev-day">‹</button>
+        </div>
+        <div class="date-display" id="date-display">Saturday, Jan 4, 2025</div>
+        <div class="date-nav">
+          <button id="next-day">›</button>
+        </div>
+        <input type="date" id="date-input" style="display:none;">
+      </div>
+      <div class="header-right">
+        <div class="current-time" id="current-time">12:00</div>
+        <button class="header-btn" id="settings-btn">⚙ Settings</button>
+        <a href="/index.html#proshop" class="header-btn primary">← Dashboard</a>
+      </div>
+    </div>
+
+    <!-- Controls Strip -->
+    <div class="controls-strip">
+      <div class="control-group">
+        <label>Course</label>
+        <select id="course-select">
+          <option value="pattana">Pattana Golf Club</option>
+          <option value="cheechan">Chee Chan Golf Resort</option>
+          <option value="siam_cc_old">Siam Country Club - Old</option>
+          <option value="siam_cc_plantation">Siam CC - Plantation</option>
+          <option value="laem_chabang">Laem Chabang</option>
+          <option value="phoenix">Phoenix Gold</option>
+          <option value="khao_kheow">Khao Kheow</option>
+          <option value="burapha">Burapha Golf</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Layout</label>
+        <select id="layout-select">
+          <option value="18">18 Holes (A/B)</option>
+          <option value="27">27 Holes (A/B/C)</option>
+          <option value="36">36 Holes (A/B/C/D)</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Interval</label>
+        <select id="interval-select">
+          <option value="7" selected>7 min</option>
+          <option value="8">8 min</option>
+          <option value="10">10 min</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Search</label>
+        <input type="text" id="search-input" placeholder="Golfer or caddy...">
+      </div>
+      <div class="legend-strip">
+        <div class="legend-item"><span class="legend-dot regular"></span> Regular</div>
+        <div class="legend-item"><span class="legend-dot vip"></span> VIP</div>
+        <div class="legend-item"><span class="legend-dot society"></span> Society</div>
+        <div class="legend-item"><span class="legend-dot tournament"></span> Tournament</div>
+      </div>
+      <div class="stats-strip">
+        <div class="stat-item">
+          <div class="stat-value" id="stat-booked">0</div>
+          <div class="stat-label">Booked</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="stat-available">0</div>
+          <div class="stat-label">Available</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="stat-players">0</div>
+          <div class="stat-label">Players</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Grid Area -->
+    <div class="grid-area">
+      <div class="teesheet-grid">
+        <div class="grid-header" id="grid-header"></div>
+        <div id="grid-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Booking Modal -->
+  <dialog id="booking-dialog">
+    <div class="modal-header">
+      <h2>Book Tee Time</h2>
+      <button class="modal-close" id="close-dialog">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="booking-id">
+      <input type="hidden" id="booking-group-id">
+
+      <!-- Range Toggle -->
+      <div class="range-toggle">
+        <input type="checkbox" id="range-mode-toggle">
+        <label for="range-mode-toggle">Block Time Range</label>
+        <span class="range-hint">For society/group bookings</span>
+      </div>
+
+      <!-- Single Booking Row -->
+      <div class="form-row" id="single-booking-row">
+        <div class="form-group">
+          <label>Time</label>
+          <select id="booking-time"></select>
+        </div>
+        <div class="form-group">
+          <label>Course</label>
+          <select id="booking-course"></select>
+        </div>
+        <div class="form-group">
+          <label>Tee</label>
+          <select id="booking-tee">
+            <option value="1">1</option>
+            <option value="2">2</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select id="booking-type">
+            <option value="regular">Regular</option>
+            <option value="vip">VIP</option>
+            <option value="society">Society</option>
+            <option value="tournament">Tournament</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Range Booking Row (hidden by default) -->
+      <div class="form-row" id="range-booking-row" style="display:none;">
+        <div class="form-group">
+          <label>Start Time</label>
+          <select id="range-start-time"></select>
+        </div>
+        <div class="form-group">
+          <label>End Time</label>
+          <select id="range-end-time"></select>
+        </div>
+        <div class="form-group">
+          <label>Course</label>
+          <select id="range-course"></select>
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select id="range-type">
+            <option value="society">Society</option>
+            <option value="tournament">Tournament</option>
+            <option value="vip">VIP</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row" id="range-group-row" style="display:none;">
+        <div class="form-group">
+          <label>Group / Society Name</label>
+          <input type="text" id="range-group-name" placeholder="e.g., Korean Golf Society">
+        </div>
+      </div>
+
+      <!-- Golfers Section -->
+      <div id="golfers-section">
+        <label style="display:block;margin-bottom:10px;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;">Golfers</label>
+        <div id="golfers-list"></div>
+        <button class="add-golfer-btn" id="add-golfer">+ Add Golfer</button>
+      </div>
+
+      <!-- Range Slots Section (for group bookings) -->
+      <div id="range-slots-section" style="display:none;">
+        <label style="display:block;margin-bottom:10px;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;">
+          Time Slots <span id="slot-count-badge" style="background:var(--brand);color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;margin-left:8px;">0</span>
+        </label>
+        <div id="range-slots-list"></div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="booking-notes" rows="2" placeholder="Special requests, preferences..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-delete" id="delete-booking" style="display:none;">Delete</button>
+      <button class="btn" id="cancel-booking">Cancel</button>
+      <button class="btn btn-primary" id="save-booking">Save Booking</button>
+    </div>
+  </dialog>
+
+  <script>
+  (function() {
+    'use strict';
+
+    // ==================== SUPABASE CONNECTION ====================
+    const SUPABASE_URL = 'https://yoaupshbjgwpfffsoxnw.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlvYXVwc2hiamd3cGZmZnNveG53Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzQ2MjMxMjMsImV4cCI6MjA1MDE5OTEyM30.hV7MTMuv4HguDIgx7GhEfXz-aspPRgXBQK9TQz0pYZE';
+    let supabase = null;
+
+    if (window.supabase) {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      console.log('[TeeSheet] Supabase connected');
+    }
+
+    // ==================== CADDY DATA ====================
+    let allCaddies = [];
+    if (window.CaddySystem && window.CaddySystem.allCaddys) {
+      allCaddies = window.CaddySystem.allCaddys;
+    } else {
+      // Demo caddies
+      allCaddies = [
+        { id: 1, name: "Somchai K.", number: "001", rating: 4.8, language: "TH/EN", status: "available" },
+        { id: 2, name: "Napat P.", number: "002", rating: 4.9, language: "TH/EN/KO", status: "available" },
+        { id: 3, name: "Wanida S.", number: "003", rating: 4.7, language: "TH/EN/JA", status: "available" },
+        { id: 4, name: "Thanaporn M.", number: "004", rating: 4.6, language: "TH/EN", status: "available" },
+        { id: 5, name: "Apinya R.", number: "005", rating: 4.9, language: "TH/EN/KO", status: "available" },
+        { id: 6, name: "Channarong T.", number: "006", rating: 4.5, language: "TH/EN", status: "busy" },
+        { id: 7, name: "Duangjai L.", number: "007", rating: 4.8, language: "TH/EN/JA", status: "available" },
+        { id: 8, name: "Ekachai N.", number: "008", rating: 4.4, language: "TH/EN", status: "available" }
+      ];
+    }
+
+    // ==================== DOM ELEMENTS ====================
+    const $ = id => document.getElementById(id);
+    const el = {
+      courseName: $('course-name'),
+      dateDisplay: $('date-display'),
+      dateInput: $('date-input'),
+      prevDay: $('prev-day'),
+      nextDay: $('next-day'),
+      currentTime: $('current-time'),
+      courseSelect: $('course-select'),
+      layoutSelect: $('layout-select'),
+      intervalSelect: $('interval-select'),
+      searchInput: $('search-input'),
+      gridHeader: $('grid-header'),
+      gridBody: $('grid-body'),
+      statBooked: $('stat-booked'),
+      statAvailable: $('stat-available'),
+      statPlayers: $('stat-players'),
+      dialog: $('booking-dialog'),
+      closeDialog: $('close-dialog'),
+      bookingId: $('booking-id'),
+      bookingGroupId: $('booking-group-id'),
+      bookingType: $('booking-type'),
+      bookingCourse: $('booking-course'),
+      bookingTee: $('booking-tee'),
+      bookingTime: $('booking-time'),
+      golfersList: $('golfers-list'),
+      addGolfer: $('add-golfer'),
+      bookingNotes: $('booking-notes'),
+      deleteBooking: $('delete-booking'),
+      cancelBooking: $('cancel-booking'),
+      saveBooking: $('save-booking'),
+      rangeModeToggle: $('range-mode-toggle'),
+      singleBookingRow: $('single-booking-row'),
+      rangeBookingRow: $('range-booking-row'),
+      rangeGroupRow: $('range-group-row'),
+      rangeStartTime: $('range-start-time'),
+      rangeEndTime: $('range-end-time'),
+      rangeCourse: $('range-course'),
+      rangeType: $('range-type'),
+      rangeGroupName: $('range-group-name'),
+      golfersSection: $('golfers-section'),
+      rangeSlotsSection: $('range-slots-section'),
+      rangeSlotsList: $('range-slots-list'),
+      slotCountBadge: $('slot-count-badge')
+    };
+
+    // ==================== HELPERS ====================
+    const pad2 = n => String(n).padStart(2, '0');
+    const minutes = hm => { const [h, m] = (hm || '').split(':').map(Number); return h * 60 + m; };
+    const hhmm = m => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
+    const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+    const genId = () => crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9);
+
+    // Format date for display
+    function formatDateDisplay(dateStr) {
+      const d = new Date(dateStr + 'T00:00:00');
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${days[d.getDay()]}, ${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+    }
+
+    // ==================== CADDY AVAILABILITY ====================
+    const ROUND_DURATION_MINUTES = 270;
+
+    function isTimeWithinRound(bookedTime, checkTime) {
+      const bookedM = minutes(bookedTime);
+      const checkM = minutes(checkTime);
+      const roundEndM = bookedM + ROUND_DURATION_MINUTES;
+      const newRoundEndM = checkM + ROUND_DURATION_MINUTES;
+      return (checkM < roundEndM) && (bookedM < newRoundEndM);
+    }
+
+    function getBookedCaddiesForSlot(date, time, excludeBookingId = null) {
+      const bookings = getDay(date);
+      const bookedCaddyNumbers = new Set();
+      bookings.forEach(booking => {
+        if (excludeBookingId && booking.id === excludeBookingId) return;
+        if (isTimeWithinRound(booking.time, time)) {
+          const golfers = booking.golfers || [];
+          golfers.forEach(g => {
+            if (g.caddyNumber) bookedCaddyNumbers.add(g.caddyNumber);
+          });
+          if (booking.caddyNumber) bookedCaddyNumbers.add(booking.caddyNumber);
+        }
+      });
+      return bookedCaddyNumbers;
+    }
+
+    let currentSlotTime = null;
+    let currentEditingBookingId = null;
+    let rangeSlots = [];
+
+    // ==================== STORAGE ====================
+    const storageKey = d => `teesheet.bookings.v2::${d}`;
+    const getDay = d => { try { return JSON.parse(localStorage.getItem(storageKey(d)) || '[]'); } catch { return []; } };
+    const setDay = (d, arr) => localStorage.setItem(storageKey(d), JSON.stringify(arr || []));
+
+    // ==================== STATE ====================
+    let currentDate = todayISO();
+    el.dateInput.value = currentDate;
+    el.dateDisplay.textContent = formatDateDisplay(currentDate);
+
+    // ==================== LAYOUT ====================
+    function getCourses() {
+      const v = el.layoutSelect.value;
+      if (v === '18') return ['A', 'B'];
+      if (v === '27') return ['A', 'B', 'C'];
+      return ['A', 'B', 'C', 'D'];
+    }
+
+    function getLayout() {
+      const courses = getCourses();
+      const teesPerCourse = 2;
+      const cols = [];
+      courses.forEach(c => {
+        for (let i = 0; i < teesPerCourse; i++) cols.push({ course: c, tee: i + 1 });
+      });
+      return { courses, teesPerCourse, cols };
+    }
+
+    // ==================== RENDER ====================
+    function render() {
+      const layout = getLayout();
+      const startM = minutes('06:00');
+      const endM = minutes('18:00');
+      const step = parseInt(el.intervalSelect.value) || 7;
+      const bookings = getDay(currentDate);
+
+      // Update stats
+      let bookedCount = 0;
+      let playerCount = 0;
+      bookings.forEach(b => {
+        bookedCount++;
+        playerCount += (b.golfers || []).length || 1;
+      });
+      const totalSlots = Math.floor((endM - startM) / step) * layout.cols.length;
+      el.statBooked.textContent = bookedCount;
+      el.statAvailable.textContent = totalSlots - bookedCount;
+      el.statPlayers.textContent = playerCount;
+
+      // Set CSS grid columns
+      const gridCols = `70px repeat(${layout.cols.length}, 1fr)`;
+      el.gridHeader.style.gridTemplateColumns = gridCols;
+
+      // Render header
+      el.gridHeader.innerHTML = '<div class="grid-header-cell time-header">TIME</div>';
+      layout.cols.forEach(col => {
+        const headerClass = `course-${col.course.toLowerCase()}-header`;
+        el.gridHeader.innerHTML += `<div class="grid-header-cell ${headerClass}">${col.course}-${col.tee}</div>`;
+      });
+
+      // Render rows
+      el.gridBody.innerHTML = '';
+      for (let m = startM; m <= endM; m += step) {
+        const timeStr = hhmm(m);
+        const row = document.createElement('div');
+        row.className = 'grid-row';
+        row.style.gridTemplateColumns = gridCols;
+
+        row.innerHTML = `<div class="time-cell">${timeStr}</div>`;
+
+        layout.cols.forEach((col, idx) => {
+          const slotBookings = bookings.filter(b => b.time === timeStr && b.col === idx);
+          const courseClass = `course-${col.course.toLowerCase()}`;
+
+          let cellContent = '';
+          if (slotBookings.length === 0) {
+            cellContent = '<div class="empty-slot">+</div>';
+          } else {
+            slotBookings.forEach(b => {
+              const golfers = b.golfers || [];
+              const name = golfers.length > 0 ? golfers[0].name : (b.name || 'Player');
+              const extra = golfers.length > 1 ? ` +${golfers.length - 1}` : '';
+              const caddy = (golfers.length > 0 && golfers[0].caddyNumber) ? `C${golfers[0].caddyNumber}` : '';
+
+              let groupClass = '';
+              if (b.groupId && b.groupTotal > 1) {
+                groupClass = 'range-group ';
+                if (b.groupIndex === 0) groupClass += 'range-start';
+                else if (b.groupIndex === b.groupTotal - 1) groupClass += 'range-end';
+                else groupClass += 'range-middle';
+              }
+
+              cellContent += `
+                <div class="booking-pill ${b.bookingType || 'regular'} ${groupClass}" data-id="${b.id}">
+                  <div class="golfer-name">${name}<span class="extra-count">${extra}</span></div>
+                  ${caddy ? `<div class="caddy-badge">${caddy}</div>` : ''}
+                </div>
+              `;
+            });
+          }
+
+          row.innerHTML += `<div class="slot-cell ${courseClass}" data-time="${timeStr}" data-col="${idx}" data-course="${col.course}" data-tee="${col.tee}">${cellContent}</div>`;
+        });
+
+        el.gridBody.appendChild(row);
+      }
+
+      // Add click handlers
+      el.gridBody.querySelectorAll('.slot-cell').forEach(cell => {
+        cell.addEventListener('click', (e) => {
+          const pill = e.target.closest('.booking-pill');
+          if (pill) {
+            const bookingId = pill.dataset.id;
+            const booking = bookings.find(b => b.id === bookingId);
+            if (booking) openDialog(booking);
+          } else {
+            openDialog({
+              time: cell.dataset.time,
+              course: cell.dataset.course,
+              tee: parseInt(cell.dataset.tee),
+              col: parseInt(cell.dataset.col)
+            });
+          }
+        });
+      });
+    }
+
+    // ==================== DIALOG ====================
+    function openDialog(seed) {
+      el.bookingId.value = seed.id || '';
+      el.bookingGroupId.value = seed.groupId || '';
+      el.bookingType.value = seed.bookingType || 'regular';
+      el.bookingNotes.value = seed.notes || '';
+      currentSlotTime = seed.time;
+      currentEditingBookingId = seed.id || null;
+
+      const startM = minutes('06:00');
+      const endM = minutes('18:00');
+      const step = parseInt(el.intervalSelect.value) || 7;
+
+      // Populate time selects
+      [el.bookingTime, el.rangeStartTime, el.rangeEndTime].forEach(select => {
+        select.innerHTML = '';
+        for (let m = startM; m <= endM; m += step) {
+          const timeStr = hhmm(m);
+          const opt = document.createElement('option');
+          opt.value = timeStr;
+          opt.textContent = timeStr;
+          if (timeStr === seed.time) opt.selected = true;
+          select.appendChild(opt);
+        }
+      });
+
+      // Set default end time
+      const defaultEndM = Math.min(minutes(seed.time) + 60, endM);
+      el.rangeEndTime.value = hhmm(defaultEndM);
+
+      // Populate course selects
+      const courses = getCourses();
+      [el.bookingCourse, el.rangeCourse].forEach(select => {
+        select.innerHTML = '';
+        courses.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c;
+          opt.textContent = 'Course ' + c;
+          if (c === seed.course) opt.selected = true;
+          select.appendChild(opt);
+        });
+      });
+
+      el.bookingTee.value = seed.tee || 1;
+
+      // Reset range mode
+      el.rangeModeToggle.checked = false;
+      rangeSlots = [];
+      el.rangeGroupName.value = '';
+      toggleRangeMode(false);
+
+      // Check for group booking
+      if (seed.groupId) {
+        const bookings = getDay(currentDate);
+        const groupBookings = bookings.filter(b => b.groupId === seed.groupId);
+        if (groupBookings.length > 1) {
+          el.rangeModeToggle.checked = true;
+          el.rangeGroupName.value = seed.groupName || '';
+          el.rangeType.value = seed.bookingType || 'society';
+          groupBookings.sort((a, b) => minutes(a.time) - minutes(b.time));
+          el.rangeStartTime.value = groupBookings[0].time;
+          el.rangeEndTime.value = groupBookings[groupBookings.length - 1].time;
+          rangeSlots = groupBookings.map(b => ({
+            time: b.time,
+            golfers: b.golfers || [{ name: b.name || '', caddyNumber: b.caddyNumber || '' }],
+            collapsed: true,
+            id: b.id
+          }));
+          toggleRangeMode(true);
+        }
+      }
+
+      // Set golfers
+      let golfers = seed.golfers || [];
+      if (!golfers.length && seed.name) golfers = [{ name: seed.name, caddyNumber: seed.caddyNumber || '' }];
+      if (!golfers.length) golfers = [{ name: '', caddyNumber: '' }];
+      setGolfersInDialog(golfers);
+
+      el.deleteBooking.style.display = seed.id ? '' : 'none';
+      el.dialog.showModal();
+    }
+
+    function setGolfersInDialog(golfers) {
+      el.golfersList.innerHTML = '';
+      golfers.forEach((g, i) => addGolferRow(g.name || '', g.caddyNumber || '', i === 0));
+    }
+
+    function addGolferRow(name = '', caddyNumber = '', isFirst = false) {
+      const row = document.createElement('div');
+      row.className = 'golfer-row';
+      row.innerHTML = `
+        <div class="form-group" style="flex:2">
+          <input type="text" class="golfer-name-input" value="${name}" placeholder="Golfer name">
+        </div>
+        <div class="form-group caddy-dropdown" style="flex:1">
+          <input type="text" class="caddy-search-input" value="${caddyNumber ? 'C' + caddyNumber : ''}" placeholder="Caddy" readonly>
+          <input type="hidden" class="caddy-number-input" value="${caddyNumber}">
+          <div class="caddy-dropdown-list"></div>
+        </div>
+        ${!isFirst ? '<button class="remove-golfer">×</button>' : '<div style="width:36px"></div>'}
+      `;
+
+      // Caddy dropdown handlers
+      const searchInput = row.querySelector('.caddy-search-input');
+      const dropdownList = row.querySelector('.caddy-dropdown-list');
+      const hiddenInput = row.querySelector('.caddy-number-input');
+
+      searchInput.addEventListener('click', () => {
+        renderCaddyDropdown(dropdownList, hiddenInput, searchInput);
+        dropdownList.classList.toggle('show');
+      });
+
+      // Remove button
+      const removeBtn = row.querySelector('.remove-golfer');
+      if (removeBtn) {
+        removeBtn.addEventListener('click', () => row.remove());
+      }
+
+      el.golfersList.appendChild(row);
+    }
+
+    function renderCaddyDropdown(list, hiddenInput, searchInput) {
+      const bookedCaddies = getBookedCaddiesForSlot(currentDate, currentSlotTime, currentEditingBookingId);
+      list.innerHTML = `<div class="caddy-option" data-number="" data-name="">
+        <span class="caddy-option-name">No Caddy</span>
+      </div>`;
+
+      allCaddies.forEach(caddy => {
+        const isBooked = bookedCaddies.has(caddy.number);
+        list.innerHTML += `
+          <div class="caddy-option ${isBooked ? 'booked' : ''}" data-number="${caddy.number}" data-name="${caddy.name}">
+            <span><span class="caddy-option-number">C${caddy.number}</span> <span class="caddy-option-name">${caddy.name}</span></span>
+            ${isBooked ? '<span class="caddy-booked-badge">BOOKED</span>' : `<span class="caddy-option-rating">★${caddy.rating}</span>`}
+          </div>
+        `;
+      });
+
+      list.querySelectorAll('.caddy-option').forEach(opt => {
+        opt.addEventListener('click', () => {
+          if (opt.classList.contains('booked')) return;
+          hiddenInput.value = opt.dataset.number;
+          searchInput.value = opt.dataset.number ? `C${opt.dataset.number} ${opt.dataset.name}` : '';
+          list.classList.remove('show');
+        });
+      });
+    }
+
+    function getGolfersFromDialog() {
+      const golfers = [];
+      el.golfersList.querySelectorAll('.golfer-row').forEach(row => {
+        const name = row.querySelector('.golfer-name-input').value.trim();
+        const caddyNumber = row.querySelector('.caddy-number-input').value;
+        if (name) golfers.push({ name, caddyNumber });
+      });
+      return golfers;
+    }
+
+    // Range mode toggle
+    function toggleRangeMode(enabled) {
+      el.singleBookingRow.style.display = enabled ? 'none' : 'flex';
+      el.rangeBookingRow.style.display = enabled ? 'flex' : 'none';
+      el.rangeGroupRow.style.display = enabled ? 'flex' : 'none';
+      el.golfersSection.style.display = enabled ? 'none' : 'block';
+      el.rangeSlotsSection.style.display = enabled ? 'block' : 'none';
+      if (enabled) generateRangeSlots();
+    }
+
+    function generateRangeSlots() {
+      const startM = minutes(el.rangeStartTime.value);
+      const endM = minutes(el.rangeEndTime.value);
+      const step = parseInt(el.intervalSelect.value) || 7;
+
+      if (rangeSlots.length === 0 || rangeSlots[0].time !== el.rangeStartTime.value) {
+        rangeSlots = [];
+        for (let m = startM; m <= endM; m += step) {
+          rangeSlots.push({ time: hhmm(m), golfers: [{ name: '', caddyNumber: '' }], collapsed: true });
+        }
+      }
+
+      el.slotCountBadge.textContent = rangeSlots.length;
+      renderRangeSlots();
+    }
+
+    function renderRangeSlots() {
+      el.rangeSlotsList.innerHTML = '';
+      rangeSlots.forEach((slot, idx) => {
+        const div = document.createElement('div');
+        div.style.cssText = 'background:var(--bg);border-radius:8px;margin-bottom:8px;overflow:hidden;';
+        div.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--border);">
+            <span style="font-weight:600;color:var(--brand);">${slot.time}</span>
+            <span style="font-size:12px;color:var(--muted);">${slot.golfers.filter(g => g.name).length} golfers</span>
+          </div>
+        `;
+        el.rangeSlotsList.appendChild(div);
+      });
+    }
+
+    el.rangeModeToggle.addEventListener('change', () => toggleRangeMode(el.rangeModeToggle.checked));
+    el.rangeStartTime.addEventListener('change', generateRangeSlots);
+    el.rangeEndTime.addEventListener('change', generateRangeSlots);
+    el.addGolfer.addEventListener('click', () => addGolferRow());
+
+    // Close dialog
+    el.closeDialog.addEventListener('click', () => el.dialog.close());
+    el.cancelBooking.addEventListener('click', () => el.dialog.close());
+
+    // Save booking
+    el.saveBooking.addEventListener('click', () => {
+      let bookings = getDay(currentDate);
+      const layout = getLayout();
+
+      if (el.rangeModeToggle.checked && rangeSlots.length > 0) {
+        // Range booking
+        const course = el.rangeCourse.value;
+        const tee = 1;
+        const colIndex = layout.cols.findIndex(c => c.course === course && c.tee === tee);
+        const bookingType = el.rangeType.value;
+        const groupName = el.rangeGroupName.value.trim();
+        const notes = el.bookingNotes.value;
+        const groupId = el.bookingGroupId.value || genId();
+
+        if (el.bookingGroupId.value) {
+          bookings = bookings.filter(b => b.groupId !== el.bookingGroupId.value);
+        }
+
+        rangeSlots.forEach((slot, idx) => {
+          const golfers = slot.golfers.filter(g => g.name);
+          if (!golfers.length) golfers.push({ name: groupName || 'Player', caddyNumber: '' });
+
+          bookings.push({
+            id: slot.id || genId(),
+            groupId, groupName, groupIndex: idx, groupTotal: rangeSlots.length,
+            bookingType, course, tee, col: colIndex, time: slot.time,
+            golfers, notes, name: golfers[0]?.name || '', caddyNumber: golfers[0]?.caddyNumber || ''
+          });
+        });
+      } else {
+        // Single booking
+        const course = el.bookingCourse.value;
+        const tee = parseInt(el.bookingTee.value);
+        const colIndex = layout.cols.findIndex(c => c.course === course && c.tee === tee);
+        const golfers = getGolfersFromDialog();
+        if (!golfers.length) golfers.push({ name: 'Player', caddyNumber: '' });
+
+        const booking = {
+          id: el.bookingId.value || genId(),
+          bookingType: el.bookingType.value,
+          course, tee, col: colIndex,
+          time: el.bookingTime.value,
+          golfers, notes: el.bookingNotes.value,
+          name: golfers[0]?.name || '', caddyNumber: golfers[0]?.caddyNumber || ''
+        };
+
+        const idx = bookings.findIndex(b => b.id === booking.id);
+        if (idx >= 0) bookings[idx] = booking;
+        else bookings.push(booking);
+      }
+
+      setDay(currentDate, bookings);
+      el.dialog.close();
+      render();
+    });
+
+    // Delete booking
+    el.deleteBooking.addEventListener('click', () => {
+      let bookings = getDay(currentDate);
+      const groupId = el.bookingGroupId.value;
+      if (groupId) {
+        if (confirm(`Delete all slots in this group?`)) {
+          bookings = bookings.filter(b => b.groupId !== groupId);
+        } else return;
+      } else {
+        bookings = bookings.filter(b => b.id !== el.bookingId.value);
+      }
+      setDay(currentDate, bookings);
+      el.dialog.close();
+      render();
+    });
+
+    // ==================== DATE NAVIGATION ====================
+    function updateDate(dateStr) {
+      currentDate = dateStr;
+      el.dateInput.value = dateStr;
+      el.dateDisplay.textContent = formatDateDisplay(dateStr);
+      render();
+    }
+
+    el.prevDay.addEventListener('click', () => {
+      const d = new Date(currentDate);
+      d.setDate(d.getDate() - 1);
+      updateDate(d.toISOString().split('T')[0]);
+    });
+
+    el.nextDay.addEventListener('click', () => {
+      const d = new Date(currentDate);
+      d.setDate(d.getDate() + 1);
+      updateDate(d.toISOString().split('T')[0]);
+    });
+
+    el.dateDisplay.addEventListener('click', () => {
+      el.dateInput.showPicker();
+    });
+
+    el.dateInput.addEventListener('change', () => {
+      updateDate(el.dateInput.value);
+    });
+
+    // ==================== SETTINGS ====================
+    el.courseSelect.addEventListener('change', () => {
+      const opt = el.courseSelect.options[el.courseSelect.selectedIndex];
+      el.courseName.innerHTML = opt.text.replace(' - ', ' <span>') + (opt.text.includes(' - ') ? '</span>' : '');
+      render();
+    });
+
+    el.layoutSelect.addEventListener('change', render);
+    el.intervalSelect.addEventListener('change', render);
+
+    // ==================== CLOCK ====================
+    function updateClock() {
+      const now = new Date();
+      el.currentTime.textContent = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    // Close dropdowns on outside click
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.caddy-dropdown')) {
+        document.querySelectorAll('.caddy-dropdown-list.show').forEach(d => d.classList.remove('show'));
+      }
+    });
+
+    // ==================== INIT ====================
+    render();
+    console.log('[TeeSheet] Full-screen tee sheet loaded');
+  })();
+  </script>
+</body>
+</html>

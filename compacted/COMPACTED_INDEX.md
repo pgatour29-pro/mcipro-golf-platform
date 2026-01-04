@@ -4,6 +4,19 @@ This index catalogs the contents of `Documents/MciPro/compacted` and records the
 
 ## Recent Work (January 4, 2026)
 
+### Pro Shop Tee Sheet - Caddy Booking Integration
+**File:** `2026-01-04_TEESHEET_CADDY_BOOKING_INTEGRATION.md`
+
+Integrated Pro Shop Tee Sheet with main caddy booking system:
+- Created `ParentBridge` to access parent window's CaddySystem and BookingManager
+- Updated course-select options to match `homeClub` values (10 courses)
+- Caddies load from parent CaddySystem, filtered by selected course
+- Tee sheet bookings sync to parent BookingManager and Supabase
+- Bookings from caddy booking module merge into tee sheet display
+- Two-way sync: tee sheet ↔ BookingManager ↔ Supabase
+
+---
+
 ### Login & Promo Mobile Responsive
 **File:** `2026-01-04_LOGIN_PROMO_MOBILE_RESPONSIVE.md`
 

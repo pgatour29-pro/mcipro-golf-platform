@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MyCaddy Pro • GM Dashboard (Embedded Tee Sheet)</title>
+  <title>MyCaddy Pro • Pro Shop Tee Sheet</title>
   <style>
-    :root{--bg:#f4f7fb;--card:#fff;--ink:#111827;--muted:#6b7280;--brand:#2563eb;--border:rgba(0,0,0,.12);--pill:#dcfce7;--pillink:#064e3b}
+    :root{--bg:#f4f7fb;--card:#fff;--ink:#111827;--muted:#6b7280;--brand:#2563eb;--border:rgba(0,0,0,.12);--pill:#dcfce7;--pillink:#064e3b;--vip:#fef3c7;--vipink:#92400e;--society:#dbeafe;--societyink:#1e40af;--tournament:#fce7f3;--tournamentink:#9d174d}
     *{box-sizing:border-box}
     html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial}
     a{color:var(--brand);text-decoration:none}
@@ -40,7 +40,24 @@
     #abcv11 .slot.group-boundary{border-left:2px solid rgba(0,0,0,.28)}
     #abcv11 .slot:hover{background:#f8fafc}
     #abcv11 .pill{display:block;background:var(--pill);color:var(--pillink);border:1px solid #86efac;border-radius:10px;padding:5px 6px;margin:3px;font-size:12px;cursor:grab;line-height:1.2}
+    #abcv11 .pill.vip{background:var(--vip);color:var(--vipink);border-color:#fcd34d}
+    #abcv11 .pill.society{background:var(--society);color:var(--societyink);border-color:#93c5fd}
+    #abcv11 .pill.tournament{background:var(--tournament);color:var(--tournamentink);border-color:#f9a8d4}
     .mono{font-variant-numeric:tabular-nums}
+    .lang-btn{padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer;font-size:11px}
+    .lang-btn.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+    .golfer-row{display:flex;gap:8px;align-items:center;padding:8px;background:#f9fafb;border-radius:8px;margin-bottom:6px}
+    .golfer-row .golfer-num{min-width:24px;height:24px;background:var(--brand);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+    .golfer-row input{flex:1;min-width:100px}
+    .caddy-select{position:relative;flex:1;min-width:140px}
+    .caddy-select input{width:100%}
+    .caddy-dropdown{position:absolute;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.15);z-index:100;display:none}
+    .caddy-dropdown.show{display:block}
+    .caddy-option{padding:8px 10px;cursor:pointer;border-bottom:1px solid #f3f4f6;font-size:13px}
+    .caddy-option:hover{background:#eff6ff}
+    .caddy-option .caddy-name{font-weight:600}
+    .caddy-option .caddy-info{color:var(--muted);font-size:11px}
+    .caddy-option .caddy-rating{float:right;color:#f59e0b}
     .tag{padding:4px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--muted)}
 
     dialog::backdrop{background:rgba(0,0,0,.35)}
@@ -68,17 +85,23 @@
 <body>
   <header class="topbar">
     <div class="brand">MyCaddy Pro</div>
-    <div style="color:#64748b">Robert Anderson • GM</div>
+    <div style="color:#64748b" data-i18n="proshop">Pro Shop</div>
     <div class="right"></div>
-    <div style="font-size:12px;color:#64748b">Live</div>
+    <div id="lang-selector" style="display:flex;gap:4px">
+      <button class="lang-btn active" data-lang="en">EN</button>
+      <button class="lang-btn" data-lang="th">TH</button>
+      <button class="lang-btn" data-lang="ko">KO</button>
+      <button class="lang-btn" data-lang="ja">JA</button>
+    </div>
+    <div style="font-size:12px;color:#64748b;margin-left:8px">Live</div>
   </header>
 
   <nav class="tabs">
-    <div class="tab" data-tab="dash">Dashboard</div>
-    <div class="tab" data-tab="caddy">Caddy Status</div>
-    <div class="tab active" data-tab="tee">Tee Sheet</div>
-    <div class="tab" data-tab="ann">Announcements</div>
-    <div class="tab" data-tab="dayoff">Day Off Requests</div>
+    <div class="tab" data-tab="dash" data-i18n="dashboard">Dashboard</div>
+    <div class="tab" data-tab="caddy" data-i18n="caddyStatus">Caddy Status</div>
+    <div class="tab active" data-tab="tee" data-i18n="teeSheet">Tee Sheet</div>
+    <div class="tab" data-tab="ann" data-i18n="announcements">Announcements</div>
+    <div class="tab" data-tab="dayoff" data-i18n="dayOffRequests">Day Off Requests</div>
   </nav>
 
   <main class="page">
@@ -166,34 +189,52 @@
   </main>
 
   <!-- Booking Dialog -->
-  <dialog id="v11-bookingDialog">
+  <dialog id="v11-bookingDialog" style="width:580px;max-width:95vw">
     <form method="dialog" id="v11-bookingForm">
       <div class="m-head">
-        <div style="font-weight:800">Book Slot(s)</div>
+        <div style="font-weight:800" data-i18n="bookSlots">Book Slot(s)</div>
         <button id="v11-closeDialog" type="button" class="iconbtn" title="Close">✕</button>
       </div>
       <div class="m-body">
         <input type="hidden" id="v11-bkId">
-        <div class="row">
-          <div class="grow"><label>Golfer Name</label><br><input id="v11-bkName" placeholder="Golfer name"></div>
-          <div><label>Caddy Number</label><br><input id="v11-bkCaddy" placeholder="e.g., 27"></div>
-          <div><label>Member ID</label><br><input id="v11-bkMid" placeholder="e.g., 004"></div>
-          <div><label>Course</label><br><input id="v11-bkCourse" readonly style="width:84px"></div>
-          <div><label>Tee #</label><br>
+
+        <!-- Booking Type & Course Info -->
+        <div class="row" style="margin-bottom:10px">
+          <div>
+            <label data-i18n="bookingType">Booking Type</label><br>
+            <select id="v11-bkType" style="min-width:120px">
+              <option value="regular" data-i18n="regular">Regular</option>
+              <option value="vip" data-i18n="vip">VIP</option>
+              <option value="society" data-i18n="society">Society</option>
+              <option value="tournament" data-i18n="tournament">Tournament</option>
+            </select>
+          </div>
+          <div><label data-i18n="course">Course</label><br><input id="v11-bkCourse" readonly style="width:84px"></div>
+          <div><label data-i18n="teeNum">Tee #</label><br>
             <select id="v11-bkTeeNo"><option value="1">1</option><option value="2">2</option></select>
           </div>
+          <div><label data-i18n="from">From</label><br><input type="time" id="v11-bkFrom" class="mono"></div>
+          <div><label data-i18n="to">To</label><br><input type="time" id="v11-bkTo" class="mono"></div>
         </div>
+
+        <!-- Golfers Section -->
+        <div style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <label style="font-weight:600" data-i18n="golfers">Golfers</label>
+            <button type="button" id="v11-addGolfer" style="font-size:11px;padding:4px 8px" data-i18n="addGolfer">+ Add Golfer</button>
+          </div>
+          <div id="v11-golfersList"></div>
+        </div>
+
         <div class="row" style="margin-top:6px">
-          <div><label>From</label><br><input type="time" id="v11-bkFrom" class="mono"></div>
-          <div><label>To</label><br><input type="time" id="v11-bkTo" class="mono"></div>
-          <div style="align-self:end"><label>&nbsp;</label><br><label style="font-size:12px;color:#374151"><input type="checkbox" id="v11-bkApplyAll"> Apply details to all slots in range</label></div>
+          <div style="align-self:end"><label style="font-size:12px;color:#374151"><input type="checkbox" id="v11-bkApplyAll"> <span data-i18n="applyAll">Apply details to all slots in range</span></label></div>
         </div>
-        <div style="font-size:12px;color:var(--muted);margin-top:4px">Range aligns to the interval and clamped to Start/End.</div>
-        <div style="margin-top:8px"><label>Notes</label><br><textarea id="v11-bkNotes" rows="3" style="width:100%"></textarea></div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px" data-i18n="rangeNote">Range aligns to the interval and clamped to Start/End.</div>
+        <div style="margin-top:8px"><label data-i18n="notes">Notes</label><br><textarea id="v11-bkNotes" rows="2" style="width:100%"></textarea></div>
       </div>
       <div class="m-foot">
-        <button id="v11-deleteBooking" type="button" style="background:#fff;border:1px solid #ef4444;color:#ef4444;border-radius:10px;padding:8px 12px;display:none">Delete</button>
-        <button id="v11-saveBooking" class="btn-primary" value="default">Save</button>
+        <button id="v11-deleteBooking" type="button" style="background:#fff;border:1px solid #ef4444;color:#ef4444;border-radius:10px;padding:8px 12px;display:none" data-i18n="delete">Delete</button>
+        <button id="v11-saveBooking" class="btn-primary" value="default" data-i18n="save">Save</button>
       </div>
     </form>
   </dialog>
@@ -217,7 +258,253 @@
   (function(){
     "use strict";
 
-    // Tabs
+    // ==================== TRANSLATIONS ====================
+    var translations = {
+      en: {
+        proshop: "Pro Shop",
+        dashboard: "Dashboard",
+        caddyStatus: "Caddy Status",
+        teeSheet: "Tee Sheet",
+        announcements: "Announcements",
+        dayOffRequests: "Day Off Requests",
+        bookSlots: "Book Slot(s)",
+        bookingType: "Booking Type",
+        regular: "Regular",
+        vip: "VIP",
+        society: "Society",
+        tournament: "Tournament",
+        course: "Course",
+        teeNum: "Tee #",
+        from: "From",
+        to: "To",
+        golfers: "Golfers",
+        addGolfer: "+ Add Golfer",
+        golferName: "Golfer Name",
+        selectCaddy: "Select Caddy",
+        searchCaddy: "Search caddy...",
+        noCaddy: "No Caddy",
+        applyAll: "Apply details to all slots in range",
+        rangeNote: "Range aligns to the interval and clamped to Start/End.",
+        notes: "Notes",
+        delete: "Delete",
+        save: "Save",
+        clearDay: "Clear Day",
+        find: "Find",
+        next: "Next",
+        matches: "Matches",
+        complex: "Complex",
+        date: "Date",
+        start: "Start",
+        end: "End",
+        interval: "Interval",
+        teesPerCourse: "Tees per Course",
+        totalTees: "Total Tees",
+        searchPlaceholder: "Type golfer name or caddy number",
+        searchHint: "Press Enter to find; Next to jump to the following match.",
+        noMatches: "No matches on this date.",
+        confirmClear: "Clear all bookings for",
+        noTimes: "Selected range has no times on this sheet.",
+        player: "Player",
+        players: "players"
+      },
+      th: {
+        proshop: "โปรช็อป",
+        dashboard: "แดชบอร์ด",
+        caddyStatus: "สถานะแคดดี้",
+        teeSheet: "ตารางทีออฟ",
+        announcements: "ประกาศ",
+        dayOffRequests: "คำขอลาหยุด",
+        bookSlots: "จองช่วงเวลา",
+        bookingType: "ประเภทการจอง",
+        regular: "ปกติ",
+        vip: "VIP",
+        society: "กลุ่ม",
+        tournament: "ทัวร์นาเมนต์",
+        course: "คอร์ส",
+        teeNum: "ทีออฟ #",
+        from: "จาก",
+        to: "ถึง",
+        golfers: "นักกอล์ฟ",
+        addGolfer: "+ เพิ่มนักกอล์ฟ",
+        golferName: "ชื่อนักกอล์ฟ",
+        selectCaddy: "เลือกแคดดี้",
+        searchCaddy: "ค้นหาแคดดี้...",
+        noCaddy: "ไม่มีแคดดี้",
+        applyAll: "ใช้รายละเอียดกับทุกช่วงเวลา",
+        rangeNote: "ช่วงเวลาจะจัดเรียงตามช่วงเวลาที่กำหนด",
+        notes: "หมายเหตุ",
+        delete: "ลบ",
+        save: "บันทึก",
+        clearDay: "ล้างวัน",
+        find: "ค้นหา",
+        next: "ถัดไป",
+        matches: "พบ",
+        complex: "คอมเพล็กซ์",
+        date: "วันที่",
+        start: "เริ่ม",
+        end: "สิ้นสุด",
+        interval: "ช่วงเวลา",
+        teesPerCourse: "ทีออฟต่อคอร์ส",
+        totalTees: "ทีออฟทั้งหมด",
+        searchPlaceholder: "พิมพ์ชื่อนักกอล์ฟหรือหมายเลขแคดดี้",
+        searchHint: "กด Enter เพื่อค้นหา; ถัดไป เพื่อไปยังผลลัพธ์ถัดไป",
+        noMatches: "ไม่พบผลลัพธ์ในวันนี้",
+        confirmClear: "ล้างการจองทั้งหมดสำหรับ",
+        noTimes: "ไม่มีช่วงเวลาที่เลือกในตารางนี้",
+        player: "ผู้เล่น",
+        players: "ผู้เล่น"
+      },
+      ko: {
+        proshop: "프로샵",
+        dashboard: "대시보드",
+        caddyStatus: "캐디 상태",
+        teeSheet: "티 시트",
+        announcements: "공지사항",
+        dayOffRequests: "휴가 요청",
+        bookSlots: "슬롯 예약",
+        bookingType: "예약 유형",
+        regular: "일반",
+        vip: "VIP",
+        society: "단체",
+        tournament: "토너먼트",
+        course: "코스",
+        teeNum: "티 #",
+        from: "시작",
+        to: "종료",
+        golfers: "골퍼",
+        addGolfer: "+ 골퍼 추가",
+        golferName: "골퍼 이름",
+        selectCaddy: "캐디 선택",
+        searchCaddy: "캐디 검색...",
+        noCaddy: "캐디 없음",
+        applyAll: "모든 슬롯에 적용",
+        rangeNote: "범위는 간격에 맞춰 조정됩니다.",
+        notes: "메모",
+        delete: "삭제",
+        save: "저장",
+        clearDay: "일일 삭제",
+        find: "검색",
+        next: "다음",
+        matches: "결과",
+        complex: "복합",
+        date: "날짜",
+        start: "시작",
+        end: "종료",
+        interval: "간격",
+        teesPerCourse: "코스당 티",
+        totalTees: "총 티",
+        searchPlaceholder: "골퍼 이름 또는 캐디 번호 입력",
+        searchHint: "Enter를 눌러 검색; 다음으로 이동",
+        noMatches: "오늘 날짜에 결과가 없습니다.",
+        confirmClear: "모든 예약 삭제",
+        noTimes: "선택한 범위에 시간이 없습니다.",
+        player: "플레이어",
+        players: "명"
+      },
+      ja: {
+        proshop: "プロショップ",
+        dashboard: "ダッシュボード",
+        caddyStatus: "キャディー状況",
+        teeSheet: "ティーシート",
+        announcements: "お知らせ",
+        dayOffRequests: "休暇申請",
+        bookSlots: "スロット予約",
+        bookingType: "予約タイプ",
+        regular: "一般",
+        vip: "VIP",
+        society: "団体",
+        tournament: "トーナメント",
+        course: "コース",
+        teeNum: "ティー #",
+        from: "開始",
+        to: "終了",
+        golfers: "ゴルファー",
+        addGolfer: "+ ゴルファー追加",
+        golferName: "ゴルファー名",
+        selectCaddy: "キャディー選択",
+        searchCaddy: "キャディー検索...",
+        noCaddy: "キャディーなし",
+        applyAll: "すべてのスロットに適用",
+        rangeNote: "範囲は間隔に合わせて調整されます。",
+        notes: "メモ",
+        delete: "削除",
+        save: "保存",
+        clearDay: "日付クリア",
+        find: "検索",
+        next: "次へ",
+        matches: "件",
+        complex: "コンプレックス",
+        date: "日付",
+        start: "開始",
+        end: "終了",
+        interval: "間隔",
+        teesPerCourse: "コース毎ティー",
+        totalTees: "総ティー",
+        searchPlaceholder: "ゴルファー名またはキャディー番号を入力",
+        searchHint: "Enterで検索; 次へで移動",
+        noMatches: "本日の結果はありません。",
+        confirmClear: "予約をすべて削除",
+        noTimes: "選択した範囲に時間がありません。",
+        player: "プレイヤー",
+        players: "名"
+      }
+    };
+
+    var currentLang = localStorage.getItem("teesheet.lang") || "en";
+
+    function t(key) {
+      return (translations[currentLang] && translations[currentLang][key]) || translations.en[key] || key;
+    }
+
+    function applyTranslations() {
+      document.querySelectorAll("[data-i18n]").forEach(function(el) {
+        var key = el.getAttribute("data-i18n");
+        el.textContent = t(key);
+      });
+      // Update placeholders
+      var searchInput = document.getElementById("v11-searchQuery");
+      if (searchInput) searchInput.placeholder = t("searchPlaceholder");
+    }
+
+    // Language selector
+    document.querySelectorAll("#lang-selector .lang-btn").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        document.querySelectorAll("#lang-selector .lang-btn").forEach(function(b) { b.classList.remove("active"); });
+        btn.classList.add("active");
+        currentLang = btn.dataset.lang;
+        localStorage.setItem("teesheet.lang", currentLang);
+        applyTranslations();
+      });
+      if (btn.dataset.lang === currentLang) {
+        document.querySelectorAll("#lang-selector .lang-btn").forEach(function(b) { b.classList.remove("active"); });
+        btn.classList.add("active");
+      }
+    });
+
+    // ==================== CADDY DATA ====================
+    // Sample caddies - in production this would come from CaddySystem.allCaddys
+    var allCaddies = [];
+
+    // Try to load from MciPro platform
+    if (window.CaddySystem && window.CaddySystem.allCaddys) {
+      allCaddies = window.CaddySystem.allCaddys;
+    } else {
+      // Demo caddies
+      allCaddies = [
+        { id: 1, name: "Somchai K.", number: "001", rating: 4.8, language: "TH/EN", status: "available" },
+        { id: 2, name: "Napat P.", number: "002", rating: 4.9, language: "TH/EN/KO", status: "available" },
+        { id: 3, name: "Wanida S.", number: "003", rating: 4.7, language: "TH/EN/JA", status: "available" },
+        { id: 4, name: "Thanaporn M.", number: "004", rating: 4.6, language: "TH/EN", status: "available" },
+        { id: 5, name: "Apinya R.", number: "005", rating: 4.9, language: "TH/EN/KO", status: "available" },
+        { id: 6, name: "Channarong T.", number: "006", rating: 4.5, language: "TH/EN", status: "busy" },
+        { id: 7, name: "Duangjai L.", number: "007", rating: 4.8, language: "TH/EN/JA", status: "available" },
+        { id: 8, name: "Ekachai N.", number: "008", rating: 4.4, language: "TH/EN", status: "available" },
+        { id: 9, name: "Fah C.", number: "009", rating: 4.7, language: "TH/EN/KO", status: "available" },
+        { id: 10, name: "Ganya W.", number: "010", rating: 4.6, language: "TH/EN", status: "dayoff" }
+      ];
+    }
+
+    // ==================== TABS ====================
     var tabs = document.querySelectorAll(".tab");
     tabs.forEach(function(t){
       t.addEventListener("click", function(){
@@ -228,7 +515,7 @@
       });
     });
 
-    // Helpers
+    // ==================== HELPERS ====================
     function pad2(n){ n=String(n); return n.length<2?("0"+n):n; }
     function minutes(hm){ var a=(hm||"").split(":").map(Number); return a[0]*60 + a[1]; }
     function hhmm(m){ return pad2(Math.floor(m/60))+":"+pad2(m%60); }
@@ -236,27 +523,29 @@
     function parseISO(s){ var a=(s||"").split("-").map(Number); return new Date(a[0]||NaN,(a[1]||1)-1,a[2]||NaN); }
     function genId(){ try{ return (crypto.getRandomValues(new Uint32Array(1))[0].toString(16)+Date.now().toString(16)); }catch(_){ return (Math.floor(Math.random()*1e9).toString(16)+Date.now().toString(16)); } }
 
-    // DOM
+    // ==================== DOM ====================
     var $ = function(id){ return document.getElementById(id); };
     var el = {
       complex: $("v11-complex"), date: $("v11-date"), prev: $("v11-prevDay"), next: $("v11-nextDay"), openMonth: $("v11-openMonth"),
       start: $("v11-start"), end: $("v11-end"), interval: $("v11-interval"), tees: $("v11-teesPerCourse"),
       total: $("v11-totalTeesTag"), sheet: $("v11-sheet"), legC: $("v11-legC"), legD: $("v11-legD"),
       clear: $("v11-clearDay"),
-      dlg: $("v11-bookingDialog"), id: $("v11-bkId"), name: $("v11-bkName"), caddy: $("v11-bkCaddy"), mid: $("v11-bkMid"),
-      course: $("v11-bkCourse"), teeNo: $("v11-bkTeeNo"), from: $("v11-bkFrom"), to: $("v11-bkTo"), apply: $("v11-bkApplyAll"), notes: $("v11-bkNotes"),
+      dlg: $("v11-bookingDialog"), id: $("v11-bkId"), type: $("v11-bkType"),
+      course: $("v11-bkCourse"), teeNo: $("v11-bkTeeNo"), from: $("v11-bkFrom"), to: $("v11-bkTo"),
+      apply: $("v11-bkApplyAll"), notes: $("v11-bkNotes"), golfersList: $("v11-golfersList"),
+      addGolfer: $("v11-addGolfer"),
       delBtn: $("v11-deleteBooking"), saveBtn: $("v11-saveBooking"), closeBtn: $("v11-closeDialog"),
       mp: $("v11-monthPicker"), mpPrev: $("v11-mpPrev"), mpNext: $("v11-mpNext"), mpM: $("v11-mpMonth"), mpY: $("v11-mpYear"), mpGrid: $("v11-mpGrid"),
       q: $("v11-searchQuery"), qGo: $("v11-searchGo"), qNext: $("v11-searchNext"), qCount: $("v11-matchCount")
     };
 
-    // Storage
-    var keyDay = function(d){ return "mctsheet.bookings.v12::"+d; };
-    var keySettings = "mctsheet.settings.v12";
+    // ==================== STORAGE ====================
+    var keyDay = function(d){ return "mctsheet.bookings.v13::"+d; };
+    var keySettings = "mctsheet.settings.v13";
     function getDay(d){ try { return JSON.parse(localStorage.getItem(keyDay(d)) || "[]"); } catch(_){ return []; } }
     function setDay(d,a){ localStorage.setItem(keyDay(d), JSON.stringify(a||[])); }
 
-    // Settings
+    // ==================== SETTINGS ====================
     if(!el.date.value) el.date.value = todayISO();
     try {
       var s = JSON.parse(localStorage.getItem(keySettings) || "{}");
@@ -267,7 +556,7 @@
       localStorage.setItem(keySettings, JSON.stringify(s));
     }
 
-    // Layout
+    // ==================== LAYOUT ====================
     function groups(){ var t = el.complex.value; if(t==="18") return ["A","B"]; if(t==="27") return ["A","B","C"]; return ["A","B","C","D"]; }
     function layout(){
       var gs = groups();
@@ -276,7 +565,160 @@
       return { gs: gs, per: per, cols: cols, total: cols.length };
     }
 
-    // Render
+    // ==================== GOLFER ROWS ====================
+    var currentGolfers = [];
+
+    function createGolferRow(index, golfer) {
+      golfer = golfer || { name: "", caddyId: null, caddyNumber: "", caddyName: "" };
+      var row = document.createElement("div");
+      row.className = "golfer-row";
+      row.dataset.index = index;
+
+      var numDiv = document.createElement("div");
+      numDiv.className = "golfer-num";
+      numDiv.textContent = index + 1;
+
+      var nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.placeholder = t("golferName");
+      nameInput.value = golfer.name || "";
+      nameInput.className = "golfer-name-input";
+
+      var caddySelect = document.createElement("div");
+      caddySelect.className = "caddy-select";
+
+      var caddyInput = document.createElement("input");
+      caddyInput.type = "text";
+      caddyInput.placeholder = t("searchCaddy");
+      caddyInput.className = "caddy-search-input";
+      caddyInput.value = golfer.caddyNumber ? (golfer.caddyNumber + " - " + (golfer.caddyName || "")) : "";
+      caddyInput.dataset.caddyId = golfer.caddyId || "";
+      caddyInput.dataset.caddyNumber = golfer.caddyNumber || "";
+      caddyInput.dataset.caddyName = golfer.caddyName || "";
+
+      var dropdown = document.createElement("div");
+      dropdown.className = "caddy-dropdown";
+
+      caddyInput.addEventListener("focus", function() {
+        renderCaddyDropdown(dropdown, caddyInput, "");
+        dropdown.classList.add("show");
+      });
+
+      caddyInput.addEventListener("input", function() {
+        renderCaddyDropdown(dropdown, caddyInput, caddyInput.value);
+        dropdown.classList.add("show");
+      });
+
+      caddyInput.addEventListener("blur", function() {
+        setTimeout(function() { dropdown.classList.remove("show"); }, 200);
+      });
+
+      caddySelect.appendChild(caddyInput);
+      caddySelect.appendChild(dropdown);
+
+      var removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.textContent = "✕";
+      removeBtn.style.cssText = "width:28px;height:28px;padding:0;font-size:14px;background:#fee2e2;border-color:#fecaca;color:#dc2626";
+      removeBtn.addEventListener("click", function() {
+        if (el.golfersList.children.length > 1) {
+          row.remove();
+          renumberGolfers();
+        }
+      });
+
+      row.appendChild(numDiv);
+      row.appendChild(nameInput);
+      row.appendChild(caddySelect);
+      row.appendChild(removeBtn);
+
+      return row;
+    }
+
+    function renderCaddyDropdown(dropdown, input, query) {
+      dropdown.innerHTML = "";
+      query = (query || "").toLowerCase();
+
+      // No caddy option
+      var noCaddyOpt = document.createElement("div");
+      noCaddyOpt.className = "caddy-option";
+      noCaddyOpt.innerHTML = '<span class="caddy-name">' + t("noCaddy") + '</span>';
+      noCaddyOpt.addEventListener("mousedown", function(e) {
+        e.preventDefault();
+        input.value = "";
+        input.dataset.caddyId = "";
+        input.dataset.caddyNumber = "";
+        input.dataset.caddyName = "";
+        dropdown.classList.remove("show");
+      });
+      dropdown.appendChild(noCaddyOpt);
+
+      // Filter caddies
+      var filtered = allCaddies.filter(function(c) {
+        if (c.status === "dayoff" || c.status === "busy") return false;
+        var searchStr = ((c.number || "") + " " + (c.name || "")).toLowerCase();
+        return !query || searchStr.indexOf(query) >= 0;
+      }).slice(0, 10);
+
+      filtered.forEach(function(caddy) {
+        var opt = document.createElement("div");
+        opt.className = "caddy-option";
+        var stars = "★".repeat(Math.floor(caddy.rating || 0)) + (caddy.rating % 1 >= 0.5 ? "½" : "");
+        opt.innerHTML = '<span class="caddy-name">#' + (caddy.number || caddy.id) + ' ' + caddy.name + '</span>' +
+                        '<span class="caddy-rating">' + stars + ' ' + (caddy.rating || 0).toFixed(1) + '</span>' +
+                        '<div class="caddy-info">' + (caddy.language || "TH/EN") + '</div>';
+        opt.addEventListener("mousedown", function(e) {
+          e.preventDefault();
+          input.value = (caddy.number || caddy.id) + " - " + caddy.name;
+          input.dataset.caddyId = caddy.id || "";
+          input.dataset.caddyNumber = caddy.number || caddy.id || "";
+          input.dataset.caddyName = caddy.name || "";
+          dropdown.classList.remove("show");
+        });
+        dropdown.appendChild(opt);
+      });
+    }
+
+    function renumberGolfers() {
+      Array.from(el.golfersList.children).forEach(function(row, i) {
+        row.dataset.index = i;
+        row.querySelector(".golfer-num").textContent = i + 1;
+      });
+    }
+
+    function getGolfersFromDialog() {
+      var golfers = [];
+      Array.from(el.golfersList.children).forEach(function(row) {
+        var nameInput = row.querySelector(".golfer-name-input");
+        var caddyInput = row.querySelector(".caddy-search-input");
+        if (nameInput && nameInput.value.trim()) {
+          golfers.push({
+            name: nameInput.value.trim(),
+            caddyId: caddyInput.dataset.caddyId || null,
+            caddyNumber: caddyInput.dataset.caddyNumber || "",
+            caddyName: caddyInput.dataset.caddyName || ""
+          });
+        }
+      });
+      return golfers;
+    }
+
+    function setGolfersInDialog(golfers) {
+      el.golfersList.innerHTML = "";
+      golfers = golfers || [{ name: "", caddyId: null, caddyNumber: "", caddyName: "" }];
+      golfers.forEach(function(g, i) {
+        el.golfersList.appendChild(createGolferRow(i, g));
+      });
+    }
+
+    el.addGolfer.addEventListener("click", function() {
+      var count = el.golfersList.children.length;
+      if (count < 4) {
+        el.golfersList.appendChild(createGolferRow(count, {}));
+      }
+    });
+
+    // ==================== RENDER ====================
     function render(){
       saveSettings();
       var L = layout();
@@ -305,7 +747,7 @@
       L.gs.forEach(function(g){
         var cell = document.createElement("div");
         cell.className = "group-title";
-        cell.textContent = "Course "+g;
+        cell.textContent = t("course") + " " + g;
         if(g==="A") cell.style.background = "#d9f99d";
         if(g==="B") cell.style.background = "#bae6fd";
         if(g==="C") cell.style.background = "#fde68a";
@@ -343,7 +785,7 @@
 
           slot.addEventListener("click", function(e){
             if(e.target.closest(".pill")) return;
-            openDlg({ id:"", name:"", caddyNumber:"", mid:"", course: slot.dataset.group, tee: parseInt(slot.dataset.tee,10)||1, time: slot.dataset.time, col: parseInt(slot.dataset.col,10)||0, notes:"" });
+            openDlg({ id:"", golfers: [], bookingType: "regular", course: slot.dataset.group, tee: parseInt(slot.dataset.tee,10)||1, time: slot.dataset.time, col: parseInt(slot.dataset.col,10)||0, notes:"" });
           });
           slot.addEventListener("dragover", function(e){ e.preventDefault(); });
           slot.addEventListener("drop", function(e){
@@ -367,34 +809,60 @@
       computeMatches(el.q.value||"");
     }
 
-    // Pill
+    // ==================== PILL ====================
     function pill(b){
       var p = document.createElement("div");
-      p.className = "pill";
+      var pillClass = "pill";
+      if (b.bookingType === "vip") pillClass += " vip";
+      else if (b.bookingType === "society") pillClass += " society";
+      else if (b.bookingType === "tournament") pillClass += " tournament";
+      p.className = pillClass;
       p.draggable = true;
       p.dataset.id = b.id;
-      var caddy = b.caddyNumber ? (" • Caddy "+b.caddyNumber) : "";
-      p.innerHTML = "<strong>"+(b.name||"Player")+"</strong><br><span style='font-size:11px'>ID: "+(b.mid||"—")+caddy+" • "+b.course+"-"+(b.tee||1)+" • "+b.time+"</span>";
+
+      var golfers = b.golfers || [];
+      var displayName = golfers.length > 0 ? golfers[0].name : (b.name || t("player"));
+      var playerCount = golfers.length > 1 ? " +" + (golfers.length - 1) : "";
+      var caddyInfo = "";
+      if (golfers.length > 0 && golfers[0].caddyNumber) {
+        caddyInfo = " • C" + golfers[0].caddyNumber;
+      } else if (b.caddyNumber) {
+        caddyInfo = " • C" + b.caddyNumber;
+      }
+
+      var typeLabel = b.bookingType && b.bookingType !== "regular" ? "[" + b.bookingType.toUpperCase() + "] " : "";
+      p.innerHTML = "<strong>" + typeLabel + displayName + playerCount + "</strong><br><span style='font-size:11px'>" + b.course + "-" + (b.tee||1) + caddyInfo + " • " + b.time + "</span>";
+
       p.addEventListener("dragstart", function(e){ e.dataTransfer.setData("text/id", b.id); });
       p.addEventListener("click", function(e){ openDlg(b); e.stopPropagation(); });
       return p;
     }
 
-    // Dialog
+    // ==================== DIALOG ====================
     function openDlg(seed){
       el.id.value = seed.id || "";
-      el.name.value = seed.name || "";
-      el.caddy.value = seed.caddyNumber || "";
-      el.mid.value = seed.mid || "";
+      el.type.value = seed.bookingType || "regular";
       el.course.value = seed.course || "A";
       el.teeNo.value = String(seed.tee || 1);
       el.from.value = seed.time || "";
       el.to.value = seed.time || "";
       el.apply.checked = false;
       el.notes.value = seed.notes || "";
+
+      // Handle golfers - support both old format (name, caddyNumber) and new format (golfers array)
+      var golfers = seed.golfers || [];
+      if (golfers.length === 0 && seed.name) {
+        golfers = [{ name: seed.name, caddyNumber: seed.caddyNumber || "", caddyId: null, caddyName: "" }];
+      }
+      if (golfers.length === 0) {
+        golfers = [{ name: "", caddyNumber: "", caddyId: null, caddyName: "" }];
+      }
+      setGolfersInDialog(golfers);
+
       el.delBtn.style.display = seed.id ? "" : "none";
       if(el.dlg.showModal) el.dlg.showModal(); else el.dlg.setAttribute("open","");
     }
+
     function closeDlg(){ if(el.dlg.close) el.dlg.close(); else el.dlg.removeAttribute("open"); }
     el.closeBtn.addEventListener("click", closeDlg);
 
@@ -402,7 +870,7 @@
       function mins(hm){ var a=hm.split(":").map(Number); return a[0]*60+a[1]; }
       function tohm(min){ return pad2(Math.floor(min/60))+":"+pad2(min%60); }
       var a=mins(from||""), b=mins(to||""); if(isNaN(a)||isNaN(b)) return [];
-      if(b<a){ var t=a;a=b;b=t; }
+      if(b<a){ var temp=a;a=b;b=temp; }
       var s=mins(start), e=mins(end); a=Math.max(a,s); b=Math.min(b,e); if(b<a) return [];
       var off=(a-s)%step; if(off!==0) a+=(step-off);
       var out=[]; for(var m=a;m<=b;m+=step) out.push(tohm(m)); return out;
@@ -415,19 +883,38 @@
       var L = layout();
       var course = el.course.value;
       var tee = Math.max(1, Math.min(2, parseInt(el.teeNo.value||"1",10)));
+      var bookingType = el.type.value;
       var applyAll = !!el.apply.checked;
       var step = +el.interval.value;
       var times = aligned(el.from.value, el.to.value, step, el.start.value, el.end.value);
-      if(!times.length){ alert("Selected range has no times on this sheet."); return; }
+      if(!times.length){ alert(t("noTimes")); return; }
+
+      var golfers = getGolfersFromDialog();
+      if (golfers.length === 0) {
+        golfers = [{ name: t("player"), caddyNumber: "", caddyId: null, caddyName: "" }];
+      }
 
       var colIndex = 0, count = {A:0,B:0,C:0,D:0};
       for(var i=0;i<L.cols.length;i++){ var g=L.cols[i]; count[g]++; if(g===course && count[g]===tee){ colIndex=i; break; } }
 
       function upsertAt(t, seedId, copy){
         var idx = arr.findIndex(function(x){ return x.time===t && x.col===colIndex; });
-        var base = { id: seedId || genId(), course:course, tee:tee, time:t, col:colIndex, name:"", caddyNumber:"", mid:"", notes:"" };
-        var payload = base; if(copy){ payload = Object.assign({}, base, { name:el.name.value.trim(), caddyNumber:el.caddy.value.trim(), mid:el.mid.value.trim(), notes:el.notes.value.trim() }); }
-        if(idx>=0){ if(copy){ arr[idx] = Object.assign({}, arr[idx], payload, {id:arr[idx].id}); } return arr[idx] && arr[idx].id || payload.id; }
+        var base = { id: seedId || genId(), course:course, tee:tee, time:t, col:colIndex, golfers:[], bookingType:"regular", notes:"" };
+        var payload = base;
+        if(copy){
+          payload = Object.assign({}, base, {
+            golfers: golfers,
+            bookingType: bookingType,
+            notes: el.notes.value.trim(),
+            // Keep legacy fields for backward compatibility
+            name: golfers[0] ? golfers[0].name : "",
+            caddyNumber: golfers[0] ? golfers[0].caddyNumber : ""
+          });
+        }
+        if(idx>=0){
+          if(copy){ arr[idx] = Object.assign({}, arr[idx], payload, {id:arr[idx].id}); }
+          return arr[idx] && arr[idx].id || payload.id;
+        }
         else { arr.push(payload); return payload.id; }
       }
 
@@ -435,7 +922,17 @@
         var id = el.id.value || null;
         var idx = id ? arr.findIndex(function(x){ return x.id===id; }) : -1;
         if(idx>=0){
-          arr[idx] = Object.assign({}, arr[idx], { name:el.name.value.trim(), caddyNumber:el.caddy.value.trim(), mid:el.mid.value.trim(), course:course, tee:tee, time:times[0], col:colIndex, notes:el.notes.value.trim() });
+          arr[idx] = Object.assign({}, arr[idx], {
+            golfers: golfers,
+            bookingType: bookingType,
+            course: course,
+            tee: tee,
+            time: times[0],
+            col: colIndex,
+            notes: el.notes.value.trim(),
+            name: golfers[0] ? golfers[0].name : "",
+            caddyNumber: golfers[0] ? golfers[0].caddyNumber : ""
+          });
         } else {
           upsertAt(times[0], null, true);
         }
@@ -453,7 +950,7 @@
       setDay(date, arr); closeDlg(); render();
     });
 
-    // Date controls
+    // ==================== DATE CONTROLS ====================
     el.prev.addEventListener("click", function(){ var d=parseISO(el.date.value||todayISO()); d.setDate(d.getDate()-1); el.date.value=d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); render(); });
     el.next.addEventListener("click", function(){ var d=parseISO(el.date.value||todayISO()); d.setDate(d.getDate()+1); el.date.value=d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); render(); });
     el.date.addEventListener("change", render);
@@ -463,11 +960,11 @@
     el.end.addEventListener("change", render);
     el.tees.addEventListener("change", render);
     el.clear.addEventListener("click", function(){
-      if(!confirm("Clear all bookings for "+el.date.value+"?")) return;
+      if(!confirm(t("confirmClear") + " " + el.date.value + "?")) return;
       setDay(el.date.value, []); render();
     });
 
-    // Month picker
+    // ==================== MONTH PICKER ====================
     var monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
     (function buildMonthPicker(){
       el.mpM.innerHTML = monthNames.map(function(n,i){ return "<option value='"+i+"'>"+n+"</option>"; }).join("");
@@ -478,7 +975,7 @@
       Array.from(el.mpGrid.querySelectorAll(".mp-day")).forEach(function(n){ n.remove(); });
       var first = new Date(year, month, 1), firstDow = first.getDay(), daysInMonth = new Date(year, month+1, 0).getDate();
       var prevDays = new Date(year, month, 0).getDate();
-      var t = new Date(); var today = t.getFullYear()+"-"+pad2(t.getMonth()+1)+"-"+pad2(t.getDate());
+      var td = new Date(); var today = td.getFullYear()+"-"+pad2(td.getMonth()+1)+"-"+pad2(td.getDate());
       for(var i=0;i<42;i++){
         var cell = document.createElement("div"); cell.className = "mp-day";
         var iso, muted=false;
@@ -498,15 +995,22 @@
     el.mpM.addEventListener("change", function(){ renderMonth(parseInt(el.mpY.value,10), parseInt(el.mpM.value,10)); });
     el.mpY.addEventListener("change", function(){ renderMonth(parseInt(el.mpY.value,10), parseInt(el.mpM.value,10)); });
 
-    // Search
+    // ==================== SEARCH ====================
     var state = { ids:[], idx:0 };
     function computeMatches(q){
       var data = getDay(el.date.value || todayISO());
       var needle = (q||"").trim().toLowerCase(); if(!needle){ state.ids=[]; state.idx=0; el.qCount.textContent="0"; return; }
       state.ids = data.filter(function(b){
+        // Search in golfers array
+        var golfers = b.golfers || [];
+        var matchGolfer = golfers.some(function(g) {
+          return (g.name || "").toLowerCase().indexOf(needle) >= 0 ||
+                 (g.caddyNumber || "").toLowerCase().indexOf(needle) >= 0;
+        });
+        // Also search legacy fields
         var name = (b.name||"").toLowerCase();
         var c = (b.caddyNumber||"").toLowerCase();
-        return name.indexOf(needle)>=0 || c.indexOf(needle)>=0;
+        return matchGolfer || name.indexOf(needle)>=0 || c.indexOf(needle)>=0;
       }).sort(function(a,b){
         var da = minutes(a.time||"00:00"), db = minutes(b.time||"00:00");
         if(da!==db) return da-db; return (a.col||0)-(b.col||0);
@@ -523,11 +1027,12 @@
       slot.scrollIntoView({behavior:"smooth", block:"center", inline:"center"});
       setTimeout(function(){ slot.style.outline=""; }, 1600);
     }
-    el.qGo.addEventListener("click", function(e){ e.preventDefault(); computeMatches(el.q.value||""); if(state.ids.length){ jump(state.ids[0]); } else { alert("No matches on this date."); } });
+    el.qGo.addEventListener("click", function(e){ e.preventDefault(); computeMatches(el.q.value||""); if(state.ids.length){ jump(state.ids[0]); } else { alert(t("noMatches")); } });
     el.qNext.addEventListener("click", function(e){ e.preventDefault(); if(!state.ids.length){ el.qGo.click(); return; } state.idx=(state.idx+1)%state.ids.length; jump(state.ids[state.idx]); });
     el.q.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); el.qGo.click(); } });
 
-    // Init
+    // ==================== INIT ====================
+    applyTranslations();
     render();
   })();
   </script>

@@ -17,6 +17,21 @@ Integrated Pro Shop Tee Sheet with main caddy booking system:
 
 ---
 
+### Caddy Booking Notification Function
+**File:** `2026-01-04_NOTIFY_CADDY_BOOKING_FUNCTION.md`
+
+Created `notify-caddy-booking` Supabase edge function for LINE notifications:
+- `new_booking`: Notify caddy of new booking request
+- `approved`/`denied`: Notify golfer of booking decision
+- `cancelled`: Notify both caddy and golfer
+- `time_changed`: Notify both of schedule change
+- `waitlist_added`: Notify golfer they're on waitlist
+- `waitlist_promoted`: Notify golfer spot is available
+
+**Deployed to:** Supabase Functions
+
+---
+
 ### Login & Promo Mobile Responsive
 **File:** `2026-01-04_LOGIN_PROMO_MOBILE_RESPONSIVE.md`
 

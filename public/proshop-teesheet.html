@@ -2331,9 +2331,23 @@
       dropdown.innerHTML = '';
       query = (query || '').toLowerCase();
 
-      // Get booked caddies for current time slot
+      // Get booked caddies for current time slot (from other bookings)
       const currentTime = el.bookingTime.value;
       const bookedCaddies = getBookedCaddiesForSlot(el.dateInput.value, currentTime, currentEditingBookingId);
+
+      // Also get caddies already assigned to OTHER golfers in THIS booking dialog
+      const caddiesInThisGroup = new Set();
+      const currentInputCaddyNumber = input.dataset.caddyNumber || '';
+      Array.from(el.golfersList.children).forEach(row => {
+        const caddyInput = row.querySelector('.caddy-input');
+        if (caddyInput && caddyInput !== input) {
+          const caddyNum = caddyInput.dataset.caddyNumber;
+          if (caddyNum) caddiesInThisGroup.add(caddyNum);
+        }
+      });
+
+      // Combine: external bookings + other golfers in same group
+      const allUnavailable = new Set([...bookedCaddies, ...caddiesInThisGroup]);
 
       // No caddy option
       const noCaddyOpt = document.createElement('div');
@@ -2348,20 +2362,23 @@
       });
       dropdown.appendChild(noCaddyOpt);
 
-      // Filter caddies - show all but mark booked ones
+      // Filter caddies - show all but mark booked/assigned ones
       allCaddies.filter(c => c.status === 'available' && (!query || (c.number + ' ' + c.name).toLowerCase().includes(query)))
         .slice(0, 10).forEach(caddy => {
-          const isBooked = bookedCaddies.has(caddy.number);
+          const isBookedExternal = bookedCaddies.has(caddy.number);
+          const isInThisGroup = caddiesInThisGroup.has(caddy.number);
+          const isUnavailable = isBookedExternal || isInThisGroup;
           const opt = document.createElement('div');
-          opt.className = `caddy-option ${isBooked ? 'booked' : ''}`;
-          opt.title = isBooked ? t('caddyAlreadyBooked') : '';
+          opt.className = `caddy-option ${isUnavailable ? 'booked' : ''}`;
+          opt.title = isUnavailable ? t('caddyAlreadyBooked') : '';
           const stars = '★'.repeat(Math.floor(caddy.rating));
-          const bookedBadge = isBooked ? `<span class="caddy-booked-badge">${t('booked')}</span>` : '';
+          const badgeText = isInThisGroup ? 'IN GROUP' : (isBookedExternal ? t('booked') : '');
+          const bookedBadge = isUnavailable ? `<span class="caddy-booked-badge">${badgeText}</span>` : '';
           opt.innerHTML = `<span class="caddy-option-name">#${caddy.number} ${caddy.name}${bookedBadge}</span>
             <span class="caddy-option-rating">${stars} ${caddy.rating}</span>
             <div class="caddy-option-info">${caddy.language}</div>`;
 
-          if (!isBooked) {
+          if (!isUnavailable) {
             opt.addEventListener('mousedown', e => {
               e.preventDefault();
               input.value = `${caddy.number} - ${caddy.name}`;
@@ -2372,8 +2389,8 @@
           } else {
             opt.addEventListener('mousedown', e => {
               e.preventDefault();
-              // Show alert that caddy is already booked
-              alert(t('caddyAlreadyBooked'));
+              // Show alert that caddy is already booked/assigned
+              alert(isInThisGroup ? 'This caddy is already assigned to another golfer in this group' : t('caddyAlreadyBooked'));
             });
           }
           dropdown.appendChild(opt);

@@ -2097,13 +2097,15 @@
       },
 
       // Sync booking to parent BookingManager and cloud
-      async syncBookingToParent(booking) {
+      async syncBookingToParent(booking, action = 'new_booking') {
         const bookingManager = this.getBookingManager();
         const cloudSync = this.getCloudSync();
 
         if (bookingManager) {
           // Find if booking exists, update or add
           const existingIdx = bookingManager.bookings.findIndex(b => b.id === booking.id);
+          const isNew = existingIdx < 0;
+
           if (existingIdx >= 0) {
             bookingManager.bookings[existingIdx] = booking;
           } else {
@@ -2120,10 +2122,151 @@
             }
           }
 
+          // Trigger caddy notifications for booking changes
+          await this.notifyCaddyBooking(booking, action);
+
           console.log('[TeeSheet] Booking synced to parent BookingManager');
           return true;
         }
         return false;
+      },
+
+      // Send LINE notification to caddies for booking events
+      async notifyCaddyBooking(booking, action) {
+        const parent = this.getParent();
+        const supabase = parent.SupabaseDB?.client;
+        if (!supabase) {
+          console.log('[TeeSheet] No Supabase client for notifications');
+          return;
+        }
+
+        // Build notification payload from booking
+        const caddyBookings = booking.caddyBookings || [];
+        for (const cb of caddyBookings) {
+          try {
+            const { data, error } = await supabase.functions.invoke('notify-caddy-booking', {
+              body: {
+                action: action,
+                bookingId: booking.id,
+                caddyId: cb.caddyId,
+                caddyName: cb.caddyName,
+                golferId: booking.golferId,
+                golferName: cb.golferName,
+                course: booking.courseDisplay || booking.course,
+                date: booking.date,
+                time: booking.time
+              }
+            });
+            if (error) {
+              console.warn('[TeeSheet] Notification failed:', error);
+            } else {
+              console.log('[TeeSheet] Caddy notified:', cb.caddyName, action);
+            }
+          } catch (e) {
+            console.warn('[TeeSheet] Notification error:', e);
+          }
+        }
+      },
+
+      // Add golfer to caddy waitlist
+      async addToWaitlist(caddyId, caddyName, golferId, golferName, date, time, course) {
+        const parent = this.getParent();
+        const supabase = parent.SupabaseDB?.client;
+
+        // Store waitlist entry
+        const waitlistEntry = {
+          id: 'waitlist-' + Date.now(),
+          caddyId,
+          caddyName,
+          golferId,
+          golferName,
+          date,
+          time,
+          course,
+          createdAt: new Date().toISOString(),
+          status: 'waiting'
+        };
+
+        // Save to localStorage for now
+        const waitlistKey = 'teesheet.waitlist.' + caddyId;
+        let waitlist = [];
+        try {
+          waitlist = JSON.parse(localStorage.getItem(waitlistKey) || '[]');
+        } catch {}
+        waitlist.push(waitlistEntry);
+        localStorage.setItem(waitlistKey, JSON.stringify(waitlist));
+
+        // Notify golfer they're on waitlist
+        if (supabase) {
+          try {
+            await supabase.functions.invoke('notify-caddy-booking', {
+              body: {
+                action: 'waitlist_added',
+                caddyId,
+                caddyName,
+                golferId,
+                golferName,
+                date,
+                time,
+                course
+              }
+            });
+          } catch (e) {
+            console.warn('[TeeSheet] Waitlist notification failed:', e);
+          }
+        }
+
+        console.log('[TeeSheet] Added to waitlist:', golferName, '->', caddyName);
+        return waitlistEntry;
+      },
+
+      // Get waitlist for a caddy
+      getWaitlist(caddyId) {
+        const waitlistKey = 'teesheet.waitlist.' + caddyId;
+        try {
+          return JSON.parse(localStorage.getItem(waitlistKey) || '[]');
+        } catch {
+          return [];
+        }
+      },
+
+      // Promote from waitlist when booking cancelled
+      async promoteFromWaitlist(caddyId, date, time) {
+        const waitlist = this.getWaitlist(caddyId);
+        const matching = waitlist.find(w => w.date === date && w.time === time && w.status === 'waiting');
+
+        if (matching) {
+          const parent = this.getParent();
+          const supabase = parent.SupabaseDB?.client;
+
+          if (supabase) {
+            try {
+              await supabase.functions.invoke('notify-caddy-booking', {
+                body: {
+                  action: 'waitlist_promoted',
+                  caddyId: matching.caddyId,
+                  caddyName: matching.caddyName,
+                  golferId: matching.golferId,
+                  golferName: matching.golferName,
+                  date: matching.date,
+                  time: matching.time,
+                  course: matching.course
+                }
+              });
+              console.log('[TeeSheet] Waitlist promoted:', matching.golferName);
+            } catch (e) {
+              console.warn('[TeeSheet] Waitlist promotion notification failed:', e);
+            }
+          }
+
+          // Update waitlist status
+          matching.status = 'notified';
+          const waitlistKey = 'teesheet.waitlist.' + caddyId;
+          localStorage.setItem(waitlistKey, JSON.stringify(waitlist));
+
+          return matching;
+        }
+        return null;
       },
 
       // Get bookings from parent BookingManager for a specific date and course
@@ -3447,22 +3590,61 @@
       render();
     });
 
-    el.deleteBooking.addEventListener('click', () => {
+    el.deleteBooking.addEventListener('click', async () => {
       const date = el.dateInput.value;
       let bookings = getDay(date);
 
+      // Capture booking info for notifications before deleting
+      const bookingId = el.bookingId.value;
+      const deletedBooking = bookings.find(b => b.id === bookingId);
+
       // Check if this is a group booking
       const groupId = el.bookingGroupId.value;
+      let deletedBookings = [];
+
       if (groupId) {
-        const groupBookings = bookings.filter(b => b.groupId === groupId);
-        const confirmMsg = t('confirmDeleteGroup').replace('{n}', groupBookings.length);
+        deletedBookings = bookings.filter(b => b.groupId === groupId);
+        const confirmMsg = t('confirmDeleteGroup').replace('{n}', deletedBookings.length);
         if (confirm(confirmMsg)) {
           bookings = bookings.filter(b => b.groupId !== groupId);
         } else {
           return; // User cancelled
         }
       } else {
-        bookings = bookings.filter(b => b.id !== el.bookingId.value);
+        if (deletedBooking) deletedBookings = [deletedBooking];
+        bookings = bookings.filter(b => b.id !== bookingId);
+      }
+
+      // Send cancellation notifications and check waitlists
+      for (const booking of deletedBookings) {
+        const golfers = booking.golfers || [];
+        for (const g of golfers) {
+          if (g.caddyId || g.caddyNumber) {
+            // Notify caddy of cancellation
+            const parent = ParentBridge.getParent();
+            const supabase = parent.SupabaseDB?.client;
+            if (supabase) {
+              try {
+                await supabase.functions.invoke('notify-caddy-booking', {
+                  body: {
+                    action: 'cancelled',
+                    caddyId: g.caddyId,
+                    caddyName: g.caddyName || g.caddyLocalName,
+                    golferName: g.name,
+                    date: date,
+                    time: booking.time,
+                    course: el.courseSelect.options[el.courseSelect.selectedIndex]?.text
+                  }
+                });
+              } catch (e) {
+                console.warn('[TeeSheet] Cancel notification failed:', e);
+              }
+            }
+
+            // Check and promote from waitlist
+            await ParentBridge.promoteFromWaitlist(g.caddyId || g.caddyNumber, date, booking.time);
+          }
+        }
       }
 
       setDay(date, bookings);

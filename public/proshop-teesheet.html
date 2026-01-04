@@ -2289,6 +2289,7 @@
     function createGolferRow(index, golfer = {}) {
       const row = document.createElement('div');
       row.className = 'golfer-row';
+      const hasCaddy = golfer.caddyNumber ? true : false;
       row.innerHTML = `
         <div class="golfer-num">${index + 1}</div>
         <div class="golfer-fields">
@@ -2299,30 +2300,53 @@
           <div class="golfer-field">
             <label>${t('caddy')}</label>
             <div class="caddy-select-wrapper">
-              <input type="text" class="caddy-input" placeholder="${t('searchCaddy')}"
+              <input type="text" class="caddy-input" placeholder="${t('searchCaddy')}" style="padding-right:32px;"
                 value="${golfer.caddyNumber ? '#' + golfer.caddyNumber + ' - ' + (golfer.caddyName || '') : ''}"
                 data-caddy-id="${golfer.caddyId || ''}" data-caddy-number="${golfer.caddyNumber || ''}" data-caddy-name="${golfer.caddyName || ''}">
+              <button type="button" class="clear-caddy-btn" style="display:${hasCaddy ? 'flex' : 'none'};position:absolute;right:8px;top:50%;transform:translateY(-50%);width:20px;height:20px;border:none;background:#ef4444;color:#fff;border-radius:50%;font-size:14px;cursor:pointer;align-items:center;justify-content:center;line-height:1;">&times;</button>
               <div class="caddy-dropdown"></div>
             </div>
           </div>
         </div>
-        <button type="button" class="remove-golfer">&times;</button>
+        ${index > 0 ? '<button type="button" class="remove-golfer">&times;</button>' : '<div style="width:32px"></div>'}
       `;
 
       const caddyInput = row.querySelector('.caddy-input');
       const dropdown = row.querySelector('.caddy-dropdown');
+      const clearCaddyBtn = row.querySelector('.clear-caddy-btn');
       const removeBtn = row.querySelector('.remove-golfer');
+
+      // Show/hide clear button based on caddy selection
+      function updateClearBtn() {
+        clearCaddyBtn.style.display = caddyInput.dataset.caddyNumber ? 'flex' : 'none';
+      }
 
       caddyInput.addEventListener('focus', () => { renderCaddyDropdown(dropdown, caddyInput, ''); dropdown.classList.add('show'); });
       caddyInput.addEventListener('input', () => { renderCaddyDropdown(dropdown, caddyInput, caddyInput.value); dropdown.classList.add('show'); });
       caddyInput.addEventListener('blur', () => setTimeout(() => dropdown.classList.remove('show'), 200));
 
-      removeBtn.addEventListener('click', () => {
-        if (el.golfersList.children.length > 1) {
-          row.remove();
-          renumberGolfers();
-        }
+      // Clear caddy button
+      clearCaddyBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        caddyInput.value = '';
+        caddyInput.dataset.caddyId = '';
+        caddyInput.dataset.caddyNumber = '';
+        caddyInput.dataset.caddyName = '';
+        updateClearBtn();
       });
+
+      // Store updateClearBtn reference for external updates
+      caddyInput._updateClearBtn = updateClearBtn;
+
+      if (removeBtn) {
+        removeBtn.addEventListener('click', () => {
+          if (el.golfersList.children.length > 1) {
+            row.remove();
+            renumberGolfers();
+          }
+        });
+      }
 
       return row;
     }
@@ -2385,6 +2409,8 @@
               input.dataset.caddyId = caddy.id;
               input.dataset.caddyNumber = caddy.number;
               input.dataset.caddyName = caddy.name;
+              // Show the clear button
+              if (input._updateClearBtn) input._updateClearBtn();
             });
           } else {
             opt.addEventListener('mousedown', e => {

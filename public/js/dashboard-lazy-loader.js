@@ -16,10 +16,8 @@ const DashboardLazyLoader = {
     // Dashboard to script dependencies mapping
     scriptDependencies: {
         'golferDashboard': {
-            scripts: [
-                'golf-buddies-system.js',
-                'hole-by-hole-leaderboard-enhancement.js'
-            ],
+            // Scripts already loaded with defer on page - don't reload
+            scripts: [],
             init: null
         },
         'caddieDashboard': {

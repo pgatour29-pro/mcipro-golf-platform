@@ -1071,7 +1071,7 @@ const ReportsSystem = {
                 'Customer': 'teal',
                 'Revenue': 'orange',
                 'Compliance': 'red',
-                'Planning': 'indigo',
+                'Planning': 'blue',
                 'Executive': 'gray'
             };
             const color = categoryColors[category] || 'gray';
@@ -1458,7 +1458,7 @@ const ReportsSystem = {
                         .bg-teal-50 { background: #f0fdfa; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #99f6e4; }
                         .bg-red-50 { background: #fef2f2; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #fca5a5; }
                         .bg-yellow-50 { background: #fefce8; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #fde047; }
-                        .bg-indigo-50 { background: #eef2ff; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #a5b4fc; }
+                        .bg-blue-50 { background: #eef2ff; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #a5b4fc; }
                         .bg-gray-50 { background: #f9fafb; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #e5e7eb; }
 
                         /* Color text */

@@ -1,6 +1,6 @@
         // Build Golf Course Code Management UI - COMPACT VERSION
         let codeManagementHTML = `
-            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg p-4 mb-4">
+            <div class="bg-gradient-to-r from-blue-50 to-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-4">
                 <div class="flex items-center justify-between gap-4">
                     <div class="flex items-center gap-4">
                         <div class="bg-white rounded-lg p-3 border-2 border-blue-300">

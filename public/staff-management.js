@@ -26,7 +26,7 @@ const StaffManagement = {
             { id: 'fnb', name: 'F&B Staff', icon: 'restaurant', color: 'orange' },
             { id: 'proshop', name: 'Pro Shop', icon: 'shopping_bag', color: 'teal' },
             { id: 'maintenance', name: 'Maintenance', icon: 'build', color: 'blue' },
-            { id: 'reception', name: 'Reception', icon: 'desk', color: 'indigo' },
+            { id: 'reception', name: 'Reception', icon: 'desk', color: 'blue' },
             { id: 'security', name: 'Security', icon: 'security', color: 'red' },
             { id: 'management', name: 'Management', icon: 'business_center', color: 'gray' }
         ];
@@ -273,7 +273,7 @@ const StaffManagement = {
 
         // Build Golf Course Code Management UI
         let codeManagementHTML = `
-            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg p-4 mb-4">
+            <div class="bg-gradient-to-r from-blue-50 to-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-4">
                 <div class="flex items-center justify-between gap-4">
                     <div class="flex items-center gap-4">
                         <div class="bg-white rounded-lg p-3 border-2 border-blue-300">

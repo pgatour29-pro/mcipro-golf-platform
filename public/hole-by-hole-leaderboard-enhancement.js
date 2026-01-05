@@ -158,7 +158,7 @@ LiveScorecardManager.updatePlayerScoreDisplay = function() {
                 formatName = 'Best Ball';
                 formatIcon = 'filter_list';
                 formatScore = `${totalGross}`;
-                formatColor = 'text-indigo-700';
+                formatColor = 'text-blue-700';
                 break;
 
             case 'matchplay':

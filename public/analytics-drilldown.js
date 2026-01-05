@@ -1080,10 +1080,10 @@ const AnalyticsDrillDown = {
 
         this.showModal('Course Utilization - Hour by Hour', `
             <div class="space-y-4">
-                <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-                    <div class="text-sm font-semibold text-indigo-900 mb-1">Overall Course Utilization</div>
-                    <div class="text-3xl font-bold text-indigo-600">${Math.round(utilizationPct)}%</div>
-                    <div class="text-xs text-indigo-700 mt-1">${todayBookings.length} of ${maxSlots} available slots</div>
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div class="text-sm font-semibold text-blue-900 mb-1">Overall Course Utilization</div>
+                    <div class="text-3xl font-bold text-blue-600">${Math.round(utilizationPct)}%</div>
+                    <div class="text-xs text-blue-700 mt-1">${todayBookings.length} of ${maxSlots} available slots</div>
                 </div>
 
                 <div class="grid grid-cols-3 gap-3">

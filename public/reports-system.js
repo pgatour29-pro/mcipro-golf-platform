@@ -1068,7 +1068,7 @@ const ReportsSystem = {
             const categoryColors = {
                 'Financial': 'green',
                 'Operational': 'blue',
-                'Customer': 'purple',
+                'Customer': 'teal',
                 'Revenue': 'orange',
                 'Compliance': 'red',
                 'Planning': 'indigo',
@@ -1214,9 +1214,9 @@ const ReportsSystem = {
                 html += `
                         </div>
                     </div>
-                    <div class="bg-purple-50 p-4 rounded-lg">
-                        <p class="text-sm text-purple-600 mb-1">Peak Hour</p>
-                        <p class="text-lg font-bold text-purple-900">${data.peakHour.time} - ${data.peakHour.bookings} bookings</p>
+                    <div class="bg-teal-50 p-4 rounded-lg">
+                        <p class="text-sm text-teal-600 mb-1">Peak Hour</p>
+                        <p class="text-lg font-bold text-teal-900">${data.peakHour.time} - ${data.peakHour.bookings} bookings</p>
                     </div>
                 `;
                 break;
@@ -1236,9 +1236,9 @@ const ReportsSystem = {
                             <p class="text-sm text-orange-600 mb-1">F&B Revenue</p>
                             <p class="text-xl font-bold text-orange-900">${formatCurrency(data.summary.fnbRevenue)}</p>
                         </div>
-                        <div class="bg-purple-50 p-4 rounded-lg">
-                            <p class="text-sm text-purple-600 mb-1">Pro Shop</p>
-                            <p class="text-xl font-bold text-purple-900">${formatCurrency(data.summary.proShopRevenue)}</p>
+                        <div class="bg-teal-50 p-4 rounded-lg">
+                            <p class="text-sm text-teal-600 mb-1">Pro Shop</p>
+                            <p class="text-xl font-bold text-teal-900">${formatCurrency(data.summary.proShopRevenue)}</p>
                         </div>
                     </div>
                     <div class="bg-gradient-to-r from-emerald-500 to-emerald-600 p-6 rounded-lg text-white mb-6">
@@ -1455,7 +1455,7 @@ const ReportsSystem = {
                         .bg-green-50 { background: #f0fdf4; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #86efac; }
                         .bg-blue-50 { background: #eff6ff; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #93c5fd; }
                         .bg-orange-50 { background: #fff7ed; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #fdba74; }
-                        .bg-purple-50 { background: #faf5ff; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #d8b4fe; }
+                        .bg-teal-50 { background: #f0fdfa; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #99f6e4; }
                         .bg-red-50 { background: #fef2f2; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #fca5a5; }
                         .bg-yellow-50 { background: #fefce8; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #fde047; }
                         .bg-indigo-50 { background: #eef2ff; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #a5b4fc; }
@@ -1465,7 +1465,7 @@ const ReportsSystem = {
                         .text-green-600 { color: #16a34a; }
                         .text-blue-600 { color: #2563eb; }
                         .text-orange-600 { color: #ea580c; }
-                        .text-purple-600 { color: #9333ea; }
+                        .text-teal-600 { color: #0d9488; }
                         .text-red-600 { color: #dc2626; }
                         .text-gray-600 { color: #4b5563; }
                         .text-gray-900 { color: #111827; }

@@ -400,7 +400,7 @@ class CourseDataManager {
                             <div class="text-xs text-gray-500">Holes</div>
                         </div>
                         <div>
-                            <div class="text-2xl font-bold text-purple-600">${tees.length || 0}</div>
+                            <div class="text-2xl font-bold text-teal-600">${tees.length || 0}</div>
                             <div class="text-xs text-gray-500">Tees</div>
                         </div>
                     </div>

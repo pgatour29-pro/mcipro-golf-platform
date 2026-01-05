@@ -209,8 +209,8 @@ class SocietyDashboardEnhanced {
                     </div>
                     <div class="bg-white rounded-xl p-4 shadow">
                         <div class="flex items-center gap-3">
-                            <div class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
-                                <i class="material-symbols-outlined text-purple-600">leaderboard</i>
+                            <div class="w-12 h-12 bg-teal-100 rounded-full flex items-center justify-center">
+                                <i class="material-symbols-outlined text-teal-600">leaderboard</i>
                             </div>
                             <div>
                                 <div class="text-2xl font-bold text-gray-800">${standingsResult.standings?.length || 0}</div>
@@ -251,7 +251,7 @@ class SocietyDashboardEnhanced {
                                 <span class="text-sm font-medium">Create Event</span>
                             </button>
                             <button onclick="societyDashboardEnhanced.showCreateSeriesModal()"
-                                    class="flex items-center gap-2 p-3 bg-purple-50 rounded-lg text-purple-700 hover:bg-purple-100">
+                                    class="flex items-center gap-2 p-3 bg-teal-50 rounded-lg text-teal-700 hover:bg-teal-100">
                                 <i class="material-symbols-outlined">emoji_events</i>
                                 <span class="text-sm font-medium">Create Series</span>
                             </button>
@@ -384,7 +384,7 @@ class SocietyDashboardEnhanced {
 
                 ${this.isOrganizer ? `
                     <button onclick="societyDashboardEnhanced.showCreateSeriesModal()"
-                            class="w-full py-3 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700">
+                            class="w-full py-3 bg-teal-600 text-white rounded-xl font-medium hover:bg-teal-700">
                         <i class="material-symbols-outlined align-middle mr-1">add</i>
                         Create New Series
                     </button>
@@ -506,7 +506,7 @@ class SocietyDashboardEnhanced {
                     const name = profile.name || member.golfer_name || 'Unknown';
                     const handicap = profile.profile_data?.golfInfo?.handicap || profile.profile_data?.handicap || '-';
                     const roleColors = {
-                        'organizer': 'bg-purple-100 text-purple-700',
+                        'organizer': 'bg-teal-100 text-teal-700',
                         'admin': 'bg-red-100 text-red-700',
                         'member': 'bg-gray-100 text-gray-600'
                     };

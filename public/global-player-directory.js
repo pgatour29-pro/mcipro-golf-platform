@@ -422,7 +422,7 @@ class GlobalPlayerDirectory {
                         <div class="text-xs text-gray-500">Rounds</div>
                     </div>
                     <div class="text-center">
-                        <div class="text-xl font-bold text-purple-600">${stats.avg_gross || '-'}</div>
+                        <div class="text-xl font-bold text-teal-600">${stats.avg_gross || '-'}</div>
                         <div class="text-xs text-gray-500">Avg Gross</div>
                     </div>
                     <div class="text-center">
@@ -589,7 +589,7 @@ class GlobalPlayerDirectory {
                     <div class="text-sm text-gray-500">Societies</div>
                 </div>
                 <div class="bg-white rounded-xl p-4 shadow">
-                    <div class="text-3xl font-bold text-purple-600">${stats.players_with_rounds || 0}</div>
+                    <div class="text-3xl font-bold text-teal-600">${stats.players_with_rounds || 0}</div>
                     <div class="text-sm text-gray-500">Active Players</div>
                 </div>
                 <div class="bg-white rounded-xl p-4 shadow">

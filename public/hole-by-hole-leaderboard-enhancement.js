@@ -109,7 +109,7 @@ LiveScorecardManager.updatePlayerScoreDisplay = function() {
                         engine.modifiedStablefordPoints
                     );
                     formatScore = `${points} pts`;
-                    formatColor = 'text-purple-700';
+                    formatColor = 'text-teal-700';
                 } else {
                     formatScore = '-';
                 }

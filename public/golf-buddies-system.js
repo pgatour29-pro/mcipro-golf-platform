@@ -502,9 +502,9 @@ window.GolfBuddiesSystem = {
 
             return `
                 <div class="w-full max-w-full overflow-hidden box-border">
-                    <div class="flex items-center justify-between gap-2 p-2 sm:p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg w-full box-border">
+                    <div class="flex items-center justify-between gap-2 p-2 sm:p-4 bg-gradient-to-r from-blue-50 to-teal-50 border border-blue-200 rounded-lg w-full box-border">
                         <div class="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 overflow-hidden">
-                            <div class="w-8 h-8 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold text-sm sm:text-lg flex-shrink-0">
+                            <div class="w-8 h-8 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-400 to-teal-500 flex items-center justify-center text-white font-bold text-sm sm:text-lg flex-shrink-0">
                                 ${name.charAt(0).toUpperCase()}
                             </div>
                             <div class="flex-1 min-w-0 overflow-hidden">

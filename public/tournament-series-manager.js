@@ -303,17 +303,17 @@ class TournamentSeriesManager {
         const statusColors = {
             upcoming: 'bg-blue-100 text-blue-800',
             active: 'bg-emerald-100 text-emerald-800',
-            playoffs: 'bg-purple-100 text-purple-800',
+            playoffs: 'bg-teal-100 text-teal-800',
             completed: 'bg-gray-100 text-gray-800'
         };
 
         container.innerHTML = `
             <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                <div class="bg-gradient-to-r from-purple-600 to-purple-700 px-6 py-4">
+                <div class="bg-gradient-to-r from-teal-600 to-teal-700 px-6 py-4">
                     <div class="flex items-center justify-between">
                         <div>
                             <h2 class="text-xl font-bold text-white">${series.series_name}</h2>
-                            <p class="text-purple-200 text-sm">${series.description || ''}</p>
+                            <p class="text-teal-200 text-sm">${series.description || ''}</p>
                         </div>
                         <span class="px-3 py-1 rounded-full text-xs font-semibold ${statusColors[series.status] || 'bg-gray-100'}">
                             ${series.status.toUpperCase()}
@@ -332,8 +332,8 @@ class TournamentSeriesManager {
                         </div>
                     </div>
                     ${series.status === 'playoffs' ? `
-                        <div class="mt-4 p-3 bg-purple-50 rounded-lg">
-                            <div class="flex items-center gap-2 text-purple-700">
+                        <div class="mt-4 p-3 bg-teal-50 rounded-lg">
+                            <div class="flex items-center gap-2 text-teal-700">
                                 <i class="material-symbols-outlined">emoji_events</i>
                                 <span class="font-semibold">Playoff Round ${series.current_playoff_round || 1}</span>
                             </div>
@@ -362,7 +362,7 @@ class TournamentSeriesManager {
 
         let html = `
             <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                <div class="bg-gradient-to-r from-purple-600 to-purple-700 px-4 py-3">
+                <div class="bg-gradient-to-r from-teal-600 to-teal-700 px-4 py-3">
                     <h3 class="text-white font-bold text-lg">${title}</h3>
                 </div>
                 <div class="overflow-x-auto">
@@ -400,12 +400,12 @@ class TournamentSeriesManager {
             }
 
             html += `
-                <tr class="${isHighlighted ? 'bg-purple-50' : (index % 2 === 0 ? 'bg-white' : 'bg-gray-50')}">
+                <tr class="${isHighlighted ? 'bg-teal-50' : (index % 2 === 0 ? 'bg-white' : 'bg-gray-50')}">
                     <td class="px-3 py-2">${positionBadge}</td>
                     <td class="px-3 py-2">
-                        <span class="font-medium ${isHighlighted ? 'text-purple-700' : 'text-gray-800'}">${player.player_name || 'Unknown'}</span>
+                        <span class="font-medium ${isHighlighted ? 'text-teal-700' : 'text-gray-800'}">${player.player_name || 'Unknown'}</span>
                     </td>
-                    <td class="px-3 py-2 text-center font-bold text-purple-600">${player.total_points || 0}</td>
+                    <td class="px-3 py-2 text-center font-bold text-teal-600">${player.total_points || 0}</td>
                     <td class="px-3 py-2 text-center text-gray-600">${player.events_played || 0}</td>
                     <td class="px-3 py-2 text-center text-gray-600">${player.wins || 0}</td>
                     ${showProjections ? `<td class="px-3 py-2 text-center">${statusBadge}</td>` : ''}
@@ -462,7 +462,7 @@ class TournamentSeriesManager {
         let html = `
             <div class="bg-white rounded-xl shadow-lg p-4">
                 <h3 class="font-bold text-lg text-gray-800 mb-4">
-                    <i class="material-symbols-outlined text-purple-600 align-middle mr-1">account_tree</i>
+                    <i class="material-symbols-outlined text-teal-600 align-middle mr-1">account_tree</i>
                     Playoff Bracket
                 </h3>
                 <div class="flex gap-8 overflow-x-auto pb-4">
@@ -533,7 +533,7 @@ class TournamentSeriesManager {
             } else if (isToday) {
                 statusBadge = '<span class="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 animate-pulse">TODAY</span>';
             } else if (isPlayoff) {
-                statusBadge = '<span class="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Playoff</span>';
+                statusBadge = '<span class="text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">Playoff</span>';
             }
 
             html += `

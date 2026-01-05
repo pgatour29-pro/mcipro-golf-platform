@@ -1105,7 +1105,7 @@ const MaintenanceManagement = {
         const modalHTML = `
             <div id="schedule-event-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onclick="if(event.target.id === 'schedule-event-modal') MaintenanceManagement.closeModal('schedule-event-modal')">
                 <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full">
-                    <div class="bg-gradient-to-r from-purple-600 to-purple-700 px-6 py-4 flex justify-between items-center rounded-t-xl">
+                    <div class="bg-gradient-to-r from-teal-600 to-teal-700 px-6 py-4 flex justify-between items-center rounded-t-xl">
                         <h3 class="text-lg font-bold text-white">Schedule Maintenance Activity</h3>
                         <button onclick="MaintenanceManagement.closeModal('schedule-event-modal')" class="text-white hover:text-gray-200">
                             <span class="material-symbols-outlined">close</span>

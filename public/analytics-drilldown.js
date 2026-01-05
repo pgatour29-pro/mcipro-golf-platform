@@ -246,7 +246,7 @@ const AnalyticsDrillDown = {
                                                 ${t.type === 'Caddy Fee' ? 'bg-blue-100 text-blue-800' : ''}
                                                 ${t.type === 'Food' ? 'bg-orange-100 text-orange-800' : ''}
                                                 ${t.type === 'Beverage' ? 'bg-yellow-100 text-yellow-800' : ''}
-                                                ${t.type === 'Pro Shop' ? 'bg-purple-100 text-purple-800' : ''}
+                                                ${t.type === 'Pro Shop' ? 'bg-teal-100 text-teal-800' : ''}
                                             ">${t.type}</span>
                                         </td>
                                         <td class="px-3 py-2 text-gray-600 text-xs">
@@ -279,10 +279,10 @@ const AnalyticsDrillDown = {
                         <div class="text-lg font-bold text-orange-600">฿${fnbTransactions.reduce((s, t) => s + t.amount, 0).toLocaleString()}</div>
                         <div class="text-xs text-orange-600">${fnbTransactions.length} orders</div>
                     </div>
-                    <div class="bg-purple-50 rounded p-3">
-                        <div class="text-xs text-purple-700 mb-1">Pro Shop</div>
-                        <div class="text-lg font-bold text-purple-600">฿${proshopTransactions.reduce((s, t) => s + t.amount, 0).toLocaleString()}</div>
-                        <div class="text-xs text-purple-600">${proshopTransactions.length} sales</div>
+                    <div class="bg-teal-50 rounded p-3">
+                        <div class="text-xs text-teal-700 mb-1">Pro Shop</div>
+                        <div class="text-lg font-bold text-teal-600">฿${proshopTransactions.reduce((s, t) => s + t.amount, 0).toLocaleString()}</div>
+                        <div class="text-xs text-teal-600">${proshopTransactions.length} sales</div>
                     </div>
                 </div>
             </div>
@@ -587,10 +587,10 @@ const AnalyticsDrillDown = {
 
         this.showModal('Revenue per Round - Detailed Analysis', `
             <div class="space-y-4">
-                <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                    <div class="text-sm font-semibold text-purple-900 mb-1">Average Revenue per Round</div>
-                    <div class="text-3xl font-bold text-purple-600">฿${Math.round(avgRevenue).toLocaleString()}</div>
-                    <div class="text-xs text-purple-700 mt-1">${todayBookings.length} rounds today</div>
+                <div class="bg-teal-50 border border-teal-200 rounded-lg p-4">
+                    <div class="text-sm font-semibold text-teal-900 mb-1">Average Revenue per Round</div>
+                    <div class="text-3xl font-bold text-teal-600">฿${Math.round(avgRevenue).toLocaleString()}</div>
+                    <div class="text-xs text-teal-700 mt-1">${todayBookings.length} rounds today</div>
                 </div>
 
                 <div class="grid grid-cols-3 gap-3">
@@ -982,10 +982,10 @@ const AnalyticsDrillDown = {
 
         this.showModal('Pro Shop Sales - Product & Customer Breakdown', `
             <div class="space-y-4">
-                <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                    <div class="text-sm font-semibold text-purple-900 mb-1">Total Pro Shop Revenue</div>
-                    <div class="text-3xl font-bold text-purple-600">฿${totalRevenue.toLocaleString()}</div>
-                    <div class="text-xs text-purple-700 mt-1">${proshopOrders.length} transactions today</div>
+                <div class="bg-teal-50 border border-teal-200 rounded-lg p-4">
+                    <div class="text-sm font-semibold text-teal-900 mb-1">Total Pro Shop Revenue</div>
+                    <div class="text-3xl font-bold text-teal-600">฿${totalRevenue.toLocaleString()}</div>
+                    <div class="text-xs text-teal-700 mt-1">${proshopOrders.length} transactions today</div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
@@ -1186,7 +1186,7 @@ const AnalyticsDrillDown = {
                         .bg-green-50 { background: #f0fdf4; padding: 15px; margin: 10px 0; border-radius: 8px; }
                         .bg-blue-50 { background: #eff6ff; padding: 15px; margin: 10px 0; border-radius: 8px; }
                         .bg-orange-50 { background: #fff7ed; padding: 15px; margin: 10px 0; border-radius: 8px; }
-                        .bg-purple-50 { background: #faf5ff; padding: 15px; margin: 10px 0; border-radius: 8px; }
+                        .bg-teal-50 { background: #f0fdfa; padding: 15px; margin: 10px 0; border-radius: 8px; }
                     </style>
                 </head>
                 <body>

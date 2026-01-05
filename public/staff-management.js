@@ -24,7 +24,7 @@ const StaffManagement = {
         return [
             { id: 'caddy', name: 'Caddies', icon: 'golf_course', color: 'green' },
             { id: 'fnb', name: 'F&B Staff', icon: 'restaurant', color: 'orange' },
-            { id: 'proshop', name: 'Pro Shop', icon: 'shopping_bag', color: 'purple' },
+            { id: 'proshop', name: 'Pro Shop', icon: 'shopping_bag', color: 'teal' },
             { id: 'maintenance', name: 'Maintenance', icon: 'build', color: 'blue' },
             { id: 'reception', name: 'Reception', icon: 'desk', color: 'indigo' },
             { id: 'security', name: 'Security', icon: 'security', color: 'red' },

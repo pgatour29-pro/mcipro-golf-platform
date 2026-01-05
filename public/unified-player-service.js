@@ -316,7 +316,7 @@ class UnifiedPlayerService {
                         <div class="text-xs text-gray-500">Rounds</div>
                     </div>
                     <div class="text-center">
-                        <div class="text-3xl font-bold text-purple-600">${stats.avg_gross_score || '-'}</div>
+                        <div class="text-3xl font-bold text-teal-600">${stats.avg_gross_score || '-'}</div>
                         <div class="text-xs text-gray-500">Avg Score</div>
                     </div>
                 </div>

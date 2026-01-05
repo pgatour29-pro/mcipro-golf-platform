@@ -402,8 +402,8 @@ const AnalyticsExport = {
                         </button>
 
                         <button onclick="AnalyticsExport.shareReport(); document.getElementById('export-modal').remove();"
-                                class="w-full flex items-center gap-3 px-4 py-3 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition">
-                            <span class="material-symbols-outlined text-purple-600">share</span>
+                                class="w-full flex items-center gap-3 px-4 py-3 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition">
+                            <span class="material-symbols-outlined text-teal-600">share</span>
                             <div class="text-left flex-1">
                                 <div class="font-semibold text-gray-900">Share Report</div>
                                 <div class="text-xs text-gray-600">Email or copy link</div>

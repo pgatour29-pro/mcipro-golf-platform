@@ -25,6 +25,13 @@
         }
 
         console.log('[Leaderboard Enhancement] Initializing...');
+
+        // CRITICAL: Prevent double-initialization (script loaded twice causes infinite recursion)
+        if (LiveScorecardManager._leaderboardEnhancementLoaded) {
+            console.log('[Leaderboard Enhancement] Already initialized, skipping');
+            return;
+        }
+        LiveScorecardManager._leaderboardEnhancementLoaded = true;
 LiveScorecardManager.updatePlayerScoreDisplay = function() {
     const displayCard = document.getElementById('currentPlayerScoreDisplay');
     const formatScoresDiv = document.getElementById('playerFormatScores');

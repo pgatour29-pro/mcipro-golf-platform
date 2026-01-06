@@ -5399,8 +5399,20 @@
       }
     });
 
-    // Manual refresh button instead of aggressive auto-refresh
-    // Real-time disabled due to WebSocket issues - use refresh button or date change
+    // Gentle auto-refresh every 60 seconds for caddy bookings
+    setInterval(() => {
+      const currentDate = el.dateInput.value;
+      // Clear cache to force re-fetch
+      delete caddyBookingsCache[currentDate];
+      delete lastFetchTime[currentDate];
+      // Fetch new data in background
+      fetchCaddyBookings(currentDate).then(bookings => {
+        if (bookings && bookings.length > 0) {
+          console.log('[TeeSheet] Auto-refresh: found', bookings.length, 'caddy bookings');
+          render();
+        }
+      }).catch(e => console.warn('[TeeSheet] Auto-refresh failed:', e));
+    }, 60000); // 60 seconds
 
     // ==================== INIT ====================
     handleUrlParams();

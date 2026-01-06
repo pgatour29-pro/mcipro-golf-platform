@@ -2261,9 +2261,14 @@
       }
 
       try {
+        // Join with caddy_profiles for caddy info AND profiles for golfer info
         const { data, error } = await supabaseClient
           .from('caddy_bookings')
-          .select('*, caddy_profiles:caddy_id(name, caddy_number, photo_url)')
+          .select(`
+            *,
+            caddy_profiles:caddy_id(name, caddy_number, photo_url),
+            profiles:user_id(id, name, email)
+          `)
           .eq('booking_date', date)
           .neq('status', 'cancelled');
 
@@ -2273,28 +2278,36 @@
         }
 
         // Convert to tee sheet format
-        const bookings = (data || []).map(b => ({
-          id: `caddy-${b.id}`,
-          dbId: b.id,
-          time: b.tee_time,
-          course: 'A',
-          tee: 1,
-          bookingType: 'regular',
-          source: 'caddy-booking-db',
-          golfers: [{
-            name: b.user_id, // Will be resolved to name if available
-            odoo_id: b.user_id,
-            caddyId: b.caddy_id,
-            caddyName: b.caddy_profiles?.name || 'Caddy',
-            caddyNumber: b.caddy_profiles?.caddy_number || null
-          }],
-          status: b.status,
-          createdAt: b.created_at
-        }));
+        const bookings = (data || []).map(b => {
+          // Get golfer name from profiles join, fallback to email or user_id
+          const golferName = b.profiles?.name ||
+                            b.profiles?.email?.split('@')[0] ||
+                            'Golfer';
+
+          return {
+            id: `caddy-${b.id}`,
+            dbId: b.id,
+            time: b.tee_time,
+            course: 'A',
+            tee: 1,
+            col: 0, // Column index for Course A, Tee 1
+            bookingType: 'regular',
+            source: 'caddy-booking-db',
+            golfers: [{
+              name: golferName,
+              odoo_id: b.user_id,
+              caddyId: b.caddy_id,
+              caddyName: b.caddy_profiles?.name || 'Caddy',
+              caddyNumber: b.caddy_profiles?.caddy_number || null
+            }],
+            status: b.status,
+            createdAt: b.created_at
+          };
+        });
 
         caddyBookingsCache[date] = bookings;
         lastFetchTime[date] = now;
-        console.log('[TeeSheet] Fetched', bookings.length, 'caddy bookings for', date);
+        console.log('[TeeSheet] Fetched', bookings.length, 'caddy bookings for', date, bookings);
         return bookings;
       } catch (e) {
         console.error('[TeeSheet] Fetch error:', e);
@@ -3395,7 +3408,15 @@
         rowHtml += `<div class="time-cell">${timeStr}</div>`;
 
         layout.cols.forEach((col, idx) => {
-          const slotBookings = bookings.filter(b => b.time === timeStr && b.col === idx);
+          // Match bookings by col index OR by course+tee (for db bookings)
+          const slotBookings = bookings.filter(b => {
+            if (b.time !== timeStr) return false;
+            // Match by col index (local bookings)
+            if (b.col === idx) return true;
+            // Match by course + tee (database bookings)
+            if (b.course === col.course && b.tee === col.tee) return true;
+            return false;
+          });
           let pillsHtml = '';
           slotBookings.forEach(b => {
             const golfers = b.golfers || [];

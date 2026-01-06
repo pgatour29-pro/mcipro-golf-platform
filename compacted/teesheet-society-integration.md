@@ -139,9 +139,15 @@ Society event slots enriched with caddy bookings
 Display on tee sheet grid
 ```
 
+### 6. Today Button
+- Quick navigation back to current date
+- Blue button in date control area
+- Fetches fresh data after navigation
+
 ## Testing Notes
 
 - Test URL: https://mycaddipro.com/proshop-teesheet.html?course=treasure-hill-golf
 - Navigate to date with society event (e.g., Jan 21, 2026)
 - Verify golfers with caddy bookings appear in correct slot
 - Verify other courses' events don't appear on Treasure Hill tee sheet
+- Click "Today" button to return to current date

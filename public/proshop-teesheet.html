@@ -3374,16 +3374,23 @@
     }
 
     // ==================== RENDER ====================
-    async function render() {
+    function render() {
       const layout = getLayout();
       const startM = minutes(el.startTime.value);
       const endM = minutes(el.endTime.value);
       const step = parseInt(el.intervalSelect.value) || 7;
 
-      // Fetch caddy bookings from database before rendering
       const currentDate = el.dateInput.value;
-      await fetchCaddyBookings(currentDate);
       const bookings = getDay(currentDate);
+
+      // Fetch caddy bookings in background (non-blocking) - only if not already cached
+      if (!caddyBookingsCache[currentDate]) {
+        fetchCaddyBookings(currentDate).then(dbBookings => {
+          if (dbBookings && dbBookings.length > 0) {
+            render(); // Re-render with db bookings included
+          }
+        }).catch(e => console.warn('[TeeSheet] DB fetch failed:', e));
+      }
 
       // Update legends
       el.legendC.style.display = layout.courses.includes('C') ? '' : 'none';

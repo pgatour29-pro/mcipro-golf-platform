@@ -2284,10 +2284,10 @@
       }
 
       try {
-        // Get caddy bookings with caddy profile AND user profile in one query
+        // Get caddy bookings with caddy profile info
         const { data, error } = await supabaseClient
           .from('caddy_bookings')
-          .select('*, caddy_profiles(name, caddy_number, photo_url), user_profiles!caddy_bookings_user_id_fkey(name, email)')
+          .select('*, caddy_profiles(name, caddy_number, photo_url)')
           .eq('booking_date', date)
           .neq('status', 'cancelled');
 
@@ -2296,9 +2296,24 @@
           return caddyBookingsCache[date] || [];
         }
 
+        // Get user profiles for golfer names (user_id is LINE ID)
+        const userIds = [...new Set((data || []).map(b => b.user_id).filter(Boolean))];
+        let userProfiles = {};
+
+        if (userIds.length > 0) {
+          const { data: profiles } = await supabaseClient
+            .from('user_profiles')
+            .select('line_user_id, name, email')
+            .in('line_user_id', userIds);
+
+          (profiles || []).forEach(p => {
+            userProfiles[p.line_user_id] = p;
+          });
+        }
+
         // Convert to tee sheet format
         const bookings = (data || []).map(b => {
-          const profile = b.user_profiles;
+          const profile = userProfiles[b.user_id];
           const golferName = profile?.name || profile?.email?.split('@')[0] || 'Golfer';
           const teeTime = b.tee_time ? b.tee_time.substring(0, 5) : null;
 

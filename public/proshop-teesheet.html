@@ -2332,13 +2332,83 @@
     let societyEventsCache = {};
     let societyEventsLastFetchTime = {};
 
-    // Fetch society events from Supabase for a specific date
+    // Course name mapping: database course_name -> tee sheet course ID
+    const courseNameToId = {
+      'treasure hill golf & country club': 'treasure-hill-golf',
+      'treasure hill': 'treasure-hill-golf',
+      't.hill': 'treasure-hill-golf',
+      'pattana golf resort': 'pattana-golf-resort',
+      'pattana golf club & resort': 'pattana-golf-resort',
+      'pattana': 'pattana-golf-resort',
+      'chee chan golf resort': 'cheechan',
+      'cheechan': 'cheechan',
+      'greenwood golf club': 'greenwood',
+      'greenwood': 'greenwood',
+      'bangpakong riverside cc': 'bangpakong',
+      'bangpakong riverside country club': 'bangpakong',
+      'bangpakong': 'bangpakong',
+      'pleasant valley cc': 'pleasant-valley',
+      'pleasant valley': 'pleasant-valley',
+      'plutaluang navy gc': 'plutaluang',
+      'plutaluang': 'plutaluang',
+      'mountain shadow gc': 'mountain-shadow',
+      'mountain shadow': 'mountain-shadow',
+      'eastern star cc': 'eastern-star',
+      'eastern star country club': 'eastern-star',
+      'pattaya c.c.': 'pattaya-golf',
+      'pattaya golf club': 'pattaya-golf',
+      'phoenix gold golf cc': 'phoenix',
+      'phoenix gold golf & country club': 'phoenix',
+      'phoenix': 'phoenix',
+      'khao kheow country club': 'khao-kheow',
+      'khao kheow': 'khao-kheow',
+      'laem chabang international cc': 'laem-chabang',
+      'laem chabang international country club': 'laem-chabang',
+      'laem chabang': 'laem-chabang',
+      'burapha golf club': 'burapha-ac',
+      'burapha': 'burapha-ac',
+      'siam cc old course': 'siam-cc-old',
+      'siam country club - old course': 'siam-cc-old',
+      'siam cc plantation': 'siam-cc-plantation',
+      'siam country club - plantation': 'siam-cc-plantation',
+      'siam cc waterside': 'siam-cc-waterside',
+      'crystal bay golf club': 'crystal-bay',
+      'crystal bay': 'crystal-bay',
+      'st. andrews 2000 gc': 'st-andrews-2000',
+      'st andrews 2000': 'st-andrews-2000',
+      'royal lakeside gc': 'royal-lakeside',
+      'royal lakeside': 'royal-lakeside',
+      'thai country club': 'thai-country-club',
+      'grand prix international gc': 'grand-prix',
+      'grand prix': 'grand-prix',
+      'hermes golf club': 'hermes',
+      'hermes': 'hermes',
+      'pattavia century gc': 'pattavia',
+      'pattavia': 'pattavia',
+      'bangpra international gc': 'bangpra-international',
+      'bangpra': 'bangpra-international',
+      'royal garden golf club': 'royal-garden',
+      'royal garden': 'royal-garden',
+      'green valley': 'greenwood' // Some events use Green Valley for Greenwood area
+    };
+
+    // Helper to match course name to tee sheet course ID
+    function matchCourseToId(courseName) {
+      if (!courseName) return null;
+      const normalized = courseName.toLowerCase().trim();
+      return courseNameToId[normalized] || null;
+    }
+
+    // Fetch society events from Supabase for a specific date and course
     async function fetchSocietyEvents(date) {
       if (!supabaseClient) return [];
 
+      const selectedCourseId = el?.courseSelect?.value || '';
+      const cacheKey = `${date}::${selectedCourseId}`;
+
       const now = Date.now();
-      if (societyEventsLastFetchTime[date] && (now - societyEventsLastFetchTime[date]) < 10000) {
-        return societyEventsCache[date] || [];
+      if (societyEventsLastFetchTime[cacheKey] && (now - societyEventsLastFetchTime[cacheKey]) < 10000) {
+        return societyEventsCache[cacheKey] || [];
       }
 
       try {
@@ -2360,11 +2430,24 @@
 
         if (error) {
           console.error('[TeeSheet] Error fetching society events:', error);
-          return societyEventsCache[date] || [];
+          return societyEventsCache[cacheKey] || [];
         }
 
+        // Filter to only events matching the selected course
+        const filteredData = (data || []).filter(evt => {
+          if (!selectedCourseId) return true; // Show all if no course selected
+          const eventCourseId = matchCourseToId(evt.course_name);
+          const matches = eventCourseId === selectedCourseId;
+          if (!matches && evt.course_name) {
+            console.log('[TeeSheet] Skipping event', evt.title, 'at', evt.course_name, '- not matching', selectedCourseId);
+          }
+          return matches;
+        });
+
+        console.log('[TeeSheet] Filtered', filteredData.length, 'of', (data || []).length, 'events for course', selectedCourseId);
+
         // Convert to tee sheet booking format
-        const events = (data || []).map(evt => {
+        const events = filteredData.map(evt => {
           const startTime = evt.start_time ? evt.start_time.substring(0, 5) : '08:00';
           const endTime = evt.end_time ? evt.end_time.substring(0, 5) : null;
           const endMins = endTime ? minutes(endTime) : minutes(startTime) + 60;
@@ -2402,13 +2485,13 @@
           return slots;
         }).flat();
 
-        societyEventsCache[date] = events;
-        societyEventsLastFetchTime[date] = now;
-        console.log('[TeeSheet] Fetched', events.length, 'society event slots for', date);
+        societyEventsCache[cacheKey] = events;
+        societyEventsLastFetchTime[cacheKey] = now;
+        console.log('[TeeSheet] Fetched', events.length, 'society event slots for', date, 'course', selectedCourseId);
         return events;
       } catch (e) {
         console.error('[TeeSheet] Society events fetch error:', e);
-        return societyEventsCache[date] || [];
+        return societyEventsCache[cacheKey] || [];
       }
     }
 
@@ -3273,8 +3356,9 @@
       // Get cached caddy bookings from database
       const dbBookings = caddyBookingsCache[d] || [];
 
-      // Get cached society events from database
-      const societyEvents = societyEventsCache[d] || [];
+      // Get cached society events from database (course-specific cache)
+      const societyCacheKey = `${d}::${courseId}`;
+      const societyEvents = societyEventsCache[societyCacheKey] || [];
 
       // Merge all sources (avoiding duplicates by id)
       const allIds = new Set(localBookings.map(b => b.id));
@@ -5718,10 +5802,12 @@
         }
         // Clear cache to force re-fetch
         const date = event.data.date || el.dateInput.value;
+        const courseId = el?.courseSelect?.value || '';
+        const societyCacheKey = `${date}::${courseId}`;
         delete caddyBookingsCache[date];
         delete lastFetchTime[date];
-        delete societyEventsCache[date];
-        delete societyEventsLastFetchTime[date];
+        delete societyEventsCache[societyCacheKey];
+        delete societyEventsLastFetchTime[societyCacheKey];
         delete eventRegistrationsCache[date];
         delete eventRegLastFetchTime[date];
         render();
@@ -5731,11 +5817,13 @@
     // Gentle auto-refresh every 60 seconds for society events, caddy bookings and event registrations
     setInterval(() => {
       const currentDate = el.dateInput.value;
+      const courseId = el?.courseSelect?.value || '';
+      const societyCacheKey = `${currentDate}::${courseId}`;
       // Clear cache to force re-fetch
       delete caddyBookingsCache[currentDate];
       delete lastFetchTime[currentDate];
-      delete societyEventsCache[currentDate];
-      delete societyEventsLastFetchTime[currentDate];
+      delete societyEventsCache[societyCacheKey];
+      delete societyEventsLastFetchTime[societyCacheKey];
       delete eventRegistrationsCache[currentDate];
       delete eventRegLastFetchTime[currentDate];
       // Fetch new data in background

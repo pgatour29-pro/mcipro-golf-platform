@@ -169,7 +169,6 @@ class SupabaseClient {
             caddie_id: booking.caddieId || booking.caddie_id,
             caddie_name: booking.caddieName || booking.caddie_name,
             caddie_status: booking.caddieStatus || booking.caddie_status,
-            caddi_confirmation_required: booking.caddiConfirmationRequired || booking.caddi_confirmation_required || false,
 
             // Service-specific fields
             service_name: booking.serviceName || booking.service_name,
@@ -619,7 +618,6 @@ class SupabaseClient {
                 caddie_id: booking.caddieId || booking.caddie_id,
                 caddie_name: booking.caddieName || booking.caddie_name,
                 caddie_status: booking.caddieStatus || booking.caddie_status,
-                caddi_confirmation_required: booking.caddiConfirmationRequired || booking.caddi_confirmation_required || false,
                 service_name: booking.serviceName || booking.service_name,
                 service: booking.service,
                 source: booking.source,

@@ -4499,14 +4499,22 @@
     // ==================== SEARCH ====================
     let searchResults = [], searchIdx = 0;
 
-    el.findBtn.addEventListener('click', () => {
+    el.findBtn.addEventListener('click', async () => {
       const q = el.searchInput.value.toLowerCase().trim();
       if (!q) return;
-      const bookings = getDay(el.dateInput.value);
+
+      // Ensure caddy bookings are fetched before searching
+      const currentDate = el.dateInput.value;
+      await fetchCaddyBookings(currentDate);
+
+      const bookings = getDay(currentDate);
+      console.log('[TeeSheet] Search: checking', bookings.length, 'bookings for "' + q + '"');
+
       searchResults = bookings.filter(b => {
         // Search in booking-level fields
         if ((b.name || '').toLowerCase().includes(q)) return true;
         if ((b.caddyNumber || '').toLowerCase().includes(q)) return true;
+        if ((b.groupName || '').toLowerCase().includes(q)) return true;
 
         // Search in each golfer
         const golfers = b.golfers || [];
@@ -4514,11 +4522,12 @@
           if ((g.name || '').toLowerCase().includes(q)) return true;
           if ((g.caddyNumber || '').toLowerCase().includes(q)) return true;
           if ((g.caddyName || '').toLowerCase().includes(q)) return true;
-          if ((g.caddyLocalName || '').toLowerCase().includes(q)) return true; // Thai/Korean/Japanese name search
+          if ((g.caddyLocalName || '').toLowerCase().includes(q)) return true;
           return false;
         });
       });
       searchIdx = 0;
+      console.log('[TeeSheet] Search: found', searchResults.length, 'matches');
       if (searchResults.length) highlightBooking(searchResults[0]);
       else alert(t('noMatches'));
     });

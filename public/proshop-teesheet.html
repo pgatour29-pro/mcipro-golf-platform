@@ -2261,14 +2261,10 @@
       }
 
       try {
-        // Join with caddy_profiles for caddy info AND profiles for golfer info
+        // Get caddy bookings with caddy profile info
         const { data, error } = await supabaseClient
           .from('caddy_bookings')
-          .select(`
-            *,
-            caddy_profiles:caddy_id(name, caddy_number, photo_url),
-            profiles:user_id(id, name, email)
-          `)
+          .select('*, caddy_profiles(name, caddy_number, photo_url)')
           .eq('booking_date', date)
           .neq('status', 'cancelled');
 
@@ -2277,12 +2273,25 @@
           return caddyBookingsCache[date] || [];
         }
 
+        // Get user profiles separately for golfer names
+        const userIds = [...new Set((data || []).map(b => b.user_id).filter(Boolean))];
+        let userProfiles = {};
+
+        if (userIds.length > 0) {
+          const { data: profiles } = await supabaseClient
+            .from('profiles')
+            .select('id, name, email')
+            .in('id', userIds);
+
+          (profiles || []).forEach(p => {
+            userProfiles[p.id] = p;
+          });
+        }
+
         // Convert to tee sheet format
         const bookings = (data || []).map(b => {
-          // Get golfer name from profiles join, fallback to email or user_id
-          const golferName = b.profiles?.name ||
-                            b.profiles?.email?.split('@')[0] ||
-                            'Golfer';
+          const profile = userProfiles[b.user_id];
+          const golferName = profile?.name || profile?.email?.split('@')[0] || 'Golfer';
 
           return {
             id: `caddy-${b.id}`,
@@ -2290,7 +2299,7 @@
             time: b.tee_time,
             course: 'A',
             tee: 1,
-            col: 0, // Column index for Course A, Tee 1
+            col: 0,
             bookingType: 'regular',
             source: 'caddy-booking-db',
             golfers: [{

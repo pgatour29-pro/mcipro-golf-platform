@@ -4,7 +4,35 @@
 
 ### Commits (newest first)
 
-1. **ab64f743** - Add Today button to tee sheet for quick navigation back to current date
+#### Part 2: Performance Optimization
+
+1. **4d6bb6c9** - Render society events immediately, add caddy bookings after
+   - Society events render first (instant)
+   - Caddy bookings fetch and re-render after
+   - Fixes slow initial load issue
+
+2. **fb7a4234** - Revert to working caddy booking code with user_profiles lookup
+   - Two sequential queries (caddy_bookings then user_profiles)
+   - Ensures Pete Park name shows correctly
+
+3. **ce554bdf** - Fix slow caddy booking load: retry clears all caches, auto-refresh 30s
+   - clearAllCaches() helper function
+   - Retry triggers if society OR caddy data empty
+   - Auto-refresh reduced from 60s to 30s
+
+4. **9a7ec5f3** - Optimize tee sheet loading: remove console.logs
+   - Removed excessive console.log statements from render path
+
+5. **6f59e903** - Fix Today button width - override date-control button 40px constraint
+   - Added `.date-control .today-btn` selector for higher specificity
+   - Set `width: auto` and `height: auto` to override parent constraints
+
+6. **63ccddd3** - Shrink Today button text to fit inside button
+   - Initial attempt at fixing Today button text overflow
+
+#### Part 1: Society Integration (earlier)
+
+7. **ab64f743** - Add Today button to tee sheet for quick navigation back to current date
    - Blue button in date control area
    - Calls todayISO() and fetchAndRender()
 
@@ -57,3 +85,14 @@
 3. Event registrations != slot assignments (don't show on tee sheet)
 4. Course name normalization critical for filtering
 5. Async fetch must complete before render() called
+6. **Two-phase rendering** - render society events first, add caddy bookings after
+7. **user_id is LINE ID** - cannot use Supabase join, must do separate user_profiles lookup
+8. **CSS specificity** - `.date-control button` has width:40px, must override with `.date-control .today-btn`
+9. **Promise.all blocks on slowest** - don't wait for all queries if one is fast
+10. **Cache clearing on retry** - must clear ALL caches (caddy, society, event reg) not just one
+
+### Failed Optimization Attempts
+
+1. **Supabase join for user_profiles** - `user_profiles!caddy_bookings_user_id_fkey` doesn't work because user_id is LINE ID, not a foreign key
+2. **Background fetch with re-render** - fetching user names in background and calling render() didn't update the display correctly
+3. **golfer_name column** - doesn't exist in caddy_bookings table

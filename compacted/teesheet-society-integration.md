@@ -39,9 +39,11 @@ const courseNameToId = {
 - Click any day to navigate directly to that date
 - Shows society event previews (deduplicated by groupId)
 
-### 5. Auto-Refresh
-- Initial load with retry mechanism (2s + 3s retries if no data)
-- 60-second auto-refresh for live updates
+### 5. Auto-Refresh & Performance
+- Initial load with retry mechanism (1.5s + 2s retries if no data)
+- 30-second auto-refresh for live updates
+- **Two-phase rendering**: Society events render immediately, caddy bookings added after
+- Cache clearing helper: `clearAllCaches(date, courseId)`
 
 ## Database Tables Used
 
@@ -118,31 +120,75 @@ async fetchMonthSocietyEvents(year, month) {
 3. **3-5 min load delay** - Added retry mechanism on initial load
 4. **Calendar not showing events** - Added fetchMonthSocietyEvents for calendar
 5. **Incorrect event on Jan 23** - Deleted erroneous T.Hill event from database
+6. **Slow caddy booking load (30-60s)** - Two-phase rendering, society events show instantly
+7. **Today button text overflow** - CSS specificity fix with `.date-control .today-btn`
+8. **Broken user_profiles join** - user_id is LINE ID, not foreign key - requires separate lookup
 
-## Data Flow
+## Data Flow (Two-Phase Rendering)
 
 ```
 User opens tee sheet
     ↓
 fetchAndRender() called
     ↓
-Promise.all([
-  fetchCaddyBookings(date),
-  fetchSocietyEvents(date),
+Phase 1: fetchSocietyEvents(date)
+    ↓
+render() - displays society events immediately
+    ↓
+Phase 2: Promise.all([
+  fetchCaddyBookings(date),      // 2 queries: caddy_bookings + user_profiles
   fetchEventRegistrations(date)
 ])
     ↓
-render() - merges all data sources
+render() - adds caddy bookings to society slots
     ↓
-Society event slots enriched with caddy bookings
-    ↓
-Display on tee sheet grid
+Display complete tee sheet with golfer names
 ```
+
+### Why Two-Phase?
+- Society events = 1 fast query → instant display
+- Caddy bookings = 2 sequential queries (caddy_bookings then user_profiles for golfer names)
+- Without two-phase, caddy booking delay blocks everything
 
 ### 6. Today Button
 - Quick navigation back to current date
 - Blue button in date control area
 - Fetches fresh data after navigation
+- CSS: `.date-control .today-btn` overrides parent's `width: 40px`
+
+### 7. fetchAndRender (line ~4814)
+```javascript
+async function fetchAndRender() {
+  const currentDate = el.dateInput.value;
+
+  // Phase 1: Society events render immediately
+  await fetchSocietyEvents(currentDate);
+  render();
+
+  // Phase 2: Caddy bookings added after
+  await Promise.all([
+    fetchCaddyBookings(currentDate),
+    fetchEventRegistrations(currentDate)
+  ]);
+  render();
+}
+```
+
+### 8. fetchCaddyBookings (line ~2287)
+```javascript
+// Query 1: Get caddy bookings with caddy profile
+const { data } = await supabaseClient
+  .from('caddy_bookings')
+  .select('*, caddy_profiles(name, caddy_number, photo_url)')
+  .eq('booking_date', date)
+  .neq('status', 'cancelled');
+
+// Query 2: Get user profiles for golfer names (user_id = LINE ID)
+const { data: profiles } = await supabaseClient
+  .from('user_profiles')
+  .select('line_user_id, name, email')
+  .in('line_user_id', userIds);
+```
 
 ## Testing Notes
 

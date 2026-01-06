@@ -588,15 +588,13 @@ const AdminPricingControl = {
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     <div>
                         <label class="text-xs font-semibold text-gray-600 uppercase mb-1 block">Opening Time</label>
-                        <input type="time" class="pro-select w-full"
-                               data-category="courseSettings" data-sub="operatingHours" data-field="start"
-                               value="${pricing.courseSettings?.operatingHours?.start || '06:00'}">
+                        <select class="pro-select w-full" data-time-picker data-default="${pricing.courseSettings?.operatingHours?.start || '06:00'}"
+                               data-category="courseSettings" data-sub="operatingHours" data-field="start"></select>
                     </div>
                     <div>
                         <label class="text-xs font-semibold text-gray-600 uppercase mb-1 block">Closing Time</label>
-                        <input type="time" class="pro-select w-full"
-                               data-category="courseSettings" data-sub="operatingHours" data-field="end"
-                               value="${pricing.courseSettings?.operatingHours?.end || '19:00'}">
+                        <select class="pro-select w-full" data-time-picker data-default="${pricing.courseSettings?.operatingHours?.end || '19:00'}"
+                               data-category="courseSettings" data-sub="operatingHours" data-field="end"></select>
                     </div>
                     <div>
                         <label class="text-xs font-semibold text-gray-600 uppercase mb-1 block">Slot Interval (minutes)</label>
@@ -644,13 +642,11 @@ const AdminPricingControl = {
                     <div>
                         <label class="text-xs font-semibold text-gray-600 uppercase mb-2 block">Peak Hours</label>
                         <div class="flex items-center gap-2">
-                            <input type="time" class="pro-select flex-1"
-                                   data-category="timePeriods" data-sub="peak" data-field="start"
-                                   value="${pricing.timePeriods?.peak?.start || '08:00'}">
+                            <select class="pro-select flex-1" data-time-picker data-default="${pricing.timePeriods?.peak?.start || '08:00'}"
+                                   data-category="timePeriods" data-sub="peak" data-field="start"></select>
                             <span class="text-xs">to</span>
-                            <input type="time" class="pro-select flex-1"
-                                   data-category="timePeriods" data-sub="peak" data-field="end"
-                                   value="${pricing.timePeriods?.peak?.end || '14:00'}">
+                            <select class="pro-select flex-1" data-time-picker data-default="${pricing.timePeriods?.peak?.end || '14:00'}"
+                                   data-category="timePeriods" data-sub="peak" data-field="end"></select>
                         </div>
                     </div>
 
@@ -658,13 +654,11 @@ const AdminPricingControl = {
                     <div>
                         <label class="text-xs font-semibold text-gray-600 uppercase mb-2 block">Midday Hours</label>
                         <div class="flex items-center gap-2">
-                            <input type="time" class="pro-select flex-1"
-                                   data-category="timePeriods" data-sub="midday" data-field="start"
-                                   value="${pricing.timePeriods?.midday?.start || '14:00'}">
+                            <select class="pro-select flex-1" data-time-picker data-default="${pricing.timePeriods?.midday?.start || '14:00'}"
+                                   data-category="timePeriods" data-sub="midday" data-field="start"></select>
                             <span class="text-xs">to</span>
-                            <input type="time" class="pro-select flex-1"
-                                   data-category="timePeriods" data-sub="midday" data-field="end"
-                                   value="${pricing.timePeriods?.midday?.end || '17:00'}">
+                            <select class="pro-select flex-1" data-time-picker data-default="${pricing.timePeriods?.midday?.end || '17:00'}"
+                                   data-category="timePeriods" data-sub="midday" data-field="end"></select>
                         </div>
                     </div>
 
@@ -672,13 +666,11 @@ const AdminPricingControl = {
                     <div>
                         <label class="text-xs font-semibold text-gray-600 uppercase mb-2 block">Evening Hours</label>
                         <div class="flex items-center gap-2">
-                            <input type="time" class="pro-select flex-1"
-                                   data-category="timePeriods" data-sub="evening" data-field="start"
-                                   value="${pricing.timePeriods?.evening?.start || '17:00'}">
+                            <select class="pro-select flex-1" data-time-picker data-default="${pricing.timePeriods?.evening?.start || '17:00'}"
+                                   data-category="timePeriods" data-sub="evening" data-field="start"></select>
                             <span class="text-xs">to</span>
-                            <input type="time" class="pro-select flex-1"
-                                   data-category="timePeriods" data-sub="evening" data-field="end"
-                                   value="${pricing.timePeriods?.evening?.end || '19:00'}">
+                            <select class="pro-select flex-1" data-time-picker data-default="${pricing.timePeriods?.evening?.end || '19:00'}"
+                                   data-category="timePeriods" data-sub="evening" data-field="end"></select>
                         </div>
                     </div>
                 </div>
@@ -686,6 +678,8 @@ const AdminPricingControl = {
         `;
 
         this.attachPriceUpdateHandlers();
+        // Initialize time pickers
+        if (window.TimePickerUtils) window.TimePickerUtils.initAll(content);
     },
 
     renderTeeTimesTab() {
@@ -700,37 +694,31 @@ const AdminPricingControl = {
                     <div>
                         <label class="text-xs font-semibold text-gray-600 uppercase mb-2 block">Peak Hours</label>
                         <div class="flex gap-2 items-center">
-                            <input type="time" class="pro-select flex-1"
-                                   data-category="timePeriods" data-sub="peak" data-field="start"
-                                   value="${pricing.timePeriods.peak.start}">
+                            <select class="pro-select flex-1" data-time-picker data-default="${pricing.timePeriods.peak.start}"
+                                   data-category="timePeriods" data-sub="peak" data-field="start"></select>
                             <span class="text-sm">to</span>
-                            <input type="time" class="pro-select flex-1"
-                                   data-category="timePeriods" data-sub="peak" data-field="end"
-                                   value="${pricing.timePeriods.peak.end}">
+                            <select class="pro-select flex-1" data-time-picker data-default="${pricing.timePeriods.peak.end}"
+                                   data-category="timePeriods" data-sub="peak" data-field="end"></select>
                         </div>
                     </div>
                     <div>
                         <label class="text-xs font-semibold text-gray-600 uppercase mb-2 block">Midday Hours</label>
                         <div class="flex gap-2 items-center">
-                            <input type="time" class="pro-select flex-1"
-                                   data-category="timePeriods" data-sub="midday" data-field="start"
-                                   value="${pricing.timePeriods.midday.start}">
+                            <select class="pro-select flex-1" data-time-picker data-default="${pricing.timePeriods.midday.start}"
+                                   data-category="timePeriods" data-sub="midday" data-field="start"></select>
                             <span class="text-sm">to</span>
-                            <input type="time" class="pro-select flex-1"
-                                   data-category="timePeriods" data-sub="midday" data-field="end"
-                                   value="${pricing.timePeriods.midday.end}">
+                            <select class="pro-select flex-1" data-time-picker data-default="${pricing.timePeriods.midday.end}"
+                                   data-category="timePeriods" data-sub="midday" data-field="end"></select>
                         </div>
                     </div>
                     <div>
                         <label class="text-xs font-semibold text-gray-600 uppercase mb-2 block">Evening Hours</label>
                         <div class="flex gap-2 items-center">
-                            <input type="time" class="pro-select flex-1"
-                                   data-category="timePeriods" data-sub="evening" data-field="start"
-                                   value="${pricing.timePeriods.evening.start}">
+                            <select class="pro-select flex-1" data-time-picker data-default="${pricing.timePeriods.evening.start}"
+                                   data-category="timePeriods" data-sub="evening" data-field="start"></select>
                             <span class="text-sm">to</span>
-                            <input type="time" class="pro-select flex-1"
-                                   data-category="timePeriods" data-sub="evening" data-field="end"
-                                   value="${pricing.timePeriods.evening.end}">
+                            <select class="pro-select flex-1" data-time-picker data-default="${pricing.timePeriods.evening.end}"
+                                   data-category="timePeriods" data-sub="evening" data-field="end"></select>
                         </div>
                     </div>
                 </div>
@@ -745,6 +733,8 @@ const AdminPricingControl = {
         `;
 
         this.attachPriceUpdateHandlers();
+        // Initialize time pickers
+        if (window.TimePickerUtils) window.TimePickerUtils.initAll(content);
     },
 
     renderCustomerTypeCard(type, label, rates, allowWalking) {
@@ -934,6 +924,8 @@ const AdminPricingControl = {
         `;
 
         this.attachPromotionHandlers();
+        // Initialize time pickers
+        if (window.TimePickerUtils) window.TimePickerUtils.initAll(content);
     },
 
     renderPromotionCard(promoKey, title, promo) {
@@ -962,13 +954,11 @@ const AdminPricingControl = {
                         <div>
                             <label class="text-xs font-semibold text-gray-600 uppercase mb-1 block">Time Range</label>
                             <div class="flex gap-2 items-center">
-                                <input type="time" class="pro-select flex-1"
-                                       data-promo="${promoKey}" data-field="timeStart"
-                                       value="${promo.timeStart}">
+                                <select class="pro-select flex-1" data-time-picker data-default="${promo.timeStart}"
+                                       data-promo="${promoKey}" data-field="timeStart"></select>
                                 <span class="text-sm">to</span>
-                                <input type="time" class="pro-select flex-1"
-                                       data-promo="${promoKey}" data-field="timeEnd"
-                                       value="${promo.timeEnd}">
+                                <select class="pro-select flex-1" data-time-picker data-default="${promo.timeEnd}"
+                                       data-promo="${promoKey}" data-field="timeEnd"></select>
                             </div>
                         </div>
                     ` : ''}

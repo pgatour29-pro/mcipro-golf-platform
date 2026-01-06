@@ -1554,12 +1554,12 @@
 
       <div class="control-group">
         <label data-i18n="start">START</label>
-        <input type="time" id="start-time" value="06:00">
+        <select id="start-time" data-time-picker data-default="06:00"></select>
       </div>
 
       <div class="control-group">
         <label data-i18n="end">END</label>
-        <input type="time" id="end-time" value="18:00">
+        <select id="end-time" data-time-picker data-default="18:00"></select>
       </div>
 
       <div class="control-group">
@@ -1857,11 +1857,11 @@
           <div class="settings-grid">
             <div class="settings-field">
               <label data-i18n="firstTeeTime">First Tee Time</label>
-              <input type="time" id="settings-start" value="06:00">
+              <select id="settings-start" data-time-picker data-default="06:00"></select>
             </div>
             <div class="settings-field">
               <label data-i18n="lastTeeTime">Last Tee Time</label>
-              <input type="time" id="settings-end" value="18:00">
+              <select id="settings-end" data-time-picker data-default="18:00"></select>
             </div>
             <div class="settings-field">
               <label data-i18n="interval">Tee Time Interval</label>
@@ -1894,8 +1894,8 @@
           <div id="weekday-periods">
             <div class="time-period-row">
               <span class="time-period-label" data-i18n="peak">Peak</span>
-              <input type="time" class="period-start" value="06:00">
-              <input type="time" class="period-end" value="10:00">
+              <select class="period-start" data-time-picker data-default="06:00"></select>
+              <select class="period-end" data-time-picker data-default="10:00"></select>
               <div class="currency-input">
                 <input type="number" class="period-price" value="2500" placeholder="Price">
               </div>
@@ -1903,8 +1903,8 @@
             </div>
             <div class="time-period-row">
               <span class="time-period-label" data-i18n="offPeak">Off-Peak</span>
-              <input type="time" class="period-start" value="10:00">
-              <input type="time" class="period-end" value="14:00">
+              <select class="period-start" data-time-picker data-default="10:00"></select>
+              <select class="period-end" data-time-picker data-default="14:00"></select>
               <div class="currency-input">
                 <input type="number" class="period-price" value="1800" placeholder="Price">
               </div>
@@ -1912,8 +1912,8 @@
             </div>
             <div class="time-period-row">
               <span class="time-period-label" data-i18n="twilight">Twilight</span>
-              <input type="time" class="period-start" value="14:00">
-              <input type="time" class="period-end" value="18:00">
+              <select class="period-start" data-time-picker data-default="14:00"></select>
+              <select class="period-end" data-time-picker data-default="18:00"></select>
               <div class="currency-input">
                 <input type="number" class="period-price" value="1200" placeholder="Price">
               </div>
@@ -1928,8 +1928,8 @@
           <div id="weekend-periods">
             <div class="time-period-row">
               <span class="time-period-label" data-i18n="peak">Peak</span>
-              <input type="time" class="period-start" value="06:00">
-              <input type="time" class="period-end" value="12:00">
+              <select class="period-start" data-time-picker data-default="06:00"></select>
+              <select class="period-end" data-time-picker data-default="12:00"></select>
               <div class="currency-input">
                 <input type="number" class="period-price" value="3500" placeholder="Price">
               </div>
@@ -1937,8 +1937,8 @@
             </div>
             <div class="time-period-row">
               <span class="time-period-label" data-i18n="twilight">Twilight</span>
-              <input type="time" class="period-start" value="12:00">
-              <input type="time" class="period-end" value="18:00">
+              <select class="period-start" data-time-picker data-default="12:00"></select>
+              <select class="period-end" data-time-picker data-default="18:00"></select>
               <div class="currency-input">
                 <input type="number" class="period-price" value="2200" placeholder="Price">
               </div>
@@ -2085,11 +2085,11 @@
                 </div>
                 <div class="package-field">
                   <label data-i18n="validFrom">Valid From</label>
-                  <input type="time" class="pkg-valid-from" value="10:00">
+                  <select class="pkg-valid-from" data-time-picker data-default="10:00"></select>
                 </div>
                 <div class="package-field">
                   <label data-i18n="validUntil">Valid Until</label>
-                  <input type="time" class="pkg-valid-until" value="14:00">
+                  <select class="pkg-valid-until" data-time-picker data-default="14:00"></select>
                 </div>
               </div>
             </div>
@@ -2130,11 +2130,11 @@
                 </div>
                 <div class="package-field">
                   <label data-i18n="validFrom">Valid From</label>
-                  <input type="time" class="pkg-valid-from" value="14:00">
+                  <select class="pkg-valid-from" data-time-picker data-default="14:00"></select>
                 </div>
                 <div class="package-field">
                   <label data-i18n="validUntil">Valid Until</label>
-                  <input type="time" class="pkg-valid-until" value="18:00">
+                  <select class="pkg-valid-until" data-time-picker data-default="18:00"></select>
                 </div>
               </div>
             </div>
@@ -2233,6 +2233,92 @@
   <script>
   (function() {
     'use strict';
+
+    // ==================== TIME PICKER UTILITY ====================
+    const TimePickerUtils = {
+      defaults: {
+        startHour: 5,
+        endHour: 20,
+        interval: 5, // minutes
+        format: '24h'
+      },
+
+      generateTimeOptions(options = {}) {
+        const start = (options.startHour ?? this.defaults.startHour) * 60;
+        const end = (options.endHour ?? this.defaults.endHour) * 60;
+        const interval = options.interval ?? this.defaults.interval;
+        const format = options.format ?? this.defaults.format;
+
+        const times = [];
+        for (let m = start; m <= end; m += interval) {
+          const hours = Math.floor(m / 60);
+          const mins = m % 60;
+          const value = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+
+          let label = value;
+          if (format === '12h') {
+            const h = hours % 12 || 12;
+            const ampm = hours < 12 ? 'AM' : 'PM';
+            label = `${h}:${String(mins).padStart(2, '0')} ${ampm}`;
+          }
+          times.push({ value, label });
+        }
+        return times;
+      },
+
+      populateSelect(selectEl, options = {}) {
+        if (!selectEl) return;
+        const times = this.generateTimeOptions(options);
+        const currentValue = selectEl.value || options.defaultValue || '';
+
+        selectEl.innerHTML = '';
+        if (options.placeholder) {
+          const opt = document.createElement('option');
+          opt.value = '';
+          opt.textContent = options.placeholder;
+          selectEl.appendChild(opt);
+        }
+
+        times.forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t.value;
+          opt.textContent = t.label;
+          if (t.value === currentValue) opt.selected = true;
+          selectEl.appendChild(opt);
+        });
+
+        // Find closest if no exact match
+        if (currentValue && !selectEl.value) {
+          const targetMins = this.timeToMinutes(currentValue);
+          let closest = times[0]?.value;
+          let minDiff = Infinity;
+          times.forEach(t => {
+            const diff = Math.abs(this.timeToMinutes(t.value) - targetMins);
+            if (diff < minDiff) {
+              minDiff = diff;
+              closest = t.value;
+            }
+          });
+          selectEl.value = closest;
+        }
+      },
+
+      timeToMinutes(timeStr) {
+        if (!timeStr) return 0;
+        const [h, m] = timeStr.split(':').map(Number);
+        return h * 60 + (m || 0);
+      },
+
+      initAll(container = document) {
+        container.querySelectorAll('select[data-time-picker]').forEach(el => {
+          if (el.options.length === 0) {
+            const opts = {};
+            if (el.dataset.default) opts.defaultValue = el.dataset.default;
+            this.populateSelect(el, opts);
+          }
+        });
+      }
+    };
 
     // ==================== TRANSLATIONS ====================
     const translations = {
@@ -4413,8 +4499,8 @@
       row.className = 'time-period-row';
       row.innerHTML = `
         <input type="text" class="time-period-label" value="${label}" style="width:80px;background:#f0f0f0;border:1px solid #ddd;padding:6px 8px;border-radius:4px;">
-        <input type="time" class="period-start" value="${start}">
-        <input type="time" class="period-end" value="${end}">
+        <select class="period-start" data-time-picker data-default="${start || '06:00'}"></select>
+        <select class="period-end" data-time-picker data-default="${end || '18:00'}"></select>
         <div class="currency-input">
           <input type="number" class="period-price" value="${price}" placeholder="Price">
         </div>
@@ -4422,6 +4508,9 @@
       `;
       row.querySelector('.remove-period-btn').addEventListener('click', () => row.remove());
       container.appendChild(row);
+      // Initialize the time pickers
+      TimePickerUtils.populateSelect(row.querySelector('.period-start'), { defaultValue: start || '06:00' });
+      TimePickerUtils.populateSelect(row.querySelector('.period-end'), { defaultValue: end || '18:00' });
     }
 
     // Get packages from DOM
@@ -4490,16 +4579,19 @@
           </div>
           <div class="package-field">
             <label data-i18n="validFrom">Valid From</label>
-            <input type="time" class="pkg-valid-from" value="${pkg.validFrom || '06:00'}">
+            <select class="pkg-valid-from" data-time-picker data-default="${pkg.validFrom || '06:00'}"></select>
           </div>
           <div class="package-field">
             <label data-i18n="validUntil">Valid Until</label>
-            <input type="time" class="pkg-valid-until" value="${pkg.validUntil || '18:00'}">
+            <select class="pkg-valid-until" data-time-picker data-default="${pkg.validUntil || '18:00'}"></select>
           </div>
         </div>
       `;
       card.querySelector('.remove-package').addEventListener('click', () => card.remove());
       container.appendChild(card);
+      // Initialize the time pickers
+      TimePickerUtils.populateSelect(card.querySelector('.pkg-valid-from'), { defaultValue: pkg.validFrom || '06:00' });
+      TimePickerUtils.populateSelect(card.querySelector('.pkg-valid-until'), { defaultValue: pkg.validUntil || '18:00' });
       applyTranslations();
     }
 
@@ -4659,6 +4751,7 @@
 
     // Open settings dialog (both header and controls buttons)
     settingsBtn?.addEventListener('click', () => {
+      TimePickerUtils.initAll(settingsDialog); // Initialize time pickers in dialog first
       loadSettingsIntoModal();
       updateSettingsSummary(); // Update summary to match loaded settings
       settingsDialog.showModal();
@@ -5153,6 +5246,7 @@
     updateHeaderCourseName();
     updateHeaderDate();
     applyTranslations();
+    TimePickerUtils.initAll(); // Initialize all time picker selects
     render();
   })();
   </script>

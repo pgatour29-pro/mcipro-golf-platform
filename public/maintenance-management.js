@@ -1123,7 +1123,7 @@ const MaintenanceManagement = {
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Time</label>
-                                <input type="time" id="scheduleTime" class="form-input w-full">
+                                <select id="scheduleTime" class="form-input w-full" data-time-picker data-default="08:00"></select>
                             </div>
                         </div>
                         <div>
@@ -1144,6 +1144,11 @@ const MaintenanceManagement = {
             </div>
         `;
         document.body.insertAdjacentHTML('beforeend', modalHTML);
+        // Initialize time picker
+        if (window.TimePickerUtils) {
+            const modal = document.getElementById('schedule-event-modal');
+            if (modal) window.TimePickerUtils.initAll(modal);
+        }
     },
 
     saveScheduledEvent() {

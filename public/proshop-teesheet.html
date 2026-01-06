@@ -2284,10 +2284,10 @@
       }
 
       try {
-        // Get caddy bookings with caddy profile AND user profile in single query
+        // Get caddy bookings with caddy profile
         const { data, error } = await supabaseClient
           .from('caddy_bookings')
-          .select('*, caddy_profiles(name, caddy_number, photo_url), golfer_name')
+          .select('*, caddy_profiles(name, caddy_number, photo_url)')
           .eq('booking_date', date)
           .neq('status', 'cancelled');
 
@@ -2296,11 +2296,9 @@
           return caddyBookingsCache[date] || [];
         }
 
-        // Convert to tee sheet format
+        // Convert to tee sheet format with placeholder names
         const bookings = (data || []).map(b => {
-          const golferName = b.golfer_name || 'Golfer';
           const teeTime = b.tee_time ? b.tee_time.substring(0, 5) : null;
-
           return {
             id: `caddy-${b.id}`,
             dbId: b.id,
@@ -2311,7 +2309,7 @@
             bookingType: 'regular',
             source: 'caddy-booking-db',
             golfers: [{
-              name: golferName,
+              name: 'Golfer',
               odoo_id: b.user_id,
               caddyId: b.caddy_id,
               caddyName: b.caddy_profiles?.name || 'Caddy',
@@ -2324,6 +2322,31 @@
 
         caddyBookingsCache[date] = bookings;
         lastFetchTime[date] = now;
+
+        // Fetch golfer names in background and update
+        const userIds = [...new Set((data || []).map(b => b.user_id).filter(Boolean))];
+        if (userIds.length > 0) {
+          supabaseClient
+            .from('user_profiles')
+            .select('line_user_id, name, email')
+            .in('line_user_id', userIds)
+            .then(({ data: profiles }) => {
+              if (profiles && profiles.length > 0) {
+                const userMap = {};
+                profiles.forEach(p => userMap[p.line_user_id] = p);
+                // Update cached bookings with real names
+                bookings.forEach(b => {
+                  const userId = b.golfers[0]?.odoo_id;
+                  const profile = userMap[userId];
+                  if (profile) {
+                    b.golfers[0].name = profile.name || profile.email?.split('@')[0] || 'Golfer';
+                  }
+                });
+                render(); // Re-render with names
+              }
+            });
+        }
+
         return bookings;
       } catch (e) {
         console.error('[TeeSheet] Fetch error:', e);

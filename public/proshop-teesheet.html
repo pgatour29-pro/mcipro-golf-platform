@@ -4691,12 +4691,20 @@
         // Add event listeners to day cells
         this.elements.grid.querySelectorAll('.cal-day').forEach(cell => {
           cell.addEventListener('click', () => this.selectDay(cell.dataset.date));
-          cell.addEventListener('mouseenter', () => this.showDayDetail(cell.dataset.date, bookingSummary[cell.dataset.date]));
+          cell.addEventListener('mouseenter', () => {
+            // Show hover preview (temporary)
+            this.hoverDay(cell.dataset.date, bookingSummary[cell.dataset.date]);
+          });
+          cell.addEventListener('mouseleave', () => {
+            // Revert to selected date when mouse leaves
+            this.revertToSelected();
+          });
         });
 
         // Update selected day detail if one is selected
-        if (this.selectedDate && bookingSummary[this.selectedDate]) {
-          this.showDayDetail(this.selectedDate, bookingSummary[this.selectedDate]);
+        if (this.selectedDate) {
+          const selectedData = bookingSummary[this.selectedDate] || { total: 0, items: [] };
+          this.showDayDetail(this.selectedDate, selectedData, true);
         }
       },
 
@@ -4792,29 +4800,59 @@
         return allBookings;
       },
 
+      // Hover preview - temporary, doesn't change selection
+      hoverDay(dateStr, dayData) {
+        // Don't update if this is the selected date (no need to re-render)
+        if (dateStr === this.selectedDate) return;
+
+        // Show hover preview without changing selectedDate
+        const bookings = dayData?.items || this.getBookingsForDate(dateStr);
+        this.showDayDetail(dateStr, { total: bookings.length, items: bookings }, false);
+      },
+
+      // Revert to showing selected date's details
+      revertToSelected() {
+        if (!this.selectedDate) {
+          // No date selected, show placeholder
+          this.elements.detailDate.textContent = 'Select a day';
+          this.elements.detailContent.innerHTML = '<p class="cal-detail-empty">Click a day to see bookings</p>';
+          this.elements.detailSummary.textContent = '';
+          this.elements.goToDay.disabled = true;
+          this.elements.goToDay.textContent = 'Go to this day →';
+          return;
+        }
+
+        // Restore selected date's details
+        const bookings = this.getBookingsForDate(this.selectedDate);
+        this.showDayDetail(this.selectedDate, { total: bookings.length, items: bookings }, true);
+      },
+
       selectDay(dateStr) {
         this.selectedDate = dateStr;
         // Update visual selection
         this.elements.grid.querySelectorAll('.cal-day').forEach(cell => {
           cell.classList.toggle('selected', cell.dataset.date === dateStr);
         });
-        // Show detail
+        // Show detail (isSelected = true)
         const bookings = this.getBookingsForDate(dateStr);
-        this.showDayDetail(dateStr, { total: bookings.length, items: bookings });
+        this.showDayDetail(dateStr, { total: bookings.length, items: bookings }, true);
       },
 
-      showDayDetail(dateStr, dayData) {
+      showDayDetail(dateStr, dayData, isSelected = false) {
         // Format date for display
         const d = new Date(dateStr + 'T00:00:00');
         const options = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
         this.elements.detailDate.textContent = d.toLocaleDateString('en-US', options);
 
+        // Only update Go button for selected date (not hover)
+        if (isSelected) {
+          this.elements.goToDay.disabled = false;
+          this.elements.goToDay.textContent = `Go to ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} →`;
+        }
+
         if (!dayData || dayData.total === 0) {
           this.elements.detailContent.innerHTML = '<p class="cal-detail-empty">No bookings on this day</p>';
           this.elements.detailSummary.textContent = '';
-          this.elements.goToDay.disabled = false;
-          this.elements.goToDay.textContent = `Go to ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} →`;
-          this.selectedDate = dateStr;
           return;
         }
 
@@ -4865,11 +4903,6 @@
         if (byType.tournament) parts.push(`${byType.tournament} Tournament`);
         if (byType.regular) parts.push(`${byType.regular} Regular`);
         this.elements.detailSummary.innerHTML = `<strong>${total} tee times</strong> • ${parts.join(' • ')}`;
-
-        // Enable go button
-        this.elements.goToDay.disabled = false;
-        this.elements.goToDay.textContent = `Go to ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} →`;
-        this.selectedDate = dateStr;
       },
 
       navigateToDate() {

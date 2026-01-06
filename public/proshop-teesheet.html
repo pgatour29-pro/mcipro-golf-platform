@@ -413,6 +413,7 @@
 
     /* Booking Pills */
     .pill {
+      position: relative;
       background: #fff;
       border-radius: 6px;
       padding: 6px 8px;
@@ -432,6 +433,19 @@
     .pill.vip { border-left-color: #fcd34d; background: #fffbeb; }
     .pill.society { border-left-color: #93c5fd; background: #eff6ff; }
     .pill.tournament { border-left-color: #f9a8d4; background: #fdf2f8; }
+    .pill.society:active, .pill.society[draggable="true"]:hover {
+      cursor: grab;
+      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+    }
+    .pill.society:active::after {
+      content: "⚡ Will sync to society";
+      position: absolute;
+      bottom: -18px;
+      left: 0;
+      font-size: 9px;
+      color: #3b82f6;
+      white-space: nowrap;
+    }
     .pill-name {
       font-weight: 600;
       color: var(--ink);
@@ -2974,6 +2988,187 @@
       }
     };
 
+    // ==================== SOCIETY BOOKING SYNC ====================
+    // Syncs pro shop tee sheet changes to society events and notifies members
+    async function syncSocietyBookingChange(booking, changes) {
+      const { oldTime, oldCourse, oldTee, newTime, newCourse, newTee, date } = changes;
+
+      console.log('[TeeSheet] Society booking changed:', {
+        bookingId: booking.id,
+        groupId: booking.groupId,
+        groupName: booking.groupName,
+        oldTime, newTime,
+        oldCourse, newCourse
+      });
+
+      // Build change description
+      const changeDetails = [];
+      if (oldTime !== newTime) changeDetails.push(`Time: ${oldTime} → ${newTime}`);
+      if (oldCourse !== newCourse) changeDetails.push(`Course: ${oldCourse} → ${newCourse}`);
+      if (oldTee !== newTee) changeDetails.push(`Tee: ${oldTee} → ${newTee}`);
+      const changeText = changeDetails.join(', ');
+
+      // 1. Update parent BookingManager if available
+      if (window.parent && window.parent.BookingManager) {
+        const parentBookings = window.parent.BookingManager.bookings || [];
+        const parentIdx = parentBookings.findIndex(b =>
+          b.id === booking.id ||
+          b.id === booking.parentId ||
+          (b.groupId === booking.groupId && b.date === date && b.time === oldTime)
+        );
+
+        if (parentIdx >= 0) {
+          parentBookings[parentIdx].time = newTime;
+          parentBookings[parentIdx].course = newCourse;
+          parentBookings[parentIdx].teeSheetCourse = newCourse;
+          parentBookings[parentIdx].lastModifiedBy = 'proshop';
+          parentBookings[parentIdx].lastModifiedAt = new Date().toISOString();
+          parentBookings[parentIdx].changeHistory = parentBookings[parentIdx].changeHistory || [];
+          parentBookings[parentIdx].changeHistory.push({
+            changedAt: new Date().toISOString(),
+            changedBy: 'Pro Shop',
+            changes: changeText
+          });
+          window.parent.BookingManager.saveToLocalStorage();
+          console.log('[TeeSheet] Updated parent BookingManager booking');
+        }
+      }
+
+      // 2. Create notification for society organizers and members
+      const notification = {
+        id: `teesheet-change-${Date.now()}`,
+        type: 'tee_time_change',
+        priority: 'high',
+        title: '⛳ Tee Time Changed by Pro Shop',
+        message: `${booking.groupName || 'Your booking'} on ${date} has been updated: ${changeText}`,
+        bookingId: booking.id,
+        groupId: booking.groupId,
+        eventId: booking.eventId || booking.groupId,
+        date: date,
+        oldTime, newTime,
+        oldCourse, newCourse,
+        changedBy: 'Pro Shop',
+        changedAt: new Date().toISOString(),
+        read: false
+      };
+
+      // Store notification locally
+      try {
+        const notifKey = 'teesheet.notifications';
+        let notifications = JSON.parse(localStorage.getItem(notifKey) || '[]');
+        notifications.unshift(notification);
+        // Keep last 100 notifications
+        notifications = notifications.slice(0, 100);
+        localStorage.setItem(notifKey, JSON.stringify(notifications));
+      } catch (e) {
+        console.warn('[TeeSheet] Failed to store notification locally:', e);
+      }
+
+      // 3. Sync to Supabase notifications table if available
+      const supabase = window.parent?.SupabaseDB?.client || window.SupabaseManager?.client;
+      if (supabase) {
+        try {
+          // Get registered members for this event to notify them
+          const eventId = booking.eventId || booking.groupId;
+          let memberIds = [];
+
+          if (eventId) {
+            const { data: registrations } = await supabase
+              .from('society_event_registrations')
+              .select('user_id, golfer_name')
+              .eq('event_id', eventId);
+
+            memberIds = (registrations || []).map(r => r.user_id).filter(Boolean);
+            console.log('[TeeSheet] Found', memberIds.length, 'registered members to notify');
+          }
+
+          // Get society organizer ID
+          let organizerId = null;
+          if (eventId) {
+            const { data: eventData } = await supabase
+              .from('society_events')
+              .select('organizer_id, organizer_name')
+              .eq('id', eventId)
+              .single();
+
+            organizerId = eventData?.organizer_id;
+            console.log('[TeeSheet] Event organizer:', eventData?.organizer_name);
+          }
+
+          // Insert notification for each member + organizer
+          const allRecipients = [...new Set([...memberIds, organizerId].filter(Boolean))];
+
+          if (allRecipients.length > 0) {
+            const notificationInserts = allRecipients.map(userId => ({
+              user_id: userId,
+              type: 'tee_time_change',
+              title: notification.title,
+              message: notification.message,
+              data: {
+                bookingId: booking.id,
+                groupId: booking.groupId,
+                eventId: eventId,
+                date, oldTime, newTime, oldCourse, newCourse
+              },
+              read: false,
+              created_at: new Date().toISOString()
+            }));
+
+            const { error: insertError } = await supabase
+              .from('user_notifications')
+              .insert(notificationInserts);
+
+            if (insertError) {
+              console.warn('[TeeSheet] Failed to insert Supabase notifications:', insertError);
+            } else {
+              console.log('[TeeSheet] Sent notifications to', allRecipients.length, 'users');
+            }
+          }
+
+          // Also update the society_events table with the change log
+          if (eventId) {
+            const { data: existingEvent } = await supabase
+              .from('society_events')
+              .select('change_log, tee_times')
+              .eq('id', eventId)
+              .single();
+
+            const changeLog = existingEvent?.change_log || [];
+            changeLog.push({
+              timestamp: new Date().toISOString(),
+              changedBy: 'Pro Shop',
+              bookingId: booking.id,
+              changes: changeText
+            });
+
+            await supabase
+              .from('society_events')
+              .update({
+                change_log: changeLog,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', eventId);
+
+            console.log('[TeeSheet] Updated society event change log');
+          }
+
+        } catch (e) {
+          console.warn('[TeeSheet] Supabase notification sync failed:', e);
+        }
+      }
+
+      // 4. Show local confirmation
+      const parentNotify = window.parent?.NotificationManager;
+      if (parentNotify) {
+        parentNotify.show(`Updated ${booking.groupName || 'society booking'}: ${changeText}`, 'info', 5000);
+      }
+
+      // Dispatch custom event for any listeners
+      window.dispatchEvent(new CustomEvent('societyBookingChanged', {
+        detail: { booking, changes, notification }
+      }));
+    }
+
     // Settings storage - persists course configuration
     const SETTINGS_KEY = 'teesheet.settings';
     function getSettings() {
@@ -3078,7 +3273,7 @@
             const displayName = b.groupName ? `${b.groupName}` : name;
             const groupInfo = b.groupId ? `<span style="opacity:0.7;font-size:10px;">[${b.groupIndex + 1}/${b.groupTotal}]</span> ` : '';
 
-            pillsHtml += `<div class="pill ${b.bookingType || 'regular'} ${groupClass}" data-id="${b.id}" data-group-id="${b.groupId || ''}" draggable="${b.groupId ? 'false' : 'true'}">
+            pillsHtml += `<div class="pill ${b.bookingType || 'regular'} ${groupClass}" data-id="${b.id}" data-group-id="${b.groupId || ''}" data-event-id="${b.eventId || ''}" data-society-id="${b.societyId || ''}" draggable="true">
               <div class="pill-name">${groupInfo}${displayName}${extra}</div>
               <div class="pill-info">${caddy}</div>
             </div>`;
@@ -3143,14 +3338,40 @@
           const bookingIdx = bookings.findIndex(b => b.id === bookingId);
           if (bookingIdx < 0) return;
 
+          const booking = bookings[bookingIdx];
+
+          // Capture old values for change notification
+          const oldTime = booking.time;
+          const oldCourse = booking.course;
+          const oldTee = booking.tee;
+          const newTime = slot.dataset.time;
+          const newCourse = slot.dataset.course;
+          const newTee = parseInt(slot.dataset.tee);
+
+          // Check if actually changed
+          if (oldTime === newTime && oldCourse === newCourse && oldTee === newTee) {
+            return; // No change
+          }
+
           // Update booking with new slot info
-          bookings[bookingIdx].time = slot.dataset.time;
-          bookings[bookingIdx].col = parseInt(slot.dataset.col);
-          bookings[bookingIdx].course = slot.dataset.course;
-          bookings[bookingIdx].tee = parseInt(slot.dataset.tee);
+          booking.time = newTime;
+          booking.col = parseInt(slot.dataset.col);
+          booking.course = newCourse;
+          booking.tee = newTee;
+          booking.lastModifiedBy = 'proshop';
+          booking.lastModifiedAt = new Date().toISOString();
 
           setDay(date, bookings);
           render();
+
+          // If this is a society/group booking, sync to parent and send notifications
+          if (booking.groupId || booking.eventId || booking.type === 'society' || booking.bookingType === 'society') {
+            syncSocietyBookingChange(booking, {
+              oldTime, oldCourse, oldTee,
+              newTime, newCourse, newTee,
+              date
+            });
+          }
         });
       });
     }

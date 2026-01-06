@@ -3429,7 +3429,13 @@
         layout.cols.forEach((col, idx) => {
           // Match bookings by col index OR by course+tee (for db bookings)
           const slotBookings = bookings.filter(b => {
-            if (b.time !== timeStr) return false;
+            if (!b.time) return false;
+            // Snap booking time to nearest slot (within half the interval)
+            const bookingMin = minutes(b.time);
+            const slotMin = m;
+            const halfStep = Math.floor(step / 2);
+            const timeMatches = Math.abs(bookingMin - slotMin) <= halfStep;
+            if (!timeMatches) return false;
             // Match by col index (local bookings)
             if (b.col === idx) return true;
             // Match by course + tee (database bookings)

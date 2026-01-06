@@ -2328,6 +2328,90 @@
       }
     }
 
+    // Cache for society events
+    let societyEventsCache = {};
+    let societyEventsLastFetchTime = {};
+
+    // Fetch society events from Supabase for a specific date
+    async function fetchSocietyEvents(date) {
+      if (!supabaseClient) return [];
+
+      const now = Date.now();
+      if (societyEventsLastFetchTime[date] && (now - societyEventsLastFetchTime[date]) < 10000) {
+        return societyEventsCache[date] || [];
+      }
+
+      try {
+        // Get society events for this date
+        const { data, error } = await supabaseClient
+          .from('society_events')
+          .select(`
+            id,
+            title,
+            event_date,
+            start_time,
+            end_time,
+            course_name,
+            society_id,
+            societies(name)
+          `)
+          .eq('event_date', date)
+          .in('status', ['confirmed', 'active', 'scheduled']);
+
+        if (error) {
+          console.error('[TeeSheet] Error fetching society events:', error);
+          return societyEventsCache[date] || [];
+        }
+
+        // Convert to tee sheet booking format
+        const events = (data || []).map(evt => {
+          const startTime = evt.start_time ? evt.start_time.substring(0, 5) : '08:00';
+          const endTime = evt.end_time ? evt.end_time.substring(0, 5) : null;
+          const endMins = endTime ? minutes(endTime) : minutes(startTime) + 60;
+          const startMins = minutes(startTime);
+          const step = parseInt(el?.intervalSelect?.value) || 10;
+          const numSlots = Math.ceil((endMins - startMins) / step);
+
+          // Create group of time slots for the blocked range
+          const slots = [];
+          for (let i = 0; i < numSlots; i++) {
+            const slotTime = hhmm(startMins + (i * step));
+            slots.push({
+              id: `society-${evt.id}-slot-${i}`,
+              eventId: evt.id,
+              time: slotTime,
+              course: 'A',
+              tee: 1,
+              col: 0,
+              bookingType: 'society',
+              type: 'society_event',
+              source: 'society-event-db',
+              groupId: `society-${evt.id}`,
+              groupName: evt.title || evt.societies?.name || 'Society Event',
+              societyName: evt.societies?.name || '',
+              eventName: evt.title,
+              groupIndex: i,
+              groupTotal: numSlots,
+              startTime: startTime,
+              endTime: endTime || hhmm(endMins),
+              golfers: [],
+              status: 'confirmed',
+              createdAt: new Date().toISOString()
+            });
+          }
+          return slots;
+        }).flat();
+
+        societyEventsCache[date] = events;
+        societyEventsLastFetchTime[date] = now;
+        console.log('[TeeSheet] Fetched', events.length, 'society event slots for', date);
+        return events;
+      } catch (e) {
+        console.error('[TeeSheet] Society events fetch error:', e);
+        return societyEventsCache[date] || [];
+      }
+    }
+
     // Cache for event registrations with caddy info
     let eventRegistrationsCache = {};
     let eventRegLastFetchTime = {};
@@ -3189,11 +3273,16 @@
       // Get cached caddy bookings from database
       const dbBookings = caddyBookingsCache[d] || [];
 
+      // Get cached society events from database
+      const societyEvents = societyEventsCache[d] || [];
+
       // Merge all sources (avoiding duplicates by id)
       const allIds = new Set(localBookings.map(b => b.id));
       const uniqueParent = parentBookings.filter(b => !allIds.has(b.parentId) && !allIds.has(b.id));
       uniqueParent.forEach(b => allIds.add(b.id));
       const uniqueDb = dbBookings.filter(b => !allIds.has(b.id) && !allIds.has(b.dbId));
+      uniqueDb.forEach(b => allIds.add(b.id));
+      const uniqueSociety = societyEvents.filter(b => !allIds.has(b.id) && !allIds.has(b.eventId));
 
       if (uniqueParent.length > 0) {
         console.log('[TeeSheet] Merged', uniqueParent.length, 'bookings from parent BookingManager');
@@ -3201,15 +3290,19 @@
       if (uniqueDb.length > 0) {
         console.log('[TeeSheet] Merged', uniqueDb.length, 'caddy bookings from database');
       }
+      if (uniqueSociety.length > 0) {
+        console.log('[TeeSheet] Merged', uniqueSociety.length, 'society event slots from database');
+      }
 
-      return [...localBookings, ...uniqueParent, ...uniqueDb];
+      return [...localBookings, ...uniqueParent, ...uniqueDb, ...uniqueSociety];
     };
 
     // Async version that fetches from database first
     const getDayAsync = async d => {
-      // Fetch both caddy bookings and event registrations in parallel
+      // Fetch caddy bookings, society events, and event registrations in parallel
       await Promise.all([
         fetchCaddyBookings(d),
+        fetchSocietyEvents(d),
         fetchEventRegistrations(d)
       ]);
       return getDay(d);
@@ -3475,8 +3568,9 @@
       // Get society events from bookings to identify blocked time ranges
       const societyEvents = bookings.filter(b =>
         b.bookingType === 'society' || b.type === 'society' || b.type === 'society_event' ||
-        (b.groupId && (b.groupName || b.societyName))
+        b.source === 'society-event-db' || (b.groupId && (b.groupName || b.societyName))
       );
+      console.log('[TeeSheet] Found', societyEvents.length, 'society events for', currentDate);
 
       // Get event registrations from cache for caddy info enrichment
       const eventRegs = eventRegistrationsCache[currentDate] || [];
@@ -3525,11 +3619,11 @@
       // Enrich society events with registered members and caddy info
       filteredBookings.forEach(b => {
         if (b.bookingType === 'society' || b.type === 'society' || b.type === 'society_event' ||
-            (b.groupId && b.groupName)) {
-          // Find matching event registrations
+            b.source === 'society-event-db' || (b.groupId && b.groupName)) {
+          // Find matching event registrations by event ID or title
           const matchingReg = eventRegs.find(er =>
-            er.eventTitle === b.groupName || er.eventTitle === b.eventName ||
-            er.eventId === b.eventId
+            er.eventId === b.eventId ||
+            er.eventTitle === b.groupName || er.eventTitle === b.eventName
           );
 
           if (matchingReg && matchingReg.registrations.length > 0) {
@@ -5626,28 +5720,36 @@
         const date = event.data.date || el.dateInput.value;
         delete caddyBookingsCache[date];
         delete lastFetchTime[date];
+        delete societyEventsCache[date];
+        delete societyEventsLastFetchTime[date];
         delete eventRegistrationsCache[date];
         delete eventRegLastFetchTime[date];
         render();
       }
     });
 
-    // Gentle auto-refresh every 60 seconds for caddy bookings and event registrations
+    // Gentle auto-refresh every 60 seconds for society events, caddy bookings and event registrations
     setInterval(() => {
       const currentDate = el.dateInput.value;
       // Clear cache to force re-fetch
       delete caddyBookingsCache[currentDate];
       delete lastFetchTime[currentDate];
+      delete societyEventsCache[currentDate];
+      delete societyEventsLastFetchTime[currentDate];
       delete eventRegistrationsCache[currentDate];
       delete eventRegLastFetchTime[currentDate];
       // Fetch new data in background
       Promise.all([
         fetchCaddyBookings(currentDate),
+        fetchSocietyEvents(currentDate),
         fetchEventRegistrations(currentDate)
-      ]).then(([caddyBookings, eventRegs]) => {
-        const hasData = (caddyBookings && caddyBookings.length > 0) || (eventRegs && eventRegs.length > 0);
+      ]).then(([caddyBookings, societyEvts, eventRegs]) => {
+        const hasData = (caddyBookings && caddyBookings.length > 0) ||
+                        (societyEvts && societyEvts.length > 0) ||
+                        (eventRegs && eventRegs.length > 0);
         if (hasData) {
-          console.log('[TeeSheet] Auto-refresh: found', caddyBookings?.length || 0, 'caddy bookings,', eventRegs?.length || 0, 'events');
+          console.log('[TeeSheet] Auto-refresh: found', caddyBookings?.length || 0, 'caddy bookings,',
+                      societyEvts?.length || 0, 'society slots,', eventRegs?.length || 0, 'event regs');
           render();
         }
       }).catch(e => console.warn('[TeeSheet] Auto-refresh failed:', e));

@@ -2415,31 +2415,31 @@
       }
 
       try {
-        // Get society events for this date
+        console.log('[TeeSheet] Fetching society events for date:', date, 'course:', selectedCourseId);
+
+        // Get society events for this date (simple query without joins)
         const { data, error } = await supabaseClient
           .from('society_events')
-          .select(`
-            id,
-            title,
-            event_date,
-            start_time,
-            end_time,
-            course_name,
-            society_id,
-            societies(name)
-          `)
-          .eq('event_date', date)
-          .in('status', ['confirmed', 'active', 'scheduled', 'draft', 'pending']);
+          .select('id, title, event_date, start_time, end_time, course_name, society_id, status')
+          .eq('event_date', date);
+
+        console.log('[TeeSheet] Raw query result:', data?.length || 0, 'events, error:', error?.message || 'none');
 
         if (error) {
           console.error('[TeeSheet] Error fetching society events:', error);
           return societyEventsCache[cacheKey] || [];
         }
 
+        // Log all events found for debugging
+        (data || []).forEach(evt => {
+          console.log('[TeeSheet] Event found:', evt.title, 'at', evt.course_name, 'status:', evt.status);
+        });
+
         // Filter to only events matching the selected course
         const filteredData = (data || []).filter(evt => {
           if (!selectedCourseId) return true; // Show all if no course selected
           const eventCourseId = matchCourseToId(evt.course_name);
+          console.log('[TeeSheet] Matching:', evt.course_name, '->', eventCourseId, 'vs', selectedCourseId);
           const matches = eventCourseId === selectedCourseId;
           if (!matches && evt.course_name) {
             console.log('[TeeSheet] Skipping event', evt.title, 'at', evt.course_name, '- not matching', selectedCourseId);

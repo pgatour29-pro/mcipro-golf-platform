@@ -3708,50 +3708,38 @@
         if (b.bookingType === 'society' || b.type === 'society' || b.type === 'society_event' ||
             b.source === 'society-event-db' || (b.groupId && b.groupName)) {
 
-          // IMPORTANT: Only add registered members to the FIRST slot of the event (groupIndex === 0)
-          // This prevents showing the same members 12 times across all slots
-          if (b.groupIndex === 0 || b.groupIndex === undefined) {
-            // Find matching event registrations by event ID or title
-            const matchingReg = eventRegs.find(er =>
-              er.eventId === b.eventId ||
-              er.eventTitle === b.groupName || er.eventTitle === b.eventName
-            );
-
-            if (matchingReg && matchingReg.registrations.length > 0) {
-              // Add registered members with caddy info to golfers array
-              const newGolfers = matchingReg.registrations.map(reg => ({
-                name: reg.playerName,
-                odoo_id: reg.playerId,
-                caddyNumber: reg.caddyNumbers || null,
-                caddyName: reg.caddyNumbers ? `Caddy #${reg.caddyNumbers}` : null
-              }));
-
-              // Merge with existing golfers (avoid duplicates)
-              const existingIds = new Set((b.golfers || []).map(g => g.odoo_id || g.name));
-              newGolfers.forEach(ng => {
-                if (!existingIds.has(ng.odoo_id) && !existingIds.has(ng.name)) {
-                  b.golfers = b.golfers || [];
-                  b.golfers.push(ng);
-                }
-              });
-
-              console.log('[TeeSheet] Enriched', b.groupName, 'slot', b.groupIndex, 'with', newGolfers.length, 'registered members');
-            }
-          }
+          // Skip event registrations enrichment - caddy bookings are the actual slot assignments
+          // Registered members who haven't booked caddies yet don't show on tee sheet
+          // They will appear once they book a caddy (first-come-first-served)
 
           // Also merge caddy booking info into society event golfers
-          // IMPORTANT: Only add golfer to the slot that matches their EXACT booking time
+          // FIRST-COME-FIRST-SERVED: Assign caddy bookings to slots based on creation order
           const caddyBookings = caddyBookingsCache[currentDate] || [];
-          const slotTime = b.time; // This slot's specific time (e.g., 11:40, 11:45, etc.)
-          const slotMins = minutes(slotTime);
+          const slotTime = b.time;
+          const slotIndex = b.groupIndex || 0;
 
-          caddyBookings.forEach(cb => {
-            if (!cb.time) return;
+          // Get event time range
+          const evtStartMins = b.startTime ? minutes(b.startTime) : minutes(slotTime);
+          const evtEndMins = b.endTime ? minutes(b.endTime) : evtStartMins + 60;
+
+          // Get all caddy bookings that fall within this event's time range
+          const eventCaddyBookings = caddyBookings.filter(cb => {
+            if (!cb.time) return false;
             const cbMins = minutes(cb.time);
-            // Only match exact time - golfer goes in their specific slot, not all slots
-            if (cbMins !== slotMins) return;
+            return cbMins >= evtStartMins && cbMins < evtEndMins;
+          });
 
-            // This caddy booking matches this specific slot
+          // Sort by creation time (first come first served)
+          eventCaddyBookings.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+          // Assign golfers to this slot based on their position in the queue
+          // Each slot can hold multiple golfers (up to 4 per group typically)
+          const golfersPerSlot = 4;
+          const startIdx = slotIndex * golfersPerSlot;
+          const endIdx = startIdx + golfersPerSlot;
+          const slotBookings = eventCaddyBookings.slice(startIdx, endIdx);
+
+          slotBookings.forEach(cb => {
             const golfer = cb.golfers?.[0];
             if (golfer) {
               // Check if golfer already in society event
@@ -3775,7 +3763,7 @@
                   caddyNumber: golfer.caddyNumber
                 });
               }
-              console.log('[TeeSheet] Added caddy booking golfer', golfer.name, 'to slot', slotTime, 'in', b.groupName);
+              console.log('[TeeSheet] Slot', slotIndex, '- Added', golfer.name, 'to', b.groupName);
             }
           });
         }

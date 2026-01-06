@@ -2328,6 +2328,78 @@
       }
     }
 
+    // Cache for event registrations with caddy info
+    let eventRegistrationsCache = {};
+    let eventRegLastFetchTime = {};
+
+    // Fetch event registrations with caddy info for society events on a given date
+    async function fetchEventRegistrations(date) {
+      if (!supabaseClient) return [];
+
+      const now = Date.now();
+      if (eventRegLastFetchTime[date] && (now - eventRegLastFetchTime[date]) < 10000) {
+        return eventRegistrationsCache[date] || [];
+      }
+
+      try {
+        // Get event registrations for society events on this date
+        const { data, error } = await supabaseClient
+          .from('event_registrations')
+          .select(`
+            id,
+            event_id,
+            player_id,
+            player_name,
+            caddy_numbers,
+            society_events!inner(id, title, event_date, start_time, end_time, course_name)
+          `)
+          .eq('society_events.event_date', date);
+
+        if (error) {
+          console.error('[TeeSheet] Error fetching event registrations:', error);
+          return eventRegistrationsCache[date] || [];
+        }
+
+        // Group by event_id for easy lookup
+        const regsByEvent = {};
+        (data || []).forEach(reg => {
+          if (!regsByEvent[reg.event_id]) {
+            regsByEvent[reg.event_id] = {
+              eventId: reg.event_id,
+              eventTitle: reg.society_events?.title || 'Society Event',
+              startTime: reg.society_events?.start_time?.substring(0, 5) || '08:00',
+              endTime: reg.society_events?.end_time?.substring(0, 5) || null,
+              registrations: []
+            };
+          }
+          regsByEvent[reg.event_id].registrations.push({
+            playerId: reg.player_id,
+            playerName: reg.player_name,
+            caddyNumbers: reg.caddy_numbers
+          });
+        });
+
+        const result = Object.values(regsByEvent);
+        eventRegistrationsCache[date] = result;
+        eventRegLastFetchTime[date] = now;
+        console.log('[TeeSheet] Fetched event registrations for', result.length, 'events on', date);
+        return result;
+      } catch (e) {
+        console.error('[TeeSheet] Event registrations fetch error:', e);
+        return eventRegistrationsCache[date] || [];
+      }
+    }
+
+    // Helper to check if a time falls within a society event's blocked range
+    function isTimeInEventRange(timeStr, eventStart, eventEnd, intervalMins = 60) {
+      if (!timeStr || !eventStart) return false;
+      const timeMins = minutes(timeStr);
+      const startMins = minutes(eventStart);
+      // If no end time specified, assume 1 hour block
+      const endMins = eventEnd ? minutes(eventEnd) : startMins + intervalMins;
+      return timeMins >= startMins && timeMins < endMins;
+    }
+
     // ==================== TIME PICKER UTILITY ====================
     const TimePickerUtils = {
       defaults: {
@@ -3135,7 +3207,11 @@
 
     // Async version that fetches from database first
     const getDayAsync = async d => {
-      await fetchCaddyBookings(d);
+      // Fetch both caddy bookings and event registrations in parallel
+      await Promise.all([
+        fetchCaddyBookings(d),
+        fetchEventRegistrations(d)
+      ]);
       return getDay(d);
     };
 
@@ -3394,16 +3470,131 @@
       const step = parseInt(el.intervalSelect.value) || 7;
 
       const currentDate = el.dateInput.value;
-      const bookings = getDay(currentDate);
+      let bookings = getDay(currentDate);
 
-      // Fetch caddy bookings in background (non-blocking) - only if not already cached
-      if (!caddyBookingsCache[currentDate]) {
-        fetchCaddyBookings(currentDate).then(dbBookings => {
-          if (dbBookings && dbBookings.length > 0) {
-            render(); // Re-render with db bookings included
+      // Get society events from bookings to identify blocked time ranges
+      const societyEvents = bookings.filter(b =>
+        b.bookingType === 'society' || b.type === 'society' || b.type === 'society_event' ||
+        (b.groupId && (b.groupName || b.societyName))
+      );
+
+      // Get event registrations from cache for caddy info enrichment
+      const eventRegs = eventRegistrationsCache[currentDate] || [];
+
+      // Filter out caddy bookings that fall within society event time ranges
+      // They will be shown integrated into the society event instead
+      const filteredBookings = bookings.filter(b => {
+        // Keep all non-caddy bookings
+        if (b.source !== 'caddy-booking-db') return true;
+
+        // Check if this caddy booking falls within any society event's time range
+        for (const evt of societyEvents) {
+          const evtTime = evt.time || evt.startTime;
+          // Society events typically block 1 hour (or use endTime if available)
+          const evtEndMins = evt.endTime ? minutes(evt.endTime) : minutes(evtTime) + 60;
+
+          if (b.time && evtTime) {
+            const bookingMins = minutes(b.time);
+            const evtStartMins = minutes(evtTime);
+
+            // If booking is within society event's blocked range, exclude it
+            if (bookingMins >= evtStartMins && bookingMins < evtEndMins) {
+              console.log('[TeeSheet] Caddy booking', b.time, 'falls within society event', evt.groupName || evt.eventName, '- integrating');
+              return false; // Don't show separately
+            }
           }
-        }).catch(e => console.warn('[TeeSheet] DB fetch failed:', e));
-      }
+        }
+
+        // Also check against event registrations (for events from BookingManager)
+        for (const evtReg of eventRegs) {
+          const evtStartMins = minutes(evtReg.startTime);
+          const evtEndMins = evtReg.endTime ? minutes(evtReg.endTime) : evtStartMins + 60;
+
+          if (b.time) {
+            const bookingMins = minutes(b.time);
+            if (bookingMins >= evtStartMins && bookingMins < evtEndMins) {
+              console.log('[TeeSheet] Caddy booking', b.time, 'falls within event', evtReg.eventTitle, '- integrating');
+              return false;
+            }
+          }
+        }
+
+        return true; // Show standalone caddy bookings that don't match any event
+      });
+
+      // Enrich society events with registered members and caddy info
+      filteredBookings.forEach(b => {
+        if (b.bookingType === 'society' || b.type === 'society' || b.type === 'society_event' ||
+            (b.groupId && b.groupName)) {
+          // Find matching event registrations
+          const matchingReg = eventRegs.find(er =>
+            er.eventTitle === b.groupName || er.eventTitle === b.eventName ||
+            er.eventId === b.eventId
+          );
+
+          if (matchingReg && matchingReg.registrations.length > 0) {
+            // Add registered members with caddy info to golfers array
+            const newGolfers = matchingReg.registrations.map(reg => ({
+              name: reg.playerName,
+              odoo_id: reg.playerId,
+              caddyNumber: reg.caddyNumbers || null,
+              caddyName: reg.caddyNumbers ? `Caddy #${reg.caddyNumbers}` : null
+            }));
+
+            // Merge with existing golfers (avoid duplicates)
+            const existingIds = new Set((b.golfers || []).map(g => g.odoo_id || g.name));
+            newGolfers.forEach(ng => {
+              if (!existingIds.has(ng.odoo_id) && !existingIds.has(ng.name)) {
+                b.golfers = b.golfers || [];
+                b.golfers.push(ng);
+              }
+            });
+
+            console.log('[TeeSheet] Enriched', b.groupName, 'with', newGolfers.length, 'registered members');
+          }
+
+          // Also merge caddy booking info into society event golfers
+          const caddyBookings = caddyBookingsCache[currentDate] || [];
+          const evtTime = b.time || b.startTime;
+          const evtEndMins = b.endTime ? minutes(b.endTime) : minutes(evtTime) + 60;
+          const evtStartMins = minutes(evtTime);
+
+          caddyBookings.forEach(cb => {
+            if (!cb.time) return;
+            const cbMins = minutes(cb.time);
+            if (cbMins >= evtStartMins && cbMins < evtEndMins) {
+              // This caddy booking is for this society event
+              const golfer = cb.golfers?.[0];
+              if (golfer) {
+                // Check if golfer already in society event
+                const existingGolfer = (b.golfers || []).find(g =>
+                  g.name === golfer.name || g.odoo_id === golfer.odoo_id
+                );
+
+                if (existingGolfer) {
+                  // Update caddy info
+                  existingGolfer.caddyName = golfer.caddyName || existingGolfer.caddyName;
+                  existingGolfer.caddyNumber = golfer.caddyNumber || existingGolfer.caddyNumber;
+                  existingGolfer.caddyId = golfer.caddyId || existingGolfer.caddyId;
+                } else {
+                  // Add new golfer with caddy info
+                  b.golfers = b.golfers || [];
+                  b.golfers.push({
+                    name: golfer.name,
+                    odoo_id: golfer.odoo_id,
+                    caddyId: golfer.caddyId,
+                    caddyName: golfer.caddyName,
+                    caddyNumber: golfer.caddyNumber
+                  });
+                }
+                console.log('[TeeSheet] Added caddy booking golfer', golfer.name, 'to', b.groupName);
+              }
+            }
+          });
+        }
+      });
+
+      bookings = filteredBookings;
 
       // Update legends
       el.legendC.style.display = layout.courses.includes('C') ? '' : 'none';
@@ -3447,15 +3638,34 @@
           let pillsHtml = '';
           slotBookings.forEach(b => {
             const golfers = b.golfers || [];
-            const name = golfers.length > 0 ? golfers[0].name : (b.name || t('player'));
-            const extra = golfers.length > 1 ? ` +${golfers.length - 1}` : '';
-            // Show caddy name and/or number
+            const isSociety = b.bookingType === 'society' || b.type === 'society' || b.type === 'society_event' || (b.groupId && b.groupName);
+
+            // For society events, show members with caddy info
             let caddy = '';
-            if (golfers.length > 0 && golfers[0].caddyName) {
-              caddy = golfers[0].caddyNumber ? `C${golfers[0].caddyNumber} ${golfers[0].caddyName}` : golfers[0].caddyName;
-            } else if (golfers.length > 0 && golfers[0].caddyNumber) {
-              caddy = `C${golfers[0].caddyNumber}`;
+            let memberInfo = '';
+            if (isSociety && golfers.length > 0) {
+              // Show golfers with caddies (up to 3)
+              const golfersWithCaddy = golfers.filter(g => g.caddyName || g.caddyNumber);
+              if (golfersWithCaddy.length > 0) {
+                memberInfo = golfersWithCaddy.slice(0, 3).map(g => {
+                  const caddyInfo = g.caddyNumber ? `C${g.caddyNumber}` : (g.caddyName || '');
+                  return `${g.name} (${caddyInfo})`;
+                }).join(', ');
+                if (golfersWithCaddy.length > 3) {
+                  memberInfo += ` +${golfersWithCaddy.length - 3}`;
+                }
+              }
+            } else {
+              // Regular booking - show first golfer's caddy
+              if (golfers.length > 0 && golfers[0].caddyName) {
+                caddy = golfers[0].caddyNumber ? `C${golfers[0].caddyNumber} ${golfers[0].caddyName}` : golfers[0].caddyName;
+              } else if (golfers.length > 0 && golfers[0].caddyNumber) {
+                caddy = `C${golfers[0].caddyNumber}`;
+              }
             }
+
+            const name = golfers.length > 0 ? golfers[0].name : (b.name || t('player'));
+            const extra = !isSociety && golfers.length > 1 ? ` +${golfers.length - 1}` : '';
 
             // Determine group position class for visual styling
             let groupClass = '';
@@ -3470,9 +3680,15 @@
             const displayName = b.groupName ? `${b.groupName}` : name;
             const groupInfo = b.groupId ? `<span style="opacity:0.7;font-size:10px;">[${b.groupIndex + 1}/${b.groupTotal}]</span> ` : '';
 
+            // For society events, show member count if they have golfers
+            const memberCount = isSociety && golfers.length > 0 ? ` (${golfers.length} members)` : extra;
+
+            // Display info: for society show member info, for regular show caddy
+            const pillInfoContent = memberInfo || caddy;
+
             pillsHtml += `<div class="pill ${b.bookingType || 'regular'} ${groupClass}" data-id="${b.id}" data-group-id="${b.groupId || ''}" data-event-id="${b.eventId || ''}" data-society-id="${b.societyId || ''}" draggable="true">
-              <div class="pill-name">${groupInfo}${displayName}${extra}</div>
-              <div class="pill-info">${caddy}</div>
+              <div class="pill-name">${groupInfo}${displayName}${memberCount}</div>
+              <div class="pill-info">${pillInfoContent}</div>
             </div>`;
           });
           rowHtml += `<div class="slot course-${col.course.toLowerCase()}" data-time="${timeStr}" data-col="${idx}" data-course="${col.course}" data-tee="${col.tee}">${pillsHtml}</div>`;
@@ -5410,20 +5626,28 @@
         const date = event.data.date || el.dateInput.value;
         delete caddyBookingsCache[date];
         delete lastFetchTime[date];
+        delete eventRegistrationsCache[date];
+        delete eventRegLastFetchTime[date];
         render();
       }
     });
 
-    // Gentle auto-refresh every 60 seconds for caddy bookings
+    // Gentle auto-refresh every 60 seconds for caddy bookings and event registrations
     setInterval(() => {
       const currentDate = el.dateInput.value;
       // Clear cache to force re-fetch
       delete caddyBookingsCache[currentDate];
       delete lastFetchTime[currentDate];
+      delete eventRegistrationsCache[currentDate];
+      delete eventRegLastFetchTime[currentDate];
       // Fetch new data in background
-      fetchCaddyBookings(currentDate).then(bookings => {
-        if (bookings && bookings.length > 0) {
-          console.log('[TeeSheet] Auto-refresh: found', bookings.length, 'caddy bookings');
+      Promise.all([
+        fetchCaddyBookings(currentDate),
+        fetchEventRegistrations(currentDate)
+      ]).then(([caddyBookings, eventRegs]) => {
+        const hasData = (caddyBookings && caddyBookings.length > 0) || (eventRegs && eventRegs.length > 0);
+        if (hasData) {
+          console.log('[TeeSheet] Auto-refresh: found', caddyBookings?.length || 0, 'caddy bookings,', eventRegs?.length || 0, 'events');
           render();
         }
       }).catch(e => console.warn('[TeeSheet] Auto-refresh failed:', e));

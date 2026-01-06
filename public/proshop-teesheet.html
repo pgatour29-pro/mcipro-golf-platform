@@ -3707,31 +3707,36 @@
       filteredBookings.forEach(b => {
         if (b.bookingType === 'society' || b.type === 'society' || b.type === 'society_event' ||
             b.source === 'society-event-db' || (b.groupId && b.groupName)) {
-          // Find matching event registrations by event ID or title
-          const matchingReg = eventRegs.find(er =>
-            er.eventId === b.eventId ||
-            er.eventTitle === b.groupName || er.eventTitle === b.eventName
-          );
 
-          if (matchingReg && matchingReg.registrations.length > 0) {
-            // Add registered members with caddy info to golfers array
-            const newGolfers = matchingReg.registrations.map(reg => ({
-              name: reg.playerName,
-              odoo_id: reg.playerId,
-              caddyNumber: reg.caddyNumbers || null,
-              caddyName: reg.caddyNumbers ? `Caddy #${reg.caddyNumbers}` : null
-            }));
+          // IMPORTANT: Only add registered members to the FIRST slot of the event (groupIndex === 0)
+          // This prevents showing the same members 12 times across all slots
+          if (b.groupIndex === 0 || b.groupIndex === undefined) {
+            // Find matching event registrations by event ID or title
+            const matchingReg = eventRegs.find(er =>
+              er.eventId === b.eventId ||
+              er.eventTitle === b.groupName || er.eventTitle === b.eventName
+            );
 
-            // Merge with existing golfers (avoid duplicates)
-            const existingIds = new Set((b.golfers || []).map(g => g.odoo_id || g.name));
-            newGolfers.forEach(ng => {
-              if (!existingIds.has(ng.odoo_id) && !existingIds.has(ng.name)) {
-                b.golfers = b.golfers || [];
-                b.golfers.push(ng);
-              }
-            });
+            if (matchingReg && matchingReg.registrations.length > 0) {
+              // Add registered members with caddy info to golfers array
+              const newGolfers = matchingReg.registrations.map(reg => ({
+                name: reg.playerName,
+                odoo_id: reg.playerId,
+                caddyNumber: reg.caddyNumbers || null,
+                caddyName: reg.caddyNumbers ? `Caddy #${reg.caddyNumbers}` : null
+              }));
 
-            console.log('[TeeSheet] Enriched', b.groupName, 'with', newGolfers.length, 'registered members');
+              // Merge with existing golfers (avoid duplicates)
+              const existingIds = new Set((b.golfers || []).map(g => g.odoo_id || g.name));
+              newGolfers.forEach(ng => {
+                if (!existingIds.has(ng.odoo_id) && !existingIds.has(ng.name)) {
+                  b.golfers = b.golfers || [];
+                  b.golfers.push(ng);
+                }
+              });
+
+              console.log('[TeeSheet] Enriched', b.groupName, 'slot', b.groupIndex, 'with', newGolfers.length, 'registered members');
+            }
           }
 
           // Also merge caddy booking info into society event golfers

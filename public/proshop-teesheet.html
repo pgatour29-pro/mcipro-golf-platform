@@ -3064,92 +3064,58 @@
         console.warn('[TeeSheet] Failed to store notification locally:', e);
       }
 
-      // 3. Sync to Supabase notifications table if available
+      // 3. Sync to Supabase - update society_events to trigger Realtime notifications
       const supabase = window.parent?.SupabaseDB?.client || window.SupabaseManager?.client;
       if (supabase) {
         try {
-          // Get registered members for this event to notify them
           const eventId = booking.eventId || booking.groupId;
-          let memberIds = [];
 
           if (eventId) {
-            const { data: registrations } = await supabase
-              .from('society_event_registrations')
-              .select('user_id, golfer_name')
-              .eq('event_id', eventId);
-
-            memberIds = (registrations || []).map(r => r.user_id).filter(Boolean);
-            console.log('[TeeSheet] Found', memberIds.length, 'registered members to notify');
-          }
-
-          // Get society organizer ID
-          let organizerId = null;
-          if (eventId) {
-            const { data: eventData } = await supabase
-              .from('society_events')
-              .select('organizer_id, organizer_name')
-              .eq('id', eventId)
-              .single();
-
-            organizerId = eventData?.organizer_id;
-            console.log('[TeeSheet] Event organizer:', eventData?.organizer_name);
-          }
-
-          // Insert notification for each member + organizer
-          const allRecipients = [...new Set([...memberIds, organizerId].filter(Boolean))];
-
-          if (allRecipients.length > 0) {
-            const notificationInserts = allRecipients.map(userId => ({
-              user_id: userId,
-              type: 'tee_time_change',
-              title: notification.title,
-              message: notification.message,
-              data: {
-                bookingId: booking.id,
-                groupId: booking.groupId,
-                eventId: eventId,
-                date, oldTime, newTime, oldCourse, newCourse
-              },
-              read: false,
-              created_at: new Date().toISOString()
-            }));
-
-            const { error: insertError } = await supabase
-              .from('user_notifications')
-              .insert(notificationInserts);
-
-            if (insertError) {
-              console.warn('[TeeSheet] Failed to insert Supabase notifications:', insertError);
-            } else {
-              console.log('[TeeSheet] Sent notifications to', allRecipients.length, 'users');
-            }
-          }
-
-          // Also update the society_events table with the change log
-          if (eventId) {
+            // Get existing event data
             const { data: existingEvent } = await supabase
               .from('society_events')
-              .select('change_log, tee_times')
+              .select('change_log, notes')
               .eq('id', eventId)
               .single();
 
+            // Build change log entry
             const changeLog = existingEvent?.change_log || [];
             changeLog.push({
               timestamp: new Date().toISOString(),
               changedBy: 'Pro Shop',
               bookingId: booking.id,
-              changes: changeText
+              changes: changeText,
+              type: 'tee_time_change'
             });
 
-            await supabase
+            // Update society_events - this triggers Realtime subscription for all connected clients
+            // The updated_at change will show badge notifications to golfers
+            const { error: updateError } = await supabase
               .from('society_events')
               .update({
                 change_log: changeLog,
-                updated_at: new Date().toISOString()
+                updated_at: new Date().toISOString(),
+                updated_by: 'proshop',
+                updated_by_name: 'Pro Shop',
+                // Append to notes so it's visible in the event details
+                notes: (existingEvent?.notes || '') +
+                  `\n[${new Date().toLocaleString()}] Pro Shop: ${changeText}`
               })
               .eq('id', eventId);
 
-            console.log('[TeeSheet] Updated society event change log');
+            if (updateError) {
+              console.warn('[TeeSheet] Failed to update society event:', updateError);
+            } else {
+              console.log('[TeeSheet] Updated society_events - Realtime will notify connected clients');
+            }
+
+            // Also log how many registrations exist for this event
+            const { data: registrations, count } = await supabase
+              .from('event_registrations')
+              .select('id', { count: 'exact' })
+              .eq('event_id', eventId);
+
+            console.log('[TeeSheet] Event has', count || 0, 'registered golfers who will see the update');
           }
 
         } catch (e) {

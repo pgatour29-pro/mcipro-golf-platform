@@ -3735,41 +3735,42 @@
           }
 
           // Also merge caddy booking info into society event golfers
+          // IMPORTANT: Only add golfer to the slot that matches their EXACT booking time
           const caddyBookings = caddyBookingsCache[currentDate] || [];
-          const evtTime = b.time || b.startTime;
-          const evtEndMins = b.endTime ? minutes(b.endTime) : minutes(evtTime) + 60;
-          const evtStartMins = minutes(evtTime);
+          const slotTime = b.time; // This slot's specific time (e.g., 11:40, 11:45, etc.)
+          const slotMins = minutes(slotTime);
 
           caddyBookings.forEach(cb => {
             if (!cb.time) return;
             const cbMins = minutes(cb.time);
-            if (cbMins >= evtStartMins && cbMins < evtEndMins) {
-              // This caddy booking is for this society event
-              const golfer = cb.golfers?.[0];
-              if (golfer) {
-                // Check if golfer already in society event
-                const existingGolfer = (b.golfers || []).find(g =>
-                  g.name === golfer.name || g.odoo_id === golfer.odoo_id
-                );
+            // Only match exact time - golfer goes in their specific slot, not all slots
+            if (cbMins !== slotMins) return;
 
-                if (existingGolfer) {
-                  // Update caddy info
-                  existingGolfer.caddyName = golfer.caddyName || existingGolfer.caddyName;
-                  existingGolfer.caddyNumber = golfer.caddyNumber || existingGolfer.caddyNumber;
-                  existingGolfer.caddyId = golfer.caddyId || existingGolfer.caddyId;
-                } else {
-                  // Add new golfer with caddy info
-                  b.golfers = b.golfers || [];
-                  b.golfers.push({
-                    name: golfer.name,
-                    odoo_id: golfer.odoo_id,
-                    caddyId: golfer.caddyId,
-                    caddyName: golfer.caddyName,
-                    caddyNumber: golfer.caddyNumber
-                  });
-                }
-                console.log('[TeeSheet] Added caddy booking golfer', golfer.name, 'to', b.groupName);
+            // This caddy booking matches this specific slot
+            const golfer = cb.golfers?.[0];
+            if (golfer) {
+              // Check if golfer already in society event
+              const existingGolfer = (b.golfers || []).find(g =>
+                g.name === golfer.name || g.odoo_id === golfer.odoo_id
+              );
+
+              if (existingGolfer) {
+                // Update caddy info
+                existingGolfer.caddyName = golfer.caddyName || existingGolfer.caddyName;
+                existingGolfer.caddyNumber = golfer.caddyNumber || existingGolfer.caddyNumber;
+                existingGolfer.caddyId = golfer.caddyId || existingGolfer.caddyId;
+              } else {
+                // Add new golfer with caddy info
+                b.golfers = b.golfers || [];
+                b.golfers.push({
+                  name: golfer.name,
+                  odoo_id: golfer.odoo_id,
+                  caddyId: golfer.caddyId,
+                  caddyName: golfer.caddyName,
+                  caddyNumber: golfer.caddyNumber
+                });
               }
+              console.log('[TeeSheet] Added caddy booking golfer', golfer.name, 'to slot', slotTime, 'in', b.groupName);
             }
           });
         }
@@ -5476,14 +5477,84 @@
       monthNames: ['January', 'February', 'March', 'April', 'May', 'June',
                    'July', 'August', 'September', 'October', 'November', 'December'],
 
-      open() {
+      async open() {
         // Start with current tee sheet date
         const currentDate = new Date(el.dateInput.value);
         this.currentYear = currentDate.getFullYear();
         this.currentMonth = currentDate.getMonth();
         this.selectedDate = el.dateInput.value;
-        this.renderMonth();
         this.elements.dialog.showModal();
+        // Pre-fetch society events for this month then render
+        await this.fetchMonthSocietyEvents(this.currentYear, this.currentMonth);
+        this.renderMonth();
+      },
+
+      // Fetch society events for all days in a month
+      async fetchMonthSocietyEvents(year, month) {
+        if (!supabaseClient) return;
+
+        const courseId = el?.courseSelect?.value || '';
+        const firstDay = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const lastDay = `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+        try {
+          console.log('[Calendar] Fetching society events for month:', firstDay, 'to', lastDay);
+
+          // Fetch all society events for this month in one query
+          const { data, error } = await supabaseClient
+            .from('society_events')
+            .select('id, title, event_date, start_time, end_time, course_name, society_id, status')
+            .gte('event_date', firstDay)
+            .lte('event_date', lastDay);
+
+          if (error) {
+            console.error('[Calendar] Error fetching society events:', error);
+            return;
+          }
+
+          console.log('[Calendar] Found', data?.length || 0, 'society events for month');
+
+          // Filter by selected course and group by date
+          (data || []).forEach(evt => {
+            const eventCourseId = matchCourseToId(evt.course_name);
+            if (courseId && eventCourseId !== courseId) return;
+
+            const dateStr = evt.event_date;
+            const cacheKey = `${dateStr}::${courseId}`;
+
+            // Convert to booking format for this date's cache
+            if (!societyEventsCache[cacheKey]) {
+              societyEventsCache[cacheKey] = [];
+            }
+
+            // Check if already cached
+            if (societyEventsCache[cacheKey].find(e => e.eventId === evt.id)) return;
+
+            const startTime = evt.start_time ? evt.start_time.substring(0, 5) : '08:00';
+            const endTime = evt.end_time ? evt.end_time.substring(0, 5) : null;
+            const endMins = endTime ? minutes(endTime) : minutes(startTime) + 60;
+
+            // Create time slots for the event
+            for (let m = minutes(startTime); m < endMins; m += 5) {
+              societyEventsCache[cacheKey].push({
+                id: `society-${evt.id}-${m}`,
+                eventId: evt.id,
+                groupId: `society-${evt.id}`,
+                groupName: evt.title || 'Society Event',
+                time: hhmm(m),
+                course: 'A',
+                tee: 1,
+                bookingType: 'society',
+                isSociety: true,
+                status: evt.status,
+                source: 'society-db'
+              });
+            }
+          });
+        } catch (e) {
+          console.error('[Calendar] Society fetch error:', e);
+        }
       },
 
       close() {
@@ -5639,11 +5710,34 @@
           parentBookings = (window.parent.BookingManager.bookings || []).filter(b => b.date === dateStr);
         }
 
+        // Get society events from cache (fetched from Supabase)
+        const courseId = el?.courseSelect?.value || '';
+        const societyCacheKey = `${dateStr}::${courseId}`;
+        const societyBookings = societyEventsCache[societyCacheKey] || [];
+
         // Merge and dedupe by id
         const allBookings = [...localBookings];
         parentBookings.forEach(pb => {
           if (!allBookings.find(b => b.id === pb.id)) {
             allBookings.push(pb);
+          }
+        });
+
+        // Add society events (dedupe by groupId to avoid counting each slot separately)
+        const seenGroups = new Set();
+        societyBookings.forEach(sb => {
+          const groupKey = sb.groupId || sb.id;
+          if (!seenGroups.has(groupKey) && !allBookings.find(b => b.id === sb.id)) {
+            seenGroups.add(groupKey);
+            allBookings.push({
+              id: sb.id,
+              groupId: sb.groupId,
+              groupName: sb.groupName,
+              time: sb.time,
+              bookingType: 'society',
+              isSociety: true,
+              title: sb.groupName
+            });
           }
         });
 
@@ -5763,23 +5857,25 @@
         this.close();
       },
 
-      prevMonth() {
+      async prevMonth() {
         this.currentMonth--;
         if (this.currentMonth < 0) {
           this.currentMonth = 11;
           this.currentYear--;
         }
         this.monthCache = {}; // Clear cache when changing month
+        await this.fetchMonthSocietyEvents(this.currentYear, this.currentMonth);
         this.renderMonth();
       },
 
-      nextMonth() {
+      async nextMonth() {
         this.currentMonth++;
         if (this.currentMonth > 11) {
           this.currentMonth = 0;
           this.currentYear++;
         }
         this.monthCache = {}; // Clear cache when changing month
+        await this.fetchMonthSocietyEvents(this.currentYear, this.currentMonth);
         this.renderMonth();
       },
 
@@ -5864,7 +5960,36 @@
     updateHeaderDate();
     applyTranslations();
     // Fetch data then render on initial load
-    fetchAndRender();
+    // With retry mechanism if data is empty on first try
+    (async function initialLoad() {
+      await fetchAndRender();
+      const currentDate = el.dateInput.value;
+      const courseId = el?.courseSelect?.value || '';
+      const cacheKey = `${currentDate}::${courseId}`;
+
+      // Check if we got any society events
+      const societyData = societyEventsCache[cacheKey] || [];
+      if (societyData.length === 0) {
+        console.log('[TeeSheet] No society events on initial load, retrying in 2 seconds...');
+        setTimeout(async () => {
+          // Clear cache and retry
+          delete societyEventsCache[cacheKey];
+          delete societyEventsLastFetchTime[cacheKey];
+          await fetchAndRender();
+
+          // If still empty, try once more after 3 more seconds
+          const retryData = societyEventsCache[cacheKey] || [];
+          if (retryData.length === 0) {
+            console.log('[TeeSheet] Still no data, final retry in 3 seconds...');
+            setTimeout(async () => {
+              delete societyEventsCache[cacheKey];
+              delete societyEventsLastFetchTime[cacheKey];
+              await fetchAndRender();
+            }, 3000);
+          }
+        }, 2000);
+      }
+    })();
   })();
   </script>
 </body>

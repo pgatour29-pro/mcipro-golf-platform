@@ -2282,10 +2282,10 @@
       }
 
       try {
-        // Get caddy bookings with caddy profile info
+        // Get caddy bookings with caddy profile AND user profile in one query
         const { data, error } = await supabaseClient
           .from('caddy_bookings')
-          .select('*, caddy_profiles(name, caddy_number, photo_url)')
+          .select('*, caddy_profiles(name, caddy_number, photo_url), user_profiles!caddy_bookings_user_id_fkey(name, email)')
           .eq('booking_date', date)
           .neq('status', 'cancelled');
 
@@ -2294,27 +2294,10 @@
           return caddyBookingsCache[date] || [];
         }
 
-        // Get user profiles separately for golfer names (user_id is LINE ID)
-        const userIds = [...new Set((data || []).map(b => b.user_id).filter(Boolean))];
-        let userProfiles = {};
-
-        if (userIds.length > 0) {
-          const { data: profiles } = await supabaseClient
-            .from('user_profiles')
-            .select('line_user_id, name, email')
-            .in('line_user_id', userIds);
-
-          (profiles || []).forEach(p => {
-            userProfiles[p.line_user_id] = p;
-          });
-        }
-
         // Convert to tee sheet format
         const bookings = (data || []).map(b => {
-          const profile = userProfiles[b.user_id];
+          const profile = b.user_profiles;
           const golferName = profile?.name || profile?.email?.split('@')[0] || 'Golfer';
-
-          // Normalize time to HH:MM format (strip seconds if present)
           const teeTime = b.tee_time ? b.tee_time.substring(0, 5) : null;
 
           return {
@@ -2340,8 +2323,6 @@
 
         caddyBookingsCache[date] = bookings;
         lastFetchTime[date] = now;
-        console.log('[TeeSheet] Fetched', bookings.length, 'caddy bookings for', date);
-        bookings.forEach(b => console.log('[TeeSheet] Booking:', b.time, b.golfers[0]?.name, b.golfers[0]?.caddyName));
         return bookings;
       } catch (e) {
         console.error('[TeeSheet] Fetch error:', e);
@@ -2436,39 +2417,23 @@
       }
 
       try {
-        console.log('[TeeSheet] Fetching society events for date:', date, 'course:', selectedCourseId);
-
-        // Get society events for this date (simple query without joins)
+        // Get society events for this date
         const { data, error } = await supabaseClient
           .from('society_events')
           .select('id, title, event_date, start_time, end_time, course_name, society_id, status')
           .eq('event_date', date);
-
-        console.log('[TeeSheet] Raw query result:', data?.length || 0, 'events, error:', error?.message || 'none');
 
         if (error) {
           console.error('[TeeSheet] Error fetching society events:', error);
           return societyEventsCache[cacheKey] || [];
         }
 
-        // Log all events found for debugging
-        (data || []).forEach(evt => {
-          console.log('[TeeSheet] Event found:', evt.title, 'at', evt.course_name, 'status:', evt.status);
-        });
-
         // Filter to only events matching the selected course
         const filteredData = (data || []).filter(evt => {
-          if (!selectedCourseId) return true; // Show all if no course selected
+          if (!selectedCourseId) return true;
           const eventCourseId = matchCourseToId(evt.course_name);
-          console.log('[TeeSheet] Matching:', evt.course_name, '->', eventCourseId, 'vs', selectedCourseId);
-          const matches = eventCourseId === selectedCourseId;
-          if (!matches && evt.course_name) {
-            console.log('[TeeSheet] Skipping event', evt.title, 'at', evt.course_name, '- not matching', selectedCourseId);
-          }
-          return matches;
+          return eventCourseId === selectedCourseId;
         });
-
-        console.log('[TeeSheet] Filtered', filteredData.length, 'of', (data || []).length, 'events for course', selectedCourseId);
 
         // Convert to tee sheet booking format
         const events = filteredData.map(evt => {
@@ -2511,7 +2476,6 @@
 
         societyEventsCache[cacheKey] = events;
         societyEventsLastFetchTime[cacheKey] = now;
-        console.log('[TeeSheet] Fetched', events.length, 'society event slots for', date, 'course', selectedCourseId);
         return events;
       } catch (e) {
         console.error('[TeeSheet] Society events fetch error:', e);
@@ -3393,16 +3357,6 @@
       uniqueDb.forEach(b => allIds.add(b.id));
       const uniqueSociety = societyEvents.filter(b => !allIds.has(b.id) && !allIds.has(b.eventId));
 
-      if (uniqueParent.length > 0) {
-        console.log('[TeeSheet] Merged', uniqueParent.length, 'bookings from parent BookingManager');
-      }
-      if (uniqueDb.length > 0) {
-        console.log('[TeeSheet] Merged', uniqueDb.length, 'caddy bookings from database');
-      }
-      if (uniqueSociety.length > 0) {
-        console.log('[TeeSheet] Merged', uniqueSociety.length, 'society event slots from database');
-      }
-
       return [...localBookings, ...uniqueParent, ...uniqueDb, ...uniqueSociety];
     };
 
@@ -3762,7 +3716,6 @@
                   caddyName: golfer.caddyName,
                   caddyNumber: golfer.caddyNumber
                 });
-                console.log('[TeeSheet] Added', golfer.name, 'to slot', slotTime, 'in', b.groupName);
               }
             }
           });
@@ -4848,7 +4801,6 @@
     // Async function to fetch data and render
     async function fetchAndRender() {
       const currentDate = el.dateInput.value;
-      console.log('[TeeSheet] Fetching data for date:', currentDate);
       await Promise.all([
         fetchCaddyBookings(currentDate),
         fetchSocietyEvents(currentDate),

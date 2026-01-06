@@ -4851,21 +4851,33 @@
     });
 
     // ==================== CONTROLS ====================
-    el.prevDay.addEventListener('click', () => {
+    // Async function to fetch data and render
+    async function fetchAndRender() {
+      const currentDate = el.dateInput.value;
+      console.log('[TeeSheet] Fetching data for date:', currentDate);
+      await Promise.all([
+        fetchCaddyBookings(currentDate),
+        fetchSocietyEvents(currentDate),
+        fetchEventRegistrations(currentDate)
+      ]);
+      render();
+    }
+
+    el.prevDay.addEventListener('click', async () => {
       const d = new Date(el.dateInput.value);
       d.setDate(d.getDate() - 1);
       el.dateInput.value = d.toISOString().split('T')[0];
-      render();
+      await fetchAndRender();
     });
 
-    el.nextDay.addEventListener('click', () => {
+    el.nextDay.addEventListener('click', async () => {
       const d = new Date(el.dateInput.value);
       d.setDate(d.getDate() + 1);
       el.dateInput.value = d.toISOString().split('T')[0];
-      render();
+      await fetchAndRender();
     });
 
-    el.dateInput.addEventListener('change', render);
+    el.dateInput.addEventListener('change', fetchAndRender);
 
     // Settings controls - save on change
     el.courseSelect.addEventListener('change', () => {
@@ -5851,7 +5863,8 @@
     updateHeaderCourseName();
     updateHeaderDate();
     applyTranslations();
-    render();
+    // Fetch data then render on initial load
+    fetchAndRender();
   })();
   </script>
 </body>

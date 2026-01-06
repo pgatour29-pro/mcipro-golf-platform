@@ -5920,42 +5920,47 @@
           render();
         }
       }).catch(e => console.warn('[TeeSheet] Auto-refresh failed:', e));
-    }, 60000); // 60 seconds
+    }, 30000); // 30 seconds
 
     // ==================== INIT ====================
     handleUrlParams();
     updateHeaderCourseName();
     updateHeaderDate();
     applyTranslations();
-    // Fetch data then render on initial load
-    // With retry mechanism if data is empty on first try
+    // Helper to clear all caches for a date
+    function clearAllCaches(date, courseId) {
+      const cacheKey = `${date}::${courseId}`;
+      delete caddyBookingsCache[date];
+      delete lastFetchTime[date];
+      delete societyEventsCache[cacheKey];
+      delete societyEventsLastFetchTime[cacheKey];
+      delete eventRegistrationsCache[date];
+      delete eventRegLastFetchTime[date];
+    }
+
+    // Fetch data then render on initial load with retry
     (async function initialLoad() {
       await fetchAndRender();
       const currentDate = el.dateInput.value;
       const courseId = el?.courseSelect?.value || '';
       const cacheKey = `${currentDate}::${courseId}`;
 
-      // Check if we got any society events
+      // Check if we got data
       const societyData = societyEventsCache[cacheKey] || [];
-      if (societyData.length === 0) {
-        console.log('[TeeSheet] No society events on initial load, retrying in 2 seconds...');
+      const caddyData = caddyBookingsCache[currentDate] || [];
+
+      // Retry if either is empty (could be slow connection)
+      if (societyData.length === 0 || caddyData.length === 0) {
         setTimeout(async () => {
-          // Clear cache and retry
-          delete societyEventsCache[cacheKey];
-          delete societyEventsLastFetchTime[cacheKey];
+          clearAllCaches(currentDate, courseId);
           await fetchAndRender();
 
-          // If still empty, try once more after 3 more seconds
-          const retryData = societyEventsCache[cacheKey] || [];
-          if (retryData.length === 0) {
-            console.log('[TeeSheet] Still no data, final retry in 3 seconds...');
-            setTimeout(async () => {
-              delete societyEventsCache[cacheKey];
-              delete societyEventsLastFetchTime[cacheKey];
-              await fetchAndRender();
-            }, 3000);
-          }
-        }, 2000);
+          // Final retry after 2 more seconds
+          setTimeout(async () => {
+            clearAllCaches(currentDate, courseId);
+            await fetchAndRender();
+          }, 2000);
+        }, 1500);
       }
     })();
   })();

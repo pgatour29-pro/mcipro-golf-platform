@@ -2230,9 +2230,77 @@
     </div>
   </dialog>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
   (function() {
     'use strict';
+
+    // ==================== SUPABASE INIT ====================
+    const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzQ1MTM0NzcsImV4cCI6MjA1MDA4OTQ3N30.1F8DEoGQBefdpv0RmCRLi8FXKcDmcSN5yUhuvYdNOkw';
+    let supabaseClient = null;
+    try {
+      supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      console.log('[TeeSheet] Supabase client initialized');
+    } catch (e) {
+      console.warn('[TeeSheet] Supabase init failed:', e);
+    }
+
+    // Cache for caddy bookings from database
+    let caddyBookingsCache = {};
+    let lastFetchTime = {};
+
+    // Fetch caddy bookings from Supabase for a specific date
+    async function fetchCaddyBookings(date) {
+      if (!supabaseClient) return [];
+
+      // Cache for 10 seconds to avoid hammering the database
+      const now = Date.now();
+      if (lastFetchTime[date] && (now - lastFetchTime[date]) < 10000) {
+        return caddyBookingsCache[date] || [];
+      }
+
+      try {
+        const { data, error } = await supabaseClient
+          .from('caddy_bookings')
+          .select('*, caddy_profiles:caddy_id(name, caddy_number, photo_url)')
+          .eq('booking_date', date)
+          .neq('status', 'cancelled');
+
+        if (error) {
+          console.error('[TeeSheet] Error fetching caddy bookings:', error);
+          return caddyBookingsCache[date] || [];
+        }
+
+        // Convert to tee sheet format
+        const bookings = (data || []).map(b => ({
+          id: `caddy-${b.id}`,
+          dbId: b.id,
+          time: b.tee_time,
+          course: 'A',
+          tee: 1,
+          bookingType: 'regular',
+          source: 'caddy-booking-db',
+          golfers: [{
+            name: b.user_id, // Will be resolved to name if available
+            odoo_id: b.user_id,
+            caddyId: b.caddy_id,
+            caddyName: b.caddy_profiles?.name || 'Caddy',
+            caddyNumber: b.caddy_profiles?.caddy_number || null
+          }],
+          status: b.status,
+          createdAt: b.created_at
+        }));
+
+        caddyBookingsCache[date] = bookings;
+        lastFetchTime[date] = now;
+        console.log('[TeeSheet] Fetched', bookings.length, 'caddy bookings for', date);
+        return bookings;
+      } catch (e) {
+        console.error('[TeeSheet] Fetch error:', e);
+        return caddyBookingsCache[date] || [];
+      }
+    }
 
     // ==================== TIME PICKER UTILITY ====================
     const TimePickerUtils = {
@@ -3006,7 +3074,7 @@
     // ==================== STORAGE ====================
     const storageKey = d => `teesheet.bookings.v2::${d}`;
 
-    // Enhanced getDay - merges local bookings with bookings from parent BookingManager
+    // Enhanced getDay - merges local bookings with caddy bookings from database
     const getDay = d => {
       // Get local tee sheet bookings
       let localBookings = [];
@@ -3020,15 +3088,29 @@
       const courseId = el?.courseSelect?.value || '';
       const parentBookings = ParentBridge.getBookingsFromParent(d, courseId);
 
-      // Merge: local + parent (avoiding duplicates by id)
-      const localIds = new Set(localBookings.map(b => b.id));
-      const uniqueParent = parentBookings.filter(b => !localIds.has(b.parentId) && !localIds.has(b.id));
+      // Get cached caddy bookings from database
+      const dbBookings = caddyBookingsCache[d] || [];
+
+      // Merge all sources (avoiding duplicates by id)
+      const allIds = new Set(localBookings.map(b => b.id));
+      const uniqueParent = parentBookings.filter(b => !allIds.has(b.parentId) && !allIds.has(b.id));
+      uniqueParent.forEach(b => allIds.add(b.id));
+      const uniqueDb = dbBookings.filter(b => !allIds.has(b.id) && !allIds.has(b.dbId));
 
       if (uniqueParent.length > 0) {
         console.log('[TeeSheet] Merged', uniqueParent.length, 'bookings from parent BookingManager');
       }
+      if (uniqueDb.length > 0) {
+        console.log('[TeeSheet] Merged', uniqueDb.length, 'caddy bookings from database');
+      }
 
-      return [...localBookings, ...uniqueParent];
+      return [...localBookings, ...uniqueParent, ...uniqueDb];
+    };
+
+    // Async version that fetches from database first
+    const getDayAsync = async d => {
+      await fetchCaddyBookings(d);
+      return getDay(d);
     };
 
     // Enhanced setDay - saves to localStorage AND syncs to parent BookingManager
@@ -3279,12 +3361,16 @@
     }
 
     // ==================== RENDER ====================
-    function render() {
+    async function render() {
       const layout = getLayout();
       const startM = minutes(el.startTime.value);
       const endM = minutes(el.endTime.value);
       const step = parseInt(el.intervalSelect.value) || 7;
-      const bookings = getDay(el.dateInput.value);
+
+      // Fetch caddy bookings from database before rendering
+      const currentDate = el.dateInput.value;
+      await fetchCaddyBookings(currentDate);
+      const bookings = getDay(currentDate);
 
       // Update legends
       el.legendC.style.display = layout.courses.includes('C') ? '' : 'none';
@@ -5252,9 +5338,46 @@
           el.dateInput.value = event.data.date;
           updateHeaderDate();
         }
+        // Clear cache to force re-fetch
+        const date = event.data.date || el.dateInput.value;
+        delete caddyBookingsCache[date];
+        delete lastFetchTime[date];
         render();
       }
     });
+
+    // Real-time subscription for caddy bookings
+    if (supabaseClient) {
+      const channel = supabaseClient
+        .channel('caddy-bookings-realtime')
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'caddy_bookings'
+        }, (payload) => {
+          console.log('[TeeSheet] Real-time caddy booking update:', payload.eventType);
+          // Clear cache and re-render if the booking is for current date
+          const bookingDate = payload.new?.booking_date || payload.old?.booking_date;
+          if (bookingDate) {
+            delete caddyBookingsCache[bookingDate];
+            delete lastFetchTime[bookingDate];
+            if (el.dateInput.value === bookingDate) {
+              render();
+            }
+          }
+        })
+        .subscribe((status) => {
+          console.log('[TeeSheet] Real-time subscription status:', status);
+        });
+    }
+
+    // Auto-refresh every 30 seconds for real-time updates
+    setInterval(() => {
+      const currentDate = el.dateInput.value;
+      delete caddyBookingsCache[currentDate];
+      delete lastFetchTime[currentDate];
+      render();
+    }, 30000);
 
     // ==================== INIT ====================
     handleUrlParams();

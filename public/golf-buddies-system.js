@@ -435,7 +435,7 @@ window.GolfBuddiesSystem = {
             // Check both golfInfo.handicap and profile_data.handicap locations
             const golfInfo = buddyProfile?.profile_data?.golfInfo || {};
             const handicapValue = golfInfo.handicap || buddyProfile?.profile_data?.handicap;
-            const handicap = handicapValue !== null && handicapValue !== undefined ? handicapValue : '-';
+            const handicap = handicapValue !== null && handicapValue !== undefined ? window.formatHandicapDisplay(handicapValue) : '-';
             const timesPlayed = buddy.times_played_together || 0;
             const lastPlayed = buddy.last_played_together
                 ? new Date(buddy.last_played_together).toLocaleDateString()
@@ -684,7 +684,8 @@ window.GolfBuddiesSystem = {
 
             const html = filtered.map(player => {
                 const name = (player.name || 'Unknown').replace(/'/g, '&apos;').replace(/"/g, '&quot;');
-                const handicap = player.profile_data?.golfInfo?.handicap || '-';
+                const handicapValue = player.profile_data?.golfInfo?.handicap;
+                const handicap = handicapValue !== null && handicapValue !== undefined ? window.formatHandicapDisplay(handicapValue) : '-';
                 const userId = player.line_user_id;
 
                 return `
@@ -1050,7 +1051,8 @@ window.GolfBuddiesSystem = {
         const html = this.selectedGroupMembers.map(memberId => {
             const profile = this.groupMemberProfiles[memberId];
             const name = profile?.name || 'Unknown';
-            const handicap = profile?.profile_data?.golfInfo?.handicap || profile?.profile_data?.handicap || '-';
+            const handicapValue = profile?.profile_data?.golfInfo?.handicap ?? profile?.profile_data?.handicap;
+            const handicap = handicapValue !== null && handicapValue !== undefined ? window.formatHandicapDisplay(handicapValue) : '-';
 
             return `
                 <div class="flex items-center justify-between p-2 bg-white border border-gray-200 rounded-lg mb-2">
@@ -1172,7 +1174,8 @@ window.GolfBuddiesSystem = {
 
             const html = filtered.map(player => {
                 const name = (player.name || 'Unknown').replace(/'/g, '&apos;');
-                const handicap = player.profile_data?.golfInfo?.handicap || player.profile_data?.handicap || '-';
+                const handicapValue = player.profile_data?.golfInfo?.handicap ?? player.profile_data?.handicap;
+                const handicap = handicapValue !== null && handicapValue !== undefined ? window.formatHandicapDisplay(handicapValue) : '-';
 
                 // Cache the profile
                 if (!this.groupMemberProfiles) this.groupMemberProfiles = {};

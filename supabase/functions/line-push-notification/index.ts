@@ -728,26 +728,78 @@ async function handleGroupMessage(supabase: any, message: any) {
 // ANNOUNCEMENT NOTIFICATION
 // ============================================================================
 async function handleAnnouncement(supabase: any, announcement: any) {
-  console.log("[LINE Push] New announcement:", announcement.title);
+  console.log("[LINE Push] New announcement:", announcement.title, "society_id:", announcement.society_id);
 
-  // Get society members - golfer_id IS the LINE user ID
-  const { data: members, error } = await supabase
+  let allLineUserIds: string[] = [];
+
+  // If no society_id, this is a PLATFORM announcement - send to ALL users
+  if (!announcement.society_id) {
+    console.log("[LINE Push] No society_id - treating as platform announcement");
+    return await handlePlatformAnnouncement(supabase, announcement);
+  }
+
+  // SOURCE 1: Get society members - golfer_id IS the LINE user ID
+  const { data: members, error: membersError } = await supabase
     .from("society_members")
     .select("golfer_id")
     .eq("society_id", announcement.society_id)
     .eq("status", "active");
 
-  if (error) {
-    console.error("[LINE Push] Error fetching members:", error);
-    return { success: false, error: error.message };
+  if (membersError) {
+    console.error("[LINE Push] Error fetching members:", membersError);
+  } else {
+    const memberIds = members
+      ?.filter((m: any) => m.golfer_id?.startsWith("U"))
+      .map((m: any) => m.golfer_id) || [];
+    console.log("[LINE Push] Found", memberIds.length, "society members");
+    allLineUserIds.push(...memberIds);
   }
 
-  const lineUserIds = members
-    ?.filter((m: any) => m.golfer_id?.startsWith("U"))
-    .map((m: any) => m.golfer_id)
-    .filter(Boolean);
+  // SOURCE 2: Get society subscribers - golfer_id IS the LINE user ID
+  const { data: subscribers, error: subsError } = await supabase
+    .from("golfer_society_subscriptions")
+    .select("golfer_id")
+    .eq("society_id", announcement.society_id)
+    .eq("status", "active");
 
-  if (!lineUserIds || lineUserIds.length === 0) {
+  if (subsError) {
+    console.error("[LINE Push] Error fetching subscribers:", subsError);
+  } else {
+    const subIds = subscribers
+      ?.filter((s: any) => s.golfer_id?.startsWith("U"))
+      .map((s: any) => s.golfer_id) || [];
+    console.log("[LINE Push] Found", subIds.length, "society subscribers");
+    allLineUserIds.push(...subIds);
+  }
+
+  // SOURCE 3: Get users who have registered for events of this society
+  const { data: societyEvents } = await supabase
+    .from("society_events")
+    .select("id")
+    .eq("society_id", announcement.society_id);
+
+  if (societyEvents && societyEvents.length > 0) {
+    const eventIds = societyEvents.map((e: any) => e.id);
+    const { data: registrations } = await supabase
+      .from("event_registrations")
+      .select("player_id")
+      .in("event_id", eventIds);
+
+    if (registrations) {
+      const regIds = registrations
+        .map((r: any) => r.player_id)
+        .filter((id: any) => id?.startsWith("U"));
+      console.log("[LINE Push] Found", regIds.length, "registered players for society events");
+      allLineUserIds.push(...regIds);
+    }
+  }
+
+  // Remove duplicates
+  const lineUserIds = [...new Set(allLineUserIds)];
+  console.log("[LINE Push] Total unique LINE users to notify:", lineUserIds.length);
+
+  if (lineUserIds.length === 0) {
+    console.log("[LINE Push] No LINE users to notify");
     return { success: true, notified: 0 };
   }
 

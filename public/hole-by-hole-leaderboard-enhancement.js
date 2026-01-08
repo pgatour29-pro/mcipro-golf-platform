@@ -380,12 +380,19 @@ LiveScorecardManager.renderHoleByHoleLeaderboard = function(leaderboard) {
 
 /**
  * Override the renderGroupLeaderboard function to include hole-by-hole view
+ * CRITICAL: Use _originalRenderGroupLeaderboard to prevent infinite recursion if script loads twice
  */
-LiveScorecardManager.renderGroupLeaderboardEnhanced = LiveScorecardManager.renderGroupLeaderboard;
+// Only save original ONCE - check if we already have it
+if (!LiveScorecardManager._originalRenderGroupLeaderboard) {
+    LiveScorecardManager._originalRenderGroupLeaderboard = LiveScorecardManager.renderGroupLeaderboard;
+}
 LiveScorecardManager.renderGroupLeaderboard = function(leaderboard) {
     if (leaderboard.length === 0) {
         return '<p class="text-center py-8 text-gray-500">No scores yet</p>';
     }
+
+    // Call the ORIGINAL function (not renderGroupLeaderboardEnhanced which could be circular)
+    const originalOutput = LiveScorecardManager._originalRenderGroupLeaderboard.call(this, leaderboard);
 
     // Add toggle buttons for different views
     let html = `
@@ -407,7 +414,7 @@ LiveScorecardManager.renderGroupLeaderboard = function(leaderboard) {
         </div>
 
         <div id="leaderboardViewSummaryContent">
-            ${this.renderGroupLeaderboardEnhanced(leaderboard)}
+            ${originalOutput}
         </div>
 
         <div id="leaderboardViewHoleByHoleContent" style="display: none;">
@@ -417,6 +424,8 @@ LiveScorecardManager.renderGroupLeaderboard = function(leaderboard) {
 
     return html;
 };
+// Keep legacy reference for compatibility but point to the safe original
+LiveScorecardManager.renderGroupLeaderboardEnhanced = LiveScorecardManager._originalRenderGroupLeaderboard;
 
 /**
  * Switch between summary and hole-by-hole views

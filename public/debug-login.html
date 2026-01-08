@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MciPro Login Diagnostics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        .log-entry { font-family: monospace; font-size: 12px; padding: 4px 8px; border-bottom: 1px solid #eee; }
+        .log-info { background: #e0f2fe; }
+        .log-success { background: #dcfce7; }
+        .log-error { background: #fee2e2; }
+        .log-warn { background: #fef3c7; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4">
+    <div class="max-w-2xl mx-auto">
+        <h1 class="text-2xl font-bold text-center mb-4">MciPro Login Diagnostics</h1>
+        <p class="text-center text-gray-600 mb-6">This page helps diagnose login issues</p>
+
+        <!-- Status Cards -->
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <div class="bg-white rounded-lg p-4 shadow">
+                <h3 class="font-semibold text-gray-700">LIFF Status</h3>
+                <p id="liff-status" class="text-lg">Checking...</p>
+            </div>
+            <div class="bg-white rounded-lg p-4 shadow">
+                <h3 class="font-semibold text-gray-700">Database Status</h3>
+                <p id="db-status" class="text-lg">Checking...</p>
+            </div>
+        </div>
+
+        <!-- LINE User Info -->
+        <div class="bg-white rounded-lg p-4 shadow mb-4">
+            <h3 class="font-semibold text-gray-700 mb-2">Your LINE Account</h3>
+            <div id="line-info" class="text-sm">
+                <p>Initializing LIFF...</p>
+            </div>
+        </div>
+
+        <!-- Profile Lookup -->
+        <div class="bg-white rounded-lg p-4 shadow mb-4">
+            <h3 class="font-semibold text-gray-700 mb-2">Profile Lookup Result</h3>
+            <div id="profile-info" class="text-sm">
+                <p>Waiting for LINE login...</p>
+            </div>
+        </div>
+
+        <!-- Expected Profile -->
+        <div class="bg-white rounded-lg p-4 shadow mb-4">
+            <h3 class="font-semibold text-gray-700 mb-2">Billy Shepley's Expected Profile</h3>
+            <div class="text-sm bg-blue-50 p-3 rounded">
+                <p><strong>Expected LINE ID:</strong> <code class="bg-gray-200 px-1">U8e1e7241961a2747032dece7929adbde</code></p>
+                <p><strong>Name:</strong> Billy Shepley</p>
+                <p><strong>Society:</strong> Travellers Rest Golf Group</p>
+                <p><strong>Handicap:</strong> 7.6</p>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex gap-2 mb-4">
+            <button onclick="runDiagnostics()" class="flex-1 bg-blue-600 text-white py-3 rounded-lg font-semibold">
+                Run Diagnostics
+            </button>
+            <button onclick="clearAndRetry()" class="flex-1 bg-orange-600 text-white py-3 rounded-lg font-semibold">
+                Clear Cache & Retry
+            </button>
+        </div>
+
+        <!-- Log Output -->
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            <h3 class="font-semibold text-gray-700 p-3 bg-gray-50 border-b">Diagnostic Log</h3>
+            <div id="log-output" class="max-h-96 overflow-y-auto">
+                <div class="log-entry log-info">Ready to run diagnostics...</div>
+            </div>
+        </div>
+
+        <!-- Fix Button -->
+        <div class="mt-4">
+            <button onclick="forceFixProfile()" class="w-full bg-green-600 text-white py-3 rounded-lg font-semibold">
+                Force Fix Billy's Profile
+            </button>
+            <p class="text-xs text-gray-500 text-center mt-1">Use this if LINE ID mismatch is detected</p>
+        </div>
+    </div>
+
+    <script>
+        const LIFF_ID = '2006542628-xXqNdEe3';
+        const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NDM2NjksImV4cCI6MjA3NTQxOTY2OX0.KVQ6WvDKz9s77lxn3AhSA_YTMCN6rsht9kDkMIDhngk';
+
+        let supabase;
+        let currentLineUserId = null;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log-output');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        async function initSupabase() {
+            try {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+                document.getElementById('db-status').textContent = '✅ Connected';
+                document.getElementById('db-status').className = 'text-lg text-green-600';
+                log('Supabase client initialized', 'success');
+                return true;
+            } catch (err) {
+                document.getElementById('db-status').textContent = '❌ Failed';
+                document.getElementById('db-status').className = 'text-lg text-red-600';
+                log('Supabase init failed: ' + err.message, 'error');
+                return false;
+            }
+        }
+
+        async function initLiff() {
+            try {
+                log('Initializing LIFF...');
+                await liff.init({ liffId: LIFF_ID });
+                document.getElementById('liff-status').textContent = '✅ Ready';
+                document.getElementById('liff-status').className = 'text-lg text-green-600';
+                log('LIFF initialized successfully', 'success');
+
+                if (liff.isLoggedIn()) {
+                    log('User is logged in to LINE', 'success');
+                    await getLineProfile();
+                } else {
+                    log('User is NOT logged in to LINE', 'warn');
+                    document.getElementById('line-info').innerHTML = `
+                        <p class="text-orange-600 font-semibold">Not logged in to LINE</p>
+                        <button onclick="liff.login()" class="mt-2 bg-green-500 text-white px-4 py-2 rounded">
+                            Login with LINE
+                        </button>
+                    `;
+                }
+                return true;
+            } catch (err) {
+                document.getElementById('liff-status').textContent = '❌ Failed';
+                document.getElementById('liff-status').className = 'text-lg text-red-600';
+                log('LIFF init failed: ' + err.message, 'error');
+                return false;
+            }
+        }
+
+        async function getLineProfile() {
+            try {
+                const profile = await liff.getProfile();
+                currentLineUserId = profile.userId;
+
+                log('LINE Profile retrieved', 'success');
+                log('LINE User ID: ' + profile.userId, 'info');
+                log('Display Name: ' + profile.displayName, 'info');
+
+                const expectedId = 'U8e1e7241961a2747032dece7929adbde';
+                const isMatch = profile.userId === expectedId;
+
+                document.getElementById('line-info').innerHTML = `
+                    <p><strong>LINE User ID:</strong></p>
+                    <code class="block bg-gray-100 p-2 rounded text-xs break-all ${isMatch ? 'text-green-700' : 'text-red-700'}">${profile.userId}</code>
+                    <p class="mt-2"><strong>Display Name:</strong> ${profile.displayName}</p>
+                    ${profile.pictureUrl ? `<img src="${profile.pictureUrl}" class="w-12 h-12 rounded-full mt-2">` : ''}
+                    <p class="mt-2 font-semibold ${isMatch ? 'text-green-600' : 'text-red-600'}">
+                        ${isMatch ? '✅ LINE ID matches expected!' : '❌ LINE ID does NOT match expected!'}
+                    </p>
+                `;
+
+                if (!isMatch) {
+                    log('⚠️ LINE ID MISMATCH DETECTED!', 'error');
+                    log('Current: ' + profile.userId, 'error');
+                    log('Expected: ' + expectedId, 'error');
+                }
+
+                // Now look up profile
+                await lookupProfile(profile.userId);
+
+            } catch (err) {
+                log('Failed to get LINE profile: ' + err.message, 'error');
+            }
+        }
+
+        async function lookupProfile(lineUserId) {
+            if (!supabase) {
+                log('Supabase not initialized', 'error');
+                return;
+            }
+
+            try {
+                log('Looking up profile for LINE ID: ' + lineUserId, 'info');
+
+                const { data, error } = await supabase
+                    .from('user_profiles')
+                    .select('*')
+                    .eq('line_user_id', lineUserId)
+                    .single();
+
+                if (error) {
+                    if (error.code === 'PGRST116') {
+                        log('NO PROFILE FOUND for this LINE ID!', 'error');
+                        document.getElementById('profile-info').innerHTML = `
+                            <div class="bg-red-100 p-3 rounded text-red-700">
+                                <p class="font-semibold">❌ No profile found!</p>
+                                <p class="text-sm mt-1">This LINE ID is not linked to any profile in the database.</p>
+                                <p class="text-sm mt-1">This is why you're seeing "Find Your Existing Profile".</p>
+                            </div>
+                        `;
+                    } else {
+                        log('Database error: ' + error.message, 'error');
+                        document.getElementById('profile-info').innerHTML = `
+                            <div class="bg-red-100 p-3 rounded text-red-700">
+                                <p class="font-semibold">❌ Database Error</p>
+                                <p class="text-sm">${error.message}</p>
+                            </div>
+                        `;
+                    }
+                } else if (data) {
+                    log('✅ PROFILE FOUND!', 'success');
+                    log('Name: ' + data.name, 'success');
+                    log('Society: ' + data.society_name, 'success');
+
+                    document.getElementById('profile-info').innerHTML = `
+                        <div class="bg-green-100 p-3 rounded text-green-700">
+                            <p class="font-semibold">✅ Profile Found!</p>
+                            <p><strong>Name:</strong> ${data.name}</p>
+                            <p><strong>Role:</strong> ${data.role}</p>
+                            <p><strong>Society:</strong> ${data.society_name || 'None'}</p>
+                            <p><strong>Handicap:</strong> ${data.profile_data?.golfInfo?.handicap || 'N/A'}</p>
+                        </div>
+                    `;
+                }
+
+            } catch (err) {
+                log('Profile lookup exception: ' + err.message, 'error');
+            }
+        }
+
+        async function runDiagnostics() {
+            document.getElementById('log-output').innerHTML = '';
+            log('Starting diagnostics...', 'info');
+
+            await initSupabase();
+            await initLiff();
+
+            // Also check for Billy's profile directly
+            if (supabase) {
+                log('Checking Billy Shepley profile directly...', 'info');
+                const { data, error } = await supabase
+                    .from('user_profiles')
+                    .select('line_user_id, name')
+                    .eq('name', 'Billy Shepley')
+                    .single();
+
+                if (data) {
+                    log('Billy Shepley found with LINE ID: ' + data.line_user_id, 'success');
+                } else {
+                    log('Billy Shepley NOT found in database!', 'error');
+                }
+            }
+
+            log('Diagnostics complete', 'info');
+        }
+
+        function clearAndRetry() {
+            log('Clearing local storage...', 'warn');
+            localStorage.clear();
+            log('Clearing session storage...', 'warn');
+            sessionStorage.clear();
+            log('Logging out of LIFF...', 'warn');
+            if (liff.isLoggedIn()) {
+                liff.logout();
+            }
+            log('Redirecting to main app...', 'info');
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 1000);
+        }
+
+        async function forceFixProfile() {
+            if (!currentLineUserId) {
+                alert('Please run diagnostics first to get your LINE ID');
+                return;
+            }
+
+            const expectedId = 'U8e1e7241961a2747032dece7929adbde';
+
+            if (currentLineUserId === expectedId) {
+                alert('Your LINE ID already matches! No fix needed.');
+                return;
+            }
+
+            if (!confirm(`This will update Billy Shepley's profile to use your current LINE ID:\n\n${currentLineUserId}\n\nAre you sure you're Billy Shepley?`)) {
+                return;
+            }
+
+            try {
+                log('Updating Billy Shepley profile with new LINE ID...', 'warn');
+
+                const { error } = await supabase
+                    .from('user_profiles')
+                    .update({ line_user_id: currentLineUserId })
+                    .eq('name', 'Billy Shepley')
+                    .eq('line_user_id', expectedId);
+
+                if (error) {
+                    log('Update failed: ' + error.message, 'error');
+                    alert('Failed to update: ' + error.message);
+                } else {
+                    log('✅ Profile updated successfully!', 'success');
+                    alert('Profile updated! Please go back to the main app and try logging in again.');
+                }
+            } catch (err) {
+                log('Exception: ' + err.message, 'error');
+            }
+        }
+
+        // Auto-run on load
+        window.onload = runDiagnostics;
+    </script>
+</body>
+</html>

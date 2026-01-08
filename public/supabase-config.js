@@ -212,6 +212,7 @@ class SupabaseClient {
     // =====================================================
 
     async getUserProfile(lineUserId) {
+        await this.waitForReady();
         const { data, error } = await this.client
             .from('user_profiles')
             .select('*')
@@ -259,6 +260,7 @@ class SupabaseClient {
     }
 
     async getUserProfileBySupabaseId(supabaseUserId) {
+        await this.waitForReady();
         const { data, error } = await this.client
             .from('user_profiles')
             .select('*')
@@ -301,6 +303,7 @@ class SupabaseClient {
     }
 
     async saveUserProfile(profile) {
+        await this.waitForReady();
         // Helper function to convert empty strings to null for UUID fields
         const cleanUUID = (value) => {
             if (!value || value === '') return null;

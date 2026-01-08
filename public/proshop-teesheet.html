@@ -3304,6 +3304,82 @@
       }
     }
 
+    // Cache for system users (golfers)
+    let allSystemUsers = [];
+    let usersLastFetchTime = 0;
+
+    // Fetch all users from database for golfer autocomplete
+    async function fetchSystemUsers() {
+      if (!supabaseClient) return [];
+
+      const now = Date.now();
+      // Cache for 5 minutes
+      if (allSystemUsers.length > 0 && (now - usersLastFetchTime) < 300000) {
+        return allSystemUsers;
+      }
+
+      try {
+        const { data, error } = await supabaseClient
+          .from('user_profiles')
+          .select('line_user_id, name, email')
+          .order('name');
+
+        if (error) {
+          console.error('[TeeSheet] Error fetching users:', error);
+          return allSystemUsers;
+        }
+
+        allSystemUsers = (data || []).map(u => ({
+          id: u.line_user_id,
+          name: u.name || u.email?.split('@')[0] || 'Unknown',
+          email: u.email
+        }));
+        usersLastFetchTime = now;
+        console.log('[TeeSheet] Loaded', allSystemUsers.length, 'system users');
+        return allSystemUsers;
+      } catch (e) {
+        console.error('[TeeSheet] User fetch error:', e);
+        return allSystemUsers;
+      }
+    }
+
+    // Render user dropdown for golfer name autocomplete
+    function renderUserDropdown(dropdown, input, query) {
+      dropdown.innerHTML = '';
+      query = (query || '').toLowerCase();
+
+      // Filter users by query
+      const matches = allSystemUsers.filter(u =>
+        u.name.toLowerCase().includes(query) ||
+        (u.email && u.email.toLowerCase().includes(query))
+      ).slice(0, 8);
+
+      if (matches.length === 0 && query.length > 0) {
+        const noMatch = document.createElement('div');
+        noMatch.className = 'caddy-option';
+        noMatch.style.color = '#6b7280';
+        noMatch.innerHTML = `<span>No matching users - will create as guest</span>`;
+        dropdown.appendChild(noMatch);
+        return;
+      }
+
+      matches.forEach(user => {
+        const opt = document.createElement('div');
+        opt.className = 'caddy-option';
+        opt.innerHTML = `
+          <span class="caddy-option-name">${user.name}</span>
+          ${user.email ? `<span class="caddy-option-detail">${user.email}</span>` : ''}
+        `;
+        opt.addEventListener('mousedown', e => {
+          e.preventDefault();
+          input.value = user.name;
+          input.dataset.userId = user.id;
+          dropdown.classList.remove('show');
+        });
+        dropdown.appendChild(opt);
+      });
+    }
+
     // Get caddies from parent CaddySystem OR database, filtered by selected course
     async function refreshCaddies() {
       const courseId = el.courseSelect.value;
@@ -4107,7 +4183,11 @@
         <div class="golfer-fields">
           <div class="golfer-field">
             <label>${t('golferName')}</label>
-            <input type="text" class="golfer-name" placeholder="${t('golferName')}" value="${golfer.name || ''}">
+            <div class="caddy-select-wrapper">
+              <input type="text" class="golfer-name" placeholder="${t('golferName')}" value="${golfer.name || ''}"
+                data-user-id="${golfer.odoo_id || ''}" autocomplete="off">
+              <div class="user-dropdown caddy-dropdown"></div>
+            </div>
           </div>
           <div class="golfer-field">
             <label>${t('caddy')}</label>
@@ -4123,10 +4203,26 @@
         ${index > 0 ? '<button type="button" class="remove-golfer">&times;</button>' : '<div style="width:32px"></div>'}
       `;
 
+      const golferNameInput = row.querySelector('.golfer-name');
+      const userDropdown = row.querySelector('.user-dropdown');
       const caddyInput = row.querySelector('.caddy-input');
       const dropdown = row.querySelector('.caddy-dropdown');
       const clearCaddyBtn = row.querySelector('.clear-caddy-btn');
       const removeBtn = row.querySelector('.remove-golfer');
+
+      // Golfer name autocomplete
+      golferNameInput.addEventListener('focus', async () => {
+        await fetchSystemUsers(); // Ensure users are loaded
+        renderUserDropdown(userDropdown, golferNameInput, '');
+        userDropdown.classList.add('show');
+      });
+      golferNameInput.addEventListener('input', () => {
+        renderUserDropdown(userDropdown, golferNameInput, golferNameInput.value);
+        userDropdown.classList.add('show');
+        // Clear user ID if manually typing (will be re-matched on save)
+        golferNameInput.dataset.userId = '';
+      });
+      golferNameInput.addEventListener('blur', () => setTimeout(() => userDropdown.classList.remove('show'), 200));
 
       // Show/hide clear button based on caddy selection
       function updateClearBtn() {
@@ -4253,6 +4349,7 @@
         if (!nameInput) return null;
         return {
           name: nameInput.value.trim(),
+          odoo_id: nameInput.dataset.userId || null, // User ID from autocomplete selection
           caddyId: caddyInput?.dataset.caddyId || null,
           caddyNumber: caddyInput?.dataset.caddyNumber || '',
           caddyName: caddyInput?.dataset.caddyName || '',

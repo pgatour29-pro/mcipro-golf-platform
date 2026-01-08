@@ -226,3 +226,49 @@ Render schedule cards
 4. **Overview bottom**: Upcoming Events + My Caddy Booking (duplicate caddy list)
 
 All issues addressed in this session.
+
+---
+
+## ADDITIONAL FIXES (Later in Session)
+
+### 6. Live Scorecard startRound Freezing
+**Problem:** Starting a round at Phoenix (or any course) was freezing the UI.
+
+**Root Cause:** In `startRound()`, there was a sequential `for...of` loop fetching handicaps for each player one at a time. With 4 players, this meant 4 database calls waiting for each other.
+
+**Fix:** Changed to `Promise.all()` for parallel fetching:
+```javascript
+// BEFORE - sequential (slow, freezes UI)
+for (const player of this.players) {
+    const hcps = await this.getPlayerSocietyHandicaps(player.id);
+}
+
+// AFTER - parallel (fast)
+await Promise.all(players.map(p => this.getPlayerSocietyHandicaps(p.id)));
+```
+
+**File:** `public/index.html` (lines ~52718-52757)
+**Commit:** `6eaac3b3`
+
+---
+
+### 7. NotificationManager Not Defined
+**Problem:** Multiple console errors: `NotificationManager is not defined`
+
+**Root Cause:** `NotificationManager.show()` was called 100+ times throughout the codebase but the object was **never defined**.
+
+**Fix:** Added `window.NotificationManager` definition at line 6204 with a `show()` method that creates toast notifications.
+
+**File:** `public/index.html` (lines 6204-6241)
+**Commit:** `ac6fa74e`
+
+---
+
+## FULL COMMIT LIST
+
+1. **c2a1c522** - Tee sheet sync fix (saveToLocalStorage)
+2. **5da189ec** - Remove duplicate caddy booking displays
+3. **4a81de10** - Add 30-second cache to Schedule tab
+4. **8cfe6fc2** - Session catalog
+5. **6eaac3b3** - HOTFIX: startRound freezing (parallel handicap fetch)
+6. **ac6fa74e** - Add missing NotificationManager

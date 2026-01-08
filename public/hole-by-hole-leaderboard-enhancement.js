@@ -454,38 +454,41 @@ LiveScorecardManager.switchLeaderboardView = function(view) {
 };
 
 // ===========================================================================
-// PART 4: HOOK INTO EXISTING FUNCTIONS
+// PART 4: HOOK INTO EXISTING FUNCTIONS (with guards to prevent double-wrap)
 // ===========================================================================
 
 /**
  * Extend renderHole to update score display
  */
-const originalRenderHole = LiveScorecardManager.renderHole;
-LiveScorecardManager.renderHole = function() {
-    originalRenderHole.call(this);
-    // Update score display after rendering hole
-    this.updatePlayerScoreDisplay();
-};
+if (!LiveScorecardManager._originalRenderHole) {
+    LiveScorecardManager._originalRenderHole = LiveScorecardManager.renderHole;
+    LiveScorecardManager.renderHole = function() {
+        LiveScorecardManager._originalRenderHole.call(this);
+        this.updatePlayerScoreDisplay();
+    };
+}
 
 /**
  * Extend selectPlayer to update score display
  */
-const originalSelectPlayer = LiveScorecardManager.selectPlayer;
-LiveScorecardManager.selectPlayer = function(playerId) {
-    originalSelectPlayer.call(this, playerId);
-    // Update score display for newly selected player
-    this.updatePlayerScoreDisplay();
-};
+if (!LiveScorecardManager._originalSelectPlayer) {
+    LiveScorecardManager._originalSelectPlayer = LiveScorecardManager.selectPlayer;
+    LiveScorecardManager.selectPlayer = function(playerId) {
+        LiveScorecardManager._originalSelectPlayer.call(this, playerId);
+        this.updatePlayerScoreDisplay();
+    };
+}
 
 /**
  * Extend saveCurrentScore to update score display
  */
-const originalSaveCurrentScore = LiveScorecardManager.saveCurrentScore;
-LiveScorecardManager.saveCurrentScore = async function() {
-    await originalSaveCurrentScore.call(this);
-    // Update score display after saving score
-    this.updatePlayerScoreDisplay();
-};
+if (!LiveScorecardManager._originalSaveCurrentScore) {
+    LiveScorecardManager._originalSaveCurrentScore = LiveScorecardManager.saveCurrentScore;
+    LiveScorecardManager.saveCurrentScore = async function() {
+        await LiveScorecardManager._originalSaveCurrentScore.call(this);
+        this.updatePlayerScoreDisplay();
+    };
+}
 
 console.log('[HoleByHoleLeaderboard] Enhancement loaded successfully');
     }

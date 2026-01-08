@@ -3200,6 +3200,77 @@
       }
     }
 
+    // Save caddy booking to Supabase database
+    async function saveCaddyBookingToDb(booking, golfer, date, time) {
+      if (!supabaseClient || !golfer.caddyId) return null;
+
+      const courseId = el.courseSelect.value;
+      const courseName = courseIdToDbName[courseId] || courseId;
+
+      try {
+        // Check if booking already exists for this golfer/caddy/date/time
+        const { data: existing } = await supabaseClient
+          .from('caddy_bookings')
+          .select('id')
+          .eq('caddy_id', golfer.caddyId)
+          .eq('booking_date', date)
+          .eq('tee_time', time + ':00')
+          .single();
+
+        if (existing) {
+          console.log('[TeeSheet] Caddy booking already exists:', existing.id);
+          return existing.id;
+        }
+
+        // Create new caddy booking
+        const { data, error } = await supabaseClient
+          .from('caddy_bookings')
+          .insert({
+            caddy_id: golfer.caddyId,
+            booking_date: date,
+            tee_time: time + ':00',
+            course_name: courseName,
+            status: 'confirmed',
+            notes: `Booked from tee sheet - ${golfer.name || 'Guest'}`
+          })
+          .select('id')
+          .single();
+
+        if (error) {
+          console.error('[TeeSheet] Error saving caddy booking:', error);
+          return null;
+        }
+
+        console.log('[TeeSheet] Saved caddy booking to database:', data.id);
+        return data.id;
+      } catch (e) {
+        console.error('[TeeSheet] Caddy booking save error:', e);
+        return null;
+      }
+    }
+
+    // Delete caddy booking from database
+    async function deleteCaddyBookingFromDb(caddyId, date, time) {
+      if (!supabaseClient || !caddyId) return;
+
+      try {
+        const { error } = await supabaseClient
+          .from('caddy_bookings')
+          .delete()
+          .eq('caddy_id', caddyId)
+          .eq('booking_date', date)
+          .eq('tee_time', time + ':00');
+
+        if (error) {
+          console.error('[TeeSheet] Error deleting caddy booking:', error);
+        } else {
+          console.log('[TeeSheet] Deleted caddy booking from database');
+        }
+      } catch (e) {
+        console.error('[TeeSheet] Caddy booking delete error:', e);
+      }
+    }
+
     // Get caddies from parent CaddySystem OR database, filtered by selected course
     async function refreshCaddies() {
       const courseId = el.courseSelect.value;
@@ -4812,8 +4883,33 @@
       }
 
       setDay(date, bookings);
+
+      // Sync caddy bookings to database for real-time visibility
+      if (el.rangeModeToggle.checked && rangeSlots.length > 0) {
+        // Range mode - sync all slots with caddies
+        rangeSlots.forEach(slot => {
+          (slot.golfers || []).forEach(g => {
+            if (g.caddyId) {
+              saveCaddyBookingToDb(null, g, date, slot.time);
+            }
+          });
+        });
+      } else {
+        // Single booking mode
+        const bookingTime = el.bookingTime.value;
+        const golfers = getGolfersFromDialog();
+        golfers.forEach(g => {
+          if (g.caddyId) {
+            saveCaddyBookingToDb(null, g, date, bookingTime);
+          }
+        });
+      }
+
       el.dialog.close();
       render();
+
+      // Refresh caddy bookings cache to show the new booking
+      fetchCaddyBookings(date);
     });
 
     el.deleteBooking.addEventListener('click', async () => {
@@ -4869,6 +4965,11 @@
 
             // Check and promote from waitlist
             await ParentBridge.promoteFromWaitlist(g.caddyId || g.caddyNumber, date, booking.time);
+
+            // Delete caddy booking from database
+            if (g.caddyId) {
+              await deleteCaddyBookingFromDb(g.caddyId, date, booking.time);
+            }
           }
         }
       }
@@ -4876,6 +4977,9 @@
       setDay(date, bookings);
       el.dialog.close();
       render();
+
+      // Refresh caddy bookings cache
+      fetchCaddyBookings(date);
     });
 
     // ==================== CONTROLS ====================

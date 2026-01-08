@@ -15,12 +15,23 @@ class SupabaseClient {
         this.readyPromise = new Promise((resolve) => {
             this.resolveReady = resolve;
         });
-        // Initialize immediately - Supabase CDN loads before this file
-        const { createClient } = window.supabase;
-        this.client = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
-        this.ready = true;
-        this.resolveReady();
-        console.log('[Supabase] Client initialized');
+
+        // Initialize with retry if library not ready
+        this._initWithRetry();
+    }
+
+    _initWithRetry(attempts = 0) {
+        if (window.supabase && window.supabase.createClient) {
+            this.client = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+            this.ready = true;
+            this.resolveReady();
+            console.log('[Supabase] Client initialized');
+        } else if (attempts < 50) {
+            // Retry every 100ms for up to 5 seconds
+            setTimeout(() => this._initWithRetry(attempts + 1), 100);
+        } else {
+            console.error('[Supabase] FAILED to initialize after 5 seconds');
+        }
     }
 
     async waitForReady() {

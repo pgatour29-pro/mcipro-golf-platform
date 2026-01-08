@@ -2486,10 +2486,6 @@
           return slots;
         }).flat();
 
-        console.log('[TeeSheet] Society events DEBUG: cacheKey=', cacheKey, 'rawData=', data?.length, 'filtered=', filteredData?.length, 'events=', events?.length);
-        console.log('[TeeSheet] Society events DEBUG: first raw event organizer_name=', data?.[0]?.organizer_name, 'title=', data?.[0]?.title);
-        console.log('[TeeSheet] Society events DEBUG: first slot societyName=', events?.[0]?.societyName, 'groupName=', events?.[0]?.groupName);
-
         societyEventsCache[cacheKey] = events;
         societyEventsLastFetchTime[cacheKey] = now;
         return events;
@@ -3364,7 +3360,6 @@
       // Get cached society events from database (course-specific cache)
       const societyCacheKey = `${d}::${courseId}`;
       const societyEvents = societyEventsCache[societyCacheKey] || [];
-      console.log('[TeeSheet] getDay DEBUG: date=', d, 'courseId=', courseId, 'cacheKey=', societyCacheKey, 'societyEvents=', societyEvents?.length);
 
       // Merge all sources (avoiding duplicates by id)
       const allIds = new Set(localBookings.map(b => b.id));
@@ -3760,7 +3755,7 @@
       for (let m = startM; m <= endM; m += step) {
         const timeStr = hhmm(m);
 
-        let rowHtml = `<div class="grid-row">`;
+        let rowHtml = `<div class="grid-row" data-time="${timeStr}">`;
         rowHtml += `<div class="time-cell">${timeStr}</div>`;
 
         layout.cols.forEach((col, idx) => {
@@ -4891,36 +4886,50 @@
       await Promise.all([fetchCaddyBookings(currentDate), fetchSocietyEvents(currentDate)]);
 
       const bookings = getDay(currentDate);
-      console.log('[TeeSheet] Search: checking', bookings.length, 'bookings for "' + q + '"');
-      console.log('[TeeSheet] Search DEBUG: society events found:', bookings.filter(b => b.societyName).length, 'with names:', bookings.filter(b => b.societyName).map(b => b.societyName).slice(0,3));
-      // Debug all bookings with golfers
-      bookings.forEach((b, i) => {
-        if (b.golfers && b.golfers.length > 0) {
-          console.log('[TeeSheet] Search DEBUG booking', i, 'has golfers:', b.golfers.map(g => g.name));
+
+      // Fuzzy match: flexible search that handles partial names and near-matches
+      const fuzzyMatch = (text, query) => {
+        if (!text) return false;
+        const t = text.toLowerCase();
+        // Direct substring match
+        if (t.includes(query)) return true;
+        // Split both into words
+        const textWords = t.split(/\s+/);
+        const queryWords = query.split(/\s+/);
+        // Check for partial matches
+        for (const tw of textWords) {
+          for (const qw of queryWords) {
+            // Either starts with the other
+            if (tw.startsWith(qw) || qw.startsWith(tw)) return true;
+            // Share first 3+ characters (handles pete/peter, jon/john etc)
+            if (tw.length >= 3 && qw.length >= 3) {
+              const minLen = Math.min(tw.length, qw.length);
+              const matchLen = Math.max(3, Math.floor(minLen * 0.7));
+              if (tw.substring(0, matchLen) === qw.substring(0, matchLen)) return true;
+            }
+          }
         }
-      });
-      // Debug caddy bookings specifically
-      const caddyBookings = bookings.filter(b => b.source === 'caddy-booking-db');
-      console.log('[TeeSheet] Search DEBUG: caddy bookings:', caddyBookings.length, caddyBookings.map(cb => ({ id: cb.id, golfers: cb.golfers })));
+        return false;
+      };
 
       searchResults = bookings.filter(b => {
         // Search in ALL booking-level fields
-        if ((b.name || '').toLowerCase().includes(q)) return true;
-        if ((b.caddyNumber || '').toLowerCase().includes(q)) return true;
-        if ((b.groupName || '').toLowerCase().includes(q)) return true;
-        if ((b.societyName || '').toLowerCase().includes(q)) return true;
-        if ((b.eventName || '').toLowerCase().includes(q)) return true;
-        if ((b.notes || '').toLowerCase().includes(q)) return true;
-        if ((b.bookingType || '').toLowerCase().includes(q)) return true;
+        if (fuzzyMatch(b.name, q)) return true;
+        if (fuzzyMatch(b.caddyNumber, q)) return true;
+        if (fuzzyMatch(b.groupName, q)) return true;
+        if (fuzzyMatch(b.societyName, q)) return true;
+        if (fuzzyMatch(b.eventName, q)) return true;
+        if (fuzzyMatch(b.notes, q)) return true;
+        if (fuzzyMatch(b.bookingType, q)) return true;
 
         // Search in each golfer
         const golfers = b.golfers || [];
         return golfers.some(g => {
-          if ((g.name || '').toLowerCase().includes(q)) return true;
-          if ((g.caddyId || '').toLowerCase().includes(q)) return true;
-          if ((g.caddyNumber || '').toString().toLowerCase().includes(q)) return true;
-          if ((g.caddyName || '').toLowerCase().includes(q)) return true;
-          if ((g.caddyLocalName || '').toLowerCase().includes(q)) return true;
+          if (fuzzyMatch(g.name, q)) return true;
+          if (fuzzyMatch(g.caddyId, q)) return true;
+          if (fuzzyMatch(String(g.caddyNumber || ''), q)) return true;
+          if (fuzzyMatch(g.caddyName, q)) return true;
+          if (fuzzyMatch(g.caddyLocalName, q)) return true;
           return false;
         });
       });
@@ -4937,7 +4946,31 @@
     });
 
     function highlightBooking(booking) {
-      const pill = document.querySelector(`.pill[data-id="${booking.id}"]`);
+      // Try to find by exact ID first
+      let pill = document.querySelector(`.pill[data-id="${booking.id}"]`);
+
+      // If not found, try by event ID for society events
+      if (!pill && booking.eventId) {
+        pill = document.querySelector(`.pill[data-event-id="${booking.eventId}"]`);
+      }
+
+      // If not found, try by group ID
+      if (!pill && booking.groupId) {
+        pill = document.querySelector(`.pill[data-group-id="${booking.groupId}"]`);
+      }
+
+      // If still not found, find by time in grid row
+      if (!pill && booking.time) {
+        const gridRow = document.querySelector(`.grid-row[data-time="${booking.time}"]`);
+        if (gridRow) {
+          gridRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          gridRow.style.outline = '3px solid #3b82f6';
+          gridRow.style.background = '#fef3c7';
+          setTimeout(() => { gridRow.style.outline = ''; gridRow.style.background = ''; }, 2000);
+          return;
+        }
+      }
+
       if (pill) {
         pill.scrollIntoView({ behavior: 'smooth', block: 'center' });
         pill.style.outline = '3px solid #3b82f6';

@@ -3208,7 +3208,25 @@
       const courseName = courseIdToDbName[courseId] || courseId;
 
       try {
-        // Check if booking already exists for this golfer/caddy/date/time
+        // Look up user by name to get their user_id (LINE ID)
+        let userId = golfer.odoo_id || null; // May already have user ID from existing data
+
+        if (!userId && golfer.name) {
+          // Search for user by name (case-insensitive partial match)
+          const { data: userProfile } = await supabaseClient
+            .from('user_profiles')
+            .select('line_user_id, name')
+            .ilike('name', `%${golfer.name}%`)
+            .limit(1)
+            .single();
+
+          if (userProfile) {
+            userId = userProfile.line_user_id;
+            console.log('[TeeSheet] Found user for golfer:', golfer.name, '→', userProfile.name, userId);
+          }
+        }
+
+        // Check if booking already exists for this caddy/date/time
         const { data: existing } = await supabaseClient
           .from('caddy_bookings')
           .select('id')
@@ -3218,21 +3236,36 @@
           .single();
 
         if (existing) {
-          console.log('[TeeSheet] Caddy booking already exists:', existing.id);
+          // Update existing booking with user_id if we found one
+          if (userId) {
+            await supabaseClient
+              .from('caddy_bookings')
+              .update({ user_id: userId })
+              .eq('id', existing.id);
+            console.log('[TeeSheet] Updated existing caddy booking with user_id:', existing.id);
+          }
           return existing.id;
         }
 
-        // Create new caddy booking
+        // Create new caddy booking with user_id for dashboard visibility
+        const insertData = {
+          caddy_id: golfer.caddyId,
+          booking_date: date,
+          tee_time: time + ':00',
+          course_name: courseName,
+          status: 'confirmed',
+          booking_source: 'proshop_teesheet',
+          golfer_name: golfer.name || 'Guest'
+        };
+
+        // Add user_id if we found the golfer in the system
+        if (userId) {
+          insertData.user_id = userId;
+        }
+
         const { data, error } = await supabaseClient
           .from('caddy_bookings')
-          .insert({
-            caddy_id: golfer.caddyId,
-            booking_date: date,
-            tee_time: time + ':00',
-            course_name: courseName,
-            status: 'confirmed',
-            notes: `Booked from tee sheet - ${golfer.name || 'Guest'}`
-          })
+          .insert(insertData)
           .select('id')
           .single();
 
@@ -3241,7 +3274,7 @@
           return null;
         }
 
-        console.log('[TeeSheet] Saved caddy booking to database:', data.id);
+        console.log('[TeeSheet] Saved caddy booking to database:', data.id, userId ? `(linked to ${golfer.name})` : '(no user link)');
         return data.id;
       } catch (e) {
         console.error('[TeeSheet] Caddy booking save error:', e);

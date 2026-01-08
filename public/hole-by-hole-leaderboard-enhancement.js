@@ -31,6 +31,12 @@
             console.log('[Leaderboard Enhancement] Already initialized, skipping');
             return;
         }
+        // SECOND GUARD: Check if renderGroupLeaderboardEnhanced already exists (prevents infinite recursion)
+        if (typeof LiveScorecardManager.renderGroupLeaderboardEnhanced === 'function') {
+            console.log('[Leaderboard Enhancement] renderGroupLeaderboardEnhanced already exists, skipping');
+            LiveScorecardManager._leaderboardEnhancementLoaded = true;
+            return;
+        }
         LiveScorecardManager._leaderboardEnhancementLoaded = true;
 LiveScorecardManager.updatePlayerScoreDisplay = function() {
     const displayCard = document.getElementById('currentPlayerScoreDisplay');

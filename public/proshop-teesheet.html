@@ -3605,11 +3605,37 @@
       const societyCacheKey = `${d}::${courseId}`;
       const societyEvents = societyEventsCache[societyCacheKey] || [];
 
-      // Merge all sources (avoiding duplicates by id)
+      // Merge all sources (avoiding duplicates by id AND by caddy+time match)
       const allIds = new Set(localBookings.map(b => b.id));
+
+      // Track local bookings by caddy+time for deduplication with DB bookings
+      const localCaddyTimeKeys = new Set();
+      localBookings.forEach(b => {
+        if (b.golfers && b.golfers.length > 0) {
+          b.golfers.forEach(g => {
+            if (g.caddyId && b.time) {
+              localCaddyTimeKeys.add(`${g.caddyId}::${b.time}`);
+            }
+          });
+        }
+      });
+
       const uniqueParent = parentBookings.filter(b => !allIds.has(b.parentId) && !allIds.has(b.id));
       uniqueParent.forEach(b => allIds.add(b.id));
-      const uniqueDb = dbBookings.filter(b => !allIds.has(b.id) && !allIds.has(b.dbId));
+
+      // Filter DB bookings - skip if already exists locally (by ID or by caddy+time match)
+      const uniqueDb = dbBookings.filter(b => {
+        if (allIds.has(b.id) || allIds.has(b.dbId)) return false;
+        // Also skip if there's a local booking with same caddy at same time
+        if (b.golfers && b.golfers.length > 0 && b.time) {
+          for (const g of b.golfers) {
+            if (g.caddyId && localCaddyTimeKeys.has(`${g.caddyId}::${b.time}`)) {
+              return false; // Skip - local booking has this caddy at this time
+            }
+          }
+        }
+        return true;
+      });
       uniqueDb.forEach(b => allIds.add(b.id));
       const uniqueSociety = societyEvents.filter(b => !allIds.has(b.id) && !allIds.has(b.eventId));
 

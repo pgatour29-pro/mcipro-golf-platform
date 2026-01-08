@@ -3113,7 +3113,6 @@
         if (bookingManager) {
           // Find if booking exists, update or add
           const existingIdx = bookingManager.bookings.findIndex(b => b.id === booking.id);
-          const isNew = existingIdx < 0;
 
           if (existingIdx >= 0) {
             bookingManager.bookings[existingIdx] = booking;
@@ -3136,8 +3135,30 @@
 
           console.log('[TeeSheet] Booking synced to parent BookingManager');
           return true;
+        } else {
+          // No BookingManager (standalone mode) - save directly to localStorage
+          try {
+            const bookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]');
+            const existingIdx = bookings.findIndex(b => b.id === booking.id);
+
+            if (existingIdx >= 0) {
+              bookings[existingIdx] = booking;
+            } else {
+              bookings.push(booking);
+            }
+
+            localStorage.setItem('mcipro_bookings', JSON.stringify(bookings));
+            console.log('[TeeSheet] Booking saved directly to localStorage (standalone mode)');
+
+            // Trigger caddy notifications for booking changes
+            await this.notifyCaddyBooking(booking, action);
+
+            return true;
+          } catch (e) {
+            console.error('[TeeSheet] Failed to save booking to localStorage:', e);
+            return false;
+          }
         }
-        return false;
       },
 
       // Send LINE notification to caddies for booking events
@@ -3852,6 +3873,13 @@
       const courseId = el.courseSelect.value;
       if (arr && arr.length > 0) {
         arr.forEach(booking => {
+          // Build ISO teeTime for Schedule tab compatibility
+          const teeTimeISO = `${d}T${booking.time}:00`;
+
+          // Get first golfer name for filtering
+          const firstGolfer = (booking.golfers && booking.golfers.length > 0) ? booking.golfers[0] : null;
+          const golferName = firstGolfer?.name || '';
+
           // Convert tee sheet booking to BookingManager format
           const parentBooking = {
             id: `teesheet-${booking.id}`,
@@ -3861,6 +3889,8 @@
             courseDisplay: el.courseSelect.options[el.courseSelect.selectedIndex]?.text || courseId,
             date: d,
             time: booking.time,
+            teeTime: teeTimeISO,  // ISO datetime for Schedule tab
+            golferName: golferName,  // For golfer filtering
             status: 'confirmed',
             bookingType: booking.type || 'regular',
             groupId: booking.groupId || null,

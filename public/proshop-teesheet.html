@@ -3146,11 +3146,75 @@
     // ==================== CADDY DATA ====================
     let allCaddies = [];
 
-    // Get caddies from parent CaddySystem, filtered by selected course
-    function refreshCaddies() {
+    // Map tee sheet course ID to database course name
+    const courseIdToDbName = {
+      'treasure-hill-golf': 'Treasure Hill Golf & Country Club',
+      'phoenix-gold': 'Phoenix Gold Golf & Country Club',
+      'greenwood': 'Greenwood Golf & Country Club',
+      'pattana': 'Pattana Golf Club & Resort',
+      'burapha-ac': 'Burapha Golf Club',
+      'bangpakong': 'Bangpakong Riverside Country Club',
+      'plutaluang': 'Plutaluang Royal Thai Navy Golf Course',
+      'siam-country-club': 'Siam Country Club',
+      'khao-kheow': 'Khao Kheow Country Club',
+      'laem-chabang': 'Laem Chabang International Country Club'
+    };
+
+    // Fetch caddies from Supabase database
+    async function fetchCaddiesFromDb(courseId) {
+      if (!supabaseClient) return [];
+
+      try {
+        let query = supabaseClient
+          .from('caddy_profiles')
+          .select('id, name, caddy_number, course_name, rating, languages, photo_url, is_active, availability_status')
+          .eq('is_active', true);
+
+        // Filter by course name if specified
+        if (courseId && courseIdToDbName[courseId]) {
+          query = query.eq('course_name', courseIdToDbName[courseId]);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+          console.error('[TeeSheet] Error fetching caddies from DB:', error);
+          return [];
+        }
+
+        // Map to expected format
+        return (data || []).map(c => ({
+          id: c.id,
+          name: c.name,
+          localName: '',
+          number: c.caddy_number,
+          rating: c.rating || 4.5,
+          language: Array.isArray(c.languages) ? c.languages.join('/') : 'TH/EN',
+          status: c.availability_status === 'booked' ? 'busy' : 'available',
+          photoUrl: c.photo_url,
+          homeClub: courseId
+        }));
+      } catch (e) {
+        console.error('[TeeSheet] Caddy fetch error:', e);
+        return [];
+      }
+    }
+
+    // Get caddies from parent CaddySystem OR database, filtered by selected course
+    async function refreshCaddies() {
       const courseId = el.courseSelect.value;
-      allCaddies = ParentBridge.getAllCaddies(courseId);
-      console.log('[TeeSheet] Loaded', allCaddies.length, 'caddies for course:', courseId || 'all');
+
+      // Try parent CaddySystem first
+      const parentCaddies = ParentBridge.getAllCaddies(courseId);
+      if (parentCaddies.length > 0) {
+        allCaddies = parentCaddies;
+        console.log('[TeeSheet] Loaded', allCaddies.length, 'caddies from parent for course:', courseId || 'all');
+        return;
+      }
+
+      // Fallback: fetch from database
+      allCaddies = await fetchCaddiesFromDb(courseId);
+      console.log('[TeeSheet] Loaded', allCaddies.length, 'caddies from database for course:', courseId || 'all');
     }
 
     // Initial load - wait for DOM to be ready
@@ -4485,7 +4549,12 @@
     }
 
     // ==================== DIALOG ====================
-    function openDialog(seed) {
+    async function openDialog(seed) {
+      // Ensure caddies are loaded before opening dialog
+      if (allCaddies.length === 0) {
+        await refreshCaddies();
+      }
+
       // Set the current editing booking ID for caddy availability check
       currentEditingBookingId = seed.id || null;
 
@@ -4849,9 +4918,9 @@
     el.dateInput.addEventListener('change', fetchAndRender);
 
     // Settings controls - save on change
-    el.courseSelect.addEventListener('change', () => {
+    el.courseSelect.addEventListener('change', async () => {
       saveSettings();
-      refreshCaddies(); // Reload caddies for new course
+      await refreshCaddies(); // Reload caddies for new course
       render();
     });
     el.complexSelect.addEventListener('change', () => { saveSettings(); render(); });

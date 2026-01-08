@@ -5829,8 +5829,11 @@
         this.currentMonth = currentDate.getMonth();
         this.selectedDate = el.dateInput.value;
         this.elements.dialog.showModal();
-        // Pre-fetch society events for this month then render
-        await this.fetchMonthSocietyEvents(this.currentYear, this.currentMonth);
+        // Pre-fetch society events and caddy bookings for this month then render
+        await Promise.all([
+          this.fetchMonthSocietyEvents(this.currentYear, this.currentMonth),
+          this.fetchMonthCaddyBookings(this.currentYear, this.currentMonth)
+        ]);
         this.renderMonth();
       },
 
@@ -5899,6 +5902,90 @@
           });
         } catch (e) {
           console.error('[Calendar] Society fetch error:', e);
+        }
+      },
+
+      // Fetch caddy bookings for all days in a month
+      async fetchMonthCaddyBookings(year, month) {
+        if (!supabaseClient) return;
+
+        const courseId = el?.courseSelect?.value || '';
+        const courseName = courseIdToDbName[courseId] || '';
+        const firstDay = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const lastDay = `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+        try {
+          console.log('[Calendar] Fetching caddy bookings for month:', firstDay, 'to', lastDay);
+
+          // Fetch all caddy bookings for this month
+          let query = supabaseClient
+            .from('caddy_bookings')
+            .select('id, user_id, caddy_id, booking_date, tee_time, status, golfer_name, caddy_profiles(name, caddy_number)')
+            .gte('booking_date', firstDay)
+            .lte('booking_date', lastDay)
+            .neq('status', 'cancelled');
+
+          if (courseName) {
+            query = query.eq('course_name', courseName);
+          }
+
+          const { data, error } = await query;
+
+          if (error) {
+            console.error('[Calendar] Error fetching caddy bookings:', error);
+            return;
+          }
+
+          console.log('[Calendar] Found', data?.length || 0, 'caddy bookings for month');
+
+          // Get user profiles for names
+          const userIds = [...new Set((data || []).map(b => b.user_id).filter(Boolean))];
+          let userProfiles = {};
+          if (userIds.length > 0) {
+            const { data: profiles } = await supabaseClient
+              .from('user_profiles')
+              .select('line_user_id, name, email')
+              .in('line_user_id', userIds);
+            (profiles || []).forEach(p => { userProfiles[p.line_user_id] = p; });
+          }
+
+          // Group by date and add to cache
+          (data || []).forEach(b => {
+            const dateStr = b.booking_date;
+            if (!caddyBookingsCache[dateStr]) {
+              caddyBookingsCache[dateStr] = [];
+            }
+
+            // Check if already in cache
+            if (caddyBookingsCache[dateStr].find(cb => cb.dbId === b.id)) return;
+
+            const profile = userProfiles[b.user_id];
+            const golferName = b.golfer_name || profile?.name || profile?.email?.split('@')[0] || 'Golfer';
+            const teeTime = b.tee_time ? b.tee_time.substring(0, 5) : null;
+
+            caddyBookingsCache[dateStr].push({
+              id: `caddy-${b.id}`,
+              dbId: b.id,
+              time: teeTime,
+              course: 'A',
+              tee: 1,
+              col: 0,
+              bookingType: 'regular',
+              source: 'caddy-booking-db',
+              golfers: [{
+                name: golferName,
+                odoo_id: b.user_id,
+                caddyId: b.caddy_id,
+                caddyName: b.caddy_profiles?.name || 'Caddy',
+                caddyNumber: b.caddy_profiles?.caddy_number || null
+              }],
+              golferName: golferName,
+              status: b.status
+            });
+          });
+        } catch (e) {
+          console.error('[Calendar] Caddy bookings fetch error:', e);
         }
       },
 
@@ -6086,6 +6173,29 @@
           }
         });
 
+        // Add caddy bookings from database cache
+        const caddyBookings = caddyBookingsCache[dateStr] || [];
+        caddyBookings.forEach(cb => {
+          // Skip if already in allBookings (by id or by matching caddy+time)
+          if (allBookings.find(b => b.id === cb.id || b.dbId === cb.dbId)) return;
+
+          // Check for matching local booking by caddy+time
+          const hasCaddyTimeMatch = allBookings.some(b => {
+            if (!b.golfers || !b.time || b.time !== cb.time) return false;
+            return b.golfers.some(g => g.caddyId && cb.golfers?.some(cg => cg.caddyId === g.caddyId));
+          });
+          if (hasCaddyTimeMatch) return;
+
+          allBookings.push({
+            id: cb.id,
+            dbId: cb.dbId,
+            time: cb.time,
+            bookingType: cb.bookingType || 'regular',
+            golferName: cb.golferName,
+            golfers: cb.golfers
+          });
+        });
+
         return allBookings;
       },
 
@@ -6209,7 +6319,10 @@
           this.currentYear--;
         }
         this.monthCache = {}; // Clear cache when changing month
-        await this.fetchMonthSocietyEvents(this.currentYear, this.currentMonth);
+        await Promise.all([
+          this.fetchMonthSocietyEvents(this.currentYear, this.currentMonth),
+          this.fetchMonthCaddyBookings(this.currentYear, this.currentMonth)
+        ]);
         this.renderMonth();
       },
 
@@ -6220,7 +6333,10 @@
           this.currentYear++;
         }
         this.monthCache = {}; // Clear cache when changing month
-        await this.fetchMonthSocietyEvents(this.currentYear, this.currentMonth);
+        await Promise.all([
+          this.fetchMonthSocietyEvents(this.currentYear, this.currentMonth),
+          this.fetchMonthCaddyBookings(this.currentYear, this.currentMonth)
+        ]);
         this.renderMonth();
       },
 

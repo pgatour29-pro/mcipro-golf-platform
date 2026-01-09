@@ -279,6 +279,50 @@ actualTeamB = this.players
 
 ---
 
+---
+
+### Issue 5: Rounds Not Saving to Database
+**Symptom:** Clicking "Finish Round" shows success but round doesn't appear in history.
+
+**Root Causes:**
+1. `distributeRoundScores()` and `saveRoundToHistory()` not waiting for Supabase
+2. Database trigger `auto_update_society_handicaps_on_round` has UUID/text type mismatch
+
+**Fixes Applied:**
+
+#### A. Added waitForReady to round saving (`public/index.html`)
+```javascript
+async distributeRoundScores() {
+    // Wait for Supabase to be ready before saving rounds
+    if (window.SupabaseDB && !window.SupabaseDB.ready) {
+        await window.SupabaseDB.waitForReady();
+    }
+    // ... rest of function
+}
+
+async saveRoundToHistory(player) {
+    // Wait for Supabase to be ready before saving
+    if (window.SupabaseDB && !window.SupabaseDB.ready) {
+        await window.SupabaseDB.waitForReady();
+    }
+    // ... rest of function
+}
+```
+
+#### B. Fixed database trigger (run in Supabase SQL Editor)
+```sql
+-- The bug was: sm.user_id (UUID) = NEW.golfer_id (text)
+-- Fixed by casting: sm.user_id::text = NEW.golfer_id
+CREATE OR REPLACE FUNCTION auto_update_society_handicaps_on_round()
+RETURNS TRIGGER AS $$
+...
+WHERE sm.user_id::text = NEW.golfer_id  -- FIX: Cast UUID to text
+...
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
+
+---
+
 ## SERVICE WORKER CACHE VERSIONS (Updated)
 
 | Version | Fix |
@@ -288,6 +332,7 @@ actualTeamB = this.players
 | v62 | Added waitForReady in MessagesSystem.init |
 | v63 | Fixed PWA icons for installation |
 | v64 | Fixed 2-man team match play calculation |
+| v65 | Fixed round saving - waitForReady + trigger fix |
 
 ---
 

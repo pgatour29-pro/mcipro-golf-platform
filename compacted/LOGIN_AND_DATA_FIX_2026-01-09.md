@@ -253,11 +253,49 @@ async function anyDataFunction() {
 
 ---
 
+---
+
+### Issue 4: 2-Man Team Match Play Calculation Wrong
+**Symptom:** Team match play not calculating hole winners correctly. The rule is:
+1. Best ball from each team competes first (outright win)
+2. If best balls tie, partners' scores break the tie
+3. If partners also tie, it's a halve
+
+**Root Cause:** Bug at line 59163 comparing player ID against array of objects instead of array of IDs:
+```javascript
+// BUG: teamConfig.teamA is array of {playerId, playerName, scores, handicap} objects
+.filter(p => !teamConfig.teamA.includes(p.id))  // ALWAYS FALSE!
+```
+
+**Fix Applied:**
+```javascript
+// FIX: Extract IDs first, then compare
+const teamAIds = teamConfig.teamA.map(t => t.playerId);
+actualTeamB = this.players
+    .filter(p => !teamAIds.includes(p.id))
+```
+
+**Location:** `public/index.html` ~line 59163
+
+---
+
+## SERVICE WORKER CACHE VERSIONS (Updated)
+
+| Version | Fix |
+|---------|-----|
+| v60 | Initial fixes for login flow |
+| v61 | Added waitForReady in renderScheduleList |
+| v62 | Added waitForReady in MessagesSystem.init |
+| v63 | Fixed PWA icons for installation |
+| v64 | Fixed 2-man team match play calculation |
+
+---
+
 ## EMERGENCY ROLLBACK
 
 If issues occur, bump SW_VERSION in `public/sw.js` and redeploy:
 ```javascript
-const SW_VERSION = 'mcipro-cache-v64'; // Increment this
+const SW_VERSION = 'mcipro-cache-v65'; // Increment this
 ```
 
 Then deploy:

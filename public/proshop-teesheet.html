@@ -4113,8 +4113,22 @@
     if (savedSettings.teesPerCourse) el.teesSelect.value = savedSettings.teesPerCourse;
     console.log('[TeeSheet] Loaded settings:', savedSettings);
 
-    if (!el.dateInput.value) el.dateInput.value = todayISO();
+    // Always start with today's date (fixes overnight stale date issue)
+    el.dateInput.value = todayISO();
     el.langSelect.value = currentLang;
+
+    // Auto-update date at midnight for golf courses that keep tee sheet open permanently
+    let lastCheckedDate = todayISO();
+    setInterval(() => {
+      const currentToday = todayISO();
+      if (currentToday !== lastCheckedDate) {
+        console.log('[TeeSheet] Date changed from', lastCheckedDate, 'to', currentToday, '- auto-updating');
+        lastCheckedDate = currentToday;
+        el.dateInput.value = currentToday;
+        updateHeaderDate();
+        fetchAndRender();
+      }
+    }, 60000); // Check every minute
 
     // ==================== LAYOUT ====================
     function getCourses() {

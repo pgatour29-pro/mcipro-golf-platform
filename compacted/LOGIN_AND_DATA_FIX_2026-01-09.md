@@ -333,6 +333,93 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 | v63 | Fixed PWA icons for installation |
 | v64 | Fixed 2-man team match play calculation |
 | v65 | Fixed round saving - waitForReady + trigger fix |
+| v66 | Fixed tee sheet auto-date-update for midnight rollover |
+
+---
+
+### Issue 6: Tee Sheet Date Not Auto-Updating at Midnight
+**Symptom:** Golf courses keep tee sheet open permanently. After midnight, the date stays on yesterday instead of auto-updating to today.
+
+**Root Cause:** Line 4116 only set today's date if the input was empty: `if (!el.dateInput.value) el.dateInput.value = todayISO();`
+
+**Fix Applied:** (`public/proshop-teesheet.html` ~line 4116)
+```javascript
+// Always start with today's date (fixes overnight stale date issue)
+el.dateInput.value = todayISO();
+el.langSelect.value = currentLang;
+
+// Auto-update date at midnight for golf courses that keep tee sheet open permanently
+let lastCheckedDate = todayISO();
+setInterval(() => {
+  const currentToday = todayISO();
+  if (currentToday !== lastCheckedDate) {
+    console.log('[TeeSheet] Date changed from', lastCheckedDate, 'to', currentToday, '- auto-updating');
+    lastCheckedDate = currentToday;
+    el.dateInput.value = currentToday;
+    updateHeaderDate();
+    fetchAndRender();
+  }
+}, 60000); // Check every minute
+```
+
+---
+
+### Issue 7: Spectate Live Showing Wrong Stableford Score
+**Symptom:** Tristan Gilbert's score showed 33 instead of 35 on Spectate Live page.
+
+**Root Cause:** Wrong hole scores were saved to `scores` table:
+- Hole 3: 7 instead of 5 (caused -2 pts)
+- Hole 7: 6 instead of 8 (no pts difference)
+
+**Fix Applied:** Manual SQL correction:
+```sql
+UPDATE scores SET gross_score = 5, stableford_points = 2
+WHERE scorecard_id = 'ab99b630-d589-4f5f-a37f-8464c6a40b0b' AND hole_number = 3;
+
+UPDATE scores SET gross_score = 8
+WHERE scorecard_id = 'ab99b630-d589-4f5f-a37f-8464c6a40b0b' AND hole_number = 7;
+```
+
+---
+
+## SUMMARY OF ALL FIXES (January 9, 2026)
+
+| Issue | Problem | Fix | Cache Ver |
+|-------|---------|-----|-----------|
+| 1 | Multiple clicks to login | Debounce flag, removed touch handlers | v60 |
+| 2 | Data not loading after login | waitForReady in ScheduleSystem, MessagesSystem | v61-62 |
+| 3 | PWA won't install | Created 192x192 & 512x512 icons, fixed manifest | v63 |
+| 4 | 2-man team match play wrong | Fixed teamConfig.teamA comparison (objects vs IDs) | v64 |
+| 5 | Rounds not saving to DB | waitForReady + fixed trigger UUID/text cast | v65 |
+| 6 | Tee sheet stale date overnight | Always set today + check every minute | v66 |
+| 7 | Spectate wrong score | Manual SQL fix for hole scores | - |
+
+---
+
+## DATABASE FIXES APPLIED
+
+### 1. Society Handicap Trigger (CRITICAL)
+```sql
+-- Fixed UUID/text type mismatch in auto_update_society_handicaps_on_round
+WHERE sm.user_id::text = NEW.golfer_id  -- Cast UUID to text
+```
+
+### 2. Tristan Gilbert Score Correction
+```sql
+-- Hole 3: 7→5, Hole 7: 6→8
+UPDATE scores SET gross_score = 5, stableford_points = 2 WHERE ... hole_number = 3;
+UPDATE scores SET gross_score = 8 WHERE ... hole_number = 7;
+```
+
+### 3. Manual Round Insert (when triggers block)
+```sql
+-- Disable triggers, insert, re-enable
+ALTER TABLE rounds DISABLE TRIGGER trigger_update_buddy_stats;
+ALTER TABLE rounds DISABLE TRIGGER trigger_auto_update_handicap;
+ALTER TABLE rounds DISABLE TRIGGER trigger_auto_update_society_handicaps;
+INSERT INTO rounds (...) VALUES (...);
+ALTER TABLE rounds ENABLE TRIGGER ...;
+```
 
 ---
 
@@ -340,7 +427,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 If issues occur, bump SW_VERSION in `public/sw.js` and redeploy:
 ```javascript
-const SW_VERSION = 'mcipro-cache-v65'; // Increment this
+const SW_VERSION = 'mcipro-cache-v67'; // Increment this
 ```
 
 Then deploy:

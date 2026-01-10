@@ -1,6 +1,6 @@
 # MyCaddi Pro - Bug Fixes Documentation
 ## Dates: January 9-10, 2026
-## Current Cache Version: v71
+## Current Cache Version: v73
 
 ---
 
@@ -744,6 +744,143 @@ await supabase
 
 ---
 
+### Issue 14: 3 Team Game Modes for 2-Man Team Match Play (v72)
+**Requirement:** Need multiple team game options beyond current "best ball with partner tiebreaker":
+1. Best Ball + Tiebreaker (original) - partner breaks ties
+2. Best Ball - Halves - ties = halve, partner ignored
+3. Combined Scores - sum of both players' scores
+
+**Implementation:**
+
+#### A. Added Team Game Mode UI Selector (`public/index.html` ~line 31055)
+```html
+<!-- Team Game Mode Selection -->
+<div class="mt-3 p-2 bg-purple-50 border border-purple-300 rounded">
+    <div class="flex items-center gap-2 mb-2">
+        <span class="material-symbols-outlined text-purple-600 text-sm">sports_esports</span>
+        <label class="text-sm font-bold text-purple-900">Team Game Mode</label>
+    </div>
+    <div class="space-y-2">
+        <label class="flex items-start gap-2 cursor-pointer p-2 rounded hover:bg-purple-100">
+            <input type="radio" name="teamGameMode" value="bestball_tiebreaker" checked class="mt-1">
+            <div>
+                <div class="font-semibold text-sm text-gray-900">Best Ball + Tiebreaker</div>
+                <div class="text-xs text-gray-600">Best score wins, partner's score breaks ties</div>
+            </div>
+        </label>
+        <label class="flex items-start gap-2 cursor-pointer p-2 rounded hover:bg-purple-100">
+            <input type="radio" name="teamGameMode" value="bestball_halves" class="mt-1">
+            <div>
+                <div class="font-semibold text-sm text-gray-900">Best Ball - Halves</div>
+                <div class="text-xs text-gray-600">Best score wins, ties = halve (partner ignored)</div>
+            </div>
+        </label>
+        <label class="flex items-start gap-2 cursor-pointer p-2 rounded hover:bg-purple-100">
+            <input type="radio" name="teamGameMode" value="combined" class="mt-1">
+            <div>
+                <div class="font-semibold text-sm text-gray-900">Combined Scores</div>
+                <div class="text-xs text-gray-600">Sum of both players' scores per hole</div>
+            </div>
+        </label>
+    </div>
+</div>
+```
+
+#### B. Modified `calculateTeamMatchPlay()` Function (~line 50756)
+Added `teamGameMode` parameter with 3 modes:
+```javascript
+calculateTeamMatchPlay(team1Data, team2Data, courseHoles, useNet = true, useStableford = false, teamGameMode = 'bestball_tiebreaker') {
+    // 3 game modes:
+    // - bestball_tiebreaker: Best score wins, partner breaks ties (default)
+    // - bestball_halves: Best score wins, ties = halve (partner ignored)
+    // - combined: Sum of both players' scores per hole
+
+    if (teamGameMode === 'combined') {
+        // Sum both players' scores (stableford pts or net strokes)
+        team1Score = t1p1Score + t1p2Score;
+        team2Score = t2p1Score + t2p2Score;
+        // Higher combined pts wins (stableford) or lower combined strokes wins (stroke)
+    } else {
+        // Best ball modes
+        if (bestBallsTied) {
+            if (teamGameMode === 'bestball_halves') {
+                holeResult = 'AS';  // HALVE - ignore partner
+            } else {
+                // TIEBREAKER - check partner's score
+                if (team1Second beats team2Second) holeResult = 'W';
+                // ...
+            }
+        }
+    }
+}
+```
+
+#### C. Updated All Callers to Pass Team Game Mode
+3 locations updated to get mode from UI:
+```javascript
+const teamGameMode = document.querySelector('input[name="teamGameMode"]:checked')?.value || 'bestball_tiebreaker';
+engine.calculateTeamMatchPlay(team1, team2, holes, true, useStableford, teamGameMode);
+```
+
+#### D. Saved Team Game Mode to Database
+Match play config now includes `teamGameMode`:
+```javascript
+if (this.matchPlayTeams) {
+    matchPlayConfig.teams = this.matchPlayTeams;
+    matchPlayConfig.teamGameMode = teamGameModeEl?.value || 'bestball_tiebreaker';
+}
+```
+
+#### E. Restored Team Game Mode on Reload
+```javascript
+if (config.teamGameMode) {
+    const gameModeRadio = document.querySelector(`input[name="teamGameMode"][value="${config.teamGameMode}"]`);
+    if (gameModeRadio) gameModeRadio.checked = true;
+}
+```
+
+---
+
+### Issue 15: Team Match Play Validation Error (v73)
+**Symptom:** Team match play not calculating - function failing silently.
+
+**Root Cause:** `calculateTeamMatchPlay()` accessed `team1Data[0]`, `team1Data[1]`, etc. without validating that both teams have exactly 2 players. If team has fewer players, code crashes.
+
+**Fixes Applied:**
+
+#### A. Added Validation at Start of Function
+```javascript
+// Validate: Both teams must have at least 2 players
+if (!team1Data || team1Data.length < 2 || !team2Data || team2Data.length < 2) {
+    console.warn('[TeamMatchPlay] Invalid team data - need 2 players per team', {
+        team1: team1Data?.length || 0,
+        team2: team2Data?.length || 0
+    });
+    return {
+        front9: 0,
+        back9: 0,
+        overall: 0,
+        holeResults: [],
+        gameMode: teamGameMode,
+        error: 'Need exactly 2 players per team'
+    };
+}
+```
+
+#### B. Added Slicing in All Callers
+Ensured exactly 2 players passed to function:
+```javascript
+// Ensure exactly 2 players per team
+const team1 = teamConfig.teamA.slice(0, 2);
+const team2 = actualTeamB.slice(0, 2);
+
+console.log('[TeamMatchPlay] Leaderboard calc: Team1=' + team1.length + ' players, Team2=' + team2.length + ' players');
+
+const teamResults = engine.calculateTeamMatchPlay(team1, team2, ...);
+```
+
+---
+
 ## SERVICE WORKER CACHE VERSIONS (Complete)
 
 | Version | Fix | Date |
@@ -760,6 +897,8 @@ await supabase
 | v69 | Added manual handicap edit with plus support | Jan 10 |
 | v70 | Fixed plus handicap display in society directory | Jan 10 |
 | v71 | Fixed empty username unique constraint error | Jan 10 |
+| v72 | Added 3 team game modes for 2-man team match play | Jan 10 |
+| v73 | Fixed team match play validation and slicing | Jan 10 |
 
 ---
 
@@ -780,6 +919,8 @@ await supabase
 | 11 | Plus HCP shows without "+" | formatHandicapDisplay in directory | v70 |
 | 12 | Duplicate username key error | Use null instead of empty string | v71 |
 | 13 | Bubba Gump missing society | Synced user_profiles with society_members | - |
+| 14 | Need multiple team game modes | Added 3 team game mode options | v72 |
+| 15 | Team match play validation error | Added team size validation + slicing | v73 |
 
 ---
 
@@ -796,7 +937,7 @@ await supabase
 
 If issues occur, bump SW_VERSION in `public/sw.js` and redeploy:
 ```javascript
-const SW_VERSION = 'mcipro-cache-v72'; // Increment this
+const SW_VERSION = 'mcipro-cache-v74'; // Increment this
 ```
 
 Then deploy:

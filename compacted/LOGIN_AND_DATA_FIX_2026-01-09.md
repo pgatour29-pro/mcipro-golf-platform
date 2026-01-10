@@ -1,6 +1,6 @@
-# MyCaddi Pro - Login & Data Loading Fix Documentation
-## Date: January 9, 2026
-## Cache Version: v63
+# MyCaddi Pro - Bug Fixes Documentation
+## Dates: January 9-10, 2026
+## Current Cache Version: v68
 
 ---
 
@@ -419,7 +419,9 @@ WHERE scorecard_id = 'ab99b630-d589-4f5f-a37f-8464c6a40b0b' AND hole_number = 7;
 
 ---
 
-## SUMMARY OF ALL FIXES (January 9, 2026)
+## SUMMARY OF ALL FIXES
+
+### January 9, 2026 (v60-v66)
 
 | Issue | Problem | Fix | Cache Ver |
 |-------|---------|-----|-----------|
@@ -430,6 +432,11 @@ WHERE scorecard_id = 'ab99b630-d589-4f5f-a37f-8464c6a40b0b' AND hole_number = 7;
 | 5 | Rounds not saving to DB | waitForReady + fixed trigger UUID/text cast | v65 |
 | 6 | Tee sheet stale date overnight | Always set today + check every minute | v66 |
 | 7 | Spectate wrong score | Manual SQL fix for hole scores | - |
+
+### January 10, 2026 (v67-v68)
+
+| Issue | Problem | Fix | Cache Ver |
+|-------|---------|-----|-----------|
 | 8 | Plus handicap not handled in match play | Fixed all inline calculations + string "+X" format | v67 |
 | 9 | Private events using society handicaps | Check isPrivate flag + societyName | v68 |
 
@@ -514,3 +521,65 @@ Then deploy:
 ```bash
 git add . && git commit -m "Cache bust" && git push && vercel --prod --yes
 ```
+
+---
+
+## HANDICAP QUICK REFERENCE
+
+### Stroke Allocation Formula
+```javascript
+baseStrokes = floor(handicap / 18)        // Strokes on ALL holes
+extraStrokeThreshold = handicap % 18      // Extra stroke on hardest SI holes
+```
+
+### Regular Handicaps (Receive Strokes)
+| Handicap | Base | Extra SI | SI 1 | SI 5 | SI 10 | SI 18 |
+|----------|------|----------|------|------|-------|-------|
+| 13 | 0 | ≤13 | 1 | 1 | 1 | 0 |
+| 20 | 1 | ≤2 | 2 | 1 | 1 | 1 |
+| 25 | 1 | ≤7 | 2 | 2 | 1 | 1 |
+| 36 | 2 | ≤0 | 2 | 2 | 2 | 2 |
+
+### Plus Handicaps (Give Strokes on Easiest Holes)
+| Handicap | Base | Extra SI | SI 1 | SI 17 | SI 18 |
+|----------|------|----------|------|-------|-------|
+| +2 | 0 | >16 | 0 | +1 | +1 |
+| +4 | 0 | >14 | 0 | +1 | +1 |
+
+### Stableford Points (Net Score vs Par)
+| Net Score | Points |
+|-----------|--------|
+| 3+ under (Albatross) | 5 |
+| 2 under (Eagle) | 4 |
+| 1 under (Birdie) | 3 |
+| Even (Par) | 2 |
+| 1 over (Bogey) | 1 |
+| 2+ over | 0 |
+
+### 2-Man Team Match Play Rules
+1. Best ball from each team competes first (outright win)
+2. If best balls tie → partners' scores break the tie
+3. If partners also tie → hole is halved
+
+### Handicap Source by Round Type
+| Round Type | Handicap Used |
+|------------|---------------|
+| Practice Round | Universal |
+| Private Round | Universal |
+| Private Event (isPrivate=true) | Universal |
+| Public Event (no societyName) | Universal |
+| Society Event | Society-specific |
+
+---
+
+## FILES MODIFIED (All Sessions)
+
+| File | Changes |
+|------|---------|
+| `public/index.html` | Login, scoring, match play, handicap logic |
+| `public/supabase-config.js` | Retry-based initialization |
+| `public/sw.js` | Cache versions v60 → v68 |
+| `public/manifest.json` | PWA icon declarations |
+| `public/proshop-teesheet.html` | Midnight auto-date rollover |
+| `public/mcipro-192.png` | NEW - PWA icon |
+| `public/mcipro-512.png` | NEW - PWA icon |

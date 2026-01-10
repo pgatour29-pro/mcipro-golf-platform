@@ -793,7 +793,7 @@ class SocietyOrganizerManager {
                     ${group.players.map((p, idx) => `
                         <div class="flex justify-between items-center text-sm">
                             <span class="text-gray-700">${idx + 1}. ${p.playerName}</span>
-                            <span class="text-gray-500">HCP: ${Math.round(p.handicap)}</span>
+                            <span class="text-gray-500">HCP: ${window.formatHandicapDisplay ? window.formatHandicapDisplay(p.handicap) : p.handicap}</span>
                         </div>
                     `).join('')}
                 </div>

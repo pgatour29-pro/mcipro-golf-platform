@@ -504,7 +504,10 @@ class SocietyDashboardEnhanced {
                 ${members.map(member => {
                     const profile = member.user_profiles || {};
                     const name = profile.name || member.golfer_name || 'Unknown';
-                    const handicap = profile.profile_data?.golfInfo?.handicap || profile.profile_data?.handicap || '-';
+                    const rawHandicap = profile.profile_data?.golfInfo?.handicap ?? profile.profile_data?.handicap;
+                    const handicap = rawHandicap !== null && rawHandicap !== undefined
+                        ? (window.formatHandicapDisplay ? window.formatHandicapDisplay(rawHandicap) : rawHandicap)
+                        : '-';
                     const roleColors = {
                         'organizer': 'bg-teal-100 text-teal-700',
                         'admin': 'bg-red-100 text-red-700',

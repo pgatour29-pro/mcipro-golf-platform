@@ -334,6 +334,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 | v64 | Fixed 2-man team match play calculation |
 | v65 | Fixed round saving - waitForReady + trigger fix |
 | v66 | Fixed tee sheet auto-date-update for midnight rollover |
+| v67 | Fixed plus handicap handling in all match play calculations |
 
 ---
 
@@ -393,6 +394,48 @@ WHERE scorecard_id = 'ab99b630-d589-4f5f-a37f-8464c6a40b0b' AND hole_number = 7;
 | 5 | Rounds not saving to DB | waitForReady + fixed trigger UUID/text cast | v65 |
 | 6 | Tee sheet stale date overnight | Always set today + check every minute | v66 |
 | 7 | Spectate wrong score | Manual SQL fix for hole scores | - |
+| 8 | Plus handicap not handled in match play | Fixed all inline calculations + string "+X" format | v67 |
+
+---
+
+### Issue 8: Plus Handicap Not Handled in Match Play (Jan 10, 2026)
+**Symptom:** Plus handicappers (e.g., +1.9) would have strokes incorrectly calculated in team match play and round robin.
+
+**Root Cause:** Inline `getStablefordPoints` and `getNetScore` functions in `calculateTeamMatchPlay` didn't handle:
+1. Negative handicap values (plus handicaps stored as -1.9)
+2. String format "+X" (e.g., "+1.9")
+
+**Correct Logic for Plus Handicaps:**
+- Plus handicaps **GIVE** strokes on **EASIEST** holes (highest SI: 18, 17, 16...)
+- Example: +2 handicap gives 1 stroke on SI 17 and SI 18 only
+
+**Fixes Applied:**
+1. `calculateTeamMatchPlay` - Both stableford and stroke modes
+2. `calculateRoundRobinMatchPlay` - Added string "+X" format handling
+3. `calcStablefordPts` fallback function
+4. `calcShotsOnHole` function
+
+**Code Pattern Used:**
+```javascript
+// Handle plus handicaps (negative values or "+X" strings)
+let hcpValue = typeof handicap === 'string' && handicap.startsWith('+')
+    ? -parseFloat(handicap.substring(1))
+    : parseFloat(handicap) || 0;
+const isPlus = hcpValue < 0;
+const absHcp = Math.abs(hcpValue);
+
+const baseStrokes = Math.floor(absHcp / 18);
+const extraStrokeThreshold = absHcp % 18;
+
+let shotsReceived;
+if (isPlus) {
+    // Plus handicap: GIVE strokes on EASIEST holes (highest SI)
+    shotsReceived = -(baseStrokes + (strokeIndex > (18 - extraStrokeThreshold) ? 1 : 0));
+} else {
+    // Regular handicap: RECEIVE strokes on HARDEST holes (lowest SI)
+    shotsReceived = baseStrokes + (strokeIndex <= extraStrokeThreshold ? 1 : 0);
+}
+```
 
 ---
 
@@ -427,7 +470,7 @@ ALTER TABLE rounds ENABLE TRIGGER ...;
 
 If issues occur, bump SW_VERSION in `public/sw.js` and redeploy:
 ```javascript
-const SW_VERSION = 'mcipro-cache-v67'; // Increment this
+const SW_VERSION = 'mcipro-cache-v68'; // Increment this
 ```
 
 Then deploy:

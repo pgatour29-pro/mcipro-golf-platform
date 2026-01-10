@@ -1,6 +1,6 @@
 # MyCaddi Pro - Bug Fixes Documentation
 ## Dates: January 9-10, 2026
-## Current Cache Version: v68
+## Current Cache Version: v71
 
 ---
 
@@ -583,3 +583,223 @@ extraStrokeThreshold = handicap % 18      // Extra stroke on hardest SI holes
 | `public/proshop-teesheet.html` | Midnight auto-date rollover |
 | `public/mcipro-192.png` | NEW - PWA icon |
 | `public/mcipro-512.png` | NEW - PWA icon |
+| `public/society-dashboard-enhanced.js` | formatHandicapDisplay for members list |
+| `public/society-organizer-manager.js` | formatHandicapDisplay for player groups |
+
+---
+
+## ADDITIONAL FIXES - January 10, 2026 (v69-v71)
+
+### Issue 10: Cannot Enter Plus Handicap Manually (v69)
+**Symptom:** Users cannot change a player's handicap to a plus "+" value using the dropdown - only preset values available.
+
+**Root Cause:** Handicap dropdown only shows pre-stored values from database. No manual entry option.
+
+**Fix Applied:** Added `promptManualHandicap()` function with pencil button (✏️)
+
+**Location:** `public/index.html` ~line 50181
+```javascript
+// Prompt user to manually enter a handicap (supports plus handicaps like +2.5)
+promptManualHandicap(playerIndex) {
+    const player = this.players[playerIndex];
+    if (!player) return;
+
+    const currentDisplay = window.formatHandicapDisplay(player.handicap);
+    const input = prompt(
+        `Enter handicap for ${player.name}:\n\n` +
+        `• Regular handicap: e.g., 15.2\n` +
+        `• Plus handicap: e.g., +2.5\n\n` +
+        `Current: ${currentDisplay}`,
+        currentDisplay
+    );
+
+    if (input === null) return;
+    const trimmed = input.trim();
+    if (!trimmed) return;
+
+    // Parse the handicap - handle plus format
+    let handicapValue;
+    if (trimmed.startsWith('+')) {
+        handicapValue = -Math.abs(parseFloat(trimmed.substring(1)));
+    } else {
+        handicapValue = parseFloat(trimmed);
+    }
+
+    if (isNaN(handicapValue)) {
+        NotificationManager.show('Invalid handicap value', 'error');
+        return;
+    }
+
+    player.handicap = handicapValue;
+    this.renderPlayersList();
+    NotificationManager.show(`${player.name} handicap set to ${window.formatHandicapDisplay(handicapValue)}`, 'success');
+}
+```
+
+**UI Change:** Added ✏️ edit button next to handicap dropdown in player list.
+
+---
+
+### Issue 11: Plus Handicap Shows as "1.6" Instead of "+1.6" (v70)
+**Symptom:** In society directory, a player with +1.6 handicap shows as "1.6" (missing plus sign), but edit modal shows correct "+1.6".
+
+**Root Cause:** Two files displayed raw handicap value without using `formatHandicapDisplay()`:
+1. `society-dashboard-enhanced.js` line 507: `const handicap = profile.profile_data?.golfInfo?.handicap`
+2. `society-organizer-manager.js` line 796: `HCP: ${Math.round(p.handicap)}` (Math.round loses sign)
+
+**Fixes Applied:**
+
+**society-dashboard-enhanced.js (~line 507):**
+```javascript
+// BEFORE
+const handicap = profile.profile_data?.golfInfo?.handicap || profile.profile_data?.handicap || '-';
+
+// AFTER
+const rawHandicap = profile.profile_data?.golfInfo?.handicap ?? profile.profile_data?.handicap;
+const handicap = rawHandicap !== null && rawHandicap !== undefined
+    ? (window.formatHandicapDisplay ? window.formatHandicapDisplay(rawHandicap) : rawHandicap)
+    : '-';
+```
+
+**society-organizer-manager.js (~line 796):**
+```javascript
+// BEFORE
+<span class="text-gray-500">HCP: ${Math.round(p.handicap)}</span>
+
+// AFTER
+<span class="text-gray-500">HCP: ${window.formatHandicapDisplay ? window.formatHandicapDisplay(p.handicap) : p.handicap}</span>
+```
+
+---
+
+### Issue 12: Cannot Save User Edits - Duplicate Key Error (v71)
+**Symptom:** Saving user edits in admin panel fails with:
+```
+duplicate key value violates unique constraint "idx_user_profiles_username_unique"
+Key (username)=() already exists.
+```
+
+**Root Cause:** When username is empty, code set `username: ""` (empty string). The unique constraint allows only one empty string, but many users have no username.
+
+**Fix Applied:** Use `null` instead of empty string for username and society_name.
+
+**Location:** `public/index.html` ~line 46565
+```javascript
+// BEFORE
+const updatePayload = {
+    name: fullName,
+    username: username,
+    society_name: society,
+    role: role,
+    profile_data: this.users[userIndex].profile_data
+};
+
+// AFTER
+const updatePayload = {
+    name: fullName,
+    username: username || null,  // Use null instead of empty string to avoid unique constraint
+    society_name: society || null,
+    role: role,
+    profile_data: this.users[userIndex].profile_data
+};
+```
+
+---
+
+### Issue 13: Bubba Gump Missing Society Data (Data Fix)
+**Symptom:** Bubba Gump shows no society or messages in their profile.
+
+**Root Cause:** User was member of TRGG in `society_members` table (joined 2026-01-07), but `user_profiles` record was out of sync:
+- `user_profiles.society_id = null`
+- `user_profiles.society_name = ""`
+- `profile_data.organizationInfo.societyId = null`
+
+**Fix Applied:** Direct database update to sync profile with membership:
+```javascript
+// Updated user_profiles
+await supabase
+    .from('user_profiles')
+    .update({
+        society_id: '7c0e4b72-d925-44bc-afda-38259a7ba346',  // TRGG
+        society_name: 'Travellers Rest Golf Group',
+        profile_data: {
+            ...current.profile_data,
+            organizationInfo: {
+                societyId: '7c0e4b72-d925-44bc-afda-38259a7ba346',
+                societyName: 'Travellers Rest Golf Group'
+            }
+        }
+    })
+    .eq('line_user_id', 'U9e64d5456b0582e81743c87fa48c21e2');
+
+// Set as primary society
+await supabase
+    .from('society_members')
+    .update({ is_primary_society: true })
+    .eq('golfer_id', 'U9e64d5456b0582e81743c87fa48c21e2')
+    .eq('society_id', '7c0e4b72-d925-44bc-afda-38259a7ba346');
+```
+
+**Messages Status:** No bug - Bubba has never sent/received messages. Only 20 direct messages exist in system, between 5 other users.
+
+---
+
+## SERVICE WORKER CACHE VERSIONS (Complete)
+
+| Version | Fix | Date |
+|---------|-----|------|
+| v60 | Initial fixes for login flow | Jan 9 |
+| v61 | Added waitForReady in renderScheduleList | Jan 9 |
+| v62 | Added waitForReady in MessagesSystem.init | Jan 9 |
+| v63 | Fixed PWA icons for installation | Jan 9 |
+| v64 | Fixed 2-man team match play calculation | Jan 9 |
+| v65 | Fixed round saving - waitForReady + trigger fix | Jan 9 |
+| v66 | Fixed tee sheet auto-date-update for midnight rollover | Jan 9 |
+| v67 | Fixed plus handicap handling in all match play calculations | Jan 10 |
+| v68 | Fixed private vs society event handicap selection | Jan 10 |
+| v69 | Added manual handicap edit with plus support | Jan 10 |
+| v70 | Fixed plus handicap display in society directory | Jan 10 |
+| v71 | Fixed empty username unique constraint error | Jan 10 |
+
+---
+
+## SUMMARY: ALL ISSUES FIXED (Jan 9-10, 2026)
+
+| # | Issue | Fix Summary | Ver |
+|---|-------|-------------|-----|
+| 1 | Multiple clicks to login | Debounce flag, removed touch handlers | v60 |
+| 2 | Data not loading after login | waitForReady in ScheduleSystem, MessagesSystem | v61-62 |
+| 3 | PWA won't install | Created 192x192 & 512x512 icons | v63 |
+| 4 | 2-man team match play wrong | Fixed teamConfig.teamA objects vs IDs | v64 |
+| 5 | Rounds not saving to DB | waitForReady + fixed trigger UUID/text | v65 |
+| 6 | Tee sheet stale date overnight | Always set today + check every minute | v66 |
+| 7 | Spectate wrong score | Manual SQL fix for hole scores | - |
+| 8 | Plus handicap not handled | Fixed all inline calculations | v67 |
+| 9 | Private events using society HCP | Check isPrivate flag + societyName | v68 |
+| 10 | Cannot enter plus handicap | Added promptManualHandicap() + ✏️ button | v69 |
+| 11 | Plus HCP shows without "+" | formatHandicapDisplay in directory | v70 |
+| 12 | Duplicate username key error | Use null instead of empty string | v71 |
+| 13 | Bubba Gump missing society | Synced user_profiles with society_members | - |
+
+---
+
+## DATA FIXES APPLIED
+
+| User | Issue | Fix |
+|------|-------|-----|
+| Tristan Gilbert | Wrong hole scores (H3: 7→5, H7: 6→8) | SQL UPDATE |
+| Bubba Gump | Profile out of sync with society_members | Direct DB update |
+
+---
+
+## EMERGENCY ROLLBACK
+
+If issues occur, bump SW_VERSION in `public/sw.js` and redeploy:
+```javascript
+const SW_VERSION = 'mcipro-cache-v72'; // Increment this
+```
+
+Then deploy:
+```bash
+git add . && git commit -m "Cache bust" && git push && vercel --prod --yes
+```

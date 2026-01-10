@@ -335,6 +335,42 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 | v65 | Fixed round saving - waitForReady + trigger fix |
 | v66 | Fixed tee sheet auto-date-update for midnight rollover |
 | v67 | Fixed plus handicap handling in all match play calculations |
+| v68 | Fixed private vs society event handicap selection |
+
+---
+
+### Issue 9: Private Events Using Society Handicaps (Jan 10, 2026)
+**Symptom:** Scheduled private rounds with friends were labeled as "Society Events" and potentially using wrong handicaps.
+
+**Root Cause:** When any event with an ID was selected, code assumed it was a society event:
+```javascript
+// BUG: Any event ID = society event
+if (eventSelectValue !== '' && eventSelectValue !== 'private') {
+    this.roundType = 'society';  // WRONG for private scheduled events!
+}
+```
+
+**Correct Logic:**
+- **Practice Round**: No event → Universal handicap
+- **Private Round**: "Private Round" option OR event.isPrivate=true OR event has no societyName → Universal handicap
+- **Society Event**: event.isPrivate=false AND event has societyName → Society handicap
+
+**Fixes Applied:**
+1. Store loaded events in `this.loadedEvents` for lookup
+2. Check `isPrivate` flag and `societyName` when determining round type
+3. Pass `null` to `getHandicapForSociety()` for private/practice rounds (forces universal)
+4. Updated dropdown labels to show: 🔒 Private, 🏌️ Society, 👥 Public
+
+**Code Pattern:**
+```javascript
+// Look up the event to check if it's private or society
+const selectedEvent = this.loadedEvents?.find(e => e.id === eventSelectValue);
+const isTrueSocietyEvent = selectedEvent && !selectedEvent.isPrivate && selectedEvent.societyName;
+
+// Only use society handicaps for TRUE society events
+const societyForHandicap = (this.roundType === 'society') ? selectedSociety : null;
+const newHcp = this.getHandicapForSociety(player.societyHandicaps, societyForHandicap);
+```
 
 ---
 
@@ -395,6 +431,7 @@ WHERE scorecard_id = 'ab99b630-d589-4f5f-a37f-8464c6a40b0b' AND hole_number = 7;
 | 6 | Tee sheet stale date overnight | Always set today + check every minute | v66 |
 | 7 | Spectate wrong score | Manual SQL fix for hole scores | - |
 | 8 | Plus handicap not handled in match play | Fixed all inline calculations + string "+X" format | v67 |
+| 9 | Private events using society handicaps | Check isPrivate flag + societyName | v68 |
 
 ---
 
@@ -470,7 +507,7 @@ ALTER TABLE rounds ENABLE TRIGGER ...;
 
 If issues occur, bump SW_VERSION in `public/sw.js` and redeploy:
 ```javascript
-const SW_VERSION = 'mcipro-cache-v68'; // Increment this
+const SW_VERSION = 'mcipro-cache-v69'; // Increment this
 ```
 
 Then deploy:

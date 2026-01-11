@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fix Handicaps</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Fix Handicaps</h1>
+    <button id="runBtn">Click to Fix Handicaps</button>
+    <pre id="output"></pre>
+    <script>
+        const db = window.supabase.createClient(
+            'https://pyeeplwsnupmhgbguwqs.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NDM2NjksImV4cCI6MjA3NTQxOTY2OX0.KVQ6WvDKz9s77lxn3AhSA_YTMCN6rsht9kDkMIDhngk'
+        );
+
+        function log(msg) {
+            document.getElementById('output').textContent += msg + '\n';
+            console.log(msg);
+        }
+
+        document.getElementById('runBtn').addEventListener('click', async function() {
+            this.disabled = true;
+
+            const peteId = 'U2b6d976f19bca4b2f4374ae0e10ed873';
+
+            log('Finding Tristan...');
+            const {data: profiles} = await db.from('user_profiles')
+                .select('line_user_id, name')
+                .ilike('name', '%tristan%');
+
+            const tristanId = profiles?.[0]?.line_user_id;
+            if (!tristanId) {
+                log('ERROR: Could not find Tristan');
+                return;
+            }
+
+            log('Pete ID: ' + peteId);
+            log('Tristan ID: ' + tristanId);
+            log('');
+
+            // ========== FIX PETE ==========
+            log('=== PETE: Setting to 3.2 ===');
+
+            log('Updating society_handicaps (universal)...');
+            const {error: e1} = await db.from('society_handicaps')
+                .update({
+                    handicap_index: 3.2,
+                    calculation_method: 'MANUAL',
+                    last_calculated_at: new Date().toISOString()
+                })
+                .eq('golfer_id', peteId)
+                .is('society_id', null);
+            if (e1) log('  Error: ' + e1.message);
+            else log('  Done');
+
+            log('Updating profile_data...');
+            const {data: peteProfile} = await db.from('user_profiles')
+                .select('profile_data')
+                .eq('line_user_id', peteId)
+                .single();
+
+            if (peteProfile) {
+                const pd = peteProfile.profile_data || {};
+                pd.handicap = '3.2';
+                if (!pd.golfInfo) pd.golfInfo = {};
+                pd.golfInfo.handicap = '3.2';
+                pd.golfInfo.lastHandicapUpdate = new Date().toISOString();
+
+                const {error: e2} = await db.from('user_profiles')
+                    .update({
+                        handicap_index: 3.2,
+                        profile_data: pd
+                    })
+                    .eq('line_user_id', peteId);
+                if (e2) log('  Error: ' + e2.message);
+                else log('  Done');
+            }
+
+            // ========== FIX TRISTAN ==========
+            log('');
+            log('=== TRISTAN: Setting to 13.2 ===');
+
+            log('Updating society_handicaps (universal)...');
+            const {error: e3} = await db.from('society_handicaps')
+                .update({
+                    handicap_index: 13.2,
+                    calculation_method: 'MANUAL',
+                    last_calculated_at: new Date().toISOString()
+                })
+                .eq('golfer_id', tristanId)
+                .is('society_id', null);
+            if (e3) log('  Error: ' + e3.message);
+            else log('  Done');
+
+            log('Updating profile_data...');
+            const {data: tristanProfile} = await db.from('user_profiles')
+                .select('profile_data')
+                .eq('line_user_id', tristanId)
+                .single();
+
+            if (tristanProfile) {
+                const pd = tristanProfile.profile_data || {};
+                pd.handicap = '13.2';
+                if (!pd.golfInfo) pd.golfInfo = {};
+                pd.golfInfo.handicap = '13.2';
+                pd.golfInfo.lastHandicapUpdate = new Date().toISOString();
+
+                const {error: e4} = await db.from('user_profiles')
+                    .update({
+                        handicap_index: 13.2,
+                        profile_data: pd
+                    })
+                    .eq('line_user_id', tristanId);
+                if (e4) log('  Error: ' + e4.message);
+                else log('  Done');
+            }
+
+            log('');
+            log('=== VERIFICATION ===');
+
+            const {data: pV} = await db.from('society_handicaps')
+                .select('society_id, handicap_index')
+                .eq('golfer_id', peteId);
+            log('Pete society_handicaps:');
+            for (const h of pV || []) {
+                log('  ' + (h.society_id ? h.society_id.substring(0,8) : 'Universal') + ': ' + h.handicap_index);
+            }
+
+            const {data: tV} = await db.from('society_handicaps')
+                .select('society_id, handicap_index')
+                .eq('golfer_id', tristanId);
+            log('Tristan society_handicaps:');
+            for (const h of tV || []) {
+                log('  ' + (h.society_id ? h.society_id.substring(0,8) : 'Universal') + ': ' + h.handicap_index);
+            }
+
+            log('');
+            log('DONE! Refresh mycaddipro.com to see changes.');
+        });
+    </script>
+</body>
+</html>

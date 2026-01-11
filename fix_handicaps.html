@@ -14,13 +14,16 @@
             'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NDM2NjksImV4cCI6MjA3NTQxOTY2OX0.KVQ6WvDKz9s77lxn3AhSA_YTMCN6rsht9kDkMIDhngk'
         );
 
+        // TRGG Society ID
+        const TRGG_SOCIETY_ID = '7c0e4b72-d925-44bc-afda-38259a7ba346';
+
         function log(msg) {
             document.getElementById('output').textContent += msg + '\n';
             console.log(msg);
         }
 
-        async function fixPlayer(name, handicapValue) {
-            log(`\n=== ${name}: Setting to ${handicapValue} ===`);
+        async function fixPlayer(name, handicapDisplay) {
+            log(`\n=== ${name}: Setting to ${handicapDisplay} ===`);
 
             // Find player
             const {data: profiles} = await db.from('user_profiles')
@@ -29,23 +32,23 @@
 
             if (!profiles || profiles.length === 0) {
                 log(`  ERROR: Could not find ${name}`);
-                return;
+                return null;
             }
 
             const player = profiles[0];
             log(`  Found: ${player.name} (${player.line_user_id})`);
 
-            // For plus handicaps, store as string "+X.X" in profile_data
-            // For society_handicaps numeric field, use positive number (the system reads the + from profile_data)
-            const isPlus = String(handicapValue).startsWith('+');
-            const numericValue = isPlus ? parseFloat(String(handicapValue).substring(1)) : parseFloat(handicapValue);
-            const displayValue = String(handicapValue); // Keep the + sign for display
+            // For plus handicaps: display "+1.6", store NEGATIVE -1.6 in numeric fields
+            const isPlus = String(handicapDisplay).startsWith('+');
+            const numericValue = isPlus ? -parseFloat(String(handicapDisplay).substring(1)) : parseFloat(handicapDisplay);
+
+            log(`  Display: ${handicapDisplay}, Numeric: ${numericValue}`);
 
             // Update user_profiles.handicap_index and profile_data
             const pd = player.profile_data || {};
-            pd.handicap = displayValue;
+            pd.handicap = handicapDisplay; // Store display format in profile_data
             if (!pd.golfInfo) pd.golfInfo = {};
-            pd.golfInfo.handicap = displayValue;
+            pd.golfInfo.handicap = handicapDisplay;
             pd.golfInfo.lastHandicapUpdate = new Date().toISOString();
 
             const {error: e1} = await db.from('user_profiles')
@@ -56,9 +59,9 @@
                 .eq('line_user_id', player.line_user_id);
 
             if (e1) log(`  ERROR updating profile: ${e1.message}`);
-            else log(`  Updated user_profiles: handicap_index=${numericValue}, profile_data.handicap="${displayValue}"`);
+            else log(`  Updated user_profiles: handicap_index=${numericValue}, profile_data.handicap="${handicapDisplay}"`);
 
-            // Update society_handicaps (universal) - store numeric value
+            // Update society_handicaps (universal) - store NEGATIVE for plus handicaps
             const {error: e2} = await db.from('society_handicaps')
                 .update({
                     handicap_index: numericValue,
@@ -71,37 +74,69 @@
             if (e2) log(`  ERROR updating universal: ${e2.message}`);
             else log(`  Updated society_handicaps (universal) = ${numericValue}`);
 
+            // Also update TRGG society handicap if exists
+            const {error: e3} = await db.from('society_handicaps')
+                .update({
+                    handicap_index: numericValue,
+                    calculation_method: 'MANUAL',
+                    last_calculated_at: new Date().toISOString()
+                })
+                .eq('golfer_id', player.line_user_id)
+                .eq('society_id', TRGG_SOCIETY_ID);
+
+            if (e3) log(`  ERROR updating TRGG: ${e3.message}`);
+            else log(`  Updated society_handicaps (TRGG) = ${numericValue}`);
+
             return player.line_user_id;
         }
 
         document.getElementById('runBtn').addEventListener('click', async function() {
             this.disabled = true;
             log('Starting handicap fixes...');
+            log('NOTE: Plus handicaps stored as NEGATIVE numbers (-1.6) for calculations');
+            log('      but displayed as "+1.6" in the UI');
 
             // Fix Alan Thomas - handicap 9
             await fixPlayer('Alan Thomas', '9');
 
-            // Fix Ryan Thomas - plus handicap +1.6
+            // Fix Ryan Thomas - plus handicap +1.6 (stored as -1.6)
             await fixPlayer('Thomas, Ryan', '+1.6');
 
-            // Fix Pluto - plus handicap +1.6
+            // Fix Pluto - plus handicap +1.6 (stored as -1.6)
             await fixPlayer('Pluto', '+1.6');
 
             log('\n=== VERIFICATION ===');
 
-            // Verify all three
+            // Verify all three - check all handicap locations
             for (const name of ['Alan Thomas', 'Thomas, Ryan', 'Pluto']) {
+                const searchName = name.split(',')[0];
                 const {data} = await db.from('user_profiles')
-                    .select('name, handicap_index, profile_data')
-                    .ilike('name', `%${name.split(',')[0]}%`);
+                    .select('line_user_id, name, handicap_index, profile_data')
+                    .ilike('name', `%${searchName}%`);
+
                 if (data && data[0]) {
-                    log(`${data[0].name}:`);
-                    log(`  handicap_index = ${data[0].handicap_index}`);
-                    log(`  profile_data.handicap = ${data[0].profile_data?.handicap}`);
+                    const p = data[0];
+                    log(`\n${p.name}:`);
+                    log(`  handicap_index = ${p.handicap_index}`);
+                    log(`  profile_data.handicap = ${p.profile_data?.handicap}`);
+
+                    // Check society_handicaps
+                    const {data: hcps} = await db.from('society_handicaps')
+                        .select('society_id, handicap_index')
+                        .eq('golfer_id', p.line_user_id);
+
+                    if (hcps) {
+                        for (const h of hcps) {
+                            const label = h.society_id === null ? 'Universal' :
+                                         (h.society_id === TRGG_SOCIETY_ID ? 'TRGG' : h.society_id.substring(0,8));
+                            log(`  society_handicaps [${label}] = ${h.handicap_index}`);
+                        }
+                    }
                 }
             }
 
-            log('\nDONE! Refresh mycaddipro.com to see changes.');
+            log('\n\nDONE! Refresh mycaddipro.com to see changes.');
+            log('Plus handicaps should display as "+1.6" in the UI.');
         });
     </script>
 </body>

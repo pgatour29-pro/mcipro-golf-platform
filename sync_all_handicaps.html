@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sync All Handicaps</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: monospace; padding: 20px; max-width: 1000px; margin: 0 auto; }
+        button { padding: 15px 30px; font-size: 16px; cursor: pointer; margin: 10px 5px; }
+        #output { background: #f5f5f5; padding: 15px; border-radius: 5px; white-space: pre-wrap; max-height: 600px; overflow-y: auto; }
+        .success { color: green; }
+        .error { color: red; }
+        .warning { color: orange; }
+        h1 { color: #333; }
+        .stats { background: #e0e0e0; padding: 10px; margin: 10px 0; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Sync All Player Handicaps</h1>
+    <p>This script will sync handicap_index column for ALL players from their society_handicaps or profile_data.</p>
+    <p><strong>Priority:</strong> Universal handicap (society_id=null) → profile_data.handicap → profile_data.golfInfo.handicap</p>
+
+    <button id="analyzeBtn">1. Analyze (Preview)</button>
+    <button id="syncBtn" disabled>2. Sync All Handicaps</button>
+
+    <div class="stats" id="stats"></div>
+    <pre id="output"></pre>
+
+    <script>
+        const db = window.supabase.createClient(
+            'https://pyeeplwsnupmhgbguwqs.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NDM2NjksImV4cCI6MjA3NTQxOTY2OX0.KVQ6WvDKz9s77lxn3AhSA_YTMCN6rsht9kDkMIDhngk'
+        );
+
+        let playersToSync = [];
+
+        function log(msg, className = '') {
+            const output = document.getElementById('output');
+            if (className) {
+                output.innerHTML += `<span class="${className}">${msg}</span>\n`;
+            } else {
+                output.textContent += msg + '\n';
+            }
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function updateStats(total, needsSync, synced, errors) {
+            document.getElementById('stats').innerHTML = `
+                <strong>Stats:</strong>
+                Total Players: ${total} |
+                Need Sync: ${needsSync} |
+                Synced: ${synced} |
+                Errors: ${errors}
+            `;
+        }
+
+        // Parse handicap string to numeric (handles +1.6 format)
+        function parseHandicap(val) {
+            if (val === null || val === undefined || val === '') return null;
+            if (typeof val === 'number') return val;
+            const str = String(val).trim();
+            if (str.startsWith('+')) {
+                return -parseFloat(str.substring(1));
+            }
+            return parseFloat(str) || null;
+        }
+
+        // Format for display
+        function formatHandicap(val) {
+            if (val === null || val === undefined) return 'N/A';
+            const num = parseFloat(val);
+            if (isNaN(num)) return String(val);
+            if (num < 0) return '+' + Math.abs(num).toFixed(1);
+            return num.toFixed(1);
+        }
+
+        document.getElementById('analyzeBtn').addEventListener('click', async function() {
+            this.disabled = true;
+            document.getElementById('output').textContent = '';
+            playersToSync = [];
+
+            log('=== ANALYZING ALL PLAYERS ===\n');
+
+            try {
+                // Get all user profiles
+                const { data: profiles, error: e1 } = await db.from('user_profiles')
+                    .select('line_user_id, name, handicap_index, profile_data')
+                    .order('name');
+
+                if (e1) throw e1;
+
+                // Get all universal handicaps
+                const { data: handicaps, error: e2 } = await db.from('society_handicaps')
+                    .select('golfer_id, handicap_index')
+                    .is('society_id', null);
+
+                if (e2) throw e2;
+
+                const universalMap = {};
+                (handicaps || []).forEach(h => {
+                    universalMap[h.golfer_id] = h.handicap_index;
+                });
+
+                log(`Found ${profiles?.length || 0} user profiles`);
+                log(`Found ${handicaps?.length || 0} universal handicaps\n`);
+
+                let needsSync = 0;
+                let alreadyOk = 0;
+                let noHandicap = 0;
+
+                for (const p of (profiles || [])) {
+                    if (!p.line_user_id) continue;
+
+                    const currentIndex = p.handicap_index;
+                    const universalHcp = universalMap[p.line_user_id];
+                    const profileHcp = parseHandicap(p.profile_data?.handicap);
+                    const golfInfoHcp = parseHandicap(p.profile_data?.golfInfo?.handicap);
+
+                    // Determine correct handicap (priority: universal > profile_data.handicap > golfInfo.handicap)
+                    let correctHcp = null;
+                    let source = '';
+
+                    if (universalHcp !== undefined && universalHcp !== null) {
+                        correctHcp = universalHcp;
+                        source = 'universal';
+                    } else if (profileHcp !== null) {
+                        correctHcp = profileHcp;
+                        source = 'profile_data.handicap';
+                    } else if (golfInfoHcp !== null) {
+                        correctHcp = golfInfoHcp;
+                        source = 'golfInfo.handicap';
+                    }
+
+                    // Check if update needed
+                    if (correctHcp === null) {
+                        noHandicap++;
+                    } else if (currentIndex === correctHcp) {
+                        alreadyOk++;
+                    } else {
+                        needsSync++;
+                        playersToSync.push({
+                            id: p.line_user_id,
+                            name: p.name,
+                            current: currentIndex,
+                            correct: correctHcp,
+                            source: source
+                        });
+                        log(`${p.name}: ${formatHandicap(currentIndex)} → ${formatHandicap(correctHcp)} (from ${source})`, 'warning');
+                    }
+                }
+
+                log('\n=== SUMMARY ===');
+                log(`Already correct: ${alreadyOk}`, 'success');
+                log(`Need sync: ${needsSync}`, needsSync > 0 ? 'warning' : 'success');
+                log(`No handicap data: ${noHandicap}`);
+
+                updateStats(profiles?.length || 0, needsSync, 0, 0);
+
+                if (needsSync > 0) {
+                    document.getElementById('syncBtn').disabled = false;
+                    log(`\nClick "Sync All Handicaps" to update ${needsSync} players.`, 'warning');
+                } else {
+                    log('\nAll handicaps are already in sync!', 'success');
+                }
+
+            } catch (err) {
+                log('ERROR: ' + err.message, 'error');
+            }
+
+            this.disabled = false;
+        });
+
+        document.getElementById('syncBtn').addEventListener('click', async function() {
+            if (playersToSync.length === 0) {
+                log('No players to sync. Run Analyze first.');
+                return;
+            }
+
+            this.disabled = true;
+            log('\n=== SYNCING HANDICAPS ===\n');
+
+            let synced = 0;
+            let errors = 0;
+
+            for (const player of playersToSync) {
+                try {
+                    // Update user_profiles.handicap_index
+                    const { error } = await db.from('user_profiles')
+                        .update({ handicap_index: player.correct })
+                        .eq('line_user_id', player.id);
+
+                    if (error) {
+                        log(`ERROR ${player.name}: ${error.message}`, 'error');
+                        errors++;
+                    } else {
+                        log(`✓ ${player.name}: ${formatHandicap(player.current)} → ${formatHandicap(player.correct)}`, 'success');
+                        synced++;
+                    }
+                } catch (err) {
+                    log(`ERROR ${player.name}: ${err.message}`, 'error');
+                    errors++;
+                }
+
+                updateStats(playersToSync.length, playersToSync.length - synced - errors, synced, errors);
+            }
+
+            log(`\n=== SYNC COMPLETE ===`);
+            log(`Synced: ${synced}`, 'success');
+            if (errors > 0) log(`Errors: ${errors}`, 'error');
+
+            playersToSync = [];
+            this.disabled = true;
+        });
+    </script>
+</body>
+</html>

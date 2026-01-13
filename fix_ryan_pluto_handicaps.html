@@ -54,149 +54,105 @@
             this.disabled = true;
             clearLog();
 
-            log('=== SEARCHING FOR RYAN THOMAS ===\n', 'info');
+            log('Loading all Travellers Rest members...', 'info');
 
-            // Search society_members
-            log('Checking society_members table...');
-            const { data: smRyan, error: smRyanErr } = await db
+            // Load ALL society members and filter in JavaScript
+            const { data: allMembers, error: membersErr } = await db
                 .from('society_members')
                 .select('*')
-                .eq('society_id', TRGG_SOCIETY_ID)
-                .ilike('member_data->>name', '%ryan%');
+                .eq('society_id', TRGG_SOCIETY_ID);
 
-            if (smRyanErr) {
-                log('  Error: ' + smRyanErr.message, 'error');
-            } else if (smRyan && smRyan.length > 0) {
-                log('  Found ' + smRyan.length + ' matches in society_members:', 'success');
-                for (const m of smRyan) {
-                    log('    ID: ' + m.id);
-                    log('    golfer_id: ' + m.golfer_id);
-                    log('    Name: ' + (m.name || m.member_data?.name || 'N/A'));
-                    log('    Society ID: ' + m.society_id);
-                    log('    Handicap: ' + m.handicap);
-                    if ((m.name || '').toLowerCase().includes('ryan') ||
-                        (m.member_data?.name || '').toLowerCase().includes('ryan')) {
-                        ryanId = m.golfer_id || m.id;
-                        log('    >>> Using this as Ryan Thomas ID', 'success');
-                    }
+            if (membersErr) {
+                log('Error loading members: ' + membersErr.message, 'error');
+                this.disabled = false;
+                return;
+            }
+
+            log('Found ' + (allMembers?.length || 0) + ' total members\n', 'success');
+
+            // Helper to get name from member
+            function getMemberName(m) {
+                if (m.member_data) {
+                    return m.member_data.name || m.member_data.displayName || m.member_data.full_name || '';
+                }
+                return '';
+            }
+
+            // Search for Ryan
+            log('=== SEARCHING FOR RYAN THOMAS ===\n', 'info');
+            const ryanMatches = allMembers.filter(m =>
+                getMemberName(m).toLowerCase().includes('ryan')
+            );
+
+            if (ryanMatches.length > 0) {
+                log('Found ' + ryanMatches.length + ' matches:', 'success');
+                for (const m of ryanMatches) {
+                    log('  Name: ' + getMemberName(m));
+                    log('  ID: ' + m.id);
+                    log('  golfer_id: ' + m.golfer_id);
+                    log('  Handicap: ' + (m.handicap || m.member_data?.handicap || 'N/A'));
+                    ryanId = m.golfer_id || m.id;
+                    log('  >>> Using golfer_id: ' + ryanId, 'success');
                     log('');
                 }
             } else {
-                log('  No matches in society_members');
+                log('No matches found for "ryan"', 'error');
             }
 
-            // Search user_profiles
-            log('Checking user_profiles table...');
-            const { data: upRyan, error: upRyanErr } = await db
-                .from('user_profiles')
-                .select('line_user_id, profile_data, handicap_index')
-                .or('profile_data->>name.ilike.%ryan%,profile_data->>displayName.ilike.%ryan%');
-
-            if (upRyanErr) {
-                log('  Error: ' + upRyanErr.message, 'error');
-            } else if (upRyan && upRyan.length > 0) {
-                log('  Found ' + upRyan.length + ' matches in user_profiles:', 'success');
-                for (const p of upRyan) {
-                    log('    LINE ID: ' + p.line_user_id);
-                    log('    Name: ' + (p.profile_data?.name || p.profile_data?.displayName || 'N/A'));
-                    log('    handicap_index: ' + p.handicap_index);
-                    ryanId = p.line_user_id;
-                    log('    >>> Using this as Ryan Thomas ID', 'success');
-                    log('');
-                }
-            } else {
-                log('  No matches in user_profiles');
-            }
-
-            // Search society_handicaps
-            log('Checking society_handicaps for Ryan...');
+            // Check Ryan's handicaps
             if (ryanId) {
-                const { data: shRyan } = await db
+                const { data: ryanHcps } = await db
                     .from('society_handicaps')
                     .select('*')
                     .eq('golfer_id', ryanId);
 
-                if (shRyan && shRyan.length > 0) {
-                    log('  Current handicaps for Ryan:', 'info');
-                    for (const h of shRyan) {
-                        const label = h.society_id === null ? 'UNIVERSAL' : 'Society ' + h.society_id;
-                        log('    ' + label + ': ' + h.handicap_index);
+                if (ryanHcps && ryanHcps.length > 0) {
+                    log('Current handicaps for Ryan:', 'info');
+                    for (const h of ryanHcps) {
+                        const label = h.society_id === null ? 'UNIVERSAL' : 'Society';
+                        log('  ' + label + ': ' + h.handicap_index);
                     }
                 } else {
-                    log('  No handicaps found in society_handicaps');
+                    log('No handicaps in society_handicaps yet');
                 }
             }
 
+            // Search for Pluto
             log('\n=== SEARCHING FOR PLUTO ===\n', 'info');
+            const plutoMatches = allMembers.filter(m =>
+                getMemberName(m).toLowerCase().includes('pluto')
+            );
 
-            // Search society_members for Pluto
-            log('Checking society_members table...');
-            const { data: smPluto, error: smPlutoErr } = await db
-                .from('society_members')
-                .select('*')
-                .eq('society_id', TRGG_SOCIETY_ID)
-                .ilike('member_data->>name', '%pluto%');
-
-            if (smPlutoErr) {
-                log('  Error: ' + smPlutoErr.message, 'error');
-            } else if (smPluto && smPluto.length > 0) {
-                log('  Found ' + smPluto.length + ' matches in society_members:', 'success');
-                for (const m of smPluto) {
-                    log('    ID: ' + m.id);
-                    log('    golfer_id: ' + m.golfer_id);
-                    log('    Name: ' + (m.name || m.member_data?.name || 'N/A'));
-                    log('    Society ID: ' + m.society_id);
-                    log('    Handicap: ' + m.handicap);
-                    if ((m.name || '').toLowerCase().includes('pluto') ||
-                        (m.member_data?.name || '').toLowerCase().includes('pluto')) {
-                        plutoId = m.golfer_id || m.id;
-                        log('    >>> Using this as Pluto ID', 'success');
-                    }
+            if (plutoMatches.length > 0) {
+                log('Found ' + plutoMatches.length + ' matches:', 'success');
+                for (const m of plutoMatches) {
+                    log('  Name: ' + getMemberName(m));
+                    log('  ID: ' + m.id);
+                    log('  golfer_id: ' + m.golfer_id);
+                    log('  Handicap: ' + (m.handicap || m.member_data?.handicap || 'N/A'));
+                    plutoId = m.golfer_id || m.id;
+                    log('  >>> Using golfer_id: ' + plutoId, 'success');
                     log('');
                 }
             } else {
-                log('  No matches in society_members');
+                log('No matches found for "pluto"', 'error');
             }
 
-            // Search user_profiles for Pluto
-            log('Checking user_profiles table...');
-            const { data: upPluto, error: upPlutoErr } = await db
-                .from('user_profiles')
-                .select('line_user_id, profile_data, handicap_index')
-                .or('profile_data->>name.ilike.%pluto%,profile_data->>displayName.ilike.%pluto%');
-
-            if (upPlutoErr) {
-                log('  Error: ' + upPlutoErr.message, 'error');
-            } else if (upPluto && upPluto.length > 0) {
-                log('  Found ' + upPluto.length + ' matches in user_profiles:', 'success');
-                for (const p of upPluto) {
-                    log('    LINE ID: ' + p.line_user_id);
-                    log('    Name: ' + (p.profile_data?.name || p.profile_data?.displayName || 'N/A'));
-                    log('    handicap_index: ' + p.handicap_index);
-                    plutoId = p.line_user_id;
-                    log('    >>> Using this as Pluto ID', 'success');
-                    log('');
-                }
-            } else {
-                log('  No matches in user_profiles');
-            }
-
-            // Search society_handicaps for Pluto
-            log('Checking society_handicaps for Pluto...');
+            // Check Pluto's handicaps
             if (plutoId) {
-                const { data: shPluto } = await db
+                const { data: plutoHcps } = await db
                     .from('society_handicaps')
                     .select('*')
                     .eq('golfer_id', plutoId);
 
-                if (shPluto && shPluto.length > 0) {
-                    log('  Current handicaps for Pluto:', 'info');
-                    for (const h of shPluto) {
-                        const label = h.society_id === null ? 'UNIVERSAL' : 'Society ' + h.society_id;
-                        log('    ' + label + ': ' + h.handicap_index);
+                if (plutoHcps && plutoHcps.length > 0) {
+                    log('Current handicaps for Pluto:', 'info');
+                    for (const h of plutoHcps) {
+                        const label = h.society_id === null ? 'UNIVERSAL' : 'Society';
+                        log('  ' + label + ': ' + h.handicap_index);
                     }
                 } else {
-                    log('  No handicaps found in society_handicaps');
+                    log('No handicaps in society_handicaps yet');
                 }
             }
 
@@ -210,6 +166,10 @@
                 log('\nClick "Create Universal Handicap = 0" to fix.', 'success');
             } else {
                 log('\nNo IDs found. Cannot create handicaps.', 'error');
+                log('\nAll member names in system:');
+                for (const m of allMembers) {
+                    log('  - ' + getMemberName(m));
+                }
             }
 
             this.disabled = false;

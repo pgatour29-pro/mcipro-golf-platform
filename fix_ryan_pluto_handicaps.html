@@ -54,50 +54,109 @@
             this.disabled = true;
             clearLog();
 
-            log('Loading Travellers Rest members with profiles...', 'info');
+            log('Searching multiple tables for Ryan & Pluto...', 'info');
 
-            // Step 1: Get all society members
-            const { data: allMembers, error: membersErr } = await db
-                .from('society_members')
+            // Try golfers table
+            log('\n1. Checking golfers table...');
+            const { data: golfers, error: golfersErr } = await db
+                .from('golfers')
+                .select('*');
+
+            if (golfersErr) {
+                log('   golfers table: ' + golfersErr.message, 'error');
+            } else {
+                log('   golfers table: ' + (golfers?.length || 0) + ' records', 'success');
+                if (golfers && golfers.length > 0) {
+                    log('   Sample keys: ' + Object.keys(golfers[0]).join(', '));
+                    const ryanG = golfers.filter(g => JSON.stringify(g).toLowerCase().includes('ryan'));
+                    const plutoG = golfers.filter(g => JSON.stringify(g).toLowerCase().includes('pluto'));
+                    if (ryanG.length) log('   FOUND RYAN: ' + JSON.stringify(ryanG[0]), 'success');
+                    if (plutoG.length) log('   FOUND PLUTO: ' + JSON.stringify(plutoG[0]), 'success');
+                }
+            }
+
+            // Try players table
+            log('\n2. Checking players table...');
+            const { data: players, error: playersErr } = await db
+                .from('players')
+                .select('*');
+
+            if (playersErr) {
+                log('   players table: ' + playersErr.message, 'error');
+            } else {
+                log('   players table: ' + (players?.length || 0) + ' records', 'success');
+                if (players && players.length > 0) {
+                    log('   Sample keys: ' + Object.keys(players[0]).join(', '));
+                    const ryanP = players.filter(p => JSON.stringify(p).toLowerCase().includes('ryan'));
+                    const plutoP = players.filter(p => JSON.stringify(p).toLowerCase().includes('pluto'));
+                    if (ryanP.length) log('   FOUND RYAN: ' + JSON.stringify(ryanP[0]), 'success');
+                    if (plutoP.length) log('   FOUND PLUTO: ' + JSON.stringify(plutoP[0]), 'success');
+                }
+            }
+
+            // Try society_players table
+            log('\n3. Checking society_players table...');
+            const { data: socPlayers, error: socPlayersErr } = await db
+                .from('society_players')
                 .select('*')
                 .eq('society_id', TRGG_SOCIETY_ID);
 
-            if (membersErr) {
-                log('Error loading members: ' + membersErr.message, 'error');
-                this.disabled = false;
-                return;
+            if (socPlayersErr) {
+                log('   society_players table: ' + socPlayersErr.message, 'error');
+            } else {
+                log('   society_players table: ' + (socPlayers?.length || 0) + ' records', 'success');
+                if (socPlayers && socPlayers.length > 0) {
+                    log('   Sample keys: ' + Object.keys(socPlayers[0]).join(', '));
+                    const ryanSP = socPlayers.filter(p => JSON.stringify(p).toLowerCase().includes('ryan'));
+                    const plutoSP = socPlayers.filter(p => JSON.stringify(p).toLowerCase().includes('pluto'));
+                    if (ryanSP.length) log('   FOUND RYAN: ' + JSON.stringify(ryanSP[0]), 'success');
+                    if (plutoSP.length) log('   FOUND PLUTO: ' + JSON.stringify(plutoSP[0]), 'success');
+                }
             }
 
-            log('Found ' + (allMembers?.length || 0) + ' society members', 'success');
-
-            // Step 2: Get golfer_ids that look like LINE IDs (start with U)
-            const lineUserIds = allMembers
-                .map(m => m.golfer_id)
-                .filter(id => id && id.startsWith('U'));
-
-            log('Found ' + lineUserIds.length + ' LINE user IDs');
-
-            // Step 3: Load user_profiles for these users
-            const { data: profiles, error: profilesErr } = await db
+            // Try user_profiles directly searching all
+            log('\n4. Checking ALL user_profiles...');
+            const { data: allProfiles, error: allProfilesErr } = await db
                 .from('user_profiles')
-                .select('line_user_id, profile_data, handicap_index')
-                .in('line_user_id', lineUserIds);
+                .select('*');
 
-            if (profilesErr) {
-                log('Error loading profiles: ' + profilesErr.message, 'error');
+            if (allProfilesErr) {
+                log('   user_profiles: ' + allProfilesErr.message, 'error');
+            } else {
+                log('   user_profiles: ' + (allProfiles?.length || 0) + ' records', 'success');
+                const ryanUP = allProfiles?.filter(p => JSON.stringify(p).toLowerCase().includes('ryan')) || [];
+                const plutoUP = allProfiles?.filter(p => JSON.stringify(p).toLowerCase().includes('pluto')) || [];
+                if (ryanUP.length) {
+                    log('   FOUND RYAN in user_profiles!', 'success');
+                    log('   ' + JSON.stringify(ryanUP[0]).substring(0, 500));
+                    ryanId = ryanUP[0].line_user_id;
+                }
+                if (plutoUP.length) {
+                    log('   FOUND PLUTO in user_profiles!', 'success');
+                    log('   ' + JSON.stringify(plutoUP[0]).substring(0, 500));
+                    plutoId = plutoUP[0].line_user_id;
+                }
             }
 
-            log('Found ' + (profiles?.length || 0) + ' user profiles\n', 'success');
+            // Try society_handicaps directly
+            log('\n5. Checking society_handicaps...');
+            const { data: allHcps, error: allHcpsErr } = await db
+                .from('society_handicaps')
+                .select('*')
+                .eq('society_id', TRGG_SOCIETY_ID);
 
-            // Build combined list with names
-            const membersWithNames = allMembers.map(m => {
-                const profile = profiles?.find(p => p.line_user_id === m.golfer_id);
-                return {
-                    ...m,
-                    name: profile?.profile_data?.name || profile?.profile_data?.displayName || m.golfer_id,
-                    profile: profile
-                };
-            });
+            if (allHcpsErr) {
+                log('   society_handicaps: ' + allHcpsErr.message, 'error');
+            } else {
+                log('   society_handicaps for TRGG: ' + (allHcps?.length || 0) + ' records', 'success');
+                if (allHcps && allHcps.length > 0) {
+                    log('   Sample: ' + JSON.stringify(allHcps[0]));
+                }
+            }
+
+            // Placeholder for combined members
+            const membersWithNames = [];
+            const lineUserIds = [];
 
             // Helper to get name from member - check ALL possible locations
             function getMemberName(m) {

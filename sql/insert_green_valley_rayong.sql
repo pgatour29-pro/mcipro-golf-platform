@@ -1,12 +1,19 @@
 -- =====================================================
--- GREEN VALLEY RAYONG - course_holes insert for Live Scorecard
+-- GREEN VALLEY RAYONG - Complete course insert for Live Scorecard
 -- Run this in Supabase SQL Editor
 -- =====================================================
 
--- Delete any existing data for this course (clean slate)
+-- STEP 1: Insert into courses table first (required for foreign key)
+INSERT INTO courses (id, name, scorecard_url) VALUES
+('green_valley_rayong', 'Green Valley Rayong Country Club', '/scorecard_profiles/green_valley_rayong.yaml')
+ON CONFLICT (id) DO UPDATE SET
+name = EXCLUDED.name,
+scorecard_url = EXCLUDED.scorecard_url;
+
+-- STEP 2: Delete any existing hole data for this course (clean slate)
 DELETE FROM course_holes WHERE course_id = 'green_valley_rayong';
 
--- Insert hole data for BLUE tees (Championship)
+-- STEP 3: Insert hole data for BLUE tees (Championship - 6,971 yards)
 INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
 ('green_valley_rayong', 1, 4, 1, 448, 'blue'),
 ('green_valley_rayong', 2, 4, 13, 387, 'blue'),
@@ -27,7 +34,7 @@ INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, te
 ('green_valley_rayong', 17, 4, 10, 382, 'blue'),
 ('green_valley_rayong', 18, 4, 12, 417, 'blue');
 
--- Insert hole data for WHITE tees (Men's Regular)
+-- Insert hole data for WHITE tees (Men's Regular - 6,570 yards)
 INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
 ('green_valley_rayong', 1, 4, 1, 428, 'white'),
 ('green_valley_rayong', 2, 4, 13, 378, 'white'),
@@ -48,7 +55,7 @@ INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, te
 ('green_valley_rayong', 17, 4, 10, 366, 'white'),
 ('green_valley_rayong', 18, 4, 12, 390, 'white');
 
--- Insert hole data for YELLOW tees (Senior)
+-- Insert hole data for YELLOW tees (Senior - 6,032 yards)
 INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
 ('green_valley_rayong', 1, 4, 1, 373, 'yellow'),
 ('green_valley_rayong', 2, 4, 13, 360, 'yellow'),
@@ -69,7 +76,7 @@ INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, te
 ('green_valley_rayong', 17, 4, 10, 344, 'yellow'),
 ('green_valley_rayong', 18, 4, 12, 362, 'yellow');
 
--- Insert hole data for RED tees (Ladies)
+-- Insert hole data for RED tees (Ladies - 5,175 yards)
 INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
 ('green_valley_rayong', 1, 4, 1, 309, 'red'),
 ('green_valley_rayong', 2, 4, 13, 311, 'red'),
@@ -90,7 +97,11 @@ INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, te
 ('green_valley_rayong', 17, 4, 10, 298, 'red'),
 ('green_valley_rayong', 18, 4, 12, 264, 'red');
 
--- Verify the insert
+-- STEP 4: Verify the insert
+SELECT '=== COURSES TABLE ===' as section;
+SELECT id, name FROM courses WHERE id = 'green_valley_rayong';
+
+SELECT '=== COURSE HOLES SUMMARY ===' as section;
 SELECT
   course_id,
   tee_marker,

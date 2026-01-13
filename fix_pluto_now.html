@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FIX PLUTO NOW</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>FIX PLUTO - ONE CLICK</h1>
+    <button id="fixBtn" style="padding:20px 40px;font-size:24px;background:red;color:white;cursor:pointer;">FIX PLUTO NOW</button>
+    <pre id="output" style="background:#eee;padding:20px;margin-top:20px;"></pre>
+    <script>
+        const db = window.supabase.createClient(
+            'https://pyeeplwsnupmhgbguwqs.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NDM2NjksImV4cCI6MjA3NTQxOTY2OX0.KVQ6WvDKz9s77lxn3AhSA_YTMCN6rsht9kDkMIDhngk'
+        );
+        const TRGG = '7c0e4b72-d925-44bc-afda-38259a7ba346';
+        const out = document.getElementById('output');
+
+        document.getElementById('fixBtn').onclick = async () => {
+            out.textContent = 'Finding Pluto...\n';
+
+            // Find Pluto
+            const {data: p} = await db.from('user_profiles').select('line_user_id, name').ilike('name', '%pluto%').limit(1);
+            if (!p || !p[0]) { out.textContent += 'ERROR: Pluto not found!\n'; return; }
+
+            const id = p[0].line_user_id;
+            out.textContent += 'Found: ' + p[0].name + '\nID: ' + id + '\n\n';
+
+            // Delete old
+            out.textContent += 'Deleting old society handicap...\n';
+            await db.from('society_handicaps').delete().eq('golfer_id', id).eq('society_id', TRGG);
+
+            // Insert new with -1.6 for +1.6
+            out.textContent += 'Creating society handicap = -1.6 (shows as +1.6)...\n';
+            const {error} = await db.from('society_handicaps').insert({
+                golfer_id: id,
+                society_id: TRGG,
+                handicap_index: -1.6,
+                calculation_method: 'MANUAL',
+                last_calculated_at: new Date().toISOString()
+            });
+
+            if (error) {
+                out.textContent += 'ERROR: ' + error.message + '\n';
+            } else {
+                out.textContent += '\nSUCCESS!\n';
+            }
+
+            // Verify
+            const {data: v} = await db.from('society_handicaps').select('*').eq('golfer_id', id);
+            out.textContent += '\nPluto handicaps now:\n';
+            v?.forEach(h => {
+                out.textContent += (h.society_id ? 'TRAVELLERS: ' : 'UNIVERSAL: ') + h.handicap_index + '\n';
+            });
+
+            out.textContent += '\nDONE - Test in Start Round now';
+        };
+    </script>
+</body>
+</html>

@@ -49,310 +49,43 @@
             document.getElementById('output').innerHTML = '';
         }
 
-        // Step 1: Search all tables
+        // Step 1: Find and fix Ryan & Pluto
         document.getElementById('searchBtn').addEventListener('click', async function() {
             this.disabled = true;
             clearLog();
 
-            log('Finding Ryan & Pluto by their +1.6 handicap...', 'info');
+            log('Finding Ryan & Pluto with society handicap 1.6...', 'info');
 
-            // They have +1.6 society handicap (stored as 1.6)
-            // Search society_handicaps for that value
-            log('\n1. Searching society_handicaps for handicap = 1.6...');
-            const { data: plusHcps, error: plusErr } = await db
+            // Find all players with handicap 1.6 in Travellers Rest
+            const { data: players16, error } = await db
                 .from('society_handicaps')
                 .select('*')
                 .eq('society_id', TRGG_SOCIETY_ID)
                 .eq('handicap_index', 1.6);
 
-            if (plusErr) {
-                log('   Error: ' + plusErr.message, 'error');
-            } else {
-                log('   Found ' + (plusHcps?.length || 0) + ' players with +1.6 handicap', 'success');
-                if (plusHcps && plusHcps.length > 0) {
-                    for (const h of plusHcps) {
-                        log('   golfer_id: ' + h.golfer_id);
-                        log('   handicap: ' + h.handicap_index);
-                        log('   Full record: ' + JSON.stringify(h));
+            if (error) {
+                log('Error: ' + error.message, 'error');
+                this.disabled = false;
+                return;
+            }
 
-                        // These are likely Ryan and Pluto!
-                        if (!ryanId) {
-                            ryanId = h.golfer_id;
-                            log('   >>> Assigning as RYAN', 'success');
-                        } else if (!plutoId) {
-                            plutoId = h.golfer_id;
-                            log('   >>> Assigning as PLUTO', 'success');
-                        }
-                        log('');
+            log('Found ' + (players16?.length || 0) + ' players with handicap 1.6\n', 'success');
+
+            if (players16 && players16.length > 0) {
+                for (const p of players16) {
+                    log('golfer_id: ' + p.golfer_id, 'success');
+                    if (!ryanId) {
+                        ryanId = p.golfer_id;
+                    } else if (!plutoId) {
+                        plutoId = p.golfer_id;
                     }
                 }
-            }
-
-            // Also check for low handicaps (0 to 5)
-            log('\n2. Checking for low handicaps (0 to 5)...');
-            const { data: rangeHcps } = await db
-                .from('society_handicaps')
-                .select('golfer_id, handicap_index')
-                .eq('society_id', TRGG_SOCIETY_ID)
-                .lte('handicap_index', 5)
-                .gte('handicap_index', 0);
-
-            if (rangeHcps && rangeHcps.length > 0) {
-                log('   Players with low handicaps:', 'success');
-                for (const h of rangeHcps) {
-                    log('   ' + h.golfer_id + ': ' + h.handicap_index);
-                }
-            }
-
-            // Skip the rest of the table searches
-            log('\n3. Checking golfers table...');
-            const { data: golfers, error: golfersErr } = await db
-                .from('golfers')
-                .select('*');
-
-            if (golfersErr) {
-                log('   golfers table: ' + golfersErr.message, 'error');
-            } else {
-                log('   golfers table: ' + (golfers?.length || 0) + ' records', 'success');
-                if (golfers && golfers.length > 0) {
-                    log('   Sample keys: ' + Object.keys(golfers[0]).join(', '));
-                    const ryanG = golfers.filter(g => JSON.stringify(g).toLowerCase().includes('ryan'));
-                    const plutoG = golfers.filter(g => JSON.stringify(g).toLowerCase().includes('pluto'));
-                    if (ryanG.length) log('   FOUND RYAN: ' + JSON.stringify(ryanG[0]), 'success');
-                    if (plutoG.length) log('   FOUND PLUTO: ' + JSON.stringify(plutoG[0]), 'success');
-                }
-            }
-
-            // Try players table
-            log('\n2. Checking players table...');
-            const { data: players, error: playersErr } = await db
-                .from('players')
-                .select('*');
-
-            if (playersErr) {
-                log('   players table: ' + playersErr.message, 'error');
-            } else {
-                log('   players table: ' + (players?.length || 0) + ' records', 'success');
-                if (players && players.length > 0) {
-                    log('   Sample keys: ' + Object.keys(players[0]).join(', '));
-                    const ryanP = players.filter(p => JSON.stringify(p).toLowerCase().includes('ryan'));
-                    const plutoP = players.filter(p => JSON.stringify(p).toLowerCase().includes('pluto'));
-                    if (ryanP.length) log('   FOUND RYAN: ' + JSON.stringify(ryanP[0]), 'success');
-                    if (plutoP.length) log('   FOUND PLUTO: ' + JSON.stringify(plutoP[0]), 'success');
-                }
-            }
-
-            // Try society_players table
-            log('\n3. Checking society_players table...');
-            const { data: socPlayers, error: socPlayersErr } = await db
-                .from('society_players')
-                .select('*')
-                .eq('society_id', TRGG_SOCIETY_ID);
-
-            if (socPlayersErr) {
-                log('   society_players table: ' + socPlayersErr.message, 'error');
-            } else {
-                log('   society_players table: ' + (socPlayers?.length || 0) + ' records', 'success');
-                if (socPlayers && socPlayers.length > 0) {
-                    log('   Sample keys: ' + Object.keys(socPlayers[0]).join(', '));
-                    const ryanSP = socPlayers.filter(p => JSON.stringify(p).toLowerCase().includes('ryan'));
-                    const plutoSP = socPlayers.filter(p => JSON.stringify(p).toLowerCase().includes('pluto'));
-                    if (ryanSP.length) log('   FOUND RYAN: ' + JSON.stringify(ryanSP[0]), 'success');
-                    if (plutoSP.length) log('   FOUND PLUTO: ' + JSON.stringify(plutoSP[0]), 'success');
-                }
-            }
-
-            // Try user_profiles directly searching all
-            log('\n4. Checking ALL user_profiles...');
-            const { data: allProfiles, error: allProfilesErr } = await db
-                .from('user_profiles')
-                .select('*');
-
-            if (allProfilesErr) {
-                log('   user_profiles: ' + allProfilesErr.message, 'error');
-            } else {
-                log('   user_profiles: ' + (allProfiles?.length || 0) + ' records', 'success');
-                const ryanUP = allProfiles?.filter(p => JSON.stringify(p).toLowerCase().includes('ryan')) || [];
-                const plutoUP = allProfiles?.filter(p => JSON.stringify(p).toLowerCase().includes('pluto')) || [];
-                if (ryanUP.length) {
-                    log('   FOUND RYAN in user_profiles!', 'success');
-                    log('   ' + JSON.stringify(ryanUP[0]).substring(0, 500));
-                    ryanId = ryanUP[0].line_user_id;
-                }
-                if (plutoUP.length) {
-                    log('   FOUND PLUTO in user_profiles!', 'success');
-                    log('   ' + JSON.stringify(plutoUP[0]).substring(0, 500));
-                    plutoId = plutoUP[0].line_user_id;
-                }
-            }
-
-            // Try society_handicaps directly
-            log('\n5. Checking society_handicaps...');
-            const { data: allHcps, error: allHcpsErr } = await db
-                .from('society_handicaps')
-                .select('*')
-                .eq('society_id', TRGG_SOCIETY_ID);
-
-            if (allHcpsErr) {
-                log('   society_handicaps: ' + allHcpsErr.message, 'error');
-            } else {
-                log('   society_handicaps for TRGG: ' + (allHcps?.length || 0) + ' records', 'success');
-                if (allHcps && allHcps.length > 0) {
-                    log('   Sample: ' + JSON.stringify(allHcps[0]));
-                }
-            }
-
-            // 6. Try rounds table - players might be stored there
-            log('\n6. Checking rounds table...');
-            const { data: rounds, error: roundsErr } = await db
-                .from('rounds')
-                .select('*')
-                .limit(10);
-
-            if (roundsErr) {
-                log('   rounds: ' + roundsErr.message, 'error');
-            } else {
-                log('   rounds: ' + (rounds?.length || 0) + ' sample records', 'success');
-                if (rounds && rounds.length > 0) {
-                    log('   Sample keys: ' + Object.keys(rounds[0]).join(', '));
-                    const ryanR = rounds.filter(r => JSON.stringify(r).toLowerCase().includes('ryan'));
-                    if (ryanR.length) log('   FOUND RYAN in rounds: ' + JSON.stringify(ryanR[0]).substring(0, 300), 'success');
-                }
-            }
-
-            // 7. List ALL tables we can access
-            log('\n7. Testing additional tables...');
-            const tablesToTest = ['members', 'guests', 'manual_players', 'event_players', 'tournament_players', 'registered_players'];
-            for (const table of tablesToTest) {
-                const { data, error } = await db.from(table).select('*').limit(1);
-                if (!error) {
-                    log('   ✅ ' + table + ' table EXISTS - has data: ' + (data?.length > 0), 'success');
-                    if (data?.length > 0) log('      Keys: ' + Object.keys(data[0]).join(', '));
-                }
-            }
-
-            // Placeholder for combined members
-            const membersWithNames = [];
-            const lineUserIds = [];
-
-            // Helper to get name from member - check ALL possible locations
-            function getMemberName(m) {
-                return m.name ||
-                       m.display_name ||
-                       m.displayName ||
-                       m.full_name ||
-                       m.member_data?.name ||
-                       m.member_data?.displayName ||
-                       m.member_data?.full_name ||
-                       m.profile_data?.name ||
-                       m.profile_data?.displayName ||
-                       '';
-            }
-
-            // Search by converting entire record to string
-            function searchInRecord(m, term) {
-                const str = JSON.stringify(m).toLowerCase();
-                return str.includes(term.toLowerCase());
-            }
-
-            // Search for Ryan
-            log('=== SEARCHING FOR RYAN THOMAS ===\n', 'info');
-            const ryanMatches = membersWithNames.filter(m => searchInRecord(m, 'ryan'));
-
-            if (ryanMatches.length > 0) {
-                log('Found ' + ryanMatches.length + ' matches:', 'success');
-                for (const m of ryanMatches) {
-                    log('  Name: ' + getMemberName(m));
-                    log('  ID: ' + m.id);
-                    log('  golfer_id: ' + m.golfer_id);
-                    log('  Handicap: ' + (m.handicap || m.member_data?.handicap || 'N/A'));
-                    log('  RAW: ' + JSON.stringify(m).substring(0, 500));
-                    ryanId = m.golfer_id || m.id;
-                    log('  >>> Using golfer_id: ' + ryanId, 'success');
-                    log('');
-                }
-            } else {
-                log('No matches found for "ryan"', 'error');
-            }
-
-            // Check Ryan's handicaps
-            if (ryanId) {
-                const { data: ryanHcps } = await db
-                    .from('society_handicaps')
-                    .select('*')
-                    .eq('golfer_id', ryanId);
-
-                if (ryanHcps && ryanHcps.length > 0) {
-                    log('Current handicaps for Ryan:', 'info');
-                    for (const h of ryanHcps) {
-                        const label = h.society_id === null ? 'UNIVERSAL' : 'Society';
-                        log('  ' + label + ': ' + h.handicap_index);
-                    }
-                } else {
-                    log('No handicaps in society_handicaps yet');
-                }
-            }
-
-            // Search for Pluto
-            log('\n=== SEARCHING FOR PLUTO ===\n', 'info');
-            const plutoMatches = membersWithNames.filter(m => searchInRecord(m, 'pluto'));
-
-            if (plutoMatches.length > 0) {
-                log('Found ' + plutoMatches.length + ' matches:', 'success');
-                for (const m of plutoMatches) {
-                    log('  Name: ' + getMemberName(m));
-                    log('  ID: ' + m.id);
-                    log('  golfer_id: ' + m.golfer_id);
-                    log('  Handicap: ' + (m.handicap || m.member_data?.handicap || 'N/A'));
-                    log('  RAW: ' + JSON.stringify(m).substring(0, 500));
-                    plutoId = m.golfer_id || m.id;
-                    log('  >>> Using golfer_id: ' + plutoId, 'success');
-                    log('');
-                }
-            } else {
-                log('No matches found for "pluto"', 'error');
-            }
-
-            // Check Pluto's handicaps
-            if (plutoId) {
-                const { data: plutoHcps } = await db
-                    .from('society_handicaps')
-                    .select('*')
-                    .eq('golfer_id', plutoId);
-
-                if (plutoHcps && plutoHcps.length > 0) {
-                    log('Current handicaps for Pluto:', 'info');
-                    for (const h of plutoHcps) {
-                        const label = h.society_id === null ? 'UNIVERSAL' : 'Society';
-                        log('  ' + label + ': ' + h.handicap_index);
-                    }
-                } else {
-                    log('No handicaps in society_handicaps yet');
-                }
-            }
-
-            // Summary
-            log('\n=== SUMMARY ===', 'info');
-            log('Ryan Thomas ID: ' + (ryanId || 'NOT FOUND'));
-            log('Pluto ID: ' + (plutoId || 'NOT FOUND'));
-
-            if (ryanId || plutoId) {
                 document.getElementById('fixBtn').disabled = false;
-                log('\nClick "Create Universal Handicap = 0" to fix.', 'success');
+                log('\nRyan ID: ' + ryanId);
+                log('Pluto ID: ' + plutoId);
+                log('\nClick "Create Universal Handicap = 0" to create universal handicaps.', 'success');
             } else {
-                log('\nNo IDs found. Cannot create handicaps.', 'error');
-                log('\nDEBUG - Members with names (first 20):');
-                const withNames = membersWithNames.filter(m => m.name && !m.name.startsWith('TRGG-') && !m.name.startsWith('U'));
-                for (let i = 0; i < Math.min(20, withNames.length); i++) {
-                    log('  ' + withNames[i].name + ' (golfer_id: ' + withNames[i].golfer_id + ')');
-                }
-                if (withNames.length === 0) {
-                    log('  No members with profile names found');
-                    log('\nAll LINE user golfer_ids:');
-                    for (let i = 0; i < Math.min(10, lineUserIds.length); i++) {
-                        log('  ' + lineUserIds[i]);
-                    }
-                }
+                log('No players found with handicap 1.6', 'error');
             }
 
             this.disabled = false;

@@ -19,32 +19,38 @@
         function log(msg) { out.textContent += msg + '\n'; console.log(msg); }
 
         // EXACT IDs - NO SEARCHING
+        // Ryan & Pluto: Universal=0, Society=+1.6
+        // Rocky & Jesse: NO universal, Society only
         const players = [
-            { name: 'Rocky Jones', id: 'U044fd835263fc6c0c596cf1d6c2414af', hcp: -1.9, display: '+1.9' },
-            { name: 'Pluto', id: 'MANUAL-1768008205248-jvtubbk', hcp: -1.6, display: '+1.6' },
-            { name: 'Jesse Stoneberg', id: 'TRGG-GUEST-0961', hcp: -2.8, display: '+2.8' }
+            { name: 'Rocky Jones', id: 'U044fd835263fc6c0c596cf1d6c2414af', societyHcp: -1.9, universalHcp: null, display: '+1.9' },
+            { name: 'Pluto', id: 'MANUAL-1768008205248-jvtubbk', societyHcp: -1.6, universalHcp: 0, display: '+1.6' },
+            { name: 'Jesse Stoneberg', id: 'TRGG-GUEST-0961', societyHcp: -2.8, universalHcp: null, display: '+2.8' }
         ];
 
         document.getElementById('fixBtn').onclick = async () => {
             out.textContent = '';
             log('=== FINAL FIX ===\n');
 
-            // First, find Ryan Thomas by searching
+            // First, find Ryan Thomas by searching for "thomas" only (avoids matching "Bryan")
             log('--- Finding Ryan Thomas ---');
             const {data: ryanSearch} = await db.from('user_profiles')
                 .select('line_user_id, name')
-                .or('name.ilike.%thomas, ryan%,name.ilike.%ryan thomas%')
-                .limit(5);
+                .ilike('name', '%thomas%')
+                .limit(10);
 
             if (ryanSearch) {
-                log('Search results:');
+                log('Search results for "thomas":');
                 ryanSearch.forEach(r => log('  ' + r.name + ' -> ' + r.line_user_id));
-                const ryan = ryanSearch.find(r => r.name.toLowerCase().includes('thomas') && r.name.toLowerCase().includes('ryan'));
+                // Find one that has BOTH thomas AND ryan in the name
+                const ryan = ryanSearch.find(r => {
+                    const n = r.name.toLowerCase();
+                    return n.includes('thomas') && n.includes('ryan');
+                });
                 if (ryan) {
-                    players.push({ name: 'Ryan Thomas', id: ryan.line_user_id, hcp: -1.6, display: '+1.6' });
-                    log('Using: ' + ryan.name + ' (' + ryan.line_user_id + ')');
+                    players.push({ name: 'Ryan Thomas', id: ryan.line_user_id, societyHcp: -1.6, universalHcp: 0, display: '+1.6' });
+                    log('✓ Found: ' + ryan.name + ' (' + ryan.line_user_id + ')');
                 } else {
-                    log('ERROR: Ryan Thomas not found!');
+                    log('ERROR: Ryan Thomas not found! Need name with both "thomas" and "ryan"');
                 }
             }
             log('');
@@ -68,24 +74,31 @@
 
                 // 1. Delete and recreate society_handicaps
                 await db.from('society_handicaps').delete().eq('golfer_id', p.id);
-                const {error: e1} = await db.from('society_handicaps').insert([
-                    { golfer_id: p.id, society_id: null, handicap_index: 0, calculation_method: 'MANUAL', last_calculated_at: new Date().toISOString() },
-                    { golfer_id: p.id, society_id: TRGG, handicap_index: p.hcp, calculation_method: 'MANUAL', last_calculated_at: new Date().toISOString() }
-                ]);
-                log('society_handicaps: ' + (e1 ? 'ERROR: ' + e1.message : 'OK (UNIVERSAL=0, TRGG=' + p.hcp + ')'));
+
+                const inserts = [];
+                // Only add universal if not null
+                if (p.universalHcp !== null) {
+                    inserts.push({ golfer_id: p.id, society_id: null, handicap_index: p.universalHcp, calculation_method: 'MANUAL', last_calculated_at: new Date().toISOString() });
+                }
+                // Always add society handicap
+                inserts.push({ golfer_id: p.id, society_id: TRGG, handicap_index: p.societyHcp, calculation_method: 'MANUAL', last_calculated_at: new Date().toISOString() });
+
+                const {error: e1} = await db.from('society_handicaps').insert(inserts);
+                const universalMsg = p.universalHcp !== null ? 'UNIVERSAL=' + p.universalHcp + ', ' : 'NO UNIVERSAL, ';
+                log('society_handicaps: ' + (e1 ? 'ERROR: ' + e1.message : 'OK (' + universalMsg + 'TRGG=' + p.societyHcp + ')'));
 
                 // 2. Update user_profiles.handicap_index
-                const {error: e2} = await db.from('user_profiles').update({ handicap_index: p.hcp }).eq('line_user_id', p.id);
-                log('handicap_index: ' + (e2 ? 'ERROR: ' + e2.message : 'OK (' + p.hcp + ')'));
+                const {error: e2} = await db.from('user_profiles').update({ handicap_index: p.societyHcp }).eq('line_user_id', p.id);
+                log('handicap_index: ' + (e2 ? 'ERROR: ' + e2.message : 'OK (' + p.societyHcp + ')'));
 
                 // 3. Update profile_data.golfInfo.handicap
                 const newProfileData = {
                     ...profileData,
-                    handicap: String(p.hcp),
-                    golfInfo: { ...(profileData.golfInfo || {}), handicap: String(p.hcp) }
+                    handicap: String(p.societyHcp),
+                    golfInfo: { ...(profileData.golfInfo || {}), handicap: String(p.societyHcp) }
                 };
                 const {error: e3} = await db.from('user_profiles').update({ profile_data: newProfileData }).eq('line_user_id', p.id);
-                log('profile_data: ' + (e3 ? 'ERROR: ' + e3.message : 'OK (' + p.hcp + ')'));
+                log('profile_data: ' + (e3 ? 'ERROR: ' + e3.message : 'OK (' + p.societyHcp + ')'));
 
                 // Verify
                 const {data: v} = await db.from('society_handicaps').select('society_id, handicap_index').eq('golfer_id', p.id);

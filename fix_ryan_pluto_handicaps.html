@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fix Ryan Thomas & Pluto Handicaps</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+        button { padding: 10px 20px; font-size: 16px; margin: 5px; cursor: pointer; }
+        pre { background: #f0f0f0; padding: 15px; border-radius: 5px; white-space: pre-wrap; max-height: 500px; overflow-y: auto; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        h2 { margin-top: 30px; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Fix Ryan Thomas & Pluto Handicaps</h1>
+    <p><strong>Task:</strong> Find them in society_members, create universal handicap = 0</p>
+    <p><strong>Current:</strong> Society handicap = +1.6 (stored as -1.6)</p>
+
+    <h2>Step 1: Search All Tables</h2>
+    <button id="searchBtn">Search for Ryan Thomas & Pluto</button>
+
+    <h2>Step 2: Fix Handicaps (after finding IDs)</h2>
+    <button id="fixBtn" disabled>Create Universal Handicap = 0</button>
+
+    <h2>Output</h2>
+    <pre id="output"></pre>
+
+    <script>
+        const db = window.supabase.createClient(
+            'https://pyeeplwsnupmhgbguwqs.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NDM2NjksImV4cCI6MjA3NTQxOTY2OX0.KVQ6WvDKz9s77lxn3AhSA_YTMCN6rsht9kDkMIDhngk'
+        );
+
+        const TRGG_SOCIETY_ID = '7c0e4b72-d925-44bc-afda-38259a7ba346';
+        let ryanId = null;
+        let plutoId = null;
+
+        function log(msg, type = '') {
+            const span = document.createElement('span');
+            span.className = type;
+            span.textContent = msg + '\n';
+            document.getElementById('output').appendChild(span);
+            console.log(msg);
+        }
+
+        function clearLog() {
+            document.getElementById('output').innerHTML = '';
+        }
+
+        // Step 1: Search all tables
+        document.getElementById('searchBtn').addEventListener('click', async function() {
+            this.disabled = true;
+            clearLog();
+
+            log('=== SEARCHING FOR RYAN THOMAS ===\n', 'info');
+
+            // Search society_members
+            log('Checking society_members table...');
+            const { data: smRyan, error: smRyanErr } = await db
+                .from('society_members')
+                .select('*')
+                .or('name.ilike.%ryan%,member_data->>name.ilike.%ryan%');
+
+            if (smRyanErr) {
+                log('  Error: ' + smRyanErr.message, 'error');
+            } else if (smRyan && smRyan.length > 0) {
+                log('  Found ' + smRyan.length + ' matches in society_members:', 'success');
+                for (const m of smRyan) {
+                    log('    ID: ' + m.id);
+                    log('    golfer_id: ' + m.golfer_id);
+                    log('    Name: ' + (m.name || m.member_data?.name || 'N/A'));
+                    log('    Society ID: ' + m.society_id);
+                    log('    Handicap: ' + m.handicap);
+                    if ((m.name || '').toLowerCase().includes('ryan') ||
+                        (m.member_data?.name || '').toLowerCase().includes('ryan')) {
+                        ryanId = m.golfer_id || m.id;
+                        log('    >>> Using this as Ryan Thomas ID', 'success');
+                    }
+                    log('');
+                }
+            } else {
+                log('  No matches in society_members');
+            }
+
+            // Search user_profiles
+            log('Checking user_profiles table...');
+            const { data: upRyan, error: upRyanErr } = await db
+                .from('user_profiles')
+                .select('line_user_id, profile_data, handicap_index')
+                .or('profile_data->>name.ilike.%ryan%,profile_data->>displayName.ilike.%ryan%');
+
+            if (upRyanErr) {
+                log('  Error: ' + upRyanErr.message, 'error');
+            } else if (upRyan && upRyan.length > 0) {
+                log('  Found ' + upRyan.length + ' matches in user_profiles:', 'success');
+                for (const p of upRyan) {
+                    log('    LINE ID: ' + p.line_user_id);
+                    log('    Name: ' + (p.profile_data?.name || p.profile_data?.displayName || 'N/A'));
+                    log('    handicap_index: ' + p.handicap_index);
+                    ryanId = p.line_user_id;
+                    log('    >>> Using this as Ryan Thomas ID', 'success');
+                    log('');
+                }
+            } else {
+                log('  No matches in user_profiles');
+            }
+
+            // Search society_handicaps
+            log('Checking society_handicaps for Ryan...');
+            if (ryanId) {
+                const { data: shRyan } = await db
+                    .from('society_handicaps')
+                    .select('*')
+                    .eq('golfer_id', ryanId);
+
+                if (shRyan && shRyan.length > 0) {
+                    log('  Current handicaps for Ryan:', 'info');
+                    for (const h of shRyan) {
+                        const label = h.society_id === null ? 'UNIVERSAL' : 'Society ' + h.society_id;
+                        log('    ' + label + ': ' + h.handicap_index);
+                    }
+                } else {
+                    log('  No handicaps found in society_handicaps');
+                }
+            }
+
+            log('\n=== SEARCHING FOR PLUTO ===\n', 'info');
+
+            // Search society_members for Pluto
+            log('Checking society_members table...');
+            const { data: smPluto, error: smPlutoErr } = await db
+                .from('society_members')
+                .select('*')
+                .or('name.ilike.%pluto%,member_data->>name.ilike.%pluto%');
+
+            if (smPlutoErr) {
+                log('  Error: ' + smPlutoErr.message, 'error');
+            } else if (smPluto && smPluto.length > 0) {
+                log('  Found ' + smPluto.length + ' matches in society_members:', 'success');
+                for (const m of smPluto) {
+                    log('    ID: ' + m.id);
+                    log('    golfer_id: ' + m.golfer_id);
+                    log('    Name: ' + (m.name || m.member_data?.name || 'N/A'));
+                    log('    Society ID: ' + m.society_id);
+                    log('    Handicap: ' + m.handicap);
+                    if ((m.name || '').toLowerCase().includes('pluto') ||
+                        (m.member_data?.name || '').toLowerCase().includes('pluto')) {
+                        plutoId = m.golfer_id || m.id;
+                        log('    >>> Using this as Pluto ID', 'success');
+                    }
+                    log('');
+                }
+            } else {
+                log('  No matches in society_members');
+            }
+
+            // Search user_profiles for Pluto
+            log('Checking user_profiles table...');
+            const { data: upPluto, error: upPlutoErr } = await db
+                .from('user_profiles')
+                .select('line_user_id, profile_data, handicap_index')
+                .or('profile_data->>name.ilike.%pluto%,profile_data->>displayName.ilike.%pluto%');
+
+            if (upPlutoErr) {
+                log('  Error: ' + upPlutoErr.message, 'error');
+            } else if (upPluto && upPluto.length > 0) {
+                log('  Found ' + upPluto.length + ' matches in user_profiles:', 'success');
+                for (const p of upPluto) {
+                    log('    LINE ID: ' + p.line_user_id);
+                    log('    Name: ' + (p.profile_data?.name || p.profile_data?.displayName || 'N/A'));
+                    log('    handicap_index: ' + p.handicap_index);
+                    plutoId = p.line_user_id;
+                    log('    >>> Using this as Pluto ID', 'success');
+                    log('');
+                }
+            } else {
+                log('  No matches in user_profiles');
+            }
+
+            // Search society_handicaps for Pluto
+            log('Checking society_handicaps for Pluto...');
+            if (plutoId) {
+                const { data: shPluto } = await db
+                    .from('society_handicaps')
+                    .select('*')
+                    .eq('golfer_id', plutoId);
+
+                if (shPluto && shPluto.length > 0) {
+                    log('  Current handicaps for Pluto:', 'info');
+                    for (const h of shPluto) {
+                        const label = h.society_id === null ? 'UNIVERSAL' : 'Society ' + h.society_id;
+                        log('    ' + label + ': ' + h.handicap_index);
+                    }
+                } else {
+                    log('  No handicaps found in society_handicaps');
+                }
+            }
+
+            // Summary
+            log('\n=== SUMMARY ===', 'info');
+            log('Ryan Thomas ID: ' + (ryanId || 'NOT FOUND'));
+            log('Pluto ID: ' + (plutoId || 'NOT FOUND'));
+
+            if (ryanId || plutoId) {
+                document.getElementById('fixBtn').disabled = false;
+                log('\nClick "Create Universal Handicap = 0" to fix.', 'success');
+            } else {
+                log('\nNo IDs found. Cannot create handicaps.', 'error');
+            }
+
+            this.disabled = false;
+        });
+
+        // Step 2: Create universal handicaps
+        document.getElementById('fixBtn').addEventListener('click', async function() {
+            this.disabled = true;
+            log('\n=== CREATING UNIVERSAL HANDICAPS ===\n', 'info');
+
+            if (ryanId) {
+                log('Creating universal handicap for Ryan Thomas (ID: ' + ryanId + ')...');
+
+                // Delete existing universal if any
+                await db.from('society_handicaps')
+                    .delete()
+                    .eq('golfer_id', ryanId)
+                    .is('society_id', null);
+
+                // Insert universal = 0
+                const { error } = await db.from('society_handicaps')
+                    .insert({
+                        golfer_id: ryanId,
+                        society_id: null,
+                        handicap_index: 0,
+                        calculation_method: 'MANUAL',
+                        last_calculated_at: new Date().toISOString()
+                    });
+
+                if (error) {
+                    log('  Error: ' + error.message, 'error');
+                } else {
+                    log('  ✓ Ryan Thomas universal handicap = 0', 'success');
+                }
+            }
+
+            if (plutoId) {
+                log('Creating universal handicap for Pluto (ID: ' + plutoId + ')...');
+
+                // Delete existing universal if any
+                await db.from('society_handicaps')
+                    .delete()
+                    .eq('golfer_id', plutoId)
+                    .is('society_id', null);
+
+                // Insert universal = 0
+                const { error } = await db.from('society_handicaps')
+                    .insert({
+                        golfer_id: plutoId,
+                        society_id: null,
+                        handicap_index: 0,
+                        calculation_method: 'MANUAL',
+                        last_calculated_at: new Date().toISOString()
+                    });
+
+                if (error) {
+                    log('  Error: ' + error.message, 'error');
+                } else {
+                    log('  ✓ Pluto universal handicap = 0', 'success');
+                }
+            }
+
+            // Verify
+            log('\n=== VERIFICATION ===', 'info');
+
+            if (ryanId) {
+                const { data: ryanHcps } = await db
+                    .from('society_handicaps')
+                    .select('society_id, handicap_index')
+                    .eq('golfer_id', ryanId);
+
+                log('\nRyan Thomas handicaps:');
+                for (const h of (ryanHcps || [])) {
+                    const label = h.society_id === null ? 'Universal' : 'Society';
+                    log('  ' + label + ': ' + h.handicap_index);
+                }
+            }
+
+            if (plutoId) {
+                const { data: plutoHcps } = await db
+                    .from('society_handicaps')
+                    .select('society_id, handicap_index')
+                    .eq('golfer_id', plutoId);
+
+                log('\nPluto handicaps:');
+                for (const h of (plutoHcps || [])) {
+                    const label = h.society_id === null ? 'Universal' : 'Society';
+                    log('  ' + label + ': ' + h.handicap_index);
+                }
+            }
+
+            log('\n✓ DONE!', 'success');
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Travellers Rest - Member Handicaps Manager</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 1000px; margin: 0 auto; }
+        button { padding: 10px 20px; font-size: 14px; margin: 5px; cursor: pointer; }
+        pre { background: #f0f0f0; padding: 15px; border-radius: 5px; white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 13px; }
+        th { background: #4a5568; color: white; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        .success { color: green; }
+        .error { color: red; }
+        .warning { color: orange; }
+        .info { color: blue; }
+        h2 { margin-top: 30px; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+        input[type="number"] { width: 60px; padding: 4px; }
+        .btn-small { padding: 5px 10px; font-size: 12px; }
+        .btn-fix { background: #48bb78; color: white; border: none; }
+        .btn-fix:hover { background: #38a169; }
+    </style>
+</head>
+<body>
+    <h1>Travellers Rest - Member Handicaps Manager</h1>
+    <p>View and manage handicaps for society members (with or without LINE accounts)</p>
+
+    <h2>Step 1: Load All Travellers Rest Members</h2>
+    <button id="loadBtn">Load Members</button>
+
+    <h2>Members List</h2>
+    <div id="membersTable"></div>
+
+    <h2>Log</h2>
+    <pre id="output"></pre>
+
+    <script>
+        const db = window.supabase.createClient(
+            'https://pyeeplwsnupmhgbguwqs.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NDM2NjksImV4cCI6MjA3NTQxOTY2OX0.KVQ6WvDKz9s77lxn3AhSA_YTMCN6rsht9kDkMIDhngk'
+        );
+
+        const TRGG_SOCIETY_ID = '7c0e4b72-d925-44bc-afda-38259a7ba346';
+        let allMembers = [];
+
+        function log(msg, type = '') {
+            const span = document.createElement('span');
+            span.className = type;
+            span.textContent = msg + '\n';
+            document.getElementById('output').appendChild(span);
+            console.log(msg);
+        }
+
+        function clearLog() {
+            document.getElementById('output').innerHTML = '';
+        }
+
+        // Load all Travellers Rest members
+        document.getElementById('loadBtn').addEventListener('click', async function() {
+            this.disabled = true;
+            clearLog();
+            log('Loading Travellers Rest members...\n', 'info');
+
+            // Get all society members for Travellers Rest
+            const { data: members, error: membersErr } = await db
+                .from('society_members')
+                .select('*')
+                .eq('society_id', TRGG_SOCIETY_ID);
+
+            if (membersErr) {
+                log('Error loading members: ' + membersErr.message, 'error');
+                this.disabled = false;
+                return;
+            }
+
+            log('Found ' + (members?.length || 0) + ' members in society_members table', 'success');
+
+            // Get all handicaps for these members
+            const memberIds = members.map(m => m.golfer_id || m.id).filter(Boolean);
+
+            const { data: handicaps } = await db
+                .from('society_handicaps')
+                .select('golfer_id, society_id, handicap_index')
+                .in('golfer_id', memberIds);
+
+            log('Found ' + (handicaps?.length || 0) + ' handicap records\n');
+
+            // Build member data with handicaps
+            allMembers = members.map(m => {
+                const golferId = m.golfer_id || m.id;
+                const memberHandicaps = (handicaps || []).filter(h => h.golfer_id === golferId);
+                const universalHcp = memberHandicaps.find(h => h.society_id === null);
+                const societyHcp = memberHandicaps.find(h => h.society_id === TRGG_SOCIETY_ID);
+
+                // Extract name from member_data (could be nested differently)
+                let memberName = 'Unknown';
+                if (m.member_data) {
+                    memberName = m.member_data.name || m.member_data.displayName || m.member_data.full_name || 'Unknown';
+                }
+
+                return {
+                    id: m.id,
+                    golfer_id: golferId,
+                    name: memberName,
+                    memberHandicap: m.handicap || m.member_data?.handicap,
+                    universalHcp: universalHcp?.handicap_index,
+                    societyHcp: societyHcp?.handicap_index,
+                    hasUniversal: !!universalHcp,
+                    hasSociety: !!societyHcp
+                };
+            });
+
+            // Render table
+            renderMembersTable();
+            this.disabled = false;
+        });
+
+        function renderMembersTable() {
+            const container = document.getElementById('membersTable');
+
+            if (allMembers.length === 0) {
+                container.innerHTML = '<p>No members loaded. Click "Load Members" first.</p>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Golfer ID</th>
+                            <th>Member HCP</th>
+                            <th>Universal HCP</th>
+                            <th>Society HCP</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            for (const m of allMembers) {
+                const universalDisplay = m.hasUniversal ? m.universalHcp : '<span class="warning">MISSING</span>';
+                const societyDisplay = m.hasSociety ? m.societyHcp : (m.memberHandicap || '<span class="warning">MISSING</span>');
+
+                html += `
+                    <tr>
+                        <td><strong>${m.name}</strong></td>
+                        <td style="font-size:10px;">${m.golfer_id || 'N/A'}</td>
+                        <td>${m.memberHandicap ?? 'N/A'}</td>
+                        <td>${universalDisplay}</td>
+                        <td>${societyDisplay}</td>
+                        <td>
+                            <input type="number" id="universal_${m.golfer_id}" value="${m.universalHcp ?? 0}" step="0.1" style="width:50px;">
+                            <button class="btn-small btn-fix" onclick="setUniversalHcp('${m.golfer_id}', '${m.name}')">Set Universal</button>
+                        </td>
+                    </tr>
+                `;
+            }
+
+            html += '</tbody></table>';
+
+            // Add bulk action
+            html += `
+                <div style="margin-top: 15px; padding: 15px; background: #edf2f7; border-radius: 5px;">
+                    <strong>Bulk Action:</strong> Set universal handicap for ALL members missing one:
+                    <input type="number" id="bulkUniversalValue" value="0" step="0.1" style="width:60px; margin-left:10px;">
+                    <button onclick="setAllMissingUniversal()" style="margin-left:10px;">Set All Missing to This Value</button>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        // Set universal handicap for one member
+        window.setUniversalHcp = async function(golferId, name) {
+            const inputEl = document.getElementById('universal_' + golferId);
+            const value = parseFloat(inputEl.value);
+
+            if (isNaN(value)) {
+                log('Invalid handicap value for ' + name, 'error');
+                return;
+            }
+
+            log('Setting universal handicap for ' + name + ' to ' + value + '...', 'info');
+
+            // Delete existing universal
+            await db.from('society_handicaps')
+                .delete()
+                .eq('golfer_id', golferId)
+                .is('society_id', null);
+
+            // Insert new universal
+            const { error } = await db.from('society_handicaps')
+                .insert({
+                    golfer_id: golferId,
+                    society_id: null,
+                    handicap_index: value,
+                    calculation_method: 'MANUAL',
+                    last_calculated_at: new Date().toISOString()
+                });
+
+            if (error) {
+                log('Error: ' + error.message, 'error');
+            } else {
+                log('✓ ' + name + ' universal handicap set to ' + value, 'success');
+
+                // Update local data
+                const member = allMembers.find(m => m.golfer_id === golferId);
+                if (member) {
+                    member.universalHcp = value;
+                    member.hasUniversal = true;
+                }
+                renderMembersTable();
+            }
+        };
+
+        // Set universal for all members missing one
+        window.setAllMissingUniversal = async function() {
+            const value = parseFloat(document.getElementById('bulkUniversalValue').value);
+
+            if (isNaN(value)) {
+                log('Invalid bulk handicap value', 'error');
+                return;
+            }
+
+            const missingMembers = allMembers.filter(m => !m.hasUniversal && m.golfer_id);
+
+            if (missingMembers.length === 0) {
+                log('All members already have universal handicaps!', 'success');
+                return;
+            }
+
+            log('\nSetting universal handicap = ' + value + ' for ' + missingMembers.length + ' members...\n', 'info');
+
+            for (const m of missingMembers) {
+                // Delete existing (just in case)
+                await db.from('society_handicaps')
+                    .delete()
+                    .eq('golfer_id', m.golfer_id)
+                    .is('society_id', null);
+
+                // Insert new universal
+                const { error } = await db.from('society_handicaps')
+                    .insert({
+                        golfer_id: m.golfer_id,
+                        society_id: null,
+                        handicap_index: value,
+                        calculation_method: 'MANUAL',
+                        last_calculated_at: new Date().toISOString()
+                    });
+
+                if (error) {
+                    log('✗ ' + m.name + ': ' + error.message, 'error');
+                } else {
+                    log('✓ ' + m.name + ': universal = ' + value, 'success');
+                    m.universalHcp = value;
+                    m.hasUniversal = true;
+                }
+            }
+
+            log('\nDone! Refreshing table...', 'success');
+            renderMembersTable();
+        };
+    </script>
+</body>
+</html>

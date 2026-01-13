@@ -5,8 +5,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
-        button { padding: 10px 20px; font-size: 16px; margin: 5px; cursor: pointer; }
-        pre { background: #f0f0f0; padding: 15px; border-radius: 5px; white-space: pre-wrap; }
+        button { padding: 10px 20px; font-size: 16px; margin: 5px; cursor: pointer; background: #4CAF50; color: white; border: none; }
+        button:hover { background: #45a049; }
+        pre { background: #f0f0f0; padding: 15px; border-radius: 5px; white-space: pre-wrap; max-height: 600px; overflow-y: auto; }
         .success { color: green; }
         .error { color: red; }
         .info { color: blue; }
@@ -14,8 +15,8 @@
 </head>
 <body>
     <h1>Debug Pluto Handicaps</h1>
-    <button id="checkBtn">Check All Pluto Data</button>
-    <button id="fixBtn">Create Society Handicap +1.6</button>
+    <button id="checkBtn">1. Check All Pluto Data</button>
+    <button id="fixBtn">2. Fix Pluto Society Handicap</button>
     <pre id="output"></pre>
 
     <script>
@@ -25,12 +26,14 @@
         );
 
         const TRGG_SOCIETY_ID = '7c0e4b72-d925-44bc-afda-38259a7ba346';
+        const PLUTO_MANUAL_ID = 'MANUAL-1768008205248-jvtubbk';
 
         function log(msg, type = '') {
             const span = document.createElement('span');
             span.className = type;
             span.textContent = msg + '\n';
             document.getElementById('output').appendChild(span);
+            console.log(msg);
         }
 
         function clearLog() {
@@ -39,75 +42,90 @@
 
         document.getElementById('checkBtn').addEventListener('click', async function() {
             clearLog();
-            log('=== CHECKING ALL PLUTO DATA ===\n', 'info');
+            log('=== CHECKING PLUTO DATA ===\n', 'info');
 
             // 1. Find Pluto in user_profiles
             log('1. Searching user_profiles for "Pluto"...');
-            const { data: profiles } = await db
+            const { data: profiles, error: profileErr } = await db
                 .from('user_profiles')
                 .select('line_user_id, name, handicap_index')
                 .ilike('name', '%pluto%');
 
-            if (profiles && profiles.length > 0) {
+            if (profileErr) {
+                log('   Error: ' + profileErr.message, 'error');
+            } else if (profiles && profiles.length > 0) {
                 profiles.forEach(p => {
-                    log(`   Found: ${p.name}`, 'success');
-                    log(`   line_user_id: ${p.line_user_id}`);
-                    log(`   handicap_index: ${p.handicap_index}`);
+                    log('   FOUND in user_profiles:', 'success');
+                    log('   - name: ' + p.name);
+                    log('   - line_user_id: ' + p.line_user_id);
+                    log('   - handicap_index: ' + p.handicap_index);
                 });
             } else {
                 log('   No Pluto found in user_profiles', 'error');
             }
 
-            // 2. Find Pluto in society_members
-            log('\n2. Searching society_members for "Pluto"...');
-            const { data: members } = await db
-                .from('society_members')
+            // 2. Check society_handicaps for known Pluto ID
+            log('\n2. Checking society_handicaps for MANUAL ID...');
+            const { data: hcps1, error: hcpErr1 } = await db
+                .from('society_handicaps')
                 .select('*')
-                .eq('society_id', TRGG_SOCIETY_ID);
+                .eq('golfer_id', PLUTO_MANUAL_ID);
 
-            log(`   Found ${members?.length || 0} total members in Travellers Rest`);
-
-            const plutoMembers = members?.filter(m => {
-                const name = m.member_data?.name || m.name || '';
-                return name.toLowerCase().includes('pluto');
-            }) || [];
-
-            if (plutoMembers.length > 0) {
-                plutoMembers.forEach(m => {
-                    log(`   Found in society_members:`, 'success');
-                    log(`   golfer_id: ${m.golfer_id}`);
-                    log(`   society_id: ${m.society_id}`);
-                    log(`   member_data.name: ${m.member_data?.name}`);
+            if (hcpErr1) {
+                log('   Error: ' + hcpErr1.message, 'error');
+            } else if (hcps1 && hcps1.length > 0) {
+                log('   FOUND handicaps for ' + PLUTO_MANUAL_ID + ':', 'success');
+                hcps1.forEach(h => {
+                    const label = h.society_id === null ? 'UNIVERSAL' : (h.society_id === TRGG_SOCIETY_ID ? 'TRAVELLERS REST' : h.society_id);
+                    log('   - ' + label + ': ' + h.handicap_index);
                 });
             } else {
-                log('   No Pluto found in society_members', 'error');
+                log('   No handicaps found for ' + PLUTO_MANUAL_ID, 'error');
             }
 
-            // 3. Get ALL handicaps for any Pluto ID
-            log('\n3. Checking society_handicaps for all Pluto IDs...');
-            const allPlutoIds = [
-                ...(profiles?.map(p => p.line_user_id) || []),
-                ...(plutoMembers?.map(m => m.golfer_id) || [])
-            ].filter(Boolean);
+            // 3. Also check if there's a line_user_id version
+            if (profiles && profiles.length > 0) {
+                const plutoLineId = profiles[0].line_user_id;
+                if (plutoLineId !== PLUTO_MANUAL_ID) {
+                    log('\n3. Checking society_handicaps for line_user_id...');
+                    const { data: hcps2, error: hcpErr2 } = await db
+                        .from('society_handicaps')
+                        .select('*')
+                        .eq('golfer_id', plutoLineId);
 
-            log(`   Checking IDs: ${JSON.stringify(allPlutoIds)}`);
+                    if (hcpErr2) {
+                        log('   Error: ' + hcpErr2.message, 'error');
+                    } else if (hcps2 && hcps2.length > 0) {
+                        log('   FOUND handicaps for ' + plutoLineId + ':', 'success');
+                        hcps2.forEach(h => {
+                            const label = h.society_id === null ? 'UNIVERSAL' : (h.society_id === TRGG_SOCIETY_ID ? 'TRAVELLERS REST' : h.society_id);
+                            log('   - ' + label + ': ' + h.handicap_index);
+                        });
+                    } else {
+                        log('   No handicaps found for ' + plutoLineId, 'error');
+                    }
+                }
+            }
 
-            if (allPlutoIds.length > 0) {
-                const { data: handicaps } = await db
-                    .from('society_handicaps')
-                    .select('*')
-                    .in('golfer_id', allPlutoIds);
+            // 4. Search ALL handicaps containing "pluto" or "manual"
+            log('\n4. Searching ALL society_handicaps with MANUAL IDs...');
+            const { data: allHcps, error: allErr } = await db
+                .from('society_handicaps')
+                .select('*')
+                .ilike('golfer_id', '%MANUAL%');
 
-                if (handicaps && handicaps.length > 0) {
-                    log(`\n   Found ${handicaps.length} handicap records:`, 'success');
-                    handicaps.forEach(h => {
-                        const societyLabel = h.society_id ? `Society: ${h.society_id}` : 'UNIVERSAL';
-                        log(`   - ${societyLabel}`);
-                        log(`     golfer_id: ${h.golfer_id}`);
-                        log(`     handicap_index: ${h.handicap_index}`);
+            if (allErr) {
+                log('   Error: ' + allErr.message, 'error');
+            } else {
+                log('   Found ' + (allHcps?.length || 0) + ' handicaps with MANUAL IDs');
+                const plutoHcps = allHcps?.filter(h => h.golfer_id.toLowerCase().includes('pluto') || h.golfer_id === PLUTO_MANUAL_ID);
+                if (plutoHcps && plutoHcps.length > 0) {
+                    log('   Pluto-related handicaps:', 'success');
+                    plutoHcps.forEach(h => {
+                        log('   - golfer_id: ' + h.golfer_id);
+                        log('     society_id: ' + (h.society_id || 'UNIVERSAL'));
+                        log('     handicap: ' + h.handicap_index);
                     });
-                } else {
-                    log('   NO handicap records found!', 'error');
                 }
             }
 
@@ -116,64 +134,76 @@
 
         document.getElementById('fixBtn').addEventListener('click', async function() {
             clearLog();
-            log('=== CREATING PLUTO SOCIETY HANDICAP ===\n', 'info');
+            log('=== FIXING PLUTO SOCIETY HANDICAP ===\n', 'info');
 
-            // Find Pluto's golfer_id from society_members
-            const { data: members } = await db
-                .from('society_members')
-                .select('*')
-                .eq('society_id', TRGG_SOCIETY_ID);
+            // First find Pluto's line_user_id from user_profiles
+            const { data: profiles } = await db
+                .from('user_profiles')
+                .select('line_user_id, name')
+                .ilike('name', '%pluto%')
+                .limit(1);
 
-            const plutoMember = members?.find(m => {
-                const name = m.member_data?.name || m.name || '';
-                return name.toLowerCase().includes('pluto');
-            });
-
-            if (!plutoMember) {
-                log('Pluto not found in Travellers Rest society_members!', 'error');
+            if (!profiles || profiles.length === 0) {
+                log('Pluto not found in user_profiles!', 'error');
                 return;
             }
 
-            const plutoGolferId = plutoMember.golfer_id;
-            log(`Found Pluto with golfer_id: ${plutoGolferId}`);
+            const plutoId = profiles[0].line_user_id;
+            log('Found Pluto: ' + profiles[0].name);
+            log('line_user_id: ' + plutoId);
 
-            // Delete existing society handicap
-            log('Deleting any existing society handicap...');
-            await db.from('society_handicaps')
+            // Delete any existing society handicap for this ID
+            log('\nDeleting existing Travellers Rest handicap...');
+            const { error: delErr } = await db
+                .from('society_handicaps')
                 .delete()
-                .eq('golfer_id', plutoGolferId)
+                .eq('golfer_id', plutoId)
                 .eq('society_id', TRGG_SOCIETY_ID);
 
-            // Insert new society handicap (-1.6 for +1.6)
+            if (delErr) log('Delete error: ' + delErr.message, 'error');
+
+            // Also delete for MANUAL ID if different
+            if (plutoId !== PLUTO_MANUAL_ID) {
+                await db
+                    .from('society_handicaps')
+                    .delete()
+                    .eq('golfer_id', PLUTO_MANUAL_ID)
+                    .eq('society_id', TRGG_SOCIETY_ID);
+            }
+
+            // Create society handicap with the user_profiles ID
             log('Creating society handicap = -1.6 (displays as +1.6)...');
-            const { error } = await db.from('society_handicaps')
+            const { error: insErr } = await db
+                .from('society_handicaps')
                 .insert({
-                    golfer_id: plutoGolferId,
+                    golfer_id: plutoId,
                     society_id: TRGG_SOCIETY_ID,
                     handicap_index: -1.6,
                     calculation_method: 'MANUAL',
                     last_calculated_at: new Date().toISOString()
                 });
 
-            if (error) {
-                log('Error: ' + error.message, 'error');
+            if (insErr) {
+                log('Insert error: ' + insErr.message, 'error');
             } else {
-                log('SUCCESS! Society handicap created.', 'success');
+                log('SUCCESS!', 'success');
             }
 
             // Verify
-            log('\nVerifying...');
+            log('\nVerifying all handicaps for Pluto...');
             const { data: verify } = await db
                 .from('society_handicaps')
                 .select('*')
-                .eq('golfer_id', plutoGolferId);
+                .eq('golfer_id', plutoId);
 
-            if (verify) {
+            if (verify && verify.length > 0) {
                 verify.forEach(h => {
-                    const label = h.society_id ? 'Society' : 'Universal';
-                    log(`${label}: ${h.handicap_index}`, 'success');
+                    const label = h.society_id === null ? 'UNIVERSAL' : 'TRAVELLERS REST';
+                    log(label + ': ' + h.handicap_index, 'success');
                 });
             }
+
+            log('\n=== DONE - Now test in Start Round ===', 'info');
         });
     </script>
 </body>

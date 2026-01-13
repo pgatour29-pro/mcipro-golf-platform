@@ -54,14 +54,13 @@
             this.disabled = true;
             clearLog();
 
-            log('Finding Ryan & Pluto with society handicap 1.6...', 'info');
+            log('Loading ALL society_handicaps for Travellers Rest...', 'info');
 
-            // Find all players with handicap 1.6 in Travellers Rest
-            const { data: players16, error } = await db
+            // Get ALL handicaps for this society to see what's there
+            const { data: allHcps, error } = await db
                 .from('society_handicaps')
                 .select('*')
-                .eq('society_id', TRGG_SOCIETY_ID)
-                .eq('handicap_index', 1.6);
+                .eq('society_id', TRGG_SOCIETY_ID);
 
             if (error) {
                 log('Error: ' + error.message, 'error');
@@ -69,23 +68,16 @@
                 return;
             }
 
-            log('Found ' + (players16?.length || 0) + ' players with handicap 1.6\n', 'success');
+            log('Found ' + (allHcps?.length || 0) + ' total handicap records\n', 'success');
 
-            if (players16 && players16.length > 0) {
-                for (const p of players16) {
-                    log('golfer_id: ' + p.golfer_id, 'success');
-                    if (!ryanId) {
-                        ryanId = p.golfer_id;
-                    } else if (!plutoId) {
-                        plutoId = p.golfer_id;
-                    }
+            if (allHcps && allHcps.length > 0) {
+                log('All handicaps in Travellers Rest:');
+                for (const h of allHcps) {
+                    log('  ' + h.golfer_id + ': ' + h.handicap_index);
                 }
-                document.getElementById('fixBtn').disabled = false;
-                log('\nRyan ID: ' + ryanId);
-                log('Pluto ID: ' + plutoId);
-                log('\nClick "Create Universal Handicap = 0" to create universal handicaps.', 'success');
             } else {
-                log('No players found with handicap 1.6', 'error');
+                log('No handicaps found in society_handicaps for Travellers Rest', 'error');
+                log('\nSociety ID used: ' + TRGG_SOCIETY_ID);
             }
 
             this.disabled = false;

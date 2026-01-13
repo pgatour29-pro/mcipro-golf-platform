@@ -54,9 +54,9 @@
             this.disabled = true;
             clearLog();
 
-            log('Loading all Travellers Rest members...', 'info');
+            log('Loading Travellers Rest members with profiles...', 'info');
 
-            // Load ALL society members and filter in JavaScript
+            // Step 1: Get all society members
             const { data: allMembers, error: membersErr } = await db
                 .from('society_members')
                 .select('*')
@@ -68,7 +68,36 @@
                 return;
             }
 
-            log('Found ' + (allMembers?.length || 0) + ' total members\n', 'success');
+            log('Found ' + (allMembers?.length || 0) + ' society members', 'success');
+
+            // Step 2: Get golfer_ids that look like LINE IDs (start with U)
+            const lineUserIds = allMembers
+                .map(m => m.golfer_id)
+                .filter(id => id && id.startsWith('U'));
+
+            log('Found ' + lineUserIds.length + ' LINE user IDs');
+
+            // Step 3: Load user_profiles for these users
+            const { data: profiles, error: profilesErr } = await db
+                .from('user_profiles')
+                .select('line_user_id, profile_data, handicap_index')
+                .in('line_user_id', lineUserIds);
+
+            if (profilesErr) {
+                log('Error loading profiles: ' + profilesErr.message, 'error');
+            }
+
+            log('Found ' + (profiles?.length || 0) + ' user profiles\n', 'success');
+
+            // Build combined list with names
+            const membersWithNames = allMembers.map(m => {
+                const profile = profiles?.find(p => p.line_user_id === m.golfer_id);
+                return {
+                    ...m,
+                    name: profile?.profile_data?.name || profile?.profile_data?.displayName || m.golfer_id,
+                    profile: profile
+                };
+            });
 
             // Helper to get name from member - check ALL possible locations
             function getMemberName(m) {
@@ -92,7 +121,7 @@
 
             // Search for Ryan
             log('=== SEARCHING FOR RYAN THOMAS ===\n', 'info');
-            const ryanMatches = allMembers.filter(m => searchInRecord(m, 'ryan'));
+            const ryanMatches = membersWithNames.filter(m => searchInRecord(m, 'ryan'));
 
             if (ryanMatches.length > 0) {
                 log('Found ' + ryanMatches.length + ' matches:', 'success');
@@ -130,7 +159,7 @@
 
             // Search for Pluto
             log('\n=== SEARCHING FOR PLUTO ===\n', 'info');
-            const plutoMatches = allMembers.filter(m => searchInRecord(m, 'pluto'));
+            const plutoMatches = membersWithNames.filter(m => searchInRecord(m, 'pluto'));
 
             if (plutoMatches.length > 0) {
                 log('Found ' + plutoMatches.length + ' matches:', 'success');
@@ -176,14 +205,17 @@
                 log('\nClick "Create Universal Handicap = 0" to fix.', 'success');
             } else {
                 log('\nNo IDs found. Cannot create handicaps.', 'error');
-                log('\nDEBUG - First 5 members raw data:');
-                for (let i = 0; i < Math.min(5, allMembers.length); i++) {
-                    const m = allMembers[i];
-                    log('Member ' + i + ':');
-                    log('  Keys: ' + Object.keys(m).join(', '));
-                    log('  member_data: ' + JSON.stringify(m.member_data));
-                    log('  Raw: ' + JSON.stringify(m).substring(0, 300));
-                    log('');
+                log('\nDEBUG - Members with names (first 20):');
+                const withNames = membersWithNames.filter(m => m.name && !m.name.startsWith('TRGG-') && !m.name.startsWith('U'));
+                for (let i = 0; i < Math.min(20, withNames.length); i++) {
+                    log('  ' + withNames[i].name + ' (golfer_id: ' + withNames[i].golfer_id + ')');
+                }
+                if (withNames.length === 0) {
+                    log('  No members with profile names found');
+                    log('\nAll LINE user golfer_ids:');
+                    for (let i = 0; i < Math.min(10, lineUserIds.length); i++) {
+                        log('  ' + lineUserIds[i]);
+                    }
                 }
             }
 

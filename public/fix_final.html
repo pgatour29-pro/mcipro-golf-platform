@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FINAL FIX</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>FINAL FIX - Using Exact IDs</h1>
+    <p><strong>Rocky +1.9 | Ryan +1.6 | Pluto +1.6 | Jesse +2.8</strong></p>
+    <button id="fixBtn" style="padding:30px 60px;font-size:28px;background:blue;color:white;cursor:pointer;border:none;">FIX NOW</button>
+    <pre id="output" style="background:#eee;padding:20px;margin-top:20px;font-size:14px;"></pre>
+    <script>
+        const db = window.supabase.createClient(
+            'https://pyeeplwsnupmhgbguwqs.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NDM2NjksImV4cCI6MjA3NTQxOTY2OX0.KVQ6WvDKz9s77lxn3AhSA_YTMCN6rsht9kDkMIDhngk'
+        );
+        const TRGG = '7c0e4b72-d925-44bc-afda-38259a7ba346';
+        const out = document.getElementById('output');
+        function log(msg) { out.textContent += msg + '\n'; console.log(msg); }
+
+        // EXACT IDs - NO SEARCHING
+        const players = [
+            { name: 'Rocky Jones', id: 'U044fd835263fc6c0c596cf1d6c2414af', hcp: -1.9, display: '+1.9' },
+            { name: 'Pluto', id: 'MANUAL-1768008205248-jvtubbk', hcp: -1.6, display: '+1.6' },
+            { name: 'Jesse Stoneberg', id: 'TRGG-GUEST-0961', hcp: -2.8, display: '+2.8' }
+        ];
+
+        document.getElementById('fixBtn').onclick = async () => {
+            out.textContent = '';
+            log('=== FINAL FIX ===\n');
+
+            // First, find Ryan Thomas by searching
+            log('--- Finding Ryan Thomas ---');
+            const {data: ryanSearch} = await db.from('user_profiles')
+                .select('line_user_id, name')
+                .or('name.ilike.%thomas, ryan%,name.ilike.%ryan thomas%')
+                .limit(5);
+
+            if (ryanSearch) {
+                log('Search results:');
+                ryanSearch.forEach(r => log('  ' + r.name + ' -> ' + r.line_user_id));
+                const ryan = ryanSearch.find(r => r.name.toLowerCase().includes('thomas') && r.name.toLowerCase().includes('ryan'));
+                if (ryan) {
+                    players.push({ name: 'Ryan Thomas', id: ryan.line_user_id, hcp: -1.6, display: '+1.6' });
+                    log('Using: ' + ryan.name + ' (' + ryan.line_user_id + ')');
+                } else {
+                    log('ERROR: Ryan Thomas not found!');
+                }
+            }
+            log('');
+
+            for (const p of players) {
+                log('--- ' + p.name + ' (' + p.display + ') ---');
+                log('ID: ' + p.id);
+
+                // Get current profile_data
+                const {data: profile} = await db.from('user_profiles')
+                    .select('profile_data')
+                    .eq('line_user_id', p.id)
+                    .single();
+
+                if (!profile) {
+                    log('ERROR: Profile not found for ID ' + p.id + '\n');
+                    continue;
+                }
+
+                const profileData = profile.profile_data || {};
+
+                // 1. Delete and recreate society_handicaps
+                await db.from('society_handicaps').delete().eq('golfer_id', p.id);
+                const {error: e1} = await db.from('society_handicaps').insert([
+                    { golfer_id: p.id, society_id: null, handicap_index: 0, calculation_method: 'MANUAL', last_calculated_at: new Date().toISOString() },
+                    { golfer_id: p.id, society_id: TRGG, handicap_index: p.hcp, calculation_method: 'MANUAL', last_calculated_at: new Date().toISOString() }
+                ]);
+                log('society_handicaps: ' + (e1 ? 'ERROR: ' + e1.message : 'OK (UNIVERSAL=0, TRGG=' + p.hcp + ')'));
+
+                // 2. Update user_profiles.handicap_index
+                const {error: e2} = await db.from('user_profiles').update({ handicap_index: p.hcp }).eq('line_user_id', p.id);
+                log('handicap_index: ' + (e2 ? 'ERROR: ' + e2.message : 'OK (' + p.hcp + ')'));
+
+                // 3. Update profile_data.golfInfo.handicap
+                const newProfileData = {
+                    ...profileData,
+                    handicap: String(p.hcp),
+                    golfInfo: { ...(profileData.golfInfo || {}), handicap: String(p.hcp) }
+                };
+                const {error: e3} = await db.from('user_profiles').update({ profile_data: newProfileData }).eq('line_user_id', p.id);
+                log('profile_data: ' + (e3 ? 'ERROR: ' + e3.message : 'OK (' + p.hcp + ')'));
+
+                // Verify
+                const {data: v} = await db.from('society_handicaps').select('society_id, handicap_index').eq('golfer_id', p.id);
+                log('VERIFY: ' + JSON.stringify(v));
+                log('');
+            }
+
+            log('=== DONE ===');
+        };
+    </script>
+</body>
+</html>

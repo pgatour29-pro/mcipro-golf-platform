@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FIX HANDICAPS v2</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>FIX HANDICAPS v2</h1>
+    <p><strong>Rocky: +1.9 | Ryan Thomas: +1.6 | Pluto: +1.6 | Jesse: +2.8</strong></p>
+    <button id="fixBtn" style="padding:30px 60px;font-size:28px;background:green;color:white;cursor:pointer;border:none;">FIX ALL FOUR</button>
+    <pre id="output" style="background:#eee;padding:20px;margin-top:20px;font-size:14px;"></pre>
+    <script>
+        const db = window.supabase.createClient(
+            'https://pyeeplwsnupmhgbguwqs.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NDM2NjksImV4cCI6MjA3NTQxOTY2OX0.KVQ6WvDKz9s77lxn3AhSA_YTMCN6rsht9kDkMIDhngk'
+        );
+        const TRGG = '7c0e4b72-d925-44bc-afda-38259a7ba346';
+        const out = document.getElementById('output');
+
+        function log(msg) {
+            out.textContent += msg + '\n';
+            console.log(msg);
+        }
+
+        // CORRECT VALUES - VERIFIED FROM TRGG DATA
+        const playerHandicaps = [
+            { name: 'Rocky Jones', search: 'rocky', societyHcp: -1.9, display: '+1.9' },
+            { name: 'Ryan Thomas', search: 'thomas, ryan', societyHcp: -1.6, display: '+1.6' },
+            { name: 'Pluto', search: 'pluto', societyHcp: -1.6, display: '+1.6' },
+            { name: 'Jesse Stoneberg', search: 'stoneberg', societyHcp: -2.8, display: '+2.8' }
+        ];
+
+        document.getElementById('fixBtn').onclick = async () => {
+            out.textContent = '';
+            log('=== FIX HANDICAPS v2 ===\n');
+
+            for (const player of playerHandicaps) {
+                log('--- ' + player.name + ' (Target: ' + player.display + ') ---');
+
+                const {data: profiles, error: findErr} = await db.from('user_profiles')
+                    .select('line_user_id, name, profile_data')
+                    .ilike('name', '%' + player.search + '%')
+                    .limit(5);
+
+                if (findErr) {
+                    log('ERROR: ' + findErr.message + '\n');
+                    continue;
+                }
+
+                if (!profiles || profiles.length === 0) {
+                    log('ERROR: Not found!\n');
+                    continue;
+                }
+
+                // Show all matches and pick the right one
+                log('Found ' + profiles.length + ' match(es):');
+                profiles.forEach((p, i) => log('  ' + i + ': ' + p.name));
+
+                // Find exact match or best match
+                let match = profiles.find(p => p.name.toLowerCase().includes(player.search.toLowerCase()));
+                if (!match) match = profiles[0];
+
+                // For Ryan Thomas, make sure we get Thomas not Hatchell
+                if (player.name === 'Ryan Thomas') {
+                    match = profiles.find(p => p.name.toLowerCase().includes('thomas'));
+                    if (!match) {
+                        log('ERROR: Could not find Thomas, Ryan!\n');
+                        continue;
+                    }
+                }
+
+                log('Using: ' + match.name);
+                const id = match.line_user_id;
+                const currentProfileData = match.profile_data || {};
+
+                // 1. Fix society_handicaps
+                log('\n[1] society_handicaps...');
+                await db.from('society_handicaps').delete().eq('golfer_id', id);
+
+                await db.from('society_handicaps').insert({
+                    golfer_id: id,
+                    society_id: null,
+                    handicap_index: 0,
+                    calculation_method: 'MANUAL',
+                    last_calculated_at: new Date().toISOString()
+                });
+
+                await db.from('society_handicaps').insert({
+                    golfer_id: id,
+                    society_id: TRGG,
+                    handicap_index: player.societyHcp,
+                    calculation_method: 'MANUAL',
+                    last_calculated_at: new Date().toISOString()
+                });
+                log('   UNIVERSAL=0, TRAVELLERS=' + player.societyHcp);
+
+                // 2. Fix user_profiles.handicap_index
+                log('[2] user_profiles.handicap_index...');
+                await db.from('user_profiles')
+                    .update({ handicap_index: player.societyHcp })
+                    .eq('line_user_id', id);
+                log('   Set to ' + player.societyHcp);
+
+                // 3. Fix profile_data.golfInfo.handicap
+                log('[3] profile_data.golfInfo.handicap...');
+                const updatedProfileData = {
+                    ...currentProfileData,
+                    handicap: String(player.societyHcp),
+                    golfInfo: {
+                        ...(currentProfileData.golfInfo || {}),
+                        handicap: String(player.societyHcp)
+                    }
+                };
+                await db.from('user_profiles')
+                    .update({ profile_data: updatedProfileData })
+                    .eq('line_user_id', id);
+                log('   Set to ' + player.societyHcp);
+
+                // Verify
+                const {data: v} = await db.from('society_handicaps').select('*').eq('golfer_id', id);
+                log('\n[VERIFY]:');
+                v?.forEach(h => {
+                    const lbl = h.society_id === null ? 'UNIVERSAL' : 'TRAVELLERS';
+                    const disp = h.handicap_index < 0 ? '+' + Math.abs(h.handicap_index) : h.handicap_index;
+                    log('   ' + lbl + ': ' + disp);
+                });
+                log('');
+            }
+
+            log('=== DONE ===');
+        };
+    </script>
+</body>
+</html>

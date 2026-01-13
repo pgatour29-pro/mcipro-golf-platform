@@ -70,19 +70,29 @@
 
             log('Found ' + (allMembers?.length || 0) + ' total members\n', 'success');
 
-            // Helper to get name from member
+            // Helper to get name from member - check ALL possible locations
             function getMemberName(m) {
-                if (m.member_data) {
-                    return m.member_data.name || m.member_data.displayName || m.member_data.full_name || '';
-                }
-                return '';
+                return m.name ||
+                       m.display_name ||
+                       m.displayName ||
+                       m.full_name ||
+                       m.member_data?.name ||
+                       m.member_data?.displayName ||
+                       m.member_data?.full_name ||
+                       m.profile_data?.name ||
+                       m.profile_data?.displayName ||
+                       '';
+            }
+
+            // Search by converting entire record to string
+            function searchInRecord(m, term) {
+                const str = JSON.stringify(m).toLowerCase();
+                return str.includes(term.toLowerCase());
             }
 
             // Search for Ryan
             log('=== SEARCHING FOR RYAN THOMAS ===\n', 'info');
-            const ryanMatches = allMembers.filter(m =>
-                getMemberName(m).toLowerCase().includes('ryan')
-            );
+            const ryanMatches = allMembers.filter(m => searchInRecord(m, 'ryan'));
 
             if (ryanMatches.length > 0) {
                 log('Found ' + ryanMatches.length + ' matches:', 'success');
@@ -91,6 +101,7 @@
                     log('  ID: ' + m.id);
                     log('  golfer_id: ' + m.golfer_id);
                     log('  Handicap: ' + (m.handicap || m.member_data?.handicap || 'N/A'));
+                    log('  RAW: ' + JSON.stringify(m).substring(0, 500));
                     ryanId = m.golfer_id || m.id;
                     log('  >>> Using golfer_id: ' + ryanId, 'success');
                     log('');
@@ -119,9 +130,7 @@
 
             // Search for Pluto
             log('\n=== SEARCHING FOR PLUTO ===\n', 'info');
-            const plutoMatches = allMembers.filter(m =>
-                getMemberName(m).toLowerCase().includes('pluto')
-            );
+            const plutoMatches = allMembers.filter(m => searchInRecord(m, 'pluto'));
 
             if (plutoMatches.length > 0) {
                 log('Found ' + plutoMatches.length + ' matches:', 'success');
@@ -130,6 +139,7 @@
                     log('  ID: ' + m.id);
                     log('  golfer_id: ' + m.golfer_id);
                     log('  Handicap: ' + (m.handicap || m.member_data?.handicap || 'N/A'));
+                    log('  RAW: ' + JSON.stringify(m).substring(0, 500));
                     plutoId = m.golfer_id || m.id;
                     log('  >>> Using golfer_id: ' + plutoId, 'success');
                     log('');

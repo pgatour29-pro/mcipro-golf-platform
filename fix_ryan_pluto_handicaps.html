@@ -154,6 +154,35 @@
                 }
             }
 
+            // 6. Try rounds table - players might be stored there
+            log('\n6. Checking rounds table...');
+            const { data: rounds, error: roundsErr } = await db
+                .from('rounds')
+                .select('*')
+                .limit(10);
+
+            if (roundsErr) {
+                log('   rounds: ' + roundsErr.message, 'error');
+            } else {
+                log('   rounds: ' + (rounds?.length || 0) + ' sample records', 'success');
+                if (rounds && rounds.length > 0) {
+                    log('   Sample keys: ' + Object.keys(rounds[0]).join(', '));
+                    const ryanR = rounds.filter(r => JSON.stringify(r).toLowerCase().includes('ryan'));
+                    if (ryanR.length) log('   FOUND RYAN in rounds: ' + JSON.stringify(ryanR[0]).substring(0, 300), 'success');
+                }
+            }
+
+            // 7. List ALL tables we can access
+            log('\n7. Testing additional tables...');
+            const tablesToTest = ['members', 'guests', 'manual_players', 'event_players', 'tournament_players', 'registered_players'];
+            for (const table of tablesToTest) {
+                const { data, error } = await db.from(table).select('*').limit(1);
+                if (!error) {
+                    log('   ✅ ' + table + ' table EXISTS - has data: ' + (data?.length > 0), 'success');
+                    if (data?.length > 0) log('      Keys: ' + Object.keys(data[0]).join(', '));
+                }
+            }
+
             // Placeholder for combined members
             const membersWithNames = [];
             const lineUserIds = [];

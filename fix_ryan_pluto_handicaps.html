@@ -54,31 +54,46 @@
             this.disabled = true;
             clearLog();
 
-            log('Loading ALL society_handicaps for Travellers Rest...', 'info');
+            log('Creating universal handicap = 0 for TRGG-GUEST-1002 (Ryan/Pluto with +1.6)...', 'info');
 
-            // Get ALL handicaps for this society to see what's there
-            const { data: allHcps, error } = await db
-                .from('society_handicaps')
-                .select('*')
-                .eq('society_id', TRGG_SOCIETY_ID);
+            // TRGG-GUEST-1002 has -1.6 (which is +1.6 handicap)
+            const golferId = 'TRGG-GUEST-1002';
+
+            // Delete existing universal if any
+            await db.from('society_handicaps')
+                .delete()
+                .eq('golfer_id', golferId)
+                .is('society_id', null);
+
+            // Insert universal = 0
+            const { error } = await db.from('society_handicaps')
+                .insert({
+                    golfer_id: golferId,
+                    society_id: null,
+                    handicap_index: 0,
+                    calculation_method: 'MANUAL',
+                    last_calculated_at: new Date().toISOString()
+                });
 
             if (error) {
                 log('Error: ' + error.message, 'error');
-                this.disabled = false;
-                return;
-            }
-
-            log('Found ' + (allHcps?.length || 0) + ' total handicap records\n', 'success');
-
-            if (allHcps && allHcps.length > 0) {
-                log('All handicaps in Travellers Rest:');
-                for (const h of allHcps) {
-                    log('  ' + h.golfer_id + ': ' + h.handicap_index);
-                }
             } else {
-                log('No handicaps found in society_handicaps for Travellers Rest', 'error');
-                log('\nSociety ID used: ' + TRGG_SOCIETY_ID);
+                log('✓ Created universal handicap = 0 for ' + golferId, 'success');
             }
+
+            // Verify
+            const { data: verify } = await db
+                .from('society_handicaps')
+                .select('*')
+                .eq('golfer_id', golferId);
+
+            log('\nCurrent handicaps for ' + golferId + ':');
+            for (const h of (verify || [])) {
+                const label = h.society_id === null ? 'Universal' : 'Society (TRGG)';
+                log('  ' + label + ': ' + h.handicap_index, 'success');
+            }
+
+            log('\nNOTE: Only found ONE player with -1.6. If Pluto is different, tell me their golfer_id.', 'info');
 
             this.disabled = false;
         });

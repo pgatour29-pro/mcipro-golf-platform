@@ -54,10 +54,57 @@
             this.disabled = true;
             clearLog();
 
-            log('Searching multiple tables for Ryan & Pluto...', 'info');
+            log('Finding Ryan & Pluto by their +1.6 handicap...', 'info');
 
-            // Try golfers table
-            log('\n1. Checking golfers table...');
+            // They have +1.6 society handicap (stored as -1.6)
+            // Search society_handicaps for that value
+            log('\n1. Searching society_handicaps for handicap = -1.6...');
+            const { data: plusHcps, error: plusErr } = await db
+                .from('society_handicaps')
+                .select('*')
+                .eq('society_id', TRGG_SOCIETY_ID)
+                .eq('handicap_index', -1.6);
+
+            if (plusErr) {
+                log('   Error: ' + plusErr.message, 'error');
+            } else {
+                log('   Found ' + (plusHcps?.length || 0) + ' players with +1.6 handicap', 'success');
+                if (plusHcps && plusHcps.length > 0) {
+                    for (const h of plusHcps) {
+                        log('   golfer_id: ' + h.golfer_id);
+                        log('   handicap: ' + h.handicap_index);
+                        log('   Full record: ' + JSON.stringify(h));
+
+                        // These are likely Ryan and Pluto!
+                        if (!ryanId) {
+                            ryanId = h.golfer_id;
+                            log('   >>> Assigning as RYAN', 'success');
+                        } else if (!plutoId) {
+                            plutoId = h.golfer_id;
+                            log('   >>> Assigning as PLUTO', 'success');
+                        }
+                        log('');
+                    }
+                }
+            }
+
+            // Also check for values close to -1.6
+            log('\n2. Checking for similar handicaps (-2 to -1)...');
+            const { data: rangeHcps } = await db
+                .from('society_handicaps')
+                .select('golfer_id, handicap_index')
+                .eq('society_id', TRGG_SOCIETY_ID)
+                .lt('handicap_index', 0);
+
+            if (rangeHcps && rangeHcps.length > 0) {
+                log('   Players with plus handicaps:', 'success');
+                for (const h of rangeHcps) {
+                    log('   ' + h.golfer_id + ': ' + h.handicap_index);
+                }
+            }
+
+            // Skip the rest of the table searches
+            log('\n3. Checking golfers table...');
             const { data: golfers, error: golfersErr } = await db
                 .from('golfers')
                 .select('*');

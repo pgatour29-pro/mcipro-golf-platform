@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>FIX ALL THREE - Rocky, Ryan, Pluto</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>FIX ROCKY, RYAN & PLUTO</h1>
+    <p>All three: +1.6 society handicap (stored as -1.6)</p>
+    <p style="font-size:12px;color:#666;">Updates ALL locations: society_handicaps, user_profiles.handicap_index, AND profile_data.golfInfo.handicap</p>
+    <button id="fixBtn" style="padding:30px 60px;font-size:28px;background:red;color:white;cursor:pointer;border:none;">FIX ALL THREE NOW</button>
+    <pre id="output" style="background:#eee;padding:20px;margin-top:20px;font-size:14px;"></pre>
+    <script>
+        const db = window.supabase.createClient(
+            'https://pyeeplwsnupmhgbguwqs.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NDM2NjksImV4cCI6MjA3NTQxOTY2OX0.KVQ6WvDKz9s77lxn3AhSA_YTMCN6rsht9kDkMIDhngk'
+        );
+        const TRGG = '7c0e4b72-d925-44bc-afda-38259a7ba346';
+        const out = document.getElementById('output');
+
+        function log(msg) {
+            out.textContent += msg + '\n';
+            console.log(msg);
+        }
+
+        document.getElementById('fixBtn').onclick = async () => {
+            out.textContent = '';
+            log('=== FIXING ROCKY, RYAN & PLUTO ===\n');
+
+            const players = ['rocky', 'ryan', 'pluto'];
+
+            for (const name of players) {
+                log('--- ' + name.toUpperCase() + ' ---');
+
+                // Find in user_profiles
+                const {data: profiles, error: findErr} = await db.from('user_profiles')
+                    .select('line_user_id, name, profile_data')
+                    .ilike('name', '%' + name + '%')
+                    .limit(1);
+
+                if (findErr) {
+                    log('ERROR finding ' + name + ': ' + findErr.message + '\n');
+                    continue;
+                }
+
+                if (!profiles || !profiles[0]) {
+                    log('ERROR: ' + name + ' not found in user_profiles!\n');
+                    continue;
+                }
+
+                const id = profiles[0].line_user_id;
+                const currentProfileData = profiles[0].profile_data || {};
+                log('Found: ' + profiles[0].name);
+                log('ID: ' + id);
+
+                // === 1. FIX society_handicaps TABLE ===
+                log('\n[1] Fixing society_handicaps...');
+
+                // Delete ALL existing handicaps for this ID
+                await db.from('society_handicaps').delete().eq('golfer_id', id);
+                log('   Deleted old records');
+
+                // Create UNIVERSAL = 0
+                const {error: e1} = await db.from('society_handicaps').insert({
+                    golfer_id: id,
+                    society_id: null,
+                    handicap_index: 0,
+                    calculation_method: 'MANUAL',
+                    last_calculated_at: new Date().toISOString()
+                });
+                if (e1) log('   Error (universal): ' + e1.message);
+                else log('   Created UNIVERSAL = 0');
+
+                // Create SOCIETY = +1.6 (stored as -1.6)
+                const {error: e2} = await db.from('society_handicaps').insert({
+                    golfer_id: id,
+                    society_id: TRGG,
+                    handicap_index: -1.6,
+                    calculation_method: 'MANUAL',
+                    last_calculated_at: new Date().toISOString()
+                });
+                if (e2) log('   Error (society): ' + e2.message);
+                else log('   Created TRAVELLERS = -1.6 (displays as +1.6)');
+
+                // === 2. FIX user_profiles.handicap_index ===
+                log('\n[2] Fixing user_profiles.handicap_index...');
+                const {error: e3} = await db.from('user_profiles')
+                    .update({ handicap_index: -1.6 })
+                    .eq('line_user_id', id);
+                if (e3) log('   Error: ' + e3.message);
+                else log('   Set handicap_index = -1.6 (displays as +1.6)');
+
+                // === 3. FIX profile_data.golfInfo.handicap (for Buddy list) ===
+                log('\n[3] Fixing profile_data.golfInfo.handicap...');
+                const updatedProfileData = {
+                    ...currentProfileData,
+                    handicap: '-1.6',
+                    golfInfo: {
+                        ...(currentProfileData.golfInfo || {}),
+                        handicap: '-1.6',
+                        lastHandicapUpdate: new Date().toISOString()
+                    }
+                };
+                const {error: e4} = await db.from('user_profiles')
+                    .update({ profile_data: updatedProfileData })
+                    .eq('line_user_id', id);
+                if (e4) log('   Error: ' + e4.message);
+                else log('   Set profile_data.golfInfo.handicap = -1.6');
+
+                // === VERIFY ===
+                log('\n[VERIFY] Final state:');
+                const {data: verify} = await db.from('society_handicaps').select('*').eq('golfer_id', id);
+                verify?.forEach(h => {
+                    const label = h.society_id === null ? 'UNIVERSAL' : 'TRAVELLERS';
+                    const display = h.handicap_index < 0 ? '+' + Math.abs(h.handicap_index) : h.handicap_index;
+                    log('   society_handicaps.' + label + ': ' + display);
+                });
+
+                const {data: verifyProfile} = await db.from('user_profiles')
+                    .select('handicap_index, profile_data')
+                    .eq('line_user_id', id)
+                    .single();
+                if (verifyProfile) {
+                    const hcpIdx = verifyProfile.handicap_index;
+                    const displayIdx = hcpIdx < 0 ? '+' + Math.abs(hcpIdx) : hcpIdx;
+                    log('   user_profiles.handicap_index: ' + displayIdx);
+                    log('   profile_data.golfInfo.handicap: ' + verifyProfile.profile_data?.golfInfo?.handicap);
+                }
+
+                log('\n');
+            }
+
+            log('=== ALL DONE ===');
+            log('Test in:');
+            log('  1. Start Round directory');
+            log('  2. Buddy list');
+            log('  3. Society round handicap selection');
+        };
+    </script>
+</body>
+</html>

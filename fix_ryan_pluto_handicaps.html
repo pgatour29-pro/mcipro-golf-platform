@@ -54,46 +54,56 @@
             this.disabled = true;
             clearLog();
 
-            log('Creating universal handicap = 0 for TRGG-GUEST-1002 (Ryan/Pluto with +1.6)...', 'info');
+            log('Searching for Pluto in user_profiles...', 'info');
 
-            // TRGG-GUEST-1002 has -1.6 (which is +1.6 handicap)
-            const golferId = 'TRGG-GUEST-1002';
+            // Search user_profiles for pluto
+            const { data: profiles } = await db
+                .from('user_profiles')
+                .select('line_user_id, name, profile_data');
 
-            // Delete existing universal if any
-            await db.from('society_handicaps')
-                .delete()
-                .eq('golfer_id', golferId)
-                .is('society_id', null);
+            const plutoMatches = (profiles || []).filter(p => {
+                const name = (p.name || p.profile_data?.name || p.profile_data?.displayName || '').toLowerCase();
+                return name.includes('pluto');
+            });
 
-            // Insert universal = 0
-            const { error } = await db.from('society_handicaps')
-                .insert({
-                    golfer_id: golferId,
-                    society_id: null,
-                    handicap_index: 0,
-                    calculation_method: 'MANUAL',
-                    last_calculated_at: new Date().toISOString()
-                });
-
-            if (error) {
-                log('Error: ' + error.message, 'error');
+            if (plutoMatches.length > 0) {
+                log('Found Pluto in user_profiles:', 'success');
+                for (const p of plutoMatches) {
+                    log('  LINE ID: ' + p.line_user_id);
+                    log('  Name: ' + (p.name || p.profile_data?.name));
+                    plutoId = p.line_user_id;
+                }
             } else {
-                log('✓ Created universal handicap = 0 for ' + golferId, 'success');
+                log('Pluto not found in user_profiles', 'error');
             }
 
-            // Verify
-            const { data: verify } = await db
-                .from('society_handicaps')
-                .select('*')
-                .eq('golfer_id', golferId);
+            // Search for Ryan too
+            log('\nSearching for Ryan in user_profiles...', 'info');
+            const ryanMatches = (profiles || []).filter(p => {
+                const name = (p.name || p.profile_data?.name || p.profile_data?.displayName || '').toLowerCase();
+                return name.includes('ryan');
+            });
 
-            log('\nCurrent handicaps for ' + golferId + ':');
-            for (const h of (verify || [])) {
-                const label = h.society_id === null ? 'Universal' : 'Society (TRGG)';
-                log('  ' + label + ': ' + h.handicap_index, 'success');
+            if (ryanMatches.length > 0) {
+                log('Found Ryan in user_profiles:', 'success');
+                for (const p of ryanMatches) {
+                    log('  LINE ID: ' + p.line_user_id);
+                    log('  Name: ' + (p.name || p.profile_data?.name));
+                    ryanId = p.line_user_id;
+                }
+            } else {
+                log('Ryan not found in user_profiles - using TRGG-GUEST-1002 (the -1.6 hcp)', 'info');
+                ryanId = 'TRGG-GUEST-1002';
             }
 
-            log('\nNOTE: Only found ONE player with -1.6. If Pluto is different, tell me their golfer_id.', 'info');
+            log('\n=== SUMMARY ===', 'info');
+            log('Ryan ID: ' + ryanId);
+            log('Pluto ID: ' + (plutoId || 'NOT FOUND'));
+
+            if (ryanId || plutoId) {
+                document.getElementById('fixBtn').disabled = false;
+                log('\nClick "Create Universal Handicap = 0" button to create universal handicaps.', 'success');
+            }
 
             this.disabled = false;
         });

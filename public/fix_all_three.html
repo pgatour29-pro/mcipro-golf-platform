@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>FIX ALL FOUR - Rocky, Ryan, Pluto, Jesse</title>
+    <title>FIX ALL FOUR HANDICAPS</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
     <h1>FIX ROCKY, RYAN, PLUTO & JESSE</h1>
-    <p>All four: +1.6 society handicap (stored as -1.6)</p>
+    <p>Rocky: +1.9 | Ryan: +1.6 | Pluto: +1.6 | Jesse: 2.8</p>
     <p style="font-size:12px;color:#666;">Updates ALL locations: society_handicaps, user_profiles.handicap_index, AND profile_data.golfInfo.handicap</p>
     <button id="fixBtn" style="padding:30px 60px;font-size:28px;background:red;color:white;cursor:pointer;border:none;">FIX ALL FOUR NOW</button>
     <pre id="output" style="background:#eee;padding:20px;margin-top:20px;font-size:14px;"></pre>
@@ -23,28 +23,36 @@
             console.log(msg);
         }
 
+        // CORRECT HANDICAPS FROM TRGG DATA:
+        // Plus handicaps stored as NEGATIVE (displays with + sign)
+        // Regular handicaps stored as POSITIVE
+        const playerHandicaps = {
+            'rocky': { search: 'rocky', societyHcp: -1.9, universalHcp: 0, display: '+1.9' },
+            'ryan': { search: 'ryan thomas', societyHcp: -1.6, universalHcp: 0, display: '+1.6' },
+            'pluto': { search: 'pluto', societyHcp: -1.6, universalHcp: 0, display: '+1.6' },
+            'jesse': { search: 'jesse stoneberg', societyHcp: 2.8, universalHcp: 2.8, display: '2.8' }
+        };
+
         document.getElementById('fixBtn').onclick = async () => {
             out.textContent = '';
-            log('=== FIXING ROCKY, RYAN, PLUTO & JESSE ===\n');
+            log('=== FIXING ALL FOUR PLAYERS ===\n');
 
-            const players = ['rocky', 'ryan', 'pluto', 'jesse stoneberg'];
-
-            for (const name of players) {
-                log('--- ' + name.toUpperCase() + ' ---');
+            for (const [key, player] of Object.entries(playerHandicaps)) {
+                log('--- ' + key.toUpperCase() + ' (Target: ' + player.display + ') ---');
 
                 // Find in user_profiles
                 const {data: profiles, error: findErr} = await db.from('user_profiles')
                     .select('line_user_id, name, profile_data')
-                    .ilike('name', '%' + name + '%')
+                    .ilike('name', '%' + player.search + '%')
                     .limit(1);
 
                 if (findErr) {
-                    log('ERROR finding ' + name + ': ' + findErr.message + '\n');
+                    log('ERROR finding ' + key + ': ' + findErr.message + '\n');
                     continue;
                 }
 
                 if (!profiles || !profiles[0]) {
-                    log('ERROR: ' + name + ' not found in user_profiles!\n');
+                    log('ERROR: ' + key + ' not found in user_profiles!\n');
                     continue;
                 }
 
@@ -60,44 +68,45 @@
                 await db.from('society_handicaps').delete().eq('golfer_id', id);
                 log('   Deleted old records');
 
-                // Create UNIVERSAL = 0
+                // Create UNIVERSAL handicap
                 const {error: e1} = await db.from('society_handicaps').insert({
                     golfer_id: id,
                     society_id: null,
-                    handicap_index: 0,
+                    handicap_index: player.universalHcp,
                     calculation_method: 'MANUAL',
                     last_calculated_at: new Date().toISOString()
                 });
                 if (e1) log('   Error (universal): ' + e1.message);
-                else log('   Created UNIVERSAL = 0');
+                else log('   Created UNIVERSAL = ' + player.universalHcp);
 
-                // Create SOCIETY = +1.6 (stored as -1.6)
+                // Create SOCIETY handicap
                 const {error: e2} = await db.from('society_handicaps').insert({
                     golfer_id: id,
                     society_id: TRGG,
-                    handicap_index: -1.6,
+                    handicap_index: player.societyHcp,
                     calculation_method: 'MANUAL',
                     last_calculated_at: new Date().toISOString()
                 });
                 if (e2) log('   Error (society): ' + e2.message);
-                else log('   Created TRAVELLERS = -1.6 (displays as +1.6)');
+                else log('   Created TRAVELLERS = ' + player.societyHcp + ' (displays as ' + player.display + ')');
 
                 // === 2. FIX user_profiles.handicap_index ===
                 log('\n[2] Fixing user_profiles.handicap_index...');
                 const {error: e3} = await db.from('user_profiles')
-                    .update({ handicap_index: -1.6 })
+                    .update({ handicap_index: player.societyHcp })
                     .eq('line_user_id', id);
                 if (e3) log('   Error: ' + e3.message);
-                else log('   Set handicap_index = -1.6 (displays as +1.6)');
+                else log('   Set handicap_index = ' + player.societyHcp);
 
                 // === 3. FIX profile_data.golfInfo.handicap (for Buddy list) ===
                 log('\n[3] Fixing profile_data.golfInfo.handicap...');
+                const hcpString = String(player.societyHcp);
                 const updatedProfileData = {
                     ...currentProfileData,
-                    handicap: '-1.6',
+                    handicap: hcpString,
                     golfInfo: {
                         ...(currentProfileData.golfInfo || {}),
-                        handicap: '-1.6',
+                        handicap: hcpString,
                         lastHandicapUpdate: new Date().toISOString()
                     }
                 };
@@ -105,7 +114,7 @@
                     .update({ profile_data: updatedProfileData })
                     .eq('line_user_id', id);
                 if (e4) log('   Error: ' + e4.message);
-                else log('   Set profile_data.golfInfo.handicap = -1.6');
+                else log('   Set profile_data.golfInfo.handicap = ' + hcpString);
 
                 // === VERIFY ===
                 log('\n[VERIFY] Final state:');

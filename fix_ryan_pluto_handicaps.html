@@ -56,14 +56,14 @@
 
             log('Finding Ryan & Pluto by their +1.6 handicap...', 'info');
 
-            // They have +1.6 society handicap (stored as -1.6)
+            // They have +1.6 society handicap (stored as 1.6)
             // Search society_handicaps for that value
-            log('\n1. Searching society_handicaps for handicap = -1.6...');
+            log('\n1. Searching society_handicaps for handicap = 1.6...');
             const { data: plusHcps, error: plusErr } = await db
                 .from('society_handicaps')
                 .select('*')
                 .eq('society_id', TRGG_SOCIETY_ID)
-                .eq('handicap_index', -1.6);
+                .eq('handicap_index', 1.6);
 
             if (plusErr) {
                 log('   Error: ' + plusErr.message, 'error');
@@ -88,16 +88,17 @@
                 }
             }
 
-            // Also check for values close to -1.6
-            log('\n2. Checking for similar handicaps (-2 to -1)...');
+            // Also check for low handicaps (0 to 5)
+            log('\n2. Checking for low handicaps (0 to 5)...');
             const { data: rangeHcps } = await db
                 .from('society_handicaps')
                 .select('golfer_id, handicap_index')
                 .eq('society_id', TRGG_SOCIETY_ID)
-                .lt('handicap_index', 0);
+                .lte('handicap_index', 5)
+                .gte('handicap_index', 0);
 
             if (rangeHcps && rangeHcps.length > 0) {
-                log('   Players with plus handicaps:', 'success');
+                log('   Players with low handicaps:', 'success');
                 for (const h of rangeHcps) {
                     log('   ' + h.golfer_id + ': ' + h.handicap_index);
                 }

@@ -425,12 +425,37 @@
                 // Get today's events
                 const todayEvents = allEvents.filter(e => e.event_date === today);
 
+                // NEW: Get today's public casual rounds (live spectatable)
+                const { data: publicRounds, error: roundsError } = await supabaseClient
+                    .from('scorecards')
+                    .select(`
+                        group_id, course_name, created_at,
+                        player_id, player_name, status
+                    `)
+                    .eq('is_live_spectatable', true)
+                    .eq('status', 'in_progress')
+                    .gte('created_at', `${today}T00:00:00`)
+                    .lte('created_at', `${today}T23:59:59`)
+                    .order('created_at', { ascending: false });
+
+                if (roundsError) console.error('Error loading public rounds:', roundsError);
+
+                // Group by group_id to get unique rounds
+                const uniqueRounds = [];
+                const seenGroups = new Set();
+                for (const sc of (publicRounds || [])) {
+                    if (!seenGroups.has(sc.group_id)) {
+                        seenGroups.add(sc.group_id);
+                        uniqueRounds.push(sc);
+                    }
+                }
+
                 // Update last refresh time
                 document.getElementById('lastUpdate').textContent =
                     `Last updated: ${new Date().toLocaleTimeString()}`;
 
                 // No active games today
-                if (todayPools.length === 0 && todayEvents.length === 0) {
+                if (todayPools.length === 0 && todayEvents.length === 0 && uniqueRounds.length === 0) {
                     container.innerHTML = `
                         <div class="bg-white rounded-lg shadow-sm p-8 text-center">
                             <span class="material-symbols-outlined text-6xl text-gray-300 mb-4">sports_golf</span>
@@ -450,6 +475,12 @@
                     const format = event.format || 'stableford';
                     const leaderboard = await getEventLeaderboard(event.id, format);
                     html += renderEventCard(event, leaderboard, false, format);
+                }
+
+                // NEW: Render Public Casual Rounds (Live Spectatable)
+                for (const round of uniqueRounds) {
+                    const leaderboard = await getCasualRoundLeaderboard(round.group_id);
+                    html += renderCasualRoundCard(round, leaderboard);
                 }
 
                 // Render Public Pools (Side Games)
@@ -647,6 +678,149 @@
             }
 
             return Object.values(playerScores).sort((a, b) => b.total_stableford - a.total_stableford);
+        }
+
+        // NEW: Get casual round leaderboard (for public live spectatable rounds)
+        async function getCasualRoundLeaderboard(groupId) {
+            const { data: scorecards, error } = await supabaseClient
+                .from('scorecards')
+                .select(`
+                    id, player_id, player_name, created_at,
+                    scores (hole_number, gross_score, net_score, stableford_points, par)
+                `)
+                .eq('group_id', groupId)
+                .eq('is_live_spectatable', true);
+
+            if (error || !scorecards) return [];
+
+            // Build leaderboard same as events
+            const leaderboard = scorecards.map(sc => {
+                const holeScores = new Array(18).fill(null);
+                const holePars = new Array(18).fill(null);
+                for (const score of (sc.scores || [])) {
+                    if (score.hole_number >= 1 && score.hole_number <= 18) {
+                        holeScores[score.hole_number - 1] = score.gross_score;
+                        holePars[score.hole_number - 1] = score.par || 4;
+                    }
+                }
+
+                return {
+                    player_id: sc.player_id,
+                    player_name: sc.player_name || 'Player',
+                    total_gross: (sc.scores || []).reduce((sum, s) => sum + (s.gross_score || 0), 0),
+                    total_net: (sc.scores || []).reduce((sum, s) => sum + (s.net_score || 0), 0),
+                    total_stableford: (sc.scores || []).reduce((sum, s) => sum + (s.stableford_points || 0), 0),
+                    front9_stableford: (sc.scores || []).filter(s => s.hole_number <= 9).reduce((sum, s) => sum + (s.stableford_points || 0), 0),
+                    back9_stableford: (sc.scores || []).filter(s => s.hole_number > 9).reduce((sum, s) => sum + (s.stableford_points || 0), 0),
+                    front9_gross: (sc.scores || []).filter(s => s.hole_number <= 9).reduce((sum, s) => sum + (s.gross_score || 0), 0),
+                    back9_gross: (sc.scores || []).filter(s => s.hole_number > 9).reduce((sum, s) => sum + (s.gross_score || 0), 0),
+                    holes_played: (sc.scores || []).length,
+                    hole_scores: holeScores,
+                    hole_pars: holePars,
+                    status: 'in_progress'
+                };
+            });
+
+            // Sort by stableford points
+            leaderboard.sort((a, b) => b.total_stableford - a.total_stableford);
+            return leaderboard;
+        }
+
+        // NEW: Render casual round card (for public live spectatable rounds)
+        function renderCasualRoundCard(round, leaderboard) {
+            const courseName = round.course_name || 'Golf Course';
+            const startTime = new Date(round.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            return `
+                <div class="bg-white rounded-lg shadow-lg overflow-hidden mb-6 border-2 border-red-200">
+                    <!-- Header -->
+                    <div class="bg-gradient-to-r from-red-500 to-pink-500 text-white p-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-outlined text-2xl">visibility</span>
+                                <div>
+                                    <h3 class="text-lg font-bold">${courseName}</h3>
+                                    <p class="text-red-100 text-sm">Casual Round (Live Spectatable)</p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <span class="inline-flex items-center gap-1 bg-red-600 px-3 py-1 rounded-full text-xs font-semibold pulse">
+                                    <span class="w-2 h-2 bg-white rounded-full"></span>
+                                    LIVE
+                                </span>
+                                <p class="text-red-100 text-xs mt-1">Started ${startTime}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Leaderboard Table -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-50 border-b">
+                                <tr>
+                                    <th class="text-left p-3 text-sm font-semibold text-gray-600">Pos</th>
+                                    <th class="text-left p-3 text-sm font-semibold text-gray-600">Player</th>
+                                    <th class="text-center p-3 text-sm font-semibold text-gray-600">Holes</th>
+                                    <th class="text-center p-3 text-sm font-semibold text-gray-600">Pts</th>
+                                    <th class="text-center p-3 text-sm font-semibold text-gray-600">Gross</th>
+                                    <th class="text-center p-3 text-sm font-semibold text-gray-600">F9</th>
+                                    <th class="text-center p-3 text-sm font-semibold text-gray-600">B9</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${leaderboard.length > 0 ? leaderboard.map((player, idx) => `
+                                    <tr class="border-b hover:bg-gray-50 ${idx === 0 ? 'winner-row' : ''}" onclick="togglePlayerDetails('${player.player_id}')">
+                                        <td class="p-3">
+                                            <span class="font-bold text-gray-700">${idx + 1}</span>
+                                            ${idx === 0 ? '<span class="ml-1">🏆</span>' : ''}
+                                        </td>
+                                        <td class="p-3">
+                                            <div class="flex items-center gap-2">
+                                                <span class="player-name font-medium text-gray-900">${player.player_name}</span>
+                                                <span class="material-symbols-outlined expand-icon text-gray-400 text-sm" id="icon-${player.player_id}">expand_more</span>
+                                            </div>
+                                        </td>
+                                        <td class="text-center p-3 text-gray-600">${player.holes_played}/18</td>
+                                        <td class="text-center p-3 font-semibold text-green-600">${player.total_stableford}</td>
+                                        <td class="text-center p-3 text-gray-900">${player.total_gross}</td>
+                                        <td class="text-center p-3 text-gray-600">${player.front9_stableford}</td>
+                                        <td class="text-center p-3 text-gray-600">${player.back9_stableford}</td>
+                                    </tr>
+                                    <!-- Hole-by-hole details row -->
+                                    <tr class="hole-details bg-gray-50" id="details-${player.player_id}">
+                                        <td colspan="7" class="p-4">
+                                            <div class="text-xs font-semibold text-gray-600 mb-2">Hole-by-Hole</div>
+                                            <div class="hole-grid">
+                                                ${[...Array(18)].map((_, i) => `
+                                                    <div class="hole-cell hole-header">H${i + 1}</div>
+                                                `).join('')}
+                                                ${player.hole_scores.map((score, i) => {
+                                                    if (score === null) return '<div class="hole-cell hole-score">-</div>';
+                                                    const par = player.hole_pars[i] || 4;
+                                                    const diff = score - par;
+                                                    let cssClass = 'hole-score score-par';
+                                                    if (diff <= -2) cssClass = 'hole-score score-eagle';
+                                                    else if (diff === -1) cssClass = 'hole-score score-birdie';
+                                                    else if (diff === 1) cssClass = 'hole-score score-bogey';
+                                                    else if (diff >= 2) cssClass = 'hole-score score-double';
+                                                    return `<div class="${cssClass}">${score}</div>`;
+                                                }).join('')}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `).join('') : `
+                                    <tr>
+                                        <td colspan="7" class="text-center py-6 text-gray-400">
+                                            <span class="material-symbols-outlined text-4xl">hourglass_empty</span>
+                                            <p class="mt-2">Waiting for scores...</p>
+                                        </td>
+                                    </tr>
+                                `}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
         }
 
         // Toggle player details expansion

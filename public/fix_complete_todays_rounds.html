@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Complete Today's Rounds - Emergency Fix</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #0f0; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin: 10px 0; }
+        .log { background: #000; padding: 10px; margin: 10px 0; border: 1px solid #0f0; }
+        .error { color: #f00; }
+        .success { color: #0f0; }
+        .warning { color: #ff0; }
+    </style>
+</head>
+<body>
+    <h1>Complete Today's Rounds - Emergency Fix</h1>
+    <p>This will complete all incomplete scorecards from today (2026-01-14) and create rounds in history.</p>
+
+    <button onclick="completeTodaysRounds()">▶ COMPLETE TODAY'S ROUNDS</button>
+
+    <div id="log" class="log"></div>
+
+    <script>
+        function log(msg, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const color = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : '';
+            logDiv.innerHTML += `<div class="${color}">[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+            console.log(msg);
+        }
+
+        async function completeTodaysRounds() {
+            log('Starting...', 'info');
+
+            if (!window.SupabaseDB || !window.SupabaseDB.client) {
+                log('ERROR: Supabase client not found. Make sure you are logged in.', 'error');
+                return;
+            }
+
+            const client = window.SupabaseDB.client;
+
+            try {
+                // Get incomplete scorecards from today
+                log('Fetching incomplete scorecards from 2026-01-14...', 'info');
+                const { data: scorecards, error: fetchError } = await client
+                    .from('scorecards')
+                    .select('*')
+                    .gte('created_at', '2026-01-14')
+                    .eq('status', 'in_progress')
+                    .order('created_at');
+
+                if (fetchError) {
+                    log(`ERROR fetching scorecards: ${fetchError.message}`, 'error');
+                    return;
+                }
+
+                if (!scorecards || scorecards.length === 0) {
+                    log('No incomplete scorecards found from today.', 'warning');
+                    return;
+                }
+
+                log(`Found ${scorecards.length} incomplete scorecards:`, 'info');
+                scorecards.forEach(sc => {
+                    log(`  - ${sc.player_name}: ${sc.course_name}, Gross: ${sc.total_gross}`, 'info');
+                });
+
+                // Process each scorecard
+                for (const card of scorecards) {
+                    log(`\nProcessing: ${card.player_name}...`, 'info');
+
+                    // Get scores for this scorecard
+                    const { data: scores, error: scoresError } = await client
+                        .from('scores')
+                        .select('hole_number, gross_score, stableford_points')
+                        .eq('scorecard_id', card.id)
+                        .order('hole_number');
+
+                    if (scoresError) {
+                        log(`  ERROR fetching scores: ${scoresError.message}`, 'error');
+                        continue;
+                    }
+
+                    if (!scores || scores.length === 0) {
+                        log(`  WARNING: No scores found - skipping`, 'warning');
+                        continue;
+                    }
+
+                    // Calculate totals
+                    const totalGross = scores.reduce((sum, s) => sum + (s.gross_score || 0), 0);
+                    const totalStableford = scores.reduce((sum, s) => sum + (s.stableford_points || 0), 0);
+                    const holesPlayed = scores.length;
+
+                    log(`  Holes: ${holesPlayed}, Gross: ${totalGross}, Stableford: ${totalStableford}`, 'info');
+
+                    // Update scorecard to completed
+                    const { error: updateError } = await client
+                        .from('scorecards')
+                        .update({
+                            status: 'completed',
+                            completed_at: new Date().toISOString(),
+                            total_gross: totalGross
+                        })
+                        .eq('id', card.id);
+
+                    if (updateError) {
+                        log(`  ERROR updating scorecard: ${updateError.message}`, 'error');
+                        continue;
+                    }
+
+                    log(`  ✓ Scorecard marked as completed`, 'success');
+
+                    // Create round in rounds table
+                    const roundData = {
+                        golfer_id: card.player_id,
+                        course_id: card.course_id,
+                        course_name: card.course_name,
+                        type: card.event_id ? 'society' : 'private',
+                        society_event_id: card.event_id,
+                        played_at: new Date().toISOString(),
+                        started_at: card.started_at,
+                        completed_at: new Date().toISOString(),
+                        status: 'completed',
+                        total_gross: totalGross,
+                        total_stableford: totalStableford,
+                        handicap_used: card.handicap || 0,
+                        tee_marker: card.tee_marker || 'white',
+                        course_rating: 72.0,
+                        slope_rating: 113,
+                        holes_played: holesPlayed,
+                        scoring_formats: card.scoring_format || ['stableford'],
+                        format_scores: {
+                            stableford: totalStableford
+                        }
+                    };
+
+                    const { data: round, error: roundError } = await client
+                        .from('rounds')
+                        .insert(roundData)
+                        .select()
+                        .single();
+
+                    if (roundError) {
+                        log(`  ERROR creating round: ${roundError.message}`, 'error');
+                        continue;
+                    }
+
+                    log(`  ✓ Round created in history! (ID: ${round.id})`, 'success');
+                }
+
+                log('\n=== DONE ===', 'success');
+                log('All rounds have been completed and saved to history.', 'success');
+                log('Refresh your Round History tab to see them.', 'success');
+
+            } catch (error) {
+                log(`UNEXPECTED ERROR: ${error.message}`, 'error');
+                console.error(error);
+            }
+        }
+    </script>
+</body>
+</html>

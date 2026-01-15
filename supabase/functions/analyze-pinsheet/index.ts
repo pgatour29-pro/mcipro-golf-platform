@@ -236,8 +236,18 @@ Rules:
     // Parse JSON response
     let analysis: PinSheetAnalysis;
     try {
-      // Remove markdown code blocks if present
-      const cleanedText = textContent.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      // Extract JSON from markdown-wrapped responses
+      let cleanedText = textContent;
+
+      // Try to extract JSON object using regex (handles explanatory text before/after JSON)
+      const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanedText = jsonMatch[0];
+      } else {
+        // Fallback: remove markdown code blocks
+        cleanedText = cleanedText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      }
+
       analysis = JSON.parse(cleanedText);
     } catch (parseError) {
       console.error("[Analyze Pin Sheet] JSON parse error:", parseError);

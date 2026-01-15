@@ -935,6 +935,36 @@ async function handlePlatformAnnouncement(supabase: any, announcement: any) {
     return { success: true, notified: 0, reason: "no_messaging_user_ids" };
   }
 
+  // Check notification preferences for platform announcements
+  console.log("[LINE Push] Checking notification preferences for", uniqueLineUserIds.length, "users");
+  const { data: prefs } = await supabase
+    .from("notification_preferences")
+    .select("user_id")
+    .in("user_id", uniqueLineUserIds)
+    .eq("notify_announcements", false);
+
+  const optedOutUsers = new Set(prefs?.map((p: any) => p.user_id) || []);
+  console.log("[LINE Push] Users opted out of announcements:", optedOutUsers.size);
+
+  // Create a map of line_user_id -> messaging_user_id from profiles
+  const userIdMap = new Map();
+  (profiles || []).forEach((p: any) => {
+    userIdMap.set(p.line_user_id, p.messaging_user_id || p.line_user_id);
+  });
+
+  // Filter to only users who haven't opted out
+  const usersToNotify = uniqueLineUserIds
+    .filter((userId: string) => !optedOutUsers.has(userId))
+    .map((userId: string) => userIdMap.get(userId))
+    .filter((id: string) => id && id.startsWith("U"));
+
+  console.log("[LINE Push] After preference filtering:", usersToNotify.length, "users to notify");
+
+  if (usersToNotify.length === 0) {
+    console.log("[LINE Push] All users opted out of platform announcements");
+    return { success: true, notified: 0, reason: "all_opted_out" };
+  }
+
   // Build the platform announcement message with special styling
   const lineMessage: LineMessage = {
     type: "flex",
@@ -1006,7 +1036,7 @@ async function handlePlatformAnnouncement(supabase: any, announcement: any) {
   };
 
   // Send via multicast in batches of 500
-  const batches = chunkArray(messagingUserIds, 500);
+  const batches = chunkArray(usersToNotify, 500);
   let totalSent = 0;
 
   for (const batch of batches) {

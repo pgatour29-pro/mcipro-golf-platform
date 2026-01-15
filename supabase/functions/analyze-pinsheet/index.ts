@@ -99,6 +99,13 @@ serve(async (req) => {
 
 CRITICAL INSTRUCTIONS FOR READING PIN SHEETS:
 
+STEP 1: CHECK IMAGE ORIENTATION FIRST!
+Before reading pin positions, determine if the image is oriented correctly:
+- Look for COURSE NAME or LOGO - this should be at the TOP of the image
+- Look for DATE or GREEN SPEED text - usually at the TOP
+- Look for HOLE NUMBERS - Hole 1 should be in the TOP-LEFT area
+- If the text/numbers appear upside down, mentally rotate the image 180° before reading
+
 1. LAYOUT: Pin sheets show 18 circular diagrams (one per hole), usually in a 6x3 or 3x6 grid
 2. EACH CIRCLE: Represents the green shape from above (bird's eye view)
 3. THE PIN DOT: Look for a small BLACK DOT, filled circle, or mark inside each circle - this shows the EXACT pin location

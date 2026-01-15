@@ -250,11 +250,10 @@ window.GolfBuddiesSystem = {
     createBuddiesModal() {
         const modalHTML = `
             <!-- Buddies Modal -->
-            <div id="buddiesModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-[99999] overflow-y-auto" onclick="event.target.id === 'buddiesModal' && GolfBuddiesSystem.closeBuddiesModal()">
-                <div class="min-h-screen px-2 py-4 sm:p-4 flex items-start sm:items-center justify-center">
-                    <div class="bg-white rounded-lg shadow-xl w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl mx-auto max-h-[90vh] flex flex-col" onclick="event.stopPropagation()">
+            <div id="buddiesModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-[99999] flex items-center justify-center p-4" onclick="event.target.id === 'buddiesModal' && GolfBuddiesSystem.closeBuddiesModal()">
+                <div class="bg-white rounded-lg shadow-xl w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl max-h-[90vh] flex flex-col" onclick="event.stopPropagation()">
                         <!-- Header -->
-                        <div class="px-3 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-green-50 to-blue-50 rounded-t-lg">
+                        <div class="px-3 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-green-50 to-blue-50 rounded-t-lg flex-shrink-0">
                             <div class="flex items-center gap-2 sm:gap-3">
                                 <span class="material-symbols-outlined text-green-600 text-xl sm:text-3xl">group</span>
                                 <div>
@@ -268,7 +267,7 @@ window.GolfBuddiesSystem = {
                         </div>
 
                         <!-- Tabs -->
-                        <div class="border-b border-gray-200">
+                        <div class="border-b border-gray-200 flex-shrink-0">
                             <div class="flex gap-1 sm:gap-2 px-2 sm:px-6 overflow-x-auto">
                                 <button onclick="GolfBuddiesSystem.showBuddiesTab('myBuddies')"
                                         id="buddiesTab-myBuddies"
@@ -351,7 +350,7 @@ window.GolfBuddiesSystem = {
                         </div>
 
                         <!-- Footer with Recent Partners -->
-                        <div class="px-3 sm:px-6 py-3 sm:py-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+                        <div class="px-3 sm:px-6 py-3 sm:py-4 border-t border-gray-200 bg-gray-50 rounded-b-lg flex-shrink-0">
                             <div>
                                 <h4 class="text-sm font-semibold text-gray-700 mb-2">Recent Partners</h4>
                                 <div id="recentPartnersList" class="flex gap-2 flex-wrap">

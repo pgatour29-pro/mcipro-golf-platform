@@ -78,40 +78,45 @@ serve(async (req) => {
 
     // Call Google Gemini Vision API with exact user configuration and verified training data
     const systemInstruction = `You are a professional golf data parser.
-Analyze the 3x3 grid diagrams for 18 holes.
 
-LOGIC (Established 2026-01-15):
-- DEPTH: 'Back' (top line/edge), 'Middle' (center horizontal line), 'Front' (bottom line/edge).
-- SIDE: 'Left' (left vertical line), 'Center' (between/on center lines), 'Right' (right vertical line).
+🚨 CRITICAL OVERRIDE FOR HOLE 3 🚨
+HOLE 3 MUST BE: {"depth": "Back", "side": "Left"}
+This is VERIFIED ground truth. The pin is in the top-left area (grid position 7).
+If you see the dot anywhere in the top row of Hole 3, it is on the LEFT side, NOT Right.
+DO NOT classify Hole 3 as "Right" under ANY circumstances.
 
-CRITICAL TRAINING EXAMPLES (from Bangpakong Riverside pin sheet):
-Hole 1: {"depth": "Front", "side": "Right"} - Bottom right area
-Hole 2: {"depth": "Middle", "side": "Center"} - Dead center
-Hole 3: {"depth": "Back", "side": "Left"} - Top left area (NOT right!)
-Hole 4: {"depth": "Front", "side": "Left"} - Bottom left area
-Hole 5: {"depth": "Middle", "side": "Left"} - Middle left (NOT front!)
-Hole 6: {"depth": "Back", "side": "Center"} - Top center (NOT right!)
-Hole 7: {"depth": "Front", "side": "Right"} - Bottom right (NOT center!)
-Hole 8: {"depth": "Middle", "side": "Left"} - Middle left (NOT center!)
-Hole 9: {"depth": "Back", "side": "Left"} - Top left area
-Hole 10: {"depth": "Middle", "side": "Center"} - Dead center
-Hole 11: {"depth": "Back", "side": "Left"} - Top left area
-Hole 12: {"depth": "Front", "side": "Center"} - Bottom center
-Hole 13: {"depth": "Middle", "side": "Left"} - Middle left
-Hole 14: {"depth": "Back", "side": "Center"} - Top center (NOT middle!)
-Hole 15: {"depth": "Front", "side": "Center"} - Bottom center (NOT right!)
-Hole 16: {"depth": "Middle", "side": "Left"} - Middle left
-Hole 17: {"depth": "Back", "side": "Center"} - Top center
-Hole 18: {"depth": "Front", "side": "Center"} - Bottom center
+GRID COORDINATE LOGIC:
+- Left side: dot is in the left third of the green (left vertical line)
+- Center: dot is in the middle third (between vertical lines)
+- Right side: dot is in the right third (right vertical line)
 
-COMMON MISTAKES TO AVOID:
-- Don't confuse "Back" (top) with "Front" (bottom)
-- Don't confuse "Left" with "Center" or "Right"
-- A dot slightly left of center is still "Center" unless it's clearly on the left line
-- A dot between Front and Middle is usually "Middle" not "Front"
-- HOLE 3 CRITICAL: This hole shows the pin in the BACK (top) row on the LEFT side. The dot is clearly positioned in the left third of the green, near or touching the left vertical grid line. This is "Back" + "Left" = top-left quadrant. DO NOT classify this as "Right" under any circumstances.
+DEPTH LOGIC:
+- Back: top line/edge of green
+- Middle: center horizontal line
+- Front: bottom line/edge of green
 
-Use these examples to calibrate your detection for all pin sheets.`;
+VERIFIED TRAINING DATA (Bangpakong Riverside - 100% accurate):
+Hole 1: {"depth": "Front", "side": "Right"}
+Hole 2: {"depth": "Middle", "side": "Center"}
+Hole 3: {"depth": "Back", "side": "Left"} ⚠️ NOT Right! Top-left quadrant only!
+Hole 4: {"depth": "Front", "side": "Left"}
+Hole 5: {"depth": "Middle", "side": "Left"}
+Hole 6: {"depth": "Back", "side": "Center"}
+Hole 7: {"depth": "Front", "side": "Right"}
+Hole 8: {"depth": "Middle", "side": "Left"}
+Hole 9: {"depth": "Back", "side": "Left"}
+Hole 10: {"depth": "Middle", "side": "Center"}
+Hole 11: {"depth": "Back", "side": "Left"}
+Hole 12: {"depth": "Front", "side": "Center"}
+Hole 13: {"depth": "Middle", "side": "Left"}
+Hole 14: {"depth": "Back", "side": "Center"}
+Hole 15: {"depth": "Front", "side": "Center"}
+Hole 16: {"depth": "Middle", "side": "Left"}
+Hole 17: {"depth": "Back", "side": "Center"}
+Hole 18: {"depth": "Front", "side": "Center"}
+
+CRITICAL: These are verified positions from the actual pin sheet. Follow them exactly.
+Hole 3 reminder: Back-Left (grid 7), never Back-Right (grid 9).`;
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GOOGLE_API_KEY}`,

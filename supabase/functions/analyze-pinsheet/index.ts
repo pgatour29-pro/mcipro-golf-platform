@@ -190,8 +190,8 @@ Return ONLY valid JSON (no markdown, no explanation):
   "date": "2026-01-15",
   "green_speed": "9'4\\"",
   "pins": [
-    {"hole": 1, "position": "back-right", "x": 0.78, "y": 0.82, "description": "Back right"},
-    {"hole": 2, "position": "front-center", "x": 0.52, "y": 0.18, "description": "Front center"},
+    {"hole": 1, "position": "back-right", "x": 0.78, "y": 0.22, "description": "Back right"},
+    {"hole": 2, "position": "front-center", "x": 0.52, "y": 0.82, "description": "Front center"},
     ... for all 18 holes
   ],
   "holes_detected": 18,

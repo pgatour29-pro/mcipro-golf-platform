@@ -252,7 +252,7 @@ window.GolfBuddiesSystem = {
             <!-- Buddies Modal -->
             <div id="buddiesModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-[99999] overflow-y-auto" onclick="event.target.id === 'buddiesModal' && GolfBuddiesSystem.closeBuddiesModal()">
                 <div class="min-h-screen px-2 py-4 sm:p-4 flex items-start sm:items-center justify-center">
-                    <div class="bg-white rounded-lg shadow-xl w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl mx-auto" onclick="event.stopPropagation()">
+                    <div class="bg-white rounded-lg shadow-xl w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl mx-auto max-h-[90vh] flex flex-col" onclick="event.stopPropagation()">
                         <!-- Header -->
                         <div class="px-3 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-green-50 to-blue-50 rounded-t-lg">
                             <div class="flex items-center gap-2 sm:gap-3">
@@ -297,8 +297,8 @@ window.GolfBuddiesSystem = {
                             </div>
                         </div>
 
-                        <!-- Content - now scrolls naturally with page on mobile -->
-                        <div class="p-3 sm:p-6">
+                        <!-- Content - scrollable with max height -->
+                        <div class="p-3 sm:p-6 overflow-y-auto flex-1">
                             <!-- My Buddies Tab -->
                             <div id="buddiesContent-myBuddies" class="buddies-tab-content w-full max-w-full overflow-x-hidden">
                                 <div id="myBuddiesList" class="space-y-3 w-full max-w-full">

@@ -99,41 +99,42 @@ serve(async (req) => {
 
 CRITICAL INSTRUCTIONS FOR READING PIN SHEETS:
 
-PIN SHEETS USE A NUMBERED QUADRANT SYSTEM!
+PIN SHEETS USE A QUADRANT SYSTEM WITH DOTS!
 
-Each circle (green) is divided into quadrants with NUMBERS showing the pin location:
+Each circle represents a green with grid lines dividing it into 9 quadrants.
+You will see a small BLACK DOT in one of these quadrants showing the pin location.
 
-MOST COMMON SYSTEM (9 quadrants):
-Front row:  1 (front-left)   2 (front-center)   3 (front-right)
-Middle row: 4 (middle-left)  5 (center)         6 (middle-right)
-Back row:   7 (back-left)    8 (back-center)    9 (back-right)
+QUADRANT NUMBERING SYSTEM (imagine these numbers, they are NOT printed):
+┌─────────────────┐
+│  7  │  8  │  9  │  ← BACK of green (top of circle)
+├─────┼─────┼─────┤
+│  4  │  5  │  6  │  ← MIDDLE of green
+├─────┼─────┼─────┤
+│  1  │  2  │  3  │  ← FRONT of green (bottom of circle)
+└─────────────────┘
+  ↑     ↑     ↑
+ LEFT CENTER RIGHT
 
-SOME COURSES use 3 quadrants only:
-1 = front
-2 = middle/center
-3 = back
+YOUR JOB: For each of the 18 holes:
+STEP 1: Find the BLACK DOT in the circle
+STEP 2: Determine which QUADRANT (1-9) the dot is in
+STEP 3: Map that quadrant number to exact coordinates using the table below
 
-YOUR JOB: For each of the 18 holes, READ THE NUMBER inside the circle and map it to position.
+COORDINATE MAPPING FOR EACH QUADRANT:
 
-STEP 1: Look at hole 1's circle - what NUMBER do you see? (1-9 or 1-3)
-STEP 2: Map that number to the position using the grid above
-STEP 3: Repeat for all 18 holes
+When the DOT is in a quadrant, use these EXACT coordinates:
 
-COORDINATE MAPPING FOR EACH NUMBER:
+Quadrant 1 (front-left):     x: 0.2,  y: 0.8,  position: "front-left"
+Quadrant 2 (front-center):   x: 0.5,  y: 0.8,  position: "front"
+Quadrant 3 (front-right):    x: 0.8,  y: 0.8,  position: "front-right"
+Quadrant 4 (middle-left):    x: 0.2,  y: 0.5,  position: "left"
+Quadrant 5 (center):         x: 0.5,  y: 0.5,  position: "center"
+Quadrant 6 (middle-right):   x: 0.8,  y: 0.5,  position: "right"
+Quadrant 7 (back-left):      x: 0.2,  y: 0.2,  position: "back-left"
+Quadrant 8 (back-center):    x: 0.5,  y: 0.2,  position: "back"
+Quadrant 9 (back-right):     x: 0.8,  y: 0.2,  position: "back-right"
 
-When you see a number in the circle, use these EXACT coordinates:
-
-Position 1 (front-left):     x: 0.2,  y: 0.8,  position: "front-left"
-Position 2 (front-center):   x: 0.5,  y: 0.8,  position: "front"
-Position 3 (front-right):    x: 0.8,  y: 0.8,  position: "front-right"
-Position 4 (middle-left):    x: 0.2,  y: 0.5,  position: "left"
-Position 5 (center):         x: 0.5,  y: 0.5,  position: "center"
-Position 6 (middle-right):   x: 0.8,  y: 0.5,  position: "right"
-Position 7 (back-left):      x: 0.2,  y: 0.2,  position: "back-left"
-Position 8 (back-center):    x: 0.5,  y: 0.2,  position: "back"
-Position 9 (back-right):     x: 0.8,  y: 0.2,  position: "back-right"
-
-SPECIAL CASE - If the number shows "5+" or has an arrow pointing right:
+SPECIAL CASE - If the dot is slightly right of center (between quadrant 5 and 6):
 This means center-right: x: 0.65, y: 0.5, position: "right"
 
 COORDINATE SYSTEM:
@@ -142,23 +143,27 @@ COORDINATE SYSTEM:
 
 EXAMPLES:
 
-Example 1: Hole 1 shows number "3" in the circle
-→ That's position 3 = front-right
+Example 1: Hole 1 - Dot is in BOTTOM-RIGHT quadrant (quadrant 3)
+→ Quadrant 3 = front-right
 → Output: {"hole": 1, "position": "front-right", "x": 0.8, "y": 0.8, "description": "Front right"}
 
-Example 2: Hole 2 shows number "5" with arrow pointing right
-→ That's position 5+ = center-right
+Example 2: Hole 2 - Dot is in CENTER, slightly to the right (between quadrant 5 and 6)
+→ Center-right
 → Output: {"hole": 2, "position": "right", "x": 0.65, "y": 0.5, "description": "Center right"}
 
-Example 3: Hole 3 shows number "7"
-→ That's position 7 = back-left
+Example 3: Hole 3 - Dot is in TOP-LEFT quadrant (quadrant 7)
+→ Quadrant 7 = back-left
 → Output: {"hole": 3, "position": "back-left", "x": 0.2, "y": 0.2, "description": "Back left"}
 
-Example 4: Hole 4 shows number "1"
-→ That's position 1 = front-left
+Example 4: Hole 4 - Dot is in BOTTOM-LEFT quadrant (quadrant 1)
+→ Quadrant 1 = front-left
 → Output: {"hole": 4, "position": "front-left", "x": 0.2, "y": 0.8, "description": "Front left"}
 
-CRITICAL: READ THE NUMBERS in each circle. DO NOT try to find dots or measure positions visually.
+CRITICAL STEPS:
+1. Find the BLACK DOT in each circle
+2. Identify which of the 9 quadrants it's in
+3. Use the EXACT coordinates from the mapping table - do NOT estimate or measure visually
+4. If the dot is between quadrants, use the closest quadrant
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
@@ -177,9 +182,9 @@ Return ONLY valid JSON (no markdown, no explanation):
 
 Rules:
 - Holes numbered 1-18, read left-to-right, top-to-bottom in the grid
-- READ THE NUMBER in each circle (1-9) and map to exact coordinates using the table above
-- Use EXACT coordinates from the mapping table - do not estimate
-- confidence: "high" if all numbers clearly visible, "medium" if some unclear, "low" if poor quality
+- FIND THE DOT in each circle and determine which QUADRANT (1-9) it's in
+- Use EXACT coordinates from the quadrant mapping table - do NOT try to measure the dot position
+- confidence: "high" if all dots clearly visible, "medium" if some dots unclear, "low" if poor quality
 - If NOT a pin sheet, return {"error": "Not a pin sheet", "confidence": "low"}`,
               },
             ],

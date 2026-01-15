@@ -95,59 +95,68 @@ serve(async (req) => {
               },
               {
                 type: "text",
-                text: `You are analyzing a golf course PIN SHEET photo. This is a daily sheet showing where the hole (pin/flag) is located on each green.
+                text: `You are analyzing a golf course PIN SHEET photo. This shows where the hole (flag) is located on each green today.
 
-IMPORTANT: Pin sheets typically show:
-- 18 circular diagrams (one per hole), usually arranged in a 6x3 grid
-- Each circle represents a green
-- A small dot or mark inside each circle shows the pin location
-- Header information: course name, date, green speed (e.g., "9'4"")
+CRITICAL INSTRUCTIONS FOR READING PIN SHEETS:
 
-Your task:
-1. Identify the course name from the header or side text
-2. Extract the date if visible (format YYYY-MM-DD)
-3. Extract green speed if shown (e.g., "9'4"" or "10.5")
-4. For each of the 18 holes, determine the pin position within the circle
+1. LAYOUT: Pin sheets show 18 circular diagrams (one per hole), usually in a 6x3 or 3x6 grid
+2. EACH CIRCLE: Represents the green shape from above (bird's eye view)
+3. THE PIN DOT: A small dot, circle, or mark shows exactly where the pin is located on the green
+4. GRID LINES: Most pin sheets have grid lines dividing each circle into 9 sections (3x3 grid)
 
-For pin positions, use a coordinate system:
-- X-axis: 0.0 = far left, 0.5 = center, 1.0 = far right
-- Y-axis: 0.0 = front of green, 0.5 = middle, 1.0 = back of green
+HOW TO READ THE PIN POSITION ACCURATELY:
 
-Position labels:
-- "front-left" (x≈0.2, y≈0.2)
-- "front-center" (x≈0.5, y≈0.2)
-- "front-right" (x≈0.8, y≈0.2)
-- "middle-left" (x≈0.2, y≈0.5)
-- "center" (x≈0.5, y≈0.5)
-- "middle-right" (x≈0.8, y≈0.5)
-- "back-left" (x≈0.2, y≈0.8)
-- "back-center" (x≈0.5, y≈0.8)
-- "back-right" (x≈0.8, y≈0.8)
+Step 1: Look at each numbered circle (1-18)
+Step 2: Find the small dot/mark inside the circle - this is the pin location
+Step 3: Determine which section of the 3x3 grid the dot is in:
 
-Return ONLY valid JSON (no markdown, no explanation) in this exact format:
+   TOP ROW (front of green):
+   - Front-Left corner = dot in top-left section
+   - Front-Center = dot in top-middle section
+   - Front-Right corner = dot in top-right section
+
+   MIDDLE ROW (middle of green):
+   - Middle-Left = dot in middle-left section
+   - Center = dot in exact center section
+   - Middle-Right = dot in middle-right section
+
+   BOTTOM ROW (back of green):
+   - Back-Left = dot in bottom-left section
+   - Back-Center = dot in bottom-middle section
+   - Back-Right = dot in bottom-right section
+
+Step 4: Estimate precise x,y coordinates within that section:
+   - X-axis: 0.0 = far left edge, 0.5 = center, 1.0 = far right edge
+   - Y-axis: 0.0 = front edge (top), 0.5 = middle, 1.0 = back edge (bottom)
+
+COORDINATE EXAMPLES:
+- Front-Left corner dot → x: 0.15-0.25, y: 0.15-0.25
+- Center dot → x: 0.45-0.55, y: 0.45-0.55
+- Back-Right corner dot → x: 0.75-0.85, y: 0.75-0.85
+- Middle-Left dot → x: 0.15-0.25, y: 0.45-0.55
+- Front-Center dot → x: 0.45-0.55, y: 0.15-0.25
+
+LOOK CAREFULLY at where the dot sits within each grid section. Do NOT just default to center positions.
+
+Return ONLY valid JSON (no markdown, no explanation):
 {
-  "course_name": "Bangpakong Riverside Country Club",
+  "course_name": "Course name from header",
   "date": "2026-01-15",
   "green_speed": "9'4\\"",
   "pins": [
-    {"hole": 1, "position": "back-right", "x": 0.75, "y": 0.8, "description": "Back right"},
-    {"hole": 2, "position": "front-center", "x": 0.5, "y": 0.2, "description": "Front center"},
-    ... continue for all 18 holes
+    {"hole": 1, "position": "back-right", "x": 0.78, "y": 0.82, "description": "Back right"},
+    {"hole": 2, "position": "front-center", "x": 0.52, "y": 0.18, "description": "Front center"},
+    ... for all 18 holes
   ],
   "holes_detected": 18,
   "confidence": "high"
 }
 
 Rules:
-- Holes are numbered 1-18, reading left-to-right, top-to-bottom
-- If a pin position is unclear, estimate based on visible dot location
-- Set confidence to:
-  - "high" if all 18 pin positions are clearly visible
-  - "medium" if some positions are unclear but detectable
-  - "low" if image quality is poor or many pins missing
-- If this is NOT a pin sheet, return {"error": "Not a pin sheet", "confidence": "low"}
-- x and y values should be between 0.0 and 1.0
-- Use 3 decimal places for x and y (e.g., 0.750)`,
+- Holes numbered 1-18, read left-to-right, top-to-bottom in the grid
+- Be PRECISE with x,y coordinates - look at exact dot position, not just section
+- confidence: "high" if all dots clearly visible, "medium" if some unclear, "low" if poor quality
+- If NOT a pin sheet, return {"error": "Not a pin sheet", "confidence": "low"}`,
               },
             ],
           },

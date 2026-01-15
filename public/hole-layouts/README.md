@@ -47,8 +47,8 @@ The folder name must match the course ID from the system:
 
 ## Currently Available
 
-- ✅ **Chee Chan** - All 18 holes
-- ❌ **Bangpakong** - Not yet added
+- ✅ **Chee Chan** - All 18 holes (PNG)
+- ✅ **Bangpakong** - All 18 holes (WebP)
 - ❌ **Other courses** - Not yet added
 
 ## Image Requirements

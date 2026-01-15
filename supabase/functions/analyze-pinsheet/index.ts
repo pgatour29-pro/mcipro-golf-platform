@@ -99,93 +99,66 @@ serve(async (req) => {
 
 CRITICAL INSTRUCTIONS FOR READING PIN SHEETS:
 
-STEP 1: CHECK IMAGE ORIENTATION FIRST!
-Before reading pin positions, determine if the image is oriented correctly:
-- Look for COURSE NAME or LOGO - this should be at the TOP of the image
-- Look for DATE or GREEN SPEED text - usually at the TOP
-- Look for HOLE NUMBERS - Hole 1 should be in the TOP-LEFT area
-- If the text/numbers appear upside down, mentally rotate the image 180° before reading
+PIN SHEETS USE A NUMBERED QUADRANT SYSTEM!
 
-1. LAYOUT: Pin sheets show 18 circular diagrams (one per hole), usually in a 6x3 or 3x6 grid
-2. EACH CIRCLE: Represents the green shape from above (bird's eye view)
-3. THE PIN DOT: Look for a small BLACK DOT, filled circle, or mark inside each circle - this shows the EXACT pin location
-4. GRID LINES: Most pin sheets have grid lines dividing each circle into 9 sections (3x3 grid)
+Each circle (green) is divided into quadrants with NUMBERS showing the pin location:
 
-CRITICAL COORDINATE SYSTEM - READ THIS CAREFULLY:
+MOST COMMON SYSTEM (9 quadrants):
+Front row:  1 (front-left)   2 (front-center)   3 (front-right)
+Middle row: 4 (middle-left)  5 (center)         6 (middle-right)
+Back row:   7 (back-left)    8 (back-center)    9 (back-right)
 
-Each circle represents a green from BIRD'S EYE VIEW (looking down from above).
+SOME COURSES use 3 quadrants only:
+1 = front
+2 = middle/center
+3 = back
 
-STANDARD PIN SHEET LAYOUT:
-- Each circle has a small BLACK DOT showing where the pin is
-- TOP of each circle = BACK of the green (farthest from tee)
-- BOTTOM of each circle = FRONT of the green (closest to tee/approach)
-- LEFT of circle = LEFT side of green
-- RIGHT of circle = RIGHT side of green
+YOUR JOB: For each of the 18 holes, READ THE NUMBER inside the circle and map it to position.
 
-YOUR COORDINATES MUST MATCH THIS SYSTEM:
+STEP 1: Look at hole 1's circle - what NUMBER do you see? (1-9 or 1-3)
+STEP 2: Map that number to the position using the grid above
+STEP 3: Repeat for all 18 holes
 
-X-axis (horizontal - left to right):
-- x = 0.0 = FAR LEFT edge of green
-- x = 0.5 = CENTER (horizontally)
-- x = 1.0 = FAR RIGHT edge of green
+COORDINATE MAPPING FOR EACH NUMBER:
 
-Y-axis (vertical - measured from TOP of circle):
-- y = 0.0 = TOP of circle = BACK of green (far from tee)
-- y = 0.3 = upper third = back third of green
-- y = 0.5 = CENTER (vertically) = middle of green
-- y = 0.7 = lower third = front third of green
-- y = 1.0 = BOTTOM of circle = FRONT of green (close to tee)
+When you see a number in the circle, use these EXACT coordinates:
 
-EXAMPLE: If you see a dot in the BOTTOM-RIGHT area of a circle:
-- That's FRONT-RIGHT position
-- Coordinates: x: 0.8 (right), y: 0.8 (bottom = front)
+Position 1 (front-left):     x: 0.2,  y: 0.8,  position: "front-left"
+Position 2 (front-center):   x: 0.5,  y: 0.8,  position: "front"
+Position 3 (front-right):    x: 0.8,  y: 0.8,  position: "front-right"
+Position 4 (middle-left):    x: 0.2,  y: 0.5,  position: "left"
+Position 5 (center):         x: 0.5,  y: 0.5,  position: "center"
+Position 6 (middle-right):   x: 0.8,  y: 0.5,  position: "right"
+Position 7 (back-left):      x: 0.2,  y: 0.2,  position: "back-left"
+Position 8 (back-center):    x: 0.5,  y: 0.2,  position: "back"
+Position 9 (back-right):     x: 0.8,  y: 0.2,  position: "back-right"
 
-HOW TO READ EACH PIN POSITION:
+SPECIAL CASE - If the number shows "5+" or has an arrow pointing right:
+This means center-right: x: 0.65, y: 0.5, position: "right"
 
-For EACH of the 18 holes, follow this process:
+COORDINATE SYSTEM:
+- X-axis: 0.0 = left, 0.5 = center, 1.0 = right
+- Y-axis: 0.0 = back (top), 0.5 = middle, 1.0 = front (bottom)
 
-Step 1: Locate the numbered circle (1-18)
-Step 2: Find the BLACK DOT inside the circle (it will be clearly visible as a filled dot or small circle)
-Step 3: Measure where the dot is positioned:
+EXAMPLES:
 
-HORIZONTAL (X-axis) - Where is the dot left-to-right in the circle?
-- Far LEFT edge = x: 0.1
-- Left third = x: 0.2
-- Center-left = x: 0.35
-- EXACT CENTER = x: 0.5
-- Center-right = x: 0.65
-- Right third = x: 0.8
-- Far RIGHT edge = x: 0.9
+Example 1: Hole 1 shows number "3" in the circle
+→ That's position 3 = front-right
+→ Output: {"hole": 1, "position": "front-right", "x": 0.8, "y": 0.8, "description": "Front right"}
 
-VERTICAL (Y-axis) - Where is the dot top-to-bottom in the circle?
-Remember: TOP of circle = BACK, BOTTOM of circle = FRONT
-- Dot at very TOP = BACK of green = y: 0.1
-- Dot in top third = back third = y: 0.2
-- Dot upper-middle = middle-back = y: 0.35
-- Dot at EXACT CENTER = y: 0.5
-- Dot lower-middle = front-middle = y: 0.65
-- Dot in bottom third = front third = y: 0.8
-- Dot at very BOTTOM = FRONT of green = y: 0.9
+Example 2: Hole 2 shows number "5" with arrow pointing right
+→ That's position 5+ = center-right
+→ Output: {"hole": 2, "position": "right", "x": 0.65, "y": 0.5, "description": "Center right"}
 
-Now assign the position label:
-- Dot in BOTTOM-LEFT area (y: 0.7-1.0, x: 0-0.3) → "front-left"
-- Dot in BOTTOM-CENTER area (y: 0.7-1.0, x: 0.4-0.6) → "front"
-- Dot in BOTTOM-RIGHT area (y: 0.7-1.0, x: 0.7-1.0) → "front-right"
-- Dot in MIDDLE-LEFT area (y: 0.4-0.6, x: 0-0.3) → "left"
-- Dot in EXACT CENTER (y: 0.4-0.6, x: 0.4-0.6) → "center"
-- Dot in MIDDLE-RIGHT area (y: 0.4-0.6, x: 0.7-1.0) → "right"
-- Dot in TOP-LEFT area (y: 0-0.3, x: 0-0.3) → "back-left"
-- Dot in TOP-CENTER area (y: 0-0.3, x: 0.4-0.6) → "back"
-- Dot in TOP-RIGHT area (y: 0-0.3, x: 0.7-1.0) → "back-right"
+Example 3: Hole 3 shows number "7"
+→ That's position 7 = back-left
+→ Output: {"hole": 3, "position": "back-left", "x": 0.2, "y": 0.2, "description": "Back left"}
 
-EXAMPLES WITH CORRECT COORDINATES:
-1. Dot in BOTTOM-LEFT of circle → "front-left", x: 0.2, y: 0.8 (NOT y: 0.2!)
-2. Dot exactly in center → "center", x: 0.5, y: 0.5
-3. Dot in TOP-RIGHT of circle → "back-right", x: 0.8, y: 0.2 (NOT y: 0.8!)
-4. Dot in MIDDLE-LEFT → "left", x: 0.2, y: 0.5
-5. Dot in BOTTOM-CENTER → "front", x: 0.5, y: 0.8 (NOT y: 0.2!)
+Example 4: Hole 4 shows number "1"
+→ That's position 1 = front-left
+→ Output: {"hole": 4, "position": "front-left", "x": 0.2, "y": 0.8, "description": "Front left"}
 
-CRITICAL: Look at the ACTUAL DOT POSITION in the image. Do not guess or use random positions.
+CRITICAL: READ THE NUMBERS in each circle. DO NOT try to find dots or measure positions visually.
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
@@ -193,8 +166,9 @@ Return ONLY valid JSON (no markdown, no explanation):
   "date": "2026-01-15",
   "green_speed": "9'4\\"",
   "pins": [
-    {"hole": 1, "position": "back-right", "x": 0.78, "y": 0.22, "description": "Back right"},
-    {"hole": 2, "position": "front-center", "x": 0.52, "y": 0.82, "description": "Front center"},
+    {"hole": 1, "position": "front-right", "x": 0.8, "y": 0.8, "description": "Front right"},
+    {"hole": 2, "position": "right", "x": 0.65, "y": 0.5, "description": "Center right"},
+    {"hole": 3, "position": "back-left", "x": 0.2, "y": 0.2, "description": "Back left"},
     ... for all 18 holes
   ],
   "holes_detected": 18,
@@ -203,8 +177,9 @@ Return ONLY valid JSON (no markdown, no explanation):
 
 Rules:
 - Holes numbered 1-18, read left-to-right, top-to-bottom in the grid
-- Be PRECISE with x,y coordinates - look at exact dot position, not just section
-- confidence: "high" if all dots clearly visible, "medium" if some unclear, "low" if poor quality
+- READ THE NUMBER in each circle (1-9) and map to exact coordinates using the table above
+- Use EXACT coordinates from the mapping table - do not estimate
+- confidence: "high" if all numbers clearly visible, "medium" if some unclear, "low" if poor quality
 - If NOT a pin sheet, return {"error": "Not a pin sheet", "confidence": "low"}`,
               },
             ],

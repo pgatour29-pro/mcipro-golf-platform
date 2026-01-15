@@ -104,17 +104,38 @@ CRITICAL INSTRUCTIONS FOR READING PIN SHEETS:
 3. THE PIN DOT: Look for a small BLACK DOT, filled circle, or mark inside each circle - this shows the EXACT pin location
 4. GRID LINES: Most pin sheets have grid lines dividing each circle into 9 sections (3x3 grid)
 
-CRITICAL - COORDINATE ORIENTATION:
-- When looking at the circle from above (standard pin sheet view):
-  - TOP of circle = FRONT of green (where you approach from, closest to tee)
-  - BOTTOM of circle = BACK of green (farthest from tee)
-  - LEFT side = LEFT side when standing on tee
-  - RIGHT side = RIGHT side when standing on tee
+CRITICAL - PIN SHEET ORIENTATION:
+Pin sheets can be oriented different ways. Look for these clues to determine which way is "front":
+1. Text labels like "F" (front), "M" (middle), "B" (back) on the sheet
+2. Arrow indicators showing direction
+3. Header text orientation (usually top of page = front of green)
+4. Grid numbering (usually starts from front)
 
-Y-AXIS DIRECTION (VERY IMPORTANT):
-- y = 0.0 to 0.3 = FRONT of green (TOP of circle)
-- y = 0.4 to 0.6 = MIDDLE of green (MIDDLE of circle)
-- y = 0.7 to 1.0 = BACK of green (BOTTOM of circle)
+MOST COMMON: If looking at a standard pin sheet photo:
+- BOTTOM of the sheet (where you hold it) = FRONT of green (approach side)
+- TOP of the sheet (away from you) = BACK of green (far side)
+- LEFT side = LEFT
+- RIGHT side = RIGHT
+
+COORDINATE SYSTEM (CRITICAL - READ CAREFULLY):
+Pin sheet circles show the green from ABOVE, with the tee at bottom:
+- TOP of circle = BACK of green (far from tee)
+- BOTTOM of circle = FRONT of green (close to tee)
+
+X-axis (left to right when standing on tee):
+- x = 0.0 = LEFT edge
+- x = 0.5 = CENTER
+- x = 1.0 = RIGHT edge
+
+Y-axis (THIS IS COUNTER-INTUITIVE):
+Since we measure from TOP of circle:
+- y = 0.0 to 0.3 = TOP of circle = BACK of green
+- y = 0.4 to 0.6 = MIDDLE of circle = MIDDLE of green
+- y = 0.7 to 1.0 = BOTTOM of circle = FRONT of green
+
+EXAMPLE: If you see a dot in the BOTTOM-RIGHT area of a circle:
+- That's FRONT-RIGHT position
+- Coordinates: x: 0.8 (right), y: 0.8 (bottom = front)
 
 HOW TO READ EACH PIN POSITION:
 
@@ -124,7 +145,7 @@ Step 1: Locate the numbered circle (1-18)
 Step 2: Find the BLACK DOT inside the circle (it will be clearly visible as a filled dot or small circle)
 Step 3: Measure where the dot is positioned:
 
-HORIZONTAL (X-axis) - Where is the dot left-to-right?
+HORIZONTAL (X-axis) - Where is the dot left-to-right in the circle?
 - Far LEFT edge = x: 0.1
 - Left third = x: 0.2
 - Center-left = x: 0.35
@@ -133,32 +154,33 @@ HORIZONTAL (X-axis) - Where is the dot left-to-right?
 - Right third = x: 0.8
 - Far RIGHT edge = x: 0.9
 
-VERTICAL (Y-axis) - Where is the dot top-to-bottom?
-- FRONT (top) edge = y: 0.1
-- Front third = y: 0.2
-- Front-middle = y: 0.35
-- EXACT MIDDLE = y: 0.5
-- Middle-back = y: 0.65
-- Back third = y: 0.8
-- BACK (bottom) edge = y: 0.9
+VERTICAL (Y-axis) - Where is the dot top-to-bottom in the circle?
+Remember: TOP of circle = BACK, BOTTOM of circle = FRONT
+- Dot at very TOP = BACK of green = y: 0.1
+- Dot in top third = back third = y: 0.2
+- Dot upper-middle = middle-back = y: 0.35
+- Dot at EXACT CENTER = y: 0.5
+- Dot lower-middle = front-middle = y: 0.65
+- Dot in bottom third = front third = y: 0.8
+- Dot at very BOTTOM = FRONT of green = y: 0.9
 
-Step 4: Assign the position label based on the section:
-- If dot is in TOP-LEFT third: "front-left"
-- If dot is in TOP-CENTER third: "front"
-- If dot is in TOP-RIGHT third: "front-right"
-- If dot is in MIDDLE-LEFT third: "left"
-- If dot is in EXACT CENTER: "center"
-- If dot is in MIDDLE-RIGHT third: "right"
-- If dot is in BOTTOM-LEFT third: "back-left"
-- If dot is in BOTTOM-CENTER third: "back"
-- If dot is in BOTTOM-RIGHT third: "back-right"
+Now assign the position label:
+- Dot in BOTTOM-LEFT area (y: 0.7-1.0, x: 0-0.3) → "front-left"
+- Dot in BOTTOM-CENTER area (y: 0.7-1.0, x: 0.4-0.6) → "front"
+- Dot in BOTTOM-RIGHT area (y: 0.7-1.0, x: 0.7-1.0) → "front-right"
+- Dot in MIDDLE-LEFT area (y: 0.4-0.6, x: 0-0.3) → "left"
+- Dot in EXACT CENTER (y: 0.4-0.6, x: 0.4-0.6) → "center"
+- Dot in MIDDLE-RIGHT area (y: 0.4-0.6, x: 0.7-1.0) → "right"
+- Dot in TOP-LEFT area (y: 0-0.3, x: 0-0.3) → "back-left"
+- Dot in TOP-CENTER area (y: 0-0.3, x: 0.4-0.6) → "back"
+- Dot in TOP-RIGHT area (y: 0-0.3, x: 0.7-1.0) → "back-right"
 
-EXAMPLES WITH VISUAL DESCRIPTION:
-1. Dot in upper-left area → "front-left", x: 0.2, y: 0.2
+EXAMPLES WITH CORRECT COORDINATES:
+1. Dot in BOTTOM-LEFT of circle → "front-left", x: 0.2, y: 0.8 (NOT y: 0.2!)
 2. Dot exactly in center → "center", x: 0.5, y: 0.5
-3. Dot in lower-right area → "back-right", x: 0.8, y: 0.8
-4. Dot in middle-left area → "left", x: 0.2, y: 0.5
-5. Dot at very bottom center → "back", x: 0.5, y: 0.85
+3. Dot in TOP-RIGHT of circle → "back-right", x: 0.8, y: 0.2 (NOT y: 0.8!)
+4. Dot in MIDDLE-LEFT → "left", x: 0.2, y: 0.5
+5. Dot in BOTTOM-CENTER → "front", x: 0.5, y: 0.8 (NOT y: 0.2!)
 
 CRITICAL: Look at the ACTUAL DOT POSITION in the image. Do not guess or use random positions.
 

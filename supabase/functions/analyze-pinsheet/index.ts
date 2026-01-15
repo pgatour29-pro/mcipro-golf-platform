@@ -109,6 +109,7 @@ COMMON MISTAKES TO AVOID:
 - Don't confuse "Left" with "Center" or "Right"
 - A dot slightly left of center is still "Center" unless it's clearly on the left line
 - A dot between Front and Middle is usually "Middle" not "Front"
+- HOLE 3 CRITICAL: This hole shows the pin in the BACK (top) row on the LEFT side. The dot is clearly positioned in the left third of the green, near or touching the left vertical grid line. This is "Back" + "Left" = top-left quadrant. DO NOT classify this as "Right" under any circumstances.
 
 Use these examples to calibrate your detection for all pin sheets.`;
 

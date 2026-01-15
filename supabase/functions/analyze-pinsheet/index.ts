@@ -19,10 +19,13 @@ const corsHeaders = {
 
 interface PinLocation {
   hole: number;
+  primary_grid: number; // 1-9 quadrant number
   position: string; // "back-right", "front-center", "middle-left", etc.
+  micro_placement: string; // "High", "Low", "Left", "Right", "Center", or combinations
+  line_hugging: boolean; // true if pin is on or very close to grid line
   x: number; // 0-1 normalized
   y: number; // 0-1 normalized
-  description: string; // Human-readable
+  description: string; // Human-readable with micro-detail
 }
 
 interface PinSheetAnalysis {
@@ -95,16 +98,9 @@ serve(async (req) => {
               },
               {
                 type: "text",
-                text: `You are analyzing a golf course PIN SHEET photo. This shows where the hole (flag) is located on each green today.
+                text: `You are analyzing a golf course PIN SHEET photo using a HIGH-RESOLUTION 9-QUADRANT GRID SYSTEM.
 
-CRITICAL INSTRUCTIONS FOR READING PIN SHEETS:
-
-PIN SHEETS USE A QUADRANT SYSTEM WITH DOTS!
-
-Each circle represents a green with grid lines dividing it into 9 quadrants.
-You will see a small BLACK DOT in one of these quadrants showing the pin location.
-
-QUADRANT NUMBERING SYSTEM (imagine these numbers, they are NOT printed):
+GRID SYSTEM DEFINITION:
 ┌─────────────────┐
 │  7  │  8  │  9  │  ← BACK of green (top of circle)
 ├─────┼─────┼─────┤
@@ -115,55 +111,112 @@ QUADRANT NUMBERING SYSTEM (imagine these numbers, they are NOT printed):
   ↑     ↑     ↑
  LEFT CENTER RIGHT
 
-YOUR JOB: For each of the 18 holes:
-STEP 1: Find the BLACK DOT in the circle
-STEP 2: Determine which QUADRANT (1-9) the dot is in
-STEP 3: Map that quadrant number to exact coordinates using the table below
+Each circle represents a green. You will see a small BLACK DOT showing the pin location.
 
-COORDINATE MAPPING FOR EACH QUADRANT:
+ACCURACY PROTOCOL (3-STEP PROCESS):
 
-When the DOT is in a quadrant, use these EXACT coordinates:
+STEP 1 - IDENTIFY PRIMARY QUADRANT (1-9):
+Find which of the 9 grid squares the dot is in.
 
-Quadrant 1 (front-left):     x: 0.2,  y: 0.8,  position: "front-left"
-Quadrant 2 (front-center):   x: 0.5,  y: 0.8,  position: "front"
-Quadrant 3 (front-right):    x: 0.8,  y: 0.8,  position: "front-right"
-Quadrant 4 (middle-left):    x: 0.2,  y: 0.5,  position: "left"
-Quadrant 5 (center):         x: 0.5,  y: 0.5,  position: "center"
-Quadrant 6 (middle-right):   x: 0.8,  y: 0.5,  position: "right"
-Quadrant 7 (back-left):      x: 0.2,  y: 0.2,  position: "back-left"
-Quadrant 8 (back-center):    x: 0.5,  y: 0.2,  position: "back"
-Quadrant 9 (back-right):     x: 0.8,  y: 0.2,  position: "back-right"
+STEP 2 - MICRO-PLACEMENT WITHIN QUADRANT:
+Determine the position within that quadrant using:
+- "High" - Upper portion of quadrant (closer to back/top)
+- "Low" - Lower portion of quadrant (closer to front/bottom)
+- "Left" - Left side of quadrant
+- "Right" - Right side of quadrant
+- "Center" - Dead center of quadrant
+- Combinations: "High-Left", "Low-Right", etc.
 
-SPECIAL CASE - If the dot is slightly right of center (between quadrant 5 and 6):
-This means center-right: x: 0.65, y: 0.5, position: "right"
+STEP 3 - BORDER LOGIC:
+If a pin is on or very close to a grid line (within 5%):
+- Categorize it by the DEEPER or more CENTRAL quadrant
+- Example: Dot on line between Grid 1 and 4 → Choose Grid 4 (deeper)
+- Example: Dot on line between Grid 2 and 5 → Choose Grid 5 (more central)
+- Mark as "line_hugging": true in output
+
+VERIFIED TRAINING EXAMPLES (use these as reference):
+
+Hole 1: Grid 3, "Front Right: Tucked toward the right fringe"
+→ primary_grid: 3, micro_placement: "Right-Deep", x: 0.85, y: 0.85
+
+Hole 2: Grid 5, "Dead Center: True middle of the green"
+→ primary_grid: 5, micro_placement: "Center", x: 0.5, y: 0.5
+
+Hole 3: Grid 7, "Back Left: Deep and tucked toward the left edge"
+→ primary_grid: 7, micro_placement: "Left-Deep", x: 0.15, y: 0.15
+
+Hole 4: Grid 1, "Front Left: Deep within the quadrant, bordering the Middle-Left (4)"
+→ primary_grid: 1, micro_placement: "Bordering 4", x: 0.2, y: 0.7
+
+Hole 12: Grid 2, "Front Center: Sitting low and slightly left within the box"
+→ primary_grid: 2, micro_placement: "Low-Left", x: 0.45, y: 0.85
+
+Hole 15: Grid 2, "Front Center: High and right within the box (bordering 5 and 3)"
+→ primary_grid: 2, micro_placement: "High-Right", x: 0.55, y: 0.7
+
+Hole 16: Grid 4, "Middle Left: Bottom edge, bordering the Front-Left (1)"
+→ primary_grid: 4, micro_placement: "Bordering 1", x: 0.2, y: 0.65
+
+COORDINATE MAPPING LOGIC:
+
+Base coordinates for each grid (adjust based on micro-placement):
+- Grid 1 (Front-Left):     base x: 0.17, base y: 0.83
+- Grid 2 (Front-Center):   base x: 0.50, base y: 0.83
+- Grid 3 (Front-Right):    base x: 0.83, base y: 0.83
+- Grid 4 (Middle-Left):    base x: 0.17, base y: 0.50
+- Grid 5 (Center):         base x: 0.50, base y: 0.50
+- Grid 6 (Middle-Right):   base x: 0.83, base y: 0.50
+- Grid 7 (Back-Left):      base x: 0.17, base y: 0.17
+- Grid 8 (Back-Center):    base x: 0.50, base y: 0.17
+- Grid 9 (Back-Right):     base x: 0.83, base y: 0.17
+
+Micro-placement adjustments (±0.08 from base):
+- "High": -0.08 from y (toward back/top)
+- "Low": +0.08 from y (toward front/bottom)
+- "Left": -0.08 from x
+- "Right": +0.08 from x
+- "Bordering": Move 0.15 units toward border
 
 COORDINATE SYSTEM:
-- X-axis: 0.0 = left, 0.5 = center, 1.0 = right
-- Y-axis: 0.0 = back (top), 0.5 = middle, 1.0 = front (bottom)
+- X-axis: 0.0 = left edge, 0.5 = center, 1.0 = right edge
+- Y-axis: 0.0 = back/top edge, 1.0 = front/bottom edge
 
-EXAMPLES:
+COORDINATE CALCULATION ALGORITHM:
 
-Example 1: Hole 1 - Dot is in BOTTOM-RIGHT quadrant (quadrant 3)
-→ Quadrant 3 = front-right
-→ Output: {"hole": 1, "position": "front-right", "x": 0.8, "y": 0.8, "description": "Front right"}
+For each green, normalize to 100x100 coordinate system:
+- (0, 0) = Bottom-Left = Front-Left = Grid 1
+- (100, 100) = Top-Right = Back-Right = Grid 9
 
-Example 2: Hole 2 - Dot is in CENTER, slightly to the right (between quadrant 5 and 6)
-→ Center-right
-→ Output: {"hole": 2, "position": "right", "x": 0.65, "y": 0.5, "description": "Center right"}
+QUADRANT ASSIGNMENT LOGIC:
+Y-axis (depth):
+- 0-33: Front row (Grids 1, 2, 3)
+- 33-66: Middle row (Grids 4, 5, 6)
+- 66-100: Back row (Grids 7, 8, 9)
 
-Example 3: Hole 3 - Dot is in TOP-LEFT quadrant (quadrant 7)
-→ Quadrant 7 = back-left
-→ Output: {"hole": 3, "position": "back-left", "x": 0.2, "y": 0.2, "description": "Back left"}
+X-axis (lateral):
+- 0-33: Left column (Grids 1, 4, 7)
+- 33-66: Center column (Grids 2, 5, 8)
+- 66-100: Right column (Grids 3, 6, 9)
 
-Example 4: Hole 4 - Dot is in BOTTOM-LEFT quadrant (quadrant 1)
-→ Quadrant 1 = front-left
-→ Output: {"hole": 4, "position": "front-left", "x": 0.2, "y": 0.8, "description": "Front left"}
+BORDER CORRECTION:
+If pin_y % 33 < 2 (within 2% of horizontal line):
+→ Move to DEEPER quadrant (+3 to grid number)
 
-CRITICAL STEPS:
-1. Find the BLACK DOT in each circle
-2. Identify which of the 9 quadrants it's in
-3. Use the EXACT coordinates from the mapping table - do NOT estimate or measure visually
-4. If the dot is between quadrants, use the closest quadrant
+If pin_x % 33 < 2 (within 2% of vertical line):
+→ Move to MORE CENTRAL or RIGHT quadrant
+
+CLUSTER DIFFERENTIATION:
+If multiple pins fall in same grid (e.g., Holes 12 & 15 both in Grid 2):
+→ You MUST describe how they differ in micro_placement
+→ Example: "Hole 12: Low-Left (closer to Grid 1), Hole 15: High-Right (closer to Grid 5)"
+
+CRITICAL INSTRUCTIONS:
+1. Read holes left-to-right, top-to-bottom (1-18)
+2. Calculate pixel position within each green's 100x100 normalized space
+3. Apply quadrant assignment logic (33/66 boundaries)
+4. Apply border correction if within 2% of grid line
+5. Calculate micro-position within quadrant (rel_x % 33, rel_y % 33)
+6. Convert to 0-1 normalized coordinates for database
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
@@ -171,9 +224,26 @@ Return ONLY valid JSON (no markdown, no explanation):
   "date": "2026-01-15",
   "green_speed": "9'4\\"",
   "pins": [
-    {"hole": 1, "position": "front-right", "x": 0.8, "y": 0.8, "description": "Front right"},
-    {"hole": 2, "position": "right", "x": 0.65, "y": 0.5, "description": "Center right"},
-    {"hole": 3, "position": "back-left", "x": 0.2, "y": 0.2, "description": "Back left"},
+    {
+      "hole": 1,
+      "primary_grid": 3,
+      "position": "front-right",
+      "micro_placement": "Right-Deep",
+      "line_hugging": false,
+      "x": 0.85,
+      "y": 0.85,
+      "description": "Front Right: Tucked toward the right fringe"
+    },
+    {
+      "hole": 16,
+      "primary_grid": 4,
+      "position": "left",
+      "micro_placement": "Bottom-Edge",
+      "line_hugging": true,
+      "x": 0.2,
+      "y": 0.65,
+      "description": "Middle Left: Bottom edge, bordering Front-Left (1)"
+    },
     ... for all 18 holes
   ],
   "holes_detected": 18,
@@ -181,11 +251,9 @@ Return ONLY valid JSON (no markdown, no explanation):
 }
 
 Rules:
-- Holes numbered 1-18, read left-to-right, top-to-bottom in the grid
-- FIND THE DOT in each circle and determine which QUADRANT (1-9) it's in
-- Use EXACT coordinates from the quadrant mapping table - do NOT try to measure the dot position
-- confidence: "high" if all dots clearly visible, "medium" if some dots unclear, "low" if poor quality
-- If NOT a pin sheet, return {"error": "Not a pin sheet", "confidence": "low"}`,
+- confidence: "high" if all dots clearly visible, "medium" if some unclear, "low" if poor quality
+- If NOT a pin sheet, return {"error": "Not a pin sheet", "confidence": "low"}
+- Use training examples above as reference for accuracy`,
               },
             ],
           },
@@ -300,14 +368,29 @@ Rules:
         }
 
         // Insert pin_locations for each hole
-        const pinLocations = analysis.pins.map(pin => ({
-          pin_position_id: pinPosition.id,
-          hole_number: pin.hole,
-          position_label: pin.position,
-          x_position: pin.x,
-          y_position: pin.y,
-          description: pin.description,
-        }));
+        const pinLocations = analysis.pins.map(pin => {
+          const baseFields = {
+            pin_position_id: pinPosition.id,
+            hole_number: pin.hole,
+            position_label: pin.position,
+            x_position: pin.x,
+            y_position: pin.y,
+            description: pin.description,
+          };
+
+          // Try to include new fields (will be ignored if columns don't exist yet)
+          if (pin.primary_grid !== undefined) {
+            baseFields.primary_grid = pin.primary_grid;
+          }
+          if (pin.micro_placement !== undefined) {
+            baseFields.micro_placement = pin.micro_placement;
+          }
+          if (pin.line_hugging !== undefined) {
+            baseFields.line_hugging = pin.line_hugging;
+          }
+
+          return baseFields;
+        });
 
         const { error: locationsError } = await supabase
           .from('pin_locations')

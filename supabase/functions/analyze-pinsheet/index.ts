@@ -98,7 +98,10 @@ serve(async (req) => {
               },
               {
                 type: "text",
-                text: `You are analyzing a golf course PIN SHEET photo using a HIGH-RESOLUTION 9-QUADRANT GRID SYSTEM.
+                text: `# SYSTEM PROTOCOL: CRITICAL ACCURACY PIN MAPPING
+You are a coordinate-based image processor. Do not estimate. Follow this math.
+
+You are analyzing a golf course PIN SHEET photo using a HIGH-RESOLUTION 9-QUADRANT GRID SYSTEM.
 
 GRID SYSTEM DEFINITION:
 ┌─────────────────┐
@@ -113,26 +116,42 @@ GRID SYSTEM DEFINITION:
 
 Each circle represents a green. You will see a small BLACK DOT showing the pin location.
 
-ACCURACY PROTOCOL (3-STEP PROCESS):
+THE SCANNING RULE (MANDATORY):
 
-STEP 1 - IDENTIFY PRIMARY QUADRANT (1-9):
-Find which of the 9 grid squares the dot is in.
+For each of the 18 holes, follow this EXACT mathematical process:
 
-STEP 2 - MICRO-PLACEMENT WITHIN QUADRANT:
-Determine the position within that quadrant using:
-- "High" - Upper portion of quadrant (closer to back/top)
-- "Low" - Lower portion of quadrant (closer to front/bottom)
-- "Left" - Left side of quadrant
-- "Right" - Right side of quadrant
-- "Center" - Dead center of quadrant
-- Combinations: "High-Left", "Low-Right", etc.
+STEP 1 - DIVIDE THE CIRCLE MATHEMATICALLY:
+- Horizontal bands: 0-33%, 34-66%, 67-100% (measured from BOTTOM of circle)
+  * 0-33% = FRONT row (Grids 1, 2, 3)
+  * 34-66% = MIDDLE row (Grids 4, 5, 6)
+  * 67-100% = BACK row (Grids 7, 8, 9)
+- Vertical bands: 0-33%, 34-66%, 67-100% (measured from LEFT of circle)
+  * 0-33% = LEFT column (Grids 1, 4, 7)
+  * 34-66% = CENTER column (Grids 2, 5, 8)
+  * 67-100% = RIGHT column (Grids 3, 6, 9)
 
-STEP 3 - BORDER LOGIC:
-If a pin is on or very close to a grid line (within 5%):
-- Categorize it by the DEEPER or more CENTRAL quadrant
-- Example: Dot on line between Grid 1 and 4 → Choose Grid 4 (deeper)
-- Example: Dot on line between Grid 2 and 5 → Choose Grid 5 (more central)
-- Mark as "line_hugging": true in output
+STEP 2 - APPLY LINE RULE (CRITICAL):
+If a pin is ON A LINE (at 33% or 67% boundary), it is ALWAYS the HIGHER number:
+- On line between 1 and 4 → Grid 4 (not 1)
+- On line between 2 and 5 → Grid 5 (not 2)
+- On line between 4 and 7 → Grid 7 (not 4)
+- On line between 1 and 2 → Grid 2 (not 1)
+- On line between 2 and 3 → Grid 3 (not 2)
+
+STEP 3 - MICRO-PLACEMENT WITHIN GRID:
+After determining the grid number, specify position within that grid:
+- "Low" = Bottom portion of grid
+- "High" = Top portion of grid
+- "Left" = Left portion of grid
+- "Right" = Right portion of grid
+- "Center" = Dead center of grid
+- Combinations: "Low-Left", "High-Right", etc.
+
+STEP 4 - VERIFICATION STEP (STOP AND THINK):
+Before outputting, you MUST check your math for these 'Danger' holes:
+- Hole 16: Is it touching the line between 1 and 4? If YES, it is Grid 4.
+- Hole 12 & 15: Are they at the same height? If 15 is higher than 12, they must be described as different depths.
+- Any pin in Grid 2: Check if it's Low in 2 (Front-Center) or High in 2 (Bordering Dead Center).
 
 VERIFIED TRAINING EXAMPLES (use these as reference):
 
@@ -157,66 +176,38 @@ Hole 15: Grid 2, "Front Center: High and right within the box (bordering 5 and 3
 Hole 16: Grid 4, "Middle Left: Bottom edge, bordering the Front-Left (1)"
 → primary_grid: 4, micro_placement: "Bordering 1", x: 0.2, y: 0.65
 
-COORDINATE MAPPING LOGIC:
+COORDINATE CONVERSION (for database output):
 
-Base coordinates for each grid (adjust based on micro-placement):
-- Grid 1 (Front-Left):     base x: 0.17, base y: 0.83
-- Grid 2 (Front-Center):   base x: 0.50, base y: 0.83
-- Grid 3 (Front-Right):    base x: 0.83, base y: 0.83
-- Grid 4 (Middle-Left):    base x: 0.17, base y: 0.50
-- Grid 5 (Center):         base x: 0.50, base y: 0.50
-- Grid 6 (Middle-Right):   base x: 0.83, base y: 0.50
-- Grid 7 (Back-Left):      base x: 0.17, base y: 0.17
-- Grid 8 (Back-Center):    base x: 0.50, base y: 0.17
-- Grid 9 (Back-Right):     base x: 0.83, base y: 0.17
+After determining grid number and micro-placement, convert to 0-1 normalized coordinates:
 
-Micro-placement adjustments (±0.08 from base):
-- "High": -0.08 from y (toward back/top)
-- "Low": +0.08 from y (toward front/bottom)
-- "Left": -0.08 from x
-- "Right": +0.08 from x
-- "Bordering": Move 0.15 units toward border
+Base coordinates for each grid:
+- Grid 1 (Front-Left):     x: 0.17, y: 0.83
+- Grid 2 (Front-Center):   x: 0.50, y: 0.83
+- Grid 3 (Front-Right):    x: 0.83, y: 0.83
+- Grid 4 (Middle-Left):    x: 0.17, y: 0.50
+- Grid 5 (Dead Center):    x: 0.50, y: 0.50
+- Grid 6 (Middle-Right):   x: 0.83, y: 0.50
+- Grid 7 (Back-Left):      x: 0.17, y: 0.17
+- Grid 8 (Back-Center):    x: 0.50, y: 0.17
+- Grid 9 (Back-Right):     x: 0.83, y: 0.17
 
-COORDINATE SYSTEM:
+Adjust based on micro-placement (±0.10 from base):
+- "Low": y + 0.10 (toward front/bottom, max 1.0)
+- "High": y - 0.10 (toward back/top, min 0.0)
+- "Left": x - 0.10 (toward left edge, min 0.0)
+- "Right": x + 0.10 (toward right edge, max 1.0)
+
+COORDINATE SYSTEM (for database):
 - X-axis: 0.0 = left edge, 0.5 = center, 1.0 = right edge
 - Y-axis: 0.0 = back/top edge, 1.0 = front/bottom edge
 
-COORDINATE CALCULATION ALGORITHM:
-
-For each green, normalize to 100x100 coordinate system:
-- (0, 0) = Bottom-Left = Front-Left = Grid 1
-- (100, 100) = Top-Right = Back-Right = Grid 9
-
-QUADRANT ASSIGNMENT LOGIC:
-Y-axis (depth):
-- 0-33: Front row (Grids 1, 2, 3)
-- 33-66: Middle row (Grids 4, 5, 6)
-- 66-100: Back row (Grids 7, 8, 9)
-
-X-axis (lateral):
-- 0-33: Left column (Grids 1, 4, 7)
-- 33-66: Center column (Grids 2, 5, 8)
-- 66-100: Right column (Grids 3, 6, 9)
-
-BORDER CORRECTION:
-If pin_y % 33 < 2 (within 2% of horizontal line):
-→ Move to DEEPER quadrant (+3 to grid number)
-
-If pin_x % 33 < 2 (within 2% of vertical line):
-→ Move to MORE CENTRAL or RIGHT quadrant
-
-CLUSTER DIFFERENTIATION:
-If multiple pins fall in same grid (e.g., Holes 12 & 15 both in Grid 2):
-→ You MUST describe how they differ in micro_placement
-→ Example: "Hole 12: Low-Left (closer to Grid 1), Hole 15: High-Right (closer to Grid 5)"
-
-CRITICAL INSTRUCTIONS:
-1. Read holes left-to-right, top-to-bottom (1-18)
-2. Calculate pixel position within each green's 100x100 normalized space
-3. Apply quadrant assignment logic (33/66 boundaries)
-4. Apply border correction if within 2% of grid line
-5. Calculate micro-position within quadrant (rel_x % 33, rel_y % 33)
-6. Convert to 0-1 normalized coordinates for database
+CRITICAL PROCESS:
+1. Read holes left-to-right, top-to-bottom (1-18 in the sheet grid)
+2. For EACH hole, measure dot position as percentage from bottom-left corner
+3. Apply 0-33%, 34-66%, 67-100% mathematical boundaries
+4. If on a line (33% or 67%), choose HIGHER grid number
+5. Verify danger holes (16, 12, 15) before finalizing
+6. Calculate exact x/y coordinates for database
 
 Return ONLY valid JSON (no markdown, no explanation):
 {

@@ -101,42 +101,66 @@ CRITICAL INSTRUCTIONS FOR READING PIN SHEETS:
 
 1. LAYOUT: Pin sheets show 18 circular diagrams (one per hole), usually in a 6x3 or 3x6 grid
 2. EACH CIRCLE: Represents the green shape from above (bird's eye view)
-3. THE PIN DOT: A small dot, circle, or mark shows exactly where the pin is located on the green
+3. THE PIN DOT: Look for a small BLACK DOT, filled circle, or mark inside each circle - this shows the EXACT pin location
 4. GRID LINES: Most pin sheets have grid lines dividing each circle into 9 sections (3x3 grid)
 
-HOW TO READ THE PIN POSITION ACCURATELY:
+CRITICAL - COORDINATE ORIENTATION:
+- When looking at the circle from above (standard pin sheet view):
+  - TOP of circle = FRONT of green (where you approach from, closest to tee)
+  - BOTTOM of circle = BACK of green (farthest from tee)
+  - LEFT side = LEFT side when standing on tee
+  - RIGHT side = RIGHT side when standing on tee
 
-Step 1: Look at each numbered circle (1-18)
-Step 2: Find the small dot/mark inside the circle - this is the pin location
-Step 3: Determine which section of the 3x3 grid the dot is in:
+Y-AXIS DIRECTION (VERY IMPORTANT):
+- y = 0.0 to 0.3 = FRONT of green (TOP of circle)
+- y = 0.4 to 0.6 = MIDDLE of green (MIDDLE of circle)
+- y = 0.7 to 1.0 = BACK of green (BOTTOM of circle)
 
-   TOP ROW (front of green):
-   - Front-Left corner = dot in top-left section
-   - Front-Center = dot in top-middle section
-   - Front-Right corner = dot in top-right section
+HOW TO READ EACH PIN POSITION:
 
-   MIDDLE ROW (middle of green):
-   - Middle-Left = dot in middle-left section
-   - Center = dot in exact center section
-   - Middle-Right = dot in middle-right section
+For EACH of the 18 holes, follow this process:
 
-   BOTTOM ROW (back of green):
-   - Back-Left = dot in bottom-left section
-   - Back-Center = dot in bottom-middle section
-   - Back-Right = dot in bottom-right section
+Step 1: Locate the numbered circle (1-18)
+Step 2: Find the BLACK DOT inside the circle (it will be clearly visible as a filled dot or small circle)
+Step 3: Measure where the dot is positioned:
 
-Step 4: Estimate precise x,y coordinates within that section:
-   - X-axis: 0.0 = far left edge, 0.5 = center, 1.0 = far right edge
-   - Y-axis: 0.0 = front edge (top), 0.5 = middle, 1.0 = back edge (bottom)
+HORIZONTAL (X-axis) - Where is the dot left-to-right?
+- Far LEFT edge = x: 0.1
+- Left third = x: 0.2
+- Center-left = x: 0.35
+- EXACT CENTER = x: 0.5
+- Center-right = x: 0.65
+- Right third = x: 0.8
+- Far RIGHT edge = x: 0.9
 
-COORDINATE EXAMPLES:
-- Front-Left corner dot → x: 0.15-0.25, y: 0.15-0.25
-- Center dot → x: 0.45-0.55, y: 0.45-0.55
-- Back-Right corner dot → x: 0.75-0.85, y: 0.75-0.85
-- Middle-Left dot → x: 0.15-0.25, y: 0.45-0.55
-- Front-Center dot → x: 0.45-0.55, y: 0.15-0.25
+VERTICAL (Y-axis) - Where is the dot top-to-bottom?
+- FRONT (top) edge = y: 0.1
+- Front third = y: 0.2
+- Front-middle = y: 0.35
+- EXACT MIDDLE = y: 0.5
+- Middle-back = y: 0.65
+- Back third = y: 0.8
+- BACK (bottom) edge = y: 0.9
 
-LOOK CAREFULLY at where the dot sits within each grid section. Do NOT just default to center positions.
+Step 4: Assign the position label based on the section:
+- If dot is in TOP-LEFT third: "front-left"
+- If dot is in TOP-CENTER third: "front"
+- If dot is in TOP-RIGHT third: "front-right"
+- If dot is in MIDDLE-LEFT third: "left"
+- If dot is in EXACT CENTER: "center"
+- If dot is in MIDDLE-RIGHT third: "right"
+- If dot is in BOTTOM-LEFT third: "back-left"
+- If dot is in BOTTOM-CENTER third: "back"
+- If dot is in BOTTOM-RIGHT third: "back-right"
+
+EXAMPLES WITH VISUAL DESCRIPTION:
+1. Dot in upper-left area → "front-left", x: 0.2, y: 0.2
+2. Dot exactly in center → "center", x: 0.5, y: 0.5
+3. Dot in lower-right area → "back-right", x: 0.8, y: 0.8
+4. Dot in middle-left area → "left", x: 0.2, y: 0.5
+5. Dot at very bottom center → "back", x: 0.5, y: 0.85
+
+CRITICAL: Look at the ACTUAL DOT POSITION in the image. Do not guess or use random positions.
 
 Return ONLY valid JSON (no markdown, no explanation):
 {

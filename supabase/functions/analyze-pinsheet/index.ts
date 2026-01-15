@@ -1,12 +1,12 @@
 // Analyze Pin Sheet Edge Function
-// Uses Claude Vision API to extract pin positions from golf course pin sheet photos
+// Uses Google Gemini Vision API to extract pin positions from golf course pin sheet photos
 // Returns structured JSON with hole-by-hole pin locations
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
 // Get API keys from environment
-const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+const GOOGLE_API_KEY = Deno.env.get("GOOGLE_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -46,10 +46,10 @@ serve(async (req) => {
     }
 
     // Check for API key
-    if (!ANTHROPIC_API_KEY) {
-      console.error("[Analyze Pin Sheet] ANTHROPIC_API_KEY is not set!");
+    if (!GOOGLE_API_KEY) {
+      console.error("[Analyze Pin Sheet] GOOGLE_API_KEY is not set!");
       return new Response(
-        JSON.stringify({ error: "API key not configured" }),
+        JSON.stringify({ error: "Google API key not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -73,32 +73,8 @@ serve(async (req) => {
 
     console.log("[Analyze Pin Sheet] Processing image, size:", imageBase64.length, "chars");
 
-    // Call Claude Vision API
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 4096,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: mediaType,
-                  data: imageBase64,
-                },
-              },
-              {
-                type: "text",
-                text: `# SYSTEM PROTOCOL: CRITICAL ACCURACY PIN MAPPING
+    // Call Google Gemini Vision API
+    const promptText = `# SYSTEM PROTOCOL: CRITICAL ACCURACY PIN MAPPING
 You are a coordinate-based image processor. Do not estimate. Follow this math.
 
 You are analyzing a golf course PIN SHEET photo using a HIGH-RESOLUTION 9-QUADRANT GRID SYSTEM.
@@ -244,17 +220,41 @@ Return ONLY valid JSON (no markdown, no explanation):
 Rules:
 - confidence: "high" if all dots clearly visible, "medium" if some unclear, "low" if poor quality
 - If NOT a pin sheet, return {"error": "Not a pin sheet", "confidence": "low"}
-- Use training examples above as reference for accuracy`,
+- Use training examples above as reference for accuracy`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GOOGLE_API_KEY}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              {
+                text: promptText
               },
-            ],
-          },
-        ],
-      }),
-    });
+              {
+                inline_data: {
+                  mime_type: mediaType,
+                  data: imageBase64
+                }
+              }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 4096,
+            responseMimeType: "application/json"
+          }
+        })
+      }
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("[Analyze Pin Sheet] Claude API error:", response.status, errorText);
+      console.error("[Analyze Pin Sheet] Gemini API error:", response.status, errorText);
       return new Response(
         JSON.stringify({ error: "AI analysis failed", details: errorText }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -262,10 +262,10 @@ Rules:
     }
 
     const result = await response.json();
-    console.log("[Analyze Pin Sheet] Claude response received");
+    console.log("[Analyze Pin Sheet] Gemini response received");
 
-    // Extract the text content from Claude's response
-    const textContent = result.content?.find((c: any) => c.type === "text")?.text;
+    // Extract the text content from Gemini's response
+    const textContent = result.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!textContent) {
       console.error("[Analyze Pin Sheet] No text in response:", result);

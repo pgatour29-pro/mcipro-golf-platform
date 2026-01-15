@@ -73,154 +73,17 @@ serve(async (req) => {
 
     console.log("[Analyze Pin Sheet] Processing image, size:", imageBase64.length, "chars");
 
-    // Call Google Gemini Vision API
-    const promptText = `# SYSTEM PROTOCOL: CRITICAL ACCURACY PIN MAPPING
-You are a coordinate-based image processor. Do not estimate. Follow this math.
+    // Clean base64 (remove data URI prefix if present)
+    const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
 
-You are analyzing a golf course PIN SHEET photo using a HIGH-RESOLUTION 9-QUADRANT GRID SYSTEM.
-
-GRID SYSTEM DEFINITION:
-┌─────────────────┐
-│  7  │  8  │  9  │  ← BACK of green (top of circle)
-├─────┼─────┼─────┤
-│  4  │  5  │  6  │  ← MIDDLE of green
-├─────┼─────┼─────┤
-│  1  │  2  │  3  │  ← FRONT of green (bottom of circle)
-└─────────────────┘
-  ↑     ↑     ↑
- LEFT CENTER RIGHT
-
-Each circle represents a green. You will see a small BLACK DOT showing the pin location.
-
-THE SCANNING RULE (MANDATORY):
-
-For each of the 18 holes, follow this EXACT mathematical process:
-
-STEP 1 - DIVIDE THE CIRCLE MATHEMATICALLY:
-- Horizontal bands: 0-33%, 34-66%, 67-100% (measured from BOTTOM of circle)
-  * 0-33% = FRONT row (Grids 1, 2, 3)
-  * 34-66% = MIDDLE row (Grids 4, 5, 6)
-  * 67-100% = BACK row (Grids 7, 8, 9)
-- Vertical bands: 0-33%, 34-66%, 67-100% (measured from LEFT of circle)
-  * 0-33% = LEFT column (Grids 1, 4, 7)
-  * 34-66% = CENTER column (Grids 2, 5, 8)
-  * 67-100% = RIGHT column (Grids 3, 6, 9)
-
-STEP 2 - APPLY LINE RULE (CRITICAL):
-If a pin is ON A LINE (at 33% or 67% boundary), it is ALWAYS the HIGHER number:
-- On line between 1 and 4 → Grid 4 (not 1)
-- On line between 2 and 5 → Grid 5 (not 2)
-- On line between 4 and 7 → Grid 7 (not 4)
-- On line between 1 and 2 → Grid 2 (not 1)
-- On line between 2 and 3 → Grid 3 (not 2)
-
-STEP 3 - MICRO-PLACEMENT WITHIN GRID:
-After determining the grid number, specify position within that grid:
-- "Low" = Bottom portion of grid
-- "High" = Top portion of grid
-- "Left" = Left portion of grid
-- "Right" = Right portion of grid
-- "Center" = Dead center of grid
-- Combinations: "Low-Left", "High-Right", etc.
-
-STEP 4 - VERIFICATION STEP (STOP AND THINK):
-Before outputting, you MUST check your math for these 'Danger' holes:
-- Hole 16: Is it touching the line between 1 and 4? If YES, it is Grid 4.
-- Hole 12 & 15: Are they at the same height? If 15 is higher than 12, they must be described as different depths.
-- Any pin in Grid 2: Check if it's Low in 2 (Front-Center) or High in 2 (Bordering Dead Center).
-
-VERIFIED TRAINING EXAMPLES (use these as reference):
-
-Hole 1: Grid 3, "Front Right: Tucked toward the right fringe"
-→ primary_grid: 3, micro_placement: "Right-Deep", x: 0.85, y: 0.85
-
-Hole 2: Grid 5, "Dead Center: True middle of the green"
-→ primary_grid: 5, micro_placement: "Center", x: 0.5, y: 0.5
-
-Hole 3: Grid 7, "Back Left: Deep and tucked toward the left edge"
-→ primary_grid: 7, micro_placement: "Left-Deep", x: 0.15, y: 0.15
-
-Hole 4: Grid 1, "Front Left: Deep within the quadrant, bordering the Middle-Left (4)"
-→ primary_grid: 1, micro_placement: "Bordering 4", x: 0.2, y: 0.7
-
-Hole 12: Grid 2, "Front Center: Sitting low and slightly left within the box"
-→ primary_grid: 2, micro_placement: "Low-Left", x: 0.45, y: 0.85
-
-Hole 15: Grid 2, "Front Center: High and right within the box (bordering 5 and 3)"
-→ primary_grid: 2, micro_placement: "High-Right", x: 0.55, y: 0.7
-
-Hole 16: Grid 4, "Middle Left: Bottom edge, bordering the Front-Left (1)"
-→ primary_grid: 4, micro_placement: "Bordering 1", x: 0.2, y: 0.65
-
-COORDINATE CONVERSION (for database output):
-
-After determining grid number and micro-placement, convert to 0-1 normalized coordinates:
-
-Base coordinates for each grid:
-- Grid 1 (Front-Left):     x: 0.17, y: 0.83
-- Grid 2 (Front-Center):   x: 0.50, y: 0.83
-- Grid 3 (Front-Right):    x: 0.83, y: 0.83
-- Grid 4 (Middle-Left):    x: 0.17, y: 0.50
-- Grid 5 (Dead Center):    x: 0.50, y: 0.50
-- Grid 6 (Middle-Right):   x: 0.83, y: 0.50
-- Grid 7 (Back-Left):      x: 0.17, y: 0.17
-- Grid 8 (Back-Center):    x: 0.50, y: 0.17
-- Grid 9 (Back-Right):     x: 0.83, y: 0.17
-
-Adjust based on micro-placement (±0.10 from base):
-- "Low": y + 0.10 (toward front/bottom, max 1.0)
-- "High": y - 0.10 (toward back/top, min 0.0)
-- "Left": x - 0.10 (toward left edge, min 0.0)
-- "Right": x + 0.10 (toward right edge, max 1.0)
-
-COORDINATE SYSTEM (for database):
-- X-axis: 0.0 = left edge, 0.5 = center, 1.0 = right edge
-- Y-axis: 0.0 = back/top edge, 1.0 = front/bottom edge
-
-CRITICAL PROCESS:
-1. Read holes left-to-right, top-to-bottom (1-18 in the sheet grid)
-2. For EACH hole, measure dot position as percentage from bottom-left corner
-3. Apply 0-33%, 34-66%, 67-100% mathematical boundaries
-4. If on a line (33% or 67%), choose HIGHER grid number
-5. Verify danger holes (16, 12, 15) before finalizing
-6. Calculate exact x/y coordinates for database
-
-Return ONLY valid JSON (no markdown, no explanation):
-{
-  "course_name": "Course name from header",
-  "date": "2026-01-15",
-  "green_speed": "9'4\\"",
-  "pins": [
-    {
-      "hole": 1,
-      "primary_grid": 3,
-      "position": "front-right",
-      "micro_placement": "Right-Deep",
-      "line_hugging": false,
-      "x": 0.85,
-      "y": 0.85,
-      "description": "Front Right: Tucked toward the right fringe"
-    },
-    {
-      "hole": 16,
-      "primary_grid": 4,
-      "position": "left",
-      "micro_placement": "Bottom-Edge",
-      "line_hugging": true,
-      "x": 0.2,
-      "y": 0.65,
-      "description": "Middle Left: Bottom edge, bordering Front-Left (1)"
-    },
-    ... for all 18 holes
-  ],
-  "holes_detected": 18,
-  "confidence": "high"
-}
-
-Rules:
-- confidence: "high" if all dots clearly visible, "medium" if some unclear, "low" if poor quality
-- If NOT a pin sheet, return {"error": "Not a pin sheet", "confidence": "low"}
-- Use training examples above as reference for accuracy`;
+    // Call Google Gemini Vision API with exact user configuration
+    const systemInstruction = `You are a professional golf data parser.
+Analyze the 3x3 grid diagrams for 18 holes.
+LOGIC (Established 2026-01-15):
+- DEPTH: 'Back' (top line/edge), 'Middle' (center horizontal line), 'Front' (bottom line/edge).
+- SIDE: 'Left' (left vertical line), 'Center' (between/on center lines), 'Right' (right vertical line).
+EXAMPLE: If a dot is on the bottom-center intersection, it is {"depth": "Front", "side": "Center"}.
+If a dot is on the left-middle intersection, it is {"depth": "Middle", "side": "Left"}.`;
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GOOGLE_API_KEY}`,
@@ -230,23 +93,46 @@ Rules:
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: systemInstruction }]
+          },
           contents: [{
+            role: "user",
             parts: [
+              { text: "Extract all 18 pin positions exactly as they appear on the grid lines. Also extract course_name, date, and green_speed from the header." },
               {
-                text: promptText
-              },
-              {
-                inline_data: {
-                  mime_type: mediaType,
-                  data: imageBase64
+                inlineData: {
+                  mimeType: mediaType,
+                  data: cleanBase64
                 }
               }
             ]
           }],
           generationConfig: {
-            temperature: 0.1,
+            temperature: 0,
             maxOutputTokens: 4096,
-            responseMimeType: "application/json"
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "object",
+              properties: {
+                course_name: { type: "string" },
+                date: { type: "string" },
+                green_speed: { type: "string" },
+                holes: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      hole: { type: "number" },
+                      depth: { type: "string", enum: ["Front", "Middle", "Back"] },
+                      side: { type: "string", enum: ["Left", "Center", "Right"] }
+                    },
+                    required: ["hole", "depth", "side"]
+                  }
+                }
+              },
+              required: ["holes"]
+            }
           }
         })
       }
@@ -275,22 +161,10 @@ Rules:
       );
     }
 
-    // Parse JSON response
-    let analysis: PinSheetAnalysis;
+    // Parse Gemini response
+    let geminiData: any;
     try {
-      // Extract JSON from markdown-wrapped responses
-      let cleanedText = textContent;
-
-      // Try to extract JSON object using regex (handles explanatory text before/after JSON)
-      const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        cleanedText = jsonMatch[0];
-      } else {
-        // Fallback: remove markdown code blocks
-        cleanedText = cleanedText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      }
-
-      analysis = JSON.parse(cleanedText);
+      geminiData = JSON.parse(textContent);
     } catch (parseError) {
       console.error("[Analyze Pin Sheet] JSON parse error:", parseError);
       console.error("[Analyze Pin Sheet] Raw text:", textContent);
@@ -300,21 +174,46 @@ Rules:
       );
     }
 
-    // Check for errors in analysis
-    if (analysis.error) {
-      return new Response(
-        JSON.stringify({ error: analysis.error, confidence: analysis.confidence }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Convert depth/side format to grid number and coordinates
+    const depthSideToGrid = (depth: string, side: string): { grid: number; x: number; y: number; position: string } => {
+      const gridMap: Record<string, { grid: number; x: number; y: number; position: string }> = {
+        "Front-Left": { grid: 1, x: 0.17, y: 0.83, position: "front-left" },
+        "Front-Center": { grid: 2, x: 0.50, y: 0.83, position: "front" },
+        "Front-Right": { grid: 3, x: 0.83, y: 0.83, position: "front-right" },
+        "Middle-Left": { grid: 4, x: 0.17, y: 0.50, position: "left" },
+        "Middle-Center": { grid: 5, x: 0.50, y: 0.50, position: "center" },
+        "Middle-Right": { grid: 6, x: 0.83, y: 0.50, position: "right" },
+        "Back-Left": { grid: 7, x: 0.17, y: 0.17, position: "back-left" },
+        "Back-Center": { grid: 8, x: 0.50, y: 0.17, position: "back" },
+        "Back-Right": { grid: 9, x: 0.83, y: 0.17, position: "back-right" },
+      };
+      const key = `${depth}-${side}`;
+      return gridMap[key] || { grid: 5, x: 0.50, y: 0.50, position: "center" };
+    };
 
-    // Validate analysis has required fields
-    if (!analysis.course_name || !analysis.pins || analysis.pins.length === 0) {
-      return new Response(
-        JSON.stringify({ error: "Incomplete pin sheet analysis", data: analysis }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Convert Gemini holes format to our format
+    const pins: PinLocation[] = (geminiData.holes || []).map((hole: any) => {
+      const converted = depthSideToGrid(hole.depth, hole.side);
+      return {
+        hole: hole.hole,
+        primary_grid: converted.grid,
+        position: converted.position,
+        micro_placement: `${hole.depth}-${hole.side}`,
+        line_hugging: false,
+        x: converted.x,
+        y: converted.y,
+        description: `${hole.depth} ${hole.side}`
+      };
+    });
+
+    const analysis: PinSheetAnalysis = {
+      course_name: geminiData.course_name || courseName || "Unknown Course",
+      date: geminiData.date || date || new Date().toISOString().split('T')[0],
+      green_speed: geminiData.green_speed || null,
+      pins: pins,
+      holes_detected: pins.length,
+      confidence: pins.length === 18 ? "high" : (pins.length >= 16 ? "medium" : "low")
+    };
 
     console.log(`[Analyze Pin Sheet] Successfully analyzed: ${analysis.course_name}, ${analysis.pins.length} holes`);
 

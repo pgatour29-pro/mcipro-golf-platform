@@ -24,10 +24,13 @@
             console.log('[SW-Register] Service Worker registered successfully');
             console.log('[SW-Register] Scope:', registration.scope);
 
-            // Check for updates periodically (every 30 minutes)
+            // Check for updates immediately
+            registration.update();
+
+            // Check for updates periodically (every 5 minutes)
             setInterval(() => {
                 registration.update();
-            }, 30 * 60 * 1000);
+            }, 5 * 60 * 1000);
 
             // Handle updates
             registration.addEventListener('updatefound', () => {
@@ -53,9 +56,8 @@
 
             // Handle controller change (new SW activated)
             navigator.serviceWorker.addEventListener('controllerchange', () => {
-                console.log('[SW-Register] New Service Worker activated');
-                // Optional: Could reload for fresh content, but we'll skip to avoid disruption
-                // window.location.reload();
+                console.log('[SW-Register] New Service Worker activated - reloading page');
+                window.location.reload();
             });
 
             return registration;

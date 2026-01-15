@@ -104,34 +104,30 @@ CRITICAL INSTRUCTIONS FOR READING PIN SHEETS:
 3. THE PIN DOT: Look for a small BLACK DOT, filled circle, or mark inside each circle - this shows the EXACT pin location
 4. GRID LINES: Most pin sheets have grid lines dividing each circle into 9 sections (3x3 grid)
 
-CRITICAL - PIN SHEET ORIENTATION:
-Pin sheets can be oriented different ways. Look for these clues to determine which way is "front":
-1. Text labels like "F" (front), "M" (middle), "B" (back) on the sheet
-2. Arrow indicators showing direction
-3. Header text orientation (usually top of page = front of green)
-4. Grid numbering (usually starts from front)
+CRITICAL COORDINATE SYSTEM - READ THIS CAREFULLY:
 
-MOST COMMON: If looking at a standard pin sheet photo:
-- BOTTOM of the sheet (where you hold it) = FRONT of green (approach side)
-- TOP of the sheet (away from you) = BACK of green (far side)
-- LEFT side = LEFT
-- RIGHT side = RIGHT
+Each circle represents a green from BIRD'S EYE VIEW (looking down from above).
 
-COORDINATE SYSTEM (CRITICAL - READ CAREFULLY):
-Pin sheet circles show the green from ABOVE, with the tee at bottom:
-- TOP of circle = BACK of green (far from tee)
-- BOTTOM of circle = FRONT of green (close to tee)
+STANDARD PIN SHEET LAYOUT:
+- Each circle has a small BLACK DOT showing where the pin is
+- TOP of each circle = BACK of the green (farthest from tee)
+- BOTTOM of each circle = FRONT of the green (closest to tee/approach)
+- LEFT of circle = LEFT side of green
+- RIGHT of circle = RIGHT side of green
 
-X-axis (left to right when standing on tee):
-- x = 0.0 = LEFT edge
-- x = 0.5 = CENTER
-- x = 1.0 = RIGHT edge
+YOUR COORDINATES MUST MATCH THIS SYSTEM:
 
-Y-axis (THIS IS COUNTER-INTUITIVE):
-Since we measure from TOP of circle:
-- y = 0.0 to 0.3 = TOP of circle = BACK of green
-- y = 0.4 to 0.6 = MIDDLE of circle = MIDDLE of green
-- y = 0.7 to 1.0 = BOTTOM of circle = FRONT of green
+X-axis (horizontal - left to right):
+- x = 0.0 = FAR LEFT edge of green
+- x = 0.5 = CENTER (horizontally)
+- x = 1.0 = FAR RIGHT edge of green
+
+Y-axis (vertical - measured from TOP of circle):
+- y = 0.0 = TOP of circle = BACK of green (far from tee)
+- y = 0.3 = upper third = back third of green
+- y = 0.5 = CENTER (vertically) = middle of green
+- y = 0.7 = lower third = front third of green
+- y = 1.0 = BOTTOM of circle = FRONT of green (close to tee)
 
 EXAMPLE: If you see a dot in the BOTTOM-RIGHT area of a circle:
 - That's FRONT-RIGHT position

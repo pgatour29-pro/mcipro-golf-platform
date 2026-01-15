@@ -76,14 +76,41 @@ serve(async (req) => {
     // Clean base64 (remove data URI prefix if present)
     const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
 
-    // Call Google Gemini Vision API with exact user configuration
+    // Call Google Gemini Vision API with exact user configuration and verified training data
     const systemInstruction = `You are a professional golf data parser.
 Analyze the 3x3 grid diagrams for 18 holes.
+
 LOGIC (Established 2026-01-15):
 - DEPTH: 'Back' (top line/edge), 'Middle' (center horizontal line), 'Front' (bottom line/edge).
 - SIDE: 'Left' (left vertical line), 'Center' (between/on center lines), 'Right' (right vertical line).
-EXAMPLE: If a dot is on the bottom-center intersection, it is {"depth": "Front", "side": "Center"}.
-If a dot is on the left-middle intersection, it is {"depth": "Middle", "side": "Left"}.`;
+
+CRITICAL TRAINING EXAMPLES (from Bangpakong Riverside pin sheet):
+Hole 1: {"depth": "Front", "side": "Right"} - Bottom right area
+Hole 2: {"depth": "Middle", "side": "Center"} - Dead center
+Hole 3: {"depth": "Back", "side": "Left"} - Top left area (NOT right!)
+Hole 4: {"depth": "Front", "side": "Left"} - Bottom left area
+Hole 5: {"depth": "Middle", "side": "Left"} - Middle left (NOT front!)
+Hole 6: {"depth": "Back", "side": "Center"} - Top center (NOT right!)
+Hole 7: {"depth": "Front", "side": "Right"} - Bottom right (NOT center!)
+Hole 8: {"depth": "Middle", "side": "Left"} - Middle left (NOT center!)
+Hole 9: {"depth": "Back", "side": "Left"} - Top left area
+Hole 10: {"depth": "Middle", "side": "Center"} - Dead center
+Hole 11: {"depth": "Back", "side": "Left"} - Top left area
+Hole 12: {"depth": "Front", "side": "Center"} - Bottom center
+Hole 13: {"depth": "Middle", "side": "Left"} - Middle left
+Hole 14: {"depth": "Back", "side": "Center"} - Top center (NOT middle!)
+Hole 15: {"depth": "Front", "side": "Center"} - Bottom center (NOT right!)
+Hole 16: {"depth": "Middle", "side": "Left"} - Middle left
+Hole 17: {"depth": "Back", "side": "Center"} - Top center
+Hole 18: {"depth": "Front", "side": "Center"} - Bottom center
+
+COMMON MISTAKES TO AVOID:
+- Don't confuse "Back" (top) with "Front" (bottom)
+- Don't confuse "Left" with "Center" or "Right"
+- A dot slightly left of center is still "Center" unless it's clearly on the left line
+- A dot between Front and Middle is usually "Middle" not "Front"
+
+Use these examples to calibrate your detection for all pin sheets.`;
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GOOGLE_API_KEY}`,

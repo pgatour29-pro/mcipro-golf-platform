@@ -97,10 +97,11 @@ curl https://mycaddipro.com/path/to/changed/file
 - v192: Pin positions - try database first (shared), fallback to localStorage
 - v193: Pin positions - override protection, confirms before replacing existing pins
 - v194: Pin position grid - compact layout for desktop, shows position label
+- v195: Disabled Take Photo & Gallery buttons with "Coming Soon" badges (AI reading not ready)
 
 ---
 
-## PIN POSITION SYSTEM (v189-v194)
+## PIN POSITION SYSTEM (v189-v195)
 
 ### Grid Layout (9-position)
 ```

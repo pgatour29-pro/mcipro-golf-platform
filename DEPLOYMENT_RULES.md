@@ -78,6 +78,7 @@ curl https://mycaddipro.com/path/to/changed/file
 - v165: Fixed OAuth AbortError loop - clean URL immediately on load
 - v166: Removed aggressive SW skipWaiting/claim
 - v167: Fixed Pattaya Country Club yardages (user provided)
+- v168: Fixed game-specific handicap calculations (use getGameHandicap() instead of player.handicap)
 
 ---
 

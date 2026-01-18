@@ -373,3 +373,75 @@ CREATE POLICY "Anyone can insert pin_locations" ON pin_locations FOR INSERT WITH
 - Match Play 1v1 Leaderboard Redesign (see plan file)
 - Show specific matchups instead of aggregate stats
 - Display handicap strokes per matchup
+
+---
+
+## HANDICAP SYSTEM ANALYSIS (2026-01-19)
+
+### Current Implementation Status
+
+| Event Type | Expected Behavior | Actual Implementation | Status |
+|------------|-------------------|----------------------|--------|
+| Society Events | Best 8 of 20 rounds (WHS) | ✅ Correctly implemented | WORKING |
+| Non-Society Events | Adjust every 3 rounds | ❌ Updates on EVERY round (Best 3 of 5) | NEEDS FIX |
+
+### Society Events - WHS 8/20 (CORRECT)
+
+**Location:** `/sql/whs_8of20_handicap_function.sql`
+
+**Formula:**
+```
+Handicap Index = (AVG(best 8 differentials) × 0.96) + adjustment
+Differential = (Gross Score - Course Rating) × 113 / Slope Rating
+Cap: -10.0 to 54.0 (WHS limits, allows plus handicaps)
+```
+
+**Rounds-to-Differentials Selection:**
+| Rounds | Use Best | Adjustment |
+|--------|----------|------------|
+| ≥ 20 | 8 | 0 |
+| 17-19 | 6-7 | 0 |
+| 13-16 | 5-6 | 0 |
+| 10-12 | 4 | 0 |
+| 8-9 | 3 | 0 |
+| 7 | 2 | 0 |
+| 6 | 2 | -1.0 |
+| 5 | 1 | 0 |
+| 4 | 1 | -1.0 |
+| 3 | 1 | -2.0 |
+
+### Non-Society Events - NEEDS IMPLEMENTATION
+
+**Current (Wrong):**
+- Updates on EVERY completed round
+- Uses "Best 3 of 5" formula
+- No round counter
+
+**Required:**
+- Track `rounds_since_adjustment` counter
+- Only recalculate when counter hits 3
+- Reset counter after adjustment
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `/sql/whs_8of20_handicap_function.sql` | WHS 8/20 calculation (society) |
+| `/sql/multi-society-handicap-system.sql` | Best 3/5 calculation (universal) |
+| `/public/index.html:59008-59087` | Frontend auto-adjustment (non-WHS) |
+| `/scripts/calculate_whs_8of20.js` | Manual WHS tester |
+| `/scripts/handicap_health_check.js` | System verification |
+
+### Known Issues
+
+1. **"Every 3 rounds" NOT implemented** - Updates on every round instead
+2. **Frontend caps handicap at 0** - Can't auto-create plus handicaps (but manual entry can)
+3. **Multiple storage locations** - `society_handicaps`, `user_profiles.handicap_index`, `profile_data.golfInfo.handicap`
+4. **No audit trail** - No history of handicap changes
+
+### TODO: Implement Every 3 Rounds Logic
+
+1. Add `rounds_since_adjustment` column to track rounds
+2. Modify trigger to only recalculate when counter = 3
+3. Reset counter after adjustment
+4. Apply only to non-society (universal) handicaps

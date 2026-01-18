@@ -40,27 +40,6 @@ class SupabaseClient {
         }
     }
 
-    // Reinitialize client (call after OAuth to clear stale state)
-    async reinitialize() {
-        try {
-            // Clean up old client's realtime connections
-            if (this.client) {
-                try {
-                    await this.client.removeAllChannels();
-                } catch (e) {
-                    console.warn('[Supabase] Channel cleanup error:', e);
-                }
-            }
-            // Create fresh client
-            if (window.supabase && window.supabase.createClient) {
-                this.client = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
-                console.log('[Supabase] Client reinitialized');
-            }
-        } catch (err) {
-            console.error('[Supabase] Reinitialize error:', err);
-        }
-    }
-
     // =====================================================
     // BOOKINGS MANAGEMENT
     // =====================================================

@@ -1,7 +1,7 @@
 // SERVICE WORKER - Performance Caching Version
 // Caches static assets for dramatically faster repeat visits
 
-const SW_VERSION = 'mcipro-cache-v165';
+const SW_VERSION = 'mcipro-cache-v166';
 const CACHE_NAME = `mcipro-static-${SW_VERSION}`;
 const RUNTIME_CACHE = `mcipro-runtime-${SW_VERSION}`;
 
@@ -90,7 +90,7 @@ self.addEventListener('install', event => {
             })
             .then(() => {
                 console.log('[SW] Static assets cached');
-                return self.skipWaiting();
+                // Don't skipWaiting - let SW update naturally to avoid aborting requests
             })
     );
 });
@@ -117,8 +117,8 @@ self.addEventListener('activate', event => {
                 );
             })
             .then(() => {
-                console.log('[SW] Claiming clients');
-                return self.clients.claim();
+                console.log('[SW] Activated - waiting for next navigation to take control');
+                // Don't claim clients immediately - this aborts in-flight requests
             })
     );
 });

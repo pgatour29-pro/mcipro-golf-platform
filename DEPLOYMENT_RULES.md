@@ -86,6 +86,8 @@ curl https://mycaddipro.com/path/to/changed/file
 - v173: Fixed plus handicaps (+1.6) - changed input min to -10, improved setGameHandicap
 - v174: Safe setGameHandicap - prevents session state breaks with proper null checks
 - v175: Round state persistence - saves active round to localStorage for crash recovery
+- v176: Fixed plus handicap display in game config panel (formatHandicapDisplay + text input)
+- v177: Fixed showLiveScorecard() - was looking for wrong section ID, now shows scorecardActiveSection
 
 ---
 

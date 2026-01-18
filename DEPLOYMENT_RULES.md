@@ -79,6 +79,9 @@ curl https://mycaddipro.com/path/to/changed/file
 - v166: Removed aggressive SW skipWaiting/claim
 - v167: Fixed Pattaya Country Club yardages (user provided)
 - v168: Fixed game-specific handicap calculations (use getGameHandicap() instead of player.handicap)
+- v169: Fixed getGameHandicap null safety check
+- v170: Fixed game config initialization in startRound - ensure handicaps set for all formats
+- v171: Added inline editable handicap badges to leaderboards (click to change)
 
 ---
 

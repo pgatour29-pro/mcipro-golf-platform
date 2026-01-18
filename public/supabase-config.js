@@ -40,6 +40,14 @@ class SupabaseClient {
         }
     }
 
+    // Reinitialize client (call after OAuth to clear stale state)
+    reinitialize() {
+        if (window.supabase && window.supabase.createClient) {
+            this.client = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+            console.log('[Supabase] Client reinitialized');
+        }
+    }
+
     // =====================================================
     // BOOKINGS MANAGEMENT
     // =====================================================

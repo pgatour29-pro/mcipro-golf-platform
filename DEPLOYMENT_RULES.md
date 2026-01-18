@@ -152,3 +152,119 @@ If user reports issues:
 - [ ] Check console for SW version
 - [ ] AbortErrors = tell user to refresh (not clear cache)
 - [ ] If still broken, check actual code changes for bugs
+
+---
+
+## SCORE POSTING FLOW (Verified 2026-01-18)
+
+### Database Relationships
+```
+event_registrations: event_id + player_id (who's registered)
+         ↓
+scorecards: event_id + player_id + scorecard_id (player's round)
+         ↓
+scores: scorecard_id + hole_number (individual hole scores)
+```
+
+### Player Identity
+- **Existing players** (from directory): Use `line_user_id` as player ID
+- **New players** (added on-the-fly): Use generated ID `player_${timestamp}`
+
+### Scorecard Creation (startRound)
+1. Each player gets unique scorecard with `event_id` + `player_id`
+2. Stored in `this.scorecards[player.id] = scorecardId`
+3. Duplicate prevention: checks if scorecard already exists
+
+### Score Saving (saveCurrentScore)
+1. Gets scorecard: `this.scorecards[this.currentPlayerId]`
+2. Saves to `scores` table with `scorecard_id` + `hole_number`
+3. Uses upsert with `onConflict: 'scorecard_id,hole_number'`
+
+### Key Files
+- `createScorecard()`: Line 50466 - creates scorecard with player_id
+- `saveScore()`: Line 50627 - saves score to scorecard
+- `saveCurrentScore()`: Line 55988 - UI score entry handler
+
+---
+
+## ROUND STATE PERSISTENCE (v175-v177)
+
+### What Gets Saved (localStorage key: `mcipro_active_round`)
+```javascript
+{
+    players: [],           // Array of player objects
+    courseData: {},        // Course info with holes
+    scoringFormats: [],    // ['stableford', 'matchplay', etc.]
+    gameConfigs: {},       // Per-game settings and handicaps
+    scoresCache: {},       // All entered scores by player/hole
+    currentHole: 1,        // Current hole number
+    currentHoleIndex: 0,   // Index in holeOrder array
+    currentPlayerId: '',   // Active player for score entry
+    selectedTeeMarker: '', // Tee marker selection
+    holeOrder: [],         // Order of holes (for back 9 start)
+    startingNine: 'front', // 'front' or 'back'
+    scorecards: {},        // Map of playerId -> scorecardId
+    groupId: '',           // Group identifier
+    eventId: '',           // Event identifier
+    isPrivateRound: false,
+    matchPlayTeams: null,
+    roundRobinMatches: null,
+    savedAt: ''            // ISO timestamp
+}
+```
+
+### When State is Saved
+- `startRound()` - initial save
+- `nextHole()` / `prevHole()` - navigation
+- `saveCurrentScore()` - after each score entry
+
+### Recovery Flow
+1. On page load, `checkForActiveRound()` checks localStorage
+2. If found (and < 24 hours old), shows modal:
+   - "Continue Round" → restores state, shows scorecard
+   - "Finish & Save Round" → restores and completes
+   - "Discard Round" → clears localStorage
+3. `showLiveScorecard()` switches to active section (v177 fix)
+
+### Key Bug Fixed (v177)
+- `showLiveScorecard()` was looking for `liveScorecardSection` (doesn't exist)
+- Fixed to use `scorecardStartSection` (hide) and `scorecardActiveSection` (show)
+
+---
+
+## HANDICAP SYSTEM
+
+### Internal Storage
+- **Regular handicaps**: Stored as positive (e.g., 12.5)
+- **Plus handicaps**: Stored as negative (e.g., -1.6 for +1.6)
+
+### Display Format
+- Use `formatHandicapDisplay(hcp)` to show +1.6 for -1.6
+
+### Game-Specific Handicaps
+- Stored in `gameConfigs[format].handicaps[playerId]`
+- Use `getGameHandicap(format, playerId)` to retrieve
+- Falls back to player.handicap if not set
+
+### Input Parsing (setGameHandicap)
+- Accepts "+1.6" input, converts to -1.6 internally
+- Input type is "text" (not "number") to allow + prefix
+
+---
+
+## PENDING ITEMS
+
+### To Verify at Chee Chan (2026-01-19)
+- [ ] Round state persistence works in real session
+- [ ] Scores post to correct players
+- [ ] Handicaps display correctly
+- [ ] Leaderboards update properly
+
+### Courses Still Needing Yardage Verification
+- Greenwood (currently: Blue 6969, White 6494, Yellow 5993, Red 5567)
+- Mountain Shadow (currently: Black 6722, Blue 6276, White 5838, Red 5041)
+
+### Future Enhancements (from plan file)
+- Match Play 1v1 Leaderboard Redesign (see plan file)
+- Show specific matchups instead of aggregate stats
+- Display handicap strokes per matchup

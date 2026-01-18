@@ -82,6 +82,10 @@ curl https://mycaddipro.com/path/to/changed/file
 - v169: Fixed getGameHandicap null safety check
 - v170: Fixed game config initialization in startRound - ensure handicaps set for all formats
 - v171: Added inline editable handicap badges to leaderboards (click to change)
+- v172: Fixed Nassau method persistence - saves to gameConfigs at round start
+- v173: Fixed plus handicaps (+1.6) - changed input min to -10, improved setGameHandicap
+- v174: Safe setGameHandicap - prevents session state breaks with proper null checks
+- v175: Round state persistence - saves active round to localStorage for crash recovery
 
 ---
 

@@ -88,6 +88,94 @@ curl https://mycaddipro.com/path/to/changed/file
 - v175: Round state persistence - saves active round to localStorage for crash recovery
 - v176: Fixed plus handicap display in game config panel (formatHandicapDisplay + text input)
 - v177: Fixed showLiveScorecard() - was looking for wrong section ID, now shows scorecardActiveSection
+- v178-v179: Pin sheet image upload feature (rejected - user wanted grid modification)
+- v180: Pin position grid - changed order to [1,2,3,4,5,6,7,8,9], restored green circle indicator
+- v181-v188: Pull-to-refresh disable attempts (FAILED - broke scrolling, reverted)
+- v189: Pin grid order corrected - 789 at top (back), 456 mid, 123 at bottom (front)
+- v190: Pin entry UX - fixed page jumping, smooth auto-advance to next hole
+- v191: Pin positions - switched to localStorage to bypass RLS error (temporary)
+- v192: Pin positions - try database first (shared), fallback to localStorage
+- v193: Pin positions - override protection, confirms before replacing existing pins
+- v194: Pin position grid - compact layout for desktop, shows position label
+
+---
+
+## PIN POSITION SYSTEM (v189-v194)
+
+### Grid Layout (9-position)
+```
+Back of Green (away from tee)
+┌─────┬─────┬─────┐
+│  7  │  8  │  9  │  Back-L, Back, Back-R
+├─────┼─────┼─────┤
+│  4  │  5  │  6  │  Left, Center, Right
+├─────┼─────┼─────┤
+│  1  │  2  │  3  │  Front-L, Front, Front-R
+└─────┴─────┴─────┘
+Front of Green (towards tee)
+```
+
+### Data Storage
+- **Primary**: Supabase `pin_positions` + `pin_locations` tables (shared across all players)
+- **Fallback**: localStorage `mcipro_pins_{courseName}_{date}` (device-only if RLS blocks)
+
+### Database Schema
+```sql
+pin_positions:
+  - id (uuid)
+  - course_name (text)
+  - date (date)
+  - holes_detected (int)
+  - status ('active')
+  - uploaded_at (timestamp)
+
+pin_locations:
+  - id (uuid)
+  - pin_position_id (uuid FK)
+  - hole_number (int)
+  - position_label (text: 'front-left', 'center', 'back-right', etc.)
+  - x_position (float: 0.2, 0.5, 0.8)
+  - y_position (float: 0.2, 0.5, 0.8)
+  - description (text)
+```
+
+### RLS Policy Fix (Run in Supabase SQL Editor)
+```sql
+-- Allow anyone to read/write pin_positions
+CREATE POLICY "Anyone can read pin_positions" ON pin_positions FOR SELECT USING (true);
+CREATE POLICY "Anyone can insert pin_positions" ON pin_positions FOR INSERT WITH CHECK (true);
+CREATE POLICY "Anyone can delete pin_positions" ON pin_positions FOR DELETE USING (true);
+
+-- Same for pin_locations
+CREATE POLICY "Anyone can read pin_locations" ON pin_locations FOR SELECT USING (true);
+CREATE POLICY "Anyone can insert pin_locations" ON pin_locations FOR INSERT WITH CHECK (true);
+```
+
+### Override Protection
+When saving pins, system checks if pins already exist for that course/date:
+- Shows confirmation: "Pin positions already exist! Course: X, Date: Y, Last updated: Z. Override?"
+- User must confirm to replace existing pins
+- Prevents accidental overwrites
+
+### Key Functions
+- `PinSheetManager.renderAllHoles()` - Renders compact 18-hole grid entry
+- `PinSheetManager.selectQuadrantForHole(hole, quadrant)` - Handles selection + auto-advance
+- `PinSheetManager.saveQuickEntry(forceOverride)` - Saves to DB with override check
+- `PinSheetManager.loadPinPositions()` - Loads from DB first, then localStorage
+- `PinSheetManager.getPinForHole(holeNumber)` - Gets pin data for display
+
+### UI Layout (Desktop)
+```
+Hole 1  | [7][8][9] |  Front-L
+        | [4][5][6] |
+        | [1][2][3] |
+─────────────────────────────
+Hole 2  | [7][8][9] |  Center
+        | [4][5][6] |
+        | [1][2][3] |
+```
+- Grid: 20x20px buttons on desktop, 24x24px on mobile
+- Position label shows selection (Front-L, Back, Center, etc.)
 
 ---
 
@@ -259,10 +347,26 @@ scores: scorecard_id + hole_number (individual hole scores)
 - [ ] Scores post to correct players
 - [ ] Handicaps display correctly
 - [ ] Leaderboards update properly
+- [ ] Pin position entry and display works
+- [ ] Pin positions shared across devices (after RLS fix)
+
+### Supabase RLS Policy Needed
+Run this SQL to enable shared pin positions:
+```sql
+CREATE POLICY "Anyone can read pin_positions" ON pin_positions FOR SELECT USING (true);
+CREATE POLICY "Anyone can insert pin_positions" ON pin_positions FOR INSERT WITH CHECK (true);
+CREATE POLICY "Anyone can delete pin_positions" ON pin_positions FOR DELETE USING (true);
+CREATE POLICY "Anyone can read pin_locations" ON pin_locations FOR SELECT USING (true);
+CREATE POLICY "Anyone can insert pin_locations" ON pin_locations FOR INSERT WITH CHECK (true);
+```
 
 ### Courses Still Needing Yardage Verification
 - Greenwood (currently: Blue 6969, White 6494, Yellow 5993, Red 5567)
 - Mountain Shadow (currently: Black 6722, Blue 6276, White 5838, Red 5041)
+
+### DO NOT TOUCH
+- **Pull-to-refresh on mobile**: Multiple attempts (v181-v188) to disable broke scrolling. Left as-is.
+- **CSS overscroll-behavior**: Any changes break mobile scrolling. Current CSS is stable.
 
 ### Future Enhancements (from plan file)
 - Match Play 1v1 Leaderboard Redesign (see plan file)

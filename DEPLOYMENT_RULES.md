@@ -98,6 +98,31 @@ curl https://mycaddipro.com/path/to/changed/file
 - v193: Pin positions - override protection, confirms before replacing existing pins
 - v194: Pin position grid - compact layout for desktop, shows position label
 - v195: Disabled Take Photo & Gallery buttons with "Coming Soon" badges (AI reading not ready)
+- v196: CRITICAL FIX - Save round BEFORE showing modal (prevents race condition data loss)
+- v197: Auto-save round history after 90 minutes of inactivity
+
+---
+
+## AUTO-SAVE ROUND HISTORY (v197)
+
+### How It Works
+- Tracks `lastScoreTime` when any score is entered
+- Background timer checks every 5 minutes
+- After 90 minutes of no score entry, auto-saves to round history
+- Timer stops when "Finish Round" is clicked manually
+
+### Key Properties
+```javascript
+this.lastScoreTime = null;  // Timestamp of last score
+this.AUTO_SAVE_DELAY_MS = 90 * 60 * 1000;  // 90 minutes
+this.AUTO_SAVE_CHECK_INTERVAL_MS = 5 * 60 * 1000;  // Check every 5 min
+```
+
+### Key Methods
+- `updateLastScoreTime()` - Called after each score entry
+- `startAutoSaveTimer()` - Starts background interval
+- `stopAutoSaveTimer()` - Stops when round finished manually
+- `checkAutoSave()` - Checks if 90 min passed, triggers save
 
 ---
 

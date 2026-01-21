@@ -4455,7 +4455,7 @@
           slot.style.background = '';
         });
 
-        slot.addEventListener('drop', e => {
+        slot.addEventListener('drop', async e => {
           e.preventDefault();
           slot.style.background = '';
           const bookingId = e.dataTransfer.getData('text/plain');
@@ -4493,15 +4493,20 @@
           render();
 
           // CRITICAL: Update caddy bookings in database when dragging
-          // Delete old caddy bookings at old time, create new at new time
+          // Delete old caddy bookings at old time, then create new at new time
+          // Must await to prevent race conditions and duplicates
           const golfers = booking.golfers || [];
           for (const golfer of golfers) {
             if (golfer.caddyId) {
-              // Delete old caddy booking
-              deleteCaddyBookingFromDb(golfer.caddyId, date, oldTime);
-              // Create new caddy booking at new time
-              saveCaddyBookingToDb(booking, golfer, date, newTime);
-              console.log('[TeeSheet] Moved caddy booking:', golfer.caddyName, 'from', oldTime, 'to', newTime);
+              try {
+                // Delete old caddy booking first (await to ensure it completes)
+                await deleteCaddyBookingFromDb(golfer.caddyId, date, oldTime);
+                // Then create new caddy booking at new time
+                await saveCaddyBookingToDb(booking, golfer, date, newTime);
+                console.log('[TeeSheet] Moved caddy booking:', golfer.caddyName, 'from', oldTime, 'to', newTime);
+              } catch (err) {
+                console.error('[TeeSheet] Error moving caddy booking:', err);
+              }
             }
           }
           // Clear caddy bookings cache to force refresh

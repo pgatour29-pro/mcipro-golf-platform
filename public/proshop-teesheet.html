@@ -4492,6 +4492,22 @@
           setDay(date, bookings);
           render();
 
+          // CRITICAL: Update caddy bookings in database when dragging
+          // Delete old caddy bookings at old time, create new at new time
+          const golfers = booking.golfers || [];
+          for (const golfer of golfers) {
+            if (golfer.caddyId) {
+              // Delete old caddy booking
+              deleteCaddyBookingFromDb(golfer.caddyId, date, oldTime);
+              // Create new caddy booking at new time
+              saveCaddyBookingToDb(booking, golfer, date, newTime);
+              console.log('[TeeSheet] Moved caddy booking:', golfer.caddyName, 'from', oldTime, 'to', newTime);
+            }
+          }
+          // Clear caddy bookings cache to force refresh
+          delete caddyBookingsCache[date];
+          delete lastFetchTime[date];
+
           // If this is a society/group booking, sync to parent and send notifications
           if (booking.groupId || booking.eventId || booking.type === 'society' || booking.bookingType === 'society') {
             syncSocietyBookingChange(booking, {

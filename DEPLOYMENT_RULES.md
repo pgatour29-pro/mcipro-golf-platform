@@ -100,6 +100,56 @@ curl https://mycaddipro.com/path/to/changed/file
 - v195: Disabled Take Photo & Gallery buttons with "Coming Soon" badges (AI reading not ready)
 - v196: CRITICAL FIX - Save round BEFORE showing modal (prevents race condition data loss)
 - v197: Auto-save round history after 90 minutes of inactivity
+- v198-v223: ProShop redesign, tee sheet enhancements, various fixes
+- v224: Tee sheet drag-drop fix - update caddy bookings in database when moving
+- v225: Properly await async DB operations in drag-drop handler
+
+---
+
+## TEE SHEET DRAG-DROP FIX (v224-v225)
+
+### The Bug
+When dragging a tee time booking to a new slot:
+1. localStorage was updated correctly (booking moved)
+2. BUT database `caddy_bookings` table still had OLD time
+3. Auto-refresh fetched stale data from database
+4. Result: Duplicate bookings appeared (old + new location)
+
+### Root Cause
+The drop handler (`proshop-teesheet.html:4458`) only updated localStorage via `setDay()`.
+It did NOT update the `caddy_bookings` table in Supabase.
+
+### The Fix
+Added to drop handler:
+1. Delete old caddy booking from database at old time
+2. Create new caddy booking at new time
+3. Clear `caddyBookingsCache` to force fresh fetch
+4. Made handler `async` and properly `await` DB operations
+
+### Key Code (`proshop-teesheet.html:4495-4514`)
+```javascript
+// CRITICAL: Update caddy bookings in database when dragging
+const golfers = booking.golfers || [];
+for (const golfer of golfers) {
+  if (golfer.caddyId) {
+    try {
+      await deleteCaddyBookingFromDb(golfer.caddyId, date, oldTime);
+      await saveCaddyBookingToDb(booking, golfer, date, newTime);
+      console.log('[TeeSheet] Moved caddy booking:', golfer.caddyName);
+    } catch (err) {
+      console.error('[TeeSheet] Error moving caddy booking:', err);
+    }
+  }
+}
+// Clear cache to force refresh
+delete caddyBookingsCache[date];
+delete lastFetchTime[date];
+```
+
+### Related Functions
+- `deleteCaddyBookingFromDb(caddyId, date, time)` - Line 3561
+- `saveCaddyBookingToDb(booking, golfer, date, time)` - Line 3479
+- `caddyBookingsCache` - Line 2464 (cached DB results)
 
 ---
 

@@ -3167,6 +3167,63 @@
         }
       },
 
+      // Remove booking from parent BookingManager and sync to cloud
+      async removeBookingFromParent(bookingId) {
+        const bookingManager = this.getBookingManager();
+        const cloudSync = this.getCloudSync();
+
+        // Also remove with teesheet- prefix variant
+        const teesheetId = bookingId.startsWith('teesheet-') ? bookingId : `teesheet-${bookingId}`;
+        const rawId = bookingId.replace(/^teesheet-/, '');
+
+        if (bookingManager) {
+          // Find and remove booking (check both ID formats)
+          const initialLength = bookingManager.bookings.length;
+          bookingManager.bookings = bookingManager.bookings.filter(b =>
+            b.id !== teesheetId && b.id !== rawId && b.id !== bookingId
+          );
+
+          const removed = initialLength - bookingManager.bookings.length;
+          if (removed > 0) {
+            console.log(`[TeeSheet] Removed ${removed} booking(s) from parent BookingManager`);
+
+            // Save to localStorage
+            if (typeof bookingManager.saveToLocalStorage === 'function') {
+              bookingManager.saveToLocalStorage();
+              console.log('[TeeSheet] Saved deletion to localStorage');
+            }
+
+            // Trigger cloud sync
+            if (cloudSync && typeof cloudSync.saveToCloud === 'function') {
+              try {
+                await cloudSync.saveToCloud();
+                console.log('[TeeSheet] Deletion synced to cloud');
+              } catch (e) {
+                console.warn('[TeeSheet] Cloud sync failed:', e);
+              }
+            }
+          } else {
+            console.log('[TeeSheet] Booking not found in parent (may have been local-only)');
+          }
+
+          return true;
+        } else {
+          // Standalone mode - remove from localStorage directly
+          try {
+            const bookings = JSON.parse(localStorage.getItem('mcipro_bookings') || '[]');
+            const filtered = bookings.filter(b =>
+              b.id !== teesheetId && b.id !== rawId && b.id !== bookingId
+            );
+            localStorage.setItem('mcipro_bookings', JSON.stringify(filtered));
+            console.log('[TeeSheet] Booking removed from localStorage (standalone mode)');
+            return true;
+          } catch (e) {
+            console.error('[TeeSheet] Failed to remove booking from localStorage:', e);
+            return false;
+          }
+        }
+      },
+
       // Send LINE notification to caddies for booking events
       async notifyCaddyBooking(booking, action) {
         const parent = this.getParent();
@@ -5638,6 +5695,9 @@
             }
           }
         }
+
+        // CRITICAL: Remove booking from parent BookingManager and cloud
+        await ParentBridge.removeBookingFromParent(booking.id);
       }
 
       setDay(date, bookings);

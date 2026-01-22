@@ -3930,7 +3930,20 @@
 
     // Enhanced setDay - saves to localStorage AND syncs to parent BookingManager
     const setDay = (d, arr) => {
-      localStorage.setItem(storageKey(d), JSON.stringify(arr || []));
+      // CRITICAL FIX: Only save LOCAL bookings to localStorage
+      // Filter out bookings from external sources (DB, parent) to prevent duplicates
+      const localOnlyBookings = (arr || []).filter(b => {
+        // Skip DB-sourced caddy bookings
+        if (b.source === 'caddy-booking-db') return false;
+        if (b.id && b.id.startsWith('caddy-')) return false;
+        // Skip parent-sourced bookings
+        if (b.id && b.id.startsWith('parent-')) return false;
+        // Skip society events from DB
+        if (b.source === 'society-event-db') return false;
+        if (b.id && b.id.startsWith('society-')) return false;
+        return true;
+      });
+      localStorage.setItem(storageKey(d), JSON.stringify(localOnlyBookings));
 
       // Sync each booking to parent BookingManager for caddy booking integration
       const courseId = el.courseSelect.value;

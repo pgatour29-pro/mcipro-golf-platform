@@ -4079,10 +4079,15 @@
       }
 
       // 3. Sync to Supabase - update society_events to trigger Realtime notifications
-      const supabase = window.parent?.SupabaseDB?.client || window.SupabaseManager?.client;
+      const supabase = window.parent?.SupabaseDB?.client || window.SupabaseManager?.client || supabaseClient;
       if (supabase) {
         try {
-          const eventId = booking.eventId || booking.groupId;
+          // Extract raw event ID - strip 'society-' prefix if present
+          let eventId = booking.eventId || booking.groupId;
+          if (eventId && eventId.startsWith('society-')) {
+            eventId = eventId.replace('society-', '');
+          }
+          console.log('[TeeSheet] Syncing society event change, eventId:', eventId);
 
           if (eventId) {
             // Get existing event data
@@ -4104,17 +4109,26 @@
 
             // Update society_events - this triggers Realtime subscription for all connected clients
             // The updated_at change will show badge notifications to golfers
+            // CRITICAL: Also update start_time when time changes!
+            const updateData = {
+              change_log: changeLog,
+              updated_at: new Date().toISOString(),
+              updated_by: 'proshop',
+              updated_by_name: 'Pro Shop',
+              // Append to notes so it's visible in the event details
+              notes: (existingEvent?.notes || '') +
+                `\n[${new Date().toLocaleString()}] Pro Shop: ${changeText}`
+            };
+
+            // CRITICAL FIX: Update start_time when time changes
+            if (oldTime !== newTime) {
+              updateData.start_time = newTime + ':00';
+              console.log('[TeeSheet] Updating society event start_time to:', newTime);
+            }
+
             const { error: updateError } = await supabase
               .from('society_events')
-              .update({
-                change_log: changeLog,
-                updated_at: new Date().toISOString(),
-                updated_by: 'proshop',
-                updated_by_name: 'Pro Shop',
-                // Append to notes so it's visible in the event details
-                notes: (existingEvent?.notes || '') +
-                  `\n[${new Date().toLocaleString()}] Pro Shop: ${changeText}`
-              })
+              .update(updateData)
               .eq('id', eventId);
 
             if (updateError) {

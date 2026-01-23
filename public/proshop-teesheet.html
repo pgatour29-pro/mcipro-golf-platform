@@ -5755,31 +5755,39 @@
         // CRITICAL: Remove booking from parent BookingManager and cloud
         await ParentBridge.removeBookingFromParent(booking.id);
 
-        // CRITICAL FIX: If this is a society event, mark as CANCELLED instead of deleting
-        // This allows golfers to see the cancellation notice and delete the card themselves
+        // CRITICAL FIX: If this is a society event, DELETE it from database
+        // Pro shop deletion = event is completely removed
         if (booking.source === 'society-event-db' || booking.source === 'society-db' ||
             (booking.groupId && booking.groupId.startsWith('society-'))) {
           const societyEventId = booking.groupId ? booking.groupId.replace('society-', '') : null;
+          console.log('[TeeSheet] Society event delete - booking:', booking.id, 'groupId:', booking.groupId, 'extracted ID:', societyEventId);
+
           if (societyEventId && supabaseClient) {
-            console.log('[TeeSheet] Marking society event as CANCELLED:', societyEventId);
+            console.log('[TeeSheet] DELETING society event from database:', societyEventId);
             try {
+              // First delete all registrations for this event
+              const { error: regError } = await supabaseClient
+                .from('event_registrations')
+                .delete()
+                .eq('event_id', societyEventId);
+
+              if (regError) {
+                console.warn('[TeeSheet] Error deleting event registrations:', regError);
+              }
+
+              // Then delete the event itself
               const { error } = await supabaseClient
                 .from('society_events')
-                .update({
-                  status: 'cancelled',
-                  cancelled_at: new Date().toISOString(),
-                  cancelled_by: 'proshop',
-                  updated_at: new Date().toISOString(),
-                  notes: (booking.notes || '') + `\n[${new Date().toLocaleString()}] CANCELLED by Pro Shop`
-                })
+                .delete()
                 .eq('id', societyEventId);
+
               if (error) {
-                console.error('[TeeSheet] Failed to mark society event as cancelled:', error);
+                console.error('[TeeSheet] Failed to delete society event:', error);
               } else {
-                console.log('[TeeSheet] Society event marked as cancelled in database');
+                console.log('[TeeSheet] Society event DELETED from database:', societyEventId);
               }
             } catch (e) {
-              console.error('[TeeSheet] Error marking society event as cancelled:', e);
+              console.error('[TeeSheet] Error deleting society event:', e);
             }
           }
         }

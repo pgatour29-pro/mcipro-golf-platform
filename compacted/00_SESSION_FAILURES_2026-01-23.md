@@ -224,38 +224,27 @@ Based on compacted documentation:
 
 ---
 
-## SQL TO FIX PETE'S HANDICAP (COMPLETE VERSION)
+## SQL TO FIX PETE'S HANDICAP
 
-```sql
--- Fix ALL handicap locations for Pete
+**IMPORTANT:** The original UPDATE statements don't work if records don't exist!
 
--- 1. user_profiles - both locations
-UPDATE user_profiles
-SET profile_data = jsonb_set(
-    jsonb_set(profile_data, '{golfInfo,handicap}', '"2.9"'),
-    '{handicap}', '"2.9"'
-)
-WHERE line_user_id = 'U2b6d976f19bca4b2f4374ae0e10ed873';
-
--- 2. Universal handicap
-UPDATE society_handicaps
-SET handicap_index = 2.9, last_calculated_at = NOW()
-WHERE golfer_id = 'U2b6d976f19bca4b2f4374ae0e10ed873'
-AND society_id IS NULL;
-
--- 3. TRGG handicap
-UPDATE society_handicaps
-SET handicap_index = 1.9, last_calculated_at = NOW()
-WHERE golfer_id = 'U2b6d976f19bca4b2f4374ae0e10ed873'
-AND society_id = '7c0e4b72-d925-44bc-afda-38259a7ba346';
+**Use the complete SQL file instead:**
 ```
+sql/fix_pete_handicap_complete.sql
+```
+
+This file:
+1. Deletes ALL existing society_handicaps records for Pete
+2. Inserts fresh records with correct values (2.9 universal, 1.9 TRGG)
+3. Updates user_profiles.profile_data
+4. Shows before/after verification queries
 
 ---
 
 ## REMAINING ISSUES (NOT FIXED)
 
-1. **Live Scorecard dropdown** - Still shows 4.4 handicap
-2. **Society event deletion** - Need SECURITY DEFINER function
+1. **Live Scorecard dropdown** - Run `sql/fix_pete_handicap_complete.sql` in Supabase SQL Editor
+2. **Society event deletion** - Run `sql/delete_society_events_admin.sql` then `SELECT admin_delete_society_events('2026-01-23');`
 3. **Duplicate round prevention** - May still have edge cases
 
 ---

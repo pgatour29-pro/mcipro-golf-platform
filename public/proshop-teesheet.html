@@ -5754,24 +5754,31 @@
         // CRITICAL: Remove booking from parent BookingManager and cloud
         await ParentBridge.removeBookingFromParent(booking.id);
 
-        // CRITICAL: If this is a society event from database, DELETE it from society_events table
+        // CRITICAL FIX: If this is a society event, mark as CANCELLED instead of deleting
+        // This allows golfers to see the cancellation notice and delete the card themselves
         if (booking.source === 'society-event-db' || booking.source === 'society-db' ||
             (booking.groupId && booking.groupId.startsWith('society-'))) {
           const societyEventId = booking.groupId ? booking.groupId.replace('society-', '') : null;
           if (societyEventId && supabaseClient) {
-            console.log('[TeeSheet] Deleting society event from database:', societyEventId);
+            console.log('[TeeSheet] Marking society event as CANCELLED:', societyEventId);
             try {
               const { error } = await supabaseClient
                 .from('society_events')
-                .delete()
+                .update({
+                  status: 'cancelled',
+                  cancelled_at: new Date().toISOString(),
+                  cancelled_by: 'proshop',
+                  updated_at: new Date().toISOString(),
+                  notes: (booking.notes || '') + `\n[${new Date().toLocaleString()}] CANCELLED by Pro Shop`
+                })
                 .eq('id', societyEventId);
               if (error) {
-                console.error('[TeeSheet] Failed to delete society event:', error);
+                console.error('[TeeSheet] Failed to mark society event as cancelled:', error);
               } else {
-                console.log('[TeeSheet] Society event deleted from database');
+                console.log('[TeeSheet] Society event marked as cancelled in database');
               }
             } catch (e) {
-              console.error('[TeeSheet] Error deleting society event:', e);
+              console.error('[TeeSheet] Error marking society event as cancelled:', e);
             }
           }
         }

@@ -1,6 +1,6 @@
 # READ ME FIRST - EVERY NEW SESSION
 
-**Date Updated:** 2026-01-13
+**Date Updated:** 2026-01-24
 
 ---
 
@@ -27,6 +27,24 @@
 - Get it right the FIRST time
 - Don't deploy broken code
 - Test locally/mentally before deploying
+
+---
+
+## LOGIN FLOW - CRITICAL KNOWLEDGE (2026-01-24)
+
+**NEVER wait for LIFF init to restore session!**
+
+LIFF init can take 8+ seconds on external browsers. The correct flow:
+
+1. Check `localStorage.getItem('line_user_id')` IMMEDIATELY
+2. If found, query Supabase for profile (max 1.5s wait for Supabase ready)
+3. If profile found, restore AppState and redirect to dashboard
+4. Skip LIFF init entirely
+5. Only fall back to LIFF if localStorage session restore fails
+
+**Location:** Lines 13604-13690 in index.html
+
+**Read:** `00_SESSION_2026-01-24_LOGIN_AND_FIXES.md`
 
 ---
 
@@ -85,15 +103,31 @@ vercel --prod --yes
 
 | File | Purpose |
 |------|---------|
+| `00_SESSION_2026-01-24_LOGIN_AND_FIXES.md` | Login fix, modal close, handicap SQL |
+| `00_SESSION_FAILURES_2026-01-23.md` | 9 failed deployments catalog |
 | `00_HANDICAP_ISSUE_INDEX.md` | Handicap issue master index |
 | `HANDICAP_SYSTEM_RULES.md` | Rules for handicap code |
-| `session-catalog-2026-01-11-handicap-comprehensive-fix.md` | Latest handicap fix |
+| `session-catalog-2026-01-11-handicap-comprehensive-fix.md` | Handicap fix patterns |
 | `SESSION_FAILURE_2026-01-12.md` | ProShop disaster |
 | `SESSION_FAILURE_2026-01-13_HANDICAP.md` | Handicap fix disaster |
 
 ---
 
 ## PREVIOUS DISASTERS - LEARN FROM THESE
+
+### 2026-01-23: Login & Data Loading (9 failed deployments!)
+- Society event deletion didn't work (RLS blocks DELETE)
+- OAuth delays yo-yo'd between too long and too short
+- Variable typo (`now` vs `cacheNow`) broke app
+- Login debounce never reset
+- Duplicate rounds posted 7+ times
+- Handicaps stored in 4+ places, SQL updated wrong ones
+- **Lesson:** Understand FULL data model, verify code matches comments
+
+### 2026-01-24: Login Multiple Attempts
+- Session restore waited for LIFF init (8 seconds!)
+- Users clicking login multiple times during wait
+- **Lesson:** Check localStorage IMMEDIATELY, skip LIFF if session found
 
 ### 2026-01-12: ProShop Redesign
 - Made 700+ line changes at once

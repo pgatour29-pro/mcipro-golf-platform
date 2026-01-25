@@ -75,21 +75,39 @@ async function backfillResults() {
     // Sort by stableford (most events are stableford)
     rounds.sort((a, b) => (b.total_stableford || 0) - (a.total_stableford || 0));
 
-    // Prepare results with default points (10, 9, 8, 7...)
-    // Note: event_results table doesn't have organizer_id/organizer_name columns
-    const resultsToSave = rounds.map((r, i) => ({
-      event_id: eventId,
-      round_id: r.id,
-      player_id: r.golfer_id,
-      player_name: r.player_name || 'Unknown',
-      position: i + 1,
-      score: r.total_stableford || r.total_gross,
-      score_type: r.total_stableford ? 'stableford' : 'strokeplay',
-      points_earned: Math.max(0, 11 - (i + 1)), // Default: 10, 9, 8, 7...
-      status: 'completed',
-      is_counted: true,
-      event_date: event.event_date ? event.event_date.split('T')[0] : null
-    }));
+    // Lookup player names from user_profiles if missing
+    const resultsToSave = [];
+    for (let i = 0; i < rounds.length; i++) {
+      const r = rounds[i];
+      let playerName = r.player_name;
+
+      // If no name, lookup from user_profiles
+      if (!playerName || playerName === 'Unknown') {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('name, display_name')
+          .eq('line_user_id', r.golfer_id)
+          .single();
+
+        if (profile) {
+          playerName = profile.display_name || profile.name;
+        }
+      }
+
+      resultsToSave.push({
+        event_id: eventId,
+        round_id: r.id,
+        player_id: r.golfer_id,
+        player_name: playerName || 'Unknown',
+        position: i + 1,
+        score: r.total_stableford || r.total_gross,
+        score_type: r.total_stableford ? 'stableford' : 'strokeplay',
+        points_earned: Math.max(0, 11 - (i + 1)), // Default: 10, 9, 8, 7...
+        status: 'completed',
+        is_counted: true,
+        event_date: event.event_date ? event.event_date.split('T')[0] : null
+      });
+    }
 
     // Insert results
     const { error: insertError } = await supabase

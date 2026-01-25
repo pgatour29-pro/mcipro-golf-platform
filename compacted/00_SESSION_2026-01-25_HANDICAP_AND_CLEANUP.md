@@ -1,7 +1,7 @@
 # Session Catalog: 2026-01-25
 
 ## Summary
-Handicap system review, "every 3 rounds" fix for universal handicaps, and player data cleanup.
+Handicap system review, "every 3 rounds" fix for universal handicaps, player data cleanup, and **major standings/leaderboard system fix**.
 
 ---
 
@@ -125,6 +125,82 @@ df939097-b347-4a9e-a3a6-c813ebc7cfd5  -- Alan, Mountain Shadow, 87
 
 ---
 
+## Task 5: Fix Standings & Leaderboards System
+
+**Status:** Completed ✅
+
+### Problem Identified
+User reported "My Standings" and "Leaderboards" stopped working. Investigation revealed:
+
+1. **Only 1 event (Jan 7) had results** in `event_results` table
+2. **25 other 2026 events had NO results** - standings empty
+3. **37 rounds were linked to society events** but results never published
+4. **Code had schema mismatches** - trying to save columns that don't exist
+
+### Root Cause
+The `assignPoints()` and `publishResults()` functions require **manual invocation** by organizers. Most events never had points assigned, so standings were empty.
+
+### Fixes Applied
+
+#### 1. Backfilled event_results (Database)
+Ran script to auto-populate standings for all events with completed rounds:
+- **Before:** 56 records (mostly 2025)
+- **After:** 74 records (includes 2026 events)
+- **11 events** received new results
+
+#### 2. Fixed Schema Mismatches (Code)
+Removed non-existent columns from `assignPoints()` and `publishResults()`:
+- Removed `organizer_id` column reference
+- Removed `organizer_name` column reference
+- Removed `results_published` update (column doesn't exist in society_events)
+
+**File:** `public/index.html` lines 93649-93663 and 93757-93789
+
+#### 3. Fixed Missing Player Names (Database)
+13 records showed "Unknown" instead of player names:
+- Pete Park: 9 records fixed
+- Alan Thomas: 3 records fixed
+- Gilbert, Tristan: 1 record fixed
+
+#### 4. Updated Backfill Script
+Modified `scripts/backfill_event_results.js` to lookup player names from `user_profiles` when missing from rounds.
+
+### Scripts Created
+| Script | Purpose |
+|--------|---------|
+| `scripts/diagnose_standings.js` | Diagnose standings issues |
+| `scripts/check_scores_location.js` | Find where scores are stored |
+| `scripts/backfill_event_results.js` | Populate missing event_results |
+| `scripts/fix_missing_names.js` | Fix "Unknown" player names |
+
+### Final 2026 Standings
+| Rank | Player | Points | Events | Wins |
+|------|--------|--------|--------|------|
+| 1 | Pete Park | 49 pts | 5 | 4 |
+| 2 | Alan Thomas | 19 pts | 2 | 1 |
+| 3 | Gilbert, Tristan | 8 pts | 1 | 0 |
+| 4 | Rocky Jones | 7 pts | 1 | 0 |
+
+### Database Schema Issues Found
+| Issue | Status |
+|-------|--------|
+| `event_results` missing `organizer_id` column | Code fixed to not use it |
+| `event_results` missing `organizer_name` column | Code fixed to not use it |
+| `society_events` missing `results_published` column | Code fixed to not use it |
+| No FK between `event_results` and `society_events` | Works via event_id UUID |
+
+### Git Commits
+```
+bebf39ef - Fix standings system - backfill event_results and fix schema issues
+d4565626 - Fix missing player names in event_results standings
+```
+
+### Deployed
+- **Version:** v256 (implied by deployment)
+- **Vercel URL:** https://mycaddipro.com
+
+---
+
 ## Files Changed This Session
 
 ### New Files
@@ -134,12 +210,23 @@ df939097-b347-4a9e-a3a6-c813ebc7cfd5  -- Alan, Mountain Shadow, 87
 | `scripts/check_alan_ryan_pluto.js` | Player verification script |
 | `scripts/delete_duplicates_now.js` | Duplicate deletion script |
 | `sql/delete_alan_pluto_duplicates_2026-01-25.sql` | SQL backup |
+| `scripts/diagnose_standings.js` | Diagnose standings issues |
+| `scripts/check_scores_location.js` | Find where scores are stored |
+| `scripts/backfill_event_results.js` | Populate missing event_results |
+| `scripts/fix_missing_names.js` | Fix "Unknown" player names |
 | `compacted/00_SESSION_2026-01-25_HANDICAP_AND_CLEANUP.md` | This catalog |
+
+### Modified Files
+| File | Changes |
+|------|---------|
+| `public/index.html` | Removed non-existent column references in assignPoints/publishResults |
+| `DEPLOYMENT_RULES.md` | Updated handicap system status |
 
 ### Database Changes
 | Table | Change |
 |-------|--------|
 | `rounds` | Deleted 6 duplicate rounds |
+| `event_results` | Added 18 new records (74 total), fixed 13 player names |
 | `society_handicaps` | (Pending) Add `rounds_since_adjustment` column |
 
 ---
@@ -156,12 +243,30 @@ df939097-b347-4a9e-a3a6-c813ebc7cfd5  -- Alan, Mountain Shadow, 87
 **Issue:** `getAllPublicEvents()` uses `Promise.all()` - if one query fails, all fail
 **Fix:** Replace with `Promise.allSettled()`
 
+### 3. Run Backfill After Future Events
+**Priority:** Low
+**Action:** Run `node scripts/backfill_event_results.js` periodically to auto-populate standings
+**Note:** Or ensure organizers click "Assign Points" after each event
+
+---
+
+## Git Commits This Session
+
+| Commit | Description |
+|--------|-------------|
+| `d5932a9c` | Add every-3-rounds logic for universal handicaps |
+| `16f6fdd4` | Add scripts to check and clean up player duplicates |
+| `9ffcc07e` | Catalog session 2026-01-25 |
+| `bebf39ef` | Fix standings system - backfill event_results and fix schema issues |
+| `d4565626` | Fix missing player names in event_results standings |
+
 ---
 
 ## Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
+| v256 | 2026-01-25 | Standings fix, schema corrections |
 | v255 | 2026-01-24 | Handicap 0 showing as 36 fix |
 | v254 | 2026-01-24 | Modal close button fix |
 | v253 | 2026-01-24 | Login fix - immediate session restore |

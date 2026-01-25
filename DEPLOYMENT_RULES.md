@@ -509,14 +509,24 @@ Cap: -10.0 to 54.0 (WHS limits, allows plus handicaps)
 
 ### Known Issues
 
-1. **"Every 3 rounds" NOT implemented** - Updates on every round instead
+1. **"Every 3 rounds" SQL READY** - See `/sql/fix_universal_handicap_every_3_rounds.sql` (2026-01-25)
 2. **Frontend caps handicap at 0** - Can't auto-create plus handicaps (but manual entry can)
 3. **Multiple storage locations** - `society_handicaps`, `user_profiles.handicap_index`, `profile_data.golfInfo.handicap`
 4. **No audit trail** - No history of handicap changes
 
-### TODO: Implement Every 3 Rounds Logic
+### Every 3 Rounds Logic - READY TO DEPLOY
 
-1. Add `rounds_since_adjustment` column to track rounds
-2. Modify trigger to only recalculate when counter = 3
-3. Reset counter after adjustment
-4. Apply only to non-society (universal) handicaps
+**File:** `/sql/fix_universal_handicap_every_3_rounds.sql`
+**Created:** 2026-01-25
+**Status:** SQL created, needs manual deploy in Supabase dashboard
+
+**Deploy Steps:**
+1. Go to: https://supabase.com/dashboard/project/pyeeplwsnupmhgbguwqs/sql/new
+2. Copy contents of `sql/fix_universal_handicap_every_3_rounds.sql`
+3. Click Run
+
+**What it does:**
+1. Adds `rounds_since_adjustment` column to `society_handicaps`
+2. Modifies trigger to only recalculate universal handicap when counter = 3
+3. Resets counter after adjustment
+4. Society handicaps still update on every round (WHS 8/20)

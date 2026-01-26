@@ -6,6 +6,107 @@ const GolfPlatform = () => {
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [viewMode, setViewMode] = useState('grid');
   const [isLoading, setIsLoading] = useState(false);
+  const [showIntro, setShowIntro] = useState(true);
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+
+  const introQuestions = [
+    "Can your golfers book a caddy at 9 o'clock at night?",
+    "How are tee times confirmed the day before? Is someone on your staff making those calls?",
+    "What happens when they don't pick up?",
+    "When a tee time changes, how does the golfer find out? How does the society organizer find out?",
+    "Can your caddies, golfers, caddy master, pro shop, and management all see the same information at the same time?",
+    "Are they communicating through your system... or through personal LINE groups and phone calls?"
+  ];
+
+  // Auto-advance questions
+  useEffect(() => {
+    if (showIntro && currentQuestion < introQuestions.length) {
+      const timer = setTimeout(() => {
+        setCurrentQuestion(prev => prev + 1);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showIntro, currentQuestion]);
+
+  const IntroSlide = () => (
+    <div className="fixed inset-0 bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 z-50 flex flex-col items-center justify-center p-8">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 opacity-5">
+        <div className="absolute inset-0" style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='4'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+        }} />
+      </div>
+
+      <div className="relative z-10 max-w-4xl w-full text-center space-y-12">
+        {/* Opening text */}
+        <div className="space-y-4">
+          <h1 className="text-3xl md:text-4xl font-light text-white/80">
+            Let me ask you a few questions about your current golf course software...
+          </h1>
+        </div>
+
+        {/* Questions container */}
+        <div className="min-h-[300px] flex flex-col justify-center space-y-6">
+          {introQuestions.slice(0, currentQuestion + 1).map((question, index) => (
+            <div
+              key={index}
+              className={`transform transition-all duration-700 ${
+                index === currentQuestion
+                  ? 'opacity-100 scale-100'
+                  : 'opacity-50 scale-95'
+              }`}
+            >
+              <p className={`text-xl md:text-2xl font-medium ${
+                index === currentQuestion ? 'text-emerald-400' : 'text-white/60'
+              }`}>
+                {question}
+              </p>
+            </div>
+          ))}
+
+          {/* Final message after all questions */}
+          {currentQuestion >= introQuestions.length && (
+            <div className="transform transition-all duration-700 mt-8">
+              <p className="text-2xl md:text-3xl font-bold text-white">
+                How many of those did you answer "No" to?
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Progress dots */}
+        <div className="flex justify-center gap-2">
+          {introQuestions.map((_, index) => (
+            <div
+              key={index}
+              className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                index <= currentQuestion ? 'bg-emerald-400' : 'bg-white/20'
+              }`}
+            />
+          ))}
+        </div>
+
+        {/* Skip / Continue button */}
+        <div className="flex justify-center gap-4">
+          {currentQuestion < introQuestions.length ? (
+            <button
+              onClick={() => setCurrentQuestion(introQuestions.length)}
+              className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-lg text-white/70 hover:text-white transition-all"
+            >
+              Skip to End
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowIntro(false)}
+              className="px-8 py-4 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white font-semibold text-lg transition-all transform hover:scale-105 shadow-lg shadow-emerald-600/30"
+            >
+              See What MyCaddiPro Can Do →
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
   // Mock data for golf courses
   const golfCourses = [
@@ -191,6 +292,9 @@ const GolfPlatform = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900">
+      {/* Intro Slide */}
+      {showIntro && <IntroSlide />}
+
       {/* Background Pattern */}
       <div className="fixed inset-0 opacity-5">
         <div className="absolute inset-0" style={{

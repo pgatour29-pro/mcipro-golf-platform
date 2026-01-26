@@ -77,6 +77,12 @@ if (userProfile.profile_data) {
    - Dashboard widgets must load
    - Handicap must show correctly
 
+5. **Test BOTH login flows**
+   - **Immediate session restore**: User has `line_user_id` in localStorage, skips OAuth
+   - **OAuth login**: User logs out, clears localStorage, logs back in via LINE/Kakao/Google
+   - BOTH must load profile data and dashboard widgets
+   - If you fix one, check the other still works
+
 ---
 
 ## Common Patterns That Break Things
@@ -125,11 +131,34 @@ setTimeout(() => {
 
 ---
 
+### Root Cause #3: redirectToDashboard Not Loading Dashboard Data
+**Problem:** The `redirectToDashboard()` function (line ~9852) was NOT explicitly loading dashboard widgets after OAuth login.
+
+It was relying on `initGolferDashboard` timeouts (2500-5000ms), but those timeouts may not fire reliably, especially on mobile.
+
+Also had a bug: checked `typeof ProductionCloudSync` but called `SimpleCloudSync`.
+
+**The fix:** Add explicit dashboard data loading in redirectToDashboard:
+```javascript
+// CRITICAL: Explicitly load all dashboard data after login
+setTimeout(() => {
+    if (typeof DashboardUpcomingEvents !== 'undefined') DashboardUpcomingEvents.load();
+    if (typeof DashboardCaddyBooking !== 'undefined') DashboardCaddyBooking.init();
+    if (typeof DashboardPerformance !== 'undefined') DashboardPerformance.load();
+    if (typeof ScheduleSystem !== 'undefined') ScheduleSystem.renderScheduleList();
+    if (typeof ProfileSystem !== 'undefined') ProfileSystem.initializeDashboard();
+    if (typeof TodaysTeeTimeManager !== 'undefined') TodaysTeeTimeManager.updateTodaysTeeTime();
+}, 500);
+```
+
+---
+
 ## Key Files and Their Responsibilities
 
 | File/Section | Responsibility |
 |--------------|----------------|
 | `setUserFromLineProfile()` (~line 9529) | Normal login - sets AppState AND localStorage |
+| `redirectToDashboard()` (~line 9852) | Navigates to dashboard AND loads all widgets |
 | Immediate session restore (~line 13634) | Quick login from localStorage - MUST do same as above |
 | `ProfileSystem.getCurrentProfile()` (~line 19707) | Reads from localStorage, NOT AppState |
 | `DashboardUpcomingEvents.load()` | Loads from Supabase - needs ready check |

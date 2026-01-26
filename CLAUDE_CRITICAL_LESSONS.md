@@ -131,7 +131,29 @@ setTimeout(() => {
 
 ---
 
-### Root Cause #3: redirectToDashboard Not Loading Dashboard Data
+### Root Cause #3: Auto-Logout After Deploy
+**Problem:** After deploying, users got automatically logged out. The page reloads on new build, and immediate session restore was:
+1. Only waiting 1.5 seconds for Supabase (not enough after cold start)
+2. Clearing `line_user_id` from localStorage if profile not found
+3. Falling through to LIFF which timed out, showing login screen
+
+**The fix:**
+```javascript
+// Increased timeout from 1.5s to 3s
+while (!window.SupabaseDB.ready && attempts < 30) { // Max 3 seconds
+    await new Promise(r => setTimeout(r, 100));
+    attempts++;
+}
+
+// DON'T clear line_user_id if profile not found
+// Let LIFF retry instead
+console.warn('[INIT] Immediate restore failed - profile not found in Supabase');
+console.log('[INIT] NOT clearing line_user_id - will retry via LIFF');
+```
+
+---
+
+### Root Cause #4: redirectToDashboard Not Loading Dashboard Data
 **Problem:** The `redirectToDashboard()` function (line ~9852) was NOT explicitly loading dashboard widgets after OAuth login.
 
 It was relying on `initGolferDashboard` timeouts (2500-5000ms), but those timeouts may not fire reliably, especially on mobile.

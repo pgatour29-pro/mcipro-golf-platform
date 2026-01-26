@@ -189,6 +189,38 @@ setTimeout(() => {
 
 ---
 
+### Root Cause #5: OAuth (Google/Kakao) Login Not Saving to localStorage
+**Problem:** `setUserFromOAuthProfile()` was NOT saving to localStorage like `setUserFromLineProfile()` does.
+
+`setUserFromLineProfile` does these critical things:
+1. `localStorage.setItem('line_user_id', lineUserId)` - for session restore
+2. `localStorage.setItem(profileKey, JSON.stringify(fullProfile))` - for ProfileSystem
+3. `localStorage.setItem('mcipro_user_profiles', JSON.stringify(profiles))` - for consistency
+
+`setUserFromOAuthProfile` did NONE of these, causing:
+- Dashboard data not loading (ProfileSystem.getCurrentProfile returns null)
+- Session not restoring on page refresh
+- Profile data not displaying
+
+**The fix:** Added all three localStorage saves to `setUserFromOAuthProfile()`:
+```javascript
+// CRITICAL: Store user ID in localStorage for session restore
+if (existingUser.line_user_id) {
+    localStorage.setItem('line_user_id', existingUser.line_user_id);
+} else if (userId) {
+    localStorage.setItem('line_user_id', userId);
+}
+
+// CRITICAL: Save full profile to localStorage for ProfileSystem.getCurrentProfile()
+const profileKey = UserIDSystem.getProfileKey(existingUser.role || 'golfer', userId);
+localStorage.setItem(profileKey, JSON.stringify(fullProfile));
+
+// CRITICAL: Also update mcipro_user_profiles array
+localStorage.setItem('mcipro_user_profiles', JSON.stringify(profiles));
+```
+
+---
+
 ## The Golden Rule
 
 **When you complete a task, the ENTIRE app must still work, not just the feature you touched.**

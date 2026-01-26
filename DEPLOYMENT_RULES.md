@@ -1,5 +1,21 @@
 # MciPro Deployment Rules & System Stability Guide
 
+---
+
+## PRIORITY READ: CLAUDE_CRITICAL_LESSONS.md
+
+**BEFORE making ANY code changes, read `CLAUDE_CRITICAL_LESSONS.md` in this directory.**
+
+It documents critical bugs and patterns that MUST be followed:
+- Supabase ready checks before ANY database query
+- Profile data must be saved to BOTH AppState AND localStorage
+- ALL dashboard widgets must be loaded after login
+- Checklist for every code change
+
+**Failure to follow these patterns wastes significant time and frustrates the user.**
+
+---
+
 ## CRITICAL: DO NOT DO THESE THINGS
 
 ### 1. NEVER Tell User to Clear Browser Cache

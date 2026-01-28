@@ -55,9 +55,10 @@
             });
 
             // Handle controller change (new SW activated)
+            // DO NOT reload - this causes a cascading reload loop on PWA launch
+            // The new SW will serve updated content on next navigation naturally
             navigator.serviceWorker.addEventListener('controllerchange', () => {
-                console.log('[SW-Register] New Service Worker activated - reloading page');
-                window.location.reload();
+                console.log('[SW-Register] New Service Worker activated - will serve new content on next navigation');
             });
 
             return registration;

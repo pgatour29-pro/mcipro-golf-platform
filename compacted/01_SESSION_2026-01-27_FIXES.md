@@ -1,7 +1,9 @@
-# Session Catalog: 2026-01-27
+# Session Catalog: 2026-01-27 / 2026-01-28
 
 ## Summary
-Fixed nine critical bugs: OAuth login not saving to localStorage, mobile drawer close button too large, 2-man match play calculations for front/back nine, team match play handicap source and stroke mode, round save silent failures, live scorecard performance overhaul, dashboard data not loading on first login after deploy, AbortError flooding all Supabase queries after OAuth login, and PWA requiring 3-4 taps to open from home screen.
+Fixed eleven critical bugs: OAuth login not saving to localStorage, mobile drawer close button too large, 2-man match play calculations for front/back nine, team match play handicap source and stroke mode, round save silent failures, live scorecard performance overhaul, dashboard data not loading on first login after deploy, AbortError flooding all Supabase queries after OAuth login, PWA requiring 3-4 taps to open from home screen, round save from resume popup deleting round data on failure, and hole 9 course data lookup failures.
+
+Also inserted TRGG Pattaya February 2026 schedule (24 events) into society_events database table.
 
 ---
 
@@ -425,6 +427,154 @@ Removed both automatic reloads. The Service Worker already handles serving fresh
 
 ---
 
+## Fix 10: Round Save from Resume Popup Deleting Round Data on Failure
+
+**Status:** Completed
+
+### Problem
+When the "Unfinished Round Found" popup appeared and user tapped "Save", if the save failed after 2 retries, the round data was DELETED from localStorage anyway — permanently losing all entered scores.
+
+### Root Cause
+In `completeRound()`, after the retry block failed, `clearRoundState()` was called unconditionally:
+
+```javascript
+} catch (retryErr) {
+    console.error('[LiveScorecard] ❌ CRITICAL ERROR saving round (attempt 2):', retryErr);
+    alert('ERROR: Failed to save round...');
+    // BUG: clearRoundState() was called after this, deleting the round forever
+}
+// ... later in the function:
+this.clearRoundState();  // This ran even after save failure!
+```
+
+### Solution
+Added early `return` after save failure to prevent `clearRoundState()` from running:
+
+```javascript
+} catch (retryErr) {
+    console.error('[LiveScorecard] ❌ CRITICAL ERROR saving round (attempt 2):', retryErr);
+    alert('ERROR: Failed to save round after 2 attempts!\n\n' + retryErr.message + '\n\nYour scores are saved locally. Try tapping Finish Round again or restart the app.');
+    // DO NOT clear round state - keep it so user can retry
+    return;  // <-- Added this to preserve round data
+}
+```
+
+### Also Fixed
+Added `roundType` to save/restore state so practice vs social vs competition rounds restore correctly:
+
+```javascript
+// In saveRoundState():
+roundType: this.roundType,
+
+// In restoreRoundState():
+this.roundType = state.roundType || 'practice';
+```
+
+### Files Modified
+`public/index.html` lines ~52116, ~52184, ~57721
+
+### Commit
+`dffe0b6b` - Fix round save from resume popup and hole 9 course data lookup
+
+---
+
+## Fix 11: Hole 9 Course Data Lookup Failures
+
+**Status:** Completed
+
+### Problem
+Hole 9 calculations were still wrong even after previous match play fixes. Scores were entered correctly but net scores were calculated wrong on hole 9 specifically.
+
+### Root Cause
+Course data hole lookup was failing due to:
+
+1. **Missing property fallback** — Course data uses different property names (`hole`, `hole_number`, `number`) depending on source. Code only checked `h.hole` and `h.hole_number`.
+
+2. **Type mismatch** — `hole` variable was sometimes a string "9" and sometimes a number 9. Using `===` strict equality failed when types didn't match.
+
+### Solution
+Fixed the lookup in `calculateHolesStatus()`:
+
+```javascript
+// Before (broken):
+const holeData = this.courseData?.holes?.find(h =>
+    h.hole === hole || h.hole_number === hole
+);
+
+// After (fixed):
+const holeData = this.courseData?.holes?.find(h => {
+    const hNum = h.hole || h.hole_number || h.number;  // Added h.number fallback
+    return hNum == hole;  // == handles string/number mismatch
+});
+const si = holeData?.stroke_index || holeData?.strokeIndex || holeData?.handicap_index || hole;
+```
+
+### Files Modified
+`public/index.html` line ~55580
+
+### Commit
+`dffe0b6b` - Fix round save from resume popup and hole 9 course data lookup
+
+---
+
+## Data Task: TRGG Pattaya February 2026 Schedule Insert
+
+**Status:** Completed
+
+### Task
+Insert TRGG Pattaya's full February 2026 golf schedule into the `society_events` database table.
+
+### Events Inserted (24 total)
+
+**Week 1 (Feb 2-7):**
+| Date | Course | Tee Time | Departure | Fee |
+|------|--------|----------|-----------|-----|
+| Feb 2 | Bangpakong Riverside | 09:45 | 08:30 | ฿1,850 |
+| Feb 3 | Bangpra International | 11:30 | 10:15 | ฿2,150 |
+| Feb 4 | Eastern Star | 11:30 | 10:15 | ฿2,050 |
+| Feb 5 | Phoenix Gold (Ocean/Mountain) | 11:28 | 10:30 | ฿2,650 |
+| Feb 6 | Burapha (FFF) | 10:00 | 09:00 | ฿2,750 |
+| Feb 7 | Plutaluang Navy (N-W) | 10:00 | 08:45 | ฿1,850 |
+
+**Week 2 (Feb 9-14):**
+| Date | Course | Tee Time | Departure | Fee |
+|------|--------|----------|-----------|-----|
+| Feb 9 | Bangpakong Riverside | 10:45 | 09:30 | ฿1,850 |
+| Feb 10 | Khao Kheow | 11:35 | 10:20 | ฿2,250 |
+| Feb 11 | Pattaya C.C. | 10:24 | 09:15 | ฿2,650 |
+| Feb 12 | Greenwood | 11:04 | 09:50 | ฿1,750 |
+| Feb 13 | Burapha (FFF) | 10:00 | 09:00 | ฿2,750 |
+| Feb 14 | Mountain Shadow | 10:15 | 09:00 | ฿1,850 |
+
+**Week 3 (Feb 16-21):**
+| Date | Course | Tee Time | Departure | Fee |
+|------|--------|----------|-----------|-----|
+| Feb 16 | Bangpakong Riverside | 09:45 | 08:30 | ฿1,850 |
+| Feb 17 | Greenwood | 11:20 | 10:00 | ฿1,750 |
+| Feb 18 | Pattaya C.C. | 10:24 | 09:15 | ฿2,650 |
+| Feb 19 | Phoenix Gold | 11:35 | 10:35 | ฿2,650 |
+| Feb 20 | Burapha (FFF) | 10:00 | 09:00 | ฿2,750 |
+| Feb 21 | Plutaluang Navy (S-E) | 10:00 | 08:45 | ฿1,850 |
+
+**Week 4 (Feb 23-28):**
+| Date | Course | Tee Time | Departure | Fee |
+|------|--------|----------|-----------|-----|
+| Feb 23 | Pattaya C.C. | 09:20 | 08:10 | ฿2,650 |
+| Feb 24 | Phoenix Gold | 11:52 | 10:50 | ฿2,650 |
+| Feb 25 | Eastern Star (Monthly Medal) | 10:00 | 09:00 | ฿2,050 |
+| Feb 26 | Bangpakong Riverside | 09:45 | 08:30 | ฿1,850 |
+| Feb 27 | Burapha (FFF + 2-Man Scramble) | 10:00 | 09:00 | ฿2,950 |
+| Feb 28 | Pleasant Valley | 11:40 | 10:30 | ฿2,350 |
+
+### Files Created
+- `scripts/insert_trgg_feb_2026.js` — Node.js script using Supabase REST API
+- `sql/trgg_feb_2026_events.sql` — SQL alternative for Supabase SQL Editor
+
+### Commit
+`558ca32f` - Add TRGG February 2026 schedule insert script (24 events)
+
+---
+
 ## Testing Checklist for Today's Round
 
 ### OAuth Login (Google/Kakao)
@@ -461,6 +611,8 @@ Removed both automatic reloads. The Service Worker already handles serving fresh
 | `3d7848db` | Fix dashboard data not loading on first login after deploy |
 | `32d3e322` | Fix AbortError flooding all Supabase queries after OAuth login |
 | `e66b999f` | Fix PWA requiring 3-4 taps to open from home screen icon |
+| `dffe0b6b` | Fix round save from resume popup and hole 9 course data lookup |
+| `558ca32f` | Add TRGG February 2026 schedule insert script (24 events) |
 
 ---
 
@@ -468,10 +620,12 @@ Removed both automatic reloads. The Service Worker already handles serving fresh
 
 | File | Changes |
 |------|---------|
-| `public/index.html` | Mobile drawer button, OAuth localStorage, match play calculations, team match play handicap, round save fixes, scorecard performance overhaul, dashboard widget retry, Supabase wait timeout, removed build ID hard reload |
+| `public/index.html` | Mobile drawer button, OAuth localStorage, match play calculations, team match play handicap, round save fixes, scorecard performance overhaul, dashboard widget retry, Supabase wait timeout, removed build ID hard reload, round save early return on failure, roundType save/restore, hole 9 course data lookup |
 | `public/supabase-config.js` | Disabled GoTrue detectSessionInUrl/autoRefreshToken/persistSession to prevent AbortError |
 | `public/sw-register.js` | Removed unconditional page reload on SW controllerchange |
 | `CLAUDE_CRITICAL_LESSONS.md` | Added Root Cause #5 (OAuth localStorage), Root Cause #6 (AbortError) |
+| `scripts/insert_trgg_feb_2026.js` | **NEW** — Node.js script to insert TRGG Feb 2026 events via Supabase REST API |
+| `sql/trgg_feb_2026_events.sql` | **NEW** — SQL script for Supabase SQL Editor (alternative method) |
 
 ---
 
@@ -479,8 +633,11 @@ Removed both automatic reloads. The Service Worker already handles serving fresh
 **2026-01-27 / 2026-01-28**
 
 ## Deployments
-- 9 deployments to Vercel production
+- 11 deployments to Vercel production
 - All via `vercel --prod --yes`
+
+## Database Changes
+- Inserted 24 TRGG Pattaya February 2026 events into `society_events` table
 
 ## Production URL
 https://mycaddipro.com

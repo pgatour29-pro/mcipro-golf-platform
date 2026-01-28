@@ -22,7 +22,13 @@ class SupabaseClient {
 
     _initWithRetry(attempts = 0) {
         if (window.supabase && window.supabase.createClient) {
-            this.client = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+            this.client = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
+                auth: {
+                    detectSessionInUrl: false,   // CRITICAL: Prevents GoTrue from treating LINE/Kakao ?code= as Supabase PKCE code
+                    autoRefreshToken: false,      // App doesn't use Supabase Auth sessions
+                    persistSession: false         // App manages its own session via localStorage
+                }
+            });
             this.ready = true;
             this.resolveReady();
             console.log('[Supabase] Client initialized');

@@ -221,6 +221,31 @@ localStorage.setItem('mcipro_user_profiles', JSON.stringify(profiles));
 
 ---
 
+### Root Cause #6: AbortError Flooding All Supabase Queries After OAuth Login
+**Problem:** After OAuth login (LINE/Kakao/Google), every Supabase database query fails with `AbortError: signal is aborted without reason`. Login succeeds but all data loading fails. Works on second login.
+
+**Root Cause:** Supabase JS v2's GoTrue module has `detectSessionInUrl: true` by default. Script loading order:
+1. `@supabase/supabase-js@2` CDN loads (line 32 of index.html)
+2. `supabase-config.js` runs `createClient()` — **while `?code=` is still in the URL**
+3. GoTrue sees `?code=` and tries to exchange it as a Supabase PKCE auth code
+4. It's actually a LINE/Kakao/Google OAuth code → exchange fails → internal AbortController fires
+5. Every subsequent `.from().select()` inherits the aborted signal
+
+**The fix:** Disable GoTrue since the app doesn't use Supabase Auth:
+```javascript
+this.client = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
+    auth: {
+        detectSessionInUrl: false,
+        autoRefreshToken: false,
+        persistSession: false
+    }
+});
+```
+
+**Key rule:** When using Supabase JS v2 as a database-only client (no Supabase Auth), ALWAYS disable GoTrue's URL detection. Otherwise any `?code=` query parameter from external OAuth will corrupt the client.
+
+---
+
 ## The Golden Rule
 
 **When you complete a task, the ENTIRE app must still work, not just the feature you touched.**

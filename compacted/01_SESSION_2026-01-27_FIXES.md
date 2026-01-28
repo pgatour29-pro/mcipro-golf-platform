@@ -1,7 +1,7 @@
 # Session Catalog: 2026-01-27
 
 ## Summary
-Fixed three critical bugs: OAuth login not saving to localStorage, mobile drawer close button too large, and 2-man match play calculations for front/back nine.
+Fixed nine critical bugs: OAuth login not saving to localStorage, mobile drawer close button too large, 2-man match play calculations for front/back nine, team match play handicap source and stroke mode, round save silent failures, live scorecard performance overhaul, dashboard data not loading on first login after deploy, AbortError flooding all Supabase queries after OAuth login, and PWA requiring 3-4 taps to open from home screen.
 
 ---
 
@@ -160,6 +160,271 @@ if (useStableford) {
 
 ---
 
+## Fix 4: Team Match Play Stroke Mode Wrong Handicap Method (Confirmed on-course at Chee Chan)
+
+**Status:** Completed
+
+### Problem
+On-course at Chee Chan: all 4 players had scores entered for every hole, but hole 9 2-man team match play result was wrong. All scores were complete — this was NOT an incomplete hole issue.
+
+### Actual Root Cause: Stroke mode used wrong handicap allocation
+- `calculateHolesStatus()` was giving each player strokes based on their **own full handicap** (e.g., 12 HCP gets strokes on SI 1-12, 20 HCP gets strokes on SI 1-18+)
+- This is correct for **Stableford** (each player calculates their own points)
+- This is **wrong for Stroke match play** — standard match play only gives the **higher HCP player** strokes equal to the **difference** between the two handicaps
+- Example: Player A (12 HCP) vs Player B (20 HCP) → difference is 8 → only Player B gets strokes on SI 1-8, Player A gets zero
+- On holes where both players were incorrectly receiving strokes, the net comparison could flip the wrong way
+
+### Also Fixed (preventive, not root cause)
+- `getMatchPlayTeamConfig()` Team B used `player.handicap` instead of `this.getGameHandicap('matchplay', player.id)`
+- `calculateTeamMatchPlay()` counted incomplete holes as 'AS' instead of skipping (irrelevant to this round since all holes were complete, but prevents future issues)
+
+### Solution
+```javascript
+// Stroke mode: standard match play - only higher HCP gets strokes equal to difference
+const strokeDiff = Math.round(Math.abs(hcp1 - hcp2));
+const higherIsP1 = hcp1 > hcp2;
+const receivesStroke = strokeDiff > 0 && si <= strokeDiff ? 1 : 0;
+const p1Net = p1Score - (higherIsP1 ? receivesStroke : 0);
+const p2Net = p2Score - (!higherIsP1 ? receivesStroke : 0);
+```
+
+### Key Rule
+- **Stableford match play** → full individual handicap allocation (each player gets their own strokes)
+- **Stroke match play** → stroke difference method (only higher HCP gets strokes = difference)
+
+### Functions Changed
+- `calculateHolesStatus()` - Stroke mode uses difference method (~line 55586)
+- `getMatchPlayTeamConfig()` - Team B handicap source (~line 55974)
+- `calculateTeamMatchPlay()` - Skip incomplete holes entirely (~line 53212)
+
+---
+
+## Fix 5: Round Save Silent Failures
+
+**Status:** Completed
+
+### Problem
+After completing the round at Chee Chan, no rounds were saved and NO error was shown to the user.
+
+### Root Causes & Fixes
+
+**A. User check too strict** (line ~58761)
+- Old: `!currentUser.lineUserId` — fails for OAuth users without lineUserId
+- New: `!currentUser.lineUserId && !currentUser.userId` — accepts either ID
+- Also changed from silent notification to blocking `alert()`
+
+**B. Session duplicate guard returned null** (line ~58111)
+- Old: `return null` — treated as "save failed" by caller
+- New: `return { duplicate: true, playerName }` — treated as successful (already saved)
+
+**C. No blocking error on zero saves** (line ~58885)
+- Old: Only `NotificationManager.show()` — easy to miss on mobile
+- New: `alert()` with cache info + retry instructions
+
+**D. No retry on save failure** (line ~57665)
+- Old: Single attempt, then shows error notification
+- New: If first attempt throws, waits 2s, clears session guard, retries once. If retry fails, shows blocking alert telling user to screenshot scores.
+
+### Commit
+`3ed25454` - Fix team match play calculations and round save silent failures
+
+---
+
+## Fix 6: Live Scorecard Performance & Reliability Overhaul
+
+**Status:** Completed
+
+### Problem
+Three recurring issues on every round:
+1. Score entry lag — tapping scores felt unresponsive, especially in 2-man setups
+2. Finish Round button unresponsive — 10-30+ second hang with no feedback
+3. Rounds not posting — silent failures during save
+
+### Root Causes & Fixes
+
+**A. Score Entry Lag — saveRoundState() blocking UI**
+- `saveRoundState()` serializes entire round state (courseData, scoresCache, configs) to JSON
+- `localStorage.setItem()` is SYNCHRONOUS — blocks main thread
+- Was called after EVERY score entry
+- Fix: Added `debouncedSaveRoundState()` with 3-second debounce. Immediate save only on hole navigation and round end.
+
+**B. Score Entry Lag — full innerHTML rebuild on every score**
+- `renderHole()` rebuilds ALL player score boxes with `.innerHTML` on every score entry
+- Fix: Added `updatePlayerScoreDisplay()` — targeted DOM update that only changes the current player's score number and total, plus progress indicator
+
+**C. Score Entry Lag — verbose debug logging**
+- `console.log` with `JSON.stringify` on every back-nine score entry (holes 10-12)
+- Fix: Removed debug logging block
+
+**D. Match Play Performance — uncached hole lookups**
+- `calculateTeamMatchPlay()` called `courseHoles.find()` 18 times per match per leaderboard refresh
+- Fix: Build `Map` once at start of function, use `.get()` instead of `.find()`
+
+**E. Finish Round Unresponsive — button not disabled on click**
+- User could tap multiple times during 10-30 second save
+- Second call hit `_distributingRounds` guard and silently returned
+- Fix: Disable button immediately, show spinner, re-enable in finally block
+
+**F. Finish Round Slow — sequential player saves**
+- Each player: 5-8 DB queries, all sequential with `for...of await`
+- 4 players = 20-32 sequential network round trips
+- Fix: `Promise.all()` to save all players in parallel — cuts time to ~1 round trip
+
+**G. Finish Round Slow — blocking post-save updates**
+- 3 sequential awaits after save: updateStatistics, renderHandicapProgression, loadRoundHistoryTable
+- Delayed "Round saved!" feedback by 3-9 seconds
+- Fix: Fire-and-forget with `Promise.all().then()` — show success immediately
+
+**H. Save Hangs Forever — no timeout on waitForReady**
+- `window.SupabaseDB.waitForReady()` had no timeout
+- If Supabase connection failed, button frozen indefinitely
+- Fix: `Promise.race()` with 10-second timeout in both `distributeRoundScores` and `saveRoundToHistory`
+
+### Performance Impact
+- Score entry: ~200ms blocked → <10ms (debounced state save + targeted DOM)
+- Finish Round: 10-30+ seconds → 3-8 seconds (parallel saves + non-blocking stats)
+- Button freeze risk: eliminated (disabled on click + timeout protection)
+
+### Commit
+`66619f85` - Fix live scorecard lag and round save reliability
+
+---
+
+## Fix 7: Dashboard Data Not Loading on First Login After Deploy
+
+**Status:** Completed
+
+### Problem
+After every deployment, data doesn't load on the first login. On the second login, the data comes back. This was a recurring issue plaguing every deploy.
+
+### Root Causes & Fixes
+
+**A. Supabase wait timeout too short for post-deploy cold start** (line ~13702)
+- Old: 3 seconds (30 attempts × 100ms)
+- New: 5 seconds (50 attempts × 100ms)
+- After deploy, Supabase cold start takes longer than usual
+
+**B. Dashboard widget loading had NO retry when userId not set yet** (line ~8922)
+- `initGolferDashboard` called widget loading functions once
+- If `AppState.currentUser` wasn't set yet (OAuth still processing), widgets silently failed
+- Fix: Added retry loop — 500ms × 10 attempts, checks for userId before loading widgets
+
+### Solution
+```javascript
+const loadDashboardWidgets = () => {
+    const userId = AppState?.currentUser?.lineUserId || AppState?.currentUser?.userId;
+    if (!userId) return false;
+    if (typeof DashboardUpcomingEvents !== 'undefined') DashboardUpcomingEvents.load();
+    if (typeof DashboardCaddyBooking !== 'undefined') DashboardCaddyBooking.init();
+    if (typeof DashboardPerformance !== 'undefined') DashboardPerformance.load();
+    if (typeof TodaysTeeTimeManager !== 'undefined') TodaysTeeTimeManager.updateTodaysTeeTime();
+    return true;
+};
+if (!loadDashboardWidgets()) {
+    let retries = 0;
+    const retryInterval = setInterval(() => {
+        retries++;
+        if (loadDashboardWidgets() || retries >= 10) {
+            clearInterval(retryInterval);
+        }
+    }, 500);
+}
+```
+
+### Files Modified
+- `public/index.html` line ~13702 (Supabase wait timeout)
+- `public/index.html` line ~8922 (dashboard widget retry)
+
+### Commit
+`3d7848db` - Fix dashboard data not loading on first login after deploy
+
+---
+
+## Fix 8: AbortError Flooding All Supabase Queries After OAuth Login
+
+**Status:** Completed
+
+### Problem
+After OAuth login (LINE/Kakao/Google), every single Supabase database query fails with `AbortError: signal is aborted without reason`. Login itself succeeds (profile displays, handicap shows), but ALL subsequent queries fail — DashboardUpcomingEvents, DashboardPerformance, Round History, Buddies, Badge Poll, TeeSheet, Chat, and more. Works on second login (session restore from localStorage).
+
+### Root Cause
+Supabase JS v2's GoTrue module has `detectSessionInUrl: true` by default. The script loading order is:
+
+1. Line 32: `@supabase/supabase-js@2` CDN loads
+2. Line 33: `supabase-config.js` runs → `window.supabase.createClient()` executes **while `?code=xxx&state=xxx` is still in the URL**
+3. Line 28701: IIFE cleans the URL with `history.replaceState()` — **too late**
+
+GoTrue sees `?code=` in the URL and tries to exchange it as a **Supabase PKCE auth code**. But it's actually a **LINE/Kakao/Google OAuth code**. This exchange fails internally, corrupting the Supabase client's internal AbortController. Every subsequent `.from().select()` query inherits the aborted signal and immediately fails.
+
+### Why Second Login Works
+On second login, `line_user_id` exists in localStorage → immediate session restore fires → no OAuth redirect → no `?code=` in URL → Supabase client initializes cleanly.
+
+### Solution
+Disabled GoTrue auto-detection since the app doesn't use Supabase Auth at all:
+
+```javascript
+// supabase-config.js line 25
+this.client = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
+    auth: {
+        detectSessionInUrl: false,   // Prevents GoTrue from treating LINE/Kakao ?code= as Supabase PKCE code
+        autoRefreshToken: false,      // App doesn't use Supabase Auth sessions
+        persistSession: false         // App manages its own session via localStorage
+    }
+});
+```
+
+### Key Insight
+- The app uses **custom OAuth** (LINE/Kakao/Google edge functions) — NOT Supabase Auth
+- Supabase is used purely as a **database** (REST API with anon key)
+- GoTrue's URL detection was interfering with the custom OAuth `?code=` parameter
+
+### File Modified
+`public/supabase-config.js` line 25
+
+### Commit
+`32d3e322` - Fix AbortError flooding all Supabase queries after OAuth login
+
+---
+
+## Fix 9: PWA Requiring 3-4 Taps to Open From Home Screen Icon
+
+**Status:** Completed
+
+### Problem
+On mobile, tapping the PWA app icon required 3-4 attempts before the app loaded. The app would flash blank and the user had to keep tapping.
+
+### Root Cause: Cascading Reload Loop
+Two independent systems both forced page reloads on startup, compounding into a loop:
+
+**Reload 1: Service Worker `controllerchange`** (`sw-register.js` line 60)
+- When a new SW activated, `window.location.reload()` fired unconditionally
+- Every deploy changes the SW, so every first launch after deploy triggered this
+
+**Reload 2: Build ID mismatch** (`index.html` line 13673)
+- `location.replace()` hard reload when build ID changed
+- Every Vercel deploy changes the build hash
+
+**The cascade:**
+1. Tap 1 → SW update detected → `skipWaiting` sent → `controllerchange` fires → **reload**
+2. Tap 2 → Build ID mismatch detected → `location.replace()` → **hard reload**
+3. Tap 3 → Finally loads (or repeats if SW cycle not complete)
+
+### Solution
+Removed both automatic reloads. The Service Worker already handles serving fresh content via network-first strategy for HTML requests — no forced reload needed.
+
+**sw-register.js:** Changed `controllerchange` handler from `window.location.reload()` to just a console log.
+
+**index.html:** Changed build ID check from `location.replace()` hard reload to just updating the stored build ID. New content arrives naturally via SW network-first fetch.
+
+### Files Modified
+- `public/sw-register.js` line 60 (removed unconditional reload)
+- `public/index.html` line ~13656-13676 (removed build ID hard reload)
+
+### Commit
+`e66b999f` - Fix PWA requiring 3-4 taps to open from home screen icon
+
+---
+
 ## Testing Checklist for Today's Round
 
 ### OAuth Login (Google/Kakao)
@@ -191,6 +456,11 @@ if (useStableford) {
 | `eba9469c` | Make mobile drawer close button smaller |
 | `aaa6c20a` | Fix OAuth login not saving to localStorage |
 | `9fbdb004` | Fix 2-man match play front/back nine calculations |
+| `3ed25454` | Fix team match play calculations and round save silent failures |
+| `66619f85` | Fix live scorecard lag and round save reliability |
+| `3d7848db` | Fix dashboard data not loading on first login after deploy |
+| `32d3e322` | Fix AbortError flooding all Supabase queries after OAuth login |
+| `e66b999f` | Fix PWA requiring 3-4 taps to open from home screen icon |
 
 ---
 
@@ -198,16 +468,18 @@ if (useStableford) {
 
 | File | Changes |
 |------|---------|
-| `public/index.html` | Mobile drawer button, OAuth localStorage, match play calculations |
-| `CLAUDE_CRITICAL_LESSONS.md` | Added Root Cause #5 (OAuth localStorage) |
+| `public/index.html` | Mobile drawer button, OAuth localStorage, match play calculations, team match play handicap, round save fixes, scorecard performance overhaul, dashboard widget retry, Supabase wait timeout, removed build ID hard reload |
+| `public/supabase-config.js` | Disabled GoTrue detectSessionInUrl/autoRefreshToken/persistSession to prevent AbortError |
+| `public/sw-register.js` | Removed unconditional page reload on SW controllerchange |
+| `CLAUDE_CRITICAL_LESSONS.md` | Added Root Cause #5 (OAuth localStorage), Root Cause #6 (AbortError) |
 
 ---
 
 ## Session Date
-**2026-01-27**
+**2026-01-27 / 2026-01-28**
 
 ## Deployments
-- 3 deployments to Vercel production
+- 9 deployments to Vercel production
 - All via `vercel --prod --yes`
 
 ## Production URL

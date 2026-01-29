@@ -40,12 +40,11 @@
                 newWorker.addEventListener('statechange', () => {
                     if (newWorker.state === 'installed') {
                         if (navigator.serviceWorker.controller) {
-                            // New version available
-                            console.log('[SW-Register] New version available');
-
-                            // Automatically activate the new service worker
-                            // without prompting the user (for seamless updates)
-                            newWorker.postMessage('skipWaiting');
+                            // New version available - do NOT skipWaiting
+                            // skipWaiting mid-session deletes old caches, causes page reload
+                            // and empty dashboard. Let the new SW activate naturally on
+                            // next page navigation (close + reopen, or refresh).
+                            console.log('[SW-Register] New version available - will activate on next visit');
                         } else {
                             // First install
                             console.log('[SW-Register] Service Worker installed for the first time');

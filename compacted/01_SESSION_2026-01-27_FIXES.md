@@ -1,7 +1,7 @@
 # Session Catalog: 2026-01-27 / 2026-01-28
 
 ## Summary
-Fixed eleven critical bugs: OAuth login not saving to localStorage, mobile drawer close button too large, 2-man match play calculations for front/back nine, team match play handicap source and stroke mode, round save silent failures, live scorecard performance overhaul, dashboard data not loading on first login after deploy, AbortError flooding all Supabase queries after OAuth login, PWA requiring 3-4 taps to open from home screen, round save from resume popup deleting round data on failure, and hole 9 course data lookup failures.
+Fixed thirteen critical bugs across three sessions. Key fixes: OAuth login localStorage, mobile drawer, 2-man match play calculations (x3 iterations), team match play handicap, round save silent failures (x2 — saveRoundToHistory + distributeRoundScores), live scorecard performance, dashboard first-login loading, AbortError flooding, PWA multi-tap, resume popup data loss, and **centralized all 25+ hole data lookups into single `getHoleData()` helper**.
 
 Also inserted TRGG Pattaya February 2026 schedule (24 events) into society_events database table.
 
@@ -478,39 +478,18 @@ this.roundType = state.roundType || 'practice';
 
 ---
 
-## Fix 11: Hole 9 Course Data Lookup Failures
+## Fix 11: Hole 9 Course Data Lookup Failures (Partial — see Fix 13)
 
-**Status:** Completed
+**Status:** Superseded by Fix 13
 
 ### Problem
-Hole 9 calculations were still wrong even after previous match play fixes. Scores were entered correctly but net scores were calculated wrong on hole 9 specifically.
+Hole 9 calculations were still wrong even after previous match play fixes.
 
-### Root Cause
-Course data hole lookup was failing due to:
+### What Was Done
+Fixed ONE lookup in `calculateHolesStatus()` — added `h.number` fallback and `==` loose equality.
 
-1. **Missing property fallback** — Course data uses different property names (`hole`, `hole_number`, `number`) depending on source. Code only checked `h.hole` and `h.hole_number`.
-
-2. **Type mismatch** — `hole` variable was sometimes a string "9" and sometimes a number 9. Using `===` strict equality failed when types didn't match.
-
-### Solution
-Fixed the lookup in `calculateHolesStatus()`:
-
-```javascript
-// Before (broken):
-const holeData = this.courseData?.holes?.find(h =>
-    h.hole === hole || h.hole_number === hole
-);
-
-// After (fixed):
-const holeData = this.courseData?.holes?.find(h => {
-    const hNum = h.hole || h.hole_number || h.number;  // Added h.number fallback
-    return hNum == hole;  // == handles string/number mismatch
-});
-const si = holeData?.stroke_index || holeData?.strokeIndex || holeData?.handicap_index || hole;
-```
-
-### Files Modified
-`public/index.html` line ~55580
+### Why It Didn't Fully Work
+Only fixed 1 of 25+ identical lookups across the codebase. Other code paths hit the same bug on different holes/scenarios. See Fix 13 for the complete solution.
 
 ### Commit
 `dffe0b6b` - Fix round save from resume popup and hole 9 course data lookup
@@ -575,6 +554,185 @@ Insert TRGG Pattaya's full February 2026 golf schedule into the `society_events`
 
 ---
 
+## Fix 12: Round Save Silent Failures — distributeRoundScores() Early Returns
+
+**Status:** Completed
+
+### Problem
+Last 3 rounds did not post to the database. User tapped Finish Round, saw "Round saved!", but nothing was actually written. Round data was then deleted from localStorage.
+
+### Root Cause
+`distributeRoundScores()` had two early `return` statements that returned `undefined` instead of throwing errors:
+
+**Return 1 — Guard flag** (line ~58823):
+```javascript
+if (this._distributingRounds) {
+    console.warn('already in progress - skipping');
+    return;  // BUG: returns undefined, not an error
+}
+```
+
+**Return 2 — No user** (line ~58846):
+```javascript
+if (!currentUser || (!currentUser.lineUserId && !currentUser.userId)) {
+    alert('ERROR: Cannot save round - you are not logged in.');
+    return;  // BUG: returns undefined, not an error
+}
+```
+
+**What happened in the caller:**
+```javascript
+try {
+    await this.distributeRoundScores();  // await undefined = success!
+    console.log('✅ Round saved successfully');  // THIS EXECUTES
+} catch (saveErr) {
+    // NEVER ENTERS - no error was thrown
+}
+
+this.clearRoundState();  // DELETES round data from localStorage
+```
+
+The caller assumed no error = success. It showed "Round saved!", displayed the scorecard, and permanently deleted the round data.
+
+### Solution
+Changed both `return` statements to `throw new Error()`:
+
+```javascript
+// Guard flag
+if (this._distributingRounds) {
+    throw new Error('Round save already in progress - please wait');
+}
+
+// No user
+if (!currentUser || (!currentUser.lineUserId && !currentUser.userId)) {
+    throw new Error('Cannot save round - you are not logged in.');
+}
+```
+
+Now the caller's catch block fires, shows the error to the user, and preserves round state for retry.
+
+### Lesson Learned
+**Every early exit in an async function that the caller `await`s must either `throw` or return a value the caller checks.** A bare `return` in an awaited function is indistinguishable from success.
+
+### Files Modified
+`public/index.html` lines ~58823, ~58846
+
+### Commit
+`23f50afb` - Fix round save silent failures and hole data lookup consistency
+
+---
+
+## Fix 13: Centralized Hole Data Lookup — All 25+ Instances
+
+**Status:** Completed
+
+### Problem
+Hole 9 (and potentially other holes) kept breaking across different rounds despite being "fixed" three times (Fix 3, Fix 4, Fix 11). Each fix patched ONE lookup but left 24 others with the same bug.
+
+### Root Cause: Scattered Identical Bug
+The codebase had **25+ independent hole data lookups** spread across:
+- `renderHole()` — displaying hole info
+- `saveScore()` / `updateScore()` — saving scores with par/SI
+- `calculateHolesStatus()` — match play calculations
+- `calculateTeamMatchPlay()` — team match play (8 instances)
+- `calculateCoursePar()` — total par calculation
+- Score table rendering (par row, score row, net row — 10+ instances)
+- Message summary generation (3 instances)
+- Hole preview display
+- Stableford/Nassau points calculation
+
+Each lookup had one or both of these bugs:
+1. **Only checked `h.hole_number`** — failed when course data used `h.hole` or `h.number`
+2. **Used `===` strict equality** — failed when comparing string `"9"` to number `9`
+
+### Previous Fix Attempts
+| Fix | What it did | Why it wasn't enough |
+|-----|-------------|---------------------|
+| Fix 3 | Rewrote `calculateHolesStatus()` | Only fixed 1 function |
+| Fix 4 | Fixed `calculateTeamMatchPlay()` handicap source | Different bug, same area |
+| Fix 11 | Added `h.number` + `==` to `calculateHolesStatus()` | Fixed 1 of 25+ lookups |
+
+### Solution: Single Helper, Replace Everything
+
+**Added `getHoleData()` helper method** to `LiveScorecardSystem`:
+```javascript
+getHoleData(holeNumber) {
+    if (!this.courseData?.holes) return null;
+    const num = Number(holeNumber);
+    return this.courseData.holes.find(h => {
+        const hNum = Number(h.hole_number || h.hole || h.number);
+        return hNum === num;
+    }) || this.courseData.holes[num - 1] || null;
+}
+```
+
+This handles:
+- All three property names (`hole_number`, `hole`, `number`)
+- String/number type coercion via `Number()`
+- Array index fallback if `.find()` fails
+- Null safety on missing courseData
+
+**Replaced all 17 `this.courseData?.holes?.find(h => h.hole_number === ...)` calls** with `this.getHoleData(...)`.
+
+**Fixed all 8 `courseHoles.find()` calls** in team match play to use `Number()` coercion:
+```javascript
+// Before:
+courseHoles.find(h => (h.hole || h.hole_number || h.number) === hole)
+
+// After:
+courseHoles.find(h => Number(h.hole || h.hole_number || h.number) === Number(hole))
+```
+
+**Also fixed** the `renderHole()` tee marker lookup:
+```javascript
+// Before:
+h.hole_number === this.currentHole && h.tee_marker?.toLowerCase() === ...
+
+// After:
+Number(h.hole_number || h.hole || h.number) === Number(this.currentHole) && h.tee_marker?.toLowerCase() === ...
+```
+
+### Complete List of Replaced Lookups
+
+| Location | Function | Old Pattern |
+|----------|----------|-------------|
+| ~56738 | `renderHole()` tee marker match | `h.hole_number === this.currentHole` |
+| ~56744 | `renderHole()` fallback | `h.hole_number === this.currentHole` |
+| ~57191 | `saveScore()` | `h.hole_number === this.currentHole` + array fallback |
+| ~57274 | `updateScore()` | `h.hole_number === this.currentHole` + array fallback |
+| ~55597 | `calculateHolesStatus()` | `h.hole == hole` (loose) |
+| ~58404 | `saveRoundToHistory()` | `holes[holeNum - 1]` (direct index) |
+| ~59382 | `showHolePreview()` | `h.hole_number === hole` |
+| ~60348 | `calculateCoursePar()` | `h.hole_number === i` |
+| ~61057 | Score table par (front 9) | `h.hole_number === i` |
+| ~61068 | Score table par (back 9) | `h.hole_number === i` |
+| ~61090 | Score table SI row | `h.hole_number === i` |
+| ~61140 | Nassau points calc | `h.hole_number === i` |
+| ~61212 | Stableford points calc | `h.hole_number === i` |
+| ~61571 | Team score table | `h.hole_number === holeNum` |
+| ~61646 | Team par row | `h.hole_number === i` |
+| ~61661 | Team score row | `h.hole_number === i` |
+| ~61698 | Team net row | `h.hole_number === i` |
+| ~61991 | Message summary front 9 | `h.hole_number === i` |
+| ~62036 | Message summary back 9 | `h.hole_number === i` |
+| ~62057 | Message summary detail | `h.hole_number === i` |
+| ~52770+ | Team match play (8 calls) | `(h.hole \|\| h.hole_number \|\| h.number) === hole` |
+
+### Why This Won't Break Again
+- One helper function instead of 25+ independent lookups
+- `Number()` coercion eliminates type mismatches
+- Three property names checked on every call
+- Array index fallback as last resort
+- Any future hole lookup should use `this.getHoleData(n)`
+
+### Files Modified
+`public/index.html` — added `getHoleData()` method at line ~51993, replaced 25+ lookups throughout
+
+### Commit
+`23f50afb` - Fix round save silent failures and hole data lookup consistency
+
+---
+
 ## Testing Checklist for Today's Round
 
 ### OAuth Login (Google/Kakao)
@@ -613,6 +771,8 @@ Insert TRGG Pattaya's full February 2026 golf schedule into the `society_events`
 | `e66b999f` | Fix PWA requiring 3-4 taps to open from home screen icon |
 | `dffe0b6b` | Fix round save from resume popup and hole 9 course data lookup |
 | `558ca32f` | Add TRGG February 2026 schedule insert script (24 events) |
+| `c0df1096` | Update session catalog with fixes 10-11 and TRGG data task |
+| `23f50afb` | Fix round save silent failures and hole data lookup consistency |
 
 ---
 
@@ -620,7 +780,7 @@ Insert TRGG Pattaya's full February 2026 golf schedule into the `society_events`
 
 | File | Changes |
 |------|---------|
-| `public/index.html` | Mobile drawer button, OAuth localStorage, match play calculations, team match play handicap, round save fixes, scorecard performance overhaul, dashboard widget retry, Supabase wait timeout, removed build ID hard reload, round save early return on failure, roundType save/restore, hole 9 course data lookup |
+| `public/index.html` | Mobile drawer button, OAuth localStorage, match play calculations, team match play handicap, round save fixes, scorecard performance overhaul, dashboard widget retry, Supabase wait timeout, removed build ID hard reload, round save early return on failure, roundType save/restore, **distributeRoundScores() throw instead of return**, **getHoleData() helper + replaced 25+ hole lookups**, **Number() coercion on all courseHoles.find() calls** |
 | `public/supabase-config.js` | Disabled GoTrue detectSessionInUrl/autoRefreshToken/persistSession to prevent AbortError |
 | `public/sw-register.js` | Removed unconditional page reload on SW controllerchange |
 | `CLAUDE_CRITICAL_LESSONS.md` | Added Root Cause #5 (OAuth localStorage), Root Cause #6 (AbortError) |
@@ -630,10 +790,10 @@ Insert TRGG Pattaya's full February 2026 golf schedule into the `society_events`
 ---
 
 ## Session Date
-**2026-01-27 / 2026-01-28**
+**2026-01-27 / 2026-01-28 / 2026-01-29**
 
 ## Deployments
-- 11 deployments to Vercel production
+- 12 deployments to Vercel production
 - All via `vercel --prod --yes`
 
 ## Database Changes

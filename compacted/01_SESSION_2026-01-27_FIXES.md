@@ -1,7 +1,7 @@
-# Session Catalog: 2026-01-27 / 2026-01-28
+# Session Catalog: 2026-01-27 / 2026-01-28 / 2026-01-29
 
 ## Summary
-Fixed thirteen critical bugs across three sessions. Key fixes: OAuth login localStorage, mobile drawer, 2-man match play calculations (x3 iterations), team match play handicap, round save silent failures (x2 — saveRoundToHistory + distributeRoundScores), live scorecard performance, dashboard first-login loading, AbortError flooding, PWA multi-tap, resume popup data loss, and **centralized all 25+ hole data lookups into single `getHoleData()` helper**.
+Fixed fourteen critical bugs across four sessions. Key fixes: OAuth login localStorage, mobile drawer, 2-man match play calculations (x3 iterations), team match play handicap, round save silent failures (x2 — saveRoundToHistory + distributeRoundScores), live scorecard performance, dashboard first-login loading, AbortError flooding, PWA multi-tap, resume popup data loss, **centralized all 25+ hole data lookups into single `getHoleData()` helper**, and **stopped forced SW skipWaiting that caused mid-session dashboard reload with empty data**.
 
 Also inserted TRGG Pattaya February 2026 schedule (24 events) into society_events database table.
 
@@ -733,6 +733,51 @@ Number(h.hole_number || h.hole || h.number) === Number(this.currentHole) && h.te
 
 ---
 
+## Fix 14: Dashboard Auto-Reload With Empty Data After Deployment
+
+**Status:** Completed
+
+### Problem
+After deployment, the dashboard spontaneously reloaded by itself and came back with no data displayed.
+
+### Root Cause: sw-register.js Forced skipWaiting Mid-Session
+Two files contradicted each other:
+
+**sw.js line 93:** `// Don't skipWaiting - let SW update naturally to avoid aborting requests`
+
+**sw-register.js line 48:** `newWorker.postMessage('skipWaiting')` — **forces skipWaiting anyway**
+
+When `skipWaiting` fires mid-session:
+1. New SW activates immediately, taking control
+2. Old caches are deleted by the activate handler
+3. Page effectively reloads in PWA mode (browser/webview re-fetches from new SW)
+4. Auth/data loading chain restarts from scratch
+5. Dashboard renders before data loads = empty dashboard
+
+This happened on every deployment because `sw-register.js` detected the new SW version and immediately told it to skip waiting.
+
+### Solution
+Removed the forced `skipWaiting` from `sw-register.js`. New SW now activates naturally on next page navigation (close + reopen, or manual refresh).
+
+```javascript
+// Before (BUG):
+newWorker.postMessage('skipWaiting');
+
+// After (FIXED):
+console.log('[SW-Register] New version available - will activate on next visit');
+```
+
+Also bumped SW version to v256 so this fix gets picked up.
+
+### Files Modified
+- `public/sw-register.js` line 48 (removed forced skipWaiting)
+- `public/sw.js` line 4 (version bump v255 → v256)
+
+### Commit
+`c1733750` - Fix: stop forced skipWaiting that caused mid-session reload with empty dashboard
+
+---
+
 ## Testing Checklist for Today's Round
 
 ### OAuth Login (Google/Kakao)
@@ -773,6 +818,7 @@ Number(h.hole_number || h.hole || h.number) === Number(this.currentHole) && h.te
 | `558ca32f` | Add TRGG February 2026 schedule insert script (24 events) |
 | `c0df1096` | Update session catalog with fixes 10-11 and TRGG data task |
 | `23f50afb` | Fix round save silent failures and hole data lookup consistency |
+| `c1733750` | Fix: stop forced skipWaiting that caused mid-session reload with empty dashboard |
 
 ---
 
@@ -782,7 +828,8 @@ Number(h.hole_number || h.hole || h.number) === Number(this.currentHole) && h.te
 |------|---------|
 | `public/index.html` | Mobile drawer button, OAuth localStorage, match play calculations, team match play handicap, round save fixes, scorecard performance overhaul, dashboard widget retry, Supabase wait timeout, removed build ID hard reload, round save early return on failure, roundType save/restore, **distributeRoundScores() throw instead of return**, **getHoleData() helper + replaced 25+ hole lookups**, **Number() coercion on all courseHoles.find() calls** |
 | `public/supabase-config.js` | Disabled GoTrue detectSessionInUrl/autoRefreshToken/persistSession to prevent AbortError |
-| `public/sw-register.js` | Removed unconditional page reload on SW controllerchange |
+| `public/sw-register.js` | Removed unconditional page reload on SW controllerchange; **removed forced skipWaiting that caused mid-session dashboard reload** |
+| `public/sw.js` | **Version bump v255 → v256** |
 | `CLAUDE_CRITICAL_LESSONS.md` | Added Root Cause #5 (OAuth localStorage), Root Cause #6 (AbortError) |
 | `scripts/insert_trgg_feb_2026.js` | **NEW** — Node.js script to insert TRGG Feb 2026 events via Supabase REST API |
 | `sql/trgg_feb_2026_events.sql` | **NEW** — SQL script for Supabase SQL Editor (alternative method) |
@@ -793,7 +840,7 @@ Number(h.hole_number || h.hole || h.number) === Number(this.currentHole) && h.te
 **2026-01-27 / 2026-01-28 / 2026-01-29**
 
 ## Deployments
-- 12 deployments to Vercel production
+- 13 deployments to Vercel production
 - All via `vercel --prod --yes`
 
 ## Database Changes

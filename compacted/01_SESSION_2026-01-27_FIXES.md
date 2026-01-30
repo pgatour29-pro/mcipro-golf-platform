@@ -1,7 +1,7 @@
-# Session Catalog: 2026-01-27 / 2026-01-28 / 2026-01-29
+# Session Catalog: 2026-01-27 to 2026-01-30
 
 ## Summary
-Fixed fourteen critical bugs across four sessions. Key fixes: OAuth login localStorage, mobile drawer, 2-man match play calculations (x3 iterations), team match play handicap, round save silent failures (x2 — saveRoundToHistory + distributeRoundScores), live scorecard performance, dashboard first-login loading, AbortError flooding, PWA multi-tap, resume popup data loss, **centralized all 25+ hole data lookups into single `getHoleData()` helper**, and **stopped forced SW skipWaiting that caused mid-session dashboard reload with empty data**.
+Fixed fifteen critical bugs across five sessions. Key fixes: OAuth login localStorage, mobile drawer, 2-man match play calculations (x3 iterations), team match play handicap, round save silent failures (x3 — saveRoundToHistory return-not-throw, distributeRoundScores return-not-throw, **distributeRoundScores outer catch swallowing all errors**), live scorecard performance, dashboard first-login loading, AbortError flooding, PWA multi-tap, resume popup data loss, **centralized all 25+ hole data lookups into single `getHoleData()` helper**, stopped forced SW skipWaiting, and **fixed the root cause of rounds not posting since January 23**.
 
 Also inserted TRGG Pattaya February 2026 schedule (24 events) into society_events database table.
 
@@ -778,6 +778,85 @@ Also bumped SW version to v256 so this fix gets picked up.
 
 ---
 
+## Fix 15: distributeRoundScores() Outer Catch Swallowed All Errors — Root Cause of Lost Rounds
+
+**Status:** Completed
+
+### Problem
+No rounds have been posted to the database since January 23, 2026 (Rocky Jones's last successful round at Bangpakong Riverside). Users tapped "Finish Round", saw "Round saved!", but nothing was written to Supabase. Round data was then deleted from localStorage.
+
+### Root Cause: Two Bugs Working Together
+
+**Bug A — Outer catch swallowed all errors (line 58986):**
+```javascript
+} catch (error) {
+    console.error('[LiveScorecard] Error distributing scores:', error);
+    NotificationManager.show('Error saving round: ' + error.message, 'error');
+    // BUG: No re-throw! Function completes "successfully"
+}
+```
+
+Every error inside `distributeRoundScores()` — Supabase timeout, user-not-logged-in, zero saves — was caught, logged, and discarded. The caller `completeRound()` never knew anything went wrong.
+
+**This also made Fix 12 ineffective.** Fix 12 changed `return` to `throw new Error('not logged in')` at line 58855, but that throw was inside the try block — the outer catch at 58986 caught it and swallowed it.
+
+**Bug B — Zero saves didn't throw (line 58938):**
+```javascript
+if (savedRounds.length === 0) {
+    alert('ERROR: No rounds were saved!...');
+    // BUG: showed alert but function continued normally
+}
+```
+
+Individual player save errors were caught in each Promise's `.catch()` handler and returned as resolved promises. `Promise.all()` never rejected. When ALL players failed, the function showed an alert but completed successfully.
+
+**The cascade:**
+1. `distributeRoundScores()` silently fails (error swallowed)
+2. `completeRound()` line 57716: `console.log('✅ Round saved successfully')` — runs!
+3. `completeRound()` line 57721: `NotificationManager.show('Round saved!')` — runs!
+4. `completeRound()` line 57760: `this.clearRoundState()` — **permanently deletes all scores**
+
+### Solution
+
+**Fix A — Outer catch re-throws:**
+```javascript
+} catch (error) {
+    console.error('[LiveScorecard] Error distributing scores:', error);
+    throw error;  // Re-throw so caller knows save failed
+}
+```
+
+**Fix B — Zero saves throws:**
+```javascript
+if (savedRounds.length === 0) {
+    throw new Error(`No rounds were saved. Cache: ${cacheInfo}${failInfo}`);
+}
+```
+
+### Error Chain Now Works
+1. Any error in `distributeRoundScores()` → re-thrown to caller
+2. `completeRound()` catches it → retries once after 2s delay
+3. Retry fails → shows alert → `return` (preserves round data in localStorage)
+4. `clearRoundState()` only runs on actual success
+
+### Why This Was the Root Cause Since Jan 23
+The outer catch existed from early versions. It silently ate ALL save errors. Any transient Supabase issue, network timeout, or auth state problem was invisible to the user — they always saw "Round saved!" while their data was deleted.
+
+### Relationship to Previous Fixes
+| Fix | What it did | Why it wasn't enough |
+|-----|-------------|---------------------|
+| Fix 5 | Changed `return null` to `return { duplicate: true }` in session guard | Didn't fix the outer catch swallowing |
+| Fix 12 | Changed `return` to `throw` in user check & guard flag | Throws were swallowed by outer catch |
+| **Fix 15** | **Outer catch re-throws + zero-saves throws** | **Errors now propagate to caller** |
+
+### Files Modified
+`public/index.html` lines ~58938 (zero-saves throw), ~58986 (outer catch re-throw)
+
+### Commit
+`3e7793cb` - Fix: distributeRoundScores() swallowed all errors - rounds silently lost
+
+---
+
 ## Testing Checklist for Today's Round
 
 ### OAuth Login (Google/Kakao)
@@ -819,6 +898,7 @@ Also bumped SW version to v256 so this fix gets picked up.
 | `c0df1096` | Update session catalog with fixes 10-11 and TRGG data task |
 | `23f50afb` | Fix round save silent failures and hole data lookup consistency |
 | `c1733750` | Fix: stop forced skipWaiting that caused mid-session reload with empty dashboard |
+| `3e7793cb` | Fix: distributeRoundScores() swallowed all errors - rounds silently lost |
 
 ---
 
@@ -826,7 +906,7 @@ Also bumped SW version to v256 so this fix gets picked up.
 
 | File | Changes |
 |------|---------|
-| `public/index.html` | Mobile drawer button, OAuth localStorage, match play calculations, team match play handicap, round save fixes, scorecard performance overhaul, dashboard widget retry, Supabase wait timeout, removed build ID hard reload, round save early return on failure, roundType save/restore, **distributeRoundScores() throw instead of return**, **getHoleData() helper + replaced 25+ hole lookups**, **Number() coercion on all courseHoles.find() calls** |
+| `public/index.html` | Mobile drawer button, OAuth localStorage, match play calculations, team match play handicap, round save fixes, scorecard performance overhaul, dashboard widget retry, Supabase wait timeout, removed build ID hard reload, round save early return on failure, roundType save/restore, **distributeRoundScores() throw instead of return**, **getHoleData() helper + replaced 25+ hole lookups**, **Number() coercion on all courseHoles.find() calls**, **distributeRoundScores() outer catch re-throw + zero-saves throw** |
 | `public/supabase-config.js` | Disabled GoTrue detectSessionInUrl/autoRefreshToken/persistSession to prevent AbortError |
 | `public/sw-register.js` | Removed unconditional page reload on SW controllerchange; **removed forced skipWaiting that caused mid-session dashboard reload** |
 | `public/sw.js` | **Version bump v255 → v256** |
@@ -837,10 +917,10 @@ Also bumped SW version to v256 so this fix gets picked up.
 ---
 
 ## Session Date
-**2026-01-27 / 2026-01-28 / 2026-01-29**
+**2026-01-27 to 2026-01-30**
 
 ## Deployments
-- 13 deployments to Vercel production
+- 14 deployments to Vercel production
 - All via `vercel --prod --yes`
 
 ## Database Changes

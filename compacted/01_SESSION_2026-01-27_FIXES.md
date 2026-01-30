@@ -1,7 +1,7 @@
 # Session Catalog: 2026-01-27 to 2026-01-30
 
 ## Summary
-Fixed fifteen critical bugs across five sessions. Key fixes: OAuth login localStorage, mobile drawer, 2-man match play calculations (x3 iterations), team match play handicap, round save silent failures (x3 — saveRoundToHistory return-not-throw, distributeRoundScores return-not-throw, **distributeRoundScores outer catch swallowing all errors**), live scorecard performance, dashboard first-login loading, AbortError flooding, PWA multi-tap, resume popup data loss, **centralized all 25+ hole data lookups into single `getHoleData()` helper**, stopped forced SW skipWaiting, and **fixed the root cause of rounds not posting since January 23**.
+Fixed seventeen bugs across five sessions. Key fixes: OAuth login localStorage, mobile drawer, 2-man match play calculations (x3 iterations), team match play handicap, round save silent failures (x3 — saveRoundToHistory return-not-throw, distributeRoundScores return-not-throw, **distributeRoundScores outer catch swallowing all errors**), live scorecard performance, dashboard first-login loading, AbortError flooding, PWA multi-tap, resume popup data loss, **centralized all 25+ hole data lookups into single `getHoleData()` helper**, stopped forced SW skipWaiting, **fixed the root cause of rounds not posting since January 23**, **fixed Burapha course picker dropdown value mismatch**, and **fixed End Round error when no scores entered**.
 
 Also inserted TRGG Pattaya February 2026 schedule (24 events) into society_events database table.
 
@@ -857,6 +857,102 @@ The outer catch existed from early versions. It silently ate ALL save errors. An
 
 ---
 
+## Fix 16: Burapha Golf Club Course Picker Not Showing
+
+**Status:** Completed
+
+### Problem
+When selecting Burapha Golf Club in the live scorecard, the A/B/C/D nine-hole combination picker never appeared. Users couldn't select which two nines to play.
+
+### Root Cause: Dropdown Value Mismatch
+The course dropdown `<option>` had `value="burapha_ac"` but three separate code paths checked for `value === 'burapha'`:
+
+1. **Picker visibility toggle** (line 53926): `courseSelect.value === 'burapha'` — never matched
+2. **startRound()** (line 56230): `courseId === 'burapha'` — never matched
+3. **loadBuraphaCombination()** (line 54280): Expected to be called but never was
+
+Because the value was `burapha_ac`, it fell through to `loadCourseData('burapha_ac')` which doesn't exist as a standard course — failing silently.
+
+### Solution
+Changed the dropdown value from `burapha_ac` to `burapha`:
+
+```html
+<!-- Before -->
+<option value="burapha_ac">Burapha Golf Club</option>
+
+<!-- After -->
+<option value="burapha">Burapha Golf Club</option>
+```
+
+### Database Verified
+All 4 nines exist in `course_nine` table with `course_name = 'Burapha Golf Club'`:
+- Nine A (id: 5) — 9 holes, par 4,4,3,4,5,3,5,4,4
+- Nine B (id: 6) — 9 holes, par 4,4,3,4,4,5,4,3,5
+- Nine C (id: 7) — 9 holes, par 4,5,4,4,3,4,5,3,4
+- Nine D (id: 8) — 9 holes, par 5,3,4,4,5,4,4,3,4
+
+### Files Modified
+`public/index.html` line 31848
+
+### Commit
+`b9d3ade0` - Fix Burapha course picker: dropdown value was 'burapha_ac' but picker/startRound checked for 'burapha'
+
+---
+
+## Fix 17: End Round Error When No Scores Entered
+
+**Status:** Completed
+
+### Problem
+Starting a round to check course setup and clicking "End Round" with zero scores entered produced an error: "ERROR: Failed to save round after 2 attempts!"
+
+### Root Cause
+When no scores were entered:
+1. `distributeRoundScores()` found 0 holes for all players (line 58882)
+2. `playersToSave` was empty, `savedRounds` stayed empty
+3. Line 58944 threw: `"No rounds were saved"` (added in Fix 15)
+4. `completeRound()` retried once — failed identically
+5. After 2 failures, showed the error alert
+
+This was technically correct behavior (Fix 15 properly throws on zero saves), but the case of intentionally ending a round with no scores wasn't handled.
+
+### Solution
+Added early detection in `completeRound()` before calling `distributeRoundScores()`:
+
+```javascript
+// Check if any scores were entered at all
+const totalHolesEntered = this.players.reduce((sum, player) => {
+    const cache = this.scoresCache[player.id] || {};
+    return sum + Object.keys(cache).filter(h => cache[h]).length;
+}, 0);
+
+if (totalHolesEntered === 0) {
+    const abandon = confirm('No scores were entered.\n\nDo you want to abandon this round?');
+    if (abandon) {
+        this.clearRoundState();
+        this.stopAutoSaveTimer();
+        this.lastScoreTime = null;
+        NotificationManager.show('Round abandoned', 'info');
+        // Navigate back to setup
+        const activeSection = document.getElementById('scorecardActiveSection');
+        const startSection = document.getElementById('scorecardStartSection');
+        if (activeSection) activeSection.style.display = 'none';
+        if (startSection) startSection.style.display = 'block';
+        if (window.PWAGuard) window.PWAGuard.setDirty(false);
+        return;
+    }
+    return; // User said no - go back to scoring
+}
+```
+
+### Files Modified
+`public/index.html` lines ~57709-57732
+
+### Commit
+`d1ec8ebb` - Fix End Round error when no scores entered - allow clean abandon
+
+---
+
 ## Testing Checklist for Today's Round
 
 ### OAuth Login (Google/Kakao)
@@ -899,6 +995,8 @@ The outer catch existed from early versions. It silently ate ALL save errors. An
 | `23f50afb` | Fix round save silent failures and hole data lookup consistency |
 | `c1733750` | Fix: stop forced skipWaiting that caused mid-session reload with empty dashboard |
 | `3e7793cb` | Fix: distributeRoundScores() swallowed all errors - rounds silently lost |
+| `b9d3ade0` | Fix Burapha course picker: dropdown value was 'burapha_ac' but picker/startRound checked for 'burapha' |
+| `d1ec8ebb` | Fix End Round error when no scores entered - allow clean abandon |
 
 ---
 
@@ -906,7 +1004,7 @@ The outer catch existed from early versions. It silently ate ALL save errors. An
 
 | File | Changes |
 |------|---------|
-| `public/index.html` | Mobile drawer button, OAuth localStorage, match play calculations, team match play handicap, round save fixes, scorecard performance overhaul, dashboard widget retry, Supabase wait timeout, removed build ID hard reload, round save early return on failure, roundType save/restore, **distributeRoundScores() throw instead of return**, **getHoleData() helper + replaced 25+ hole lookups**, **Number() coercion on all courseHoles.find() calls**, **distributeRoundScores() outer catch re-throw + zero-saves throw** |
+| `public/index.html` | Mobile drawer button, OAuth localStorage, match play calculations, team match play handicap, round save fixes, scorecard performance overhaul, dashboard widget retry, Supabase wait timeout, removed build ID hard reload, round save early return on failure, roundType save/restore, **distributeRoundScores() throw instead of return**, **getHoleData() helper + replaced 25+ hole lookups**, **Number() coercion on all courseHoles.find() calls**, **distributeRoundScores() outer catch re-throw + zero-saves throw**, **Burapha dropdown value fix (burapha_ac → burapha)**, **End Round zero-scores early detect + abandon flow** |
 | `public/supabase-config.js` | Disabled GoTrue detectSessionInUrl/autoRefreshToken/persistSession to prevent AbortError |
 | `public/sw-register.js` | Removed unconditional page reload on SW controllerchange; **removed forced skipWaiting that caused mid-session dashboard reload** |
 | `public/sw.js` | **Version bump v255 → v256** |
@@ -920,7 +1018,7 @@ The outer catch existed from early versions. It silently ate ALL save errors. An
 **2026-01-27 to 2026-01-30**
 
 ## Deployments
-- 14 deployments to Vercel production
+- 16 deployments to Vercel production
 - All via `vercel --prod --yes`
 
 ## Database Changes

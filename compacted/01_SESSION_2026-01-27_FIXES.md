@@ -1,7 +1,7 @@
-# Session Catalog: 2026-01-27 to 2026-01-30
+# Session Catalog: 2026-01-27 to 2026-01-31
 
 ## Summary
-Fixed nineteen bugs across five sessions. Key fixes: OAuth login localStorage, mobile drawer, 2-man match play calculations (x3 iterations), team match play handicap, round save silent failures (x3 — saveRoundToHistory return-not-throw, distributeRoundScores return-not-throw, **distributeRoundScores outer catch swallowing all errors**), live scorecard performance, dashboard first-login loading, AbortError flooding, PWA multi-tap, resume popup data loss, **centralized all 25+ hole data lookups into single `getHoleData()` helper**, stopped forced SW skipWaiting, **fixed the root cause of rounds not posting since January 23**, **fixed Burapha course picker dropdown value mismatch**, and **fixed End Round error when no scores entered**.
+Fixed twenty-six bugs across six sessions. Key fixes: OAuth login localStorage, mobile drawer, 2-man match play calculations (x3 iterations), team match play handicap, round save silent failures (x3 — saveRoundToHistory return-not-throw, distributeRoundScores return-not-throw, **distributeRoundScores outer catch swallowing all errors**), live scorecard performance, dashboard first-login loading, AbortError flooding, PWA multi-tap, resume popup data loss, **centralized all 25+ hole data lookups into single `getHoleData()` helper**, stopped forced SW skipWaiting, **fixed the root cause of rounds not posting since January 23**, **fixed Burapha course picker dropdown value mismatch**, **fixed End Round error when no scores entered**, **fixed duplicate round guard to UPDATE instead of skip**, **fixed mobile score entry (paint delay, double-tap, visual feedback)**, **replaced blocking boolean guard with cache dedup for score entry**, **guaranteed last player score display via full renderHole()**, **sped up End Round by eliminating redundant DB queries**, and **made player add instant by deferring handicap lookup to background**.
 
 Also inserted TRGG Pattaya February 2026 schedule (24 events) into society_events database table.
 
@@ -1007,6 +1007,199 @@ Root cause: ALL TRGG guest profiles have `display_name: null` in `user_profiles`
 
 ---
 
+## Fix 20: Duplicate Round Guard — UPDATE Instead of Silently Skipping
+
+**Status:** Completed
+
+### Problem
+User shot 74 gross but system showed 76 gross and 35 stableford. Scores table had 75 gross (18 holes), but rounds table had stale 76 gross from a manually-inserted round done earlier.
+
+### Root Cause
+The duplicate guard at line ~58265 checked for existing rounds by same player/course/day. When it found the manually-inserted rounds from the SQL fix script, it silently returned the old round ID WITHOUT updating its scores. The rounds table kept the stale data.
+
+### Solution
+Changed the duplicate guard from `return existingRounds[0].id` to UPDATE the existing round with current scores (total_gross, total_stableford, handicap_used, holes_played, format_scores, completed_at, player_name), then return the ID.
+
+Also deleted the two stale manually-inserted rounds via direct DB query.
+
+### Files Modified
+`public/index.html` lines ~58258-58283
+
+### Commit
+`20e5b976` - Fix 20: Duplicate round guard now UPDATES instead of silently skipping
+
+---
+
+## Fix 21: Mobile Score Entry — Paint Delay, Double-Tap Guard, Visual Feedback
+
+**Status:** Completed (partially superseded by Fixes 23-24)
+
+### Problem
+On mobile, when entering the last player's score:
+1. Score doesn't visually appear in their box before auto-advancing
+2. Sometimes the score doesn't save at all
+3. Sometimes requires multiple taps before the score is accepted
+4. On desktop, the score briefly shows before advancing (correct behavior)
+
+### Root Cause
+`updatePlayerScoreDisplay()` updated the DOM, then `selectPlayer()` was called IMMEDIATELY in the same call stack. `selectPlayer()` calls `renderHole()` which replaces the entire grid via `innerHTML` before the browser could paint the score. On mobile (slower CPU), the paint was cancelled.
+
+For the last player, `nextHole()` fired after only 200ms — too fast to read.
+
+### Solution
+1. **Double `requestAnimationFrame`** before `selectPlayer()` — guarantees paint completes before DOM replacement
+2. **Increased auto-advance from 200ms to 600ms** for last player on hole
+3. **Green flash on score entry** — `bg-green-100` class added briefly for visual confirmation
+4. **`_savingScore` boolean guard** to prevent rapid double-tap entries
+
+### Files Modified
+`public/index.html` lines ~57189-57434, ~56933-56938
+
+### Commit
+`5b45807e` - Fix 21: Mobile score entry — paint delay, double-tap guard, visual feedback
+
+---
+
+## Fix 22: Player Add Duplicate Guard — Scoping Bug Fix
+
+**Status:** Completed
+
+### Problem
+The `selectExistingPlayer()` edit from Fix 21's session had a scoping bug: match play auto-check code and success `NotificationManager.show()` were placed OUTSIDE the `try/finally` block, referencing the `profile` variable that was scoped inside `try`. This would throw a `ReferenceError` every time a player was successfully added.
+
+### Solution
+Moved the match play auto-check code and success notification inside the `try` block, before `} finally {`.
+
+Also added:
+- `_addingPlayer` guard against double-taps during async handicap lookup
+- Duplicate check before AND after the async `getPlayerSocietyHandicaps()` call
+
+### Files Modified
+`public/index.html` lines ~54940-55021
+
+### Commit
+`35b74568` - Fix 22: Player add duplicate guard — fix scoping bug and prevent double-tap
+
+---
+
+## Fix 23: Score Entry — Replace Boolean Guard with Cache Deduplication
+
+**Status:** Completed
+
+### Problem
+The `_savingScore` boolean guard from Fix 21 created a ~16ms window where the last player's score entry was silently blocked. The guard was set `true` on Player 1's save and released via `requestAnimationFrame` (~16ms later). If the user entered the last player's score within that window, `_savingScore` was still `true` → entry silently dropped.
+
+### Root Cause
+Boolean guard + rAF release = timing-dependent silent data loss. On fast mobile tapping, the guard from one player's save could block the next player's entry.
+
+### Solution
+1. **Removed `_savingScore` boolean guard entirely**
+2. **Replaced with cache-based deduplication**: checks if the exact same score already exists in `scoresCache[playerId][hole]`. Same score = skip (prevents double-tap). Different player or score = always proceeds.
+3. **Captured `savingPlayerId` and `savingHole`** at the start of `saveCurrentScore()` before any async operations — prevents race conditions where `currentPlayerId` changes during the advance.
+4. **Increased last-player delay from 600ms to 800ms** for mobile.
+
+### Files Modified
+`public/index.html` lines ~57213-57437
+
+### Commit
+`0a7f4350` - Fix 23: Score entry — replace boolean guard with cache dedup, fix last player
+
+---
+
+## Fix 24: Last Player Score — Full renderHole() Instead of Targeted DOM Update
+
+**Status:** Completed
+
+### Problem
+Last player's score STILL not showing on mobile despite Fixes 21 and 23. The targeted `updatePlayerScoreDisplay()` which used `querySelector('.text-2xl')` on `grid.children[index]` was unreliable on mobile — could fail silently if DOM structure didn't match expectations.
+
+### Solution
+For the **last player** specifically, replaced the targeted DOM update with a full `renderHole()` call. Since the cache is already updated before this call, `renderHole()` rebuilds the entire grid from cache and the score is guaranteed to appear.
+
+For **non-last players**, kept the targeted update (it works fine because `selectPlayer()` replaces the grid via `renderHole()` anyway).
+
+Also:
+- **Increased auto-advance to 1000ms** (full second) for last player
+- **Added green highlight** (`#bbf7d0`) on last player's box with CSS transition
+- Moved `debouncedRefreshLeaderboard()` after the advance logic
+
+### Files Modified
+`public/index.html` lines ~57351-57397
+
+### Commit
+`ecc58f63` - Fix 24: Last player score — full renderHole() instead of targeted DOM update
+
+---
+
+## Fix 25: Speed Up End Round — Remove Redundant DB Calls, Parallelize
+
+**Status:** Completed
+
+### Problem
+"End Round" was too slow — multiple redundant database queries per player.
+
+### Root Cause
+`saveRoundToHistory()` made several redundant DB calls per player:
+1. **Redundant Supabase ready check** — already checked in `distributeRoundScores()`
+2. **Separate `count` query on scores** then fetching the same scores again (2 queries instead of 1)
+3. **`organizer_id` fetch per player** — same query N times for the same event
+
+`leaveAllPools()` left pools **sequentially** (one `await` per pool) and was **blocking** the user.
+
+Retry delay was 2000ms.
+
+### Solution
+1. **Removed redundant Supabase ready check** in `saveRoundToHistory()`
+2. **Removed separate count query** — `holesPlayed` now set from the scores fetch result (`scoresArray.length`)
+3. **Pre-fetched `organizer_id` once** in `distributeRoundScores()` and cached as `this._cachedOrganizerId` — used by all players
+4. **Made `leaveAllPools()` parallel** (`Promise.allSettled`) instead of sequential `for...of await`
+5. **Made pool leaving non-blocking** — fire-and-forget from `completeRound()`
+6. **Reduced retry delay** from 2000ms to 500ms
+
+### Performance Impact
+- Eliminated N redundant DB round-trips (N = number of players)
+- Pool leaving doesn't block End Round flow
+- Retry is 75% faster
+
+### Files Modified
+`public/index.html` lines ~57817-57891, ~57933-57989, ~58995-59006
+
+### Commit
+`1d7d7055` - Fix 25: Speed up End Round — remove redundant DB calls, parallelize
+
+---
+
+## Fix 26: Instant Player Add — No More Blocking DB Calls
+
+**Status:** Completed
+
+### Problem
+Adding players in the live scorecard was extremely slow (almost freezing), causing duplicate adds from impatient tapping.
+
+### Root Cause
+`selectExistingPlayer()` was `async` and made **3 sequential DB queries** BEFORE adding the player:
+1. `society_handicaps` by golfer_id
+2. **ALL `society_members`** with MANUAL/GUEST prefix (could be hundreds of rows) for name matching
+3. `society_handicaps` again for any alternate IDs found
+
+The UI was completely frozen during these queries (~2-5 seconds on mobile).
+
+### Solution
+Changed `selectExistingPlayer()` from `async` to **synchronous**:
+1. **Add player INSTANTLY** using the profile's `handicap_index` (no DB calls, zero wait)
+2. **Close modal and update UI immediately**
+3. **Fetch society handicaps in the BACKGROUND** via `.then()` — if the society handicap is different from the profile handicap, silently update the player's handicap and re-render the player list
+
+User experience: tap a player → player appears instantly → handicap may silently refine moments later.
+
+### Files Modified
+`public/index.html` lines ~54940-55011
+
+### Commit
+`c4015510` - Fix 26: Instant player add — no more blocking DB calls
+
+---
+
 ## Testing Checklist for Today's Round
 
 ### OAuth Login (Google/Kakao)
@@ -1054,6 +1247,14 @@ Root cause: ALL TRGG guest profiles have `display_name: null` in `user_profiles`
 | `1cda80a7` | Update catalog: fixes 16-17 |
 | `5bebdd3f` | Fix round save: FK constraint + handicap trigger retries |
 | `9753a79b` | Fix 19: Auto-match new players to existing profiles for correct handicap |
+| `f6eabcd2` | Update catalog: fixes 18-19 |
+| `20e5b976` | Fix 20: Duplicate round guard UPDATES instead of silently skipping |
+| `5b45807e` | Fix 21: Mobile score entry — paint delay, double-tap guard, visual feedback |
+| `35b74568` | Fix 22: Player add duplicate guard — fix scoping bug and prevent double-tap |
+| `0a7f4350` | Fix 23: Score entry — replace boolean guard with cache dedup, fix last player |
+| `ecc58f63` | Fix 24: Last player score — full renderHole() instead of targeted DOM update |
+| `1d7d7055` | Fix 25: Speed up End Round — remove redundant DB calls, parallelize |
+| `c4015510` | Fix 26: Instant player add — no more blocking DB calls |
 
 ---
 
@@ -1072,14 +1273,15 @@ Root cause: ALL TRGG guest profiles have `display_name: null` in `user_profiles`
 ---
 
 ## Session Date
-**2026-01-27 to 2026-01-30**
+**2026-01-27 to 2026-01-31**
 
 ## Deployments
-- 16 deployments to Vercel production
+- 23 deployments to Vercel production
 - All via `vercel --prod --yes`
 
 ## Database Changes
 - Inserted 24 TRGG Pattaya February 2026 events into `society_events` table
+- Deleted 2 stale manually-inserted rounds for Pete Park and Jeff Jung (Jan 30)
 
 ## Production URL
 https://mycaddipro.com

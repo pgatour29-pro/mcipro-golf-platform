@@ -486,7 +486,7 @@ class SupabaseClient {
         // PERFORMANCE FIX: Only select columns we need (not *)
         const { data, error} = await this.client
             .from('user_profiles')
-            .select('line_user_id, name, email, profile_data, home_course_name, home_course_id, home_club, society_name, society_id')
+            .select('line_user_id, name, display_name, email, profile_data, home_course_name, home_course_id, home_club, society_name, society_id')
             .order('name');
 
         if (error) {

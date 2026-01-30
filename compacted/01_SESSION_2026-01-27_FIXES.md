@@ -1,7 +1,7 @@
 # Session Catalog: 2026-01-27 to 2026-01-30
 
 ## Summary
-Fixed seventeen bugs across five sessions. Key fixes: OAuth login localStorage, mobile drawer, 2-man match play calculations (x3 iterations), team match play handicap, round save silent failures (x3 — saveRoundToHistory return-not-throw, distributeRoundScores return-not-throw, **distributeRoundScores outer catch swallowing all errors**), live scorecard performance, dashboard first-login loading, AbortError flooding, PWA multi-tap, resume popup data loss, **centralized all 25+ hole data lookups into single `getHoleData()` helper**, stopped forced SW skipWaiting, **fixed the root cause of rounds not posting since January 23**, **fixed Burapha course picker dropdown value mismatch**, and **fixed End Round error when no scores entered**.
+Fixed nineteen bugs across five sessions. Key fixes: OAuth login localStorage, mobile drawer, 2-man match play calculations (x3 iterations), team match play handicap, round save silent failures (x3 — saveRoundToHistory return-not-throw, distributeRoundScores return-not-throw, **distributeRoundScores outer catch swallowing all errors**), live scorecard performance, dashboard first-login loading, AbortError flooding, PWA multi-tap, resume popup data loss, **centralized all 25+ hole data lookups into single `getHoleData()` helper**, stopped forced SW skipWaiting, **fixed the root cause of rounds not posting since January 23**, **fixed Burapha course picker dropdown value mismatch**, and **fixed End Round error when no scores entered**.
 
 Also inserted TRGG Pattaya February 2026 schedule (24 events) into society_events database table.
 
@@ -953,6 +953,60 @@ if (totalHolesEntered === 0) {
 
 ---
 
+## Fix 18: Round Save FK Constraint + Handicap Trigger Retries
+
+**Status:** Completed
+
+### Problem
+Two cascading database errors prevented rounds from being saved at Burapha:
+1. **FK constraint**: `course_id='burapha'` didn't exist in the `courses` table (only `burapha_east`/`burapha_west` existed)
+2. **Handicap trigger conflict**: The `auto_update_society_handicaps` trigger on the `rounds` table uses plain INSERT into `society_handicaps`, which fails with unique constraint violation when the golfer already has records
+
+### Solution
+**Database fixes:**
+- Inserted 4 missing generic course entries: `burapha`, `greenwood`, `khao_kheow`, `phoenix`
+- Manually inserted Pete Park's and Jeff Jung's rounds for Jan 30
+
+**Code fixes in `saveRoundToHistory()`:**
+- Added missing fields to round data: `holes_played`, `scoring_formats`, `player_name`
+- Added FK constraint retry: if error code 23503 on course_id, retry with `course_id: null`
+- Added handicap trigger retry: if error code 23505 on society_handicaps, retry with `primary_society_id: null`
+
+### Files Modified
+`public/index.html` lines ~58254-58338
+
+### Commit
+`5bebdd3f` - Fix round save: FK constraint + handicap trigger retries
+
+---
+
+## Fix 19: Auto-Match New Players to Existing Profiles for Correct Handicap
+
+**Status:** Completed
+
+### Problem
+Jeff Jung was added as a "new player" with manually-entered handicap 0 instead of being found as an existing profile with society handicap 7.1. This caused his stableford to be calculated as 31 instead of 37.
+
+Root cause: ALL TRGG guest profiles have `display_name: null` in `user_profiles`, but DO have the `name` field populated (e.g., "Jung, Jeff"). The organizer likely went to "Add New Player" tab instead of searching in "Select Existing", entering Jeff's name and handicap 0.
+
+### Solution
+1. **`submitNewPlayer()` now auto-matches names to existing profiles** — before creating a generic player, checks if the entered name matches any existing profile using fuzzy matching (handles "Jeff Jung" ↔ "Jung, Jeff" format differences). If matched, redirects to `selectExistingPlayer()` which loads the correct society handicap.
+
+2. **Added `display_name` to profile query** — `getAllProfiles()` now selects `display_name` in addition to `name`
+
+3. **Search filter now checks both `name` and `display_name`** — `filterPlayerProfiles()` searches both fields
+
+### Files Modified
+- `public/index.html` lines ~55019-55052 (submitNewPlayer name matching)
+- `public/index.html` line ~54899 (renderPlayerProfiles display_name fallback)
+- `public/index.html` lines ~54929-54934 (filterPlayerProfiles display_name search)
+- `public/supabase-config.js` line ~489 (getAllProfiles select display_name)
+
+### Commit
+`9753a79b` - Fix 19: Auto-match new players to existing profiles for correct handicap
+
+---
+
 ## Testing Checklist for Today's Round
 
 ### OAuth Login (Google/Kakao)
@@ -997,6 +1051,9 @@ if (totalHolesEntered === 0) {
 | `3e7793cb` | Fix: distributeRoundScores() swallowed all errors - rounds silently lost |
 | `b9d3ade0` | Fix Burapha course picker: dropdown value was 'burapha_ac' but picker/startRound checked for 'burapha' |
 | `d1ec8ebb` | Fix End Round error when no scores entered - allow clean abandon |
+| `1cda80a7` | Update catalog: fixes 16-17 |
+| `5bebdd3f` | Fix round save: FK constraint + handicap trigger retries |
+| `9753a79b` | Fix 19: Auto-match new players to existing profiles for correct handicap |
 
 ---
 
@@ -1004,8 +1061,8 @@ if (totalHolesEntered === 0) {
 
 | File | Changes |
 |------|---------|
-| `public/index.html` | Mobile drawer button, OAuth localStorage, match play calculations, team match play handicap, round save fixes, scorecard performance overhaul, dashboard widget retry, Supabase wait timeout, removed build ID hard reload, round save early return on failure, roundType save/restore, **distributeRoundScores() throw instead of return**, **getHoleData() helper + replaced 25+ hole lookups**, **Number() coercion on all courseHoles.find() calls**, **distributeRoundScores() outer catch re-throw + zero-saves throw**, **Burapha dropdown value fix (burapha_ac → burapha)**, **End Round zero-scores early detect + abandon flow** |
-| `public/supabase-config.js` | Disabled GoTrue detectSessionInUrl/autoRefreshToken/persistSession to prevent AbortError |
+| `public/index.html` | Mobile drawer button, OAuth localStorage, match play calculations, team match play handicap, round save fixes, scorecard performance overhaul, dashboard widget retry, Supabase wait timeout, removed build ID hard reload, round save early return on failure, roundType save/restore, **distributeRoundScores() throw instead of return**, **getHoleData() helper + replaced 25+ hole lookups**, **Number() coercion on all courseHoles.find() calls**, **distributeRoundScores() outer catch re-throw + zero-saves throw**, **Burapha dropdown value fix (burapha_ac → burapha)**, **End Round zero-scores early detect + abandon flow**, **Round save FK+trigger retry logic**, **submitNewPlayer auto-match to existing profiles** |
+| `public/supabase-config.js` | Disabled GoTrue detectSessionInUrl/autoRefreshToken/persistSession to prevent AbortError; **Added display_name to getAllProfiles select** |
 | `public/sw-register.js` | Removed unconditional page reload on SW controllerchange; **removed forced skipWaiting that caused mid-session dashboard reload** |
 | `public/sw.js` | **Version bump v255 → v256** |
 | `CLAUDE_CRITICAL_LESSONS.md` | Added Root Cause #5 (OAuth localStorage), Root Cause #6 (AbortError) |

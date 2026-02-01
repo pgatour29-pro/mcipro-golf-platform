@@ -181,23 +181,16 @@
     });
 
     function showInstallBanner() {
-        const banner = document.getElementById('pwaInstallBanner');
-        if (banner && !isStandalone) {
-            banner.style.display = 'block';
-        }
+        // Show the one-tap install button, hide generic instructions
+        const btn = document.getElementById('pwaInstallBtn');
+        const generic = document.getElementById('pwaGenericInstructions');
+        if (btn) btn.style.display = 'flex';
+        if (generic) generic.style.display = 'none';
     }
 
     function hideInstallBanner() {
         const banner = document.getElementById('pwaInstallBanner');
         if (banner) banner.style.display = 'none';
-    }
-
-    // Show iOS instructions if on iOS and not installed
-    function showIOSInstructions() {
-        const iosBanner = document.getElementById('pwaIOSInstallBanner');
-        if (iosBanner && isIOS && !isStandalone) {
-            iosBanner.style.display = 'block';
-        }
     }
 
     // Trigger the native install prompt
@@ -225,25 +218,6 @@
         isAndroid: isAndroid,
         hasPrompt: function() { return !!deferredInstallPrompt; }
     };
-
-    // On DOM ready, show appropriate install banner
-    function initInstallBanners() {
-        if (isStandalone) {
-            console.log('[SW-Register] Running as installed PWA - no install banners');
-            return;
-        }
-
-        if (isIOS) {
-            showIOSInstructions();
-        }
-        // Android/Chrome banner shows via beforeinstallprompt event
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initInstallBanners);
-    } else {
-        initInstallBanners();
-    }
 
     // Log helpful message
     console.log('[SW-Register] Service Worker registration script loaded');

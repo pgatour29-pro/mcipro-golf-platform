@@ -170,28 +170,13 @@
         e.preventDefault();
         deferredInstallPrompt = e;
         console.log('[SW-Register] Install prompt captured and deferred');
-        showInstallBanner();
     });
 
     // Detect successful install
     window.addEventListener('appinstalled', () => {
         console.log('[SW-Register] App installed successfully');
         deferredInstallPrompt = null;
-        hideInstallBanner();
     });
-
-    function showInstallBanner() {
-        // Show the one-tap install button, hide generic instructions
-        const btn = document.getElementById('pwaInstallBtn');
-        const generic = document.getElementById('pwaGenericInstructions');
-        if (btn) btn.style.display = 'flex';
-        if (generic) generic.style.display = 'none';
-    }
-
-    function hideInstallBanner() {
-        const banner = document.getElementById('pwaInstallBanner');
-        if (banner) banner.style.display = 'none';
-    }
 
     // Trigger the native install prompt
     async function triggerInstall() {

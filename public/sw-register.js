@@ -153,6 +153,98 @@
         window.addEventListener('load', registerServiceWorker);
     }
 
+    // ==========================================
+    // PWA Install Prompt System
+    // ==========================================
+
+    let deferredInstallPrompt = null;
+
+    // Detect platform
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isAndroid = /Android/.test(navigator.userAgent);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                         window.navigator.standalone === true;
+
+    // Capture the beforeinstallprompt event (Chrome/Edge/Samsung)
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredInstallPrompt = e;
+        console.log('[SW-Register] Install prompt captured and deferred');
+        showInstallBanner();
+    });
+
+    // Detect successful install
+    window.addEventListener('appinstalled', () => {
+        console.log('[SW-Register] App installed successfully');
+        deferredInstallPrompt = null;
+        hideInstallBanner();
+    });
+
+    function showInstallBanner() {
+        const banner = document.getElementById('pwaInstallBanner');
+        if (banner && !isStandalone) {
+            banner.style.display = 'block';
+        }
+    }
+
+    function hideInstallBanner() {
+        const banner = document.getElementById('pwaInstallBanner');
+        if (banner) banner.style.display = 'none';
+    }
+
+    // Show iOS instructions if on iOS and not installed
+    function showIOSInstructions() {
+        const iosBanner = document.getElementById('pwaIOSInstallBanner');
+        if (iosBanner && isIOS && !isStandalone) {
+            iosBanner.style.display = 'block';
+        }
+    }
+
+    // Trigger the native install prompt
+    async function triggerInstall() {
+        if (!deferredInstallPrompt) {
+            console.log('[SW-Register] No install prompt available');
+            return false;
+        }
+
+        deferredInstallPrompt.prompt();
+        const result = await deferredInstallPrompt.userChoice;
+        console.log('[SW-Register] Install prompt result:', result.outcome);
+
+        if (result.outcome === 'accepted') {
+            deferredInstallPrompt = null;
+        }
+        return result.outcome === 'accepted';
+    }
+
+    // Expose install functions globally
+    window.MciProInstall = {
+        trigger: triggerInstall,
+        isInstalled: function() { return isStandalone; },
+        isIOS: isIOS,
+        isAndroid: isAndroid,
+        hasPrompt: function() { return !!deferredInstallPrompt; }
+    };
+
+    // On DOM ready, show appropriate install banner
+    function initInstallBanners() {
+        if (isStandalone) {
+            console.log('[SW-Register] Running as installed PWA - no install banners');
+            return;
+        }
+
+        if (isIOS) {
+            showIOSInstructions();
+        }
+        // Android/Chrome banner shows via beforeinstallprompt event
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initInstallBanners);
+    } else {
+        initInstallBanners();
+    }
+
     // Log helpful message
     console.log('[SW-Register] Service Worker registration script loaded');
     console.log('[SW-Register] Use MciProSW.getVersion(), MciProSW.clearCache(), MciProSW.getCacheStats() for debugging');

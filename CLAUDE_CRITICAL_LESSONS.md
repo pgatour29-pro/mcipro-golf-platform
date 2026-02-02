@@ -246,6 +246,62 @@ this.client = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.
 
 ---
 
+---
+
+## The 2026-02-02 Clusterfuck: Entire Scorecard Dead for 5 Days
+
+### What Happened
+The Jan 28 session committed escaped backticks (`\``) in anchor matchplay template literals. This is a **SyntaxError** — the browser cannot parse the script at all. `LiveScorecardManager` was never created. The entire scorecard tab was non-functional for 5 days until the user discovered it at the golf course on Feb 2.
+
+**Full catalog:** `CLUSTERFUCK_CATALOG_2026-02-02.md`
+
+### Root Cause: Escaped Backticks in Nested Template Literals
+```javascript
+// BAD — causes SyntaxError
+${matchDetails.map((match, idx) => {
+    return \`<tr>...</tr>\`;   // ← WRONG: \` is invalid
+}).join('')}
+
+// GOOD — nested backticks inside ${} are fine
+${matchDetails.map((match, idx) => {
+    return `<tr>...</tr>`;     // ← CORRECT: no escaping needed
+}).join('')}
+```
+
+### Additional Failures Found
+1. **init() cascade crash** — zero try/catch, one failed await killed all subsequent setup
+2. **Tee marker null crash** — `.value` called on null querySelector result
+3. **Silent error swallowing** — `console.error` with no user-visible notification in 6+ locations
+
+### MANDATORY: Post-Deploy Verification (added Feb 2)
+
+**After ANY commit that touches JavaScript:**
+
+1. Open browser console — look for red `SyntaxError` or `TypeError`
+2. Navigate to the **Scorecard tab** specifically
+3. Verify `[LiveScorecard] Initializing...` appears in console
+4. Verify events load in dropdown
+5. Verify you can tap "Add Player" and the modal opens
+6. Select a course, verify tee markers appear
+7. If you see `LiveScorecardManager not found or init() missing` — **YOU BROKE IT, DO NOT DEPLOY**
+
+### MANDATORY: Defensive Coding Rules (added Feb 2)
+
+1. **NEVER use `\`` in template literals** — nested backticks inside `${}` don't need escaping
+2. **Every `await` in an init chain MUST have its own try/catch** — one failure cannot cascade
+3. **Never leave a UI container empty on failure** — always provide fallback content
+4. **Never `console.error` without `NotificationManager.show()`** — users don't have console open
+5. **Never call `.value` on querySelector without null check**
+
+### Session Reference
+- Date: 2026-02-02
+- Breaking commit: `52345eb8` (Jan 28)
+- Fix commits: `061de948`, `46f8aeff`, `01256eaf`
+- Days broken in production: 5
+- User feedback: "the sheer incompetence", "stupid fucker", "i hate fucking Claude code"
+
+---
+
 ## The Golden Rule
 
 **When you complete a task, the ENTIRE app must still work, not just the feature you touched.**

@@ -98,6 +98,16 @@ const ScriptLazyLoader = {
             return this.loadingScripts.get(src);
         }
 
+        // Check if script is already in the DOM (e.g. loaded via <script defer>)
+        // Match by filename to handle version query strings like ?v=20251211c
+        const filename = src.split('/').pop().split('?')[0];
+        const existing = document.querySelector(`script[src="${src}"], script[src*="${filename}"]`);
+        if (existing) {
+            this.loadedScripts.add(src);
+            console.log(`[ScriptLoader] Already in DOM: ${src}`);
+            return true;
+        }
+
         // Create loading promise
         const loadPromise = new Promise((resolve, reject) => {
             const script = document.createElement('script');

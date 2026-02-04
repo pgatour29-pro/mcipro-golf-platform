@@ -14,9 +14,11 @@ const DashboardLazyLoader = {
     loadingDashboards: new Set(),
 
     // Dashboard to script dependencies mapping
+    // NOTE: All external scripts are loaded via <script defer> in index.html.
+    // Do NOT list them here or they will be loaded twice, causing
+    // "Identifier already declared" SyntaxErrors from class re-declarations.
     scriptDependencies: {
         'golferDashboard': {
-            // Scripts already loaded with defer on page - don't reload
             scripts: [],
             init: null
         },
@@ -25,16 +27,7 @@ const DashboardLazyLoader = {
             init: null
         },
         'managerDashboard': {
-            scripts: [
-                'gm-analytics-engine.js',
-                'society-golf-analytics.js',
-                'staff-security.js',
-                'staff-management.js',
-                'weather-integration.js',
-                'analytics-drilldown.js',
-                'analytics-export.js',
-                'reports-system.js'
-            ],
+            scripts: [],
             init: 'initManagerDashboard'
         },
         'proshopDashboard': {
@@ -42,38 +35,19 @@ const DashboardLazyLoader = {
             init: null
         },
         'maintenanceDashboard': {
-            scripts: [
-                'maintenance-management.js'
-            ],
+            scripts: [],
             init: null
         },
         'adminDashboard': {
-            scripts: [
-                'admin-pricing-control.js',
-                'analytics-drilldown.js',
-                'analytics-export.js',
-                'reports-system.js'
-            ],
+            scripts: [],
             init: null
         },
         'societyOrganizerDashboard': {
-            scripts: [
-                'society-dashboard-enhanced.js',
-                'society-organizer-manager.js',
-                'tournament-series-manager.js',
-                'time-windowed-leaderboards.js',
-                'compacted/payment-tracking-database.js',
-                'compacted/payment-tracking-manager.js',
-                'compacted/payment-system-integration.js'
-            ],
+            scripts: [],
             init: 'initSocietyOrganizerDashboard'
         },
         'courseAdminDashboard': {
-            scripts: [
-                'course-data-manager.js',
-                'global-player-directory.js',
-                'unified-player-service.js'
-            ],
+            scripts: [],
             init: 'initCourseAdminDashboard'
         }
     },

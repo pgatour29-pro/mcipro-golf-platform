@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Live Leaderboards - MyCaddiPro</title>
+    <link rel="icon" href="data:,">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <style>
@@ -120,7 +121,7 @@
 
     <!-- Footer -->
     <footer class="text-center py-6 text-gray-500 text-sm">
-        <p>Auto-refreshes every 5 seconds for live events</p>
+        <p>Auto-refreshes every 30 seconds for live events</p>
         <p class="mt-1">Powered by MyCaddiPro</p>
     </footer>
 
@@ -140,6 +141,10 @@
         let selectedPoolId = null;
         let viewingArchived = false;
         const expandedPlayers = new Set();
+        let isLoading = false;
+        let consecutiveErrors = 0;
+        let refreshInterval = null;
+        const BASE_REFRESH_MS = 30000; // 30 seconds (golf scores don't change every 5s)
 
         // Get today's date in YYYY-MM-DD format (LOCAL timezone, not UTC)
         function getToday() {
@@ -181,12 +186,22 @@
             });
         }
 
-        // Load all data
+        // Load all data (with guard against overlapping calls)
         async function loadAllData() {
-            await Promise.all([
-                loadEventHistory(),
-                viewingArchived ? loadArchivedLeaderboard() : loadLiveLeaderboards()
-            ]);
+            if (isLoading) return; // Prevent overlapping requests
+            isLoading = true;
+            try {
+                await Promise.all([
+                    loadEventHistory(),
+                    viewingArchived ? loadArchivedLeaderboard() : loadLiveLeaderboards()
+                ]);
+                consecutiveErrors = 0; // Reset on success
+            } catch (e) {
+                consecutiveErrors++;
+                console.error('loadAllData failed:', e);
+            } finally {
+                isLoading = false;
+            }
         }
 
         // Load event history for sidebar (last 30 days + upcoming)
@@ -438,7 +453,9 @@
                     .lte('created_at', `${today}T23:59:59`)
                     .order('created_at', { ascending: false });
 
-                if (roundsError) console.error('Error loading public rounds:', roundsError);
+                if (roundsError) {
+                    console.warn('Error loading public rounds (non-fatal):', roundsError);
+                }
 
                 // Group by group_id to get unique rounds
                 const uniqueRounds = [];
@@ -1130,12 +1147,26 @@
         // Initial load
         loadAllData();
 
-        // Auto-refresh every 5 seconds for live events (only when viewing live)
-        setInterval(() => {
-            if (!viewingArchived) {
+        // Auto-refresh every 30 seconds for live events (only when viewing live)
+        // Uses setTimeout chain instead of setInterval to prevent overlap
+        function scheduleNextRefresh() {
+            // Back off on consecutive errors: 30s, 60s, 120s, max 120s
+            const delay = Math.min(BASE_REFRESH_MS * Math.pow(2, consecutiveErrors), 120000);
+            refreshInterval = setTimeout(async () => {
+                if (!viewingArchived && !document.hidden) {
+                    await loadAllData();
+                }
+                scheduleNextRefresh();
+            }, delay);
+        }
+        scheduleNextRefresh();
+
+        // Pause refresh when tab is hidden, resume when visible
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && !viewingArchived) {
                 loadAllData();
             }
-        }, 5000);
+        });
     </script>
 </body>
 </html>

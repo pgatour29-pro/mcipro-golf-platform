@@ -1,7 +1,7 @@
 // SERVICE WORKER - Performance Caching Version
 // Caches static assets for dramatically faster repeat visits
 
-const SW_VERSION = 'mcipro-cache-v258';
+const SW_VERSION = 'mcipro-cache-v259';
 const CACHE_NAME = `mcipro-static-${SW_VERSION}`;
 const RUNTIME_CACHE = `mcipro-runtime-${SW_VERSION}`;
 
@@ -11,6 +11,7 @@ const STATIC_ASSETS = [
     '/index.html',
     '/manifest.json',
     '/mcipro.png',
+    '/tailwind.css',
     '/professional-analytics.css',
     '/js/scorecardProfileLoader.js',
     '/js/cheechan-yardage-book.js',
@@ -47,7 +48,6 @@ const STATIC_ASSETS = [
 
 // CDN resources to cache (external libraries)
 const CDN_PATTERNS = [
-    'cdn.tailwindcss.com',
     'fonts.googleapis.com',
     'fonts.gstatic.com',
     'unpkg.com/leaflet',

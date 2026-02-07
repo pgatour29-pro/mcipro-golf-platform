@@ -467,6 +467,59 @@ CREATE POLICY "Anyone can insert pin_locations" ON pin_locations FOR INSERT WITH
 
 ---
 
+## MOBILE SESSION PERSISTENCE (Auto-Login) - 2026-02-07
+
+### How It Works (INTENDED BEHAVIOR)
+
+When the mobile app is closed and reopened, users skip the LINE login button and go straight to the dashboard. **This is correct and desired behavior.**
+
+**Flow:**
+1. **First login:** User taps LINE button → OAuth flow → `line_user_id` saved to localStorage
+2. **Subsequent opens:** App checks `localStorage.getItem('line_user_id')` → validates against Supabase → restores session → dashboard
+3. **Logout:** Clears `localStorage.removeItem('line_user_id')` → next open shows login screen
+
+### Key Code Locations
+
+**Immediate Session Restore** (`index.html:13683`):
+```javascript
+const savedLineUserIdImmediate = localStorage.getItem('line_user_id');
+if (savedLineUserIdImmediate && !oauthProcessed) {
+    console.log('[INIT] 🚀 IMMEDIATE session restore - found line_user_id in localStorage');
+    // Restores session and goes to dashboard
+}
+```
+
+**Save User ID on Login** (`index.html:9568`, `11337`):
+```javascript
+localStorage.setItem('line_user_id', lineUserId);
+```
+
+**Clear on Logout** (`index.html:11009`):
+```javascript
+localStorage.removeItem('line_user_id');
+```
+
+### Security Model
+- The `line_user_id` from localStorage is validated against Supabase `user_profiles` table
+- If user doesn't exist in database, falls back to login screen
+- Session is tied to device via localStorage (standard mobile app pattern)
+
+### Behavior Summary
+| Scenario | Behavior |
+|----------|----------|
+| Fresh install / cleared data | Shows LINE login button |
+| App closed & reopened | Skips login → Dashboard ✅ |
+| User taps Logout | Shows LINE login button |
+| User deleted from database | Falls back to login screen |
+
+### Why This Is Correct
+- Standard mobile app UX - users expect to stay logged in
+- Reduces friction for daily app usage
+- Same pattern as banking apps, social apps, etc.
+- Secure because it validates against backend database
+
+---
+
 ## HANDICAP SYSTEM ANALYSIS (2026-01-19)
 
 ### Current Implementation Status

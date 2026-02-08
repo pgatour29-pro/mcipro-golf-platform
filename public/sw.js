@@ -90,7 +90,7 @@ self.addEventListener('install', event => {
             })
             .then(() => {
                 console.log('[SW] Static assets cached');
-                // Don't skipWaiting - let SW update naturally to avoid aborting requests
+                self.skipWaiting();
             })
     );
 });
@@ -117,8 +117,8 @@ self.addEventListener('activate', event => {
                 );
             })
             .then(() => {
-                console.log('[SW] Activated - waiting for next navigation to take control');
-                // Don't claim clients immediately - this aborts in-flight requests
+                console.log('[SW] Activated - claiming clients');
+                return self.clients.claim();
             })
     );
 });

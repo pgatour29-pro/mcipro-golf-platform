@@ -367,10 +367,16 @@ propagateHandicapToGameConfigs(playerId, handicapValue) {
 
 Called from both `updatePlayerHandicap()` and `promptManualHandicap()`.
 
-### Impact on Today's Round
+### Impact on Today's Round (Khao Kheow A+B, 2026-02-10)
 - **Front 9**: Pete played universal HCP 2.5 instead of TRGG 1.4 (caused by init order bug — Bug Fix 8)
-- **Back 9**: User manually changed to 1.4, but match play engine still used 2.5 from gameConfigs (this bug)
+- **Back 9**: User manually changed to 1.4 via player card, but match play engine still used 2.5 from gameConfigs (this bug)
 - Both issues now fixed
+
+### Why Scores Were Wrong Specifically From Hole 7-8 of Back 9
+HCP 2.5 → rounded to **2 strokes** allocated to the 2 hardest holes by stroke index
+HCP 1.4 → rounded to **1 stroke** allocated to the hardest hole only
+
+For the first 6-7 holes of the back 9, the extra phantom stroke hadn't been reached yet. When the hole with the 2nd-lowest stroke index came up (around hole 7-8), Pete got a stroke he shouldn't have had. That flipped that hole's net result, and since match play is cumulative (running total), every hole after that was off by at least 1.
 
 ### Commit
 `173f12e3`
@@ -393,6 +399,7 @@ Called from both `updatePlayerHandicap()` and `promptManualHandicap()`.
 | `8144c133` | Add session catalog (first version) |
 | `b7719a5a` | Fix init order: autoAddCurrentUser before loadEvents, SW v270 |
 | `173f12e3` | Fix manual handicap not propagating to game scoring engines, SW v271 |
+| `b22ac6e7` | Session catalog update with Bug Fix 9 |
 
 ---
 
@@ -419,3 +426,4 @@ Proper data fix would be: set `society_id` on ALL events to the correct society 
 7. **Read the full data transformation pipeline** — raw DB fields may not all be included in the mapped objects your code receives.
 8. **Init order matters for async auto-select.** If `loadEvents()` auto-selects and dispatches a change event, any handler that depends on other data (like `this.players`) must have that data populated BEFORE `loadEvents()` runs.
 9. **The sw.js caching bug affected BOTH sessions today.** Total wasted deploys across both sessions: 15+. One `curl -I` check would have found it immediately.
+10. **Handicaps are stored in TWO places** — `player.handicap` (display/fallback) AND `gameConfigs[format].handicaps[playerId]` (used by scoring engines). ANY code that changes a player's handicap MUST update BOTH. `getGameHandicap(format, playerId)` checks gameConfigs FIRST and only falls back to `player.handicap` if gameConfigs has no entry. If gameConfigs has a stale value, the scoring engine silently uses the wrong handicap while the player card shows the correct one.

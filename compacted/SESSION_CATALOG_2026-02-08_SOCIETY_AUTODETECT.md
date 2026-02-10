@@ -336,6 +336,50 @@ Removed the duplicate `autoAddCurrentUser()` call from its old position (after c
 
 ---
 
+## Bug Fix 9: Manual Handicap Change Not Propagating to Scoring Engines
+
+**Type:** Scoring bug
+**Status:** Completed
+**Root Cause:** `promptManualHandicap()` (line ~52687) and `updatePlayerHandicap()` (line ~52644) updated `player.handicap` but did NOT update `gameConfigs[format].handicaps[playerId]`. The match play scoring engine calls `getGameHandicap('matchplay', playerId)` (line 55681) which checks `gameConfigs` FIRST — if a value exists there, it returns that, ignoring `player.handicap`.
+
+So when the user manually changed Pete's HCP from 2.5 to 1.4 via the player card during back 9:
+- `player.handicap` → 1.4 ✓ (visible on player card)
+- `gameConfigs.matchplay.handicaps[pete_id]` → 2.5 ✗ (stale, never updated)
+- `getGameHandicap('matchplay', pete_id)` → 2.5 ✗ (returns stale gameConfig value)
+- Match play engine used 2.5 for all remaining holes → wrong scores
+
+Note: `onSocietyChanged()` (line ~52801) already correctly propagated to gameConfigs. Only manual changes were broken.
+
+### Fix Applied
+Added `propagateHandicapToGameConfigs(playerId, handicapValue)` method that loops through all gameConfigs and updates any format that has a handicap entry for that player:
+
+```javascript
+propagateHandicapToGameConfigs(playerId, handicapValue) {
+    if (!this.gameConfigs) return;
+    for (const gameFormat of Object.keys(this.gameConfigs)) {
+        const gameConfig = this.gameConfigs[gameFormat];
+        if (gameConfig && gameConfig.handicaps && gameConfig.handicaps[playerId] !== undefined) {
+            gameConfig.handicaps[playerId] = handicapValue;
+        }
+    }
+}
+```
+
+Called from both `updatePlayerHandicap()` and `promptManualHandicap()`.
+
+### Impact on Today's Round
+- **Front 9**: Pete played universal HCP 2.5 instead of TRGG 1.4 (caused by init order bug — Bug Fix 8)
+- **Back 9**: User manually changed to 1.4, but match play engine still used 2.5 from gameConfigs (this bug)
+- Both issues now fixed
+
+### Commit
+`173f12e3`
+
+### File Modified
+`public/index.html` — lines ~52642-52655 (updatePlayerHandicap), ~52672 (new method), ~52693 (promptManualHandicap)
+
+---
+
 ## All Commits (Chronological, This Session Only)
 
 | Commit | Description |
@@ -348,6 +392,7 @@ Removed the duplicate `autoAddCurrentUser()` call from its old position (after c
 | `f678121b` | Final society matching: society_id UUID + normalized name, SW v269 |
 | `8144c133` | Add session catalog (first version) |
 | `b7719a5a` | Fix init order: autoAddCurrentUser before loadEvents, SW v270 |
+| `173f12e3` | Fix manual handicap not propagating to game scoring engines, SW v271 |
 
 ---
 

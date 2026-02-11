@@ -101,9 +101,10 @@ window.GolfBuddiesSystem = {
             }
 
             // Merge buddy records with profiles
+            const profileList = profiles || [];
             this.buddies = buddyRecords.map(record => ({
                 ...record,
-                buddy: profiles.filter(p => p.line_user_id === record.buddy_id)
+                buddy: profileList.filter(p => p.line_user_id === record.buddy_id)
             }));
 
             const loadTime = Date.now() - startTime;
@@ -111,6 +112,14 @@ window.GolfBuddiesSystem = {
         } catch (error) {
             console.error('[Buddies] Exception loading buddies:', error);
         }
+    },
+
+    /**
+     * Retry loading buddies (called from error UI)
+     */
+    async retryLoadBuddies() {
+        await this.loadBuddies();
+        this.renderMyBuddies();
     },
 
     /**
@@ -390,7 +399,12 @@ window.GolfBuddiesSystem = {
         // Render content for the selected tab
         switch (tabName) {
             case 'myBuddies':
-                this.renderMyBuddies();
+                // If buddies list is empty but user is authenticated, retry loading
+                if (this.buddies.length === 0 && this.currentUserId) {
+                    this.loadBuddies().then(() => this.renderMyBuddies());
+                } else {
+                    this.renderMyBuddies();
+                }
                 break;
             case 'suggestions':
                 this.renderSuggestions();
@@ -428,49 +442,67 @@ window.GolfBuddiesSystem = {
             return;
         }
 
-        const html = this.buddies.map(buddy => {
-            const buddyProfile = buddy.buddy?.[0];
-            const name = buddyProfile?.name || 'Unknown';
-            // Check both golfInfo.handicap and profile_data.handicap locations
-            const golfInfo = buddyProfile?.profile_data?.golfInfo || {};
-            const handicapValue = golfInfo.handicap || buddyProfile?.profile_data?.handicap;
-            const handicap = handicapValue !== null && handicapValue !== undefined ? window.formatHandicapDisplay(handicapValue) : '-';
-            const timesPlayed = buddy.times_played_together || 0;
-            const lastPlayed = buddy.last_played_together
-                ? new Date(buddy.last_played_together).toLocaleDateString()
-                : 'Never';
+        try {
+            const safeHandicapDisplay = (val) => {
+                if (val === null || val === undefined) return '-';
+                if (typeof window.formatHandicapDisplay === 'function') return window.formatHandicapDisplay(val);
+                const num = parseFloat(val);
+                return isNaN(num) ? '-' : num.toFixed(1);
+            };
 
-            return `
-                <div class="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
-                    <div class="flex items-center gap-3 flex-1">
-                        <div class="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white font-bold text-lg">
-                            ${name.charAt(0).toUpperCase()}
-                        </div>
-                        <div class="flex-1">
-                            <div class="font-semibold text-gray-900">${name}</div>
-                            <div class="text-sm text-gray-600">
-                                HCP: ${handicap} • Played together: ${timesPlayed}x
-                                ${timesPlayed > 0 ? `<br><span class="text-xs">Last played: ${lastPlayed}</span>` : ''}
+            const html = this.buddies.map(buddy => {
+                const buddyProfile = buddy.buddy?.[0];
+                const name = buddyProfile?.name || 'Unknown';
+                const golfInfo = buddyProfile?.profile_data?.golfInfo || {};
+                const handicapValue = golfInfo.handicap || buddyProfile?.profile_data?.handicap;
+                const handicap = safeHandicapDisplay(handicapValue);
+                const timesPlayed = buddy.times_played_together || 0;
+                const lastPlayed = buddy.last_played_together
+                    ? new Date(buddy.last_played_together).toLocaleDateString()
+                    : 'Never';
+
+                return `
+                    <div class="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+                        <div class="flex items-center gap-3 flex-1">
+                            <div class="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white font-bold text-lg">
+                                ${name.charAt(0).toUpperCase()}
+                            </div>
+                            <div class="flex-1">
+                                <div class="font-semibold text-gray-900">${name}</div>
+                                <div class="text-sm text-gray-600">
+                                    HCP: ${handicap} • Played together: ${timesPlayed}x
+                                    ${timesPlayed > 0 ? `<br><span class="text-xs">Last played: ${lastPlayed}</span>` : ''}
+                                </div>
                             </div>
                         </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="GolfBuddiesSystem.quickAddBuddy('${buddy.buddy_id}')"
+                                    class="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700"
+                                    title="Quick add to scorecard">
+                                <span class="material-symbols-outlined text-sm">person_add</span>
+                            </button>
+                            <button onclick="GolfBuddiesSystem.removeBuddy('${buddy.id}')"
+                                    class="px-3 py-1.5 bg-red-100 text-red-700 rounded text-sm hover:bg-red-200"
+                                    title="Remove buddy">
+                                <span class="material-symbols-outlined text-sm">person_remove</span>
+                            </button>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <button onclick="GolfBuddiesSystem.quickAddBuddy('${buddy.buddy_id}')"
-                                class="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700"
-                                title="Quick add to scorecard">
-                            <span class="material-symbols-outlined text-sm">person_add</span>
-                        </button>
-                        <button onclick="GolfBuddiesSystem.removeBuddy('${buddy.id}')"
-                                class="px-3 py-1.5 bg-red-100 text-red-700 rounded text-sm hover:bg-red-200"
-                                title="Remove buddy">
-                            <span class="material-symbols-outlined text-sm">person_remove</span>
-                        </button>
-                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = html;
+        } catch (err) {
+            console.error('[Buddies] Error rendering buddies list:', err);
+            container.innerHTML = `
+                <div class="text-center py-8">
+                    <p class="text-red-500 mb-3">Error loading buddies</p>
+                    <button onclick="GolfBuddiesSystem.retryLoadBuddies()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                        Retry
+                    </button>
                 </div>
             `;
-        }).join('');
-
-        container.innerHTML = html;
+        }
     },
 
     /**
@@ -684,7 +716,7 @@ window.GolfBuddiesSystem = {
             const html = filtered.map(player => {
                 const name = (player.name || 'Unknown').replace(/'/g, '&apos;').replace(/"/g, '&quot;');
                 const handicapValue = player.profile_data?.golfInfo?.handicap;
-                const handicap = handicapValue !== null && handicapValue !== undefined ? window.formatHandicapDisplay(handicapValue) : '-';
+                const handicap = handicapValue !== null && handicapValue !== undefined ? (typeof window.formatHandicapDisplay === 'function' ? window.formatHandicapDisplay(handicapValue) : parseFloat(handicapValue).toFixed(1)) : '-';
                 const userId = player.line_user_id;
 
                 return `
@@ -1051,7 +1083,7 @@ window.GolfBuddiesSystem = {
             const profile = this.groupMemberProfiles[memberId];
             const name = profile?.name || 'Unknown';
             const handicapValue = profile?.profile_data?.golfInfo?.handicap ?? profile?.profile_data?.handicap;
-            const handicap = handicapValue !== null && handicapValue !== undefined ? window.formatHandicapDisplay(handicapValue) : '-';
+            const handicap = handicapValue !== null && handicapValue !== undefined ? (typeof window.formatHandicapDisplay === 'function' ? window.formatHandicapDisplay(handicapValue) : parseFloat(handicapValue).toFixed(1)) : '-';
 
             return `
                 <div class="flex items-center justify-between p-2 bg-white border border-gray-200 rounded-lg mb-2">
@@ -1174,7 +1206,7 @@ window.GolfBuddiesSystem = {
             const html = filtered.map(player => {
                 const name = (player.name || 'Unknown').replace(/'/g, '&apos;');
                 const handicapValue = player.profile_data?.golfInfo?.handicap ?? player.profile_data?.handicap;
-                const handicap = handicapValue !== null && handicapValue !== undefined ? window.formatHandicapDisplay(handicapValue) : '-';
+                const handicap = handicapValue !== null && handicapValue !== undefined ? (typeof window.formatHandicapDisplay === 'function' ? window.formatHandicapDisplay(handicapValue) : parseFloat(handicapValue).toFixed(1)) : '-';
 
                 // Cache the profile
                 if (!this.groupMemberProfiles) this.groupMemberProfiles = {};

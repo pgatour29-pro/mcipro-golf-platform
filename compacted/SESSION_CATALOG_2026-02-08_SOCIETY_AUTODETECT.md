@@ -1,7 +1,7 @@
 # Session Catalog: 2026-02-08 — Society Handicap Auto-Detect Fix
 
 ## Summary
-User reported that the live scoring system wasn't automatically detecting the correct society handicap when a society event was selected. Investigation revealed FIVE separate bugs preventing auto-detection, plus a critical infrastructure bug where Vercel was caching `sw.js` for 30 days. Also found and fixed a race condition where `onSocietyChanged()` ran before the player was added to `this.players`, causing the society dropdown to update but the player handicap to stay on universal. Total of 8 commits / 7 deploys in this session (should have been 2-3 max).
+User reported that the live scoring system wasn't automatically detecting the correct society handicap when a society event was selected. Investigation revealed FIVE separate bugs preventing auto-detection, plus a critical infrastructure bug where Vercel was caching `sw.js` for 30 days. Also found and fixed a race condition where `onSocietyChanged()` ran before the player was added to `this.players`, causing the society dropdown to update but the player handicap to stay on universal. Then found that manual handicap changes didn't propagate to scoring engines (match play used stale handicap). Finally found a wrong course ID mapping that broke Start Round for Pattaya CC entirely. Total of 12 commits / 9 deploys across this multi-session span (should have been 3-4 max). 6 fuckups, 10 bug fixes, 12 lessons.
 
 ---
 
@@ -56,6 +56,20 @@ These are completely different strings — no substring match possible. Should h
 
 Should have traced the FULL flow during initial investigation: event auto-select → onSocietyChanged → player loop → when are players added? This would have been caught immediately.
 **Lesson:** TRACE THE FULL EXECUTION PATH including init order and timing. Don't just check "does the matching work?" — check "does the result actually reach the UI?"
+
+### Fuckup 6: Wrong Course ID Mapping Broke Start Round for Pattaya CC
+**Severity:** CRITICAL — User could not start a round at all
+**What Happened:** The `COURSE_ID_MAP` in `loadCourseData()` (line 54929) had an incorrect entry:
+```javascript
+'pattaya_county': 'pattaya_country_club'
+```
+The database stores holes under `course_id = 'pattaya_county'`, NOT `'pattaya_country_club'`. This mapping caused `loadCourseData` to query for a course_id that doesn't exist, returning zero holes, which made `startRound()` bail out with "No hole data found for this course/tee."
+
+The user clicked Start Round, saw the loading flash, and ended up back on the setup page. User thought Claude broke startRound with the handicap propagation fix — but this was a pre-existing wrong mapping. Claude should have checked `COURSE_ID_MAP` entries against actual database `course_id` values when first working on course-related code.
+
+**When Did This Break?** Unknown — the mapping may have been wrong since it was added. The user may not have played Pattaya CC via the live scorecard recently enough to notice. It was NOT caused by the v271 handicap propagation fix, but appeared to the user as if it was because v271 was the most recent deploy.
+
+**Lesson:** When investigating a "broken" feature, CHECK THE CONSOLE OUTPUT FIRST. The error `[LiveScorecard] ❌ NO HOLES FOUND for course: pattaya_county` was clearly visible in the console. Instead of reading 500 lines of startRound code looking for syntax errors, should have asked the user for console output immediately. Also: NEVER add ID mappings without verifying them against `SELECT DISTINCT course_id FROM course_holes`.
 
 ---
 
@@ -386,6 +400,39 @@ For the first 6-7 holes of the back 9, the extra phantom stroke hadn't been reac
 
 ---
 
+## Bug Fix 10: Wrong Course ID Mapping for Pattaya Country Club
+
+**Type:** Data mapping bug
+**Status:** Completed
+**Root Cause:** `COURSE_ID_MAP` in `loadCourseData()` (line 54929) mapped `'pattaya_county'` to `'pattaya_country_club'`. The database `course_holes` table stores all Pattaya CC holes under `course_id = 'pattaya_county'` (90 rows). The mapped ID `'pattaya_country_club'` has zero rows. Query returned no holes → `startRound()` returned early with error.
+
+### Fix Applied
+Removed the incorrect mapping entry:
+```javascript
+// Before
+const COURSE_ID_MAP = {
+    'bangpra': 'bangpra_international',
+    'pattana': 'pattana_golf',
+    'pattaya_county': 'pattaya_country_club'  // WRONG
+};
+
+// After
+const COURSE_ID_MAP = {
+    'bangpra': 'bangpra_international',
+    'pattana': 'pattana_golf'
+};
+```
+
+Also fixed the cache version key from `'pattaya_country_club'` to `'pattaya_county'` to match.
+
+### Commit
+`34a8f632`
+
+### File Modified
+`public/index.html` — lines 54929-54933 (COURSE_ID_MAP), line 54954 (cache version key)
+
+---
+
 ## All Commits (Chronological, This Session Only)
 
 | Commit | Description |
@@ -400,6 +447,8 @@ For the first 6-7 holes of the back 9, the extra phantom stroke hadn't been reac
 | `b7719a5a` | Fix init order: autoAddCurrentUser before loadEvents, SW v270 |
 | `173f12e3` | Fix manual handicap not propagating to game scoring engines, SW v271 |
 | `b22ac6e7` | Session catalog update with Bug Fix 9 |
+| `a673505d` | Session catalog update with match play explanation + lesson 10 |
+| `34a8f632` | Fix Pattaya CC course ID mapping (pattaya_county, not pattaya_country_club), SW v272 |
 
 ---
 
@@ -427,3 +476,5 @@ Proper data fix would be: set `society_id` on ALL events to the correct society 
 8. **Init order matters for async auto-select.** If `loadEvents()` auto-selects and dispatches a change event, any handler that depends on other data (like `this.players`) must have that data populated BEFORE `loadEvents()` runs.
 9. **The sw.js caching bug affected BOTH sessions today.** Total wasted deploys across both sessions: 15+. One `curl -I` check would have found it immediately.
 10. **Handicaps are stored in TWO places** — `player.handicap` (display/fallback) AND `gameConfigs[format].handicaps[playerId]` (used by scoring engines). ANY code that changes a player's handicap MUST update BOTH. `getGameHandicap(format, playerId)` checks gameConfigs FIRST and only falls back to `player.handicap` if gameConfigs has no entry. If gameConfigs has a stale value, the scoring engine silently uses the wrong handicap while the player card shows the correct one.
+11. **CHECK CONSOLE OUTPUT FIRST when a feature "breaks."** Don't read 500 lines of code looking for syntax errors. The console error `❌ NO HOLES FOUND for course: pattaya_county` was right there. Would have found the root cause in 30 seconds instead of 5 minutes of code reading.
+12. **NEVER add ID mappings without verifying against the database.** `COURSE_ID_MAP` entries must be checked with `SELECT DISTINCT course_id FROM course_holes WHERE course_id LIKE '%name%'` before adding. Wrong mappings silently break features with no obvious error until a user tries that specific course.

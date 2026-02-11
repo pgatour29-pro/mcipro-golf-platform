@@ -1,7 +1,7 @@
 # Session Catalog: 2026-02-08 — Society Handicap Auto-Detect Fix
 
 ## Summary
-User reported that the live scoring system wasn't automatically detecting the correct society handicap when a society event was selected. Investigation revealed FIVE separate bugs preventing auto-detection, plus a critical infrastructure bug where Vercel was caching `sw.js` for 30 days. Also found and fixed a race condition where `onSocietyChanged()` ran before the player was added to `this.players`, causing the society dropdown to update but the player handicap to stay on universal. Then found that manual handicap changes didn't propagate to scoring engines (match play used stale handicap). Finally found a wrong course ID mapping that broke Start Round for Pattaya CC entirely. Total of 12 commits / 9 deploys across this multi-session span (should have been 3-4 max). 6 fuckups, 10 bug fixes, 12 lessons.
+User reported that the live scoring system wasn't automatically detecting the correct society handicap when a society event was selected. Investigation revealed FIVE separate bugs preventing auto-detection, plus a critical infrastructure bug where Vercel was caching `sw.js` for 30 days. Also found and fixed a race condition where `onSocietyChanged()` ran before the player was added to `this.players`, causing the society dropdown to update but the player handicap to stay on universal. Then found that manual handicap changes didn't propagate to scoring engines (match play used stale handicap). Found a wrong course ID mapping that broke Start Round for Pattaya CC entirely. Found that inline handicap allocation copies didn't round decimal handicaps, causing wrong shot counts for 3/4 players. Consolidated all inline copies to use the single `allocHandicapShots()` source of truth. Total of 15 commits / 11 deploys across this multi-session span (should have been 3-4 max). 7 fuckups, 12 bug fixes, 13 lessons.
 
 ---
 
@@ -70,6 +70,14 @@ The user clicked Start Round, saw the loading flash, and ended up back on the se
 **When Did This Break?** Unknown — the mapping may have been wrong since it was added. The user may not have played Pattaya CC via the live scorecard recently enough to notice. It was NOT caused by the v271 handicap propagation fix, but appeared to the user as if it was because v271 was the most recent deploy.
 
 **Lesson:** When investigating a "broken" feature, CHECK THE CONSOLE OUTPUT FIRST. The error `[LiveScorecard] ❌ NO HOLES FOUND for course: pattaya_county` was clearly visible in the console. Instead of reading 500 lines of startRound code looking for syntax errors, should have asked the user for console output immediately. Also: NEVER add ID mappings without verifying them against `SELECT DISTINCT course_id FROM course_holes`.
+
+### Fuckup 7: Duplicated Handicap Allocation Logic in 7+ Places
+**Severity:** CRITICAL — Root cause of recurring scoring bugs (Bug Fix 11)
+**What Happened:** The correct handicap allocation function `allocHandicapShots()` existed since early development, but inline copies of the same logic were scattered across `calculateTeamMatchPlay` (2 copies) and `calculateHolesStatus` (2 copies), plus other scoring functions. Each inline copy had its own implementation of handicap-to-shots math, and some copies used `Math.abs(hcpValue)` (raw decimal) instead of `Math.round(Math.abs(hcpValue))`, causing wrong shot counts for any non-integer handicap. This is why scoring bugs kept reappearing — fixing one copy left the other broken copies untouched.
+
+**Impact:** For today's round (2026-02-11), Perry (HCP 0.9) got 0 shots instead of 1, Alan (HCP 8.5) got 8 instead of 9, Richard (HCP 10.8) got 10 instead of 11. Wrong stableford points AND wrong match play results.
+
+**Lesson:** NEVER copy-paste logic that already has a canonical function. Any time a calculation is needed in multiple places, call the ONE source of truth function instead of reimplementing it inline.
 
 ---
 
@@ -433,6 +441,100 @@ Also fixed the cache version key from `'pattaya_country_club'` to `'pattaya_coun
 
 ---
 
+## Bug Fix 11: Inline Handicap Allocation Not Rounding Decimal Handicaps
+
+**Type:** Critical scoring bug
+**Status:** Completed (superseded by Bug Fix 12 consolidation)
+**Commit:** `0427b3a5` (SW v273)
+**Root Cause:** 4 inline copies of `getNetScore` / `getStablefordPoints` in `calculateTeamMatchPlay` and `calculateHolesStatus` used `Math.abs(hcpValue)` to get the total shots. This takes the raw decimal value (e.g., 8.5 → 8) via floor truncation when passed to integer math. The canonical `allocHandicapShots()` uses `Math.round()` (e.g., 8.5 → 9).
+
+### Impact on 2026-02-11 Round (Pattaya CC)
+| Player | HCP | Inline (wrong) | allocHandicapShots (correct) |
+|--------|-----|----------------|------------------------------|
+| Pete Park | 1.4 | 1 shot | 1 shot (same) |
+| See-Hoe Perry | 0.9 | 0 shots | 1 shot |
+| Alan Thomas | 8.5 | 8 shots | 9 shots |
+| Moore Richard | 10.8 | 10 shots | 11 shots |
+
+3 out of 4 players had wrong shot counts. This affected both stableford points AND match play hole results.
+
+### Fix Applied
+Added `Math.round()` to all 4 inline functions:
+```javascript
+// Before
+const absHcp = Math.abs(hcpValue);
+// After
+const absHcp = Math.round(Math.abs(hcpValue));
+```
+
+### File Modified
+`public/index.html` — calculateTeamMatchPlay (line ~53402), calculateHolesStatus (line ~56001)
+
+---
+
+## Bug Fix 12: Consolidate All Handicap Allocation to allocHandicapShots()
+
+**Type:** Code architecture / single source of truth
+**Status:** Completed
+**Commit:** `6d81a7d5` (SW v274)
+**Root Cause:** 7+ inline copies of handicap allocation math scattered across scoring functions. Each copy reimplemented the same logic differently, leading to recurring bugs. The canonical `allocHandicapShots()` function already existed and was correct.
+
+### Changes Made
+
+#### calculateTeamMatchPlay (line ~53402)
+Replaced inline `getStablefordPoints` and `getNetScore` with versions that call `allocHandicapShots()`:
+```javascript
+// Pre-compute shot allocations per player using the SINGLE source of truth
+const shotAllocations = new Map();
+const getShotsForPlayer = (playerHcp) => {
+    const key = String(playerHcp);
+    if (!shotAllocations.has(key)) {
+        shotAllocations.set(key, this.allocHandicapShots(courseHoles, playerHcp));
+    }
+    return shotAllocations.get(key);
+};
+
+const getStablefordPoints = (grossScore, playerHcp, holeNumber, par) => {
+    if (!grossScore) return 0;
+    const shots = getShotsForPlayer(playerHcp);
+    const bonusShots = shots[holeNumber] || 0;
+    const netScore = this.netStrokesForHole(grossScore, bonusShots);
+    return this.stablefordPointsForHole(netScore, par, this.defaultStableford);
+};
+
+const getNetScore = (grossScore, playerHcp, holeNumber) => {
+    if (!grossScore) return grossScore;
+    const shots = getShotsForPlayer(playerHcp);
+    const bonusShots = shots[holeNumber] || 0;
+    return this.netStrokesForHole(grossScore, bonusShots);
+};
+```
+
+Also fixed all 12 call sites to pass `holeNum` instead of `strokeIndex` (the old inline functions used strokeIndex for their own allocation; the new ones use hole number since `allocHandicapShots()` returns a map keyed by hole number).
+
+#### calculateHolesStatus (line ~55995)
+Removed both inline helper functions entirely (50 lines of dead/duplicated code). Replaced stableford path with direct calls to `allocHandicapShots()`, `netStrokesForHole()`, and `stablefordPointsForHole()`:
+```javascript
+if (useStableford) {
+    const allHoles = this.courseData?.holes || [];
+    const p1Shots = this.allocHandicapShots(allHoles, hcp1);
+    const p2Shots = this.allocHandicapShots(allHoles, hcp2);
+    // ... use p1Shots[hole] and p2Shots[hole] directly
+}
+```
+Left the strokes/match-play path unchanged (uses relative handicap difference, which is correct for 1v1 match play).
+
+### Result
+- **Before:** 7+ copies of handicap allocation math, each slightly different
+- **After:** 1 canonical function (`allocHandicapShots()`) called everywhere
+- **Net change:** -129 lines, +66 lines = 63 lines removed
+- Any future handicap allocation fix only needs to be made in ONE place
+
+### File Modified
+`public/index.html`, `public/sw.js`
+
+---
+
 ## All Commits (Chronological, This Session Only)
 
 | Commit | Description |
@@ -449,6 +551,9 @@ Also fixed the cache version key from `'pattaya_country_club'` to `'pattaya_coun
 | `b22ac6e7` | Session catalog update with Bug Fix 9 |
 | `a673505d` | Session catalog update with match play explanation + lesson 10 |
 | `34a8f632` | Fix Pattaya CC course ID mapping (pattaya_county, not pattaya_country_club), SW v272 |
+| `5f5a15e7` | Session catalog update with Fuckup 6, Bug Fix 10, lessons 11-12 |
+| `0427b3a5` | Fix inline handicap allocation rounding (Math.abs → Math.round), SW v273 |
+| `6d81a7d5` | Consolidate all inline handicap allocation to use allocHandicapShots(), SW v274 |
 
 ---
 
@@ -478,3 +583,4 @@ Proper data fix would be: set `society_id` on ALL events to the correct society 
 10. **Handicaps are stored in TWO places** — `player.handicap` (display/fallback) AND `gameConfigs[format].handicaps[playerId]` (used by scoring engines). ANY code that changes a player's handicap MUST update BOTH. `getGameHandicap(format, playerId)` checks gameConfigs FIRST and only falls back to `player.handicap` if gameConfigs has no entry. If gameConfigs has a stale value, the scoring engine silently uses the wrong handicap while the player card shows the correct one.
 11. **CHECK CONSOLE OUTPUT FIRST when a feature "breaks."** Don't read 500 lines of code looking for syntax errors. The console error `❌ NO HOLES FOUND for course: pattaya_county` was right there. Would have found the root cause in 30 seconds instead of 5 minutes of code reading.
 12. **NEVER add ID mappings without verifying against the database.** `COURSE_ID_MAP` entries must be checked with `SELECT DISTINCT course_id FROM course_holes WHERE course_id LIKE '%name%'` before adding. Wrong mappings silently break features with no obvious error until a user tries that specific course.
+13. **NEVER copy-paste calculation logic when a canonical function already exists.** `allocHandicapShots()` is the SINGLE source of truth for handicap stroke allocation. Any scoring function that needs to know how many shots a player gets on each hole MUST call `allocHandicapShots()` — not reimplement the math inline. Code duplication is the root cause of recurring scoring bugs: fix one copy, the other 6 copies stay broken.

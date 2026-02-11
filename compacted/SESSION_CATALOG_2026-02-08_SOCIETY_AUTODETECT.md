@@ -1,7 +1,7 @@
 # Session Catalog: 2026-02-08 — Society Handicap Auto-Detect Fix
 
 ## Summary
-User reported that the live scoring system wasn't automatically detecting the correct society handicap when a society event was selected. Investigation revealed FIVE separate bugs preventing auto-detection, plus a critical infrastructure bug where Vercel was caching `sw.js` for 30 days. Also found and fixed a race condition where `onSocietyChanged()` ran before the player was added to `this.players`, causing the society dropdown to update but the player handicap to stay on universal. Then found that manual handicap changes didn't propagate to scoring engines (match play used stale handicap). Found a wrong course ID mapping that broke Start Round for Pattaya CC entirely. Found that inline handicap allocation copies didn't round decimal handicaps, causing wrong shot counts for 3/4 players. Consolidated all inline copies to use the single `allocHandicapShots()` source of truth. Total of 15 commits / 11 deploys across this multi-session span (should have been 3-4 max). 7 fuckups, 12 bug fixes, 13 lessons.
+User reported that the live scoring system wasn't automatically detecting the correct society handicap when a society event was selected. Investigation revealed FIVE separate bugs preventing auto-detection, plus a critical infrastructure bug where Vercel was caching `sw.js` for 30 days. Also found and fixed a race condition where `onSocietyChanged()` ran before the player was added to `this.players`, causing the society dropdown to update but the player handicap to stay on universal. Then found that manual handicap changes didn't propagate to scoring engines (match play used stale handicap). Found a wrong course ID mapping that broke Start Round for Pattaya CC entirely. Found that inline handicap allocation copies didn't round decimal handicaps, causing wrong shot counts for 3/4 players. Consolidated all inline copies to use the single `allocHandicapShots()` source of truth. Then user reported buddies list not showing on mobile — fixed the wrong thing first (z-index), then found formatHandicapDisplay crash, then force-reload logic, but the REAL issue was a stale cache-buster `?v=20260107` on the script tag meaning mobile was serving a month-old JS file. Deployed 4 times for what should have been 1. Total of 19 commits / 15 deploys across this multi-session span (should have been 5-6 max). 10 fuckups, 15 bug fixes, 17 lessons.
 
 ---
 
@@ -78,6 +78,32 @@ The user clicked Start Round, saw the loading flash, and ended up back on the se
 **Impact:** For today's round (2026-02-11), Perry (HCP 0.9) got 0 shots instead of 1, Alan (HCP 8.5) got 8 instead of 9, Richard (HCP 10.8) got 10 instead of 11. Wrong stableford points AND wrong match play results.
 
 **Lesson:** NEVER copy-paste logic that already has a canonical function. Any time a calculation is needed in multiple places, call the ONE source of truth function instead of reimplementing it inline.
+
+### Fuckup 8: Fixed the WRONG Problem — Z-Index Instead of Data Loading
+**Severity:** HIGH — Wasted a deploy, user had to correct Claude
+**What Happened:** User reported "buddies list does not show up in the mobile version." Claude assumed it was a CSS/visibility issue and deployed a z-index fix (replacing Tailwind arbitrary `z-[99999]` with inline styles) plus mobile button layout fixes. User immediately corrected: "no. in the buddies modal, buddies tab does not show anything, only thing that shows up is in the suggestions, groups and add tabs." The modal was OPENING fine — the issue was the tab CONTENT being blank. Claude didn't ask clarifying questions or investigate the actual rendering code before deploying.
+**Lesson:** LISTEN TO THE USER and ASK CLARIFYING QUESTIONS before assuming the problem. "Does not show up" could mean many things. Should have asked: "Does the modal open? Can you see the tabs? What do you see when you click the Buddies tab?" Also: investigate the rendering path (data loading → template → DOM insertion) before assuming CSS.
+
+### Fuckup 9: Deployed 4 Times for Buddies Fix Instead of Batching
+**Severity:** HIGH — CLAUDE.md explicitly says batch into ONE deploy
+**What Happened:** Made 4 separate deploys for the buddies fix:
+1. `bf0f6a92` v275 — z-index + button layout (WRONG FIX)
+2. `fa7c131d` v276 — formatHandicapDisplay safe fallback + try-catch (correct fix, but didn't reach mobile)
+3. `d0941a53` v277 — force-reload data + max-h-[90vh] inline style (still didn't reach mobile)
+4. `bf411fd1` v278 — Updated cache-buster ?v=20260208 (THE ACTUAL FIX)
+
+Deploy 1 was the wrong fix. Deploys 2-3 were correct code changes but useless because the cache-buster wasn't updated. Deploy 4 was what actually fixed it. Should have been 1 deploy with all fixes + cache-buster update.
+**Lesson:** Before deploying ANY fix to an external JS file, CHECK THE SCRIPT TAG'S CACHE-BUSTER PARAMETER. If `?v=` hasn't been updated, the browser will serve the old cached version regardless of how many times you deploy.
+
+### Fuckup 10: Didn't Check Cache-Buster Until Deploy 4
+**Severity:** CRITICAL — The ONLY reason mobile wasn't getting updates
+**What Happened:** The `<script src="golf-buddies-system.js?v=20260107">` tag had a cache-buster from January 7th. Combined with Vercel's `Cache-Control: public, max-age=2592000` (30 days) for JS files, the mobile browser was serving the month-old version. Three entire deploys (v276, v277) were completely invisible to the mobile user because the URL hadn't changed. This is the EXACT SAME CLASS OF BUG as Fuckup 2 (sw.js cached by Vercel CDN) — browser caching preventing code updates from reaching the user — and Claude made the same mistake again.
+**Lesson:** When code changes aren't reaching a specific platform (mobile but not desktop), the FIRST thing to check is: is the browser serving a cached old version? Check: (1) the `?v=` cache-buster on the script tag, (2) the HTTP Cache-Control headers, (3) the service worker cache strategy. This was lesson 3 from Fuckup 2, and Claude failed to apply it.
+
+### Fuckup 11: Told the User to Deploy When Network Was Down
+**Severity:** MEDIUM — User frustration
+**What Happened:** When DNS resolution failed for github.com and api.vercel.com, Claude told the user "Once your network is back, run: `git push origin master && vercel --prod --yes`." The CLAUDE.md explicitly states deployment is Claude's job: "ALWAYS DEPLOY AFTER CHANGES." Claude should have kept retrying silently instead of punting the task to the user.
+**Lesson:** NEVER tell the user to do deployment tasks. That's Claude's job per CLAUDE.md. If network is down, keep retrying or wait — don't dump it on the user.
 
 ---
 
@@ -535,6 +561,101 @@ Left the strokes/match-play path unchanged (uses relative handicap difference, w
 
 ---
 
+## Bug Fix 13: Buddies Modal Z-Index — Tailwind Arbitrary Value in Dynamic HTML
+
+**Type:** CSS / Tailwind CDN issue
+**Status:** Completed (but was NOT the actual buddies bug)
+**Commit:** `bf0f6a92` (SW v275)
+**Root Cause:** The buddies modal HTML was created dynamically in `golf-buddies-system.js` using `document.body.insertAdjacentHTML()`. It used Tailwind arbitrary value classes like `z-[99999]` and `z-[999999]`. The Tailwind CDN generates CSS via MutationObserver, which may not fire before the modal is displayed on mobile. Without the generated CSS, the z-index defaults to `auto`.
+
+### Fix Applied
+Replaced all Tailwind arbitrary value classes in dynamically-created HTML with inline styles:
+```html
+<!-- Before -->
+<div id="buddiesModal" class="... z-[99999]">
+<!-- After -->
+<div id="buddiesModal" class="..." style="z-index: 99999;">
+```
+Same for `groupEditModal` (`z-[999999]` → `style="z-index: 999999;"`).
+
+Also fixed mobile button layout: added `style="width: auto;"` to Add Player + Buddies buttons to override CSS `@media (max-width: 640px) { .btn-secondary { width: 100%; } }` that distorted the button row.
+
+### File Modified
+`public/golf-buddies-system.js`, `public/index.html` (button layout), `public/sw.js`
+
+---
+
+## Bug Fix 14: My Buddies Tab Blank on Mobile — formatHandicapDisplay Crash
+
+**Type:** Silent JavaScript crash
+**Status:** Completed (code fix correct, but didn't reach mobile until Bug Fix 16)
+**Commit:** `fa7c131d` (SW v276)
+**Root Cause:** `renderMyBuddies()` called `window.formatHandicapDisplay()` (from `global-player-directory.js`) inside a `.map()` callback. On mobile with slower connections, `global-player-directory.js` might not be loaded yet when the user opens the Buddies modal. The `TypeError: window.formatHandicapDisplay is not a function` crashed the entire `.map()` silently — `container.innerHTML` never got set, leaving the tab completely blank.
+
+**Why other tabs worked:** `renderSuggestions()` does NOT use `formatHandicapDisplay`. `renderSavedGroups()` has static HTML elements (buttons, text) visible even if dynamic content fails. `renderMyBuddies()` has NO static content — everything is dynamically rendered, so a crash = completely blank.
+
+### Fix Applied
+1. All 4 `formatHandicapDisplay` call sites now check `typeof window.formatHandicapDisplay === 'function'` with `parseFloat(val).toFixed(1)` fallback
+2. Added try-catch around `renderMyBuddies()` `.map()` with error UI + "Retry" button
+3. Null-safe profiles join in `loadBuddies()`: `const profileList = profiles || [];`
+4. Added `retryLoadBuddies()` method called from error UI
+
+### File Modified
+`public/golf-buddies-system.js`, `public/sw.js`
+
+---
+
+## Bug Fix 15: Buddies Modal max-h-[90vh] — Another Tailwind Arbitrary Value
+
+**Type:** CSS / Tailwind CDN issue
+**Status:** Completed
+**Commit:** `d0941a53` (SW v277)
+**Root Cause:** Same class of bug as Bug Fix 13. The modal card used `max-h-[90vh]` (Tailwind arbitrary value) in dynamically-created HTML. Without the generated CSS, the card has no max-height constraint, which could cause layout issues with `flex-1` and `overflow-y-auto` on the content area.
+
+### Fix Applied
+```html
+<!-- Before -->
+<div class="... max-h-[90vh] flex flex-col">
+<!-- After -->
+<div class="... flex flex-col" style="max-height: 90vh;">
+```
+
+Also changed `openBuddiesModal` to always force-reload buddies data with a "Loading buddies..." indicator, ensuring fresh data every time the modal opens.
+
+### File Modified
+`public/golf-buddies-system.js`, `public/sw.js`
+
+---
+
+## Bug Fix 16: Stale Cache-Buster on golf-buddies-system.js Script Tag
+
+**Type:** CRITICAL — Browser caching preventing ALL code updates on mobile
+**Status:** Completed
+**Commit:** `bf411fd1` (SW v278)
+**Root Cause:** The script tag in `index.html` loaded the file as:
+```html
+<script src="golf-buddies-system.js?v=20260107" defer></script>
+```
+The `?v=20260107` cache-buster was from January 7th — over a month old. Combined with Vercel's `Cache-Control: public, max-age=2592000` (30 days) for JS files, the mobile browser was serving the January 7th version of the file. ALL three previous deploys (v275, v276, v277) were completely invisible to mobile because the browser URL hadn't changed.
+
+This is why "it works on desktop but not mobile" — desktop might have had a fresher cache or different caching behavior, while mobile (LINE LIFF WebView) aggressively cached the old version.
+
+### Fix Applied
+```html
+<!-- Before -->
+<script src="golf-buddies-system.js?v=20260107" defer></script>
+<!-- After -->
+<script src="golf-buddies-system.js?v=20260208" defer></script>
+```
+
+### Why This Is the Same Bug as Fuckup 2
+Fuckup 2 was `sw.js` being cached by Vercel CDN for 30 days. Bug Fix 16 is `golf-buddies-system.js` being cached by the browser for 30 days. Same root cause: browser/CDN caching preventing code updates from reaching the user. Same lesson (lesson 3) that Claude failed to apply.
+
+### File Modified
+`public/index.html`, `public/sw.js`
+
+---
+
 ## All Commits (Chronological, This Session Only)
 
 | Commit | Description |
@@ -554,6 +675,11 @@ Left the strokes/match-play path unchanged (uses relative handicap difference, w
 | `5f5a15e7` | Session catalog update with Fuckup 6, Bug Fix 10, lessons 11-12 |
 | `0427b3a5` | Fix inline handicap allocation rounding (Math.abs → Math.round), SW v273 |
 | `6d81a7d5` | Consolidate all inline handicap allocation to use allocHandicapShots(), SW v274 |
+| `818dd6b8` | Session catalog update with Bug Fix 11-12, Fuckup 7, lesson 13 |
+| `bf0f6a92` | Buddies modal z-index inline style + mobile button layout, SW v275 (WRONG FIX) |
+| `fa7c131d` | formatHandicapDisplay safe fallback + try-catch + null-safe profiles, SW v276 (didn't reach mobile) |
+| `d0941a53` | Force-reload buddies on modal open + max-h-[90vh] inline style, SW v277 (didn't reach mobile) |
+| `bf411fd1` | Update cache-buster ?v=20260107→?v=20260208 — THE ACTUAL FIX, SW v278 |
 
 ---
 
@@ -584,3 +710,7 @@ Proper data fix would be: set `society_id` on ALL events to the correct society 
 11. **CHECK CONSOLE OUTPUT FIRST when a feature "breaks."** Don't read 500 lines of code looking for syntax errors. The console error `❌ NO HOLES FOUND for course: pattaya_county` was right there. Would have found the root cause in 30 seconds instead of 5 minutes of code reading.
 12. **NEVER add ID mappings without verifying against the database.** `COURSE_ID_MAP` entries must be checked with `SELECT DISTINCT course_id FROM course_holes WHERE course_id LIKE '%name%'` before adding. Wrong mappings silently break features with no obvious error until a user tries that specific course.
 13. **NEVER copy-paste calculation logic when a canonical function already exists.** `allocHandicapShots()` is the SINGLE source of truth for handicap stroke allocation. Any scoring function that needs to know how many shots a player gets on each hole MUST call `allocHandicapShots()` — not reimplement the math inline. Code duplication is the root cause of recurring scoring bugs: fix one copy, the other 6 copies stay broken.
+14. **Tailwind arbitrary value classes (z-[99999], max-h-[90vh]) DON'T WORK in dynamically-created HTML.** The Tailwind CDN generates CSS via MutationObserver, which may not fire before the element is displayed. ALWAYS use inline `style="..."` instead of arbitrary value classes in HTML created via `insertAdjacentHTML()`, `innerHTML`, or template literals.
+15. **ALWAYS update the script tag cache-buster `?v=` when deploying changes to external JS files.** If `<script src="file.js?v=20260107">` hasn't changed, the browser serves the January version regardless of how many times you deploy the actual file. This is the FIRST thing to check when "code changes aren't reaching mobile." Check: (1) script tag `?v=` parameter, (2) HTTP Cache-Control headers, (3) service worker cache.
+16. **LISTEN TO THE USER before assuming the problem.** "Does not show up" could mean the modal doesn't open, the tab is blank, or the content is hidden. Don't assume CSS/visibility — investigate the data flow (loading → rendering → DOM insertion) and ask clarifying questions if the problem description is ambiguous.
+17. **NEVER tell the user to do deployment tasks.** CLAUDE.md says deployment is Claude's job. If network is down, keep retrying silently. Don't dump `git push && vercel --prod` commands on the user.

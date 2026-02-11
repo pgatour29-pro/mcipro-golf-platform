@@ -237,7 +237,17 @@ window.GolfBuddiesSystem = {
         modal.classList.remove('hidden');
         modal.classList.add('flex');
 
-        // Load/refresh data
+        // Show loading state immediately
+        const buddiesList = document.getElementById('myBuddiesList');
+        if (buddiesList) {
+            buddiesList.innerHTML = '<div class="text-center py-8"><p class="text-gray-500">Loading buddies...</p></div>';
+        }
+
+        // Always force-refresh buddies data when modal opens
+        await this.loadBuddies();
+        console.log('[Buddies] Modal open - loaded', this.buddies.length, 'buddies');
+
+        // Now show the tab with fresh data
         this.showBuddiesTab('myBuddies');
     },
 
@@ -260,7 +270,7 @@ window.GolfBuddiesSystem = {
         const modalHTML = `
             <!-- Buddies Modal -->
             <div id="buddiesModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center p-4" style="z-index: 99999;" onclick="event.target.id === 'buddiesModal' && GolfBuddiesSystem.closeBuddiesModal()">
-                <div class="bg-white rounded-lg shadow-xl w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl max-h-[90vh] flex flex-col" onclick="event.stopPropagation()">
+                <div class="bg-white rounded-lg shadow-xl w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl flex flex-col" style="max-height: 90vh;" onclick="event.stopPropagation()">
                         <!-- Header -->
                         <div class="px-3 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-green-50 to-blue-50 rounded-t-lg flex-shrink-0">
                             <div class="flex items-center gap-2 sm:gap-3">
@@ -399,12 +409,7 @@ window.GolfBuddiesSystem = {
         // Render content for the selected tab
         switch (tabName) {
             case 'myBuddies':
-                // If buddies list is empty but user is authenticated, retry loading
-                if (this.buddies.length === 0 && this.currentUserId) {
-                    this.loadBuddies().then(() => this.renderMyBuddies());
-                } else {
-                    this.renderMyBuddies();
-                }
+                this.renderMyBuddies();
                 break;
             case 'suggestions':
                 this.renderSuggestions();

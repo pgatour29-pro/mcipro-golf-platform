@@ -250,7 +250,7 @@ window.GolfBuddiesSystem = {
     createBuddiesModal() {
         const modalHTML = `
             <!-- Buddies Modal -->
-            <div id="buddiesModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-[99999] flex items-center justify-center p-4" onclick="event.target.id === 'buddiesModal' && GolfBuddiesSystem.closeBuddiesModal()">
+            <div id="buddiesModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center p-4" style="z-index: 99999;" onclick="event.target.id === 'buddiesModal' && GolfBuddiesSystem.closeBuddiesModal()">
                 <div class="bg-white rounded-lg shadow-xl w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl max-h-[90vh] flex flex-col" onclick="event.stopPropagation()">
                         <!-- Header -->
                         <div class="px-3 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-green-50 to-blue-50 rounded-t-lg flex-shrink-0">
@@ -922,7 +922,7 @@ window.GolfBuddiesSystem = {
      */
     createGroupEditModal() {
         const modalHTML = `
-            <div id="groupEditModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-[999999] overflow-y-auto" onclick="event.target.id === 'groupEditModal' && GolfBuddiesSystem.closeGroupModal()">
+            <div id="groupEditModal" class="fixed inset-0 bg-black bg-opacity-50 hidden overflow-y-auto" style="z-index: 999999;" onclick="event.target.id === 'groupEditModal' && GolfBuddiesSystem.closeGroupModal()">
                 <div class="min-h-screen px-2 py-4 sm:p-4 flex items-start sm:items-center justify-center">
                     <div class="bg-white rounded-lg shadow-xl w-full max-w-lg mx-auto" onclick="event.stopPropagation()">
                         <!-- Header -->

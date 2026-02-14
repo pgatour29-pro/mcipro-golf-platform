@@ -466,8 +466,8 @@ class SupabaseClient {
         await this.waitForReady();
 
         // PERFORMANCE FIX: Cache profiles for 5 minutes to avoid slow database queries
-        const cacheKey = 'mcipro_all_profiles_cache';
-        const cacheTimeKey = 'mcipro_all_profiles_cache_time';
+        const cacheKey = 'mcipro_all_profiles_cache_v2';
+        const cacheTimeKey = 'mcipro_all_profiles_cache_time_v2';
         const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
         try {
@@ -486,7 +486,7 @@ class SupabaseClient {
         // PERFORMANCE FIX: Only select columns we need (not *)
         const { data, error} = await this.client
             .from('user_profiles')
-            .select('line_user_id, name, display_name, email, profile_data, home_course_name, home_course_id, home_club, society_name, society_id')
+            .select('line_user_id, name, display_name, email, profile_data, home_course_name, home_course_id, home_club, society_name, society_id, handicap_index')
             .order('name');
 
         if (error) {

@@ -57,7 +57,7 @@ const ScriptLazyLoader = {
 
         // Golfer Dashboard Scripts (core - load early)
         golfer: [
-            'golf-buddies-system.js',
+            'golf-buddies-v2.js',
             'hole-by-hole-leaderboard-enhancement.js',
             'live-scorecard-enhancements.js'
         ],

@@ -1,7 +1,7 @@
 // SERVICE WORKER - Performance Caching Version
 // Caches static assets for dramatically faster repeat visits
 
-const SW_VERSION = 'mcipro-cache-v289';
+const SW_VERSION = 'mcipro-cache-v290';
 const CACHE_NAME = `mcipro-static-${SW_VERSION}`;
 const RUNTIME_CACHE = `mcipro-runtime-${SW_VERSION}`;
 
@@ -29,7 +29,7 @@ const STATIC_ASSETS = [
     '/analytics-drilldown.js',
     '/tournament-series-manager.js',
     '/global-player-directory.js',
-    '/golf-buddies-system.js',
+    '/golf-buddies-v2.js',
     '/maintenance-management.js',
     '/unified-player-service.js',
     '/analytics-export.js',

@@ -62,10 +62,13 @@ window.GolfBuddiesSystem = {
     /**
      * Load buddies from database
      */
+    _lastLoadDiag: '',
+
     async loadBuddies() {
         try {
             const startTime = Date.now();
             console.log('[Buddies] Loading buddies for user:', this.currentUserId);
+            this._lastLoadDiag = `uid=${this.currentUserId?.substring(0,10)}`;
 
             // Load buddy records
             const { data: buddyRecords, error: buddyError } = await window.SupabaseDB.client
@@ -76,18 +79,21 @@ window.GolfBuddiesSystem = {
 
             if (buddyError) {
                 console.error('[Buddies] Error loading buddy records:', buddyError);
+                this._lastLoadDiag += ` | ERR: ${buddyError.message || buddyError.code || JSON.stringify(buddyError)}`;
                 this.buddies = [];
                 return;
             }
 
             if (!buddyRecords || buddyRecords.length === 0) {
                 this.buddies = [];
+                this._lastLoadDiag += ' | 0 records found';
                 console.log('[Buddies] No buddies found');
                 return;
             }
 
             // Get buddy IDs
             const buddyIds = buddyRecords.map(b => b.buddy_id);
+            this._lastLoadDiag += ` | ${buddyIds.length} records`;
             console.log(`[Buddies] Found ${buddyIds.length} buddy records, loading profiles...`);
 
             // Load buddy profiles
@@ -98,6 +104,7 @@ window.GolfBuddiesSystem = {
 
             if (profileError) {
                 console.error('[Buddies] Error loading buddy profiles:', profileError);
+                this._lastLoadDiag += ` | profile ERR: ${profileError.message}`;
                 this.buddies = buddyRecords; // Still save records even without profiles
                 return;
             }
@@ -110,9 +117,11 @@ window.GolfBuddiesSystem = {
             }));
 
             const loadTime = Date.now() - startTime;
+            this._lastLoadDiag += ` | ${profileList.length} profiles | ${loadTime}ms`;
             console.log(`[Buddies] ✅ Loaded ${this.buddies.length} buddies in ${loadTime}ms`);
         } catch (error) {
             console.error('[Buddies] Exception loading buddies:', error);
+            this._lastLoadDiag += ` | EXCEPTION: ${error.message}`;
         }
     },
 
@@ -482,6 +491,7 @@ window.GolfBuddiesSystem = {
                 <div class="text-center py-12">
                     <span class="material-symbols-outlined text-6xl text-gray-300 mb-4">person_off</span>
                     <p class="text-gray-500 mb-4">You haven't added any buddies yet</p>
+                    <p class="text-xs text-gray-400 mb-2">Debug: ${this._lastLoadDiag || 'no diag'}</p>
                     <button onclick="GolfBuddiesSystem.showBuddiesTab('suggestions')" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
                         View Suggestions
                     </button>

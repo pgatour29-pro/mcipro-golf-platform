@@ -37,13 +37,14 @@ window.GolfBuddiesSystem = {
 
         console.log('[Buddies] Initializing Golf Buddies System...');
 
-        // Get current user ID
-        this.currentUserId = AppState.currentUser?.lineUserId;
+        // Get current user ID - try lineUserId first, fall back to userId
+        this.currentUserId = AppState.currentUser?.lineUserId || AppState.currentUser?.userId;
 
         if (!this.currentUserId) {
             console.warn('[Buddies] No user ID found - buddies disabled or not authenticated');
             return false; // Indicate initialization failed
         }
+        console.log('[Buddies] Using user ID:', this.currentUserId?.substring(0, 12) + '...');
 
         // Load data
         await this.loadBuddies();
@@ -75,6 +76,7 @@ window.GolfBuddiesSystem = {
 
             if (buddyError) {
                 console.error('[Buddies] Error loading buddy records:', buddyError);
+                this.buddies = [];
                 return;
             }
 
@@ -225,46 +227,67 @@ window.GolfBuddiesSystem = {
      * Open buddies modal
      */
     async openBuddiesModal() {
-        // If not initialized yet but user is authenticated, try to initialize now
-        if (!this.currentUserId && AppState?.currentUser?.lineUserId) {
-            console.log('[Buddies] Initializing on modal open...');
-            const success = await this.init();
-            if (!success) {
-                console.warn('[Buddies] Cannot open modal - initialization failed');
+        try {
+            // If not initialized yet but user is authenticated, try to initialize now
+            const userId = AppState?.currentUser?.lineUserId || AppState?.currentUser?.userId;
+            if (!this.currentUserId && userId) {
+                console.log('[Buddies] Initializing on modal open...');
+                const success = await this.init();
+                if (!success) {
+                    console.warn('[Buddies] Cannot open modal - initialization failed');
+                    NotificationManager?.show?.('Please wait for authentication to complete', 'warning');
+                    return;
+                }
+            }
+
+            // Guard: Ensure user is authenticated
+            if (!this.currentUserId) {
+                console.warn('[Buddies] Cannot open modal - not authenticated. AppState:', JSON.stringify({
+                    hasCurrentUser: !!AppState?.currentUser,
+                    lineUserId: AppState?.currentUser?.lineUserId?.substring(0, 10) || 'none',
+                    userId: AppState?.currentUser?.userId?.substring(0, 10) || 'none'
+                }));
                 NotificationManager?.show?.('Please wait for authentication to complete', 'warning');
                 return;
             }
+
+            // Create modal if it doesn't exist
+            if (!document.getElementById('buddiesModal')) {
+                this.createBuddiesModal();
+            }
+
+            // Show modal
+            const modal = document.getElementById('buddiesModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            // Show loading state immediately
+            const buddiesList = document.getElementById('myBuddiesList');
+            if (buddiesList) {
+                buddiesList.innerHTML = '<div class="text-center py-8"><p class="text-gray-500">Loading buddies...</p></div>';
+            }
+
+            // Always force-refresh buddies data when modal opens
+            await this.loadBuddies();
+            console.log('[Buddies] Modal open - loaded', this.buddies.length, 'buddies');
+
+            // Now show the tab with fresh data
+            this.showBuddiesTab('myBuddies');
+        } catch (err) {
+            console.error('[Buddies] Error opening modal:', err);
+            // Still try to show something
+            const container = document.getElementById('myBuddiesList');
+            if (container) {
+                container.innerHTML = `
+                    <div class="text-center py-8">
+                        <p class="text-red-500 mb-3">Error loading buddies</p>
+                        <p class="text-sm text-gray-500 mb-3">${err.message || 'Unknown error'}</p>
+                        <button onclick="GolfBuddiesSystem.openBuddiesModal()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                            Retry
+                        </button>
+                    </div>`;
+            }
         }
-
-        // Guard: Ensure user is authenticated
-        if (!this.currentUserId) {
-            console.warn('[Buddies] Cannot open modal - not authenticated yet');
-            NotificationManager?.show?.('Please wait for authentication to complete', 'warning');
-            return;
-        }
-
-        // Create modal if it doesn't exist
-        if (!document.getElementById('buddiesModal')) {
-            this.createBuddiesModal();
-        }
-
-        // Show modal
-        const modal = document.getElementById('buddiesModal');
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-
-        // Show loading state immediately
-        const buddiesList = document.getElementById('myBuddiesList');
-        if (buddiesList) {
-            buddiesList.innerHTML = '<div class="text-center py-8"><p class="text-gray-500">Loading buddies...</p></div>';
-        }
-
-        // Always force-refresh buddies data when modal opens
-        await this.loadBuddies();
-        console.log('[Buddies] Modal open - loaded', this.buddies.length, 'buddies');
-
-        // Now show the tab with fresh data
-        this.showBuddiesTab('myBuddies');
     },
 
     /**
@@ -395,7 +418,6 @@ window.GolfBuddiesSystem = {
                         </div>
                     </div>
                 </div>
-            </div>
         `;
 
         // Append to body

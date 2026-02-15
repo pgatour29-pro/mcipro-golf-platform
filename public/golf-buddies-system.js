@@ -86,10 +86,11 @@ window.GolfBuddiesSystem = {
                 this._lastLoadDiag += ` | diagEx:${de.message}`;
             }
 
-            // Load buddy records — temporarily removed user_id filter to test mobile
+            // Load buddy records
             const { data: buddyRecords, error: buddyError } = await window.SupabaseDB.client
                 .from('golf_buddies')
                 .select('*')
+                .eq('user_id', this.currentUserId)
                 .order('times_played_together', { ascending: false });
 
             if (buddyError) {

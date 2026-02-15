@@ -211,6 +211,7 @@ window.GolfBuddiesSystem = {
      * Open buddies modal
      */
     async openBuddiesModal() {
+        const FILE_VER = 'v20260215a';
         try {
             // If not initialized yet but user is authenticated, try to initialize now
             const userId = AppState?.currentUser?.lineUserId || AppState?.currentUser?.userId;
@@ -226,12 +227,23 @@ window.GolfBuddiesSystem = {
 
             // Guard: Ensure user is authenticated
             if (!this.currentUserId) {
-                console.warn('[Buddies] Cannot open modal - not authenticated. AppState:', JSON.stringify({
-                    hasCurrentUser: !!AppState?.currentUser,
-                    lineUserId: AppState?.currentUser?.lineUserId?.substring(0, 10) || 'none',
-                    userId: AppState?.currentUser?.userId?.substring(0, 10) || 'none'
-                }));
-                NotificationManager?.show?.('Please wait for authentication to complete', 'warning');
+                // Create modal anyway to show diagnostic info
+                if (!document.getElementById('buddiesModal')) {
+                    this.createBuddiesModal();
+                }
+                const modal = document.getElementById('buddiesModal');
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                const container = document.getElementById('myBuddiesList');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="text-center py-8">
+                            <p class="text-red-500 mb-3 font-bold">Not authenticated</p>
+                            <p class="text-xs text-gray-500 mb-2">File: ${FILE_VER}</p>
+                            <p class="text-xs text-gray-500 mb-2">User: ${!!AppState?.currentUser} | LineID: ${!!AppState?.currentUser?.lineUserId} | UserId: ${!!AppState?.currentUser?.userId}</p>
+                            <button onclick="GolfBuddiesSystem.openBuddiesModal()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 mt-3">Retry</button>
+                        </div>`;
+                }
                 return;
             }
 
@@ -245,10 +257,10 @@ window.GolfBuddiesSystem = {
             modal.classList.remove('hidden');
             modal.classList.add('flex');
 
-            // Show loading state immediately
+            // Show loading state immediately with diagnostic info
             const buddiesList = document.getElementById('myBuddiesList');
             if (buddiesList) {
-                buddiesList.innerHTML = '<div class="text-center py-8"><p class="text-gray-500">Loading buddies...</p></div>';
+                buddiesList.innerHTML = `<div class="text-center py-8"><p class="text-gray-500">Loading buddies...</p><p class="text-xs text-gray-400 mt-1">File: ${FILE_VER} | User: ${this.currentUserId?.substring(0,8)}...</p></div>`;
             }
 
             // Always force-refresh buddies data when modal opens
@@ -260,12 +272,21 @@ window.GolfBuddiesSystem = {
         } catch (err) {
             console.error('[Buddies] Error opening modal:', err);
             // Still try to show something
+            if (!document.getElementById('buddiesModal')) {
+                this.createBuddiesModal();
+            }
+            const modal = document.getElementById('buddiesModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
             const container = document.getElementById('myBuddiesList');
             if (container) {
                 container.innerHTML = `
                     <div class="text-center py-8">
                         <p class="text-red-500 mb-3">Error loading buddies</p>
                         <p class="text-sm text-gray-500 mb-3">${err.message || 'Unknown error'}</p>
+                        <p class="text-xs text-gray-400 mb-2">File: ${FILE_VER}</p>
                         <button onclick="GolfBuddiesSystem.openBuddiesModal()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
                             Retry
                         </button>

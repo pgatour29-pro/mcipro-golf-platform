@@ -68,7 +68,23 @@ window.GolfBuddiesSystem = {
         try {
             const startTime = Date.now();
             console.log('[Buddies] Loading buddies for user:', this.currentUserId);
-            this._lastLoadDiag = `uid=${this.currentUserId?.substring(0,10)}`;
+            this._lastLoadDiag = `uid=${this.currentUserId || 'NULL'}`;
+
+            // Diagnostic: also check what user_ids exist in the table
+            try {
+                const { data: allRows, error: allErr } = await window.SupabaseDB.client
+                    .from('golf_buddies')
+                    .select('user_id, buddy_id')
+                    .limit(10);
+                if (allErr) {
+                    this._lastLoadDiag += ` | allQ ERR:${allErr.message}`;
+                } else {
+                    const uniqueUsers = [...new Set((allRows || []).map(r => r.user_id))];
+                    this._lastLoadDiag += ` | table has ${(allRows||[]).length} rows, users:[${uniqueUsers.map(u=>u?.substring(0,8)).join(',')}]`;
+                }
+            } catch(de) {
+                this._lastLoadDiag += ` | diagEx:${de.message}`;
+            }
 
             // Load buddy records
             const { data: buddyRecords, error: buddyError } = await window.SupabaseDB.client
@@ -79,21 +95,21 @@ window.GolfBuddiesSystem = {
 
             if (buddyError) {
                 console.error('[Buddies] Error loading buddy records:', buddyError);
-                this._lastLoadDiag += ` | ERR: ${buddyError.message || buddyError.code || JSON.stringify(buddyError)}`;
+                this._lastLoadDiag += ` | ERR:${buddyError.message || buddyError.code}`;
                 this.buddies = [];
                 return;
             }
 
             if (!buddyRecords || buddyRecords.length === 0) {
                 this.buddies = [];
-                this._lastLoadDiag += ' | 0 records found';
+                this._lastLoadDiag += ' | 0 matched';
                 console.log('[Buddies] No buddies found');
                 return;
             }
 
             // Get buddy IDs
             const buddyIds = buddyRecords.map(b => b.buddy_id);
-            this._lastLoadDiag += ` | ${buddyIds.length} records`;
+            this._lastLoadDiag += ` | ${buddyIds.length} matched`;
             console.log(`[Buddies] Found ${buddyIds.length} buddy records, loading profiles...`);
 
             // Load buddy profiles
@@ -104,8 +120,8 @@ window.GolfBuddiesSystem = {
 
             if (profileError) {
                 console.error('[Buddies] Error loading buddy profiles:', profileError);
-                this._lastLoadDiag += ` | profile ERR: ${profileError.message}`;
-                this.buddies = buddyRecords; // Still save records even without profiles
+                this._lastLoadDiag += ` | profERR:${profileError.message}`;
+                this.buddies = buddyRecords;
                 return;
             }
 
@@ -121,7 +137,7 @@ window.GolfBuddiesSystem = {
             console.log(`[Buddies] ✅ Loaded ${this.buddies.length} buddies in ${loadTime}ms`);
         } catch (error) {
             console.error('[Buddies] Exception loading buddies:', error);
-            this._lastLoadDiag += ` | EXCEPTION: ${error.message}`;
+            this._lastLoadDiag += ` | EXCEPTION:${error.message}`;
         }
     },
 

@@ -90,26 +90,11 @@ window.GolfBuddiesSystem = {
             const buddyIds = buddyRecords.map(b => b.buddy_id);
             console.log(`[Buddies] Found ${buddyIds.length} buddy records, loading profiles...`);
 
-            // Load buddy profiles (include handicap_index for GPR-adjusted values)
+            // Load buddy profiles
             const { data: profiles, error: profileError } = await window.SupabaseDB.client
                 .from('user_profiles')
-                .select('line_user_id, name, profile_data, handicap_index')
+                .select('line_user_id, name, profile_data')
                 .in('line_user_id', buddyIds);
-
-            // Also load latest handicaps from society_handicaps (source of truth)
-            let handicapMap = {};
-            try {
-                const { data: hcpData } = await window.SupabaseDB.client
-                    .from('society_handicaps')
-                    .select('golfer_id, handicap_index')
-                    .in('golfer_id', buddyIds)
-                    .is('society_id', null);
-                if (hcpData) {
-                    hcpData.forEach(h => { handicapMap[h.golfer_id] = h.handicap_index; });
-                }
-            } catch (e) {
-                console.warn('[Buddies] Could not load society_handicaps:', e);
-            }
 
             if (profileError) {
                 console.error('[Buddies] Error loading buddy profiles:', profileError);
@@ -117,12 +102,11 @@ window.GolfBuddiesSystem = {
                 return;
             }
 
-            // Merge buddy records with profiles + live handicap from society_handicaps
+            // Merge buddy records with profiles
             const profileList = profiles || [];
             this.buddies = buddyRecords.map(record => ({
                 ...record,
-                buddy: profileList.filter(p => p.line_user_id === record.buddy_id),
-                liveHandicap: handicapMap[record.buddy_id] ?? null
+                buddy: profileList.filter(p => p.line_user_id === record.buddy_id)
             }));
 
             const loadTime = Date.now() - startTime;
@@ -497,7 +481,7 @@ window.GolfBuddiesSystem = {
                 const buddyProfile = buddy.buddy?.[0];
                 const name = buddyProfile?.name || 'Unknown';
                 const golfInfo = buddyProfile?.profile_data?.golfInfo || {};
-                const handicapValue = buddy.liveHandicap ?? buddyProfile?.handicap_index ?? golfInfo.handicap ?? buddyProfile?.profile_data?.handicap;
+                const handicapValue = golfInfo.handicap || buddyProfile?.profile_data?.handicap;
                 const handicap = safeHandicapDisplay(handicapValue);
                 const timesPlayed = buddy.times_played_together || 0;
                 const lastPlayed = buddy.last_played_together

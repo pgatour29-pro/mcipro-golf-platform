@@ -205,93 +205,184 @@ window.GolfBuddiesSystem = {
      * Open buddies modal
      */
     async openBuddiesModal() {
-        const FILE_VER = 'v20260215a';
         try {
-            // If not initialized yet but user is authenticated, try to initialize now
-            const userId = AppState?.currentUser?.lineUserId || AppState?.currentUser?.userId;
-            if (!this.currentUserId && userId) {
-                console.log('[Buddies] Initializing on modal open...');
-                const success = await this.init();
-                if (!success) {
-                    console.warn('[Buddies] Cannot open modal - initialization failed');
-                    NotificationManager?.show?.('Please wait for authentication to complete', 'warning');
-                    return;
-                }
+            // Get user ID
+            var uid = this.currentUserId || 
+                (AppState?.currentUser?.lineUserId) || 
+                (AppState?.currentUser?.userId);
+            if (!uid) {
+                NotificationManager?.show?.('Please log in first', 'warning');
+                return;
             }
+            this.currentUserId = uid;
 
-            // Guard: Ensure user is authenticated
-            if (!this.currentUserId) {
-                // Create modal anyway to show diagnostic info
-                if (!document.getElementById('buddiesModal')) {
-                    this.createBuddiesModal();
-                }
-                const modal = document.getElementById('buddiesModal');
-                modal.classList.remove('hidden');
-                modal.classList.add('flex');
-                const container = document.getElementById('myBuddiesList');
-                if (container) {
-                    container.innerHTML = `
-                        <div class="text-center py-8">
-                            <p class="text-red-500 mb-3 font-bold">Not authenticated</p>
-                            <p class="text-xs text-gray-500 mb-2">File: ${FILE_VER}</p>
-                            <p class="text-xs text-gray-500 mb-2">User: ${!!AppState?.currentUser} | LineID: ${!!AppState?.currentUser?.lineUserId} | UserId: ${!!AppState?.currentUser?.userId}</p>
-                            <button onclick="GolfBuddiesSystem.openBuddiesModal()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 mt-3">Retry</button>
-                        </div>`;
-                }
+            // REMOVE any existing fix modal to start fresh
+            var existing = document.getElementById('buddyFixV4');
+            if (existing) existing.remove();
+
+            // Create completely NEW modal - no reliance on createBuddiesModal
+            var overlay = document.createElement('div');
+            overlay.id = 'buddyFixV4';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:999999;padding:16px;';
+            overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+
+            var card = document.createElement('div');
+            card.style.cssText = 'background:#fff;border-radius:16px;width:100%;max-width:500px;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 25px 50px rgba(0,0,0,0.25);';
+
+            // Header
+            var hdr = document.createElement('div');
+            hdr.style.cssText = 'padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(to right,#f0fdf4,#eff6ff);border-radius:16px 16px 0 0;';
+            hdr.innerHTML = '<div style="display:flex;align-items:center;gap:10px;"><span class="material-symbols-outlined" style="color:#059669;font-size:28px;">group</span><b style="font-size:18px;color:#111;">My Golf Buddies</b></div>';
+            var xBtn = document.createElement('button');
+            xBtn.innerHTML = '&times;';
+            xBtn.style.cssText = 'font-size:24px;background:none;border:none;cursor:pointer;color:#666;padding:4px 8px;line-height:1;';
+            xBtn.onclick = function() { overlay.remove(); };
+            hdr.appendChild(xBtn);
+            card.appendChild(hdr);
+
+            // Tab bar
+            var tabs = document.createElement('div');
+            tabs.style.cssText = 'display:flex;border-bottom:1px solid #e5e7eb;padding:0 16px;';
+            var tabNames = ['Buddies', 'Suggestions', 'Groups', 'Add'];
+            var tabIds = ['buddies', 'suggestions', 'groups', 'add'];
+            var contentPanels = [];
+            
+            tabNames.forEach(function(name, idx) {
+                var tab = document.createElement('button');
+                tab.textContent = name;
+                tab.style.cssText = 'padding:10px 16px;font-size:13px;font-weight:500;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;color:#666;';
+                if (idx === 0) { tab.style.borderBottomColor = '#059669'; tab.style.color = '#059669'; }
+                tab.onclick = function() {
+                    // Switch tabs
+                    tabs.querySelectorAll('button').forEach(function(b) { b.style.borderBottomColor = 'transparent'; b.style.color = '#666'; });
+                    tab.style.borderBottomColor = '#059669'; tab.style.color = '#059669';
+                    contentPanels.forEach(function(p, i) { p.style.display = (i === idx) ? 'block' : 'none'; });
+                    // Load tab content
+                    if (idx === 1) GolfBuddiesSystem._renderSuggestionsV4(contentPanels[1]);
+                    if (idx === 2) GolfBuddiesSystem._renderGroupsV4(contentPanels[2]);
+                    if (idx === 3) GolfBuddiesSystem._renderAddV4(contentPanels[3]);
+                };
+                tabs.appendChild(tab);
+            });
+            card.appendChild(tabs);
+
+            // Content panels
+            var contentWrap = document.createElement('div');
+            contentWrap.style.cssText = 'flex:1;overflow-y:auto;';
+            tabIds.forEach(function(id, idx) {
+                var panel = document.createElement('div');
+                panel.style.cssText = 'padding:16px;' + (idx > 0 ? 'display:none;' : '');
+                panel.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">Loading...</p>';
+                contentWrap.appendChild(panel);
+                contentPanels.push(panel);
+            });
+            card.appendChild(contentWrap);
+            overlay.appendChild(card);
+            document.body.appendChild(overlay);
+
+            // Load and render buddies
+            var buddiesPanel = contentPanels[0];
+            var buddies = [];
+            var res = await window.SupabaseDB.client
+                .from('golf_buddies').select('*')
+                .eq('user_id', uid)
+                .order('times_played_together', { ascending: false });
+
+            if (res.error) {
+                buddiesPanel.innerHTML = '<p style="color:#dc2626;padding:20px;text-align:center;">Error: ' + (res.error.message || 'Query failed') + '</p>';
                 return;
             }
 
-            // Create modal if it doesn't exist
-            if (!document.getElementById('buddiesModal')) {
-                this.createBuddiesModal();
+            if (!res.data || res.data.length === 0) {
+                buddiesPanel.innerHTML = '<div style="text-align:center;padding:48px 16px;"><p style="font-size:48px;margin-bottom:12px;">👥</p><p style="color:#888;font-size:15px;margin-bottom:16px;">No buddies yet</p><p style="color:#aaa;font-size:13px;">Play some rounds and add your partners!</p></div>';
+                return;
             }
 
-            // Show modal
-            const modal = document.getElementById('buddiesModal');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
+            // Get profiles
+            var ids = res.data.map(function(b) { return b.buddy_id; });
+            var profRes = await window.SupabaseDB.client
+                .from('user_profiles').select('line_user_id, name, profile_data, handicap_index')
+                .in('line_user_id', ids);
+            var profs = profRes.data || [];
 
-            // Show loading state immediately with diagnostic info
-            const buddiesList = document.getElementById('myBuddiesList');
-            if (buddiesList) {
-                buddiesList.innerHTML = `<div class="text-center py-8"><p class="text-gray-500">Loading buddies...</p><p class="text-xs text-gray-400 mt-1">File: ${FILE_VER} | User: ${this.currentUserId?.substring(0,8)}...</p></div>`;
-            }
+            // Render each buddy
+            var html = '<p style="font-size:12px;color:#999;margin-bottom:10px;">' + res.data.length + ' buddies</p>';
+            for (var i = 0; i < res.data.length; i++) {
+                var rec = res.data[i];
+                var prof = null;
+                for (var j = 0; j < profs.length; j++) {
+                    if (profs[j].line_user_id === rec.buddy_id) { prof = profs[j]; break; }
+                }
+                var name = (prof && prof.name) ? prof.name : 'Unknown';
+                var initial = name.charAt(0).toUpperCase();
+                var tp = rec.times_played_together || 0;
+                var hcp = '-';
+                try {
+                    var hv = (prof && prof.handicap_index) || 
+                             (prof && prof.profile_data && prof.profile_data.golfInfo && prof.profile_data.golfInfo.handicap) ||
+                             (prof && prof.profile_data && prof.profile_data.handicap);
+                    if (hv != null) { var n = parseFloat(hv); if (!isNaN(n)) hcp = n.toFixed(1); }
+                } catch(e) {}
 
-            // Always force-refresh buddies data when modal opens
-            await this.loadBuddies();
-            console.log('[Buddies] Modal open - loaded', this.buddies.length, 'buddies');
+                html += '<div style="display:flex;align-items:center;padding:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:8px;">' +
+                    '<div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#34d399,#3b82f6);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:18px;flex-shrink:0;">' + initial + '</div>' +
+                    '<div style="flex:1;margin-left:12px;">' +
+                        '<div style="font-weight:600;color:#111;font-size:15px;">' + name + '</div>' +
+                        '<div style="font-size:12px;color:#666;margin-top:2px;">HCP: ' + hcp + ' · Played: ' + tp + 'x</div>' +
+                    '</div>' +
+                    '<button onclick="GolfBuddiesSystem.quickAddBuddy(\'' + rec.buddy_id + '\');var _m=document.getElementById(\'buddyFixV4\');if(_m)_m.remove();" style="padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-weight:500;">+ Add</button>' +
+                '</div>';
+            }
+            buddiesPanel.innerHTML = html;
+            this.buddies = res.data.map(function(rec) {
+                var match = profs.filter(function(p) { return p.line_user_id === rec.buddy_id; });
+                return Object.assign({}, rec, { buddy: match });
+            });
 
-            // Now show the tab with fresh data
-            this.showBuddiesTab('myBuddies');
-        } catch (err) {
-            console.error('[Buddies] Error opening modal:', err);
-            // Still try to show something
-            if (!document.getElementById('buddiesModal')) {
-                this.createBuddiesModal();
-            }
-            const modal = document.getElementById('buddiesModal');
-            if (modal) {
-                modal.classList.remove('hidden');
-                modal.classList.add('flex');
-            }
-            const container = document.getElementById('myBuddiesList');
-            if (container) {
-                container.innerHTML = `
-                    <div class="text-center py-8">
-                        <p class="text-red-500 mb-3">Error loading buddies</p>
-                        <p class="text-sm text-gray-500 mb-3">${err.message || 'Unknown error'}</p>
-                        <p class="text-xs text-gray-400 mb-2">File: ${FILE_VER}</p>
-                        <button onclick="GolfBuddiesSystem.openBuddiesModal()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
-                            Retry
-                        </button>
-                    </div>`;
-            }
+        } catch(err) {
+            console.error('[Buddies] openBuddiesModal error:', err);
+            var m = document.getElementById('buddyFixV4');
+            if (m) m.innerHTML = '<div style="background:#fff;padding:24px;border-radius:16px;margin:16px;text-align:center;"><p style="color:#dc2626;font-weight:600;margin-bottom:8px;">Error</p><p style="color:#666;font-size:13px;">' + (err.message || 'Unknown') + '</p></div>';
         }
     },
 
     /**
      * Close buddies modal
      */
+
+    _renderSuggestionsV4(panel) {
+        if (typeof this.loadSuggestions === 'function') {
+            this.loadSuggestions().then(() => {
+                if (!this.suggestions || this.suggestions.length === 0) {
+                    panel.innerHTML = '<p style="text-align:center;color:#888;padding:32px;">No suggestions yet. Play more rounds!</p>';
+                    return;
+                }
+                this.renderSuggestions();
+            });
+        } else {
+            panel.innerHTML = '<p style="text-align:center;color:#888;padding:32px;">Suggestions loading...</p>';
+        }
+    },
+
+    _renderGroupsV4(panel) {
+        if (typeof this.loadSavedGroups === 'function') {
+            this.loadSavedGroups().then(() => {
+                if (!this.savedGroups || this.savedGroups.length === 0) {
+                    panel.innerHTML = '<p style="text-align:center;color:#888;padding:32px;">No saved groups yet</p>';
+                    return;
+                }
+                this.renderSavedGroups();
+            });
+        } else {
+            panel.innerHTML = '<p style="text-align:center;color:#888;padding:32px;">Groups loading...</p>';
+        }
+    },
+
+    _renderAddV4(panel) {
+        panel.innerHTML = '<div style="margin-bottom:12px;"><input type="text" placeholder="Search by name..." style="width:100%;padding:10px 14px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;box-sizing:border-box;" oninput="GolfBuddiesSystem.searchPlayers(this.value)"></div><div id="buddySearchResults"><p style="text-align:center;color:#888;padding:20px;">Type a name to search</p></div>';
+    },
+
+
     closeBuddiesModal() {
         const modal = document.getElementById('buddiesModal');
         if (modal) {

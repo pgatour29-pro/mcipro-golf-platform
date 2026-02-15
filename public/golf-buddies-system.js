@@ -500,14 +500,30 @@ window.GolfBuddiesSystem = {
     renderMyBuddies() {
         const container = document.getElementById('myBuddiesList');
 
-        if (!container) return;
+        if (!container) {
+            console.error('[Buddies] myBuddiesList container not found!');
+            // Try to find and fix the container
+            const contentDiv = document.getElementById('buddiesContent-myBuddies');
+            console.error('[Buddies] buddiesContent-myBuddies exists?', !!contentDiv);
+            return;
+        }
 
-        if (this.buddies.length === 0) {
+        // Check parent visibility
+        const parentContent = document.getElementById('buddiesContent-myBuddies');
+        if (parentContent) {
+            const computedStyle = window.getComputedStyle(parentContent);
+            console.log('[Buddies] Parent display:', computedStyle.display, 'visibility:', computedStyle.visibility, 'height:', computedStyle.height);
+        }
+
+        // Always show diagnostic header
+        const diagInfo = `<p class="text-xs text-gray-400 px-2 py-1 bg-yellow-100 border border-yellow-300 rounded mb-2">v20260215d | buddies:${Array.isArray(this.buddies) ? this.buddies.length : 'NOT_ARRAY'} | uid:${(this.currentUserId||'none').substring(0,12)}...</p>`;
+
+        if (!Array.isArray(this.buddies) || this.buddies.length === 0) {
             container.innerHTML = `
                 <div class="text-center py-12">
                     <span class="material-symbols-outlined text-6xl text-gray-300 mb-4">person_off</span>
                     <p class="text-gray-500 mb-4">You haven't added any buddies yet</p>
-                    <p class="text-xs text-gray-400 mb-2">Debug: ${this._lastLoadDiag || 'no diag'}</p>
+                    ${diagInfo}
                     <button onclick="GolfBuddiesSystem.showBuddiesTab('suggestions')" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
                         View Suggestions
                     </button>
@@ -565,12 +581,14 @@ window.GolfBuddiesSystem = {
                 `;
             }).join('');
 
-            container.innerHTML = html;
+            console.log('[Buddies] renderMyBuddies: setting innerHTML, html length=' + html.length);
+            container.innerHTML = diagInfo + html;
+            console.log('[Buddies] renderMyBuddies: done, container children=' + container.children.length);
         } catch (err) {
             console.error('[Buddies] Error rendering buddies list:', err);
             container.innerHTML = `
                 <div class="text-center py-8">
-                    <p class="text-red-500 mb-3">Error loading buddies</p>
+                    <p class="text-red-500 mb-3">Error loading buddies: ${err.message}</p>
                     <button onclick="GolfBuddiesSystem.retryLoadBuddies()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
                         Retry
                     </button>

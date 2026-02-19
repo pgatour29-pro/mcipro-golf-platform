@@ -50,9 +50,14 @@
                         <p class="text-green-200 text-sm">Live Leaderboards</p>
                     </div>
                 </div>
-                <div class="flex items-center gap-2 text-sm">
+                <div class="flex items-center gap-3 text-sm">
                     <span class="material-symbols-outlined text-red-300 pulse">radio_button_checked</span>
                     <span>LIVE</span>
+                    <span class="text-green-300">|</span>
+                    <span class="flex items-center gap-1 text-green-100">
+                        <span class="material-symbols-outlined" style="font-size:18px;">visibility</span>
+                        <span id="viewerCount">0</span> watching
+                    </span>
                 </div>
             </div>
         </div>
@@ -145,6 +150,33 @@
         let consecutiveErrors = 0;
         let refreshInterval = null;
         const BASE_REFRESH_MS = 30000; // 30 seconds (golf scores don't change every 5s)
+
+        // --- Live Viewer Count via Supabase Presence ---
+        const viewerId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : 'viewer-' + Math.random().toString(36).slice(2) + Date.now();
+
+        const presenceChannel = supabaseClient.channel('live-spectators', {
+            config: { presence: { key: viewerId } }
+        });
+
+        presenceChannel.on('presence', { event: 'sync' }, () => {
+            const state = presenceChannel.presenceState();
+            const count = Object.keys(state).length;
+            const el = document.getElementById('viewerCount');
+            if (el) el.textContent = count;
+        });
+
+        presenceChannel.subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+                await presenceChannel.track({ viewer_id: viewerId, joined_at: new Date().toISOString() });
+            }
+        });
+
+        window.addEventListener('beforeunload', () => {
+            presenceChannel.untrack();
+        });
+        // --- End Viewer Count ---
 
         // Get today's date in YYYY-MM-DD format (LOCAL timezone, not UTC)
         function getToday() {

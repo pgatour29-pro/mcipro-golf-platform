@@ -167,7 +167,7 @@ class CourseDataManager {
         // WHS Formula: Index * (Slope / 113) + (Rating - Par)
         const courseHandicap = handicapIndex * (slope / 113) + (rating - par);
 
-        return { success: true, courseHandicap: Math.round(courseHandicap) };
+        return { success: true, courseHandicap: (window.toPlayingHandicap || Math.round)(courseHandicap) };
     }
 
     // Calculate playing handicap for different formats
@@ -185,7 +185,7 @@ class CourseDataManager {
         };
 
         const allowance = allowances[format] || 1.0;
-        return Math.round(courseHandicap * allowance);
+        return (window.toPlayingHandicap || Math.round)(courseHandicap * allowance);
     }
 
     // =========================================================================

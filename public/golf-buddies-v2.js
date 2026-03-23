@@ -99,12 +99,60 @@ window.GolfBuddiesSystem = {
             }
 
             const profileList = profiles || [];
+
+            // Calculate actual times_played_together from round_partners table
+            let partnerCounts = {};
+            let lastPlayedDates = {};
+            try {
+                // Get all rounds for current user
+                const { data: myRounds } = await window.SupabaseDB.client
+                    .from('rounds')
+                    .select('id, played_at')
+                    .eq('golfer_id', this.currentUserId);
+
+                if (myRounds && myRounds.length > 0) {
+                    const roundIds = myRounds.map(r => r.id);
+                    const roundDates = {};
+                    myRounds.forEach(r => { roundDates[r.id] = r.played_at || r.completed_at; });
+
+                    // Get all partners from those rounds
+                    let allPartners = [];
+                    for (let i = 0; i < roundIds.length; i += 200) {
+                        const batch = roundIds.slice(i, i + 200);
+                        const { data: partners } = await window.SupabaseDB.client
+                            .from('round_partners')
+                            .select('round_id, partner_id')
+                            .in('round_id', batch);
+                        if (partners) allPartners = allPartners.concat(partners);
+                    }
+
+                    // Count per partner
+                    allPartners.forEach(p => {
+                        if (p.partner_id) {
+                            partnerCounts[p.partner_id] = (partnerCounts[p.partner_id] || 0) + 1;
+                            const rd = roundDates[p.round_id];
+                            if (rd && (!lastPlayedDates[p.partner_id] || rd > lastPlayedDates[p.partner_id])) {
+                                lastPlayedDates[p.partner_id] = rd;
+                            }
+                        }
+                    });
+                    console.log(`[Buddies] Calculated live play counts from ${allPartners.length} partner records`);
+                }
+            } catch (e) {
+                console.warn('[Buddies] Could not calculate live play counts, using stored values:', e);
+            }
+
             this.buddies = buddyRecords.map(record => ({
                 ...record,
+                times_played_together: partnerCounts[record.buddy_id] || record.times_played_together || 0,
+                last_played_together: lastPlayedDates[record.buddy_id] || record.last_played_together || null,
                 buddy: profileList.filter(p => p.line_user_id === record.buddy_id)
             }));
 
-            console.log(`[Buddies] Loaded ${this.buddies.length} buddies`);
+            // Sort by actual times played (descending)
+            this.buddies.sort((a, b) => (b.times_played_together || 0) - (a.times_played_together || 0));
+
+            console.log(`[Buddies] Loaded ${this.buddies.length} buddies with live play counts`);
         } catch (error) {
             console.error('[Buddies] Exception loading buddies:', error);
         }

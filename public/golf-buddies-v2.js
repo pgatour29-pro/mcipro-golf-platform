@@ -992,7 +992,6 @@ window.GolfBuddiesSystem = {
      * Remove a buddy
      */
     async removeBuddy(buddyRecordId) {
-        if (!confirm('Remove this buddy?')) return;
 
         try {
             const { error } = await window.SupabaseDB.client

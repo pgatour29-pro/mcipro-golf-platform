@@ -984,7 +984,15 @@ window.GolfBuddiesSystem = {
 
             NotificationManager?.show?.('Buddy added ✓', 'success');
 
-            // Reload data in background
+            // Optimistically update badge immediately
+            const badge = document.getElementById('buddiesCountBadge');
+            if (badge) {
+                const current = parseInt(badge.textContent) || 0;
+                badge.textContent = current + 1;
+                badge.style.display = 'inline-block';
+            }
+
+            // Reload data in background to sync
             this.loadBuddies().then(() => {
                 this.updateBuddiesBadge();
                 this.renderMyBuddies();
@@ -1005,6 +1013,13 @@ window.GolfBuddiesSystem = {
         const row = document.getElementById('delbuddy_' + buddyRecordId);
         if (row && row.parentElement && row.parentElement.parentElement) {
             row.parentElement.parentElement.style.display = 'none';
+        }
+        // Optimistically update badge
+        const badge = document.getElementById('buddiesCountBadge');
+        if (badge) {
+            const current = parseInt(badge.textContent) || 0;
+            badge.textContent = Math.max(0, current - 1);
+            if (current <= 1) badge.style.display = 'none';
         }
 
         try {

@@ -380,7 +380,7 @@ window.GolfBuddiesSystem = {
                     '</div>' +
                     '<div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">' +
                     '<button onclick="GolfBuddiesSystem.quickAddBuddy(\'' + rec.buddy_id + '\');var _m=document.getElementById(\'buddyFixV4\');if(_m)_m.remove();" style="padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-weight:500;">+ Add</button>' +
-                    '<button onclick="GolfBuddiesSystem.removeBuddy(\'' + rec.id + '\');this.closest(\'div[style*=padding\\:12px]\').remove();" style="padding:8px 10px;background:#fee2e2;color:#dc2626;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-weight:500;" title="Remove">✕</button>' +
+                    '<button id="delbuddy_' + rec.id + '" onclick="GolfBuddiesSystem.removeBuddy(\'' + rec.id + '\');document.getElementById(\'delbuddy_' + rec.id + '\').parentElement.parentElement.style.display=\'none\';" style="padding:8px 10px;background:#fee2e2;color:#dc2626;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-weight:500;" title="Remove buddy">✕</button>' +
                     '</div>' +
                 '</div>';
             }

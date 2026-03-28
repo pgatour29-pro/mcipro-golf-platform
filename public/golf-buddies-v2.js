@@ -380,7 +380,7 @@ window.GolfBuddiesSystem = {
                     '</div>' +
                     '<div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">' +
                     '<button onclick="GolfBuddiesSystem.quickAddBuddy(\'' + rec.buddy_id + '\');var _m=document.getElementById(\'buddyFixV4\');if(_m)_m.remove();" style="padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-weight:500;">+ Add</button>' +
-                    '<button id="delbuddy_' + rec.id + '" onclick="GolfBuddiesSystem.removeBuddy(\'' + rec.id + '\');document.getElementById(\'delbuddy_' + rec.id + '\').parentElement.parentElement.style.display=\'none\';" style="padding:8px 10px;background:#fee2e2;color:#dc2626;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-weight:500;" title="Remove buddy">✕</button>' +
+                    '<button id="delbuddy_' + rec.id + '" onclick="GolfBuddiesSystem.removeBuddy(\'' + rec.id + '\');" style="padding:10px 14px;background:#fee2e2;color:#dc2626;border:none;border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;" title="Remove buddy">✕</button>' +
                     '</div>' +
                 '</div>';
             }
@@ -995,6 +995,11 @@ window.GolfBuddiesSystem = {
      * Remove a buddy
      */
     async removeBuddy(buddyRecordId) {
+        // Immediately hide the row visually
+        const row = document.getElementById('delbuddy_' + buddyRecordId);
+        if (row && row.parentElement && row.parentElement.parentElement) {
+            row.parentElement.parentElement.style.display = 'none';
+        }
 
         try {
             const { error } = await window.SupabaseDB.client
@@ -1004,18 +1009,21 @@ window.GolfBuddiesSystem = {
 
             if (error) {
                 console.error('[Buddies] Error removing buddy:', error);
-                NotificationManager?.show?.('Error removing buddy', 'error');
+                NotificationManager?.show?.('Error removing buddy: ' + error.message, 'error');
+                // Show the row again on error
+                if (row && row.parentElement && row.parentElement.parentElement) {
+                    row.parentElement.parentElement.style.display = '';
+                }
                 return;
             }
 
-            // Reload data
-            await this.loadBuddies();
+            // Reload data in background
+            this.loadBuddies().then(() => {
+                this.updateBuddiesBadge();
+                this.renderMyBuddies();
+            });
 
-            // Update UI
-            this.updateBuddiesBadge();
-            this.renderMyBuddies();
-
-            NotificationManager?.show?.('Buddy removed', 'success');
+            NotificationManager?.show?.('Buddy removed ✓', 'success');
 
         } catch (error) {
             console.error('[Buddies] Exception removing buddy:', error);

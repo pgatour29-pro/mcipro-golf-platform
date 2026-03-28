@@ -924,9 +924,8 @@ window.GolfBuddiesSystem = {
                                 </div>
                             </div>
                             <button onclick="GolfBuddiesSystem.addBuddy('${userId}')"
-                                    style="padding: 0.375rem 0.5rem; background: #16a34a; color: white; border-radius: 0.5rem; font-size: 0.75rem; border: none; cursor: pointer; flex-shrink: 0; white-space: nowrap;">
-                                <span class="material-symbols-outlined" style="font-size: 0.875rem; vertical-align: middle;">add</span>
-                                <span style="display: none;">Add</span>
+                                    style="padding: 0.5rem 0.75rem; background: #16a34a; color: white; border-radius: 0.5rem; font-size: 0.875rem; border: none; cursor: pointer; flex-shrink: 0; white-space: nowrap; min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; font-weight: 600;">
+                                + Add
                             </button>
                         </div>
                     </div>
@@ -952,6 +951,15 @@ window.GolfBuddiesSystem = {
             return;
         }
 
+        // Instant visual feedback — change button to ✓
+        const addBtns = document.querySelectorAll('button[onclick*="addBuddy(\'' + buddyId + '\')"]');
+        addBtns.forEach(btn => {
+            btn.innerHTML = '✓ Added';
+            btn.style.background = '#9ca3af';
+            btn.style.pointerEvents = 'none';
+            btn.disabled = true;
+        });
+
         try {
             const { error } = await window.SupabaseDB.client
                 .from('golf_buddies')
@@ -965,7 +973,7 @@ window.GolfBuddiesSystem = {
                 // Handle duplicate buddy (409 conflict)
                 if (error.code === '23505' || error.message?.includes('duplicate') || error.message?.includes('unique')) {
                     console.warn('[Buddies] Buddy already exists');
-                    NotificationManager?.show?.('This buddy already exists in your list', 'info');
+                    NotificationManager?.show?.('Already in your buddies list', 'info');
                     return;
                 }
 
@@ -974,16 +982,14 @@ window.GolfBuddiesSystem = {
                 return;
             }
 
-            // Reload data
-            await this.loadBuddies();
-            await this.loadSuggestions();
+            NotificationManager?.show?.('Buddy added ✓', 'success');
 
-            // Update UI
-            this.updateBuddiesBadge();
-            this.renderMyBuddies();
-            this.renderSuggestions();
-
-            NotificationManager?.show?.('Buddy added successfully!', 'success');
+            // Reload data in background
+            this.loadBuddies().then(() => {
+                this.updateBuddiesBadge();
+                this.renderMyBuddies();
+            });
+            this.loadSuggestions().then(() => this.renderSuggestions());
 
         } catch (error) {
             console.error('[Buddies] Exception adding buddy:', error);

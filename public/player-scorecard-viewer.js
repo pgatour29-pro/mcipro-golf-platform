@@ -163,7 +163,9 @@ window.PlayerScorecardViewer = (function() {
                             const date = round.played_at ? new Date(round.played_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : '-';
                             const course = round.course_name || 'Unknown';
                             const shortCourse = course.length > 28 ? course.substring(0, 25) + '...' : course;
-                            const typeIcon = round.type === 'society' ? '🏆' : '👤';
+                            const isScramble = round.scoring_format && round.scoring_format.toLowerCase().includes('scramble');
+                            const typeIcon = isScramble ? '🤝' : round.type === 'society' ? '🏆' : '👤';
+                            const formatBadge = isScramble ? '<span class="ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700 uppercase">Scramble</span>' : '';
                             const hasHoles = round.hole_count > 0;
                             const stab = round.total_stableford > 0 ? round.total_stableford : '-';
 
@@ -173,7 +175,7 @@ window.PlayerScorecardViewer = (function() {
                                     <div class="flex-1 min-w-0">
                                         <div class="flex items-center gap-1.5">
                                             <span class="text-xs">${typeIcon}</span>
-                                            <span class="text-sm font-medium text-gray-800 truncate">${shortCourse}</span>
+                                            <span class="text-sm font-medium text-gray-800 truncate">${shortCourse}</span>${formatBadge}
                                         </div>
                                         <div class="text-xs text-gray-400 mt-0.5">${date}${round.tee_marker ? ' • ' + round.tee_marker + ' tees' : ''}</div>
                                     </div>
@@ -271,6 +273,7 @@ window.PlayerScorecardViewer = (function() {
         const date = sc.played_at ? new Date(sc.played_at).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) : '';
         const hcp = sc.handicap != null ? parseFloat(sc.handicap).toFixed(1) : '-';
         const playHcp = sc.playing_handicap ?? '-';
+        const isScramble = sc.scoring_format && sc.scoring_format.toLowerCase().includes('scramble');
 
         // Split into front/back 9
         const front9 = holes.filter(h => h.hole_number <= 9);
@@ -353,7 +356,7 @@ window.PlayerScorecardViewer = (function() {
                     Back to profile
                 </button>
                 <h2 class="text-lg font-bold">${sc.course_name || 'Unknown Course'}</h2>
-                <p class="text-emerald-100 text-sm">${sc.player_name || playerName || 'Unknown'} • ${date}</p>
+                <p class="text-emerald-100 text-sm">${sc.player_name || playerName || 'Unknown'} • ${date}${isScramble ? ' • <span class="px-1.5 py-0.5 rounded bg-purple-500/30 text-purple-200 text-[10px] font-bold uppercase">Scramble</span>' : ''}</p>
                 <div class="flex gap-3 mt-2 text-xs text-emerald-200">
                     <span>HCP: ${hcp}</span>
                     <span>Playing: ${playHcp}</span>

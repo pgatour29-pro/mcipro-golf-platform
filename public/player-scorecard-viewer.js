@@ -63,26 +63,100 @@ window.PlayerScorecardViewer = (function() {
         `);
 
         try {
+            // Try RPC first (works for registered members)
             const { data, error } = await supabase.rpc('get_player_profile', {
                 target_player_id: playerId
             });
 
-            if (error || !data) {
+            if (!error && data) {
+                renderProfileModal(data);
+                return;
+            }
+
+            // Fallback: build profile from scorecards for guest players
+            console.log('[ScorecardViewer] No user profile, building from scorecards for:', playerId);
+            const guestProfile = await buildGuestProfile(supabase, playerId, playerName);
+            if (guestProfile) {
+                renderProfileModal(guestProfile);
+            } else {
                 showModal(`
                     <div class="text-center py-12 text-gray-500">
                         <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">person_off</span>
                         <p class="font-medium text-gray-700">${playerName || 'This player'}</p>
-                        <p class="text-sm text-gray-400 mt-1">No member profile available</p>
-                        <p class="text-xs text-gray-300 mt-2">Guest players don't have detailed profiles yet</p>
+                        <p class="text-sm text-gray-400 mt-1">No scorecard data available</p>
                     </div>
                 `);
-                return;
             }
-
-            renderProfileModal(data);
         } catch (err) {
             console.error('[ScorecardViewer] Error:', err);
         }
+    }
+
+    // Build a profile object from scorecard data for guest/manual players
+    async function buildGuestProfile(supabase, playerId, playerName) {
+        const { data: scorecards, error } = await supabase
+            .from('scorecards')
+            .select('id, player_name, course_name, total_gross, total_net, handicap, playing_handicap, tee_marker, scoring_format, event_id, started_at')
+            .eq('player_id', playerId)
+            .gte('total_gross', 50)
+            .order('started_at', { ascending: false })
+            .limit(20);
+
+        if (error || !scorecards || scorecards.length === 0) return null;
+
+        // Get hole counts and stableford for each scorecard
+        const scorecardIds = scorecards.map(sc => sc.id);
+        const { data: holeData } = await supabase
+            .from('scores')
+            .select('scorecard_id, stableford_points, stableford')
+            .in('scorecard_id', scorecardIds);
+
+        const holeCounts = {};
+        const stablefordTotals = {};
+        (holeData || []).forEach(h => {
+            holeCounts[h.scorecard_id] = (holeCounts[h.scorecard_id] || 0) + 1;
+            stablefordTotals[h.scorecard_id] = (stablefordTotals[h.scorecard_id] || 0) + (h.stableford_points || h.stableford || 0);
+        });
+
+        const name = scorecards[0].player_name || playerName || 'Guest';
+        const grossValues = scorecards.map(sc => sc.total_gross).filter(g => g >= 50);
+        const avgGross = grossValues.length > 0 ? (grossValues.reduce((a, b) => a + b, 0) / grossValues.length).toFixed(1) : null;
+        const bestGross = grossValues.length > 0 ? Math.min(...grossValues) : null;
+
+        const stabValues = Object.values(stablefordTotals).filter(s => s >= 18);
+        const avgStab = stabValues.length > 0 ? (stabValues.reduce((a, b) => a + b, 0) / stabValues.length).toFixed(1) : null;
+        const bestStab = stabValues.length > 0 ? Math.max(...stabValues) : null;
+
+        return {
+            player_id: playerId,
+            player_name: name,
+            handicap: scorecards[0].handicap || null,
+            home_course: { name: null },
+            statistics: {
+                total_rounds: scorecards.length,
+                avg_gross: avgGross ? parseFloat(avgGross) : null,
+                best_gross: bestGross,
+                avg_net: null,
+                avg_stableford: avgStab ? parseFloat(avgStab) : null,
+                best_stableford: bestStab,
+                last_round_date: scorecards[0].started_at
+            },
+            societies: { count: 0, primary: 'Guest Player', all: [] },
+            recent_rounds: scorecards.map(sc => ({
+                scorecard_id: sc.id,
+                course_name: sc.course_name,
+                played_at: sc.started_at,
+                total_gross: sc.total_gross,
+                total_net: sc.total_net,
+                total_stableford: stablefordTotals[sc.id] || 0,
+                handicap: sc.handicap,
+                playing_handicap: sc.playing_handicap,
+                tee_marker: sc.tee_marker,
+                scoring_format: sc.scoring_format,
+                type: sc.event_id ? 'society' : 'private',
+                hole_count: holeCounts[sc.id] || 0
+            }))
+        };
     }
 
     // =========================================================================

@@ -381,39 +381,39 @@ window.PlayerScorecardViewer = (function() {
                 <div class="mb-3">
                     <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 px-1">${label}</div>
                     <div class="overflow-x-auto">
-                        <table class="w-full text-xs border-collapse">
+                        <table class="w-full text-xs border-collapse border border-gray-200" style="border-spacing:0;">
                             <thead>
                                 <tr class="bg-gray-100">
-                                    <th class="px-1.5 py-1.5 text-left text-gray-500 font-medium w-12">Hole</th>
-                                    ${nineHoles.map(h => `<th class="px-1 py-1.5 text-center text-gray-600 font-bold w-8">${h.hole_number}</th>`).join('')}
-                                    <th class="px-1.5 py-1.5 text-center text-gray-700 font-bold bg-gray-200 w-10">Tot</th>
+                                    <th class="px-1.5 py-1.5 text-left text-gray-500 font-medium w-12 border border-gray-200">Hole</th>
+                                    ${nineHoles.map(h => `<th class="px-1 py-1.5 text-center text-gray-600 font-bold w-8 border border-gray-200">${h.hole_number}</th>`).join('')}
+                                    <th class="px-1.5 py-1.5 text-center text-gray-700 font-bold bg-gray-200 w-10 border border-gray-200">Tot</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr class="border-b border-gray-100">
-                                    <td class="px-1.5 py-1 text-gray-500 font-medium">Par</td>
-                                    ${nineHoles.map(h => `<td class="px-1 py-1 text-center text-gray-500">${h.par}</td>`).join('')}
-                                    <td class="px-1.5 py-1 text-center font-bold text-gray-600 bg-gray-50">${ninePar}</td>
-                                </tr>
-                                <tr class="border-b border-gray-100">
-                                    <td class="px-1.5 py-1 text-gray-500 font-medium">SI</td>
-                                    ${nineHoles.map(h => `<td class="px-1 py-1 text-center text-gray-400 text-[10px]">${h.stroke_index}</td>`).join('')}
-                                    <td class="px-1.5 py-1 text-center bg-gray-50"></td>
-                                </tr>
-                                <tr class="border-b border-gray-200 bg-white">
-                                    <td class="px-1.5 py-1.5 text-gray-700 font-semibold">Gross</td>
-                                    ${nineHoles.map(h => `<td class="px-1 py-1.5 text-center ${getScoreCellClass(h.gross_score, h.par)}">${h.gross_score}</td>`).join('')}
-                                    <td class="px-1.5 py-1.5 text-center font-bold text-emerald-700 bg-emerald-50">${nineGross}</td>
-                                </tr>
-                                <tr class="border-b border-gray-100">
-                                    <td class="px-1.5 py-1 text-gray-500 font-medium">Net</td>
-                                    ${nineHoles.map(h => `<td class="px-1 py-1 text-center text-gray-600">${h.net_score ?? '-'}</td>`).join('')}
-                                    <td class="px-1.5 py-1 text-center font-bold text-blue-600 bg-blue-50">${nineNet}</td>
+                                <tr>
+                                    <td class="px-1.5 py-1 text-gray-500 font-medium border border-gray-200">Par</td>
+                                    ${nineHoles.map(h => `<td class="px-1 py-1 text-center text-gray-500 border border-gray-200">${h.par}</td>`).join('')}
+                                    <td class="px-1.5 py-1 text-center font-bold text-gray-600 bg-gray-50 border border-gray-200">${ninePar}</td>
                                 </tr>
                                 <tr>
-                                    <td class="px-1.5 py-1 text-gray-500 font-medium">Pts</td>
-                                    ${nineHoles.map(h => `<td class="px-1 py-1 text-center ${h.stableford_points >= 3 ? 'text-amber-600 font-bold' : h.stableford_points === 0 ? 'text-gray-300' : 'text-gray-600'}">${h.stableford_points ?? '-'}</td>`).join('')}
-                                    <td class="px-1.5 py-1 text-center font-bold text-amber-600 bg-amber-50">${ninePts}</td>
+                                    <td class="px-1.5 py-1 text-gray-500 font-medium border border-gray-200">SI</td>
+                                    ${nineHoles.map(h => `<td class="px-1 py-1 text-center text-gray-400 text-[10px] border border-gray-200">${h.stroke_index}</td>`).join('')}
+                                    <td class="px-1.5 py-1 text-center bg-gray-50 border border-gray-200"></td>
+                                </tr>
+                                <tr class="bg-white">
+                                    <td class="px-1.5 py-1.5 text-gray-700 font-semibold border border-gray-200">Gross</td>
+                                    ${nineHoles.map(h => `<td class="px-1 py-1.5 text-center border border-gray-200 ${getScoreCellClass(h.gross_score, h.par)}">${h.gross_score}</td>`).join('')}
+                                    <td class="px-1.5 py-1.5 text-center font-bold text-emerald-700 bg-emerald-50 border border-gray-200">${nineGross}</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-1.5 py-1 text-gray-500 font-medium border border-gray-200">Net</td>
+                                    ${nineHoles.map(h => `<td class="px-1 py-1 text-center text-gray-600 border border-gray-200">${h.net_score ?? '-'}</td>`).join('')}
+                                    <td class="px-1.5 py-1 text-center font-bold text-blue-600 bg-blue-50 border border-gray-200">${nineNet}</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-1.5 py-1 text-gray-500 font-medium border border-gray-200">Pts</td>
+                                    ${nineHoles.map(h => `<td class="px-1 py-1 text-center border border-gray-200 ${h.stableford_points >= 3 ? 'text-amber-600 font-bold' : h.stableford_points === 0 ? 'text-gray-300' : 'text-gray-600'}">${h.stableford_points ?? '-'}</td>`).join('')}
+                                    <td class="px-1.5 py-1 text-center font-bold text-amber-600 bg-amber-50 border border-gray-200">${ninePts}</td>
                                 </tr>
                             </tbody>
                         </table>

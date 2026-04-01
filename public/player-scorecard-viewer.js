@@ -141,7 +141,7 @@ window.PlayerScorecardViewer = (function() {
                 best_stableford: bestStab,
                 last_round_date: scorecards[0].started_at
             },
-            societies: { count: 0, primary: 'Guest Player', all: [] },
+            societies: { count: 0, primary: 'Non-Member', all: [] },
             recent_rounds: scorecards.map(sc => ({
                 scorecard_id: sc.id,
                 course_name: sc.course_name,

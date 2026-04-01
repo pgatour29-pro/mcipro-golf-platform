@@ -69,10 +69,11 @@ window.PlayerScorecardViewer = (function() {
 
             if (error || !data) {
                 showModal(`
-                    <div class="text-center py-12 text-red-500">
-                        <span class="material-symbols-outlined text-4xl mb-2">error</span>
-                        <p>Failed to load profile</p>
-                        <p class="text-sm text-gray-400 mt-1">${error?.message || 'No data found'}</p>
+                    <div class="text-center py-12 text-gray-500">
+                        <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">person_off</span>
+                        <p class="font-medium text-gray-700">${playerName || 'This player'}</p>
+                        <p class="text-sm text-gray-400 mt-1">No member profile available</p>
+                        <p class="text-xs text-gray-300 mt-2">Guest players don't have detailed profiles yet</p>
                     </div>
                 `);
                 return;

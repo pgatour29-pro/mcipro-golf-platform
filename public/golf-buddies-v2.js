@@ -378,7 +378,10 @@ window.GolfBuddiesSystem = {
                         '<div style="font-weight:600;color:#111;font-size:15px;">' + name + '</div>' +
                         '<div style="font-size:12px;color:#666;margin-top:2px;">HCP: ' + hcp + ' · Played: ' + tp + 'x</div>' +
                     '</div>' +
+                    '<div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">' +
                     '<button onclick="GolfBuddiesSystem.quickAddBuddy(\'' + rec.buddy_id + '\');var _m=document.getElementById(\'buddyFixV4\');if(_m)_m.remove();" style="padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-weight:500;">+ Add</button>' +
+                    '<button id="delbuddy_' + rec.id + '" onclick="GolfBuddiesSystem.removeBuddy(\'' + rec.id + '\');" style="padding:10px 14px;background:#fee2e2;color:#dc2626;border:none;border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;" title="Remove buddy">✕</button>' +
+                    '</div>' +
                 '</div>';
             }
             buddiesPanel.innerHTML = html;
@@ -921,9 +924,8 @@ window.GolfBuddiesSystem = {
                                 </div>
                             </div>
                             <button onclick="GolfBuddiesSystem.addBuddy('${userId}')"
-                                    style="padding: 0.375rem 0.5rem; background: #16a34a; color: white; border-radius: 0.5rem; font-size: 0.75rem; border: none; cursor: pointer; flex-shrink: 0; white-space: nowrap;">
-                                <span class="material-symbols-outlined" style="font-size: 0.875rem; vertical-align: middle;">add</span>
-                                <span style="display: none;">Add</span>
+                                    style="padding: 0.5rem 0.75rem; background: #16a34a; color: white; border-radius: 0.5rem; font-size: 0.875rem; border: none; cursor: pointer; flex-shrink: 0; white-space: nowrap; min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; font-weight: 600;">
+                                + Add
                             </button>
                         </div>
                     </div>
@@ -949,6 +951,15 @@ window.GolfBuddiesSystem = {
             return;
         }
 
+        // Instant visual feedback — change button to ✓
+        const addBtns = document.querySelectorAll('button[onclick*="addBuddy(\'' + buddyId + '\')"]');
+        addBtns.forEach(btn => {
+            btn.innerHTML = '✓ Added';
+            btn.style.background = '#9ca3af';
+            btn.style.pointerEvents = 'none';
+            btn.disabled = true;
+        });
+
         try {
             const { error } = await window.SupabaseDB.client
                 .from('golf_buddies')
@@ -962,7 +973,7 @@ window.GolfBuddiesSystem = {
                 // Handle duplicate buddy (409 conflict)
                 if (error.code === '23505' || error.message?.includes('duplicate') || error.message?.includes('unique')) {
                     console.warn('[Buddies] Buddy already exists');
-                    NotificationManager?.show?.('This buddy already exists in your list', 'info');
+                    NotificationManager?.show?.('Already in your buddies list', 'info');
                     return;
                 }
 
@@ -971,16 +982,22 @@ window.GolfBuddiesSystem = {
                 return;
             }
 
-            // Reload data
-            await this.loadBuddies();
-            await this.loadSuggestions();
+            NotificationManager?.show?.('Buddy added ✓', 'success');
 
-            // Update UI
-            this.updateBuddiesBadge();
-            this.renderMyBuddies();
-            this.renderSuggestions();
+            // Optimistically update badge immediately
+            const badge = document.getElementById('buddiesCountBadge');
+            if (badge) {
+                const current = parseInt(badge.textContent) || 0;
+                badge.textContent = current + 1;
+                badge.style.display = 'inline-block';
+            }
 
-            NotificationManager?.show?.('Buddy added successfully!', 'success');
+            // Reload data in background to sync
+            this.loadBuddies().then(() => {
+                this.updateBuddiesBadge();
+                this.renderMyBuddies();
+            });
+            this.loadSuggestions().then(() => this.renderSuggestions());
 
         } catch (error) {
             console.error('[Buddies] Exception adding buddy:', error);
@@ -992,7 +1009,18 @@ window.GolfBuddiesSystem = {
      * Remove a buddy
      */
     async removeBuddy(buddyRecordId) {
-        if (!confirm('Remove this buddy?')) return;
+        // Immediately hide the row visually
+        const row = document.getElementById('delbuddy_' + buddyRecordId);
+        if (row && row.parentElement && row.parentElement.parentElement) {
+            row.parentElement.parentElement.style.display = 'none';
+        }
+        // Optimistically update badge
+        const badge = document.getElementById('buddiesCountBadge');
+        if (badge) {
+            const current = parseInt(badge.textContent) || 0;
+            badge.textContent = Math.max(0, current - 1);
+            if (current <= 1) badge.style.display = 'none';
+        }
 
         try {
             const { error } = await window.SupabaseDB.client
@@ -1002,18 +1030,21 @@ window.GolfBuddiesSystem = {
 
             if (error) {
                 console.error('[Buddies] Error removing buddy:', error);
-                NotificationManager?.show?.('Error removing buddy', 'error');
+                NotificationManager?.show?.('Error removing buddy: ' + error.message, 'error');
+                // Show the row again on error
+                if (row && row.parentElement && row.parentElement.parentElement) {
+                    row.parentElement.parentElement.style.display = '';
+                }
                 return;
             }
 
-            // Reload data
-            await this.loadBuddies();
+            // Reload data in background
+            this.loadBuddies().then(() => {
+                this.updateBuddiesBadge();
+                this.renderMyBuddies();
+            });
 
-            // Update UI
-            this.updateBuddiesBadge();
-            this.renderMyBuddies();
-
-            NotificationManager?.show?.('Buddy removed', 'success');
+            NotificationManager?.show?.('Buddy removed ✓', 'success');
 
         } catch (error) {
             console.error('[Buddies] Exception removing buddy:', error);

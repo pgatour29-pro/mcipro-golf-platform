@@ -484,10 +484,24 @@ class SupabaseClient {
         }
 
         // PERFORMANCE FIX: Only select columns we need (not *)
-        const { data, error} = await this.client
-            .from('user_profiles')
-            .select('line_user_id, name, display_name, email, profile_data, home_course_name, home_course_id, home_club, society_name, society_id, handicap_index')
-            .order('name');
+        // Fetch all profiles (Supabase defaults to 1000 rows — we need all)
+        let allData = [];
+        let from = 0;
+        const PAGE_SIZE = 500;
+        while (true) {
+            const { data: page, error: pageErr } = await this.client
+                .from('user_profiles')
+                .select('line_user_id, name, display_name, email, profile_data, home_course_name, home_course_id, home_club, society_name, society_id, handicap_index')
+                .order('name')
+                .range(from, from + PAGE_SIZE - 1);
+            if (pageErr) { console.error('[Supabase] Error fetching profiles page:', pageErr); break; }
+            if (!page || page.length === 0) break;
+            allData = allData.concat(page);
+            if (page.length < PAGE_SIZE) break;
+            from += PAGE_SIZE;
+        }
+        const data = allData;
+        const error = null;
 
         if (error) {
             console.error('[Supabase] Error fetching profiles:', error);

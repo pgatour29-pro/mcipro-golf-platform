@@ -6,16 +6,13 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
     const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-    if (!GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not set in environment variables");
-    }
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is missing");
 
     const { action, message, stats, events, buddies } = await req.json();
 
@@ -47,20 +44,21 @@ RULES:
         throw new Error("Invalid action provided");
     }
 
-    // Call Gemini API
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{
-          parts: [{ text: prompt }]
-        }],
+        contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.7,
           maxOutputTokens: 2000,
-        }
+        },
+        safetySettings: [
+          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+        ]
       })
     });
 
@@ -70,7 +68,13 @@ RULES:
         throw new Error(data.error?.message || 'Failed to fetch from Gemini');
     }
 
-    const aiResponse = data.candidates[0].content.parts[0].text;
+    let aiResponse = "";
+    if (data.candidates && data.candidates[0]?.content?.parts?.length > 0) {
+        aiResponse = data.candidates[0].content.parts[0].text;
+    } else {
+        console.error("Gemini Response Data:", JSON.stringify(data));
+        throw new Error("LLM failed to generate a valid response (Blocked by safety filters or empty output)");
+    }
 
     return new Response(
       JSON.stringify({ response: aiResponse }),

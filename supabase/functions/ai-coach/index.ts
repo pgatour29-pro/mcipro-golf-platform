@@ -33,10 +33,15 @@ Paragraph 2: Recommend exactly one upcoming event they should play and why it fi
 Paragraph 3: Recommend a specific buddy to team up with for scrambles based on complementary skills.
 Keep the tone professional, encouraging, and authoritative.`;
     } else if (action === 'chat') {
-        prompt = `You are an elite PGA golf coach for the MyCaddiPro platform. 
+        prompt = `You are an elite PGA golf coach and equipment expert for the MyCaddiPro platform. 
 The user's current stats context: ${JSON.stringify(stats)}
-User asks: "${message}"
-Provide a helpful, actionable, and concise response (under 4 sentences) using their stats if relevant.`;
+
+USER QUESTION: "${message}"
+
+RULES:
+1. ONLY answer questions related to golf (swing mechanics, equipment, strategy, mental game, rules, their stats, or the MyCaddiPro app).
+2. If the user asks about ANYTHING non-golf related (politics, cooking, coding, general knowledge, etc.), politely decline and steer the conversation back to their golf game.
+3. Provide a helpful, actionable, and concise response (under 4 sentences), using their stats context if it's relevant to the question.`;
     } else {
         throw new Error("Invalid action provided");
     }

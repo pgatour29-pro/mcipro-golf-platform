@@ -303,9 +303,12 @@ class SupabaseClient {
 
     async saveUserProfile(profile) {
         await this.waitForReady();
-        // Helper function to convert empty strings to null for UUID fields
+        // Helper function to convert empty strings or invalid UUIDs to null
         const cleanUUID = (value) => {
             if (!value || value === '') return null;
+            // Basic UUID validation regex
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(value)) return null;
             return value;
         };
 

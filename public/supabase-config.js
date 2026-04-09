@@ -353,6 +353,7 @@ class SupabaseClient {
                     societyName: profile.society_name || profile.societyName || profile.organizationInfo?.societyName || '',
                     societyId: cleanUUID(profile.society_id || profile.societyId || profile.organizationInfo?.societyId)
                 },
+                roleSpecific: profile.roleSpecific || {},
                 professionalInfo: profile.professionalInfo || {},
                 skills: profile.skills || {},
                 preferences: profile.preferences || {},

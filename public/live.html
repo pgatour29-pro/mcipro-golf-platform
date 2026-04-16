@@ -36,6 +36,30 @@
         .event-item.active { background-color: #dcfce7; border-left: 3px solid #16a34a; }
         .sidebar-scroll { max-height: calc(100vh - 200px); overflow-y: auto; }
         .live-badge { animation: pulse 2s infinite; }
+        /* Tab styles */
+        .tab-btn { padding: 10px 20px; font-weight: 600; border-bottom: 3px solid transparent; cursor: pointer; transition: all 0.2s; }
+        .tab-btn.active { border-bottom-color: #16a34a; color: #16a34a; }
+        .tab-btn:not(.active) { color: #6b7280; }
+        .tab-btn:hover:not(.active) { color: #374151; }
+        /* Virtual Scorecard styles */
+        .vs-course-card { cursor: pointer; transition: all 0.2s; border: 2px solid transparent; }
+        .vs-course-card:hover { border-color: #16a34a; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .vs-course-card.selected { border-color: #16a34a; background: #f0fdf4; }
+        .vs-hole-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 2px; }
+        .vs-hole-cell { text-align: center; padding: 6px 2px; font-size: 12px; border: 1px solid #e5e7eb; }
+        .vs-hole-header { background: #1f2937; color: white; font-weight: 700; border: none; }
+        .vs-par-row { background: #dcfce7; font-weight: 600; color: #166534; }
+        .vs-si-row { background: #fef3c7; color: #92400e; font-size: 10px; }
+        .vs-yardage-row { background: #f3f4f6; color: #374151; }
+        .vs-tee-black { background: #1f2937; color: white; }
+        .vs-tee-blue { background: #2563eb; color: white; }
+        .vs-tee-white { background: #f9fafb; color: #1f2937; border: 1px solid #d1d5db; }
+        .vs-tee-yellow { background: #fbbf24; color: #1f2937; }
+        .vs-tee-red { background: #dc2626; color: white; }
+        .vs-course-img { max-width: 100%; border-radius: 8px; margin-top: 12px; cursor: pointer; transition: transform 0.2s; }
+        .vs-course-img:hover { transform: scale(1.02); }
+        .vs-img-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .vs-img-modal img { max-width: 95vw; max-height: 95vh; object-fit: contain; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -68,6 +92,18 @@
         <div class="flex flex-col lg:flex-row gap-6">
             <!-- Left/Center: Main Leaderboard Area -->
             <div class="flex-1 lg:w-2/3">
+                <!-- Tab Navigation -->
+                <div class="bg-white rounded-lg shadow-sm mb-4 flex border-b">
+                    <button class="tab-btn active" id="tabLive" onclick="switchTab('live')">
+                        <span class="material-symbols-outlined text-sm align-middle mr-1">leaderboard</span>Live Leaderboards
+                    </button>
+                    <button class="tab-btn" id="tabVirtual" onclick="switchTab('virtual')">
+                        <span class="material-symbols-outlined text-sm align-middle mr-1">scorecard</span>Virtual Scorecard
+                    </button>
+                </div>
+
+                <!-- LIVE TAB CONTENT -->
+                <div id="liveTabContent">
                 <!-- Status Bar -->
                 <div class="bg-white rounded-lg shadow-sm p-3 mb-4 flex items-center justify-between">
                     <div class="flex items-center gap-2 text-gray-600">
@@ -102,6 +138,36 @@
                     </div>
                 </div>
             </div>
+
+                </div><!-- end liveTabContent -->
+
+                <!-- VIRTUAL SCORECARD TAB CONTENT -->
+                <div id="virtualTabContent" style="display:none;">
+                    <!-- Course Search -->
+                    <div class="bg-white rounded-lg shadow-sm p-4 mb-4">
+                        <div class="flex items-center gap-2 mb-3">
+                            <span class="material-symbols-outlined text-green-600">search</span>
+                            <input type="text" id="vsCourseSearch" placeholder="Search golf courses..."
+                                class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                                oninput="filterVsCourses(this.value)">
+                        </div>
+                        <div id="vsCourseList" class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-64 overflow-y-auto">
+                            <div class="text-center py-6 text-gray-400">
+                                <span class="material-symbols-outlined text-3xl">hourglass_empty</span>
+                                <p class="text-sm">Loading courses...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Selected Course Scorecard -->
+                    <div id="vsCourseScorecardContainer">
+                        <div class="bg-white rounded-lg shadow-sm p-8 text-center text-gray-400">
+                            <span class="material-symbols-outlined text-6xl mb-3">golf_course</span>
+                            <h3 class="text-lg font-semibold text-gray-600">Select a Course</h3>
+                            <p class="text-sm">Choose a golf course above to view its virtual scorecard</p>
+                        </div>
+                    </div>
+                </div><!-- end virtualTabContent -->
 
             <!-- Right Sidebar: Event History -->
             <div class="lg:w-1/3">
@@ -1175,6 +1241,304 @@
                     Tap player name to see hole-by-hole scores
                 </div>
             `;
+        }
+
+        // ==========================================
+        // VIRTUAL SCORECARD TAB
+        // ==========================================
+        let vsCourses = [];
+        let vsSelectedCourse = null;
+
+        function switchTab(tab) {
+            document.getElementById('tabLive').classList.toggle('active', tab === 'live');
+            document.getElementById('tabVirtual').classList.toggle('active', tab === 'virtual');
+            document.getElementById('liveTabContent').style.display = tab === 'live' ? '' : 'none';
+            document.getElementById('virtualTabContent').style.display = tab === 'virtual' ? '' : 'none';
+            if (tab === 'virtual' && vsCourses.length === 0) {
+                loadVsCourses();
+            }
+        }
+
+        async function loadVsCourses() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('courses')
+                    .select('id, course_name, course_code, location, par, total_holes, designer, year_opened, tees')
+                    .order('course_name');
+                if (error) throw error;
+                vsCourses = data || [];
+                renderVsCourseList(vsCourses);
+            } catch (e) {
+                console.error('Error loading courses:', e);
+                document.getElementById('vsCourseList').innerHTML = '<div class="text-center py-4 text-red-500 col-span-2">Error loading courses</div>';
+            }
+        }
+
+        function filterVsCourses(query) {
+            const q = query.toLowerCase();
+            const filtered = vsCourses.filter(c => c.course_name.toLowerCase().includes(q) || (c.location || '').toLowerCase().includes(q));
+            renderVsCourseList(filtered);
+        }
+
+        function renderVsCourseList(courses) {
+            const el = document.getElementById('vsCourseList');
+            if (courses.length === 0) {
+                el.innerHTML = '<div class="text-center py-4 text-gray-400 col-span-2">No courses found</div>';
+                return;
+            }
+            el.innerHTML = courses.map(c => {
+                const tees = (c.tees || []);
+                const teeColors = tees.map(t => {
+                    const color = (t.color || t.name || '').toLowerCase();
+                    return `<span class="inline-block w-3 h-3 rounded-full mr-1" style="background:${
+                        color.includes('black') ? '#1f2937' : color.includes('blue') ? '#2563eb' :
+                        color.includes('white') ? '#e5e7eb' : color.includes('yellow') ? '#fbbf24' :
+                        color.includes('red') ? '#dc2626' : '#9ca3af'
+                    };border:1px solid #ccc;"></span>`;
+                }).join('');
+                const isSelected = vsSelectedCourse && vsSelectedCourse.id === c.id;
+                return `
+                    <div class="vs-course-card rounded-lg p-3 bg-white border ${isSelected ? 'selected' : ''}" onclick="selectVsCourse('${c.id}')">
+                        <div class="font-semibold text-sm text-gray-800">${c.course_name}</div>
+                        <div class="text-xs text-gray-500 mt-1">${c.location || 'Thailand'} | Par ${c.par || 72}</div>
+                        <div class="mt-1">${teeColors}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function selectVsCourse(courseId) {
+            const course = vsCourses.find(c => c.id === courseId);
+            if (!course) return;
+            vsSelectedCourse = course;
+            renderVsCourseList(vsCourses.filter(c => {
+                const q = document.getElementById('vsCourseSearch').value.toLowerCase();
+                return !q || c.course_name.toLowerCase().includes(q) || (c.location || '').toLowerCase().includes(q);
+            }));
+
+            const container = document.getElementById('vsCourseScorecardContainer');
+            container.innerHTML = '<div class="text-center py-8 text-gray-400"><span class="material-symbols-outlined text-3xl animate-spin">progress_activity</span><p class="text-sm mt-2">Loading scorecard...</p></div>';
+
+            try {
+                // Fetch hole data for all tees
+                const { data: holes, error } = await supabaseClient
+                    .from('course_holes')
+                    .select('hole_number, par, stroke_index, yardage, tee_marker')
+                    .eq('course_id', course.course_code || course.id)
+                    .order('hole_number');
+
+                // Also try by UUID if course_code didn't work
+                let holeData = holes || [];
+                if (holeData.length === 0 && course.id !== course.course_code) {
+                    const { data: holes2 } = await supabaseClient
+                        .from('course_holes')
+                        .select('hole_number, par, stroke_index, yardage, tee_marker')
+                        .eq('course_id', course.id)
+                        .order('hole_number');
+                    holeData = holes2 || [];
+                }
+
+                // Check for course images in assets/scorecards
+                const courseImages = await findCourseImages(course.course_name, course.course_code);
+
+                container.innerHTML = renderVsScorecard(course, holeData, courseImages);
+            } catch (e) {
+                console.error('Error loading course scorecard:', e);
+                container.innerHTML = '<div class="bg-red-50 rounded-lg p-6 text-center text-red-600">Error loading scorecard</div>';
+            }
+        }
+
+        async function findCourseImages(courseName, courseCode) {
+            // Known scorecard images mapped by partial course name match
+            const imageMap = {
+                'bangpakong': 'Bangpakong.jpg',
+                'bangpra': 'Bangpra-International-Golf-Club-scorecard.jpg',
+                'burapha': 'Burapha-scorecard.jpg',
+                'grand prix': 'GrandPrixGolfClub.jpg',
+                'laem chabang': 'Laem_Chabang.jpg',
+                'pattavia': 'Pattavia-scorecard.jpg',
+                'pattaya country': 'Pattayacountyclub.jpg',
+                'siam country': 'Siam-cc-old-course-scorecard.jpg',
+                'crystal bay': 'crystal-bay-scorecard.jpg',
+                'khao kheow': 'khaokheow.jpg',
+                'mountain shadow': 'mountain_shadow-2.jpg',
+                'pleasant valley': 'pleasant-valley-golf-scorecard.jpg',
+                'plutaluang': 'plutaluang-north-west.jpg',
+                'royal lakeside': 'royal-lake-side-golf-club.jpg',
+                'siam plantation': 'siamplantation.jpg',
+                'pattana': 'pattanascoreCard.gif'
+            };
+
+            const images = [];
+            const nameLower = (courseName || '').toLowerCase();
+            const codeLower = (courseCode || '').toLowerCase();
+
+            for (const [key, filename] of Object.entries(imageMap)) {
+                if (nameLower.includes(key) || codeLower.includes(key)) {
+                    images.push(`/assets/scorecards/${filename}`);
+                }
+            }
+            return images;
+        }
+
+        function renderVsScorecard(course, holeData, courseImages) {
+            const tees = course.tees || [];
+
+            // Group holes by tee marker
+            const holesByTee = {};
+            for (const h of holeData) {
+                const tee = (h.tee_marker || 'white').toLowerCase();
+                if (!holesByTee[tee]) holesByTee[tee] = {};
+                holesByTee[tee][h.hole_number] = h;
+            }
+
+            // Get par and SI from any tee (they should be consistent)
+            const anyTee = Object.values(holesByTee)[0] || {};
+            const pars = [];
+            const sis = [];
+            for (let i = 1; i <= 18; i++) {
+                const h = anyTee[i];
+                pars.push(h ? h.par : 4);
+                sis.push(h ? h.stroke_index : i);
+            }
+            const front9Par = pars.slice(0, 9).reduce((a, b) => a + b, 0);
+            const back9Par = pars.slice(9).reduce((a, b) => a + b, 0);
+
+            // Tee order preference
+            const teeOrder = ['black', 'blue', 'white', 'yellow', 'red'];
+            const teeColorMap = { black: 'vs-tee-black', blue: 'vs-tee-blue', white: 'vs-tee-white', yellow: 'vs-tee-yellow', red: 'vs-tee-red' };
+
+            // Build tee yardage rows
+            const availableTees = teeOrder.filter(t => holesByTee[t]);
+            // Also add any tees from course.tees metadata
+            const teeInfoMap = {};
+            for (const t of tees) {
+                const color = (t.color || t.name || '').toLowerCase();
+                teeInfoMap[color] = t;
+            }
+
+            function buildHalf(start, end) {
+                const holes = [];
+                for (let i = start; i <= end; i++) holes.push(i);
+                const halfPars = holes.map(i => pars[i - 1]);
+                const halfSIs = holes.map(i => sis[i - 1]);
+                const parTotal = halfPars.reduce((a, b) => a + b, 0);
+
+                let html = `<div class="overflow-x-auto mb-3">
+                    <div class="vs-hole-grid" style="grid-template-columns: 50px repeat(9, 1fr) 50px;">
+                        <div class="vs-hole-cell vs-hole-header" style="font-size:10px;">${start === 1 ? 'OUT' : 'IN'}</div>
+                        ${holes.map(h => `<div class="vs-hole-cell vs-hole-header">${h}</div>`).join('')}
+                        <div class="vs-hole-cell vs-hole-header">TOT</div>
+                    </div>`;
+
+                // Yardage rows per tee
+                for (const tee of availableTees) {
+                    const teeHoles = holesByTee[tee] || {};
+                    const yards = holes.map(i => teeHoles[i] ? teeHoles[i].yardage : '-');
+                    const totalYards = yards.reduce((sum, y) => sum + (typeof y === 'number' ? y : 0), 0);
+                    const info = teeInfoMap[tee];
+                    const label = info ? (info.name || tee) : tee.charAt(0).toUpperCase() + tee.slice(1);
+                    html += `<div class="vs-hole-grid" style="grid-template-columns: 50px repeat(9, 1fr) 50px;">
+                        <div class="vs-hole-cell ${teeColorMap[tee] || 'vs-yardage-row'}" style="font-size:10px;font-weight:600;">${label}</div>
+                        ${yards.map(y => `<div class="vs-hole-cell vs-yardage-row">${y}</div>`).join('')}
+                        <div class="vs-hole-cell vs-yardage-row font-bold">${totalYards || '-'}</div>
+                    </div>`;
+                }
+
+                // Par row
+                html += `<div class="vs-hole-grid" style="grid-template-columns: 50px repeat(9, 1fr) 50px;">
+                    <div class="vs-hole-cell vs-par-row" style="font-size:10px;font-weight:700;">PAR</div>
+                    ${halfPars.map(p => `<div class="vs-hole-cell vs-par-row">${p}</div>`).join('')}
+                    <div class="vs-hole-cell vs-par-row font-bold">${parTotal}</div>
+                </div>`;
+
+                // Stroke Index row
+                html += `<div class="vs-hole-grid" style="grid-template-columns: 50px repeat(9, 1fr) 50px;">
+                    <div class="vs-hole-cell vs-si-row" style="font-size:10px;font-weight:600;">S.I.</div>
+                    ${halfSIs.map(s => `<div class="vs-hole-cell vs-si-row">${s}</div>`).join('')}
+                    <div class="vs-hole-cell vs-si-row"></div>
+                </div>`;
+
+                html += `</div>`;
+                return html;
+            }
+
+            // Course info section
+            const teeInfo = tees.map(t => {
+                const color = (t.color || t.name || '').toLowerCase();
+                const cls = teeColorMap[color] || 'bg-gray-200';
+                return `<span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${cls}">
+                    ${t.name || t.color} ${t.rating ? `(CR: ${t.rating} / SR: ${t.slope})` : ''} ${t.yardage ? `- ${t.yardage}y` : ''}
+                </span>`;
+            }).join(' ');
+
+            const hasHoleData = holeData.length > 0;
+            const imagesHtml = courseImages.length > 0 ? `
+                <div class="mt-4">
+                    <h4 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                        <span class="material-symbols-outlined text-sm">image</span> Course Scorecard Images
+                    </h4>
+                    <div class="grid grid-cols-1 gap-3">
+                        ${courseImages.map(img => `<img src="${img}" alt="Scorecard" class="vs-course-img shadow-md" onclick="openVsImage('${img}')">`).join('')}
+                    </div>
+                </div>
+            ` : '';
+
+            return `
+                <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                    <!-- Course Header -->
+                    <div class="bg-gradient-to-r from-green-700 to-green-800 text-white p-4">
+                        <div class="flex items-center gap-3">
+                            <span class="material-symbols-outlined text-3xl">golf_course</span>
+                            <div>
+                                <h3 class="text-lg font-bold">${course.course_name}</h3>
+                                <p class="text-green-200 text-sm">${course.location || 'Thailand'} | Par ${course.par || 72} | ${course.total_holes || 18} Holes</p>
+                                ${course.designer ? `<p class="text-green-300 text-xs mt-1">Designed by ${course.designer}${course.year_opened ? ` (${course.year_opened})` : ''}</p>` : ''}
+                            </div>
+                        </div>
+                        ${teeInfo ? `<div class="flex flex-wrap gap-2 mt-3">${teeInfo}</div>` : ''}
+                    </div>
+
+                    <div class="p-4">
+                        ${hasHoleData ? `
+                            <h4 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1">
+                                <span class="material-symbols-outlined text-sm">grid_on</span> Front 9
+                            </h4>
+                            ${buildHalf(1, 9)}
+
+                            <h4 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1">
+                                <span class="material-symbols-outlined text-sm">grid_on</span> Back 9
+                            </h4>
+                            ${buildHalf(10, 18)}
+
+                            <div class="bg-green-50 rounded-lg p-3 mt-2 text-center">
+                                <span class="text-sm font-semibold text-green-800">
+                                    Total Par: ${front9Par + back9Par}
+                                    <span class="mx-2">|</span>
+                                    Front 9: ${front9Par}
+                                    <span class="mx-2">|</span>
+                                    Back 9: ${back9Par}
+                                </span>
+                            </div>
+                        ` : `
+                            <div class="text-center py-6 text-gray-400">
+                                <span class="material-symbols-outlined text-3xl mb-2">info</span>
+                                <p class="text-sm">Hole-by-hole data not yet available for this course</p>
+                            </div>
+                        `}
+
+                        ${imagesHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        function openVsImage(src) {
+            const modal = document.createElement('div');
+            modal.className = 'vs-img-modal';
+            modal.innerHTML = `<img src="${src}" alt="Scorecard">`;
+            modal.onclick = () => modal.remove();
+            document.body.appendChild(modal);
         }
 
         // Initial load

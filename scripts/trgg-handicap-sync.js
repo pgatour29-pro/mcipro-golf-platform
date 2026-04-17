@@ -46,15 +46,35 @@ async function scrapeHandicaps() {
 
     // Step 1: Go to entry page (may have Cloudflare challenge)
     console.log('[TRGG] Navigating to entry page...');
-    await page.goto(ENTRY_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto(ENTRY_URL, { waitUntil: 'networkidle2', timeout: 90000 });
 
-    // Wait for any Cloudflare challenge to resolve
-    await page.waitForFunction(() => {
-      return !document.title.includes('Just a moment') &&
-             !document.title.includes('Checking');
-    }, { timeout: 30000 }).catch(() => {
-      console.log('[TRGG] Cloudflare challenge may still be active, continuing...');
-    });
+    // Wait for Cloudflare challenge to resolve (up to 60s with retries)
+    console.log('[TRGG] Waiting for Cloudflare challenge to resolve...');
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await page.waitForFunction(() => {
+          return !document.title.includes('Just a moment') &&
+                 !document.title.includes('Checking') &&
+                 !document.title.includes('Attention');
+        }, { timeout: 20000 });
+        console.log('[TRGG] Cloudflare challenge resolved');
+        break;
+      } catch {
+        if (attempt < 2) {
+          console.log(`[TRGG] Challenge still active, waiting (attempt ${attempt + 2}/3)...`);
+          await new Promise(r => setTimeout(r, 10000));
+          // Reload to retry
+          await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+        } else {
+          console.log('[TRGG] WARNING: Cloudflare challenge did not resolve after 3 attempts');
+          const title = await page.title();
+          const html = await page.content();
+          console.log('[TRGG] Page title:', title);
+          console.log('[TRGG] Page snippet:', html.slice(0, 500));
+          throw new Error('Cloudflare challenge could not be resolved. Page title: ' + title);
+        }
+      }
+    }
 
     // Step 2: Check for password form and submit
     const hasPasswordForm = await page.$('input[type="password"]');

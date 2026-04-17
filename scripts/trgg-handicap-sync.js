@@ -3,7 +3,9 @@
 // Uses Puppeteer to bypass Cloudflare, scrapes handicap table,
 // fuzzy-matches against MyCaddiPro user_profiles, updates handicaps.
 
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+puppeteer.use(StealthPlugin());
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;

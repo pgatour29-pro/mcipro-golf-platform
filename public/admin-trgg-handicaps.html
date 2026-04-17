@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRGG Handicap Sync - Admin</title>
+    <link rel="icon" href="data:,">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <header class="bg-gradient-to-r from-green-700 to-green-800 text-white shadow-lg">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-2xl">sync</span>
+                <div>
+                    <h1 class="text-lg font-bold">TRGG Handicap Sync</h1>
+                    <p class="text-green-200 text-xs">Admin Review Queue</p>
+                </div>
+            </div>
+            <button onclick="triggerSync()" id="syncBtn" class="flex items-center gap-2 bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg text-sm font-semibold transition-all">
+                <span class="material-symbols-outlined text-base">play_arrow</span>
+                Run Sync Now
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 py-6 space-y-6">
+        <!-- Recent Runs -->
+        <section class="bg-white rounded-lg shadow-sm overflow-hidden">
+            <div class="bg-gray-50 px-4 py-3 border-b flex items-center gap-2">
+                <span class="material-symbols-outlined text-gray-600">history</span>
+                <h2 class="font-semibold text-gray-800">Recent Sync Runs</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 text-gray-600">
+                        <tr>
+                            <th class="text-left p-3">Started</th>
+                            <th class="text-left p-3">Status</th>
+                            <th class="text-right p-3">Fetched</th>
+                            <th class="text-right p-3">Matched</th>
+                            <th class="text-right p-3">Updated</th>
+                            <th class="text-right p-3">Review</th>
+                        </tr>
+                    </thead>
+                    <tbody id="runsTable">
+                        <tr><td colspan="6" class="text-center py-6 text-gray-400">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Pending Queue -->
+        <section class="bg-white rounded-lg shadow-sm overflow-hidden">
+            <div class="bg-gray-50 px-4 py-3 border-b flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-gray-600">pending_actions</span>
+                    <h2 class="font-semibold text-gray-800">Review Queue</h2>
+                    <span id="pendingCount" class="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">0</span>
+                </div>
+            </div>
+            <div id="pendingList" class="divide-y">
+                <div class="text-center py-8 text-gray-400">Loading...</div>
+            </div>
+        </section>
+
+        <!-- Confirmed Mappings -->
+        <section class="bg-white rounded-lg shadow-sm overflow-hidden">
+            <div class="bg-gray-50 px-4 py-3 border-b flex items-center gap-2">
+                <span class="material-symbols-outlined text-gray-600">link</span>
+                <h2 class="font-semibold text-gray-800">Confirmed Mappings</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 text-gray-600">
+                        <tr>
+                            <th class="text-left p-3">TRGG Name</th>
+                            <th class="text-left p-3">MyCaddiPro User</th>
+                            <th class="text-right p-3">Last HCP</th>
+                            <th class="text-right p-3">Last Synced</th>
+                            <th class="text-center p-3">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mappingsTable">
+                        <tr><td colspan="5" class="text-center py-6 text-gray-400">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZWVwbHdzbnVwbWhnYmd1d3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NDM2NjksImV4cCI6MjA3NTQxOTY2OX0.KVQ6WvDKz9s77lxn3AhSA_YTMCN6rsht9kDkMIDhngk';
+        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        async function loadAll() {
+            await Promise.all([loadRuns(), loadPending(), loadMappings()]);
+        }
+
+        async function loadRuns() {
+            const { data, error } = await sb.from('trgg_sync_runs')
+                .select('*').order('started_at', { ascending: false }).limit(10);
+            if (error || !data) { document.getElementById('runsTable').innerHTML = '<tr><td colspan="6" class="text-center py-4 text-red-500">Error loading runs</td></tr>'; return; }
+            if (data.length === 0) { document.getElementById('runsTable').innerHTML = '<tr><td colspan="6" class="text-center py-6 text-gray-400">No sync runs yet</td></tr>'; return; }
+            document.getElementById('runsTable').innerHTML = data.map(r => `
+                <tr class="border-t hover:bg-gray-50">
+                    <td class="p-3 text-gray-700">${new Date(r.started_at).toLocaleString()}</td>
+                    <td class="p-3">${statusPill(r.status)}${r.error_message ? `<div class="text-xs text-red-500 mt-1 max-w-xs truncate" title="${escHtml(r.error_message)}">${escHtml(r.error_message)}</div>` : ''}</td>
+                    <td class="p-3 text-right">${r.rows_fetched}</td>
+                    <td class="p-3 text-right">${r.rows_matched}</td>
+                    <td class="p-3 text-right">${r.rows_updated}</td>
+                    <td class="p-3 text-right">${r.rows_review + r.rows_suggested}</td>
+                </tr>
+            `).join('');
+        }
+
+        async function loadPending() {
+            const { data, error } = await sb.from('trgg_pending_matches')
+                .select('*').eq('status', 'pending').order('similarity', { ascending: false, nullsFirst: false });
+            if (error || !data) { document.getElementById('pendingList').innerHTML = '<div class="text-center py-4 text-red-500">Error loading</div>'; return; }
+            document.getElementById('pendingCount').textContent = data.length;
+            if (data.length === 0) { document.getElementById('pendingList').innerHTML = '<div class="text-center py-8 text-gray-400"><span class="material-symbols-outlined text-3xl mb-2">check_circle</span><p>All caught up. Nothing to review.</p></div>'; return; }
+            document.getElementById('pendingList').innerHTML = data.map(row => `
+                <div class="p-4" id="pending-${row.id}">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                            <div class="font-semibold text-gray-800">${escHtml(row.trgg_name)}</div>
+                            <div class="text-sm text-gray-500">TRGG Handicap: <strong class="text-gray-800">${row.trgg_handicap}</strong></div>
+                        </div>
+                        <div class="text-right">
+                            ${row.suggested_profile_id && row.suggested_name ? `
+                                <div class="text-xs text-gray-400 mb-1">Suggested match</div>
+                                <div class="font-medium text-gray-700">${escHtml(row.suggested_name)}</div>
+                                <div class="text-xs text-gray-500">${Math.round((row.similarity || 0) * 100)}% similar</div>
+                                <div class="flex gap-2 mt-2 justify-end">
+                                    <button onclick="approveMatch('${row.id}', '${row.trgg_name.replace(/'/g,"\\'")}', ${row.trgg_handicap}, '${row.suggested_profile_id}')" class="px-3 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700">Approve</button>
+                                    <button onclick="openSearch('${row.id}', '${row.trgg_name.replace(/'/g,"\\'")}', ${row.trgg_handicap})" class="px-3 py-1 text-xs border rounded-lg hover:bg-gray-50">Pick Different</button>
+                                    <button onclick="rejectMatch('${row.id}')" class="px-3 py-1 text-xs border rounded-lg text-red-600 hover:bg-red-50">Reject</button>
+                                </div>
+                            ` : `
+                                <div class="text-xs text-gray-400 mb-1">No match suggestion</div>
+                                <div class="flex gap-2 mt-2 justify-end">
+                                    <button onclick="openSearch('${row.id}', '${row.trgg_name.replace(/'/g,"\\'")}', ${row.trgg_handicap})" class="px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700">Pick User</button>
+                                    <button onclick="rejectMatch('${row.id}')" class="px-3 py-1 text-xs border rounded-lg text-red-600 hover:bg-red-50">Reject</button>
+                                </div>
+                            `}
+                        </div>
+                    </div>
+                    <div id="search-${row.id}" class="hidden mt-3 border-t pt-3">
+                        <input type="text" placeholder="Search MyCaddiPro users..." class="w-full border rounded-lg px-3 py-2 text-sm" oninput="searchUsers(this.value, '${row.id}', '${row.trgg_name.replace(/'/g,"\\'")}', ${row.trgg_handicap})">
+                        <div id="results-${row.id}" class="mt-2 space-y-1 max-h-48 overflow-y-auto"></div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function loadMappings() {
+            const { data, error } = await sb.from('trgg_user_map')
+                .select('*').order('trgg_name');
+            if (error || !data) { document.getElementById('mappingsTable').innerHTML = '<tr><td colspan="5" class="text-center py-4 text-red-500">Error loading</td></tr>'; return; }
+            if (data.length === 0) { document.getElementById('mappingsTable').innerHTML = '<tr><td colspan="5" class="text-center py-6 text-gray-400">No confirmed mappings yet</td></tr>'; return; }
+
+            // Fetch profile names for display
+            const profileIds = [...new Set(data.map(m => m.profile_id))];
+            const { data: profiles } = await sb.from('user_profiles').select('line_user_id, name').in('line_user_id', profileIds);
+            const nameMap = {};
+            (profiles || []).forEach(p => nameMap[p.line_user_id] = p.name);
+
+            document.getElementById('mappingsTable').innerHTML = data.map(m => `
+                <tr class="border-t hover:bg-gray-50">
+                    <td class="p-3 text-gray-700">${escHtml(m.trgg_name)}</td>
+                    <td class="p-3 text-gray-700">${escHtml(nameMap[m.profile_id] || m.profile_id)}</td>
+                    <td class="p-3 text-right">${m.last_handicap ?? '—'}</td>
+                    <td class="p-3 text-right text-gray-500 text-xs">${m.last_synced_at ? new Date(m.last_synced_at).toLocaleDateString() : '—'}</td>
+                    <td class="p-3 text-center"><button onclick="deleteMapping('${m.id}')" class="text-xs text-red-500 hover:text-red-700">Remove</button></td>
+                </tr>
+            `).join('');
+        }
+
+        function normalizeName(input) {
+            let s = input;
+            if (s.includes(',')) { const [last, first] = s.split(','); s = first.trim() + ' ' + last.trim(); }
+            return s.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+        }
+
+        async function approveMatch(pendingId, trggName, trggHcp, profileId) {
+            const { error: mapErr } = await sb.from('trgg_user_map').insert({
+                trgg_name: trggName,
+                trgg_name_norm: normalizeName(trggName),
+                profile_id: profileId,
+                last_handicap: trggHcp,
+                last_synced_at: new Date().toISOString()
+            });
+            if (mapErr && !mapErr.message.includes('duplicate')) { alert('Error: ' + mapErr.message); return; }
+
+            await sb.from('user_profiles').update({
+                trgg_handicap: trggHcp,
+                universal_handicap: trggHcp
+            }).eq('line_user_id', profileId);
+
+            await sb.from('trgg_pending_matches').update({
+                status: 'approved', resolved_at: new Date().toISOString()
+            }).eq('id', pendingId);
+
+            loadAll();
+        }
+
+        async function rejectMatch(pendingId) {
+            await sb.from('trgg_pending_matches').update({
+                status: 'rejected', resolved_at: new Date().toISOString()
+            }).eq('id', pendingId);
+            loadAll();
+        }
+
+        function openSearch(pendingId) {
+            document.getElementById('search-' + pendingId).classList.toggle('hidden');
+        }
+
+        async function searchUsers(query, pendingId, trggName, trggHcp) {
+            const el = document.getElementById('results-' + pendingId);
+            if (query.length < 2) { el.innerHTML = ''; return; }
+            const { data } = await sb.from('user_profiles')
+                .select('line_user_id, name, trgg_handicap, universal_handicap')
+                .ilike('name', '%' + query + '%').limit(10);
+            el.innerHTML = (data || []).map(p => `
+                <button onclick="approveMatch('${pendingId}', '${trggName.replace(/'/g,"\\'")}', ${trggHcp}, '${p.line_user_id}')"
+                    class="w-full text-left p-2 hover:bg-gray-100 rounded flex justify-between text-sm">
+                    <span class="font-medium">${escHtml(p.name)}</span>
+                    <span class="text-gray-400">HCP: ${p.trgg_handicap ?? '—'}</span>
+                </button>
+            `).join('');
+        }
+
+        async function deleteMapping(mapId) {
+            if (!confirm('Remove this mapping? The TRGG name will be re-queued on next sync.')) return;
+            await sb.from('trgg_user_map').delete().eq('id', mapId);
+            loadAll();
+        }
+
+        async function triggerSync() {
+            const btn = document.getElementById('syncBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="material-symbols-outlined text-base animate-spin">progress_activity</span> Syncing...';
+            try {
+                const { data, error } = await sb.functions.invoke('sync-trgg-handicaps', { body: { trigger: 'manual' } });
+                if (error) alert('Sync failed: ' + error.message);
+                else alert('Sync complete!\n' + JSON.stringify(data, null, 2));
+                loadAll();
+            } catch (e) {
+                alert('Sync error: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<span class="material-symbols-outlined text-base">play_arrow</span> Run Sync Now';
+            }
+        }
+
+        function statusPill(status) {
+            const colors = { success: 'bg-green-100 text-green-700', partial: 'bg-amber-100 text-amber-700', failed: 'bg-red-100 text-red-700', running: 'bg-blue-100 text-blue-700' };
+            return `<span class="px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] || 'bg-gray-100 text-gray-600'}">${status}</span>`;
+        }
+
+        function escHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+        loadAll();
+    </script>
+</body>
+</html>

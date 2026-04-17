@@ -26,6 +26,42 @@
     </header>
 
     <main class="max-w-5xl mx-auto px-4 py-6 space-y-6">
+        <!-- Paste Import -->
+        <section class="bg-white rounded-lg shadow-sm overflow-hidden">
+            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b flex items-center gap-2">
+                <span class="material-symbols-outlined text-blue-600">content_paste</span>
+                <h2 class="font-semibold text-gray-800">Import from Masterscoreboard</h2>
+            </div>
+            <div class="p-4">
+                <p class="text-sm text-gray-600 mb-3">
+                    1. Open <a href="https://www.masterscoreboard.co.uk/results/HandicapList.php?CWID=103464" target="_blank" class="text-blue-600 underline">TRGG Handicap List</a> in your browser and log in
+                    2. Select all table data (Ctrl+A) and copy (Ctrl+C)
+                    3. Paste below and click "Process"
+                </p>
+                <textarea id="pasteInput" rows="6" class="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="Paste handicap table data here...&#10;&#10;Example:&#10;Abbey, Luke    10.8&#10;Abbott, Brendan    22.8"></textarea>
+                <div class="flex items-center gap-3 mt-3">
+                    <button onclick="processPaste()" id="processBtn" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all">
+                        <span class="material-symbols-outlined text-base">play_arrow</span>
+                        Process Import
+                    </button>
+                    <span id="parseStatus" class="text-sm text-gray-500"></span>
+                </div>
+                <!-- Preview parsed data before processing -->
+                <div id="parsePreview" class="hidden mt-3 border rounded-lg overflow-hidden">
+                    <div class="bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-600 flex justify-between">
+                        <span>Parsed Data Preview</span>
+                        <span id="parseCount"></span>
+                    </div>
+                    <div id="parseTable" class="max-h-48 overflow-y-auto text-sm"></div>
+                    <div class="px-3 py-2 bg-gray-50 border-t">
+                        <button onclick="confirmImport()" id="confirmBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
+                            Confirm & Sync Handicaps
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Recent Runs -->
         <section class="bg-white rounded-lg shadow-sm overflow-hidden">
             <div class="bg-gray-50 px-4 py-3 border-b flex items-center gap-2">
@@ -263,6 +299,163 @@
         }
 
         function escHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+        // ---- Paste Import ----
+        let parsedRows = [];
+
+        function processPaste() {
+            const raw = document.getElementById('pasteInput').value.trim();
+            if (!raw) { alert('Please paste the handicap data first.'); return; }
+
+            parsedRows = [];
+            const lines = raw.split('\n');
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+
+                // Try to extract name and handicap from each line
+                // Format: "Abbey, Luke    10.8" or "Abbey, Luke\t10.8" or tab-separated
+                let name = '', hcp = NaN;
+
+                // Try tab-separated first
+                const tabParts = trimmed.split('\t').map(s => s.trim()).filter(Boolean);
+                if (tabParts.length >= 2) {
+                    const lastPart = tabParts[tabParts.length - 1];
+                    hcp = parseFloat(lastPart.replace(/[^0-9.\-]/g, ''));
+                    if (!isNaN(hcp) && hcp >= -10 && hcp <= 54) {
+                        name = tabParts.slice(0, -1).join(' ').trim();
+                    }
+                }
+
+                // Try matching "Name    Number" with multiple spaces
+                if (isNaN(hcp) || !name) {
+                    const match = trimmed.match(/^(.+?)\s{2,}([\-\d.]+)\s*$/);
+                    if (match) {
+                        name = match[1].trim();
+                        hcp = parseFloat(match[2]);
+                    }
+                }
+
+                // Try last token as number
+                if (isNaN(hcp) || !name) {
+                    const parts = trimmed.split(/\s+/);
+                    const lastToken = parts[parts.length - 1];
+                    const val = parseFloat(lastToken.replace(/[^0-9.\-]/g, ''));
+                    if (!isNaN(val) && val >= -10 && val <= 54 && parts.length >= 2) {
+                        hcp = val;
+                        name = parts.slice(0, -1).join(' ').trim();
+                    }
+                }
+
+                // Skip header rows or non-data
+                if (!name || isNaN(hcp)) continue;
+                if (name.toLowerCase() === 'player' || name.toLowerCase() === 'name') continue;
+
+                parsedRows.push({ name, handicap: Math.round(hcp * 10) / 10 });
+            }
+
+            if (parsedRows.length === 0) {
+                document.getElementById('parseStatus').textContent = 'Could not parse any rows. Check the pasted data format.';
+                document.getElementById('parsePreview').classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('parseStatus').textContent = '';
+            document.getElementById('parseCount').textContent = parsedRows.length + ' players found';
+            document.getElementById('parseTable').innerHTML = parsedRows.map((r, i) =>
+                `<div class="px-3 py-1.5 flex justify-between ${i % 2 ? 'bg-gray-50' : ''} text-xs">
+                    <span>${escHtml(r.name)}</span>
+                    <span class="font-semibold">${r.handicap}</span>
+                </div>`
+            ).join('');
+            document.getElementById('parsePreview').classList.remove('hidden');
+        }
+
+        async function confirmImport() {
+            if (parsedRows.length === 0) return;
+
+            const btn = document.getElementById('confirmBtn');
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
+
+            try {
+                // Create a sync run
+                const { data: run, error: runErr } = await sb.from('trgg_sync_runs')
+                    .insert({ status: 'running', source: 'csv' }).select().single();
+                if (runErr) throw runErr;
+
+                // Get existing mappings
+                const { data: maps } = await sb.from('trgg_user_map').select('trgg_name_norm, profile_id');
+                const mapLookup = new Map((maps || []).map(m => [m.trgg_name_norm, m.profile_id]));
+
+                let matched = 0, suggested = 0, review = 0, updated = 0;
+
+                for (const row of parsedRows) {
+                    const norm = normalizeName(row.name);
+
+                    // Check existing mapping
+                    const profileId = mapLookup.get(norm);
+                    if (profileId) {
+                        await sb.from('user_profiles').update({
+                            trgg_handicap: row.handicap, universal_handicap: row.handicap
+                        }).eq('line_user_id', profileId);
+                        await sb.from('trgg_user_map').update({
+                            last_handicap: row.handicap, last_synced_at: new Date().toISOString()
+                        }).eq('profile_id', profileId);
+                        matched++; updated++;
+                        continue;
+                    }
+
+                    // Fuzzy match
+                    const { data: match } = await sb.rpc('trgg_find_best_match', { search_name: norm });
+                    const best = match?.[0];
+
+                    if (best && best.similarity >= 0.92) {
+                        // Auto-apply
+                        await sb.from('trgg_user_map').insert({
+                            trgg_name: row.name, trgg_name_norm: norm, profile_id: best.id,
+                            last_handicap: row.handicap, last_synced_at: new Date().toISOString()
+                        });
+                        await sb.from('user_profiles').update({
+                            trgg_handicap: row.handicap, universal_handicap: row.handicap
+                        }).eq('line_user_id', best.id);
+                        matched++; updated++;
+                        continue;
+                    }
+
+                    // Queue for review
+                    await sb.from('trgg_pending_matches').upsert({
+                        sync_run_id: run.id, trgg_name: row.name, trgg_name_norm: norm,
+                        trgg_handicap: row.handicap,
+                        suggested_profile_id: best?.similarity >= 0.75 ? best.id : null,
+                        suggested_name: best?.similarity >= 0.75 ? best.full_name : null,
+                        similarity: best?.similarity ?? null, status: 'pending'
+                    }, { onConflict: 'trgg_name_norm', ignoreDuplicates: false });
+                    if (best?.similarity >= 0.75) suggested++; else review++;
+                }
+
+                // Update run
+                await sb.from('trgg_sync_runs').update({
+                    status: review > 0 ? 'partial' : 'success',
+                    finished_at: new Date().toISOString(),
+                    rows_fetched: parsedRows.length, rows_matched: matched,
+                    rows_suggested: suggested, rows_review: review, rows_updated: updated,
+                    raw_snapshot: { rows: parsedRows }
+                }).eq('id', run.id);
+
+                alert(`Import complete!\n\nProcessed: ${parsedRows.length}\nAuto-matched: ${matched}\nUpdated: ${updated}\nNeeds review: ${suggested + review}`);
+
+                document.getElementById('pasteInput').value = '';
+                document.getElementById('parsePreview').classList.add('hidden');
+                parsedRows = [];
+                loadAll();
+            } catch (e) {
+                alert('Error: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Confirm & Sync Handicaps';
+            }
+        }
 
         loadAll();
     </script>

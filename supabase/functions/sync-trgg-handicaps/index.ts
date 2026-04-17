@@ -477,12 +477,22 @@ async function updateHandicap(
   profileId: string,
   handicap: number,
 ): Promise<boolean> {
+  // Only write trgg_handicap. Do NOT override universal_handicap
+  // unless the user has no existing handicap.
+  const { data: profile } = await supabase
+    .from(PROFILES_TABLE)
+    .select("handicap_index")
+    .eq(PROFILE_PK, profileId)
+    .single();
+
+  const updateFields: Record<string, unknown> = { [TRGG_HCP_COL]: handicap };
+  if (!profile?.handicap_index && profile?.handicap_index !== 0) {
+    updateFields[UNIVERSAL_HCP_COL] = handicap;
+  }
+
   const { error } = await supabase
     .from(PROFILES_TABLE)
-    .update({
-      [TRGG_HCP_COL]: handicap,
-      [UNIVERSAL_HCP_COL]: handicap,
-    })
+    .update(updateFields)
     .eq(PROFILE_PK, profileId);
   return !error;
 }

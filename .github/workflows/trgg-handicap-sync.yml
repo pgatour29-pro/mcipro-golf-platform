@@ -1,0 +1,29 @@
+name: TRGG Handicap Sync
+
+on:
+  schedule:
+    # 8pm Thailand (ICT) = 13:00 UTC daily
+    - cron: '0 13 * * *'
+  workflow_dispatch: # Allow manual trigger from GitHub Actions tab
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          npm install puppeteer @supabase/supabase-js
+
+      - name: Scrape and sync TRGG handicaps
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TRGG_PASSWORD: ${{ secrets.TRGG_PASSWORD }}
+          TRGG_CWID: '103464'
+        run: node scripts/trgg-handicap-sync.js

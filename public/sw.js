@@ -1,7 +1,7 @@
 // SERVICE WORKER - Performance Caching Version
 // Caches static assets for dramatically faster repeat visits
 
-const SW_VERSION = 'mcipro-cache-v333';
+const SW_VERSION = 'mcipro-cache-v334';
 const CACHE_NAME = `mcipro-static-${SW_VERSION}`;
 const RUNTIME_CACHE = `mcipro-runtime-${SW_VERSION}`;
 
@@ -215,27 +215,39 @@ self.addEventListener('fetch', event => {
         return;
     }
 
-    // Static assets (JS, CSS, images): Cache-first
+    // Static assets (JS, CSS, images): Network-first for JS, cache-first for others
     if (isStaticAsset(url)) {
-        event.respondWith(
-            caches.match(event.request)
-                .then(cached => {
-                    if (cached) {
-                        return cached;
-                    }
-
-                    // Not in cache, fetch and cache
-                    return fetch(event.request)
-                        .then(response => {
-                            if (response.ok) {
-                                const clone = response.clone();
-                                caches.open(RUNTIME_CACHE)
-                                    .then(cache => cache.put(event.request, clone));
-                            }
-                            return response;
-                        });
-                })
-        );
+        const isJS = /\.js(\?|$)/i.test(url);
+        if (isJS) {
+            // JS files: Network-first (ensures code updates are immediate)
+            event.respondWith(
+                fetch(event.request)
+                    .then(response => {
+                        if (response.ok) {
+                            const clone = response.clone();
+                            caches.open(RUNTIME_CACHE).then(cache => cache.put(event.request, clone));
+                        }
+                        return response;
+                    })
+                    .catch(() => caches.match(event.request))
+            );
+        } else {
+            // CSS, images, fonts: Cache-first
+            event.respondWith(
+                caches.match(event.request)
+                    .then(cached => {
+                        if (cached) return cached;
+                        return fetch(event.request)
+                            .then(response => {
+                                if (response.ok) {
+                                    const clone = response.clone();
+                                    caches.open(RUNTIME_CACHE).then(cache => cache.put(event.request, clone));
+                                }
+                                return response;
+                            });
+                    })
+            );
+        }
         return;
     }
 

@@ -781,7 +781,7 @@ class SocietyOrganizerManager {
             return '<div class="text-center py-8 text-gray-500">No pairings generated</div>';
         }
 
-        return groups.map(group => `
+        const result = groups.map(group => `
             <div class="bg-white border rounded-lg p-4">
                 <div class="flex justify-between items-center mb-3">
                     <h4 class="font-semibold text-gray-900">Group ${group.groupNumber}</h4>
@@ -793,12 +793,24 @@ class SocietyOrganizerManager {
                     ${group.players.map((p, idx) => `
                         <div class="flex justify-between items-center text-sm">
                             <span class="text-gray-700">${idx + 1}. ${p.playerName}</span>
-                            <span class="text-gray-500">HCP: ${window.formatHandicapDisplay ? window.formatHandicapDisplay(p.handicap) : p.handicap}</span>
+                            <span class="text-gray-500">HCP: ${window.formatHandicapDisplay ? window.formatHandicapDisplay(p.handicap) : p.handicap}<span id="hcpB_${p.playerId}_orgGroup" class="ml-1"></span></span>
                         </div>
                     `).join('')}
                 </div>
             </div>
         `).join('');
+
+        // Inject badges after render
+        setTimeout(() => {
+            if (!window.injectHandicapBadges) return;
+            groups.forEach(group => {
+                group.players.forEach(p => {
+                    window.injectHandicapBadges(p.playerId, 'hcpB_' + p.playerId + '_orgGroup', 'compact');
+                });
+            });
+        }, 100);
+
+        return result;
     }
 
     renderCalendar() {

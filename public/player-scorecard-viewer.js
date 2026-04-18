@@ -69,6 +69,26 @@ window.PlayerScorecardViewer = (function() {
             });
 
             if (!error && data) {
+                // Fetch additional handicap data (TRGG, society-specific)
+                try {
+                    const { data: profile } = await supabase.from('user_profiles')
+                        .select('trgg_handicap, handicap_index, society_name')
+                        .eq('line_user_id', playerId).single();
+                    if (profile) {
+                        data.trgg_handicap = profile.trgg_handicap;
+                        data.universal_handicap = profile.handicap_index;
+                        if (profile.society_name && (!data.societies || !data.societies.primary)) {
+                            data.societies = data.societies || {};
+                            data.societies.primary = profile.society_name;
+                        }
+                    }
+                    // Fetch society handicaps
+                    const { data: socHcps } = await supabase.from('society_handicaps')
+                        .select('handicap_index, society_id').eq('golfer_id', playerId);
+                    if (socHcps) {
+                        data.society_handicaps = socHcps;
+                    }
+                } catch(e) { /* optional enrichment */ }
                 renderProfileModal(data);
                 return;
             }
@@ -206,6 +226,15 @@ window.PlayerScorecardViewer = (function() {
                     <div class="text-[10px] text-gray-500 uppercase tracking-wide">Best</div>
                 </div>
             </div>
+
+            <!-- All Handicaps -->
+            ${(profile.universal_handicap != null || profile.trgg_handicap != null) ? `
+                <div class="px-4 py-2 bg-emerald-50/50 border-b border-gray-100 flex flex-wrap gap-2">
+                    ${profile.universal_handicap != null ? `<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">WHS: ${profile.universal_handicap < 0 ? '+' + Math.abs(profile.universal_handicap).toFixed(1) : parseFloat(profile.universal_handicap).toFixed(1)}</span>` : ''}
+                    ${profile.trgg_handicap != null ? `<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">TRGG: ${profile.trgg_handicap < 0 ? '+' + Math.abs(profile.trgg_handicap).toFixed(1) : parseFloat(profile.trgg_handicap).toFixed(1)}</span>` : ''}
+                    ${(profile.society_handicaps || []).filter(sh => sh.society_id != null).map(sh => `<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">Society: ${sh.handicap_index < 0 ? '+' + Math.abs(sh.handicap_index).toFixed(1) : parseFloat(sh.handicap_index).toFixed(1)}</span>`).join('')}
+                </div>
+            ` : ''}
 
             <!-- Stableford stats -->
             ${stats.avg_stableford ? `

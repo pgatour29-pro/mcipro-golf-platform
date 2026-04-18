@@ -320,6 +320,7 @@ class GlobalPlayerDirectory {
                         </div>
                         <div class="text-right">
                             <div class="text-emerald-600 font-bold">${handicapDisplay}</div>
+                            ${player.trgg_handicap != null ? `<div class="text-[10px] text-amber-600 font-medium">TRGG: ${formatHandicapDisplay(player.trgg_handicap)}</div>` : ''}
                             <div class="text-xs text-gray-400">${roundsDisplay} rounds${avgGrossDisplay ? ' • ' + avgGrossDisplay : ''}</div>
                         </div>
                     </div>
@@ -384,6 +385,43 @@ class GlobalPlayerDirectory {
         const societies = profile.societies || {};
         const formattedHcp = formatHandicapDisplay(profile.handicap);
 
+        // Fix society display
+        if (!societies.primary && societies.all && societies.all.length > 0) {
+            societies.primary = societies.all[0];
+        }
+
+        // Fetch additional handicap data
+        let trggHcp = null, socHcpBadges = '';
+        try {
+            const sb = window.SupabaseDB?.client;
+            if (sb) {
+                const { data: prof } = await sb.from('user_profiles')
+                    .select('trgg_handicap, handicap_index, society_name')
+                    .eq('line_user_id', playerId).single();
+                if (prof) {
+                    trggHcp = prof.trgg_handicap;
+                    if (!societies.primary && prof.society_name) societies.primary = prof.society_name;
+                }
+                const { data: shcps } = await sb.from('society_handicaps')
+                    .select('handicap_index, society_id').eq('golfer_id', playerId);
+                if (shcps) {
+                    shcps.filter(sh => sh.society_id != null).forEach(sh => {
+                        socHcpBadges += `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Society: ${formatHandicapDisplay(sh.handicap_index)}</span>`;
+                    });
+                }
+            }
+        } catch(e) {}
+
+        const handicapBadgesHtml = `
+            <div class="px-4 py-2 bg-emerald-50 border-b border-gray-100">
+                <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-1 font-semibold">Handicaps</div>
+                <div class="flex flex-wrap gap-2">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">Universal: ${formattedHcp || '-'}</span>
+                    ${trggHcp != null ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">TRGG: ${formatHandicapDisplay(trggHcp)}</span>` : ''}
+                    ${socHcpBadges}
+                </div>
+            </div>`;
+
         // Create modal
         const modal = document.createElement('div');
         modal.id = 'player-profile-modal';
@@ -430,6 +468,8 @@ class GlobalPlayerDirectory {
                         <div class="text-xs text-gray-500">Best</div>
                     </div>
                 </div>
+
+                ${handicapBadgesHtml}
 
                 <!-- Stableford Stats -->
                 ${stats.avg_stableford ? `

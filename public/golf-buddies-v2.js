@@ -660,10 +660,9 @@ window.GolfBuddiesSystem = {
                             <div class="flex-1">
                                 <div class="font-semibold text-gray-900">${name}</div>
                                 <div class="text-sm text-gray-600">
-                                    HCP: ${handicap}<span id="hcpB_${buddy.buddy_id}_buddyList" class="ml-1"></span> • Played together: ${timesPlayed}x
+                                    HCP: ${handicap} • Played together: ${timesPlayed}x
                                     ${timesPlayed > 0 ? `<br><span class="text-xs">Last played: ${lastPlayed}</span>` : ''}
                                 </div>
-                                <script>setTimeout(()=>window.injectHandicapBadges&&window.injectHandicapBadges('${buddy.buddy_id}','hcpB_${buddy.buddy_id}_buddyList','compact'),100)</script>
                             </div>
                         </div>
                         <div class="flex items-center gap-2">
@@ -921,8 +920,7 @@ window.GolfBuddiesSystem = {
                                 </div>
                                 <div style="min-width: 0; flex: 1; overflow: hidden;">
                                     <div style="font-weight: 600; color: #111827; font-size: 0.875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</div>
-                                    <div style="font-size: 0.75rem; color: #6b7280;">HCP: ${handicap}<span id="hcpB_${userId}_buddySearch" class="ml-1"></span></div>
-                                    <script>setTimeout(()=>window.injectHandicapBadges&&window.injectHandicapBadges('${userId}','hcpB_${userId}_buddySearch','compact'),100)</script>
+                                    <div style="font-size: 0.75rem; color: #6b7280;">HCP: ${handicap}</div>
                                 </div>
                             </div>
                             <button onclick="GolfBuddiesSystem.addBuddy('${userId}')"
@@ -1315,8 +1313,7 @@ window.GolfBuddiesSystem = {
                         </div>
                         <div>
                             <div class="font-medium text-gray-900 text-sm">${name}</div>
-                            <div class="text-xs text-gray-500">HCP: ${handicap}<span id="hcpB_${memberId}_groupMember" class="ml-1"></span></div>
-                            <script>setTimeout(()=>window.injectHandicapBadges&&window.injectHandicapBadges('${memberId}','hcpB_${memberId}_groupMember','compact'),100)</script>
+                            <div class="text-xs text-gray-500">HCP: ${handicap}</div>
                         </div>
                     </div>
                     <button onclick="GolfBuddiesSystem.removeGroupMember('${memberId}')"
@@ -1443,8 +1440,7 @@ window.GolfBuddiesSystem = {
                             </div>
                             <div>
                                 <div class="font-medium text-gray-900 text-sm">${name}</div>
-                                <div class="text-xs text-gray-500">HCP: ${handicap}<span id="hcpB_${player.line_user_id}_groupSearch" class="ml-1"></span></div>
-                                <script>setTimeout(()=>window.injectHandicapBadges&&window.injectHandicapBadges('${player.line_user_id}','hcpB_${player.line_user_id}_groupSearch','compact'),100)</script>
+                                <div class="text-xs text-gray-500">HCP: ${handicap}</div>
                             </div>
                         </div>
                         <button onclick="GolfBuddiesSystem.addGroupMember('${player.line_user_id}')"

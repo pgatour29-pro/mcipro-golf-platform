@@ -77,10 +77,10 @@ window.PlayerScorecardViewer = (function() {
                     if (profile) {
                         data.trgg_handicap = profile.trgg_handicap;
                         data.universal_handicap = profile.handicap_index;
-                        if (profile.society_name && (!data.societies || !data.societies.primary)) {
-                            data.societies = data.societies || {};
-                            data.societies.primary = profile.society_name;
-                        }
+                    }
+                    // Fix society display - use all[0] if primary is null
+                    if (data.societies && !data.societies.primary && data.societies.all && data.societies.all.length > 0) {
+                        data.societies.primary = data.societies.all[0];
                     }
                     // Fetch society handicaps
                     const { data: socHcps } = await supabase.from('society_handicaps')

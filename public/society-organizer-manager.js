@@ -911,6 +911,25 @@ class SocietyOrganizerManager {
                 if (profile.societyLogo && preview) {
                     preview.innerHTML = `<img src="${profile.societyLogo}" class="w-full h-full object-cover" alt="Society Logo">`;
                 }
+
+                // Load slope toggle state
+                const slopeToggle = document.getElementById('societyUseSlopeToggle');
+                if (slopeToggle && profile.id) {
+                    try {
+                        const sb = window.SupabaseDB?.client;
+                        if (sb) {
+                            const { data: sp } = await sb.from('society_profiles').select('use_slope_rating').eq('id', profile.id).single();
+                            if (sp) {
+                                slopeToggle.checked = sp.use_slope_rating || false;
+                                const track = slopeToggle.nextElementSibling;
+                                const knob = track.nextElementSibling;
+                                track.style.background = slopeToggle.checked ? '#059669' : '#374151';
+                                track.style.borderColor = slopeToggle.checked ? '#34d399' : '#ef4444';
+                                knob.style.transform = slopeToggle.checked ? 'translateX(20px)' : 'translateX(0)';
+                            }
+                        }
+                    } catch(e) { console.warn('[SocietyOrganizer] Could not load slope setting:', e); }
+                }
             }
         } catch (error) {
             console.error('[SocietyOrganizer] Error loading profile:', error);
@@ -1027,6 +1046,20 @@ class SocietyOrganizerManager {
                 const result = await SocietyGolfDB.createSocietyProfile(profileData);
                 console.log('[SocietyOrganizer] Create result:', result);
                 NotificationManager.show('Profile created successfully', 'success');
+            }
+
+            // Save slope rating setting
+            const slopeToggle = document.getElementById('societyUseSlopeToggle');
+            if (slopeToggle && this.societyProfile?.id) {
+                try {
+                    const sb = window.SupabaseDB?.client;
+                    if (sb) {
+                        await sb.from('society_profiles')
+                            .update({ use_slope_rating: slopeToggle.checked })
+                            .eq('id', this.societyProfile.id);
+                        console.log('[SocietyOrganizer] Slope setting saved:', slopeToggle.checked);
+                    }
+                } catch(e) { console.warn('[SocietyOrganizer] Could not save slope setting:', e); }
             }
 
             // Reload profile

@@ -130,11 +130,6 @@
                     <div id="registerPlayerHcp" class="text-xs text-gray-500"></div>
                 </div>
 
-                <!-- Login prompt (shown when not logged in) -->
-                <div id="registerLoginPrompt" class="mb-3" style="display:none;">
-                    <p class="text-sm text-gray-400 mb-3">Log in to MyCaddiPro first, then come back to register.</p>
-                    <a href="/" class="block text-center px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold text-sm no-underline">Log In</a>
-                </div>
 
                     <div class="mb-3">
                         <label class="block text-xs font-medium text-gray-400 mb-2">Choose Your Side</label>
@@ -325,7 +320,6 @@ async function init() {
         }
 
         document.getElementById('registerPlayerInfo').style.display = 'block';
-        document.getElementById('registerLoginPrompt').style.display = 'none';
         document.getElementById('registerPlayerName').textContent = currentUser.name || 'Guest';
         document.getElementById('registerPlayerHcp').textContent = 'HCP: ' + currentUser.handicap;
 
@@ -496,14 +490,25 @@ function selectSide(side) {
 async function registerForRyderCup() {
     const btn = document.getElementById('registerBtn');
 
-    if (!currentUser) {
-        alert('Please log in to MyCaddiPro first, then come back to register.');
-        return;
-    }
     if (!selectedSide) {
         alert('Please select a side (Pattaya/USA or Hua Hin/Europe)');
         return;
     }
+
+    // Ensure we have a user - if somehow not set, create one from DB lookup
+    if (!currentUser || !currentUser.id || currentUser.id.startsWith('guest_')) {
+        const uid = localStorage.getItem('line_user_id') || localStorage.getItem('mcipro_biometric_user_id');
+        if (uid && supabase) {
+            const { data: p } = await supabase.from('user_profiles').select('name, handicap').eq('line_user_id', uid).maybeSingle();
+            currentUser = { id: uid, name: p?.name || 'Player', handicap: p?.handicap || 'N/A' };
+        } else {
+            // Last resort - prompt for name
+            const name = prompt('Enter your name:');
+            if (!name) return;
+            currentUser = { id: 'manual_' + Date.now(), name: name, handicap: 0 };
+        }
+    }
+
     if (!RYDER_CUP_EVENT_ID) {
         console.error('[RyderCup] No event ID - trying to find/create...');
         await findRyderCupEvent();

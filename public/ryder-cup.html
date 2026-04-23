@@ -123,19 +123,18 @@
                     Register Now
                 </h3>
 
-                <!-- Login check -->
-                <div id="registerLoginPrompt" style="display:none;">
-                    <p class="text-sm text-gray-400 mb-3">Log in to MyCaddiPro to register for this event.</p>
-                    <a href="/" class="block text-center px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold text-sm no-underline">Log In to Register</a>
+                <!-- Player Info (shown when logged in) -->
+                <div id="registerPlayerInfo" class="mb-3" style="display:none;">
+                    <div class="text-xs text-gray-400 mb-1">Player</div>
+                    <div id="registerPlayerName" class="text-sm font-bold text-white"></div>
+                    <div id="registerPlayerHcp" class="text-xs text-gray-500"></div>
                 </div>
 
-                <!-- Registration Form -->
-                <div id="registerForm" style="display:none;">
-                    <div class="mb-3">
-                        <div class="text-xs text-gray-400 mb-1">Player</div>
-                        <div id="registerPlayerName" class="text-sm font-bold text-white"></div>
-                        <div id="registerPlayerHcp" class="text-xs text-gray-500"></div>
-                    </div>
+                <!-- Login prompt (shown when not logged in) -->
+                <div id="registerLoginPrompt" class="mb-3" style="display:none;">
+                    <p class="text-sm text-gray-400 mb-3">Log in to MyCaddiPro first, then come back to register.</p>
+                    <a href="/" class="block text-center px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold text-sm no-underline">Log In</a>
+                </div>
 
                     <div class="mb-3">
                         <label class="block text-xs font-medium text-gray-400 mb-2">Choose Your Side</label>
@@ -176,7 +175,6 @@
                         <div id="registeredSide" class="text-xs text-gray-400"></div>
                         <button onclick="cancelRegistration()" class="mt-2 text-xs text-red-400 hover:text-red-300 underline">Cancel Registration</button>
                     </div>
-                </div>
 
             </div>
         <div class="info-card">
@@ -316,15 +314,31 @@ async function init() {
             console.log('[RyderCup] No user found in localStorage');
         }
 
+        console.log('[RyderCup] Login check:', { lineUserId, userName, userHandicap });
+
         if (lineUserId && userName) {
             currentUser = { id: lineUserId, name: userName, handicap: userHandicap || 'N/A' };
+            document.getElementById('registerPlayerInfo').style.display = 'block';
             document.getElementById('registerLoginPrompt').style.display = 'none';
-            document.getElementById('registerForm').style.display = 'block';
             document.getElementById('registerPlayerName').textContent = userName;
             document.getElementById('registerPlayerHcp').textContent = 'HCP: ' + (userHandicap || 'N/A');
+        } else if (lineUserId) {
+            // Has ID but no name - try to fetch from Supabase
+            currentUser = { id: lineUserId, name: 'Player', handicap: userHandicap || 'N/A' };
+            document.getElementById('registerPlayerInfo').style.display = 'block';
+            document.getElementById('registerLoginPrompt').style.display = 'none';
+            document.getElementById('registerPlayerName').textContent = 'Player';
+            // Fetch name from DB
+            const { data: profile } = await supabase.from('user_profiles').select('name, handicap').eq('line_user_id', lineUserId).maybeSingle();
+            if (profile) {
+                currentUser.name = profile.name || 'Player';
+                currentUser.handicap = profile.handicap || userHandicap || 'N/A';
+                document.getElementById('registerPlayerName').textContent = currentUser.name;
+                document.getElementById('registerPlayerHcp').textContent = 'HCP: ' + currentUser.handicap;
+            }
         } else {
             document.getElementById('registerLoginPrompt').style.display = 'block';
-            document.getElementById('registerForm').style.display = 'none';
+            document.getElementById('registerPlayerInfo').style.display = 'none';
         }
 
         // Find or create Ryder Cup event
@@ -528,19 +542,23 @@ async function cancelRegistration() {
 }
 
 function updateRegistrationUI() {
-    const form = document.getElementById('registerForm');
     const alreadyReg = document.getElementById('alreadyRegistered');
+    const regBtn = document.getElementById('registerBtn');
+    const sideUSA = document.getElementById('sideUSA');
+    const sideEUR = document.getElementById('sideEUR');
 
     if (myRegistration) {
-        // Hide form, show registered state
-        document.querySelectorAll('#registerForm > div:not(#alreadyRegistered)').forEach(el => el.style.display = 'none');
-        document.getElementById('registerBtn').style.display = 'none';
+        // Hide form elements, show registered state
+        if (sideUSA) sideUSA.parentElement.parentElement.style.display = 'none';
+        if (regBtn) regBtn.style.display = 'none';
+        document.querySelectorAll('#wantTransport, #wantHotel').forEach(el => { if (el.closest('.mb-3, .mb-4')) el.closest('.mb-3, .mb-4').style.display = 'none'; });
         alreadyReg.classList.remove('hidden');
         document.getElementById('registeredSide').textContent =
             myRegistration.side === 'europe' ? 'Team: Hua Hin (Europe)' : 'Team: Pattaya (USA)';
     } else {
-        document.querySelectorAll('#registerForm > div:not(#alreadyRegistered)').forEach(el => el.style.display = '');
-        document.getElementById('registerBtn').style.display = '';
+        if (sideUSA) sideUSA.parentElement.parentElement.style.display = '';
+        if (regBtn) regBtn.style.display = '';
+        document.querySelectorAll('#wantTransport, #wantHotel').forEach(el => { if (el.closest('.mb-3, .mb-4')) el.closest('.mb-3, .mb-4').style.display = ''; });
         alreadyReg.classList.add('hidden');
     }
 }

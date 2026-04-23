@@ -494,17 +494,35 @@ async function registerForRyderCup() {
         return;
     }
 
-    // Ensure we have a user - if somehow not set, create one from DB lookup
-    if (!currentUser || !currentUser.id || currentUser.id.startsWith('guest_')) {
-        const uid = localStorage.getItem('line_user_id') || localStorage.getItem('mcipro_biometric_user_id');
+    // Ensure we have a valid user
+    if (!currentUser || !currentUser.id || currentUser.id === 'guest') {
+        // Try all possible sources
+        const uid = new URLSearchParams(window.location.search).get('uid')
+            || localStorage.getItem('line_user_id')
+            || localStorage.getItem('mcipro_biometric_user_id');
         if (uid && supabase) {
             const { data: p } = await supabase.from('user_profiles').select('name, handicap').eq('line_user_id', uid).maybeSingle();
             currentUser = { id: uid, name: p?.name || 'Player', handicap: p?.handicap || 'N/A' };
-        } else {
-            // Last resort - prompt for name
-            const name = prompt('Enter your name:');
-            if (!name) return;
-            currentUser = { id: 'manual_' + Date.now(), name: name, handicap: 0 };
+        }
+        // If still no user, check all localStorage keys
+        if (!currentUser || !currentUser.id || currentUser.id === 'guest') {
+            // Scan localStorage for any user ID
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                const val = localStorage.getItem(key);
+                if (val && val.startsWith('U') && val.length > 20 && !key.includes('state')) {
+                    console.log('[RyderCup] Found possible user ID in key:', key, '=', val);
+                    const { data: p2 } = await supabase.from('user_profiles').select('name, handicap').eq('line_user_id', val).maybeSingle();
+                    if (p2) {
+                        currentUser = { id: val, name: p2.name, handicap: p2.handicap || 'N/A' };
+                        break;
+                    }
+                }
+            }
+        }
+        if (!currentUser || !currentUser.id || currentUser.id === 'guest') {
+            alert('Could not find your user account. Please go back to the main app and try again.');
+            return;
         }
     }
 

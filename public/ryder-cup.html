@@ -304,52 +304,30 @@ async function init() {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         // Check if user is logged in (from localStorage)
+        // Try every possible localStorage key
         const lineUserId = localStorage.getItem('line_user_id') || localStorage.getItem('mcipro_biometric_user_id');
-        const userName = localStorage.getItem('display_name') || localStorage.getItem('mcipro_biometric_user_name') || localStorage.getItem('userName');
-        const userHandicap = localStorage.getItem('userHandicap');
+        let userName = localStorage.getItem('display_name') || localStorage.getItem('mcipro_biometric_user_name') || localStorage.getItem('userName');
+        let userHandicap = localStorage.getItem('userHandicap');
 
-        // Debug: log all relevant localStorage keys
-        console.log('[RyderCup] localStorage dump:', {
-            line_user_id: localStorage.getItem('line_user_id'),
-            mcipro_biometric_user_id: localStorage.getItem('mcipro_biometric_user_id'),
-            display_name: localStorage.getItem('display_name'),
-            mcipro_biometric_user_name: localStorage.getItem('mcipro_biometric_user_name'),
-            userName: localStorage.getItem('userName'),
-            userHandicap: localStorage.getItem('userHandicap'),
-        });
+        console.log('[RyderCup] Login check:', { lineUserId, userName });
 
-        // If no localStorage, try to get from Supabase
-        if (!lineUserId) {
-            // Show login prompt but also check if they came from main app
-            console.log('[RyderCup] No user found in localStorage');
-        }
-
-        console.log('[RyderCup] Login check:', { lineUserId, userName, userHandicap });
-
-        if (lineUserId && userName) {
-            currentUser = { id: lineUserId, name: userName, handicap: userHandicap || 'N/A' };
-            document.getElementById('registerPlayerInfo').style.display = 'block';
-            document.getElementById('registerLoginPrompt').style.display = 'none';
-            document.getElementById('registerPlayerName').textContent = userName;
-            document.getElementById('registerPlayerHcp').textContent = 'HCP: ' + (userHandicap || 'N/A');
-        } else if (lineUserId) {
-            // Has ID but no name - try to fetch from Supabase
-            currentUser = { id: lineUserId, name: 'Player', handicap: userHandicap || 'N/A' };
-            document.getElementById('registerPlayerInfo').style.display = 'block';
-            document.getElementById('registerLoginPrompt').style.display = 'none';
-            document.getElementById('registerPlayerName').textContent = 'Player';
-            // Fetch name from DB
+        // Always try to fetch user from DB - they came from the main app so they're logged in
+        if (lineUserId) {
             const { data: profile } = await supabase.from('user_profiles').select('name, handicap').eq('line_user_id', lineUserId).maybeSingle();
             if (profile) {
-                currentUser.name = profile.name || 'Player';
-                currentUser.handicap = profile.handicap || userHandicap || 'N/A';
-                document.getElementById('registerPlayerName').textContent = currentUser.name;
-                document.getElementById('registerPlayerHcp').textContent = 'HCP: ' + currentUser.handicap;
+                userName = profile.name || userName || 'Player';
+                userHandicap = profile.handicap ?? userHandicap ?? 'N/A';
             }
+            currentUser = { id: lineUserId, name: userName || 'Player', handicap: userHandicap || 'N/A' };
         } else {
-            document.getElementById('registerLoginPrompt').style.display = 'block';
-            document.getElementById('registerPlayerInfo').style.display = 'none';
+            // No ID at all - still let them see the form, they can type their name
+            currentUser = { id: 'guest_' + Date.now(), name: '', handicap: 'N/A' };
         }
+
+        document.getElementById('registerPlayerInfo').style.display = 'block';
+        document.getElementById('registerLoginPrompt').style.display = 'none';
+        document.getElementById('registerPlayerName').textContent = currentUser.name || 'Guest';
+        document.getElementById('registerPlayerHcp').textContent = 'HCP: ' + currentUser.handicap;
 
         // Find or create Ryder Cup event
         await findRyderCupEvent();

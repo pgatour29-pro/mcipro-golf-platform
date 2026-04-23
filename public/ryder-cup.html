@@ -299,28 +299,27 @@ async function init() {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         // Check if user is logged in (from localStorage)
-        // Try every possible localStorage key
-        const lineUserId = localStorage.getItem('line_user_id') || localStorage.getItem('mcipro_biometric_user_id');
-        let userName = localStorage.getItem('display_name') || localStorage.getItem('mcipro_biometric_user_name') || localStorage.getItem('userName');
-        let userHandicap = localStorage.getItem('userHandicap');
+        // Get user data from URL params (passed from main app) or localStorage
+        const params = new URLSearchParams(window.location.search);
+        const uid = params.get('uid') || localStorage.getItem('line_user_id') || localStorage.getItem('mcipro_biometric_user_id');
+        let userName = params.get('name') || localStorage.getItem('display_name') || localStorage.getItem('mcipro_biometric_user_name');
+        let userHandicap = params.get('hcp') || localStorage.getItem('userHandicap');
 
-        console.log('[RyderCup] Login check:', { lineUserId, userName });
+        console.log('[RyderCup] User from params/localStorage:', { uid, userName, userHandicap });
 
-        // Always try to fetch user from DB - they came from the main app so they're logged in
-        if (lineUserId) {
-            const { data: profile } = await supabase.from('user_profiles').select('name, handicap').eq('line_user_id', lineUserId).maybeSingle();
+        // If we have an ID but no name, fetch from DB
+        if (uid && !userName) {
+            const { data: profile } = await supabase.from('user_profiles').select('name, handicap').eq('line_user_id', uid).maybeSingle();
             if (profile) {
-                userName = profile.name || userName || 'Player';
-                userHandicap = profile.handicap ?? userHandicap ?? 'N/A';
+                userName = profile.name;
+                userHandicap = userHandicap || profile.handicap;
             }
-            currentUser = { id: lineUserId, name: userName || 'Player', handicap: userHandicap || 'N/A' };
-        } else {
-            // No ID at all - still let them see the form, they can type their name
-            currentUser = { id: 'guest_' + Date.now(), name: '', handicap: 'N/A' };
         }
 
+        currentUser = { id: uid || 'guest', name: userName || 'Player', handicap: userHandicap || 'N/A' };
+
         document.getElementById('registerPlayerInfo').style.display = 'block';
-        document.getElementById('registerPlayerName').textContent = currentUser.name || 'Guest';
+        document.getElementById('registerPlayerName').textContent = currentUser.name;
         document.getElementById('registerPlayerHcp').textContent = 'HCP: ' + currentUser.handicap;
 
         // Find or create Ryder Cup event

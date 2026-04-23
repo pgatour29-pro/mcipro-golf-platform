@@ -356,38 +356,49 @@ async function init() {
 }
 
 async function findRyderCupEvent() {
-    // Look for existing Ryder Cup event
-    const { data } = await supabase
-        .from('society_events')
-        .select('id')
-        .eq('society_id', TRGG_SOCIETY_ID)
-        .ilike('title', '%Ryder Cup%')
-        .limit(1)
-        .maybeSingle();
-
-    if (data) {
-        RYDER_CUP_EVENT_ID = data.id;
-    } else {
-        // Create the event
-        const { data: newEvent, error } = await supabase
+    try {
+        // Look for existing Ryder Cup event
+        const { data, error } = await supabase
             .from('society_events')
-            .insert({
-                title: 'TRGG Ryder Cup 2026 - Pattaya vs Hua Hin',
-                society_id: TRGG_SOCIETY_ID,
-                event_date: '2026-06-09',
-                start_time: '10:00',
-                course_name: 'Bangpakong Riverside Country Club',
-                description: 'TRGG Ryder Cup 2026 - 3-day tournament: Bangpakong (Jun 9), St Andrews 2000 (Jun 11), Laem Chabang (Jun 12). 13,900 THB per person.',
-                format: 'matchplay',
-                entry_fee: 13900,
-                status: 'published'
-            })
-            .select()
-            .single();
+            .select('id')
+            .eq('society_id', TRGG_SOCIETY_ID)
+            .ilike('title', '%Ryder Cup%')
+            .limit(1)
+            .maybeSingle();
 
-        if (!error && newEvent) {
-            RYDER_CUP_EVENT_ID = newEvent.id;
+        console.log('[RyderCup] Event lookup:', { data, error });
+
+        if (data) {
+            RYDER_CUP_EVENT_ID = data.id;
+            console.log('[RyderCup] Found event:', RYDER_CUP_EVENT_ID);
+        } else {
+            // Create the event
+            const { data: newEvent, error: createErr } = await supabase
+                .from('society_events')
+                .insert({
+                    title: 'TRGG Ryder Cup 2026 - Pattaya vs Hua Hin',
+                    society_id: TRGG_SOCIETY_ID,
+                    event_date: '2026-06-09',
+                    start_time: '10:00',
+                    course_name: 'Bangpakong Riverside Country Club',
+                    description: 'TRGG Ryder Cup 2026 - 3-day tournament: Bangpakong (Jun 9), St Andrews 2000 (Jun 11), Laem Chabang (Jun 12). 13,900 THB per person.',
+                    format: 'matchplay',
+                    entry_fee: 13900,
+                    status: 'published'
+                })
+                .select()
+                .single();
+
+            console.log('[RyderCup] Create event result:', { newEvent, createErr });
+
+            if (!createErr && newEvent) {
+                RYDER_CUP_EVENT_ID = newEvent.id;
+            } else {
+                console.error('[RyderCup] Failed to create event:', createErr);
+            }
         }
+    } catch (err) {
+        console.error('[RyderCup] findRyderCupEvent error:', err);
     }
 }
 
@@ -495,9 +506,25 @@ function selectSide(side) {
 }
 
 async function registerForRyderCup() {
-    if (!currentUser || !selectedSide || !RYDER_CUP_EVENT_ID) return;
-
     const btn = document.getElementById('registerBtn');
+
+    if (!currentUser) {
+        alert('Please log in to MyCaddiPro first, then come back to register.');
+        return;
+    }
+    if (!selectedSide) {
+        alert('Please select a side (Pattaya/USA or Hua Hin/Europe)');
+        return;
+    }
+    if (!RYDER_CUP_EVENT_ID) {
+        console.error('[RyderCup] No event ID - trying to find/create...');
+        await findRyderCupEvent();
+        if (!RYDER_CUP_EVENT_ID) {
+            alert('Event setup error. Please try again.');
+            return;
+        }
+    }
+
     btn.disabled = true;
     btn.textContent = 'Registering...';
 
@@ -518,9 +545,10 @@ async function registerForRyderCup() {
 
         await loadRegistrations();
     } catch (err) {
-        console.error('Registration error:', err);
+        console.error('[RyderCup] Registration error:', err);
         btn.textContent = 'Error - Try Again';
         btn.disabled = false;
+        alert('Registration failed: ' + err.message);
     }
 }
 

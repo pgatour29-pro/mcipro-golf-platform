@@ -359,13 +359,16 @@ window.PlayerScorecardViewer = (function() {
             const isScrambleRound = sc.scoring_format && JSON.stringify(sc.scoring_format).includes('scramble');
             if (isScrambleRound && sc.player_id) {
                 try {
-                    // Find the matching round by player + date
+                    // Find the matching round by player + scoring format
+                    // Use a wide date range since played_at timezone can differ
                     const playedDate = sc.played_at?.split('T')[0];
+                    const dayBefore = new Date(new Date(playedDate).getTime() - 86400000).toISOString().split('T')[0];
+                    const dayAfter = new Date(new Date(playedDate).getTime() + 86400000).toISOString().split('T')[0];
                     const { data: roundData } = await supabase.from('rounds')
                         .select('scramble_config, team_size')
                         .eq('golfer_id', sc.player_id)
-                        .gte('played_at', playedDate + 'T00:00:00')
-                        .lte('played_at', playedDate + 'T23:59:59')
+                        .gte('played_at', dayBefore + 'T00:00:00')
+                        .lte('played_at', dayAfter + 'T23:59:59')
                         .not('scramble_config', 'is', null)
                         .limit(1).maybeSingle();
                     if (roundData?.scramble_config) {

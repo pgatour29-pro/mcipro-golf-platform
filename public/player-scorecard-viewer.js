@@ -271,9 +271,9 @@ window.PlayerScorecardViewer = (function() {
                             const date = round.played_at ? new Date(round.played_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }) : '-';
                             const course = round.course_name || 'Unknown';
                             const shortCourse = course.length > 28 ? course.substring(0, 25) + '...' : course;
-                            const isScramble = round.scoring_format && round.scoring_format.toLowerCase().includes('scramble');
+                            const isScramble = round.scoring_format && JSON.stringify(round.scoring_format).toLowerCase().includes('scramble');
                             const typeIcon = isScramble ? '🤝' : round.type === 'society' ? '🏆' : '👤';
-                            const formatBadge = isScramble ? '<span class="ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700 uppercase">Scramble</span>' : '';
+                            const formatBadge = isScramble ? '<span class="ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700 uppercase">Scramble</span>' : '';
                             const hasHoles = round.hole_count > 0;
                             const stab = round.total_stableford > 0 ? round.total_stableford : '-';
 
@@ -406,7 +406,7 @@ window.PlayerScorecardViewer = (function() {
         const date = sc.played_at ? new Date(sc.played_at).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) : '';
         const hcp = sc.handicap != null ? parseFloat(sc.handicap).toFixed(1) : '-';
         const playHcp = sc.playing_handicap ?? '-';
-        const isScramble = sc.scoring_format && sc.scoring_format.toLowerCase().includes('scramble');
+        const isScramble = sc.scoring_format && JSON.stringify(sc.scoring_format).toLowerCase().includes('scramble');
         const scrambleTeam = data.scramble_config;
         const isTeamScramble = scrambleTeam?.teamName && data.team_size === 2;
         const displayName = isTeamScramble ? `🤝 ${scrambleTeam.teamName}` : (sc.player_name || playerName || 'Unknown');

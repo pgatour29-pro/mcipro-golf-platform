@@ -355,14 +355,23 @@ window.PlayerScorecardViewer = (function() {
             }
 
             // Fetch scramble team info from the round record
-            if (data.scorecard?.round_id) {
+            const sc = data.scorecard || {};
+            const isScrambleRound = sc.scoring_format && JSON.stringify(sc.scoring_format).includes('scramble');
+            if (isScrambleRound && sc.player_id) {
                 try {
+                    // Find the matching round by player + date
+                    const playedDate = sc.played_at?.split('T')[0];
                     const { data: roundData } = await supabase.from('rounds')
-                        .select('scramble_config, team_size, scoring_formats')
-                        .eq('id', data.scorecard.round_id).maybeSingle();
+                        .select('scramble_config, team_size')
+                        .eq('golfer_id', sc.player_id)
+                        .gte('played_at', playedDate + 'T00:00:00')
+                        .lte('played_at', playedDate + 'T23:59:59')
+                        .not('scramble_config', 'is', null)
+                        .limit(1).maybeSingle();
                     if (roundData?.scramble_config) {
                         data.scramble_config = roundData.scramble_config;
                         data.team_size = roundData.team_size;
+                        console.log('[ScorecardViewer] Found scramble config:', roundData.scramble_config);
                     }
                 } catch (e) { console.warn('[ScorecardViewer] Could not fetch scramble config:', e); }
             }

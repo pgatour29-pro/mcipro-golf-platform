@@ -354,6 +354,19 @@ window.PlayerScorecardViewer = (function() {
                 return;
             }
 
+            // Fetch scramble team info from the round record
+            if (data.scorecard?.round_id) {
+                try {
+                    const { data: roundData } = await supabase.from('rounds')
+                        .select('scramble_config, team_size, scoring_formats')
+                        .eq('id', data.scorecard.round_id).maybeSingle();
+                    if (roundData?.scramble_config) {
+                        data.scramble_config = roundData.scramble_config;
+                        data.team_size = roundData.team_size;
+                    }
+                } catch (e) { console.warn('[ScorecardViewer] Could not fetch scramble config:', e); }
+            }
+
             renderScorecardModal(data, playerName);
         } catch (err) {
             console.error('[ScorecardViewer] Scorecard error:', err);
@@ -382,6 +395,10 @@ window.PlayerScorecardViewer = (function() {
         const hcp = sc.handicap != null ? parseFloat(sc.handicap).toFixed(1) : '-';
         const playHcp = sc.playing_handicap ?? '-';
         const isScramble = sc.scoring_format && sc.scoring_format.toLowerCase().includes('scramble');
+        const scrambleTeam = data.scramble_config;
+        const isTeamScramble = scrambleTeam?.teamName && data.team_size === 2;
+        const displayName = isTeamScramble ? `🤝 ${scrambleTeam.teamName}` : (sc.player_name || playerName || 'Unknown');
+        const displayHcp = isTeamScramble ? scrambleTeam.teamHcp : hcp;
 
         // Split into front/back 9
         const front9 = holes.filter(h => h.hole_number <= 9);
@@ -464,9 +481,9 @@ window.PlayerScorecardViewer = (function() {
                     Back to profile
                 </button>
                 <h2 class="text-lg font-bold">${sc.course_name || 'Unknown Course'}</h2>
-                <p class="text-emerald-100 text-sm">${sc.player_name || playerName || 'Unknown'} • ${date}${isScramble ? ' • <span class="px-1.5 py-0.5 rounded bg-purple-500/30 text-purple-200 text-[10px] font-bold uppercase">Scramble</span>' : ''}</p>
+                <p class="text-emerald-100 text-sm">${displayName} • ${date}${isScramble ? ' • <span class="px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-200 text-[10px] font-bold uppercase">Scramble</span>' : ''}</p>
                 <div class="flex gap-3 mt-2 text-xs text-emerald-200">
-                    <span>HCP: ${hcp}</span>
+                    <span>${isTeamScramble ? 'Team HCP' : 'HCP'}: ${displayHcp}</span>
                     <span>Playing: ${playHcp}</span>
                     ${sc.tee_marker ? `<span>${sc.tee_marker} tees</span>` : ''}
                 </div>

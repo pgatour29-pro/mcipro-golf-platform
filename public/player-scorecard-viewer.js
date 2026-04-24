@@ -412,6 +412,27 @@ window.PlayerScorecardViewer = (function() {
         const displayName = isTeamScramble ? `🤝 ${scrambleTeam.teamName}` : (sc.player_name || playerName || 'Unknown');
         const displayHcp = isTeamScramble ? scrambleTeam.teamHcp : hcp;
 
+        // Recalculate net/stableford with team HCP if scramble team
+        if (isTeamScramble) {
+            const teamHcp = parseInt(scrambleTeam.teamHcp) || 0;
+            holes.forEach(h => {
+                let strokes = 0;
+                if (teamHcp > 0) {
+                    const full = Math.floor(teamHcp / 18);
+                    const remainder = teamHcp % 18;
+                    strokes = full + ((h.stroke_index || 18) <= remainder ? 1 : 0);
+                } else if (teamHcp < 0) {
+                    const abs = Math.abs(teamHcp);
+                    const full = Math.floor(abs / 18);
+                    const remainder = abs % 18;
+                    strokes = -(full + ((h.stroke_index || 18) <= remainder ? 1 : 0));
+                }
+                h.net_score = h.gross_score - strokes;
+                const diff = h.net_score - h.par;
+                h.stableford_points = diff <= -2 ? 4 : diff === -1 ? 3 : diff === 0 ? 2 : diff === 1 ? 1 : 0;
+            });
+        }
+
         // Split into front/back 9
         const front9 = holes.filter(h => h.hole_number <= 9);
         const back9 = holes.filter(h => h.hole_number > 9);

@@ -331,18 +331,38 @@ window.GolfBuddiesSystem = {
             // Load and render buddies
             var buddiesPanel = contentPanels[0];
             var buddies = [];
+            console.log('[Buddies] Modal query for user_id:', uid);
             var res = await window.SupabaseDB.client
                 .from('golf_buddies').select('*')
                 .eq('user_id', uid)
                 .order('times_played_together', { ascending: false });
 
+            console.log('[Buddies] Modal query result:', { error: res.error, count: res.data?.length });
+
             if (res.error) {
-                buddiesPanel.innerHTML = '<p style="color:#dc2626;padding:20px;text-align:center;">Error: ' + (res.error.message || 'Query failed') + '</p>';
+                buddiesPanel.innerHTML = '<p style="color:#dc2626;padding:20px;text-align:center;">Error: ' + (res.error.message || 'Query failed') + '<br><small style="color:#999;">uid: ' + uid + '</small></p>';
                 return;
             }
 
             if (!res.data || res.data.length === 0) {
-                buddiesPanel.innerHTML = '<div style="text-align:center;padding:48px 16px;"><p style="font-size:48px;margin-bottom:12px;">👥</p><p style="color:#888;font-size:15px;margin-bottom:16px;">No buddies yet</p><p style="color:#aaa;font-size:13px;">Play some rounds and add your partners!</p></div>';
+                // Try alternative user ID formats
+                var altUid = localStorage.getItem('line_user_id') || localStorage.getItem('mcipro_biometric_user_id');
+                if (altUid && altUid !== uid) {
+                    console.log('[Buddies] Trying alt UID:', altUid);
+                    var altRes = await window.SupabaseDB.client
+                        .from('golf_buddies').select('*')
+                        .eq('user_id', altUid)
+                        .order('times_played_together', { ascending: false });
+                    if (altRes.data && altRes.data.length > 0) {
+                        res = altRes;
+                        uid = altUid;
+                        console.log('[Buddies] Found buddies with alt UID:', altRes.data.length);
+                    }
+                }
+            }
+
+            if (!res.data || res.data.length === 0) {
+                buddiesPanel.innerHTML = '<div style="text-align:center;padding:48px 16px;"><p style="font-size:48px;margin-bottom:12px;">👥</p><p style="color:#888;font-size:15px;margin-bottom:16px;">No buddies yet</p><p style="color:#aaa;font-size:13px;">Play some rounds and add your partners!</p><p style="color:#ccc;font-size:10px;margin-top:8px;">uid: ' + uid + '</p></div>';
                 return;
             }
 

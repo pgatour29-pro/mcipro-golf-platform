@@ -110,6 +110,54 @@ Deno.serve(async (req) => {
       return json(200, { updated, total: (profiles || []).length });
     }
 
+    if (action === "sync_universal_handicaps") {
+      // Recalculate universal handicap for all players from their rounds
+      // and update user_profiles.handicap_index + profile_data.handicap
+      const { data: players } = await supabase.from('society_handicaps')
+        .select('golfer_id, handicap_index').is('society_id', null);
+
+      let updated = 0;
+      for (const p of (players || [])) {
+        const hcp = p.handicap_index;
+        if (hcp === null || hcp === undefined) continue;
+        const displayHcp = hcp < 0 ? `+${Math.abs(hcp).toFixed(1)}` : hcp.toFixed(1);
+
+        // Update user_profiles
+        const { data: profile } = await supabase.from('user_profiles')
+          .select('profile_data').eq('line_user_id', p.golfer_id).maybeSingle();
+
+        if (profile) {
+          const pd = profile.profile_data || {};
+          pd.handicap = displayHcp;
+          if (pd.golfInfo) pd.golfInfo.handicap = displayHcp;
+
+          await supabase.from('user_profiles').update({
+            handicap_index: hcp,
+            profile_data: pd
+          }).eq('line_user_id', p.golfer_id);
+          updated++;
+        }
+      }
+      return json(200, { updated, total: (players || []).length });
+    }
+
+    if (action === "update_user_handicap") {
+      const { user_id, handicap_index, display_handicap } = body;
+      const { data: profile } = await supabase.from('user_profiles')
+        .select('profile_data').eq('line_user_id', user_id).maybeSingle();
+      if (profile) {
+        const pd = profile.profile_data || {};
+        pd.handicap = display_handicap;
+        if (pd.golfInfo) pd.golfInfo.handicap = display_handicap;
+        const { error } = await supabase.from('user_profiles').update({
+          handicap_index: handicap_index,
+          profile_data: pd
+        }).eq('line_user_id', user_id);
+        return json(200, { error: error?.message || 'ok' });
+      }
+      return json(400, { error: 'Profile not found' });
+    }
+
     if (action === "update_round") {
       const { round_id, updates } = body;
       const { error } = await supabase.from('rounds').update(updates).eq('id', round_id);

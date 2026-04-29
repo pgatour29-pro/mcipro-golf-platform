@@ -34,16 +34,61 @@ Deno.serve(async (req) => {
 
       const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-      // Build profile lookup
+      // Common name variants: Pete/Peter, Bill/William, Bob/Robert, etc.
+      const nameVariants: Record<string, string[]> = {
+        'pete': ['peter','petey'], 'peter': ['pete','petey'],
+        'bill': ['william','billy','will'], 'william': ['bill','billy','will'],
+        'bob': ['robert','rob','bobby'], 'robert': ['bob','rob','bobby'],
+        'jim': ['james','jimmy'], 'james': ['jim','jimmy'],
+        'mike': ['michael','mick'], 'michael': ['mike','mick'], 'mick': ['mike','michael'],
+        'dave': ['david'], 'david': ['dave'],
+        'tom': ['thomas','tommy'], 'thomas': ['tom','tommy'],
+        'dick': ['richard','rick'], 'richard': ['dick','rick'], 'rick': ['richard','dick'],
+        'steve': ['steven','stephen'], 'steven': ['steve','stephen'], 'stephen': ['steve','steven'],
+        'ed': ['edward','eddie','ted'], 'edward': ['ed','eddie','ted'],
+        'joe': ['joseph','joey'], 'joseph': ['joe','joey'],
+        'dan': ['daniel','danny'], 'daniel': ['dan','danny'],
+        'al': ['alan','allen','albert'], 'alan': ['al','allen'], 'allen': ['al','alan'],
+        'chris': ['christopher'], 'christopher': ['chris'],
+        'matt': ['matthew'], 'matthew': ['matt'],
+        'nick': ['nicholas'], 'nicholas': ['nick'],
+        'tony': ['anthony'], 'anthony': ['tony'],
+        'don': ['donald'], 'donald': ['don'],
+        'ron': ['ronald'], 'ronald': ['ron'],
+        'ken': ['kenneth'], 'kenneth': ['ken'],
+        'ben': ['benjamin'], 'benjamin': ['ben'],
+        'jeff': ['jeffrey','geoffrey','geoff'], 'geoff': ['geoffrey','jeff'], 'geoffrey': ['geoff','jeff'],
+        'greg': ['gregory'], 'gregory': ['greg'],
+        'doug': ['douglas'], 'douglas': ['doug'],
+        'fred': ['frederick'], 'frederick': ['fred'],
+        'brad': ['bradley'], 'bradley': ['brad'],
+        'pat': ['patrick'], 'patrick': ['pat'],
+        'alex': ['alexander'], 'alexander': ['alex'],
+        'andy': ['andrew'], 'andrew': ['andy'],
+        'len': ['leonard'], 'leonard': ['len'],
+        'larry': ['lawrence'], 'lawrence': ['larry'],
+        'gary': ['gareth'], 'gareth': ['gary'],
+        'jerry': ['gerald','gerard'], 'gerald': ['jerry','gerard'],
+        'willy': ['william','will'], 'will': ['william','willy','bill'],
+      };
+
+      // Build profile lookup with variant names
       const profilesByNorm: Record<string, any> = {};
       for (const p of (profiles || [])) {
         if (!p.name) continue;
         profilesByNorm[normalize(p.name)] = p;
-        // "First Last" -> also index as "LastFirst"
         const parts = p.name.split(/[\s,]+/).filter(Boolean);
         if (parts.length >= 2) {
+          const last = parts.slice(-1)[0].toLowerCase();
+          const first = parts[0].toLowerCase();
           profilesByNorm[normalize(parts.slice(-1)[0] + parts[0])] = p;
           profilesByNorm[normalize(parts[0] + parts.slice(-1)[0])] = p;
+          // Add variant name combos
+          const firstVariants = nameVariants[first] || [];
+          for (const v of firstVariants) {
+            profilesByNorm[normalize(v + last)] = p;
+            profilesByNorm[normalize(last + v)] = p;
+          }
         }
       }
 
@@ -60,8 +105,22 @@ Deno.serve(async (req) => {
 
         const normName = normalize(name);
 
-        // Match profile
+        // Match profile - try exact, then variants
         let profile = profilesByNorm[normName];
+
+        // Try name variants for the input name
+        if (!profile) {
+          const inputParts = name.split(/[\s,]+/).filter(Boolean);
+          if (inputParts.length >= 2) {
+            const inputFirst = inputParts[inputParts.length > 2 ? 1 : 0].toLowerCase();
+            const inputLast = inputParts[0].toLowerCase();
+            const variants = nameVariants[inputFirst] || [];
+            for (const v of variants) {
+              profile = profilesByNorm[normalize(v + inputLast)] || profilesByNorm[normalize(inputLast + v)];
+              if (profile) break;
+            }
+          }
+        }
 
         // Try TRGG map
         if (!profile && trggMapByName[normName]) {

@@ -122,6 +122,22 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Try last name only match (if unique last name in system)
+        if (!profile) {
+          const inputParts = name.split(/[\s,]+/).filter(Boolean);
+          const lastName = inputParts[0].toLowerCase(); // "Last, First" format
+          if (lastName.length >= 3) {
+            const lastNameMatches = (profiles || []).filter(p => {
+              if (!p.name) return false;
+              const pParts = p.name.split(/[\s,]+/).filter(Boolean);
+              return pParts.some(part => part.toLowerCase() === lastName);
+            });
+            if (lastNameMatches.length === 1) {
+              profile = lastNameMatches[0];
+            }
+          }
+        }
+
         // Try TRGG map
         if (!profile && trggMapByName[normName]) {
           profile = (profiles || []).find(p => p.line_user_id === trggMapByName[normName]);

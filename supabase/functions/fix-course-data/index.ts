@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
       // Get all user profiles
       const { data: profiles, error: pErr } = await supabase
         .from('user_profiles')
-        .select('line_user_id, name, trgg_handicap');
+        .select('line_user_id, name, trgg_handicap, profile_data');
       if (pErr) return json(500, { error: pErr.message });
 
       const { data: trggMap } = await supabase
@@ -144,8 +144,14 @@ Deno.serve(async (req) => {
         }
 
         if (profile) {
+          // Update trgg_handicap AND handicap_index + profile_data on user_profiles
+          const displayHcp = hcpValue < 0 ? `+${Math.abs(hcpValue).toFixed(1)}` : hcpValue.toFixed(1);
+          const profileData = profile.profile_data || {};
+          profileData.handicap = displayHcp;
+          if (profileData.golfInfo) profileData.golfInfo.handicap = displayHcp;
+
           await supabase.from('user_profiles')
-            .update({ trgg_handicap: hcpValue })
+            .update({ trgg_handicap: hcpValue, handicap_index: hcpValue, profile_data: profileData })
             .eq('line_user_id', profile.line_user_id);
 
           // Also update trgg_user_map

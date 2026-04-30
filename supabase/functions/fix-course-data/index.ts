@@ -156,6 +156,9 @@ Deno.serve(async (req) => {
           updated++;
           if (matchedSample.length < 30) matchedSample.push({ trgg: name, matched: profile.name, hcp: hcpValue });
         } else {
+          // Store unmatched names in trgg_pending for future matching
+          await supabase.from('trgg_pending')
+            .upsert({ trgg_name: name, trgg_handicap: hcpValue }, { onConflict: 'trgg_name' });
           notFound++;
           notFoundNames.push(`${name} (${hcpStr})`);
         }

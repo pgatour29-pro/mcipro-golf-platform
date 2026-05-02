@@ -18,11 +18,22 @@ Deno.serve(async (req) => {
     if (action === "update_trgg_handicaps") {
       const handicaps: Record<string, number | string> = body.handicaps;
 
-      // Get all user profiles
-      const { data: profiles, error: pErr } = await supabase
-        .from('user_profiles')
-        .select('line_user_id, name, trgg_handicap, profile_data');
-      if (pErr) return json(500, { error: pErr.message });
+      // Get all user profiles (must set high limit - Supabase default is 1000)
+      let profiles: any[] = [];
+      let offset = 0;
+      const batchSize = 1000;
+      while (true) {
+        const { data: batch, error: pErr } = await supabase
+          .from('user_profiles')
+          .select('line_user_id, name, trgg_handicap, profile_data')
+          .range(offset, offset + batchSize - 1);
+        if (pErr) return json(500, { error: pErr.message });
+        if (!batch || batch.length === 0) break;
+        profiles = profiles.concat(batch);
+        if (batch.length < batchSize) break;
+        offset += batchSize;
+      }
+      console.log(`[TRGG Sync] Loaded ${profiles.length} profiles`);
 
       const { data: trggMap } = await supabase
         .from('trgg_user_map')

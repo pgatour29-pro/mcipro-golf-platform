@@ -61,7 +61,7 @@ Respond with a JSON object containing "action" and "reply" fields.`;
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 300,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: userMessage }],
@@ -69,12 +69,22 @@ Respond with a JSON object containing "action" and "reply" fields.`;
     });
 
     const data = await response.json();
-    const text = data.content?.[0]?.text || '{"action":"chat","reply":"Sorry, I didn\'t catch that."}';
+
+    // Debug: check for API errors
+    if (data.error) {
+      console.error('[AI Caddie] Claude API error:', JSON.stringify(data.error));
+      return json(200, { action: "chat", reply: "Sorry, the AI service had an error. " + (data.error.message || '') });
+    }
+
+    const text = data.content?.[0]?.text || '';
+    if (!text) {
+      console.error('[AI Caddie] Empty response from Claude:', JSON.stringify(data));
+      return json(200, { action: "chat", reply: "Sorry, I didn't get a response." });
+    }
 
     // Parse the JSON response
     let parsed;
     try {
-      // Extract JSON from the response (handle markdown code blocks)
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       parsed = JSON.parse(jsonMatch?.[0] || text);
     } catch {

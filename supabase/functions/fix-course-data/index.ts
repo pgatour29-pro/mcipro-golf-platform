@@ -294,6 +294,56 @@ Deno.serve(async (req) => {
       return json(200, results);
     }
 
+    if (action === "create_trgg_guests") {
+      const TRGG_SOCIETY_ID = '7c0e4b72-d925-44bc-afda-38259a7ba346';
+
+      // Get pending players
+      const { data: pending } = await supabase.from('trgg_pending').select('trgg_name, trgg_handicap').order('trgg_name');
+      if (!pending || pending.length === 0) return json(200, { message: 'No pending players' });
+
+      // Get max TRGG-GUEST number
+      const { data: maxGuest } = await supabase.from('user_profiles')
+        .select('line_user_id').like('line_user_id', 'TRGG-GUEST-%').order('line_user_id', { ascending: false }).limit(1);
+      let nextNum = 1;
+      if (maxGuest && maxGuest.length > 0) {
+        const parts = maxGuest[0].line_user_id.split('-');
+        nextNum = parseInt(parts[parts.length - 1]) + 1;
+      }
+
+      let created = 0, errors = 0;
+      for (const p of pending) {
+        const guestId = `TRGG-GUEST-${String(nextNum).padStart(4, '0')}`;
+        const hcp = p.trgg_handicap;
+        const displayHcp = hcp < 0 ? `+${Math.abs(hcp)}` : String(hcp);
+
+        // Create profile
+        const { error: pErr } = await supabase.from('user_profiles').insert({
+          line_user_id: guestId, name: p.trgg_name, role: 'golfer',
+          handicap_index: hcp, trgg_handicap: hcp,
+          profile_data: { handicap: displayHcp, golfInfo: { handicap: displayHcp } }
+        });
+        if (pErr) { errors++; nextNum++; continue; }
+
+        // Create society member
+        await supabase.from('society_members').insert({
+          society_id: TRGG_SOCIETY_ID, golfer_id: guestId, role: 'member', status: 'active'
+        });
+
+        // Create society handicap
+        await supabase.from('society_handicaps').insert({
+          golfer_id: guestId, society_id: TRGG_SOCIETY_ID, handicap_index: hcp
+        });
+
+        created++;
+        nextNum++;
+      }
+
+      // Clear pending
+      if (created > 0) await supabase.from('trgg_pending').delete().not('id', 'is', null);
+
+      return json(200, { created, errors, total: pending.length });
+    }
+
     return json(400, { error: "Unknown action" });
   } catch (err: any) {
     return json(500, { error: err.message });

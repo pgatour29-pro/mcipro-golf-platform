@@ -233,10 +233,6 @@ window.PlayerScorecardViewer = (function() {
                 <div class="flex flex-wrap gap-2">
                     <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">Universal: ${hcp}</span>
                     ${profile.trgg_handicap != null ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">TRGG: ${profile.trgg_handicap < 0 ? '+' + Math.abs(profile.trgg_handicap).toFixed(1) : parseFloat(profile.trgg_handicap).toFixed(1)}</span>` : ''}
-                    ${(profile.society_handicaps || []).filter(sh => sh.society_id != null).map(sh => {
-                        const shVal = sh.handicap_index < 0 ? '+' + Math.abs(sh.handicap_index).toFixed(1) : parseFloat(sh.handicap_index).toFixed(1);
-                        return '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Society: ' + shVal + '</span>';
-                    }).join('')}
                 </div>
             </div>
 

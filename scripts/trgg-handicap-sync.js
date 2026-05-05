@@ -156,7 +156,7 @@ async function processRows(rows, runId) {
     const profileId = mapLookup.get(norm);
     if (profileId) {
       const { error } = await supabase.from('user_profiles').update({
-        trgg_handicap: row.handicap, universal_handicap: row.handicap
+        trgg_handicap: row.handicap
       }).eq('line_user_id', profileId);
       if (!error) {
         updated++;
@@ -164,6 +164,23 @@ async function processRows(rows, runId) {
         await supabase.from('trgg_user_map').update({
           last_handicap: row.handicap, last_synced_at: new Date().toISOString()
         }).eq('profile_id', profileId);
+        // Sync to society_handicaps (TRGG society) so LiveScorecard can read it
+        const TRGG_SOCIETY_ID = '7c0e4b72-d925-44bc-afda-38259a7ba346';
+        await supabase.from('society_handicaps').upsert({
+          golfer_id: profileId, society_id: TRGG_SOCIETY_ID,
+          handicap_index: row.handicap, calculation_method: 'TRGG_SYNC',
+          last_calculated_at: new Date().toISOString()
+        }, { onConflict: 'golfer_id,society_id' });
+        // Also sync universal (society_id = null) if no universal exists yet
+        const { data: existing } = await supabase.from('society_handicaps')
+          .select('id').eq('golfer_id', profileId).is('society_id', null).maybeSingle();
+        if (!existing) {
+          await supabase.from('society_handicaps').insert({
+            golfer_id: profileId, society_id: null,
+            handicap_index: row.handicap, calculation_method: 'TRGG_SYNC',
+            last_calculated_at: new Date().toISOString()
+          });
+        }
       }
       continue;
     }
@@ -178,8 +195,24 @@ async function processRows(rows, runId) {
         last_handicap: row.handicap, last_synced_at: new Date().toISOString()
       });
       await supabase.from('user_profiles').update({
-        trgg_handicap: row.handicap, universal_handicap: row.handicap
+        trgg_handicap: row.handicap
       }).eq('line_user_id', best.id);
+      // Sync to society_handicaps for LiveScorecard
+      const TRGG_SOCIETY_ID2 = '7c0e4b72-d925-44bc-afda-38259a7ba346';
+      await supabase.from('society_handicaps').upsert({
+        golfer_id: best.id, society_id: TRGG_SOCIETY_ID2,
+        handicap_index: row.handicap, calculation_method: 'TRGG_SYNC',
+        last_calculated_at: new Date().toISOString()
+      }, { onConflict: 'golfer_id,society_id' });
+      const { data: existingUni } = await supabase.from('society_handicaps')
+        .select('id').eq('golfer_id', best.id).is('society_id', null).maybeSingle();
+      if (!existingUni) {
+        await supabase.from('society_handicaps').insert({
+          golfer_id: best.id, society_id: null,
+          handicap_index: row.handicap, calculation_method: 'TRGG_SYNC',
+          last_calculated_at: new Date().toISOString()
+        });
+      }
       matched++;
       updated++;
       continue;

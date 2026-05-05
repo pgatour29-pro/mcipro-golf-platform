@@ -21,7 +21,7 @@ DELETE FROM course_holes WHERE course_id = 'pleasant_valley';
 
 INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
 -- Front 9
-('pleasant_valley', 1, 4, 4, 423, 'black'),
+('pleasant_valley', 1, 4, 9, 423, 'black'),
 ('pleasant_valley', 2, 4, 3, 442, 'black'),
 ('pleasant_valley', 3, 5, 1, 601, 'black'),
 ('pleasant_valley', 4, 4, 14, 332, 'black'),
@@ -47,7 +47,7 @@ INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, te
 
 INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
 -- Front 9
-('pleasant_valley', 1, 4, 4, 391, 'blue'),
+('pleasant_valley', 1, 4, 9, 391, 'blue'),
 ('pleasant_valley', 2, 4, 3, 408, 'blue'),
 ('pleasant_valley', 3, 5, 1, 549, 'blue'),
 ('pleasant_valley', 4, 4, 14, 300, 'blue'),
@@ -73,7 +73,7 @@ INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, te
 
 INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
 -- Front 9
-('pleasant_valley', 1, 4, 4, 363, 'white'),
+('pleasant_valley', 1, 4, 9, 363, 'white'),
 ('pleasant_valley', 2, 4, 3, 368, 'white'),
 ('pleasant_valley', 3, 5, 1, 508, 'white'),
 ('pleasant_valley', 4, 4, 14, 281, 'white'),
@@ -99,7 +99,7 @@ INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, te
 
 INSERT INTO course_holes (course_id, hole_number, par, stroke_index, yardage, tee_marker) VALUES
 -- Front 9
-('pleasant_valley', 1, 4, 4, 310, 'red'),
+('pleasant_valley', 1, 4, 9, 310, 'red'),
 ('pleasant_valley', 2, 4, 3, 317, 'red'),
 ('pleasant_valley', 3, 5, 1, 466, 'red'),
 ('pleasant_valley', 4, 4, 14, 263, 'red'),

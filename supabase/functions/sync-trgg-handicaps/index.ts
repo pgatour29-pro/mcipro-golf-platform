@@ -494,7 +494,26 @@ async function updateHandicap(
     .from(PROFILES_TABLE)
     .update(updateFields)
     .eq(PROFILE_PK, profileId);
-  return !error;
+  if (error) return false;
+
+  // Sync to society_handicaps so LiveScorecard can read it
+  const TRGG_SOCIETY_ID = '7c0e4b72-d925-44bc-afda-38259a7ba346';
+  await supabase.from('society_handicaps').upsert({
+    golfer_id: profileId, society_id: TRGG_SOCIETY_ID,
+    handicap_index: handicap, calculation_method: 'TRGG_SYNC',
+    last_calculated_at: new Date().toISOString()
+  }, { onConflict: 'golfer_id,society_id' });
+
+  // Also set universal if none exists
+  if (!profile?.handicap_index && profile?.handicap_index !== 0) {
+    await supabase.from('society_handicaps').upsert({
+      golfer_id: profileId, society_id: null,
+      handicap_index: handicap, calculation_method: 'TRGG_SYNC',
+      last_calculated_at: new Date().toISOString()
+    }, { onConflict: 'golfer_id,society_id' });
+  }
+
+  return true;
 }
 
 // ----- Utils ----------------------------------------------------------------

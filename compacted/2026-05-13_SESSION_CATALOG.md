@@ -80,11 +80,39 @@
 **What happened**: Wasted time trying to deploy manually when Vercel auto-deploys from GitHub.
 **Root cause**: Didn't read the deployment rules in `00_READ_ME_FIRST_CLAUDE.md` before deploying.
 
+### 8. CRITICAL: Missing closing brace killed entire script block for HOURS
+**What happened**: When inserting bounce-back stats code into the round history section, I dropped a closing `}` brace. The code was inserted inside a nested `if (statsRounds.size > 0) { if (allHoles.length > 0) { if (roundIds.length > 0) { if (window.SupabaseDB) {` block. My code closed the inner blocks but missed one, causing the `catch` keyword to appear at the wrong nesting level. This is a SyntaxError that kills the ENTIRE script block at parse time — not just my code, but GolfAnalytics, CaddyNotebook, BookedCaddiesView, Season Stats, and everything else in lines 53667-59180.
+**How long it was broken**: Multiple hours. Pete reported analytics broken, I spent time looking for null references, checking if Chart.js loaded, adding diagnostics, while the actual error was `Uncaught SyntaxError: Unexpected token 'catch'` at line 54243 — visible in the console the entire time.
+**Root cause**: Careless brace counting when inserting code into deeply nested blocks. Did not verify the script block could parse after the change. Did not read the console error that Pete eventually pasted — which showed the exact line and error.
+**Fix**: Added the missing `}` to close the `if (statsRounds.size > 0)` block.
+
+### 9. Bangpra course dropdown — 3 failed attempts before getting it right
+**Attempt 1**: Read from caddy_profiles DB → Bangpra had no entries
+**Attempt 2**: Read from scorecardCourseSelect dropdown → not rendered on caddy tab
+**Attempt 3**: Hardcoded courses → worked, but duplicate names from DB sources
+**Attempt 4**: Added normalizeCourse() → finally correct
+**Root cause**: Should have hardcoded with normalized names from the start.
+
+### 10. Notebook course field — datalist instead of select
+**What happened**: Used `<input list="datalist">` which shows suggestions but doesn't work as a real dropdown. Pete expected a `<select>`.
+**Attempt 1**: Populated datalist from scorecard dropdown → not available
+**Attempt 2**: Hardcoded datalist → still just suggestions
+**Attempt 3**: Changed to `<select>` → correct
+**Root cause**: Wrong HTML element choice.
+
+### 11. Laem Chabang Lake nine — wrong data in database
+**What happened**: The Lake nine hole data (par, SI, yardage) in the course_holes table was completely wrong for all tee markers. Yellow tee rows were missing entirely.
+**Root cause**: Data was inserted incorrectly during the original Laem Chabang setup session. Not caught until Pete checked the scorecard.
+**Fix**: Updated all 54 existing rows and inserted 18 missing yellow tee rows using the service role key.
+
 ## Rules Learned
-1. **Null-check every DOM element** before accessing properties — especially in shared script blocks where one error kills everything
-2. **Hardcode known data** instead of dynamically sourcing from other UI elements that may not be rendered
-3. **Normalize variant names** whenever combining data from multiple sources
-4. **Use `<select>` for course pickers**, not datalist
-5. **One fix, one verify** — check analytics, modals, and other features after every change
-6. **Push to git = deploy** — no manual vercel command needed
-7. **Never blame cache** — find the actual code bug
+1. **COUNT YOUR BRACES** — when inserting code into nested blocks, verify the brace count matches before and after. One missing `}` can kill thousands of lines of code.
+2. **READ THE CONSOLE ERROR** — `SyntaxError: Unexpected token 'catch'` at a specific line number IS the answer. Don't theorize, don't add diagnostics, just go to that line and fix it.
+3. **Verify the script block parses** after every change to a shared script block. A simple `node -c` or browser refresh to check for SyntaxErrors.
+4. **Null-check every DOM element** before accessing properties — especially in shared script blocks
+5. **Hardcode known data** with normalized names from the start
+6. **Use `<select>` for dropdowns**, not datalist
+7. **One fix, one verify** — check analytics, modals, and other features after every change
+8. **Push to git = deploy** — no manual vercel command needed
+9. **Never blame cache** — find the actual code bug
+10. **Service role key is in scripts/deploy_sql_direct.js** — use it when anon key can't write

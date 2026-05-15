@@ -400,8 +400,8 @@ window.PlayerScorecardViewer = (function() {
         }
 
         const date = sc.played_at ? new Date(sc.played_at).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) : '';
-        const hcp = sc.handicap != null ? parseFloat(sc.handicap).toFixed(1) : '-';
-        const playHcp = sc.playing_handicap ?? '-';
+        const hcp = sc.handicap != null ? (window.formatHandicapDisplay ? window.formatHandicapDisplay(sc.handicap) : parseFloat(sc.handicap).toFixed(1)) : '-';
+        const playHcp = sc.playing_handicap != null ? (window.formatHandicapDisplay ? window.formatHandicapDisplay(sc.playing_handicap) : sc.playing_handicap) : '-';
         const isScramble = sc.scoring_format && JSON.stringify(sc.scoring_format).toLowerCase().includes('scramble');
         const scrambleTeam = data.scramble_config;
         const isTeamScramble = scrambleTeam?.teamName && data.team_size === 2;

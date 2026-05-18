@@ -82,10 +82,19 @@ window.PlayerScorecardViewer = (function() {
                     if (data.societies && !data.societies.primary && data.societies.all && data.societies.all.length > 0) {
                         data.societies.primary = data.societies.all[0];
                     }
-                    // Fetch society handicaps
+                    // Fetch society handicaps with society names
                     const { data: socHcps } = await supabase.from('society_handicaps')
                         .select('handicap_index, society_id').eq('golfer_id', playerId);
                     if (socHcps) {
+                        // Look up society names
+                        const socIds = socHcps.filter(sh => sh.society_id).map(sh => sh.society_id);
+                        if (socIds.length > 0) {
+                            const { data: socProfiles } = await supabase.from('society_profiles')
+                                .select('id, society_name').in('id', socIds);
+                            const nameMap = {};
+                            (socProfiles || []).forEach(sp => { nameMap[sp.id] = sp.society_name; });
+                            socHcps.forEach(sh => { if (sh.society_id) sh.society_name = nameMap[sh.society_id] || null; });
+                        }
                         data.society_handicaps = socHcps;
                     }
                 } catch(e) { /* optional enrichment */ }
@@ -228,11 +237,17 @@ window.PlayerScorecardViewer = (function() {
             </div>
 
             <!-- All Handicaps -->
-            <div class="px-4 py-2 bg-emerald-50/50 border-b border-gray-100">
+            <div id="profileHandicapBadges" class="px-4 py-2 bg-emerald-50/50 border-b border-gray-100">
                 <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-1 font-semibold">Handicaps</div>
                 <div class="flex flex-wrap gap-2">
                     <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">Universal: ${hcp}</span>
                     ${profile.trgg_handicap != null ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">TRGG: ${profile.trgg_handicap < 0 ? '+' + Math.abs(profile.trgg_handicap).toFixed(1) : parseFloat(profile.trgg_handicap).toFixed(1)}</span>` : ''}
+                    ${(profile.society_handicaps || []).filter(sh => sh.society_id != null).map(sh => {
+                        const v = sh.handicap_index;
+                        const display = v == null ? '-' : (v < 0 ? '+' + Math.abs(v).toFixed(1) : parseFloat(v).toFixed(1));
+                        const name = sh.society_name || 'Society';
+                        return `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">${name}: ${display}</span>`;
+                    }).join('')}
                 </div>
             </div>
 

@@ -2,7 +2,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const TRGG_SCHEDULE_URL = "https://trggpattaya.com/schedule/";
-const TRGG_SOCIETY_ID = "17451cf3-f499-4aa3-83d7-c206149838c4";
+const TRGG_SOCIETY_ID = "7c0e4b72-d925-44bc-afda-38259a7ba346";
 
 // Course name mapping: TRGG website name → MyCaddiPro course_name
 const COURSE_MAP: Record<string, string> = {
@@ -69,28 +69,30 @@ function parseScheduleHTML(html: string): ParsedEvent[] {
 
   let currentMonth = 0;
 
-  // Split by table rows
-  const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/gi) || [];
+  // Parse month headers from <h3> tags like "May 2026 Golf Course Schedule"
+  // Then parse table rows — TRGG tables have <tr> without </tr>
+  const clean = (s: string) => s.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
 
-  for (const row of rows) {
-    // Check for month header
-    const monthHeader = row.match(/(January|February|March|April|May|June|July|August|September|October|November|December)/i);
-    if (monthHeader) {
-      const monthName = monthHeader[1].toLowerCase().substring(0, 3);
-      currentMonth = months[monthName] || 0;
+  // Split HTML into chunks by <tr> tags (handles missing </tr>)
+  const chunks = html.split(/<tr[^>]*>/gi);
 
-      // Check if year is in the header too
-      const yrMatch = row.match(/20\d{2}/);
-      if (yrMatch) currentYear = parseInt(yrMatch[0]);
-      continue;
+  for (const chunk of chunks) {
+    // Check for month header in <h3> before this table section
+    const monthHeaders = chunk.match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s*(20\d{2})/gi);
+    if (monthHeaders) {
+      for (const mh of monthHeaders) {
+        const parts = mh.match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s*(20\d{2})/i);
+        if (parts) {
+          const mName = parts[1].toLowerCase().substring(0, 3);
+          if (months[mName]) currentMonth = months[mName];
+          currentYear = parseInt(parts[2]);
+        }
+      }
     }
 
-    // Extract cells
-    const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/gi);
+    // Extract cells from this row
+    const cells = chunk.match(/<td[^>]*>([\s\S]*?)<\/td>/gi);
     if (!cells || cells.length < 5) continue;
-
-    // Strip HTML tags from cell content
-    const clean = (s: string) => s.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
 
     const dateStr = clean(cells[0]);
     const dayStr = clean(cells[1]);
@@ -98,43 +100,38 @@ function parseScheduleHTML(html: string): ParsedEvent[] {
     const departureStr = clean(cells[3]);
     const teeTimeStr = clean(cells[4]);
     const feeStr = cells[5] ? clean(cells[5]) : '';
-    const eventStr = cells[6] ? clean(cells[6]) : 'Regular';
 
-    // Parse date - format like "Apr 1", "May 15", etc.
-    const dateMatch = dateStr.match(/([A-Za-z]+)\s+(\d+)/);
-    if (!dateMatch && !currentMonth) continue;
+    // Skip header rows
+    if (dateStr === 'DATE' || dayStr === 'DAY') continue;
 
-    let month = currentMonth;
-    let day = 0;
+    // Parse date — just a number (day of month), month comes from <h3> header
+    const numMatch = dateStr.match(/(\d+)/);
+    if (!numMatch || !currentMonth) continue;
+    const day = parseInt(numMatch[1]);
+    if (day < 1 || day > 31) continue;
 
-    if (dateMatch) {
-      const mName = dateMatch[1].toLowerCase().substring(0, 3);
-      if (months[mName]) month = months[mName];
-      day = parseInt(dateMatch[2]);
-    } else {
-      // Try just a number
-      const numMatch = dateStr.match(/(\d+)/);
-      if (numMatch) day = parseInt(numMatch[1]);
-    }
-
-    if (!month || !day) continue;
-
-    const dateFormatted = `${currentYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dateFormatted = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
     // Parse nine info from course name (e.g., "Plutaluang S-E")
     let nineInfo = '';
     const nineMatch = courseStr.match(/([NS])-([EW])/i);
     if (nineMatch) nineInfo = nineMatch[0].toUpperCase();
 
-    // Parse times - format "08:00" or "09:30"
+    // Parse times — handles both "09:00" and "09.00" formats
     const parseTime = (s: string) => {
-      const m = s.match(/(\d{1,2}):(\d{2})/);
+      const m = s.match(/(\d{1,2})[:.:](\d{2})/);
       return m ? `${m[1].padStart(2, '0')}:${m[2]}` : '';
     };
 
     // Parse green fee
     const feeMatch = feeStr.match(/(\d[\d,]*)/);
     const greenFee = feeMatch ? parseInt(feeMatch[1].replace(/,/g, '')) : 0;
+
+    // Determine event type from course name (e.g., "ST ANDREWS FREE FOOD FRIDAY")
+    let eventType = 'Regular';
+    if (courseStr.match(/scramble|stroke|stableford|medal|competition|championship|cup|trophy/i)) {
+      eventType = courseStr;
+    }
 
     events.push({
       date: dateFormatted,
@@ -144,7 +141,7 @@ function parseScheduleHTML(html: string): ParsedEvent[] {
       departure_time: parseTime(departureStr),
       tee_time: parseTime(teeTimeStr),
       green_fee: greenFee,
-      event_type: eventStr || 'Regular',
+      event_type: eventType,
       nine_info: nineInfo,
     });
   }

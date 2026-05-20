@@ -197,8 +197,8 @@ Deno.serve(async (req) => {
 
     const existingMap = new Map<string, string>();
     for (const e of existingEvents || []) {
-      // Key by date + normalized course name
-      const key = `${e.event_date}_${(e.course_name || '').toLowerCase()}`;
+      // Key by DATE ONLY — TRGG plays one course per day, so date is unique
+      const key = e.event_date;
       existingMap.set(key, e.id);
     }
 
@@ -208,7 +208,7 @@ Deno.serve(async (req) => {
     const errors: string[] = [];
 
     for (const evt of events) {
-      const key = `${evt.date}_${evt.course_name.toLowerCase()}`;
+      const key = evt.date;
       const existingId = existingMap.get(key);
 
       // Build title

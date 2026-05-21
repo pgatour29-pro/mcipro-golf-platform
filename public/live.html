@@ -626,6 +626,7 @@
 
         // Get event leaderboard
         async function getEventLeaderboard(eventId, format = 'stableford') {
+            // Get scorecards linked to this event
             const { data: scorecards, error } = await supabaseClient
                 .from('scorecards')
                 .select(`
@@ -634,7 +635,36 @@
                 `)
                 .eq('event_id', eventId);
 
-            if (error || !scorecards) return [];
+            if (error) return [];
+
+            // Also find live scorecards at the same course today without an event_id
+            // (players who started individual rounds at the same course)
+            const event = allEvents.find(e => e.id === eventId);
+            if (event?.course_name) {
+                const today = getToday();
+                const { data: extraCards } = await supabaseClient
+                    .from('scorecards')
+                    .select(`
+                        id, player_id, player_name, total_gross, total_net, status, created_at,
+                        scores (hole_number, gross_score, net_score, stableford_points, par)
+                    `)
+                    .is('event_id', null)
+                    .ilike('course_name', `%${event.course_name.split(' ')[0]}%`)
+                    .gte('created_at', `${today}T00:00:00`)
+                    .lte('created_at', `${today}T23:59:59`)
+                    .neq('status', 'abandoned');
+
+                // Merge, avoiding duplicates by player_id
+                const existingPlayerIds = new Set((scorecards || []).map(s => s.player_id));
+                (extraCards || []).forEach(sc => {
+                    if (!existingPlayerIds.has(sc.player_id)) {
+                        scorecards.push(sc);
+                        existingPlayerIds.add(sc.player_id);
+                    }
+                });
+            }
+
+            if (!scorecards || scorecards.length === 0) return [];
 
             // Get player names
             const playerIds = [...new Set(scorecards.map(s => s.player_id))];

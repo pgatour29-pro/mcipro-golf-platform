@@ -21,7 +21,7 @@ interface LineMessage {
 }
 
 interface NotificationPayload {
-  type: "new_event" | "event_update" | "new_message" | "announcement" | "platform_announcement";
+  type: "new_event" | "event_update" | "new_message" | "announcement" | "platform_announcement" | "emergency_alert";
   record: any;
   old_record?: any;
 }
@@ -83,6 +83,9 @@ serve(async (req) => {
         break;
       case "system_alert":
         result = await handleSystemAlert(supabase, payload);
+        break;
+      case "emergency_alert":
+        result = await handleEmergencyAlert(supabase, payload.record);
         break;
       default:
         return new Response(JSON.stringify({ error: "Unknown notification type" }), {
@@ -1051,6 +1054,116 @@ async function handlePlatformAnnouncement(supabase: any, announcement: any) {
 // ============================================================================
 // SYSTEM ALERT NOTIFICATION (Direct message to a single user)
 // ============================================================================
+// ============================================================================
+// EMERGENCY ALERT — Notify managers, front desk, and society organizers
+// ============================================================================
+async function handleEmergencyAlert(supabase: any, alert: any) {
+  console.log("[LINE Push] 🚨 Emergency alert:", alert.type, "from", alert.user_name);
+
+  const targetIds: string[] = [];
+
+  // 1. Get all managers and proshop staff
+  const { data: staff } = await supabase
+    .from("user_profiles")
+    .select("line_user_id, name, role")
+    .in("role", ["manager", "proshop"]);
+
+  if (staff) {
+    for (const s of staff) {
+      if (s.line_user_id?.startsWith("U")) targetIds.push(s.line_user_id);
+    }
+    console.log("[LINE Push] Found", staff.length, "staff members");
+  }
+
+  // 2. Get the society organizer
+  if (alert.organizer_id?.startsWith("U")) {
+    if (!targetIds.includes(alert.organizer_id)) {
+      targetIds.push(alert.organizer_id);
+      console.log("[LINE Push] Added organizer:", alert.organizer_id);
+    }
+  }
+
+  // 3. If event has a society, get all organizers for that society
+  if (alert.society_name) {
+    const { data: societies } = await supabase
+      .from("society_profiles")
+      .select("organizer_id")
+      .ilike("society_name", `%${alert.society_name}%`);
+
+    if (societies) {
+      for (const soc of societies) {
+        if (soc.organizer_id?.startsWith("U") && !targetIds.includes(soc.organizer_id)) {
+          targetIds.push(soc.organizer_id);
+          console.log("[LINE Push] Added society organizer:", soc.organizer_id);
+        }
+      }
+    }
+  }
+
+  if (targetIds.length === 0) {
+    console.log("[LINE Push] No targets found for emergency alert");
+    return { success: true, notified: 0, reason: "no_targets" };
+  }
+
+  // Remove duplicates
+  const uniqueIds = [...new Set(targetIds)];
+  console.log("[LINE Push] Sending emergency to", uniqueIds.length, "recipients");
+
+  // Build urgent LINE Flex Message
+  const courseLine = alert.course_name ? `📍 ${alert.course_name}` : "";
+  const holeLine = alert.current_hole ? `Hole ${alert.current_hole}` : "";
+  const groupLine = alert.group_members ? `👥 ${alert.group_members}` : "";
+  const locationLine = courseLine + (holeLine ? ` — ${holeLine}` : "");
+
+  const emergencyIcons: Record<string, string> = {
+    medical: "🚑", lightning_warning: "⚡", stop_play: "🛑",
+    weather: "⛈️", security: "🛡️", equipment: "🚗",
+  };
+  const icon = emergencyIcons[alert.type] || "🚨";
+
+  const messages: LineMessage[] = [{
+    type: "flex",
+    altText: `🚨 EMERGENCY: ${alert.message || alert.type}`,
+    contents: {
+      type: "bubble",
+      styles: {
+        header: { backgroundColor: "#DC2626" },
+        body: { backgroundColor: "#FEF2F2" },
+      },
+      header: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          { type: "text", text: `${icon} EMERGENCY ALERT`, color: "#FFFFFF", weight: "bold", size: "lg", align: "center" },
+        ],
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        contents: [
+          { type: "text", text: alert.message || "Emergency Alert", weight: "bold", size: "md", wrap: true, color: "#991B1B" },
+          { type: "text", text: `👤 ${alert.user_name || "Unknown"}`, size: "sm", color: "#374151" },
+          ...(locationLine ? [{ type: "text", text: locationLine, size: "sm", color: "#374151", wrap: true }] : []),
+          ...(groupLine ? [{ type: "text", text: groupLine, size: "sm", color: "#374151", wrap: true }] : []),
+          ...(alert.society_name ? [{ type: "text", text: `🏌️ ${alert.society_name}`, size: "sm", color: "#374151" }] : []),
+          { type: "text", text: `🕐 ${new Date(alert.timestamp || Date.now()).toLocaleString("en-GB", { timeZone: "Asia/Bangkok" })}`, size: "xs", color: "#6B7280" },
+        ],
+      },
+    },
+  }];
+
+  const sent = await sendLineMulticast(uniqueIds, messages);
+
+  return {
+    success: true,
+    notified: sent,
+    targets: uniqueIds.length,
+    alertType: alert.type,
+    alertId: alert.id,
+  };
+}
+
 async function handleSystemAlert(supabase: any, payload: any) {
   const recipientId = payload.recipient_id;
   const message = payload.message;

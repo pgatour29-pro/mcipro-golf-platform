@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TRGG Player of the Year 2026</title>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #0a0f1a, #1a1a2e); color: #e2e8f0; min-height: 100vh; }
+        .gold { color: #fbbf24; }
+        .silver { color: #94a3b8; }
+        .bronze { color: #d97706; }
+        .podium-card { border-radius: 16px; padding: 16px; text-align: center; position: relative; overflow: hidden; }
+        .podium-1 { background: linear-gradient(135deg, rgba(251,191,36,0.2), rgba(245,158,11,0.1)); border: 2px solid rgba(251,191,36,0.4); }
+        .podium-2 { background: linear-gradient(135deg, rgba(148,163,184,0.2), rgba(100,116,139,0.1)); border: 2px solid rgba(148,163,184,0.3); }
+        .podium-3 { background: linear-gradient(135deg, rgba(217,119,6,0.2), rgba(180,83,9,0.1)); border: 2px solid rgba(217,119,6,0.3); }
+        .player-row { display: flex; align-items: center; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); transition: background 0.2s; }
+        .player-row:hover { background: rgba(255,255,255,0.05); }
+        .pos-badge { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+        .score-pill { display: inline-block; padding: 2px 6px; border-radius: 6px; font-size: 11px; font-weight: 600; margin: 1px; }
+        .score-pill.high { background: rgba(34,197,94,0.2); color: #86efac; }
+        .score-pill.mid { background: rgba(59,130,246,0.15); color: #93c5fd; }
+        .score-pill.low { background: rgba(239,68,68,0.15); color: #fca5a5; }
+        .expand-btn { background: none; border: none; color: #22d3ee; cursor: pointer; font-size: 12px; padding: 4px 8px; }
+        .detail-panel { display: none; padding: 8px 12px 12px 40px; background: rgba(255,255,255,0.03); }
+        .detail-panel.open { display: block; }
+        .search-input { width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #e2e8f0; font-size: 14px; outline: none; }
+        .search-input:focus { border-color: #22c55e; }
+        .stat-box { text-align: center; padding: 8px; border-radius: 10px; background: rgba(255,255,255,0.05); }
+        .stat-val { font-size: 20px; font-weight: 700; color: #ffffff; }
+        .stat-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; }
+        .back-btn { display: inline-flex; align-items: center; gap: 4px; color: #22c55e; font-size: 13px; font-weight: 600; cursor: pointer; padding: 8px 0; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div style="max-width: 600px; margin: 0 auto; padding: 12px;">
+        <!-- Header -->
+        <a href="/" class="back-btn" onclick="window.history.back(); return false;">
+            <span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span> Back
+        </a>
+
+        <div style="text-align:center; margin: 8px 0 16px;">
+            <div style="font-size: 36px; margin-bottom: 4px;">🏆</div>
+            <h1 style="font-size: 22px; font-weight: 800; color: #ffffff; margin-bottom: 2px;">Player of the Year</h1>
+            <div style="font-size: 13px; color: #94a3b8;">Travellers Rest Golf Group — 2026</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">Best 20 Stableford rounds · Updated live</div>
+        </div>
+
+        <!-- Top 3 Podium -->
+        <div id="podium" style="margin-bottom: 16px;"></div>
+
+        <!-- Stats Summary -->
+        <div id="statsSummary" style="margin-bottom: 12px;"></div>
+
+        <!-- Search -->
+        <div style="margin-bottom: 12px;">
+            <input type="text" id="searchInput" class="search-input" placeholder="Search player..." oninput="filterPlayers()">
+        </div>
+
+        <!-- Leaderboard Table -->
+        <div id="leaderboard" style="background: rgba(255,255,255,0.04); border-radius: 14px; border: 1px solid rgba(255,255,255,0.08); overflow: hidden;">
+            <div style="padding: 12px; text-align: center; color: #64748b;">Loading...</div>
+        </div>
+
+        <!-- Footer -->
+        <div style="text-align: center; padding: 20px 0; color: #475569; font-size: 11px;">
+            Data from masterscoreboard.co.uk · MyCaddiPro
+        </div>
+    </div>
+
+    <script src="supabase-config.js"></script>
+    <script>
+    let allPlayers = [];
+
+    async function loadPOY() {
+        const sb = window.SupabaseDB?.client;
+        if (!sb) { setTimeout(loadPOY, 500); return; }
+
+        const { data, error } = await sb
+            .from('trgg_player_of_year_view')
+            .select('*')
+            .order('pos', { ascending: true });
+
+        if (error) {
+            document.getElementById('leaderboard').innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">Error loading data</div>';
+            console.error(error);
+            return;
+        }
+
+        allPlayers = data || [];
+        renderPodium();
+        renderStats();
+        renderLeaderboard(allPlayers);
+    }
+
+    function renderPodium() {
+        const top3 = allPlayers.slice(0, 3);
+        if (top3.length < 3) return;
+
+        const medals = ['🥇', '🥈', '🥉'];
+        const classes = ['podium-1', 'podium-2', 'podium-3'];
+        const colors = ['gold', 'silver', 'bronze'];
+
+        document.getElementById('podium').innerHTML = `
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+                ${top3.map((p, i) => `
+                    <div class="podium-card ${classes[i]}">
+                        <div style="font-size:28px;margin-bottom:4px;">${medals[i]}</div>
+                        <div style="font-size:13px;font-weight:700;color:#ffffff;margin-bottom:2px;">${p.display_name.split(',')[0]}</div>
+                        <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">${p.display_name.split(',')[1]?.trim() || ''}</div>
+                        <div class="${colors[i]}" style="font-size:28px;font-weight:800;">${p.pts}</div>
+                        <div style="font-size:10px;color:#94a3b8;">pts · ${p.total_rounds} rnds</div>
+                        <div style="font-size:10px;color:#64748b;margin-top:4px;">Best: ${p.best_score} · Avg: ${p.avg_score}</div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    function renderStats() {
+        const total = allPlayers.length;
+        const totalRounds = allPlayers.reduce((s, p) => s + (p.total_rounds || 0), 0);
+        const topAvg = allPlayers.slice(0, 20).reduce((s, p) => s + parseFloat(p.avg_score || 0), 0) / Math.min(20, allPlayers.length);
+
+        document.getElementById('statsSummary').innerHTML = `
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+                <div class="stat-box">
+                    <div class="stat-val">${total}</div>
+                    <div class="stat-label">Players</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-val">${totalRounds.toLocaleString()}</div>
+                    <div class="stat-label">Total Rounds</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-val">${topAvg.toFixed(1)}</div>
+                    <div class="stat-label">Top 20 Avg</div>
+                </div>
+            </div>
+        `;
+    }
+
+    function getScoreClass(score) {
+        if (score >= 36) return 'high';
+        if (score >= 30) return 'mid';
+        return 'low';
+    }
+
+    function renderLeaderboard(players) {
+        if (players.length === 0) {
+            document.getElementById('leaderboard').innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;">No players found</div>';
+            return;
+        }
+
+        // Header
+        let html = `
+            <div style="display:flex;align-items:center;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.1);font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">
+                <span style="width:28px;text-align:center;">#</span>
+                <span style="flex:1;padding-left:8px;">Player</span>
+                <span style="width:50px;text-align:center;">Pts</span>
+                <span style="width:40px;text-align:center;">Rnds</span>
+                <span style="width:35px;text-align:center;">Avg</span>
+            </div>
+        `;
+
+        players.forEach((p, idx) => {
+            const posStyle = p.pos <= 3
+                ? `background:${p.pos === 1 ? 'linear-gradient(135deg,#fbbf24,#f59e0b)' : p.pos === 2 ? 'linear-gradient(135deg,#e2e8f0,#94a3b8)' : 'linear-gradient(135deg,#f59e0b,#d97706)'};color:${p.pos === 2 ? '#1e293b' : '#422006'};`
+                : 'background:rgba(255,255,255,0.1);color:#94a3b8;';
+
+            html += `
+                <div class="player-row" onclick="toggleDetail('detail-${idx}')">
+                    <span class="pos-badge" style="${posStyle}">${p.pos}</span>
+                    <div style="flex:1;padding-left:8px;min-width:0;">
+                        <div style="font-size:13px;font-weight:600;color:#ffffff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.display_name}</div>
+                        <div style="font-size:10px;color:#64748b;">Best: ${p.best_score}</div>
+                    </div>
+                    <span style="width:50px;text-align:center;font-size:15px;font-weight:700;color:#22c55e;">${p.pts}</span>
+                    <span style="width:40px;text-align:center;font-size:12px;color:#94a3b8;">${p.total_rounds}</span>
+                    <span style="width:35px;text-align:center;font-size:12px;color:#94a3b8;">${p.avg_score}</span>
+                </div>
+                <div id="detail-${idx}" class="detail-panel">
+                    <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">Top ${p.rounds} scores counted (of ${p.total_rounds} played)</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:3px;">
+                        ${(p.scores || []).map(s => `<span class="score-pill ${getScoreClass(s)}">${s}</span>`).join('')}
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px;">
+                        <div style="font-size:10px;color:#64748b;">Best: <span style="color:#22c55e;font-weight:600;">${p.best_score}</span></div>
+                        <div style="font-size:10px;color:#64748b;">Worst: <span style="color:#ef4444;font-weight:600;">${p.worst_score}</span></div>
+                        <div style="font-size:10px;color:#64748b;">Avg: <span style="color:#3b82f6;font-weight:600;">${p.avg_score}</span></div>
+                    </div>
+                </div>
+            `;
+        });
+
+        document.getElementById('leaderboard').innerHTML = html;
+    }
+
+    function toggleDetail(id) {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('open');
+    }
+
+    function filterPlayers() {
+        const search = document.getElementById('searchInput').value.toLowerCase().trim();
+        if (!search) {
+            renderLeaderboard(allPlayers);
+            return;
+        }
+        const filtered = allPlayers.filter(p => p.display_name.toLowerCase().includes(search));
+        renderLeaderboard(filtered);
+    }
+
+    // Load on ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadPOY);
+    } else {
+        loadPOY();
+    }
+    </script>
+</body>
+</html>

@@ -466,6 +466,43 @@ class SupabaseClient {
         return data;
     }
 
+    async saveEmergencyAlert(alertData) {
+        await this.waitForReady();
+        const { data, error } = await this.client
+            .from('emergency_alerts')
+            .insert([{
+                id: alertData.id,
+                type: alertData.type,
+                message: alertData.message,
+                user_name: alertData.user,
+                user_role: alertData.role,
+                user_id: alertData.user_id || null,
+                timestamp: alertData.timestamp,
+                location_lat: alertData.location?.lat || null,
+                location_lng: alertData.location?.lng || null,
+                location_hole: alertData.location?.hole || alertData.current_hole || null,
+                course_name: alertData.course_name || null,
+                course_id: alertData.course_id || null,
+                current_hole: alertData.current_hole || null,
+                group_members: alertData.group_members || null,
+                event_name: alertData.event_name || null,
+                status: alertData.status || 'active',
+                priority: alertData.priority || 'high',
+                broadcast: alertData.broadcast || 'all',
+                target_roles: alertData.target_roles || null,
+                expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString() // 30 min expiry
+            }])
+            .select()
+            .single();
+
+        if (error) {
+            console.error('[Supabase] Emergency alert save error:', error);
+            throw error;
+        }
+        console.log('[Supabase] Emergency alert saved:', data);
+        return data;
+    }
+
     async getAllProfiles() {
         await this.waitForReady();
 

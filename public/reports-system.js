@@ -456,34 +456,97 @@ const ReportsSystem = {
     // CUSTOMER ANALYTICS REPORTS
     // ========================================
 
-    generateMemberActivityReport(startDate, endDate) {
-        const bookings = this.getAllBookings().filter(b =>
-            (b.customerType || '').toLowerCase() === 'member'
-        );
+    async generateMemberActivityReport(startDate, endDate) {
+        const sb = window.SupabaseDB?.client;
+        if (!sb) return { reportType: 'Member Activity Report', error: 'Database not ready' };
 
-        const memberStats = {};
-        bookings.forEach(b => {
-            const member = b.playerName;
-            if (!memberStats[member]) {
-                memberStats[member] = { rounds: 0, spend: 0 };
-            }
-            memberStats[member].rounds++;
-            memberStats[member].spend += parseFloat(b.greenFee || 0) + parseFloat(b.caddyFee || 0);
-        });
+        try {
+            // Get all completed rounds in date range
+            const { data: rounds, error: roundsErr } = await sb
+                .from('rounds')
+                .select('id, golfer_id, player_name, total_gross, course_name, completed_at, society_event_id')
+                .gte('completed_at', startDate)
+                .lte('completed_at', endDate + 'T23:59:59')
+                .order('completed_at', { ascending: false });
 
-        const topMembers = Object.entries(memberStats)
-            .sort((a, b) => b[1].spend - a[1].spend)
-            .slice(0, 10);
+            if (roundsErr) throw roundsErr;
 
-        return {
-            reportType: 'Member Activity Report',
-            period: `${startDate} to ${endDate}`,
-            totalMembers: Object.keys(memberStats).length,
-            totalRounds: bookings.length,
-            topMembers: topMembers.map(([name, stats]) => ({ name, ...stats })),
-            averageRoundsPerMember: (bookings.length / Object.keys(memberStats).length).toFixed(1),
-            averageSpendPerMember: (Object.values(memberStats).reduce((sum, s) => sum + s.spend, 0) / Object.keys(memberStats).length).toFixed(2)
-        };
+            // Get event registrations in date range
+            const { data: registrations, error: regErr } = await sb
+                .from('event_registrations')
+                .select('player_id, player_name, event_id, created_at')
+                .gte('created_at', startDate)
+                .lte('created_at', endDate + 'T23:59:59');
+
+            // Get active scorecards (in-progress rounds)
+            const { data: activeCards, error: cardsErr } = await sb
+                .from('scorecards')
+                .select('player_id, player_name, course_name, status, created_at')
+                .eq('status', 'in_progress');
+
+            // Build member stats from REAL data
+            const memberStats = {};
+            (rounds || []).forEach(r => {
+                const name = r.player_name || 'Unknown';
+                const id = r.golfer_id;
+                if (!memberStats[id]) {
+                    memberStats[id] = { name, rounds: 0, totalGross: 0, bestScore: 999, courses: new Set(), eventRounds: 0, lastPlayed: null };
+                }
+                memberStats[id].rounds++;
+                if (r.total_gross && r.total_gross >= 60 && r.total_gross < 200) {
+                    memberStats[id].totalGross += r.total_gross;
+                    if (r.total_gross < memberStats[id].bestScore) memberStats[id].bestScore = r.total_gross;
+                }
+                if (r.course_name) memberStats[id].courses.add(r.course_name);
+                if (r.society_event_id) memberStats[id].eventRounds++;
+                if (!memberStats[id].lastPlayed || r.completed_at > memberStats[id].lastPlayed) {
+                    memberStats[id].lastPlayed = r.completed_at;
+                }
+            });
+
+            // Add registration activity
+            (registrations || []).forEach(reg => {
+                const id = reg.player_id;
+                if (!memberStats[id]) {
+                    memberStats[id] = { name: reg.player_name, rounds: 0, totalGross: 0, bestScore: 999, courses: new Set(), eventRounds: 0, lastPlayed: null };
+                }
+            });
+
+            // Sort by most active (rounds played)
+            const sorted = Object.entries(memberStats)
+                .map(([id, stats]) => ({
+                    id,
+                    name: stats.name,
+                    rounds: stats.rounds,
+                    avgScore: stats.rounds > 0 ? Math.round(stats.totalGross / stats.rounds) : '-',
+                    bestScore: stats.bestScore < 999 ? stats.bestScore : '-',
+                    coursesPlayed: stats.courses.size,
+                    eventRounds: stats.eventRounds,
+                    lastPlayed: stats.lastPlayed ? new Date(stats.lastPlayed).toLocaleDateString('en-GB') : 'Never'
+                }))
+                .sort((a, b) => b.rounds - a.rounds);
+
+            const totalRounds = (rounds || []).length;
+            const totalMembers = sorted.length;
+            const activeMembers = sorted.filter(m => m.rounds > 0).length;
+            const activeNow = (activeCards || []).length;
+
+            return {
+                reportType: 'Member Activity Report (Live)',
+                period: `${startDate} to ${endDate}`,
+                totalMembers,
+                activeMembers,
+                totalRounds,
+                activeNow,
+                averageRoundsPerMember: activeMembers > 0 ? (totalRounds / activeMembers).toFixed(1) : '0',
+                topMembers: sorted.slice(0, 20),
+                allMembers: sorted,
+                totalRegistrations: (registrations || []).length
+            };
+        } catch (err) {
+            console.error('[Reports] Member Activity error:', err);
+            return { reportType: 'Member Activity Report', error: err.message };
+        }
     },
 
     generateVIPGuestAnalysis(startDate, endDate) {
@@ -1115,9 +1178,9 @@ const ReportsSystem = {
         document.body.insertAdjacentHTML('beforeend', html);
     },
 
-    viewReport(funcName, ...args) {
-        const startDate = document.getElementById('report-start-date')?.value || '2025-10-01';
-        const endDate = document.getElementById('report-end-date')?.value || '2025-10-07';
+    async viewReport(funcName, ...args) {
+        const startDate = document.getElementById('report-start-date')?.value || '2026-01-01';
+        const endDate = document.getElementById('report-end-date')?.value || new Date().toISOString().split('T')[0];
 
         let reportData;
 
@@ -1132,6 +1195,12 @@ const ReportsSystem = {
             reportData = this[funcName]();
         } else {
             reportData = this[funcName](startDate, endDate);
+        }
+
+        // Handle async reports
+        if (reportData && typeof reportData.then === 'function') {
+            NotificationManager.show('Loading report...', 'info');
+            reportData = await reportData;
         }
 
         // Display report in modal
@@ -1329,6 +1398,72 @@ const ReportsSystem = {
                             <p class="text-sm text-${data.totals.variance >= 0 ? 'green' : 'red'}-600 mb-1">Total Variance</p>
                             <p class="text-2xl font-bold text-${data.totals.variance >= 0 ? 'green' : 'red'}-900">${data.totals.variance >= 0 ? '+' : ''}${formatCurrency(data.totals.variance)}</p>
                         </div>
+                    </div>
+                `;
+                break;
+
+            case 'Member Activity Report (Live)':
+                if (data.error) {
+                    html += `<div class="bg-red-50 p-4 rounded-lg text-red-700">${data.error}</div>`;
+                    break;
+                }
+                html += `
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-teal-50 p-4 rounded-lg text-center">
+                            <p class="text-sm text-teal-600 mb-1">Total Members</p>
+                            <p class="text-2xl font-bold text-teal-900">${data.totalMembers}</p>
+                        </div>
+                        <div class="bg-green-50 p-4 rounded-lg text-center">
+                            <p class="text-sm text-green-600 mb-1">Active Members</p>
+                            <p class="text-2xl font-bold text-green-900">${data.activeMembers}</p>
+                        </div>
+                        <div class="bg-blue-50 p-4 rounded-lg text-center">
+                            <p class="text-sm text-blue-600 mb-1">Total Rounds</p>
+                            <p class="text-2xl font-bold text-blue-900">${data.totalRounds}</p>
+                        </div>
+                        <div class="bg-orange-50 p-4 rounded-lg text-center">
+                            <p class="text-sm text-orange-600 mb-1">Playing Now</p>
+                            <p class="text-2xl font-bold text-orange-900">${data.activeNow}</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 mb-6">
+                        <div class="bg-gray-50 p-3 rounded-lg text-center">
+                            <p class="text-xs text-gray-500">Avg Rounds/Member</p>
+                            <p class="text-lg font-bold">${data.averageRoundsPerMember}</p>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded-lg text-center">
+                            <p class="text-xs text-gray-500">Event Registrations</p>
+                            <p class="text-lg font-bold">${data.totalRegistrations}</p>
+                        </div>
+                    </div>
+                    <h3 class="font-semibold text-gray-900 mb-3">Most Active Members</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="bg-gray-50 text-left">
+                                    <th class="px-3 py-2 font-medium text-gray-600">#</th>
+                                    <th class="px-3 py-2 font-medium text-gray-600">Player</th>
+                                    <th class="px-3 py-2 font-medium text-gray-600 text-center">Rounds</th>
+                                    <th class="px-3 py-2 font-medium text-gray-600 text-center">Avg</th>
+                                    <th class="px-3 py-2 font-medium text-gray-600 text-center">Best</th>
+                                    <th class="px-3 py-2 font-medium text-gray-600 text-center">Events</th>
+                                    <th class="px-3 py-2 font-medium text-gray-600">Last Played</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${(data.topMembers || []).map((m, i) => `
+                                    <tr class="border-b border-gray-100 ${i < 3 ? 'bg-yellow-50' : ''}">
+                                        <td class="px-3 py-2 font-medium">${i + 1}</td>
+                                        <td class="px-3 py-2 font-semibold text-gray-900">${m.name}</td>
+                                        <td class="px-3 py-2 text-center font-bold text-green-600">${m.rounds}</td>
+                                        <td class="px-3 py-2 text-center">${m.avgScore}</td>
+                                        <td class="px-3 py-2 text-center text-blue-600">${m.bestScore}</td>
+                                        <td class="px-3 py-2 text-center">${m.eventRounds}</td>
+                                        <td class="px-3 py-2 text-gray-500">${m.lastPlayed}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
                     </div>
                 `;
                 break;

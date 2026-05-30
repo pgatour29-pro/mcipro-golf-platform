@@ -1,25 +1,22 @@
-import { create } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
 import { preflight, json } from "../_shared/cors.ts";
 import { verifyLineUser } from "../_shared/verifyLine.ts";
 import { serviceClient } from "../_shared/supabase.ts";
+import { signSupabaseJwt } from "../_shared/signJwt.ts";
 
-// SEALED mint: signs with an ASYMMETRIC private key that YOU generated and
-// imported as a Supabase signing key. The private key lives ONLY here (as an
-// Edge Function secret) and is not extractable from Supabase. The leaked legacy
-// HS256 secret is revoked, so nothing in the system depends on a shared secret.
+// Mints a Supabase JWT from a verified LINE login, signed with the asymmetric
+// key (via _shared/signJwt.ts). sub is the CANONICAL user UUID so auth.uid()
+// matches existing uuid-keyed data (chat rooms, friendships, C1 UUID tables).
 //
-// Secrets required (set via `supabase secrets set`, run by YOU, never via Hal):
-//   APP_JWT_PRIVATE_JWK  - the private signing key, as a JWK string (CLI output)
-//   APP_JWT_KID          - the kid of that signing key (from the dashboard/CLI)
-//   APP_DB_SECRET        - the new sb_secret_... API key (see _shared/supabase.ts)
-//   LINE_CHANNEL_ID      - LINE Login channel id (already set)
+// *** CONFIRM CANONICAL_USERS: the table whose uuid `id` your chat/friendships
+// rows reference (trace room_members.user_id — likely profiles or user_profiles).
+// It must have a unique line_user_id column. ***
 //
-// ALG must match the algorithm of the key you imported. Supabase CLI generates
-// an EC P-256 key by default => ES256. If you imported RSA, switch ALG to RS256
-// and the importKey algorithm to { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }.
+// If that table already maps every LINE user -> uuid, app_users is redundant and
+// you can drop it (and its Part 2 read-own policy); we mint straight from here.
 
+const CANONICAL_USERS = "profiles";        // <-- set to the confirmed table
+const LINE_COL = "line_user_id";           // <-- confirm the LINE id column name
 const JWT_TTL_SECONDS = 60 * 60;
-const ALG = "ES256";
 
 Deno.serve(async (req) => {
   const origin = req.headers.get("origin");
@@ -35,61 +32,47 @@ Deno.serve(async (req) => {
   }
   if (!body.id_token) return json({ error: "missing_fields" }, 400, origin);
 
-  // 1. Verify with LINE (reuses the Part 1 helper).
+  // 1. Verify with LINE.
   const user = await verifyLineUser(body.id_token);
   if (!user) return json({ error: "unauthorized" }, 401, origin);
 
-  // 2. Map LINE userId -> stable UUID.
+  // 2. Resolve the CANONICAL user UUID (this is what auth.uid() will return).
   const supabase = serviceClient();
-  const { data: appUser, error: upErr } = await supabase
-    .from("app_users")
-    .upsert(
-      {
-        line_user_id: user.lineUserId,
-        display_name: user.name ?? null,
-        last_login: new Date().toISOString(),
-      },
-      { onConflict: "line_user_id" },
-    )
+  let userUuid: string | null = null;
+
+  const { data: existing, error: lookErr } = await supabase
+    .from(CANONICAL_USERS)
     .select("id")
-    .single();
-  if (upErr || !appUser) {
-    console.error("app_users upsert failed:", upErr);
+    .eq(LINE_COL, user.lineUserId)
+    .maybeSingle();
+  if (lookErr) {
+    console.error("canonical lookup failed:", lookErr);
     return json({ error: "server_error" }, 500, origin);
   }
+  userUuid = existing?.id ?? null;
 
-  // 3. Sign with the asymmetric private key.
-  const jwkRaw = Deno.env.get("APP_JWT_PRIVATE_JWK");
-  const kid = Deno.env.get("APP_JWT_KID");
-  if (!jwkRaw || !kid) {
-    console.error("APP_JWT_PRIVATE_JWK / APP_JWT_KID not set");
-    return json({ error: "server_error" }, 500, origin);
+  // First-ever login: create the canonical user row.
+  if (!userUuid) {
+    const { data: created, error: insErr } = await supabase
+      .from(CANONICAL_USERS)
+      .insert({ [LINE_COL]: user.lineUserId })
+      .select("id")
+      .single();
+    if (insErr || !created) {
+      console.error("canonical insert failed:", insErr);
+      return json({ error: "server_error" }, 500, origin);
+    }
+    userUuid = created.id;
   }
 
-  const key = await crypto.subtle.importKey(
-    "jwk",
-    JSON.parse(jwkRaw),
-    { name: "ECDSA", namedCurve: "P-256" }, // ES256
-    false,
-    ["sign"],
-  );
-
-  const now = Math.floor(Date.now() / 1000);
-  const token = await create(
-    { alg: ALG, typ: "JWT", kid }, // kid tells Supabase which public key verifies this
-    {
-      sub: appUser.id,
-      role: "authenticated",
-      aud: "authenticated",
-      line_id: user.lineUserId,
-      iat: now,
-      exp: now + JWT_TTL_SECONDS,
-    },
-    key,
+  // 3. Sign. sub = canonical uuid; line_id carries the LINE id for text-keyed RLS.
+  const token = await signSupabaseJwt(
+    { sub: userUuid, line_id: user.lineUserId },
+    JWT_TTL_SECONDS,
   );
 
   return json(
-    { access_token: token, expires_in: JWT_TTL_SECONDS, sub: appUser.id },
+    { access_token: token, expires_in: JWT_TTL_SECONDS, sub: userUuid },
     200,
     origin,
   );

@@ -9,7 +9,7 @@ const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const JOA_ORGANIZER_ID = "Udb12b92d028efee5a017a03a6c4c1ad4"; // JOA Golf Pattaya LINE user ID
+const JOA_ORGANIZER_NAME = "JOA Golf Pattaya"; // organizer_id is UUID column, use name for matching
 
 // Korean → English course name mapping
 const COURSE_MAP: Record<string, string> = {
@@ -176,8 +176,7 @@ Extract EVERY row. Return valid JSON array only.`
         events.push({
           title: `JOA Golf - ${courseName}`,
           society_id: joaSocietyId,
-          organizer_id: JOA_ORGANIZER_ID,
-          organizer_name: "JOA Golf Pattaya",
+          organizer_name: JOA_ORGANIZER_NAME,
           event_date: eventDate,
           start_time: teeTime,
           departure_time: departureTime,
@@ -197,12 +196,12 @@ Extract EVERY row. Return valid JSON array only.`
     let inserted = 0, updated = 0, failed = 0;
 
     for (const ev of events) {
-      // Check if event already exists for this date (match by organizer_id OR organizer_name for legacy)
+      // Check if event already exists for this date by organizer name
       const { data: existing } = await supabase
         .from("society_events")
         .select("id")
         .eq("event_date", ev.event_date)
-        .or("organizer_id.eq." + JOA_ORGANIZER_ID + ",organizer_name.eq.JOA Golf Pattaya")
+        .eq("organizer_name", JOA_ORGANIZER_NAME)
         .maybeSingle();
 
       if (existing) {

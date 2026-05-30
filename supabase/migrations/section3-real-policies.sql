@@ -61,15 +61,17 @@ end $$;
 do $$
 declare t text;
   pub_tables text[] := array[
-    'announcements','caddies','caddy_profiles','chat_rooms','course_admins',
+    'announcements','caddies','caddy_profiles','chat_rooms',
     'course_gps_data','course_holes','course_nine','courses','event_pairings',
     'event_results','event_waitlist','golf_course_settings','golf_courses',
     'leaderboard_periods','leaderboard_snapshots','nine_hole','pace_notifications',
     'period_standings','pin_change_audit','pin_locations','pin_positions',
     'playoff_brackets','points_config','pool_entrants','pool_leaderboards',
     'round_societies','season_points','series_events','societies','society_events',
-    'society_organizer_access','society_organizer_roles','society_profiles',
+    'society_profiles',
     'sponsored_ads','tournament_days','tournament_series','tournaments'
+    -- REMOVED: course_admins, society_organizer_access, society_organizer_roles
+    -- (contain admin PINs — locked in section3-quarantine-final.sql)
   ];
 begin
   foreach t in array pub_tables loop

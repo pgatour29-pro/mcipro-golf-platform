@@ -136,8 +136,8 @@ Deno.serve(async (req: Request) => {
           };
         }
       } catch (authErr: any) {
-        console.warn("[line-oauth-exchange] Auth session creation failed:", authErr?.message);
-        // Non-fatal — the profile-based login still works without auth session
+        console.error("[line-oauth-exchange] Auth session creation failed:", authErr?.message, authErr?.stack);
+        authSession = { error: authErr?.message || "unknown error" };
       }
     }
 

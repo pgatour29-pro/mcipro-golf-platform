@@ -1,7 +1,12 @@
 // deno-lint-ignore-file no-explicit-any
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
+// LINE OAuth → Supabase Auth (v2: magic-link OTP, no passwords)
+// Returns token_hash for client to call verifyOtp({ token_hash, type: 'magiclink' })
+// Custom Access Token Hook then injects profile_id + line_id claims.
+
 const ALLOWED_ORIGINS = ["https://mycaddipro.com", "https://www.mycaddipro.com"];
+const AUTH_EMAIL_DOMAIN = "line-users.mycaddipro.com";
 
 function getCorsHeaders(origin: string | null) {
   const allowedOrigin = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
@@ -13,7 +18,8 @@ function getCorsHeaders(origin: string | null) {
   };
 }
 
-const json = (b: any, s = 200, origin: string | null) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json", ...getCorsHeaders(origin) } });
+const json = (b: any, s = 200, origin: string | null) =>
+  new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json", ...getCorsHeaders(origin) } });
 
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("Origin");
@@ -34,9 +40,14 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Server not configured", detail: "Missing LINE_CHANNEL_ID/LINE_CHANNEL_SECRET" }, 500, origin);
     }
 
+    const SB_URL = Deno.env.get("SUPABASE_URL")!;
+    const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const headers = { "Content-Type": "application/json", "apikey": SB_KEY, "Authorization": `Bearer ${SB_KEY}` };
+
     // Force exact redirect URI to match LINE console
     const REDIRECT_URI = "https://mycaddipro.com/";
 
+    // 1. Exchange LINE code for tokens
     const tokenRes = await fetch("https://api.line.me/oauth2/v2.1/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -48,133 +59,144 @@ Deno.serve(async (req: Request) => {
         client_secret: CLIENT_SECRET,
       }),
     });
-
-    const txt = await tokenRes.text();
-    let js: any = null; try { js = JSON.parse(txt); } catch {}
-
+    const tokenData = await tokenRes.json();
     if (!tokenRes.ok) {
-      return json({
-        error: "LINE token exchange failed",
-        status: tokenRes.status,
-        body: js ?? txt,
-        hint: "Check exact redirect_uri, channel id/secret, and use a fresh code (single-use).",
-      }, tokenRes.status === 401 ? 401 : 400, origin);
+      return json({ error: "LINE token exchange failed", status: tokenRes.status, body: tokenData }, 400, origin);
     }
 
+    // 2. Get LINE profile
     const profRes = await fetch("https://api.line.me/v2/profile", {
-      headers: { Authorization: `Bearer ${js.access_token}` },
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
-    const profile = profRes.ok ? await profRes.json() : null;
+    const lineProfile = profRes.ok ? await profRes.json() : null;
+    if (!lineProfile?.userId) {
+      return json({ error: "Failed to get LINE profile" }, 400, origin);
+    }
+    const lineUserId: string = lineProfile.userId;
+    console.log("[line-oauth-exchange] LINE user:", lineUserId);
 
-    // --- Create Supabase Auth session using raw fetch (no createClient import) ---
-    let authSession: any = null;
-    if (profile?.userId) {
-      try {
-        const SB_URL = Deno.env.get("SUPABASE_URL")!;
-        const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-        const lineUserId = profile.userId;
-        const email = lineUserId.toLowerCase() + "@line.mycaddipro.com";
-        const password = "lp_" + lineUserId + "_mcipro";
+    // 3. Look up existing profile by line_user_id
+    const profileLookupRes = await fetch(
+      `${SB_URL}/rest/v1/profiles?line_user_id=eq.${lineUserId}&select=id,auth_user_id,line_user_id,display_name&limit=1`,
+      { headers }
+    );
+    const profiles = await profileLookupRes.json();
+    let profile = profiles?.[0] || null;
 
-        console.log("[line-oauth-exchange] Creating auth session for:", lineUserId);
+    // 4. If no profile exists, create one
+    if (!profile) {
+      console.log("[line-oauth-exchange] Creating new profile for:", lineUserId);
+      const createProfileRes = await fetch(`${SB_URL}/rest/v1/profiles`, {
+        method: "POST",
+        headers: { ...headers, "Prefer": "return=representation" },
+        body: JSON.stringify({
+          line_user_id: lineUserId,
+          display_name: lineProfile.displayName || "LINE User",
+        }),
+      });
+      const created = await createProfileRes.json();
+      profile = Array.isArray(created) ? created[0] : created;
+      if (!profile?.id) {
+        return json({ error: "profile_create_failed", detail: created }, 500, origin);
+      }
+      console.log("[line-oauth-exchange] Profile created:", profile.id);
+    }
 
-        // Try sign in with password
-        const signInRes = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "apikey": SB_KEY, "Authorization": `Bearer ${SB_KEY}` },
-          body: JSON.stringify({ email, password }),
-        });
+    // 5. Ensure exactly ONE auth user per profile via auth_user_id mapping
+    const authEmail = `${lineUserId.toLowerCase()}@${AUTH_EMAIL_DOMAIN}`;
+    let authUserId: string | null = profile.auth_user_id || null;
 
-        if (signInRes.ok) {
-          const session = await signInRes.json();
-          console.log("[line-oauth-exchange] Sign in SUCCESS");
-          authSession = {
-            access_token: session.access_token,
-            refresh_token: session.refresh_token,
-            expires_in: session.expires_in,
-          };
-        } else {
-          console.log("[line-oauth-exchange] Sign in failed, updating user...");
-          // User exists but needs email/password — update via admin API
-          // First find the user's auth id from profiles
-          const profileRes = await fetch(`${SB_URL}/rest/v1/profiles?line_user_id=eq.${lineUserId}&select=id&limit=1`, {
-            headers: { "apikey": SB_KEY, "Authorization": `Bearer ${SB_KEY}` },
-          });
-          const profiles = await profileRes.json();
-          const profileId = profiles?.[0]?.id;
-
-          if (profileId) {
-            // Update existing auth user with email/password
-            const updateRes = await fetch(`${SB_URL}/auth/v1/admin/users/${profileId}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json", "apikey": SB_KEY, "Authorization": `Bearer ${SB_KEY}` },
-              body: JSON.stringify({
-                email, password, email_confirm: true,
-                user_metadata: { line_user_id: lineUserId, display_name: profile.displayName || "LINE User" },
-              }),
-            });
-            console.log("[line-oauth-exchange] Update user status:", updateRes.status);
-
-            // Retry sign in
-            const retryRes = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "apikey": SB_KEY, "Authorization": `Bearer ${SB_KEY}` },
-              body: JSON.stringify({ email, password }),
-            });
-            if (retryRes.ok) {
-              const session = await retryRes.json();
-              console.log("[line-oauth-exchange] Retry sign in SUCCESS");
-              authSession = {
-                access_token: session.access_token,
-                refresh_token: session.refresh_token,
-                expires_in: session.expires_in,
-              };
-            } else {
-              const err = await retryRes.text();
-              console.error("[line-oauth-exchange] Retry sign in failed:", err);
-              authSession = { error: "signin_failed_after_update" };
-            }
-          } else {
-            console.log("[line-oauth-exchange] No profile found, creating new user...");
-            // Create new user
-            const createRes = await fetch(`${SB_URL}/auth/v1/admin/users`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "apikey": SB_KEY, "Authorization": `Bearer ${SB_KEY}` },
-              body: JSON.stringify({
-                email, password, email_confirm: true,
-                user_metadata: { line_user_id: lineUserId, display_name: profile.displayName || "LINE User" },
-              }),
-            });
-            console.log("[line-oauth-exchange] Create user status:", createRes.status);
-
-            if (createRes.ok) {
-              // Sign in with new user
-              const newSignInRes = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "apikey": SB_KEY, "Authorization": `Bearer ${SB_KEY}` },
-                body: JSON.stringify({ email, password }),
-              });
-              if (newSignInRes.ok) {
-                const session = await newSignInRes.json();
-                console.log("[line-oauth-exchange] New user sign in SUCCESS");
-                authSession = {
-                  access_token: session.access_token,
-                  refresh_token: session.refresh_token,
-                  expires_in: session.expires_in,
-                };
-              }
-            }
-          }
-        }
-      } catch (authErr: any) {
-        console.error("[line-oauth-exchange] Auth error:", authErr?.message);
-        authSession = { error: authErr?.message || "unknown" };
+    // Verify existing mapping is still valid
+    if (authUserId) {
+      const checkRes = await fetch(`${SB_URL}/auth/v1/admin/users/${authUserId}`, { headers });
+      if (!checkRes.ok) {
+        console.log("[line-oauth-exchange] Stale auth_user_id, will recreate");
+        authUserId = null;
       }
     }
 
-    return json({ ok: true, token: js, profile, auth_session: authSession }, 200, origin);
+    // Create auth user if needed
+    if (!authUserId) {
+      console.log("[line-oauth-exchange] Creating auth user for:", lineUserId);
+      const createRes = await fetch(`${SB_URL}/auth/v1/admin/users`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          email: authEmail,
+          email_confirm: true,
+          user_metadata: { line_user_id: lineUserId, profile_id: profile.id },
+        }),
+      });
+      const createData = await createRes.json();
+      if (!createRes.ok || !createData?.id) {
+        // Might already exist with this email — try to find it
+        if (createData?.msg?.includes("already been registered") || createData?.message?.includes("already been registered")) {
+          console.log("[line-oauth-exchange] Auth user exists with email, looking up...");
+          // List users by email to find the existing one
+          const listRes = await fetch(`${SB_URL}/auth/v1/admin/users?page=1&per_page=1`, {
+            headers,
+          });
+          const listData = await listRes.json();
+          const existing = listData?.users?.find((u: any) => u.email === authEmail);
+          if (existing) {
+            authUserId = existing.id;
+            console.log("[line-oauth-exchange] Found existing auth user:", authUserId);
+          } else {
+            return json({ error: "auth_user_create_failed", detail: createData }, 500, origin);
+          }
+        } else {
+          return json({ error: "auth_user_create_failed", detail: createData }, 500, origin);
+        }
+      } else {
+        authUserId = createData.id;
+        console.log("[line-oauth-exchange] Auth user created:", authUserId);
+      }
+
+      // Persist the mapping
+      await fetch(`${SB_URL}/rest/v1/profiles?id=eq.${profile.id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify({ auth_user_id: authUserId }),
+      });
+      console.log("[line-oauth-exchange] auth_user_id mapped:", authUserId);
+    }
+
+    // 6. Mint a ONE-TIME magic-link token (no password ever set)
+    const linkRes = await fetch(`${SB_URL}/auth/v1/admin/generate_link`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        type: "magiclink",
+        email: authEmail,
+      }),
+    });
+    const linkData = await linkRes.json();
+    console.log("[line-oauth-exchange] generateLink status:", linkRes.status);
+
+    if (!linkRes.ok || !linkData?.properties?.hashed_token) {
+      console.error("[line-oauth-exchange] generateLink failed:", JSON.stringify(linkData));
+      return json({ error: "session_link_failed", detail: linkData }, 500, origin);
+    }
+
+    const tokenHash = linkData.properties.hashed_token;
+    console.log("[line-oauth-exchange] ✅ token_hash generated for:", lineUserId);
+
+    // 7. Return token_hash + profile. Client calls verifyOtp to establish session.
+    return json({
+      ok: true,
+      token_hash: tokenHash,
+      profile: {
+        id: profile.id,
+        line_user_id: lineUserId,
+        display_name: lineProfile.displayName || profile.display_name,
+        picture_url: lineProfile.pictureUrl,
+      },
+      // Keep LINE token for backward compat (profile restore uses it)
+      token: tokenData,
+    }, 200, origin);
+
   } catch (e: any) {
+    console.error("[line-oauth-exchange] Error:", e?.message || e);
     return json({ error: "Server error", detail: String(e?.message || e) }, 500, origin);
   }
 });
-

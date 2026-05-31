@@ -69,6 +69,7 @@ Deno.serve(async (req: Request) => {
 
     // --- Create Supabase Auth session for this LINE user ---
     let authSession: any = null;
+    console.log("[line-oauth-exchange] profile?.userId:", profile?.userId, "createClient available:", typeof createClient);
     if (profile?.userId) {
       try {
         const supabase = createClient(

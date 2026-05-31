@@ -43,23 +43,45 @@ Deno.serve(async (req) => {
   let signIn = await anonClient.auth.signInWithPassword({ email, password });
 
   if (signIn.error) {
-    // User doesn't exist yet — create them
-    const createOpts: Record<string, unknown> = {
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: {
-        line_user_id: lineUser.lineUserId,
-        display_name: lineUser.name || "LINE User",
-      },
-    };
-    // Align auth user id with existing profile id
-    if (profile) createOpts.id = profile.id;
+    // Sign in failed — either user doesn't exist or needs email/password set
+    // Try to update existing user first (they may exist from old anonymous auth)
+    if (profile) {
+      const { error: updateErr } = await supabase.auth.admin.updateUser(profile.id, {
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: {
+          line_user_id: lineUser.lineUserId,
+          display_name: lineUser.name || "LINE User",
+        },
+      });
+      if (updateErr) {
+        console.error("Update existing user failed:", updateErr.message);
+        // Fall through to create
+      } else {
+        // Retry sign in after update
+        signIn = await anonClient.auth.signInWithPassword({ email, password });
+      }
+    }
 
-    const { error: createErr } = await supabase.auth.admin.createUser(createOpts);
-    if (createErr) {
-      console.error("Create user failed:", createErr.message);
-      return json({ error: "create_failed", detail: createErr.message }, 500, origin);
+    // If still no session, create a new user
+    if (signIn.error) {
+      const createOpts: Record<string, unknown> = {
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: {
+          line_user_id: lineUser.lineUserId,
+          display_name: lineUser.name || "LINE User",
+        },
+      };
+      if (profile) createOpts.id = profile.id;
+
+      const { error: createErr } = await supabase.auth.admin.createUser(createOpts);
+      if (createErr) {
+        console.error("Create user failed:", createErr.message);
+        return json({ error: "create_failed", detail: createErr.message }, 500, origin);
+      }
     }
 
     // If no profile existed, create one

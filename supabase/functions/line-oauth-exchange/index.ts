@@ -172,13 +172,30 @@ Deno.serve(async (req: Request) => {
     });
     const linkData = await linkRes.json();
     console.log("[line-oauth-exchange] generateLink status:", linkRes.status);
+    console.log("[line-oauth-exchange] generateLink response keys:", Object.keys(linkData || {}));
 
-    if (!linkRes.ok || !linkData?.properties?.hashed_token) {
+    // REST API returns hashed_token in properties, or action_link as a URL
+    let tokenHash = linkData?.properties?.hashed_token;
+    if (!tokenHash && linkData?.action_link) {
+      // Extract token_hash from action_link URL
+      try {
+        const url = new URL(linkData.action_link);
+        tokenHash = url.searchParams.get("token_hash") || url.searchParams.get("token");
+        // Also try hash fragment
+        if (!tokenHash && url.hash) {
+          const hashParams = new URLSearchParams(url.hash.slice(1));
+          tokenHash = hashParams.get("token_hash") || hashParams.get("token");
+        }
+      } catch {}
+    }
+    // hashed_token might also be at top level
+    if (!tokenHash) tokenHash = linkData?.hashed_token;
+
+    if (!linkRes.ok || !tokenHash) {
       console.error("[line-oauth-exchange] generateLink failed:", JSON.stringify(linkData));
       return json({ error: "session_link_failed", detail: linkData }, 500, origin);
     }
 
-    const tokenHash = linkData.properties.hashed_token;
     console.log("[line-oauth-exchange] ✅ token_hash generated for:", lineUserId);
 
     // 7. Return token_hash + profile. Client calls verifyOtp to establish session.

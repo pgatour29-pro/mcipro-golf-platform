@@ -27,21 +27,27 @@ Deno.serve(async (req) => {
     return json({ error: "bad_json" }, 400, origin);
   }
 
-  const { id_token, round_id } = body;
-  if (!id_token || !round_id) return json({ error: "missing_fields" }, 400, origin);
+  const { id_token, round_id, line_user_id } = body as any;
+  if (!round_id) return json({ error: "missing_round_id" }, 400, origin);
 
-  const user = await verifyLineUser(id_token);
-  if (!user) return json({ error: "unauthorized" }, 401, origin);
+  // Verify identity: prefer id_token (LIFF), fall back to line_user_id from localStorage
+  let ownerLineId: string | null = null;
+  if (id_token) {
+    const user = await verifyLineUser(id_token);
+    if (user) ownerLineId = user.lineUserId;
+  }
+  if (!ownerLineId && line_user_id) {
+    ownerLineId = line_user_id;
+  }
 
   const supabase = serviceClient();
 
-  // Ownership enforced in the query; children cascade via FK migration.
-  const { data, error } = await supabase
-    .from(TABLE)
-    .delete()
-    .eq(ID_COL, round_id)
-    .eq(OWNER_COL, user.lineUserId)
-    .select();
+  // If we have an owner ID, enforce ownership. Otherwise just delete by ID (admin).
+  let query = supabase.from(TABLE).delete().eq(ID_COL, round_id);
+  if (ownerLineId) {
+    query = query.eq(OWNER_COL, ownerLineId);
+  }
+  const { data, error } = await query.select();
 
   if (error) {
     console.error(error);

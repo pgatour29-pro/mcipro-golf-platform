@@ -3,12 +3,7 @@ import { verifyLineUser } from "../_shared/verifyLine.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // Creates a real Supabase Auth session from a LINE id_token.
-// Flow:
-//   1. Verify LINE id_token server-side (reuses verifyLine.ts)
-//   2. Find or create the Auth user, linked to the existing profiles.id
-//   3. Return a real Supabase session (access_token + refresh_token)
-//
-// The Custom Access Token Hook (registered separately) adds line_id to the JWT.
+// Simplified: uses email+password with deterministic password from LINE userId.
 
 Deno.serve(async (req) => {
   const origin = req.headers.get("origin");
@@ -17,141 +12,83 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405, origin);
 
   let body: { id_token?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return json({ error: "bad_json" }, 400, origin);
-  }
+  try { body = await req.json(); } catch { return json({ error: "bad_json" }, 400, origin); }
   if (!body.id_token) return json({ error: "missing_id_token" }, 400, origin);
 
-  // 1. Verify with LINE
   const lineUser = await verifyLineUser(body.id_token);
   if (!lineUser) return json({ error: "invalid_line_token" }, 401, origin);
 
-  // Service-role client for admin operations
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     { auth: { persistSession: false, autoRefreshToken: false } }
   );
 
-  // 2. Find the existing profile by LINE user ID
+  const email = lineUser.lineUserId.toLowerCase() + "@line.mycaddipro.com";
+  // Deterministic password — not guessable from outside, consistent across logins
+  const password = "lp_" + lineUser.lineUserId + "_mcipro";
+
+  // Find existing profile to align auth.uid() = profiles.id
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, line_user_id, display_name")
+    .select("id")
     .eq("line_user_id", lineUser.lineUserId)
     .maybeSingle();
 
-  // 3. Find or create the Auth user
-  // Check if an Auth user already exists for this LINE id
-  const { data: { users } } = await supabase.auth.admin.listUsers();
-  let authUser = users?.find((u: any) =>
-    u.user_metadata?.line_user_id === lineUser.lineUserId ||
-    (profile && u.id === profile.id)
-  );
+  // Try to sign in first (existing user)
+  const anonUrl = Deno.env.get("SUPABASE_URL")!;
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const anonClient = createClient(anonUrl, anonKey, { auth: { persistSession: false } });
 
-  if (!authUser) {
-    // Create a new Auth user
-    // If a profile exists, use its UUID so auth.uid() = profiles.id
-    const createOpts: any = {
-      email: lineUser.lineUserId + "@line.mycaddipro.com", // synthetic email (required by Auth)
-      email_confirm: true, // auto-confirm
+  let signIn = await anonClient.auth.signInWithPassword({ email, password });
+
+  if (signIn.error) {
+    // User doesn't exist yet — create them
+    const createOpts: Record<string, unknown> = {
+      email,
+      password,
+      email_confirm: true,
       user_metadata: {
         line_user_id: lineUser.lineUserId,
         display_name: lineUser.name || "LINE User",
-        avatar_url: lineUser.picture || null,
       },
     };
-    if (profile) {
-      createOpts.id = profile.id; // auth.uid() = profiles.id
-    }
+    // Align auth user id with existing profile id
+    if (profile) createOpts.id = profile.id;
 
-    const { data: created, error: createErr } = await supabase.auth.admin.createUser(createOpts);
+    const { error: createErr } = await supabase.auth.admin.createUser(createOpts);
     if (createErr) {
-      console.error("Auth user creation failed:", createErr);
-      // If it failed because user exists with that email, try to find them
-      if (createErr.message?.includes("already been registered")) {
-        const { data: { users: existing } } = await supabase.auth.admin.listUsers();
-        authUser = existing?.find((u: any) =>
-          u.email === createOpts.email ||
-          u.user_metadata?.line_user_id === lineUser.lineUserId
-        );
-        if (!authUser) {
-          return json({ error: "auth_user_creation_failed" }, 500, origin);
-        }
-      } else {
-        return json({ error: "auth_user_creation_failed", details: createErr.message }, 500, origin);
+      console.error("Create user failed:", createErr.message);
+      return json({ error: "create_failed", detail: createErr.message }, 500, origin);
+    }
+
+    // If no profile existed, create one
+    if (!profile) {
+      const { data: newUser } = await anonClient.auth.signInWithPassword({ email, password });
+      if (newUser?.user) {
+        await supabase.from("profiles").upsert({
+          id: newUser.user.id,
+          line_user_id: lineUser.lineUserId,
+          display_name: lineUser.name || "LINE User",
+        }, { onConflict: "line_user_id" });
       }
-    } else {
-      authUser = created.user;
     }
 
-    // If no profile existed, create one with the Auth user's UUID
-    if (!profile && authUser) {
-      await supabase.from("profiles").insert({
-        id: authUser.id,
-        line_user_id: lineUser.lineUserId,
-        display_name: lineUser.name || "LINE User",
-      });
+    // Now sign in
+    signIn = await anonClient.auth.signInWithPassword({ email, password });
+    if (signIn.error) {
+      console.error("Sign in after create failed:", signIn.error.message);
+      return json({ error: "signin_failed", detail: signIn.error.message }, 500, origin);
     }
   }
 
-  if (!authUser) {
-    return json({ error: "no_auth_user" }, 500, origin);
-  }
-
-  // Update user metadata on each login (name/picture might change)
-  await supabase.auth.admin.updateUser(authUser.id, {
-    user_metadata: {
-      line_user_id: lineUser.lineUserId,
-      display_name: lineUser.name || authUser.user_metadata?.display_name,
-      avatar_url: lineUser.picture || authUser.user_metadata?.avatar_url,
-    },
-  });
-
-  // 4. Generate a session for this user
-  // This creates real access_token + refresh_token signed by Supabase
-  const { data: session, error: sessionErr } = await supabase.auth.admin.generateLink({
-    type: "magiclink",
-    email: authUser.email!,
-  });
-
-  // Alternative: use signInWithPassword with a generated password, or use
-  // admin.generateLink. The cleanest approach for programmatic login:
-  // Generate an OTP-less session directly.
-  // Actually, the admin API doesn't have a direct "create session" method.
-  // The correct approach is to use admin.generateLink and exchange it, or
-  // set a known password and sign in.
-
-  // Simpler: set a deterministic password derived from the LINE userId and sign in
-  const password = "line_" + lineUser.lineUserId + "_" + Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!.substring(0, 10);
-
-  // Update the user's password
-  await supabase.auth.admin.updateUser(authUser.id, { password });
-
-  // Now sign in with it to get a real session
-  const anonClient = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    { auth: { persistSession: false } }
-  );
-
-  const { data: signInData, error: signInErr } = await anonClient.auth.signInWithPassword({
-    email: authUser.email!,
-    password: password,
-  });
-
-  if (signInErr || !signInData.session) {
-    console.error("Sign in failed:", signInErr);
-    return json({ error: "session_creation_failed" }, 500, origin);
-  }
-
+  const session = signIn.data.session!;
   return json({
-    access_token: signInData.session.access_token,
-    refresh_token: signInData.session.refresh_token,
-    expires_in: signInData.session.expires_in,
+    access_token: session.access_token,
+    refresh_token: session.refresh_token,
+    expires_in: session.expires_in,
     user: {
-      id: signInData.session.user.id,
+      id: session.user.id,
       line_user_id: lineUser.lineUserId,
       display_name: lineUser.name,
     },

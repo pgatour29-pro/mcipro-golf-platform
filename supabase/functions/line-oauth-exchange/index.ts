@@ -203,10 +203,10 @@ Deno.serve(async (req: Request) => {
       ok: true,
       token_hash: tokenHash,
       profile: {
-        id: profile.id,
-        line_user_id: lineUserId,
-        display_name: lineProfile.displayName || profile.display_name,
-        picture_url: lineProfile.pictureUrl,
+        userId: lineUserId,
+        displayName: lineProfile.displayName || profile.display_name || "LINE User",
+        pictureUrl: lineProfile.pictureUrl || "",
+        statusMessage: lineProfile.statusMessage || "",
       },
       // Keep LINE token for backward compat (profile restore uses it)
       token: tokenData,

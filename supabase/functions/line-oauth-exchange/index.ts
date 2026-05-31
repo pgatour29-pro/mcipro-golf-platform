@@ -1,5 +1,6 @@
 // deno-lint-ignore-file no-explicit-any
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const ALLOWED_ORIGINS = ["https://mycaddipro.com", "https://www.mycaddipro.com"];
 
@@ -66,7 +67,81 @@ Deno.serve(async (req: Request) => {
     });
     const profile = profRes.ok ? await profRes.json() : null;
 
-    return json({ ok: true, token: js, profile }, 200, origin);
+    // --- Create Supabase Auth session for this LINE user ---
+    let authSession: any = null;
+    if (profile?.userId) {
+      try {
+        const supabase = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+          { auth: { persistSession: false, autoRefreshToken: false } }
+        );
+
+        const lineUserId = profile.userId;
+        const email = lineUserId.toLowerCase() + "@line.mycaddipro.com";
+        const password = "lp_" + lineUserId + "_mcipro";
+
+        // Find existing profile to align auth.uid() = profiles.id
+        const { data: existingProfile } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("line_user_id", lineUserId)
+          .maybeSingle();
+
+        // Try sign in first (existing auth user)
+        const anonClient = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+          { auth: { persistSession: false } }
+        );
+
+        let signIn = await anonClient.auth.signInWithPassword({ email, password });
+
+        if (signIn.error) {
+          // Create auth user
+          const createOpts: any = {
+            email,
+            password,
+            email_confirm: true,
+            user_metadata: {
+              line_user_id: lineUserId,
+              display_name: profile.displayName || "LINE User",
+            },
+          };
+          if (existingProfile) createOpts.id = existingProfile.id;
+
+          await supabase.auth.admin.createUser(createOpts);
+
+          // Create profile if needed
+          if (!existingProfile) {
+            const { data: newSignIn } = await anonClient.auth.signInWithPassword({ email, password });
+            if (newSignIn?.user) {
+              await supabase.from("profiles").upsert({
+                id: newSignIn.user.id,
+                line_user_id: lineUserId,
+                display_name: profile.displayName || "LINE User",
+              }, { onConflict: "line_user_id" });
+            }
+          }
+
+          // Sign in again
+          signIn = await anonClient.auth.signInWithPassword({ email, password });
+        }
+
+        if (signIn.data?.session) {
+          authSession = {
+            access_token: signIn.data.session.access_token,
+            refresh_token: signIn.data.session.refresh_token,
+            expires_in: signIn.data.session.expires_in,
+          };
+        }
+      } catch (authErr: any) {
+        console.warn("[line-oauth-exchange] Auth session creation failed:", authErr?.message);
+        // Non-fatal — the profile-based login still works without auth session
+      }
+    }
+
+    return json({ ok: true, token: js, profile, auth_session: authSession }, 200, origin);
   } catch (e: any) {
     return json({ error: "Server error", detail: String(e?.message || e) }, 500, origin);
   }

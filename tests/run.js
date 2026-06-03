@@ -108,6 +108,16 @@ const skins = E.calculateSkins([
 ], H, false, 100, false);
 check('Skins: function returns a result object', skins && typeof skins === 'object');
 
+// =========================================================
+// Team match — tied best ball: 'halves' (default) pushes; 'tiebreaker' uses 2nd ball.
+// One hole, no strokes: Team1 = 4 & 6, Team2 = 4 & 5. Best balls tie at 4.
+// =========================================================
+const oneHole = [{ hole: 1, par: 4, stroke_index: 18 }];
+const tt1 = [{ id: 'a', name: 'A', handicap: 0, scores: sc([4]) }, { id: 'b', name: 'B', handicap: 0, scores: sc([6]) }];
+const tt2 = [{ id: 'c', name: 'C', handicap: 0, scores: sc([4]) }, { id: 'd', name: 'D', handicap: 0, scores: sc([5]) }];
+eq('Team tie: HALVES (default) => all square', E.calculateTeamMatchPlay(tt1, tt2, oneHole, false, false, 'bestball_halves').overall, 0);
+eq('Team tie: TIEBREAKER => Team1 down 1 (2nd ball 6 vs 5)', E.calculateTeamMatchPlay(tt1, tt2, oneHole, false, false, 'bestball_tiebreaker').overall, -1);
+
 // ---- report ----
 console.log(`\nScoring engine tests: ${pass} passed, ${fail} failed`);
 if (fail) { console.log('\n' + failures.join('\n')); process.exit(1); }

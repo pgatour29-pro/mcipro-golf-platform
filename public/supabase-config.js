@@ -1,5 +1,5 @@
 // Supabase Configuration for MciPro Golf Platform
-// Replace Netlify Blobs + Pusher Chat
+// Supabase data + realtime layer
 
 const SUPABASE_CONFIG = {
     url: 'https://pyeeplwsnupmhgbguwqs.supabase.co',

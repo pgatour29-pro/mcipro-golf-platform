@@ -35,7 +35,17 @@ Older players want simple/quick actions; power users keep the full app. Pete's c
 - **d99e78e7 shot tracker for every round.** Round-details Shot Tracking card now renders off shot data alone (par from the shot rows), not requiring round_holes; Approach→GIR% block shows only when round_holes/GIR exist.
 - **097f29a4 → 0c5596c3 → 8d2f3116 readability.** Shot list → table. Then the **Hole-by-Hole Breakdown** (Pete: "no stats, too much dead space") — was a `w-full` 22-col table that stretched/overflowed the narrow modal hiding the values (data WAS present in DB). Rebuilt as two compact FIXED-WIDTH tables (Front 9 + Back 9, ~286px, locked 24px cols) in one tbody cell so numbers sit in their cells; Shot Tracking card still inserts after.
 
+## Yardage Book (PGA-style per-hole history) — see memory [[shot-tracking]]
+Pete: when replaying a course, show what you hit on every hole + the last score, to beat your last bad score.
+- **9788c934 in-play popup → Yardage Book.** Evolved `showShotHistoryHint`: on a hole played before at this course (same tee preferred), shows the FULL tee→green shot chain (every club+yardage, approach highlighted) + the **last score made on that hole** (from that round's `round_holes`: gross+par → Eagle/Birdie/Par/Bogey/Double + strokes, color-coded green/amber/red). Cached per course:hole.
+- **0f18d5fa browsable view.** `openYardageBook()` — full-screen card (📖 Book button next to "Live" in the keypad header) listing all 18 holes of the most recent prior round at the course (par · last score chip · full shot chain). Empty-state when none. Pete chose full-chain over a single-round picker. (Also works in Light mode.)
+- **37565b52 scroll fix.** Yardage Book body was "sticky at the bottom" — added `min-height:0` + `overscroll-behavior:contain` + `touch-action:pan-y` + safe-area bottom padding (the standard mobile-modal scroll pattern).
+
+## Keypad scoring bug — instrumentation (2d8c9ca2)
+Pete: keypad intermittently rejects the score until 4–6 taps, then accepts ("known issue"). Traced the path: `_saving` lock clears SYNCHRONOUSLY in the normal save (DB write is queued/fire-and-forget, no dedup) — so it's an intermittent STUCK state, not a constant code bug. Changes: stuck-lock failsafe **2000ms→700ms** (keypad self-heals fast — that 2s window ≈ the "4–6 ignored taps"); clear `currentScore` on stuck/error paths (no garbage accumulation); **log the real event to `client_errors`** (`kind` = `keypad_locked` / `keypad_saving_stuck` / `keypad_no_scorecard`, with hole+player) so the next occurrence is captured. NEXT: Pete reproduces → I query `client_errors WHERE kind ILIKE 'keypad%'` to pin the root cause. (Offered an on-screen "saving…" flash.)
+
 ## OPEN / TODO
+- **Keypad bug root cause** — query `client_errors` (kind `keypad%`) after Pete reproduces; the 700ms failsafe is a symptom-mitigation, not the confirmed fix.
 - Auto-attribution: round only attaches to a society event the player is REGISTERED for, else their own society (Erik→JGTS). High blast radius — awaiting Pete's narrow-vs-general confirm.
 - Light: hide "Make Game Public"/"Live Spectating" in setup (offered); confirm Hole-by-Hole renders for Pete after refresh.
 - Default-collapse the community leaderboard for everyone (offered).

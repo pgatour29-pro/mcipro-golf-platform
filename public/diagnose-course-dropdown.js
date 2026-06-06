@@ -63,10 +63,10 @@
 
     // 8. Test setting a value
     console.log('\n🧪 TEST: Setting dropdown to Pattana Golf...');
-    dropdown.value = 'pattana_golf';
+    dropdown.value = 'pattana';
     console.log('  After setting: dropdown.value =', dropdown.value);
 
-    if (dropdown.value === 'pattana_golf') {
+    if (dropdown.value === 'pattana') {
         console.log('  ✅ Setting value WORKS!');
         console.log('  🤔 User needs to SELECT a course from the dropdown before clicking Start Round');
     } else {

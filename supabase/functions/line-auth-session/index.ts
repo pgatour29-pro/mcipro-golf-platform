@@ -1,9 +1,15 @@
 import { preflight, json } from "../_shared/cors.ts";
 import { verifyLineUser } from "../_shared/verifyLine.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { serviceClient } from "../_shared/supabase.ts";
 
-// Creates a real Supabase Auth session from a LINE id_token.
-// Simplified: uses email+password with deterministic password from LINE userId.
+// LIFF in-app login -> real Supabase Auth session (v2: magic-link OTP, no passwords).
+// Verifies the LINE id_token server-side, ensures a profile + a single mapped auth
+// user (profiles.auth_user_id), then mints a one-time magic-link token_hash. The
+// client calls supabase.auth.verifyOtp({ token_hash, type: 'magiclink' }) to
+// establish the session; the Custom Access Token Hook injects profile_id + line_id.
+// Mirrors line-oauth-exchange, but sourced from a LIFF id_token instead of an OAuth code.
+
+const AUTH_EMAIL_DOMAIN = "line-users.mycaddipro.com";
 
 Deno.serve(async (req) => {
   const origin = req.headers.get("origin");
@@ -15,104 +21,75 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { return json({ error: "bad_json" }, 400, origin); }
   if (!body.id_token) return json({ error: "missing_id_token" }, 400, origin);
 
+  // Trust ONLY the identity LINE returns for a valid token (never the client's claim).
   const lineUser = await verifyLineUser(body.id_token);
   if (!lineUser) return json({ error: "invalid_line_token" }, 401, origin);
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  );
+  const supabase = serviceClient();
+  const lineUserId = lineUser.lineUserId;
 
-  const email = lineUser.lineUserId.toLowerCase() + "@line.mycaddipro.com";
-  // Deterministic password — not guessable from outside, consistent across logins
-  const password = "lp_" + lineUser.lineUserId + "_mcipro";
-
-  // Find existing profile to align auth.uid() = profiles.id
-  const { data: profile } = await supabase
+  // 1. Find or create the profile (canonical identity), keyed by line_user_id.
+  let { data: profile } = await supabase
     .from("profiles")
-    .select("id")
-    .eq("line_user_id", lineUser.lineUserId)
+    .select("id, auth_user_id, display_name")
+    .eq("line_user_id", lineUserId)
     .maybeSingle();
 
-  // Try to sign in first (existing user)
-  const anonUrl = Deno.env.get("SUPABASE_URL")!;
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const anonClient = createClient(anonUrl, anonKey, { auth: { persistSession: false } });
-
-  let signIn = await anonClient.auth.signInWithPassword({ email, password });
-
-  if (signIn.error) {
-    // Sign in failed — either user doesn't exist or needs email/password set
-    // Try to update existing user first (they may exist from old anonymous auth)
-    if (profile) {
-      const { error: updateErr } = await supabase.auth.admin.updateUser(profile.id, {
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: {
-          line_user_id: lineUser.lineUserId,
-          display_name: lineUser.name || "LINE User",
-        },
-      });
-      if (updateErr) {
-        console.error("Update existing user failed:", updateErr.message);
-        // Fall through to create
-      } else {
-        // Retry sign in after update
-        signIn = await anonClient.auth.signInWithPassword({ email, password });
-      }
+  if (!profile) {
+    const { data: created, error: cErr } = await supabase
+      .from("profiles")
+      .insert({ line_user_id: lineUserId, display_name: lineUser.name || "LINE User" })
+      .select("id, auth_user_id, display_name")
+      .single();
+    if (cErr || !created) {
+      return json({ error: "profile_create_failed", detail: cErr?.message }, 500, origin);
     }
-
-    // If still no session, create a new user
-    if (signIn.error) {
-      const createOpts: Record<string, unknown> = {
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: {
-          line_user_id: lineUser.lineUserId,
-          display_name: lineUser.name || "LINE User",
-        },
-      };
-      if (profile) createOpts.id = profile.id;
-
-      const { error: createErr } = await supabase.auth.admin.createUser(createOpts);
-      if (createErr) {
-        console.error("Create user failed:", createErr.message);
-        return json({ error: "create_failed", detail: createErr.message }, 500, origin);
-      }
-    }
-
-    // If no profile existed, create one
-    if (!profile) {
-      const { data: newUser } = await anonClient.auth.signInWithPassword({ email, password });
-      if (newUser?.user) {
-        await supabase.from("profiles").upsert({
-          id: newUser.user.id,
-          line_user_id: lineUser.lineUserId,
-          display_name: lineUser.name || "LINE User",
-        }, { onConflict: "line_user_id" });
-      }
-    }
-
-    // Now sign in
-    signIn = await anonClient.auth.signInWithPassword({ email, password });
-    if (signIn.error) {
-      console.error("Sign in after create failed:", signIn.error.message);
-      return json({ error: "signin_failed", detail: signIn.error.message }, 500, origin);
-    }
+    profile = created;
   }
 
-  const session = signIn.data.session!;
+  // 2. Ensure exactly one Supabase auth user per profile (auth_user_id mapping).
+  const authEmail = `${lineUserId.toLowerCase()}@${AUTH_EMAIL_DOMAIN}`;
+  let authUserId: string | null = (profile.auth_user_id as string | null) ?? null;
+
+  if (authUserId) {
+    const { data: got } = await supabase.auth.admin.getUserById(authUserId);
+    if (!got?.user) authUserId = null; // stale mapping -> recreate
+  }
+
+  if (!authUserId) {
+    const { data: createdUser, error: uErr } = await supabase.auth.admin.createUser({
+      email: authEmail,
+      email_confirm: true,
+      user_metadata: { line_user_id: lineUserId, profile_id: profile.id },
+    });
+    if (createdUser?.user) {
+      authUserId = createdUser.user.id;
+    } else {
+      // Email may already exist from a prior login -> locate it.
+      const { data: list } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 });
+      const existing = list?.users?.find((u) => u.email === authEmail);
+      if (existing) authUserId = existing.id;
+      else return json({ error: "auth_user_create_failed", detail: uErr?.message }, 500, origin);
+    }
+    await supabase.from("profiles").update({ auth_user_id: authUserId }).eq("id", profile.id);
+  }
+
+  // 3. Mint a one-time magic-link token_hash for the client to verifyOtp.
+  const { data: linkData, error: lErr } = await supabase.auth.admin.generateLink({
+    type: "magiclink",
+    email: authEmail,
+  });
+  const tokenHash = linkData?.properties?.hashed_token;
+  if (lErr || !tokenHash) {
+    return json({ error: "session_link_failed", detail: lErr?.message }, 500, origin);
+  }
+
   return json({
-    access_token: session.access_token,
-    refresh_token: session.refresh_token,
-    expires_in: session.expires_in,
-    user: {
-      id: session.user.id,
-      line_user_id: lineUser.lineUserId,
-      display_name: lineUser.name,
+    token_hash: tokenHash,
+    profile: {
+      userId: lineUserId,
+      displayName: lineUser.name || profile.display_name || "LINE User",
+      pictureUrl: lineUser.picture || "",
     },
   }, 200, origin);
 });

@@ -127,6 +127,28 @@ counts = {}
 for n in graph["nodes"]: counts[n["type"]] = counts.get(n["type"],0)+1
 
 TEMPLATE = open(os.path.join(ROOT, "arch_map/template.html")).read()
+
+# Inline the vendored JS libs so the output is fully self-contained (works offline and
+# when opened directly on a phone via a content:// URI, where mobile Chrome blocks
+# external CDN/network loads — which left the graph blank). Falls back to the CDN tag
+# if a vendor file is missing.
+VENDOR = {
+    "cytoscape@3.30.2": "cytoscape.min.js",
+    "layout-base@2.0.1": "layout-base.js",
+    "cose-base@2.2.0": "cose-base.js",
+    "cytoscape-fcose@2.2.0": "cytoscape-fcose.js",
+}
+def _inline_vendor(m):
+    src = m.group(1)
+    for key, fn in VENDOR.items():
+        if key in src:
+            p = os.path.join(ROOT, "arch_map/vendor", fn)
+            if os.path.exists(p):
+                js = open(p, encoding="utf-8", errors="ignore").read().replace("</script", "<\\/script")
+                return "<script>\n" + js + "\n</script>"
+    return m.group(0)
+TEMPLATE = re.sub(r'<script src="(https://cdn\.jsdelivr\.net/[^"]+)"[^>]*></script>', _inline_vendor, TEMPLATE)
+
 out_html = TEMPLATE.replace("/*__GRAPH__*/", json.dumps(graph))
 out_path = os.path.join(ROOT, "arch_map/mcipro-architecture-map.html")
 open(out_path, "w", encoding="utf-8").write(out_html)

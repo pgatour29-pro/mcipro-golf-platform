@@ -1,0 +1,1053 @@
+<!-- ============================================================
+     RYDER CUP MODULE — archived 2026-06-14 (event finished, removed from live app)
+     Reusable template for future head-to-head society events (Pattaya vs Hua Hin format).
+     See README.md for where each block lived + integration points.
+     ============================================================ -->
+
+<!-- ===== 1. DASHBOARD PROMO BANNER (was public/index.html ~37122) ===== -->
+                <!-- Ryder Cup Promo Banner -->
+                <div onclick="RyderCupPage.showAdmin=false; RyderCupPage.open()" class="block mb-3 p-3 rounded-xl cursor-pointer" style="background:linear-gradient(135deg, #991b1b 0%, #0f172a 50%, #1e3a8a 100%);border:1px solid rgba(245,158,11,0.3);">
+                    <div class="flex items-center gap-3">
+                        <div class="text-3xl flex-shrink-0">&#127942;</div>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-amber-400 text-xs font-bold">TRGG RYDER CUP 2026</div>
+                            <div class="text-white text-sm font-bold">Pattaya vs Hua Hin</div>
+                            <div class="text-gray-400 text-xs">June 9-12 | 3 Days | Register Now</div>
+                        </div>
+                        <div class="flex flex-col items-center flex-shrink-0 gap-1">
+                            <span id="ryderCupRegCount" style="background:#f59e0b;color:#0f172a;font-size:14px;font-weight:800;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;">0</span>
+                            <span style="font-size:8px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Players</span>
+                        </div>
+                    </div>
+                </div>
+
+
+<!-- ===== 2. ORGANIZER ADMIN CARD (was ~52243; shown only for TRGG society) ===== -->
+                    <!-- Ryder Cup Admin - Only visible for TRGG society -->
+                    <div id="orgAdminRyderCup" style="display: none;" class="bg-gradient-to-r from-red-50 to-blue-50 rounded-2xl shadow-lg border border-amber-200 p-6 mb-6">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-4">
+                                <div class="bg-amber-100 rounded-full p-3">
+                                    <span class="material-symbols-outlined text-2xl text-amber-600">emoji_events</span>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium text-gray-600">TRGG Ryder Cup 2026</p>
+                                    <p class="text-lg font-bold text-gray-900">Pattaya vs Hua Hin</p>
+                                    <p class="text-xs text-gray-500 mt-1">Manage registrations, transport, hotel & payments</p>
+                                </div>
+                            </div>
+                            <button onclick="RyderCupPage.openAsAdmin()" class="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-semibold transition-colors flex items-center gap-2">
+                                <span class="material-symbols-outlined text-sm">manage_accounts</span>
+                                Manage
+                            </button>
+                        </div>
+                    </div>
+
+
+<!-- ===== 3. ADMIN-CARD VISIBILITY SNIPPET (was inside TRGG-tools fn ~94697) ===== -->
+<!-- const rcEl = document.getElementById('orgAdminRyderCup');
+     if (rcEl) rcEl.style.display = isTRGG ? '' : 'none'; -->
+
+<!-- ===== 4. FULLSCREEN PAGE OBJECT + REG-COUNT BADGE LOADER (was ~95300) ===== -->
+<script>
+// RYDER CUP PAGE (In-App Fullscreen)
+// ============================================
+const RyderCupPage = {
+    TRGG_SOCIETY_ID: '7c0e4b72-d925-44bc-afda-38259a7ba346',
+    showAdmin: false,
+    eventId: null,
+    selectedSide: null,
+    myReg: null,
+
+    openAsAdmin() {
+        this.showAdmin = true;
+        this.open();
+    },
+
+    async open() {
+        // Create or show modal
+        let modal = document.getElementById('ryderCupModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'ryderCupModal';
+            modal.style.cssText = 'position:fixed;inset:0;z-index:10000;background:#0f172a;overflow-y:scroll;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;';
+            document.body.appendChild(modal);
+        }
+        modal.style.display = 'block';
+        document.body.style.overflow = 'hidden';
+
+        const user = window.AppState?.currentUser;
+        const userName = user?.name || user?.displayName || 'Player';
+        const userHcp = user?.handicap ?? 'N/A';
+        const userId = user?.lineUserId || user?.userId || user?.lineId || '';
+
+        console.log('[RyderCup] User:', { userId, userName, userHcp });
+
+        modal.innerHTML = `
+            <div style="position:sticky;top:0;z-index:10;background:rgba(15,23,42,0.95);border-bottom:1px solid rgba(255,255,255,0.1);padding:12px 16px;backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:space-between;">
+                <button onclick="RyderCupPage.close()" style="background:none;border:none;color:#e2e8f0;cursor:pointer;display:flex;align-items:center;gap:4px;font-size:14px;">
+                    <span class="material-symbols-outlined">arrow_back</span> Back
+                </button>
+                <div style="text-align:center;">
+                    <div style="font-size:11px;font-weight:700;color:#f59e0b;">TRGG RYDER CUP 2026</div>
+                </div>
+                <div style="width:60px;"></div>
+            </div>
+
+            <img src="/ryder-cup/hero.jpg" alt="TRGG Ryder Cup 2026" style="width:100%;display:block;">
+
+            <div style="padding:16px 16px 100px;max-width:600px;margin:0 auto;">
+                <!-- Schedule -->
+                <h3 style="color:#f59e0b;font-size:16px;font-weight:700;margin:16px 0 12px;">Tournament Schedule</h3>
+                <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px;">
+                    <div style="background:rgba(30,41,59,0.9);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                            <span style="background:#dc2626;color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;">DAY 1</span>
+                            <span style="color:#9ca3af;font-size:11px;">Tee Off: 10:00</span>
+                        </div>
+                        <div style="color:#f59e0b;font-size:12px;font-weight:600;">Tuesday, 9th June</div>
+                        <div style="color:white;font-size:16px;font-weight:700;">Bangpakong</div>
+                        <div style="color:#9ca3af;font-size:12px;margin-top:4px;">4 Ball Best Ball Stroke Match Play</div>
+                    </div>
+                    <div style="background:rgba(30,41,59,0.9);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                            <span style="background:#2563eb;color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;">DAY 2</span>
+                            <span style="color:#9ca3af;font-size:11px;">Tee Off: 10:00</span>
+                        </div>
+                        <div style="color:#f59e0b;font-size:12px;font-weight:600;">Thursday, 11th June</div>
+                        <div style="color:white;font-size:16px;font-weight:700;">St Andrews 2000</div>
+                        <div style="color:#9ca3af;font-size:12px;margin-top:4px;">4 Ball Aggregate Stableford Match Play</div>
+                    </div>
+                    <div style="background:rgba(30,41,59,0.9);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                            <span style="background:#059669;color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;">DAY 3</span>
+                            <span style="color:#9ca3af;font-size:11px;">Tee Off: 10:00</span>
+                        </div>
+                        <div style="color:#f59e0b;font-size:12px;font-weight:600;">Friday, 12th June</div>
+                        <div style="color:white;font-size:16px;font-weight:700;">Laem Chabang</div>
+                        <div style="color:#9ca3af;font-size:12px;margin-top:4px;">Singles Stroke Match Play</div>
+                    </div>
+                </div>
+
+                <!-- Register -->
+                <div style="background:rgba(30,41,59,0.8);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:16px;margin-bottom:20px;">
+                    <div style="color:#f59e0b;font-size:16px;font-weight:700;margin-bottom:4px;">Register Now</div>
+                    <div style="color:#e2e8f0;font-size:14px;font-weight:600;">${userName}</div>
+                    <div style="color:#9ca3af;font-size:12px;margin-bottom:12px;">HCP: ${userHcp}</div>
+
+                    <div style="color:#9ca3af;font-size:12px;font-weight:600;margin-bottom:8px;">Choose Your Side</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+                        <button id="rcSideUSA" onclick="RyderCupPage.selectSide('usa')" style="padding:12px;border:2px solid #4b5563;border-radius:12px;background:transparent;cursor:pointer;text-align:center;">
+                            <div style="font-size:24px;">&#127482;&#127480;</div>
+                            <div style="font-size:12px;font-weight:700;color:#e2e8f0;">PATTAYA</div>
+                            <div style="font-size:10px;color:#9ca3af;">USA Side</div>
+                        </button>
+                        <button id="rcSideEUR" onclick="RyderCupPage.selectSide('europe')" style="padding:12px;border:2px solid #4b5563;border-radius:12px;background:transparent;cursor:pointer;text-align:center;">
+                            <div style="font-size:24px;">&#127466;&#127482;</div>
+                            <div style="font-size:12px;font-weight:700;color:#e2e8f0;">HUA HIN</div>
+                            <div style="font-size:10px;color:#9ca3af;">Europe Side</div>
+                        </button>
+                    </div>
+
+                    <!-- Team Selection (appears after picking side) -->
+                    <div id="rcTeamSelection" style="display:none;margin-bottom:12px;">
+                        <div style="color:#9ca3af;font-size:12px;font-weight:600;margin-bottom:8px;">Choose Your Team</div>
+                        <div id="rcTeamOptions" style="display:flex;flex-direction:column;gap:6px;"></div>
+                    </div>
+
+                    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#e2e8f0;cursor:pointer;margin-bottom:8px;">
+                        <input type="checkbox" id="rcWantTransport" style="accent-color:#f59e0b;width:16px;height:16px;">
+                        I need transport
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#e2e8f0;cursor:pointer;margin-bottom:12px;">
+                        <input type="checkbox" id="rcWantHotel" style="accent-color:#f59e0b;width:16px;height:16px;">
+                        I want hotel (LK President, 7,500 THB)
+                    </label>
+
+                    <button id="rcRegisterBtn" onclick="RyderCupPage.register()" style="width:100%;padding:12px;background:#f59e0b;color:#0f172a;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;">
+                        Select a Side & Register
+                    </button>
+                    <div id="rcAlreadyRegistered" style="display:none;margin-top:12px;padding:12px;background:rgba(5,150,105,0.15);border:1px solid #059669;border-radius:12px;text-align:center;">
+                        <span class="material-symbols-outlined" style="color:#34d399;">check_circle</span>
+                        <div style="color:#34d399;font-size:14px;font-weight:700;margin-top:4px;">You're Registered!</div>
+                        <div id="rcRegSide" style="color:#9ca3af;font-size:12px;"></div>
+                        <button onclick="RyderCupPage.cancel()" style="margin-top:8px;background:none;border:none;color:#ef4444;font-size:12px;cursor:pointer;text-decoration:underline;">Cancel Registration</button>
+                    </div>
+                </div>
+
+                <!-- Teams -->
+                <h3 style="color:white;font-size:16px;font-weight:700;margin-bottom:12px;">Registered Players <span id="rcPlayerCount" style="color:#9ca3af;font-size:12px;font-weight:400;float:right;">0 players</span></h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
+                    <div>
+                        <div style="display:flex;align-items:center;gap:6px;padding-bottom:8px;border-bottom:2px solid #dc2626;margin-bottom:8px;">
+                            <span style="font-size:18px;">&#127482;&#127480;</span>
+                            <div>
+                                <div style="font-size:12px;font-weight:700;color:#f87171;">PATTAYA</div>
+                                <div style="font-size:10px;color:#9ca3af;">USA Side</div>
+                            </div>
+                            <span id="rcUsaCount" style="margin-left:auto;font-size:11px;font-weight:700;color:#f87171;background:rgba(220,38,38,0.15);padding:2px 8px;border-radius:10px;">0</span>
+                        </div>
+                        <div id="rcUsaList" style="font-size:12px;color:#9ca3af;text-align:center;padding:16px 0;">No players yet</div>
+                    </div>
+                    <div>
+                        <div style="display:flex;align-items:center;gap:6px;padding-bottom:8px;border-bottom:2px solid #2563eb;margin-bottom:8px;">
+                            <span style="font-size:18px;">&#127466;&#127482;</span>
+                            <div>
+                                <div style="font-size:12px;font-weight:700;color:#60a5fa;">HUA HIN</div>
+                                <div style="font-size:10px;color:#9ca3af;">Europe Side</div>
+                            </div>
+                            <span id="rcEurCount" style="margin-left:auto;font-size:11px;font-weight:700;color:#60a5fa;background:rgba(37,99,235,0.15);padding:2px 8px;border-radius:10px;">0</span>
+                        </div>
+                        <div id="rcEurList" style="font-size:12px;color:#9ca3af;text-align:center;padding:16px 0;">No players yet</div>
+                    </div>
+                </div>
+
+                <!-- Info -->
+                <div style="background:rgba(30,41,59,0.8);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:16px;margin-bottom:20px;">
+                    <div style="color:#f59e0b;font-size:18px;font-weight:800;margin-bottom:8px;">13,900 THB <span style="font-size:12px;font-weight:400;color:#9ca3af;">per person</span></div>
+                    <div style="font-size:12px;color:#9ca3af;line-height:1.8;">
+                        <span style="color:#34d399;">&#10003;</span> 3 Rounds of Golf<br>
+                        <span style="color:#34d399;">&#10003;</span> Caddie & Cart Fees<br>
+                        <span style="color:#34d399;">&#10003;</span> Exclusive Ryder Cup Shirt<br>
+                        <span style="color:#34d399;">&#10003;</span> Competition Fees<br>
+                        <span style="color:#34d399;">&#10003;</span> Gala Dinner & Entertainment
+                    </div>
+                    <div style="border-top:1px solid rgba(255,255,255,0.1);margin-top:12px;padding-top:12px;">
+                        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;"><span style="color:#9ca3af;">Winning Team</span><span style="color:#f59e0b;font-weight:700;">30,000 THB</span></div>
+                        <div style="display:flex;justify-content:space-between;font-size:13px;"><span style="color:#9ca3af;">Runner-Up</span><span style="color:#e2e8f0;font-weight:700;">20,000 THB</span></div>
+                    </div>
+                    <div style="border-top:1px solid rgba(255,255,255,0.1);margin-top:12px;padding-top:12px;font-size:12px;">
+                        <div style="color:#f59e0b;font-weight:700;margin-bottom:4px;">CONTACT</div>
+                        <div style="color:#e2e8f0;">Derek</div>
+                        <a href="tel:+66080673118" style="color:#60a5fa;text-decoration:none;">+66 080 673 3118</a><br>
+                        <a href="mailto:derek@veejays.com.au" style="color:#60a5fa;text-decoration:none;">derek@veejays.com.au</a>
+                    </div>
+                </div>
+
+                <!-- Day Schedules & Results -->
+                <div style="margin-bottom:20px;">
+                    <h3 style="color:white;font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+                        <span class="material-symbols-outlined text-amber-400">scoreboard</span>
+                        Match Schedule & Results
+                    </h3>
+
+                    <!-- Overall Score Banner -->
+                    <div id="rcOverallScore" style="display:none;background:linear-gradient(135deg,#991b1b,#0f172a,#1e3a8a);border-radius:16px;padding:16px;margin-bottom:12px;text-align:center;">
+                        <div style="font-size:11px;color:#f59e0b;font-weight:700;margin-bottom:8px;">OVERALL SCORE</div>
+                        <div style="display:flex;align-items:center;justify-content:center;gap:16px;">
+                            <div><div style="font-size:10px;color:#f87171;font-weight:600;">PATTAYA</div><div id="rcScoreUSA" style="font-size:32px;font-weight:800;color:white;">0</div></div>
+                            <div style="font-size:14px;color:#f59e0b;font-weight:700;">vs</div>
+                            <div><div style="font-size:10px;color:#60a5fa;font-weight:600;">HUA HIN</div><div id="rcScoreEUR" style="font-size:32px;font-weight:800;color:white;">0</div></div>
+                        </div>
+                    </div>
+
+                    <!-- Day tabs -->
+                    <div style="display:flex;gap:6px;margin-bottom:12px;">
+                        <button onclick="RyderCupPage.showDay(1)" id="rcDayTab1" style="flex:1;padding:8px;border:2px solid #dc2626;background:rgba(220,38,38,0.15);border-radius:10px;color:#e2e8f0;font-size:11px;font-weight:700;cursor:pointer;">DAY 1<br><span style="font-weight:400;font-size:10px;">Jun 9</span></button>
+                        <button onclick="RyderCupPage.showDay(2)" id="rcDayTab2" style="flex:1;padding:8px;border:2px solid #4b5563;background:transparent;border-radius:10px;color:#9ca3af;font-size:11px;font-weight:700;cursor:pointer;">DAY 2<br><span style="font-weight:400;font-size:10px;">Jun 11</span></button>
+                        <button onclick="RyderCupPage.showDay(3)" id="rcDayTab3" style="flex:1;padding:8px;border:2px solid #4b5563;background:transparent;border-radius:10px;color:#9ca3af;font-size:11px;font-weight:700;cursor:pointer;">DAY 3<br><span style="font-weight:400;font-size:10px;">Jun 12</span></button>
+                    </div>
+
+                    <!-- Day Content -->
+                    <div id="rcDayContent" style="background:rgba(30,41,59,0.8);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:16px;">
+                        <div style="text-align:center;color:#9ca3af;font-size:13px;padding:20px 0;">
+                            Pairings will be announced once registration closes
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin Section (organizers only) -->
+                <div id="rcAdminSection" style="display:none;">
+                    <div style="background:rgba(30,41,59,0.8);border:2px solid #f59e0b;border-radius:16px;padding:16px;margin-bottom:20px;">
+                        <h3 style="color:#f59e0b;font-size:16px;font-weight:700;margin:0 0 12px;display:flex;align-items:center;gap:8px;">
+                            <span class="material-symbols-outlined">admin_panel_settings</span>
+                            Organizer Dashboard
+                        </h3>
+
+                        <!-- Summary Stats -->
+                        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">
+                            <div style="text-align:center;padding:8px;background:rgba(15,23,42,0.6);border-radius:10px;">
+                                <div id="rcAdminTotal" style="font-size:20px;font-weight:800;color:#f59e0b;">0</div>
+                                <div style="font-size:10px;color:#9ca3af;">Registered</div>
+                            </div>
+                            <div style="text-align:center;padding:8px;background:rgba(15,23,42,0.6);border-radius:10px;">
+                                <div id="rcAdminTransport" style="font-size:20px;font-weight:800;color:#60a5fa;">0</div>
+                                <div style="font-size:10px;color:#9ca3af;">Transport</div>
+                            </div>
+                            <div style="text-align:center;padding:8px;background:rgba(15,23,42,0.6);border-radius:10px;">
+                                <div id="rcAdminHotel" style="font-size:20px;font-weight:800;color:#a78bfa;">0</div>
+                                <div style="font-size:10px;color:#9ca3af;">Hotel</div>
+                            </div>
+                            <div style="text-align:center;padding:8px;background:rgba(15,23,42,0.6);border-radius:10px;">
+                                <div id="rcAdminPaid" style="font-size:20px;font-weight:800;color:#34d399;">0</div>
+                                <div style="font-size:10px;color:#9ca3af;">Paid</div>
+                            </div>
+                        </div>
+
+                        <!-- Financial Summary -->
+                        <div style="background:rgba(15,23,42,0.6);border-radius:10px;padding:12px;margin-bottom:16px;">
+                            <div style="font-size:11px;font-weight:700;color:#f59e0b;margin-bottom:8px;">FINANCIAL SUMMARY</div>
+                            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span style="color:#9ca3af;">Golf Fees</span><span id="rcAdminGolfFees" style="color:#e2e8f0;font-weight:600;">0 THB</span></div>
+                            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span style="color:#9ca3af;">Hotel Fees</span><span id="rcAdminHotelFees" style="color:#e2e8f0;font-weight:600;">0 THB</span></div>
+                            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;border-top:1px solid rgba(255,255,255,0.1);padding-top:4px;"><span style="color:#e2e8f0;font-weight:700;">Total Expected</span><span id="rcAdminTotalFees" style="color:#f59e0b;font-weight:700;">0 THB</span></div>
+                            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span style="color:#34d399;">Collected</span><span id="rcAdminCollected" style="color:#34d399;font-weight:600;">0 THB</span></div>
+                            <div style="display:flex;justify-content:space-between;font-size:12px;"><span style="color:#ef4444;">Outstanding</span><span id="rcAdminOutstanding" style="color:#ef4444;font-weight:600;">0 THB</span></div>
+                        </div>
+
+                        <!-- Registration Table -->
+                        <div style="font-size:11px;font-weight:700;color:#f59e0b;margin-bottom:8px;">ALL REGISTRATIONS</div>
+                        <div id="rcAdminTable" style="overflow-x:auto;"></div>
+
+                        <!-- Pairings Editor -->
+                        <div style="margin-top:16px;border-top:1px solid rgba(255,255,255,0.1);padding-top:16px;">
+                            <div style="font-size:11px;font-weight:700;color:#f59e0b;margin-bottom:8px;">SET PAIRINGS & RESULTS</div>
+                            <div style="display:flex;gap:6px;margin-bottom:12px;">
+                                <button onclick="RyderCupPage.editDay(1)" id="rcEditDay1" style="flex:1;padding:6px;border:1px solid #f59e0b;background:rgba(245,158,11,0.15);border-radius:8px;color:#f59e0b;font-size:11px;font-weight:600;cursor:pointer;">Day 1</button>
+                                <button onclick="RyderCupPage.editDay(2)" id="rcEditDay2" style="flex:1;padding:6px;border:1px solid #4b5563;background:transparent;border-radius:8px;color:#9ca3af;font-size:11px;font-weight:600;cursor:pointer;">Day 2</button>
+                                <button onclick="RyderCupPage.editDay(3)" id="rcEditDay3" style="flex:1;padding:6px;border:1px solid #4b5563;background:transparent;border-radius:8px;color:#9ca3af;font-size:11px;font-weight:600;cursor:pointer;">Day 3</button>
+                            </div>
+                            <div id="rcPairingEditor"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Admin section only shown when opened from organizer dashboard
+        if (this.showAdmin) {
+            const adminEl = document.getElementById('rcAdminSection');
+            if (adminEl) adminEl.style.display = 'block';
+        }
+
+        // Load event + registrations + day data
+        await this.findEvent();
+        await this.loadRegs();
+        await this.loadDayData();
+    },
+
+    close() {
+        const modal = document.getElementById('ryderCupModal');
+        if (modal) modal.style.display = 'none';
+        document.body.style.overflow = '';
+    },
+
+    selectedTeam: null,
+    cachedRegs: [],
+
+    selectSide(side) {
+        this.selectedSide = side;
+        this.selectedTeam = null;
+        const usa = document.getElementById('rcSideUSA');
+        const eur = document.getElementById('rcSideEUR');
+        const btn = document.getElementById('rcRegisterBtn');
+        if (side === 'usa') {
+            usa.style.borderColor = '#dc2626';
+            usa.style.background = 'rgba(220,38,38,0.15)';
+            eur.style.borderColor = '#4b5563';
+            eur.style.background = 'transparent';
+        } else {
+            eur.style.borderColor = '#2563eb';
+            eur.style.background = 'rgba(37,99,235,0.15)';
+            usa.style.borderColor = '#4b5563';
+            usa.style.background = 'transparent';
+        }
+        btn.textContent = side === 'usa' ? 'Register for PATTAYA (USA)' : 'Register for HUA HIN (Europe)';
+        btn.style.background = side === 'usa' ? '#dc2626' : '#2563eb';
+        btn.style.color = 'white';
+
+        // Show team selection
+        this.renderTeamOptions(side);
+    },
+
+    renderTeamOptions(side) {
+        const container = document.getElementById('rcTeamSelection');
+        const options = document.getElementById('rcTeamOptions');
+        if (!container || !options) return;
+        container.style.display = 'block';
+
+        // Group existing registrations by team key for this side
+        const sidePlayers = this.cachedRegs.filter(r => (r.partner_prefs?.[0] || 'usa') === side);
+        const teams = {};
+        for (const r of sidePlayers) {
+            const teamKey = r.caddy_numbers || 'unassigned';
+            if (!teams[teamKey]) teams[teamKey] = [];
+            teams[teamKey].push(r);
+        }
+
+        // Find existing teams with open spots
+        let html = '';
+        const teamKeys = Object.keys(teams).filter(t => t !== 'unassigned').sort();
+        for (const tKey of teamKeys) {
+            const members = teams[tKey];
+            if (members.length < 4) {
+                const tNum = tKey.split(':')[0];
+                const tName = tKey.includes(':') ? tKey.split(':').slice(1).join(':') : 'Team ' + tNum;
+                const names = members.map(m => m.player_name).join(', ');
+                const spots = 4 - members.length;
+                const escaped = tKey.replace(/'/g, "\\'");
+                html += `<button onclick="RyderCupPage.pickTeam('${escaped}')" id="rcTeamOpt_${tNum}" style="text-align:left;padding:10px 12px;border:2px solid #4b5563;border-radius:10px;background:rgba(30,41,59,0.6);cursor:pointer;color:#e2e8f0;">
+                    <div style="font-size:12px;font-weight:700;color:#f59e0b;">${tName}</div>
+                    <div style="font-size:11px;color:#9ca3af;">${names}</div>
+                    <div style="font-size:10px;color:#34d399;">${spots} spot${spots > 1 ? 's' : ''} open</div>
+                </button>`;
+            }
+        }
+
+        // Always show "Create New Team" option
+        const nums = teamKeys.map(k => parseInt(k.split(':')[0])).filter(n => !isNaN(n));
+        const nextTeamNum = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+        html += `<button onclick="RyderCupPage.createNewTeam('${nextTeamNum}')" id="rcTeamOpt_new" style="text-align:left;padding:10px 12px;border:2px dashed #4b5563;border-radius:10px;background:transparent;cursor:pointer;color:#e2e8f0;">
+            <div style="font-size:12px;font-weight:700;color:#34d399;">+ Create New Team</div>
+            <div style="font-size:10px;color:#9ca3af;">Name your team and start a new 4-man squad</div>
+        </button>`;
+
+        options.innerHTML = html;
+    },
+
+    createNewTeam(nextNum) {
+        const name = prompt('Name your team:');
+        if (!name) return;
+        this.selectedTeam = `${nextNum}:${name}`;
+        // Highlight
+        document.querySelectorAll('[id^="rcTeamOpt_"]').forEach(el => {
+            el.style.borderColor = '#4b5563'; el.style.background = 'rgba(30,41,59,0.6)';
+        });
+        const newBtn = document.getElementById('rcTeamOpt_new');
+        if (newBtn) {
+            newBtn.style.borderColor = '#f59e0b'; newBtn.style.background = 'rgba(245,158,11,0.15)';
+            newBtn.querySelector('div').textContent = `${name} (Team ${nextNum})`;
+        }
+        const btn = document.getElementById('rcRegisterBtn');
+        btn.textContent = `Register - ${name}`;
+    },
+
+    pickTeam(teamKey) {
+        this.selectedTeam = teamKey;
+        document.querySelectorAll('[id^="rcTeamOpt_"]').forEach(el => {
+            el.style.borderColor = '#4b5563'; el.style.background = 'rgba(30,41,59,0.6)';
+        });
+        const sel = document.getElementById('rcTeamOpt_' + teamKey.split(':')[0]);
+        if (sel) { sel.style.borderColor = '#f59e0b'; sel.style.background = 'rgba(245,158,11,0.15)'; }
+        const teamName = teamKey.includes(':') ? teamKey.split(':').slice(1).join(':') : 'Team ' + teamKey;
+        document.getElementById('rcRegisterBtn').textContent = `Register - ${teamName}`;
+    },
+
+    // Helper: format handicap - negative values are plus handicaps
+    fmtHcp(hcp) {
+        if (hcp === null || hcp === undefined || hcp === '' || hcp === 'N/A') return '-';
+        const n = parseFloat(hcp);
+        if (isNaN(n)) return String(hcp);
+        if (n < 0) return '+' + Math.abs(n).toFixed(1);
+        return n.toFixed(1);
+    },
+
+    async findEvent() {
+        if (!window.SupabaseDB?.client) { console.error('[RyderCup] No Supabase client'); return; }
+
+        // Try finding by title
+        const { data, error } = await window.SupabaseDB.client
+            .from('society_events').select('id, title')
+            .eq('society_id', this.TRGG_SOCIETY_ID)
+            .ilike('title', '%Ryder%')
+            .limit(1).maybeSingle();
+
+        console.log('[RyderCup] Event search:', { data, error });
+
+        if (data) {
+            this.eventId = data.id;
+        } else {
+            // Try without society filter
+            const { data: d2, error: e2 } = await window.SupabaseDB.client
+                .from('society_events').select('id, title')
+                .ilike('title', '%Ryder%')
+                .limit(1).maybeSingle();
+            console.log('[RyderCup] Broader search:', { d2, e2 });
+
+            if (d2) {
+                this.eventId = d2.id;
+            } else {
+                // Create it
+                const { data: e, error: createErr } = await window.SupabaseDB.client
+                    .from('society_events').insert({
+                        title: 'TRGG Ryder Cup 2026 - Pattaya vs Hua Hin',
+                        society_id: this.TRGG_SOCIETY_ID,
+                        event_date: '2026-06-09', start_time: '10:00',
+                        course_name: 'Bangpakong Riverside Country Club',
+                        description: 'TRGG Ryder Cup 2026', format: 'stableford',
+                        entry_fee: 13900, status: 'published',
+                        organizer_name: 'Derek'
+                    }).select().single();
+                console.log('[RyderCup] Create event:', { e, createErr });
+                if (e) this.eventId = e.id;
+            }
+        }
+        console.log('[RyderCup] Event ID:', this.eventId);
+    },
+
+    async loadRegs() {
+        if (!this.eventId || !window.SupabaseDB?.client) return;
+        const { data: regs } = await window.SupabaseDB.client
+            .from('event_registrations')
+            .select('id, player_id, player_name, handicap, partner_prefs, caddy_numbers, want_transport, want_competition, total_fee, created_at')
+            .eq('event_id', this.eventId)
+            .order('created_at', { ascending: true });
+        if (!regs) return;
+
+        this.cachedRegs = regs;
+        const usa = [], eur = [];
+        const userId = AppState?.currentUser?.lineUserId || AppState?.currentUser?.userId;
+        this.myReg = null;
+
+        for (const r of regs) {
+            const side = r.partner_prefs?.[0] || 'usa';
+            const p = { id: r.id, playerId: r.player_id, name: r.player_name, handicap: r.handicap, team: r.caddy_numbers || '?' };
+            if (side === 'europe') eur.push(p); else usa.push(p);
+            if (r.player_id === userId) this.myReg = { ...r, side };
+        }
+
+        document.getElementById('rcUsaCount').textContent = usa.length;
+        document.getElementById('rcEurCount').textContent = eur.length;
+        document.getElementById('rcPlayerCount').textContent = regs.length + ' players';
+
+        const renderList = (players, color) => {
+            if (!players.length) return '<div style="font-size:12px;color:#4b5563;text-align:center;padding:16px 0;">No players yet</div>';
+            // Group by team key
+            const teams = {};
+            for (const p of players) {
+                if (!teams[p.team]) teams[p.team] = [];
+                teams[p.team].push(p);
+            }
+            let html = '';
+            const sortedTeams = Object.keys(teams).sort((a, b) => (parseInt(a) || 999) - (parseInt(b) || 999));
+            for (const tKey of sortedTeams) {
+                const members = teams[tKey];
+                const spots = 4 - members.length;
+                const tName = tKey.includes(':') ? tKey.split(':').slice(1).join(':') : 'Team ' + tKey;
+                html += `<div style="font-size:10px;font-weight:700;color:${color};margin-top:8px;margin-bottom:4px;text-transform:uppercase;display:flex;justify-content:space-between;">
+                    <span>${tName}</span>
+                    ${spots > 0 ? `<span style="color:#34d399;font-weight:400;">${spots} open</span>` : '<span style="color:#9ca3af;font-weight:400;">Full</span>'}
+                </div>`;
+                for (const p of members) {
+                    html += `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:rgba(30,41,59,0.6);border-radius:8px;margin-bottom:3px;">
+                        <div style="flex:1;font-size:12px;color:#e2e8f0;font-weight:500;">${p.name}</div>
+                        <div style="font-size:11px;color:#9ca3af;">${RyderCupPage.fmtHcp(p.handicap)}</div>
+                    </div>`;
+                }
+            }
+            return html;
+        };
+
+        document.getElementById('rcUsaList').innerHTML = renderList(usa, '#f87171');
+        document.getElementById('rcEurList').innerHTML = renderList(eur, '#60a5fa');
+
+        // Update registration UI
+        const btn = document.getElementById('rcRegisterBtn');
+        const already = document.getElementById('rcAlreadyRegistered');
+        if (this.myReg) {
+            btn.style.display = 'none';
+            document.getElementById('rcSideUSA').parentElement.style.display = 'none';
+            already.style.display = 'block';
+            document.getElementById('rcRegSide').textContent = this.myReg.side === 'europe' ? 'Team: Hua Hin (Europe)' : 'Team: Pattaya (USA)';
+        } else {
+            btn.style.display = '';
+            document.getElementById('rcSideUSA').parentElement.style.display = '';
+            already.style.display = 'none';
+        }
+
+        // Update admin panel if visible
+        this.renderAdmin(regs);
+    },
+
+    renderAdmin(regs) {
+        const adminEl = document.getElementById('rcAdminSection');
+        if (!adminEl || adminEl.style.display === 'none') return;
+
+        const transportCount = regs.filter(r => r.want_transport).length;
+        const hotelCount = regs.filter(r => r.want_competition).length; // want_competition = hotel
+        const paidCount = regs.filter(r => r.total_fee > 0).length;
+        const totalGolfFees = regs.length * 13900;
+        const totalHotelFees = hotelCount * 7500;
+        const totalExpected = totalGolfFees + totalHotelFees;
+        const collected = regs.reduce((sum, r) => sum + (r.total_fee || 0), 0);
+
+        document.getElementById('rcAdminTotal').textContent = regs.length;
+        document.getElementById('rcAdminTransport').textContent = transportCount;
+        document.getElementById('rcAdminHotel').textContent = hotelCount;
+        document.getElementById('rcAdminPaid').textContent = paidCount;
+        document.getElementById('rcAdminGolfFees').textContent = totalGolfFees.toLocaleString() + ' THB';
+        document.getElementById('rcAdminHotelFees').textContent = totalHotelFees.toLocaleString() + ' THB';
+        document.getElementById('rcAdminTotalFees').textContent = totalExpected.toLocaleString() + ' THB';
+        document.getElementById('rcAdminCollected').textContent = collected.toLocaleString() + ' THB';
+        document.getElementById('rcAdminOutstanding').textContent = (totalExpected - collected).toLocaleString() + ' THB';
+
+        // Registration table
+        const table = document.getElementById('rcAdminTable');
+        if (!table) return;
+        let html = `<table style="width:100%;border-collapse:collapse;font-size:11px;">
+            <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.2);">
+                <th style="text-align:left;padding:6px 4px;color:#9ca3af;">Player</th>
+                <th style="text-align:left;padding:6px 4px;color:#9ca3af;">Side</th>
+                <th style="text-align:left;padding:6px 4px;color:#9ca3af;">Team</th>
+                <th style="text-align:center;padding:6px 4px;color:#9ca3af;">HCP</th>
+                <th style="text-align:center;padding:6px 4px;color:#9ca3af;">Bus</th>
+                <th style="text-align:center;padding:6px 4px;color:#9ca3af;">Hotel</th>
+                <th style="text-align:center;padding:6px 4px;color:#9ca3af;">Paid</th>
+            </tr></thead><tbody>`;
+
+        for (const r of regs) {
+            const side = r.partner_prefs?.[0] || 'usa';
+            const teamKey = r.caddy_numbers || '?';
+            const teamName = teamKey.includes(':') ? teamKey.split(':').slice(1).join(':') : 'Team ' + teamKey;
+            const sideColor = side === 'europe' ? '#60a5fa' : '#f87171';
+            const isPaid = r.total_fee > 0;
+            const owes = 13900 + (r.want_competition ? 7500 : 0);
+
+            html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:6px 4px;color:#e2e8f0;font-weight:500;">${r.player_name}</td>
+                <td style="padding:6px 4px;color:${sideColor};font-weight:600;">${side === 'europe' ? 'EUR' : 'USA'}</td>
+                <td style="padding:6px 4px;color:#9ca3af;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${teamName}</td>
+                <td style="padding:6px 4px;text-align:center;color:#9ca3af;">${this.fmtHcp(r.handicap)}</td>
+                <td style="padding:6px 4px;text-align:center;">${r.want_transport ? '<span style="color:#34d399;">Y</span>' : '<span style="color:#4b5563;">-</span>'}</td>
+                <td style="padding:6px 4px;text-align:center;">${r.want_competition ? '<span style="color:#a78bfa;">Y</span>' : '<span style="color:#4b5563;">-</span>'}</td>
+                <td style="padding:6px 4px;text-align:center;">
+                    <button onclick="RyderCupPage.togglePaid('${r.id}', ${isPaid ? 'false' : 'true'}, ${owes})" style="background:${isPaid ? '#059669' : '#dc2626'};color:white;border:none;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;cursor:pointer;">
+                        ${isPaid ? 'PAID' : owes.toLocaleString()}
+                    </button>
+                </td>
+            </tr>`;
+        }
+        html += '</tbody></table>';
+        table.innerHTML = html;
+    },
+
+    dayData: null,
+    currentViewDay: 1,
+    currentEditDay: 1,
+
+    DAY_INFO: {
+        1: { date: 'Tuesday, 9th June', course: 'Bangpakong', format: '4 Ball Best Ball Stroke Match Play' },
+        2: { date: 'Thursday, 11th June', course: 'St Andrews 2000', format: '4 Ball Aggregate Stableford Match Play' },
+        3: { date: 'Friday, 12th June', course: 'Laem Chabang', format: 'Singles Stroke Match Play' },
+    },
+
+    async loadDayData() {
+        if (!this.eventId || !window.SupabaseDB?.client) return;
+        const { data } = await window.SupabaseDB.client
+            .from('society_events').select('point_allocation')
+            .eq('id', this.eventId).single();
+        this.dayData = data?.point_allocation || {};
+        this.renderDay(this.currentViewDay);
+        this.renderOverallScore();
+    },
+
+    showDay(day) {
+        this.currentViewDay = day;
+        [1,2,3].forEach(d => {
+            const tab = document.getElementById('rcDayTab' + d);
+            if (!tab) return;
+            const colors = { 1: '#dc2626', 2: '#2563eb', 3: '#059669' };
+            if (d === day) {
+                tab.style.borderColor = colors[d]; tab.style.background = `${colors[d]}25`; tab.style.color = '#e2e8f0';
+            } else {
+                tab.style.borderColor = '#4b5563'; tab.style.background = 'transparent'; tab.style.color = '#9ca3af';
+            }
+        });
+        this.renderDay(day);
+    },
+
+    renderDay(day) {
+        const container = document.getElementById('rcDayContent');
+        if (!container) return;
+        const info = this.DAY_INFO[day];
+        const dd = this.dayData?.days?.[day];
+
+        let html = `<div style="margin-bottom:12px;">
+            <div style="font-size:13px;font-weight:700;color:#f59e0b;">${info.date}</div>
+            <div style="font-size:16px;font-weight:700;color:white;">${info.course}</div>
+            <div style="font-size:12px;color:#9ca3af;margin-top:2px;">${info.format}</div>
+            ${dd?.status ? `<span style="display:inline-block;margin-top:6px;padding:2px 10px;border-radius:10px;font-size:10px;font-weight:700;background:${dd.status==='completed'?'#059669':dd.status==='live'?'#dc2626':'#4b5563'};color:white;">${dd.status.toUpperCase()}</span>` : ''}
+        </div>`;
+
+        if (!dd || !dd.pairings || dd.pairings.length === 0) {
+            html += '<div style="text-align:center;color:#9ca3af;font-size:13px;padding:20px 0;">Pairings not yet announced</div>';
+        } else {
+            // Render pairings
+            for (let i = 0; i < dd.pairings.length; i++) {
+                const p = dd.pairings[i];
+                const result = dd.results?.[i];
+                const teeTime = p.teeTime || '10:00';
+                html += `<div style="background:rgba(15,23,42,0.6);border-radius:10px;padding:10px;margin-bottom:8px;border:1px solid rgba(255,255,255,0.05);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                        <span style="font-size:10px;color:#9ca3af;">Match ${i+1} | ${teeTime}</span>
+                        ${result ? `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:${result.winner==='usa'?'#dc2626':'#2563eb'};color:white;">${result.winner==='usa'?'PATTAYA':'HUA HIN'} WIN</span>` : ''}
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;">
+                        <div style="text-align:center;">
+                            <div style="font-size:10px;color:#f87171;font-weight:600;">PATTAYA</div>
+                            <div style="font-size:12px;color:#e2e8f0;font-weight:500;">${p.usaTeam || 'TBD'}</div>
+                            ${result ? `<div style="font-size:18px;font-weight:800;color:${result.winner==='usa'?'#34d399':'#e2e8f0'};">${result.usaScore || '-'}</div>` : ''}
+                        </div>
+                        <div style="font-size:11px;color:#f59e0b;font-weight:700;">vs</div>
+                        <div style="text-align:center;">
+                            <div style="font-size:10px;color:#60a5fa;font-weight:600;">HUA HIN</div>
+                            <div style="font-size:12px;color:#e2e8f0;font-weight:500;">${p.eurTeam || 'TBD'}</div>
+                            ${result ? `<div style="font-size:18px;font-weight:800;color:${result.winner==='europe'?'#34d399':'#e2e8f0'};">${result.eurScore || '-'}</div>` : ''}
+                        </div>
+                    </div>
+                </div>`;
+            }
+        }
+        container.innerHTML = html;
+    },
+
+    renderOverallScore() {
+        const el = document.getElementById('rcOverallScore');
+        if (!el) return;
+        const ts = this.dayData?.teamScore;
+        if (!ts || (ts.usa === 0 && ts.europe === 0)) { el.style.display = 'none'; return; }
+        el.style.display = 'block';
+        document.getElementById('rcScoreUSA').textContent = ts.usa || 0;
+        document.getElementById('rcScoreEUR').textContent = ts.europe || 0;
+    },
+
+    editDay(day) {
+        this.currentEditDay = day;
+        [1,2,3].forEach(d => {
+            const btn = document.getElementById('rcEditDay' + d);
+            if (!btn) return;
+            if (d === day) { btn.style.borderColor = '#f59e0b'; btn.style.background = 'rgba(245,158,11,0.15)'; btn.style.color = '#f59e0b'; }
+            else { btn.style.borderColor = '#4b5563'; btn.style.background = 'transparent'; btn.style.color = '#9ca3af'; }
+        });
+        this.renderPairingEditor(day);
+    },
+
+    renderPairingEditor(day) {
+        const editor = document.getElementById('rcPairingEditor');
+        if (!editor) return;
+        const dd = this.dayData?.days?.[day] || {};
+        const pairings = dd.pairings || [];
+        const info = this.DAY_INFO[day];
+
+        // Get teams by side
+        const usaTeams = [], eurTeams = [];
+        const teamMap = {};
+        for (const r of this.cachedRegs) {
+            const side = r.partner_prefs?.[0] || 'usa';
+            const tKey = r.caddy_numbers || '?';
+            const tName = tKey.includes(':') ? tKey.split(':').slice(1).join(':') : 'Team ' + tKey;
+            if (!teamMap[tKey]) { teamMap[tKey] = { key: tKey, name: tName, side, players: [] }; }
+            teamMap[tKey].players.push(r.player_name);
+        }
+        Object.values(teamMap).forEach(t => { if (t.side === 'usa') usaTeams.push(t); else eurTeams.push(t); });
+
+        let html = `<div style="font-size:12px;color:#e2e8f0;margin-bottom:8px;"><strong>Day ${day}:</strong> ${info.course} - ${info.format}</div>`;
+
+        // Status selector
+        html += `<div style="margin-bottom:10px;"><label style="font-size:11px;color:#9ca3af;">Status: </label>
+            <select id="rcDayStatus" style="background:#1e293b;color:#e2e8f0;border:1px solid #4b5563;border-radius:6px;padding:4px 8px;font-size:11px;">
+                <option value="scheduled" ${dd.status==='scheduled'?'selected':''}>Scheduled</option>
+                <option value="live" ${dd.status==='live'?'selected':''}>Live</option>
+                <option value="completed" ${dd.status==='completed'?'selected':''}>Completed</option>
+            </select></div>`;
+
+        // Existing pairings
+        const maxPairings = Math.max(pairings.length + 1, usaTeams.length, eurTeams.length);
+        for (let i = 0; i < Math.max(pairings.length, 1); i++) {
+            const p = pairings[i] || {};
+            const r = dd.results?.[i] || {};
+            html += `<div style="background:rgba(15,23,42,0.5);border-radius:8px;padding:8px;margin-bottom:6px;border:1px solid rgba(255,255,255,0.05);">
+                <div style="font-size:10px;color:#f59e0b;font-weight:600;margin-bottom:4px;">Match ${i+1}</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
+                    <div>
+                        <label style="font-size:10px;color:#f87171;">USA Team</label>
+                        <select id="rcPairUSA_${i}" style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #4b5563;border-radius:6px;padding:4px;font-size:11px;">
+                            <option value="">Select</option>
+                            ${usaTeams.map(t => `<option value="${t.name}" ${p.usaTeam===t.name?'selected':''}>${t.name} (${t.players.join(', ')})</option>`).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:10px;color:#60a5fa;">EUR Team</label>
+                        <select id="rcPairEUR_${i}" style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #4b5563;border-radius:6px;padding:4px;font-size:11px;">
+                            <option value="">Select</option>
+                            ${eurTeams.map(t => `<option value="${t.name}" ${p.eurTeam===t.name?'selected':''}>${t.name} (${t.players.join(', ')})</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
+                    <input id="rcResUSA_${i}" type="text" placeholder="USA Score" value="${r.usaScore||''}" style="background:#1e293b;color:#e2e8f0;border:1px solid #4b5563;border-radius:6px;padding:4px;font-size:11px;text-align:center;">
+                    <select id="rcResWinner_${i}" style="background:#1e293b;color:#e2e8f0;border:1px solid #4b5563;border-radius:6px;padding:4px;font-size:11px;">
+                        <option value="">No result</option>
+                        <option value="usa" ${r.winner==='usa'?'selected':''}>USA Win</option>
+                        <option value="europe" ${r.winner==='europe'?'selected':''}>EUR Win</option>
+                        <option value="halved" ${r.winner==='halved'?'selected':''}>Halved</option>
+                    </select>
+                    <input id="rcResEUR_${i}" type="text" placeholder="EUR Score" value="${r.eurScore||''}" style="background:#1e293b;color:#e2e8f0;border:1px solid #4b5563;border-radius:6px;padding:4px;font-size:11px;text-align:center;">
+                </div>
+            </div>`;
+        }
+
+        html += `<div style="display:flex;gap:8px;margin-top:8px;">
+            <button onclick="RyderCupPage.addPairingRow()" style="flex:1;padding:8px;border:1px dashed #4b5563;background:transparent;border-radius:8px;color:#34d399;font-size:11px;cursor:pointer;">+ Add Match</button>
+            <button onclick="RyderCupPage.saveDayData()" style="flex:1;padding:8px;background:#f59e0b;border:none;border-radius:8px;color:#0f172a;font-size:11px;font-weight:700;cursor:pointer;">Save Day ${day}</button>
+        </div>`;
+
+        editor.innerHTML = html;
+    },
+
+    addPairingRow() {
+        // Re-render with one more empty pairing
+        const dd = this.dayData?.days?.[this.currentEditDay] || {};
+        if (!dd.pairings) dd.pairings = [];
+        dd.pairings.push({});
+        if (!this.dayData.days) this.dayData.days = {};
+        this.dayData.days[this.currentEditDay] = dd;
+        this.renderPairingEditor(this.currentEditDay);
+    },
+
+    async saveDayData() {
+        const day = this.currentEditDay;
+        if (!this.dayData) this.dayData = {};
+        if (!this.dayData.days) this.dayData.days = {};
+
+        const status = document.getElementById('rcDayStatus')?.value || 'scheduled';
+        const pairings = [];
+        const results = [];
+        let usaWins = 0, eurWins = 0;
+
+        // Collect pairings and results from form
+        for (let i = 0; i < 20; i++) {
+            const usaEl = document.getElementById('rcPairUSA_' + i);
+            const eurEl = document.getElementById('rcPairEUR_' + i);
+            if (!usaEl) break;
+            const usaTeam = usaEl.value;
+            const eurTeam = eurEl?.value || '';
+            if (!usaTeam && !eurTeam) continue;
+
+            pairings.push({ usaTeam, eurTeam, teeTime: '10:00' });
+
+            const winner = document.getElementById('rcResWinner_' + i)?.value || '';
+            const usaScore = document.getElementById('rcResUSA_' + i)?.value || '';
+            const eurScore = document.getElementById('rcResEUR_' + i)?.value || '';
+            if (winner) {
+                results.push({ winner, usaScore, eurScore });
+                if (winner === 'usa') usaWins++;
+                else if (winner === 'europe') eurWins++;
+                else { usaWins += 0.5; eurWins += 0.5; }
+            } else {
+                results.push(null);
+            }
+        }
+
+        this.dayData.days[day] = { status, pairings, results };
+
+        // Recalculate overall score
+        let totalUSA = 0, totalEUR = 0;
+        for (const d of [1,2,3]) {
+            const dayResults = this.dayData.days[d]?.results || [];
+            for (const r of dayResults) {
+                if (!r) continue;
+                if (r.winner === 'usa') totalUSA++;
+                else if (r.winner === 'europe') totalEUR++;
+                else if (r.winner === 'halved') { totalUSA += 0.5; totalEUR += 0.5; }
+            }
+        }
+        this.dayData.teamScore = { usa: totalUSA, europe: totalEUR };
+
+        // Save to DB
+        try {
+            const { error } = await window.SupabaseDB.client
+                .from('society_events')
+                .update({ point_allocation: this.dayData })
+                .eq('id', this.eventId);
+            if (error) throw error;
+            NotificationManager.show(`Day ${day} saved!`, 'success');
+            this.renderDay(this.currentViewDay);
+            this.renderOverallScore();
+        } catch (err) {
+            console.error('[RyderCup] Save day error:', err);
+            alert('Save failed: ' + err.message);
+        }
+    },
+
+    async togglePaid(regId, markPaid, amount) {
+        try {
+            await window.SupabaseDB.client
+                .from('event_registrations')
+                .update({ total_fee: markPaid === 'true' ? amount : 0 })
+                .eq('id', regId);
+            await this.loadRegs();
+        } catch (err) {
+            console.error('[RyderCup] Toggle paid error:', err);
+        }
+    },
+
+    async register() {
+        console.log('[RyderCup] Register clicked. Side:', this.selectedSide, 'Team:', this.selectedTeam);
+        if (!this.selectedSide) { alert('Please select a side (Pattaya or Hua Hin)'); return; }
+        const user = AppState?.currentUser;
+        console.log('[RyderCup] User:', user);
+        if (!user) { alert('Error: Not logged in'); return; }
+        if (!this.eventId) { await this.findEvent(); if (!this.eventId) { alert('Error: Could not find/create event'); return; } }
+
+        const btn = document.getElementById('rcRegisterBtn');
+        btn.disabled = true; btn.textContent = 'Registering...';
+
+        try {
+            const { error } = await window.SupabaseDB.client
+                .from('event_registrations').insert({
+                    event_id: this.eventId,
+                    player_id: user.lineUserId || user.userId,
+                    player_name: user.name || user.displayName,
+                    handicap: (() => {
+                        const h = String(user.handicap || '0');
+                        if (h.startsWith('+')) return -Math.abs(parseFloat(h));
+                        return parseFloat(h) || 0;
+                    })(),
+                    partner_prefs: [this.selectedSide],
+                    caddy_numbers: this.selectedTeam || '1',
+                    want_transport: document.getElementById('rcWantTransport')?.checked || false,
+                    want_competition: document.getElementById('rcWantHotel')?.checked || false,
+                });
+            if (error) throw error;
+            NotificationManager.show('Registered for Ryder Cup!', 'success');
+            await this.loadRegs();
+        } catch (err) {
+            console.error('[RyderCup] Register error:', err);
+            NotificationManager.show('Registration failed: ' + err.message, 'error');
+            btn.disabled = false; btn.textContent = 'Try Again';
+        }
+    },
+
+    async cancel() {
+        if (!this.myReg) return;
+        if (!confirm('Cancel your Ryder Cup registration?')) return;
+        await window.invokeEdgeDelete('unregister-event', { registration_id: this.myReg.id });
+        this.myReg = null;
+        await this.loadRegs();
+        NotificationManager.show('Registration cancelled', 'info');
+    }
+};
+window.RyderCupPage = RyderCupPage;
+
+// Load Ryder Cup registration count for banner badge
+setTimeout(async () => {
+    try {
+        if (!window.SupabaseDB?.client) return;
+        const sb = window.SupabaseDB.client;
+        const { data } = await sb
+            .from('society_events').select('id').ilike('title', '%Ryder Cup%').limit(1).maybeSingle();
+        if (!data) return;
+        const ryderCupEventId = data.id;
+
+        // Fetch initial count
+        async function updateRyderCupCount() {
+            const { count } = await sb
+                .from('event_registrations').select('id', { count: 'exact', head: true }).eq('event_id', ryderCupEventId);
+            const badge = document.getElementById('ryderCupRegCount');
+            if (badge && count != null) badge.textContent = count;
+        }
+        await updateRyderCupCount();
+
+        // Subscribe to real-time changes on event_registrations for this event
+        sb.channel('ryder-cup-registrations')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'event_registrations',
+                filter: `event_id=eq.${ryderCupEventId}`
+            }, () => {
+                updateRyderCupCount();
+            })
+            .subscribe();
+    } catch(e) { console.warn('[RyderCup] Badge count error:', e); }
+}, 3000);
+
+</script>
+
+<!-- ===== 5. i18n KEYS (rydercup.*) left in index.html; copied for completeness ===== -->
+5453:                'rydercup.title': 'TRGG Ryder Cup 2026',
+5454:                'rydercup.pattaya': 'Pattaya',
+5455:                'rydercup.huahin': 'Hua Hin',
+5456:                'rydercup.register': 'Register Now',
+5457:                'rydercup.chooseside': 'Choose Your Side',
+5458:                'rydercup.transport': 'I need transport',
+5459:                'rydercup.hotel': 'I want hotel',
+5460:                'rydercup.registeredplayers': 'Registered Players',
+5461:                'rydercup.noplayersyet': 'No players yet',
+5462:                'rydercup.schedule': 'Tournament Schedule',
+5463:                'rydercup.day1': 'Day 1',
+5464:                'rydercup.day2': 'Day 2',
+5465:                'rydercup.day3': 'Day 3',
+5466:                'rydercup.results': 'Match Schedule & Results',
+5467:                'rydercup.overallscore': 'Overall Score',
+5468:                'rydercup.cost': 'per person',
+5469:                'rydercup.prizes': 'Prizes',
+5470:                'rydercup.winningteam': 'Winning Team',
+5471:                'rydercup.runnerup': 'Runner-Up',
+5472:                'rydercup.contact': 'Contact',
+6511:                'rydercup.title': 'TRGG ไรเดอร์คัพ 2026',
+6512:                'rydercup.pattaya': 'พัทยา',
+6513:                'rydercup.huahin': 'หัวหิน',
+6514:                'rydercup.register': 'ลงทะเบียนเดี๋ยวนี้',
+6515:                'rydercup.chooseside': 'เลือกฝ่ายของคุณ',
+6516:                'rydercup.transport': 'ต้องการรถรับส่ง',
+6517:                'rydercup.hotel': 'ต้องการโรงแรม',
+6518:                'rydercup.registeredplayers': 'ผู้เล่นที่ลงทะเบียน',
+6519:                'rydercup.noplayersyet': 'ยังไม่มีผู้เล่น',
+6520:                'rydercup.schedule': 'ตารางการแข่งขัน',
+6521:                'rydercup.day1': 'วันที่ 1',
+6522:                'rydercup.day2': 'วันที่ 2',
+6523:                'rydercup.day3': 'วันที่ 3',
+6524:                'rydercup.results': 'ตารางแมตช์และผลลัพธ์',
+6525:                'rydercup.overallscore': 'คะแนนรวม',
+6526:                'rydercup.cost': 'ต่อคน',
+6527:                'rydercup.prizes': 'รางวัล',
+6528:                'rydercup.winningteam': 'ทีมชนะ',
+6529:                'rydercup.runnerup': 'รองชนะเลิศ',
+6530:                'rydercup.contact': 'ติดต่อ',
+7670:                'rydercup.title': 'TRGG 라이더컵 2026',
+7671:                'rydercup.pattaya': '파타야',
+7672:                'rydercup.huahin': '후아힌',
+7673:                'rydercup.register': '지금 등록',
+7674:                'rydercup.chooseside': '팀을 선택하세요',
+7675:                'rydercup.transport': '교통편 필요',
+7676:                'rydercup.hotel': '호텔 필요',
+7677:                'rydercup.registeredplayers': '등록 선수',
+7678:                'rydercup.noplayersyet': '아직 선수 없음',
+7679:                'rydercup.schedule': '대회 일정',
+7680:                'rydercup.day1': '1일차',
+7681:                'rydercup.day2': '2일차',
+7682:                'rydercup.day3': '3일차',
+7683:                'rydercup.results': '경기 일정 및 결과',
+7684:                'rydercup.overallscore': '종합 점수',
+7685:                'rydercup.cost': '1인당',
+7686:                'rydercup.prizes': '상금',
+7687:                'rydercup.winningteam': '우승팀',
+7688:                'rydercup.runnerup': '준우승',
+7689:                'rydercup.contact': '연락처',
+8706:                'rydercup.title': 'TRGGライダーカップ2026',
+8707:                'rydercup.pattaya': 'パタヤ',
+8708:                'rydercup.huahin': 'ホアヒン',
+8709:                'rydercup.register': '今すぐ登録',
+8710:                'rydercup.chooseside': 'チームを選んでください',
+8711:                'rydercup.transport': '送迎が必要',
+8712:                'rydercup.hotel': 'ホテルが必要',
+8713:                'rydercup.registeredplayers': '登録プレーヤー',
+8714:                'rydercup.noplayersyet': 'まだプレーヤーがいません',
+8715:                'rydercup.schedule': 'トーナメントスケジュール',
+8716:                'rydercup.day1': '1日目',
+8717:                'rydercup.day2': '2日目',
+8718:                'rydercup.day3': '3日目',
+8719:                'rydercup.results': '試合スケジュールと結果',
+8720:                'rydercup.overallscore': '総合スコア',
+8721:                'rydercup.cost': '1人あたり',
+8722:                'rydercup.prizes': '賞金',
+8723:                'rydercup.winningteam': '優勝チーム',
+8724:                'rydercup.runnerup': '準優勝',
+8725:                'rydercup.contact': '連絡先',
+
+<!-- ===== 6. ORGANIZER MOBILE-DRAWER LINK (was inside #drawerOrgTrggTools ~121844) ===== -->
+<button class="drawer-link" onclick="RyderCupPage.openAsAdmin(); closeMobileDrawer();" style="background: linear-gradient(135deg, #92400e, #78350f); color: white; border-radius: 8px; margin-top: 4px;">
+    <span class="material-symbols-outlined">emoji_events</span>
+    <span>Ryder Cup Manager</span>
+</button>

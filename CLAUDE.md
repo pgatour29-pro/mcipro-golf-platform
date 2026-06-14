@@ -1,7 +1,7 @@
 # MyCaddiPro — Engineering Guidance for Claude Code
 
 ## Stack
-- Frontend: React + TypeScript (strict)
+- Frontend: Vanilla JavaScript + HTML — single-file app (`public/index.html`, ~124K lines). Tailwind via CDN. NOT React/Next.js. See `INDEX.md` for the navigation map.
 - Backend / DB: Supabase (Postgres, Row Level Security, Edge Functions)
 - Deploy: Vercel (production from `main`)
 - Auth: LINE auth for Thai users; standard auth elsewhere
@@ -20,16 +20,17 @@
 - Handicap data: writes go only to the designated handicap columns. Do not touch unrelated columns.
 - Edge Functions: keep them small and single-purpose; log failures, never swallow errors silently.
 
-## TypeScript expectations
-- No `any` unless justified in a comment. Prefer precise types and discriminated unions.
-- Handle the error and empty/loading states for every async path — not just the happy path.
+## JavaScript expectations (vanilla — no build step)
+- Functions called from inline `onclick=`/`onchange=` handlers must be global (on `window`). Don't scope them into a block, IIFE, or module where the handler can't reach them.
+- Inline `<script>` blocks share global scope; mind load order and `defer` timing when adding or moving code.
+- Handle the error and empty/loading states for every async path — not just the happy path. No empty catch blocks, no ignored promise rejections.
 - Multilingual UI (Thai / Korean / Japanese / English): never hardcode user-facing strings.
 
 ## Review standard (what "done" means)
 A change is not done until:
 1. It handles errors and edge cases, not just the happy path.
 2. It has no silent failures (no empty catch blocks, no ignored promise rejections).
-3. Types are tight and the build passes.
+3. No new console errors; functions referenced by inline handlers stay global.
 4. It doesn't break RLS, auth, or existing public/index.html AppState paths.
 5. The diff is minimal and reviewable.
 

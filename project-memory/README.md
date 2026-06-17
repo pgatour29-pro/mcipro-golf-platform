@@ -23,6 +23,7 @@ It's live in production at **mycaddipro.com** and in active daily use (real soci
 ## Key references
 - Live site: https://mycaddipro.com
 - Architecture map: `arch_map/mcipro-architecture-map.html` — interactive map of the whole backend (233 nodes / 292 edges: client modules, edge functions, tables, RPCs, external services). **Local-only, never deployed** (it exposes backend structure). Regenerate with `python3 arch_map/scan.py`.
+- **Full platform catalog: `project-memory/CATALOG.md`** — master inventory of every screen, feature system, DB table, RPC, edge function, integration, and tool (scanned 2026-06-17). Start here to find where anything lives.
 - Daily work catalog example: `CHANGELOG-2026-06-14.md`.
 
 ## How AI should help (working agreement)

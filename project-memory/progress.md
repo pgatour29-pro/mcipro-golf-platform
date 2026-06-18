@@ -3,6 +3,15 @@
 > Dated log of what happened, what changed, and what should happen next. Newest first.
 > (Earlier entries are reconstructed from project memory and may not be exhaustive.)
 
+## 2026-06-19
+Security hardening + Auth v2 + deploy-pipeline recovery (long overnight session). Security detail in `../docs/SECURITY_RUNBOOK.md`.
+- **Login/auth security review.** Audited the login + data-access model and confirmed the hardening priorities. Acted on the top items below; the staged database (RLS) lockdown is queued — its groundwork (per-user sessions) is now in place.
+- **Auth v2 — per-user login sessions (LIVE).** Every login method (LINE web + in-app, Kakao, Google) now establishes a real Supabase session that carries the user's identity, and the session persists across page reloads. This is the prerequisite for the database to enforce per-user access. Rebuilt the Kakao + Google exchange functions to mint the session (they previously only fetched the profile) and fixed the client to establish the session before the account-linking step. (`ac81b725`, `d9b6c68f`, `31485b37`, `4bbdce6e`)
+- **Language LOCKED to login method (final).** Kakao users → always Korean; LINE & Google → always English. Replaces the earlier "default + remembered choice" approach (a saved English pick was overriding Kakao). Now derived fresh from the login each load. (`7b6e9c0b`) Verified on the live site: Kakao→Korean, LINE/Google→English, login page→English.
+- **Deploy-pipeline lesson (cost hours).** Making the GitHub repo private silently broke Vercel's auto-deploy (the build lost access to the repo) — which masked all of the above for hours (it kept testing live but seeing the old build). Resolved by deploying via the Vercel CLI with the repo public. Going forward: deploy with `npx vercel deploy --prod --scope mcipros-projects`; NEVER kill a running deploy (it cancels the Vercel build); to re-private the repo, grant the Vercel GitHub app repo access FIRST, then flip private.
+
+_Next:_ re-private the repo properly (Vercel app access first); rotate the leaked service_role key; then the staged RLS lockdown (per-table, off-peak, rollback) now that the JWT layer is live; passkey/phone session establishment.
+
 ## 2026-06-18
 Live scoring + leaderboard + login polish (much of it while Pete tested live around a Hermes/Pattaya event he won, 76).
 - **Two-team 2-man scramble** (`629d4df2`): you can now track BOTH 2-man teams in a group, with per-team driving + putts. It was ~80% built but unreachable — the Team A/B assignment only appeared with 4 players and nothing prompted adding the other team. Added: a setup hint to add the other team (by name or pick — both already worked), live refresh of the Team A/B block as players are added, per-team putt buttons (drives were already per-team), and persistence of each team's name + handicap so both show as teams on the leaderboard. Single-team scramble + normal rounds untouched.

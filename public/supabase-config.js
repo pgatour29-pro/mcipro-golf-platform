@@ -25,8 +25,8 @@ class SupabaseClient {
             this.client = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
                 auth: {
                     detectSessionInUrl: false,   // CRITICAL: Prevents GoTrue from treating LINE/Kakao ?code= as Supabase PKCE code
-                    autoRefreshToken: false,      // App doesn't use Supabase Auth sessions
-                    persistSession: false         // App manages its own session via localStorage
+                    autoRefreshToken: true,       // refresh the v2 Supabase session in the background (needed so RLS auth survives)
+                    persistSession: true          // persist the v2 session across reloads (needed for RLS); ?code= still ignored via detectSessionInUrl:false
                 }
             });
             this.ready = true;

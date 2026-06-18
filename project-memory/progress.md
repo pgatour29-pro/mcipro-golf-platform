@@ -3,14 +3,24 @@
 > Dated log of what happened, what changed, and what should happen next. Newest first.
 > (Earlier entries are reconstructed from project memory and may not be exhaustive.)
 
+## 2026-06-18
+Live scoring + leaderboard + login polish (much of it while Pete tested live around a Hermes/Pattaya event he won, 76).
+- **Two-team 2-man scramble** (`629d4df2`): you can now track BOTH 2-man teams in a group, with per-team driving + putts. It was ~80% built but unreachable — the Team A/B assignment only appeared with 4 players and nothing prompted adding the other team. Added: a setup hint to add the other team (by name or pick — both already worked), live refresh of the Team A/B block as players are added, per-team putt buttons (drives were already per-team), and persistence of each team's name + handicap so both show as teams on the leaderboard. Single-team scramble + normal rounds untouched.
+- **Scramble Start button stuck red** (`4224da93`): the validator checked a team config that only builds at round-start, so assigning teams never turned it green. Now reads the live Team A/B dropdowns — green once all 4 are assigned, red if a slot is empty, green for single-team.
+- **Community Leaderboard grouping** (`a8d294dd`): the day "Full Leaderboard" popup ranked everyone in one flat list across different courses (a 76 at Hermes above an 85 at Pattaya). Now groups by event/course, each ranked separately (the collapsed dashboard widget already did this).
+- **Kakao login icon** (`e1178930`, `522f85a3`): it showed garbled "FLZE" — the old icon drew the word "KAKAO" as tiny letters. Replaced with the real KakaoTalk brown speech-bubble + "TALK" wordmark, on the login + account-linking screens.
+- **Language by login provider** (`055ea06e`, `c9f003a8`): Kakao logins default to Korean (Kakao is Korea-dominant); every other login (LINE/Google/phone/passkey) defaults to English. The login page itself is always English; an explicit user language choice persists. (First built as everyone-Korean — wrong — reverted; also fixed a stale-saved-pref bug that kept the login page Korean.) Filled 4 untranslated `common.*` keys across all 4 dictionaries.
+- **Security:** completed a login/auth security review; the staged remediation plan lives in `docs/SECURITY_RUNBOOK.md` and is scheduled to run after the day's event (~5 PM Bangkok).
+
+_Next:_ run the scheduled security remediation (off-peak); then `loadMySocieties` (missing `society_name` column).
+
 ## 2026-06-17
 Bug fixes + documentation.
 - **Event registration "roster bleed" fixed** (`dcad63b7`). Symptom: open an event that has registered players (e.g. you + a partner), then move through other events — your names carried over and appeared in every following event, including ones with no registrations, until a refresh. It was a **display bug only** — the database was correct (verified: 112 genuine registrations, mostly TRGG/JOA events actually played). Cause: `loadRegisteredPlayers()` stored the roster + "View All Players" button in memory but bailed out early on events with zero players *before* clearing them, so the previous event's data persisted. Fix: reset the stored roster + hide the button at the start of every event open, plus a guard so a slow-loading roster can't render into the wrong event during fast tap-through. Verified end-to-end (St Andrews → Phoenix → Greenwood all clean).
 - **Organizer Lite back button fixed** (`422849d6`). Tapping a cube then the bottom-left back button dumped organizers to the login screen (two overlapping back buttons; the golfer one unwound the nav history out of the dashboard). Now back returns to the 5-cube home; only the home itself exits, cleanly, to the golfer dashboard.
 - **Lite caddy picker** (`883e706f`): moved the "Add a caddy (new/not listed)" box to the top of the caddy popup so it's visible without scrolling past the full list; saves to your caddy directory + assigns.
 - **Master platform catalog added** (`1b171b5c`): `CATALOG.md` — full inventory of every screen, feature system, DB table/RPC/edge function, integration, and tool. Linked from the README.
-
-_Next:_ decide repo-privacy question (project-memory lives in a public repo — no secrets, but documents architecture); then `loadMySocieties` (missing `society_name` column).
+- **My Caddy Organizer course filter fixed** (`a1106da9`): the course dropdown did nothing — its change only refreshed a hidden list, the default Notebook view ignored it, and it auto-picked the first course. Now defaults to "All Courses" and actually filters your saved caddies by course (with name-variant normalization).
 
 ## 2026-06-14
 A full day on the golfer **Light version** plus tooling. 17 commits shipped (full detail in `../CHANGELOG-2026-06-14.md`). Highlights:

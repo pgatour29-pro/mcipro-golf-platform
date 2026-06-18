@@ -120,28 +120,24 @@ Deno.serve(async (req: Request) => {
       const effectiveId = `KAKAO-${profile.id}`;
       const authEmail = `${effectiveId.toLowerCase()}@kakao-users.mycaddipro.com`;
 
-      let prof: any = (await (await fetch(`${SB_URL}/rest/v1/profiles?line_user_id=eq.${encodeURIComponent(effectiveId)}&select=id,auth_user_id&limit=1`, { headers: sb })).json())?.[0] || null;
-      if (!prof) {
-        const created = await (await fetch(`${SB_URL}/rest/v1/profiles`, { method: "POST", headers: { ...sb, Prefer: "return=representation" }, body: JSON.stringify({ line_user_id: effectiveId, display_name: profile.displayName }) })).json();
-        prof = Array.isArray(created) ? created[0] : created;
+      // 1. Existing mapping for this provider id?
+      const prof: any = (await (await fetch(`${SB_URL}/rest/v1/profiles?line_user_id=eq.${encodeURIComponent(effectiveId)}&select=id,auth_user_id&limit=1`, { headers: sb })).json())?.[0] || null;
+      // 2. Resolve the auth user (profiles.id & auth_user_id are FKs to auth.users; creating a user
+      //    auto-creates its profiles row via the new-user trigger, so we PATCH rather than insert).
+      let authUserId: string | null = prof?.auth_user_id || prof?.id || null;
+      if (authUserId) { const chk = await fetch(`${SB_URL}/auth/v1/admin/users/${authUserId}`, { headers: sb }); if (!chk.ok) authUserId = null; }
+      if (!authUserId) {
+        const cr = await fetch(`${SB_URL}/auth/v1/admin/users`, { method: "POST", headers: sb, body: JSON.stringify({ email: authEmail, email_confirm: true }) });
+        const cd = await cr.json();
+        authUserId = (cr.ok && cd?.id) ? cd.id : (await (await fetch(`${SB_URL}/auth/v1/admin/users?page=1&per_page=200`, { headers: sb })).json())?.users?.find((u: any) => u.email === authEmail)?.id || null;
       }
-      if (prof?.id) {
-        let authUserId: string | null = prof.auth_user_id || null;
-        if (authUserId) {
-          const chk = await fetch(`${SB_URL}/auth/v1/admin/users/${authUserId}`, { headers: sb });
-          if (!chk.ok) authUserId = null;
-        }
-        if (!authUserId) {
-          const cr = await fetch(`${SB_URL}/auth/v1/admin/users`, { method: "POST", headers: sb, body: JSON.stringify({ email: authEmail, email_confirm: true, user_metadata: { line_user_id: effectiveId, profile_id: prof.id } }) });
-          const cd = await cr.json();
-          authUserId = (cr.ok && cd?.id) ? cd.id : (await (await fetch(`${SB_URL}/auth/v1/admin/users?page=1&per_page=200`, { headers: sb })).json())?.users?.find((u: any) => u.email === authEmail)?.id || null;
-          if (authUserId) await fetch(`${SB_URL}/rest/v1/profiles?id=eq.${prof.id}`, { method: "PATCH", headers: { ...sb, Prefer: "return=minimal" }, body: JSON.stringify({ auth_user_id: authUserId }) });
-        }
-        if (authUserId) {
-          const lk = await (await fetch(`${SB_URL}/auth/v1/admin/generate_link`, { method: "POST", headers: sb, body: JSON.stringify({ type: "magiclink", email: authEmail }) })).json();
-          token_hash = lk?.properties?.hashed_token || lk?.hashed_token || null;
-          if (!token_hash && lk?.action_link) { try { const u = new URL(lk.action_link); token_hash = u.searchParams.get("token_hash") || u.searchParams.get("token"); } catch { /* ignore */ } }
-        }
+      if (authUserId) {
+        // 3. Stamp our identity onto the (auto-created) profiles row so the hook injects line_id/profile_id
+        await fetch(`${SB_URL}/rest/v1/profiles?id=eq.${authUserId}`, { method: "PATCH", headers: { ...sb, Prefer: "return=minimal" }, body: JSON.stringify({ line_user_id: effectiveId, display_name: profile.displayName, auth_user_id: authUserId }) });
+        // 4. Mint the one-time magic-link token
+        const lk = await (await fetch(`${SB_URL}/auth/v1/admin/generate_link`, { method: "POST", headers: sb, body: JSON.stringify({ type: "magiclink", email: authEmail }) })).json();
+        token_hash = lk?.hashed_token || lk?.properties?.hashed_token || null;
+        if (!token_hash && lk?.action_link) { try { const u = new URL(lk.action_link); token_hash = u.searchParams.get("token_hash") || u.searchParams.get("token"); } catch { /* ignore */ } }
       }
     } catch (sessErr) {
       console.warn("[kakao-oauth-exchange] session establishment failed (non-fatal):", String(sessErr));

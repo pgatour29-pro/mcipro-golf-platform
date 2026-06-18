@@ -108,7 +108,46 @@ Deno.serve(async (req: Request) => {
       provider: "kakao",
     };
 
-    return json({ ok: true, token: tokenData, profile }, 200, origin);
+    // --- v2: establish a Supabase Auth session (FAIL-SAFE — never blocks login) ---
+    // Creates a public.profiles row keyed to KAKAO-<id> (matching user_profiles) + an auth user,
+    // then mints a magic-link token_hash. The Custom Access Token Hook reads public.profiles by
+    // auth_user_id and injects line_id + profile_id claims. Client calls verifyOtp(token_hash).
+    let token_hash: string | null = null;
+    try {
+      const SB_URL = Deno.env.get("SUPABASE_URL")!;
+      const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const sb = { "Content-Type": "application/json", "apikey": SB_KEY, "Authorization": `Bearer ${SB_KEY}` };
+      const effectiveId = `KAKAO-${profile.id}`;
+      const authEmail = `${effectiveId.toLowerCase()}@kakao-users.mycaddipro.com`;
+
+      let prof: any = (await (await fetch(`${SB_URL}/rest/v1/profiles?line_user_id=eq.${encodeURIComponent(effectiveId)}&select=id,auth_user_id&limit=1`, { headers: sb })).json())?.[0] || null;
+      if (!prof) {
+        const created = await (await fetch(`${SB_URL}/rest/v1/profiles`, { method: "POST", headers: { ...sb, Prefer: "return=representation" }, body: JSON.stringify({ line_user_id: effectiveId, display_name: profile.displayName }) })).json();
+        prof = Array.isArray(created) ? created[0] : created;
+      }
+      if (prof?.id) {
+        let authUserId: string | null = prof.auth_user_id || null;
+        if (authUserId) {
+          const chk = await fetch(`${SB_URL}/auth/v1/admin/users/${authUserId}`, { headers: sb });
+          if (!chk.ok) authUserId = null;
+        }
+        if (!authUserId) {
+          const cr = await fetch(`${SB_URL}/auth/v1/admin/users`, { method: "POST", headers: sb, body: JSON.stringify({ email: authEmail, email_confirm: true, user_metadata: { line_user_id: effectiveId, profile_id: prof.id } }) });
+          const cd = await cr.json();
+          authUserId = (cr.ok && cd?.id) ? cd.id : (await (await fetch(`${SB_URL}/auth/v1/admin/users?page=1&per_page=200`, { headers: sb })).json())?.users?.find((u: any) => u.email === authEmail)?.id || null;
+          if (authUserId) await fetch(`${SB_URL}/rest/v1/profiles?id=eq.${prof.id}`, { method: "PATCH", headers: { ...sb, Prefer: "return=minimal" }, body: JSON.stringify({ auth_user_id: authUserId }) });
+        }
+        if (authUserId) {
+          const lk = await (await fetch(`${SB_URL}/auth/v1/admin/generate_link`, { method: "POST", headers: sb, body: JSON.stringify({ type: "magiclink", email: authEmail }) })).json();
+          token_hash = lk?.properties?.hashed_token || lk?.hashed_token || null;
+          if (!token_hash && lk?.action_link) { try { const u = new URL(lk.action_link); token_hash = u.searchParams.get("token_hash") || u.searchParams.get("token"); } catch { /* ignore */ } }
+        }
+      }
+    } catch (sessErr) {
+      console.warn("[kakao-oauth-exchange] session establishment failed (non-fatal):", String(sessErr));
+    }
+
+    return json({ ok: true, token: tokenData, profile, token_hash }, 200, origin);
   } catch (e: any) {
     return json({ error: "Server error", detail: String(e?.message || e) }, 500, origin);
   }

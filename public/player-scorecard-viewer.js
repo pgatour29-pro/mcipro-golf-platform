@@ -376,7 +376,7 @@ window.PlayerScorecardViewer = (function() {
                     const dayBefore = new Date(new Date(playedDate).getTime() - 86400000).toISOString().split('T')[0];
                     const dayAfter = new Date(new Date(playedDate).getTime() + 86400000).toISOString().split('T')[0];
                     const { data: roundData } = await supabase.from('rounds')
-                        .select('scramble_config, team_size')
+                        .select('id, scramble_config, team_size')
                         .eq('golfer_id', sc.player_id)
                         .gte('played_at', dayBefore + 'T00:00:00')
                         .lte('played_at', dayAfter + 'T23:59:59')
@@ -386,6 +386,15 @@ window.PlayerScorecardViewer = (function() {
                         data.scramble_config = roundData.scramble_config;
                         data.team_size = roundData.team_size;
                         console.log('[ScorecardViewer] Found scramble config:', roundData.scramble_config);
+                        // Per-hole "whose drive / whose putt was used" — for the scramble contribution stats
+                        if (roundData.id) {
+                            try {
+                                const { data: rh } = await supabase.from('round_holes')
+                                    .select('hole_number, drive_player_name, putt_player_name')
+                                    .eq('round_id', roundData.id).order('hole_number');
+                                data.scramble_holes = rh || [];
+                            } catch (e) { console.warn('[ScorecardViewer] round_holes fetch failed:', e); }
+                        }
                     }
                 } catch (e) { console.warn('[ScorecardViewer] Could not fetch scramble config:', e); }
             }
@@ -442,6 +451,28 @@ window.PlayerScorecardViewer = (function() {
                 const diff = h.net_score - h.par;
                 h.stableford_points = diff <= -2 ? 4 : diff === -1 ? 3 : diff === 0 ? 2 : diff === 1 ? 1 : 0;
             });
+        }
+
+        // Scramble contribution stats: how many holes each player's DRIVE / PUTT was used.
+        let scrambleUsageBlock = '';
+        if (isTeamScramble && Array.isArray(data.scramble_holes) && data.scramble_holes.length) {
+            const dCounts = {}, pCounts = {};
+            data.scramble_holes.forEach(h => {
+                if (h.drive_player_name) dCounts[h.drive_player_name] = (dCounts[h.drive_player_name] || 0) + 1;
+                if (h.putt_player_name) pCounts[h.putt_player_name] = (pCounts[h.putt_player_name] || 0) + 1;
+            });
+            const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const chips = (counts, color) => Object.entries(counts).sort((a,b)=>b[1]-a[1])
+                .map(([n,c]) => `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold" style="background:${color}1a;color:${color};">${esc(n)} · ${c}</span>`).join('');
+            const dChips = chips(dCounts, '#0d9488');
+            const pChips = chips(pCounts, '#2563eb');
+            if (dChips || pChips) {
+                scrambleUsageBlock = `
+                <div class="px-4 py-3 border-b border-gray-100">
+                    ${dChips ? `<div class="text-[10px] text-gray-500 uppercase tracking-wide mb-1.5 font-semibold">Drives used</div><div class="flex flex-wrap gap-2 ${pChips ? 'mb-3' : ''}">${dChips}</div>` : ''}
+                    ${pChips ? `<div class="text-[10px] text-gray-500 uppercase tracking-wide mb-1.5 font-semibold">Putts used</div><div class="flex flex-wrap gap-2">${pChips}</div>` : ''}
+                </div>`;
+            }
         }
 
         // Split into front/back 9
@@ -564,6 +595,8 @@ window.PlayerScorecardViewer = (function() {
                 ${doubles > 0 ? `<span class="px-2 py-0.5 rounded-full bg-blue-200 text-blue-900 text-[10px] font-bold">⚪ ${doubles}</span>` : ''}
                 ${others > 0 ? `<span class="px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 text-[10px] font-bold">⬛ ${others}</span>` : ''}
             </div>
+
+            ${scrambleUsageBlock}
 
             <!-- Front 9 -->
             <div class="p-3 overflow-x-auto">

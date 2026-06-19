@@ -528,7 +528,7 @@ window.PlayerScorecardViewer = (function() {
                 <p class="text-emerald-100 text-sm">${displayName} • ${date}${isScramble ? ' • <span class="px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-200 text-[10px] font-bold uppercase">Scramble</span>' : ''}</p>
                 <div class="flex gap-3 mt-2 text-xs text-emerald-200">
                     <span>${isTeamScramble ? 'Team HCP' : 'HCP'}: ${displayHcp}</span>
-                    <span>Playing: ${playHcp}</span>
+                    <span>Playing: ${isTeamScramble ? (scrambleTeam.teamHcp != null ? scrambleTeam.teamHcp : displayHcp) : playHcp}</span>
                     ${sc.tee_marker ? `<span>${sc.tee_marker} tees</span>` : ''}
                 </div>
             </div>
@@ -540,7 +540,7 @@ window.PlayerScorecardViewer = (function() {
                     <div class="text-[10px] text-gray-500">GROSS</div>
                 </div>
                 <div class="text-center py-1.5">
-                    <div class="text-lg font-bold text-blue-600">${sc.total_net || (frontNet + backNet)}</div>
+                    <div class="text-lg font-bold text-blue-600">${isTeamScramble ? (frontNet + backNet) : (sc.total_net || (frontNet + backNet))}</div>
                     <div class="text-[10px] text-gray-500">NET</div>
                 </div>
                 <div class="text-center py-1.5">

@@ -3,6 +3,22 @@
 > Dated log of what happened, what changed, and what should happen next. Newest first.
 > (Earlier entries are reconstructed from project memory and may not be exhaustive.)
 
+## 2026-06-19 (later, cont.) — BUG LOG: scramble + leaderboard fuck-ups (candid retrospective)
+Pete hit a string of scramble/leaderboard defects during live testing of a 2-man (two-team) scramble at St Andrews — JOA/TRGG community leaderboard. All were **pre-existing** defects surfaced by real play, but several took more than one pass to land, and I misdiagnosed one. Logged frankly so they're not repeated.
+
+**The defects (all now fixed + deployed):**
+1. **Raw HTML leaking onto the leaderboard** (`40c59b6c`). Scramble team rows passed the team *display name* (HTML with an inner `<span style="…">` 🤝 icon) into `onclick="openPlayerProfile('id','<name>')"`, escaping only single-quotes. The inner double-quotes closed the attribute and dumped `…style="…">🤝 Pete Park…` as visible text. Fix: pass the PLAIN name, escaped for attribute + JS string. (4 call sites.) → [[feedback_html_in_onclick]]
+2. **Leaderboard ignored the team handicap** (`52137198`). Scramble teams were shown & ranked by gross, not net. Now NET = gross − combined team handicap (Pete's teams: 70−1=69, 91−10=81). → [[reference_scramble_leaderboard_net]]
+3. **Scorecard "Playing off 3"** (`91872dda`). The detail scorecard netted off the individual's stored playing handicap (3) → NET 67, even though Team HCP was 1. Per-hole row already recalced (69) but the headline NET + "Playing" used stored values. Now uses team HCP → Playing 1, NET 69. (Cache-bust `?v=` bumped.)
+4. **Whose-drive/putt never persisted for two-team scrambles** (`163a79ac`). The big one. Live "whose drive" stored under team key `${hole}_A/_B`; the round_holes SAVE read the PLAIN hole number → wrote null. Track Drive Usage was ON (min 4/player) yet only a stray hole saved. Fix: save resolves the player's team key. **Past rounds unrecoverable** (never written). Also added the drive/putt-used stats display on the scorecard (`85fb0d40`).
+
+**What I got wrong (own it):**
+- On "fix the score," I first fixed the visible HTML leak (#1) before realizing Pete also/mainly meant the NET scoring (#2) — cost a round-trip.
+- On the missing drives, I first concluded "the round only captured 1 drive during play" and said it was "good to go" — a **misdiagnosis**. The real cause was the two-team save-key bug (#4) silently dropping the data. Only after Pete pushed ("it's in the fucking system") did I trace the save path and find it. Lesson: when a tracked feature shows almost-no data, suspect the SAVE/persistence path before blaming user capture.
+- Several fixes were display-layer only; the underlying STORED `total_net`/`playing_handicap`/drive nulls remain wrong in those rows (recompute-at-display covers it, but the data is dirty).
+
+**Still open:** other `scrambleDriveData[` read sites use differing key schemes (81139 ok; 81609 `[i]||[i+'_A']||[i+'_B']`) — audit for consistency if drives go missing again. Profile round-LIST still shows un-netted `total_net` for scramble rounds (viewer ~line 307). Anthropic API key out of credits (translation moved to Gemini; scorecard-OCR/pinsheet/ai-caddie/JOA-import likely down until topped up or moved to Gemini).
+
 ## 2026-06-19 (later) — Organizer Lite: Registrations module + Live Round course fixes
 Mobile-first organizer tooling, driven by Pete testing live on his phone (JOA dashboard). Each change verified via agent-browser before deploy.
 - **6th "Registrations" cube + mobile drill-down** (`d9a141a9`). Global for all organizers. The organizer Lite home is now a clean 3×2 grid (Events, Scheduler / Scores, Players / Registrations, Admin). The cube shows the next event's live registered count. Tapping it opens a self-contained overlay: a **week list** (upcoming events in the next 7 days, each with a count) → tap an event → a **roster** showing each player's Transport/Competition selections + who they want to be paired with, a one-tap **PAID/UNPAID** toggle, and a "X/Y paid · ฿Z collected" summary. The paid toggle writes `payment_status` to the same `event_registrations` row the Full version reads — so a helper collecting cash on Lite syncs live to the organizer watching the Full version (the Full Registrations tab is already subscribed). Reuses the existing data layer; writes by row-id; uses a uniquely-named realtime channel to avoid the channel-reuse crash.

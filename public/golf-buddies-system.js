@@ -762,7 +762,7 @@ window.GolfBuddiesSystem = {
 
         try {
             // Build flexible search query for name variations (same as scorecard search)
-            const searchWords = query.trim().split(/\s+/).filter(w => w.length > 0);
+            const searchWords = (window.sanitizeSearch ? sanitizeSearch(query) : query).split(/\s+/).filter(w => w.length > 0);
             let dbQuery = window.SupabaseDB.client
                 .from('user_profiles')
                 .select('line_user_id, name, profile_data');
@@ -1261,7 +1261,7 @@ window.GolfBuddiesSystem = {
         container.innerHTML = '<p class="text-gray-500 text-xs py-2">Searching...</p>';
 
         try {
-            const searchWords = query.trim().split(/\s+/).filter(w => w.length > 0);
+            const searchWords = (window.sanitizeSearch ? sanitizeSearch(query) : query).split(/\s+/).filter(w => w.length > 0);
             let dbQuery = window.SupabaseDB.client
                 .from('user_profiles')
                 .select('line_user_id, name, profile_data');

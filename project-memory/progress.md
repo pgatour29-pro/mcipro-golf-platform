@@ -3,6 +3,22 @@
 > Dated log of what happened, what changed, and what should happen next. Newest first.
 > (Earlier entries are reconstructed from project memory and may not be exhaustive.)
 
+## 2026-06-20 — BUG LOG: phantom "active users" from handicap writes (full catalog → `FUCKUPS.md` #1)
+Pete spotted that the Admin → **User Activity & Engagement** panel was showing users as "Online / active today" who hadn't done anything — he suspected a **global handicap update** was triggering the activity. Confirmed exactly that against the live DB.
+
+**The bug (FIXED + DEPLOYED, commit `69ef2ddb`):**
+- The panel (`AdminSystem.loadUserActivityData`) used `user_profiles.updated_at` as the "last active" signal. `updated_at` is bumped by ANY profile write — including a bulk handicap update — so one batch write lit up everyone as active. **Proof:** 9 users all had `updated_at = 2026-06-20 02:12 UTC` (09:12 Bangkok), the exact same instant = one write = the bogus "9 Today."
+- Deeper issue: there was **no real login tracking at all** — `last_login_at` didn't exist on `user_profiles` and was never written. Activity had always been an `updated_at` guess.
+- Fix: added `user_profiles.last_login_at` (migration `sql/add_last_login_at.sql`); `recordUserLogin()` stamps it once per session on dashboard entry (hooked into `ScreenManager.showScreen`); "true last active" now = max(login, last round, last event), fallback `created_at` — `updated_at` removed as an activity signal everywhere in that panel. Verified live on mycaddipro.com.
+
+**Other fuck-ups surfaced by the audit (see `FUCKUPS.md`):**
+- **#1a (latent):** course-admin Settings "Last Login" field (`#courseInfoLastLogin`, reads `course_admins.last_login_at`) is permanently "Never" — column exists but nothing writes it. A dead read.
+- **#1b (latent, minor):** main Admin `#admin-active-today` tile counts `scorecards` ROWS today, not distinct players → over-counts (real activity though, not the `updated_at` bug).
+- **#1c:** two "Active Today" numbers in the same admin UI with different math (scorecards-today vs true-last-active) — will disagree.
+- Verified clean: `gm-analytics-engine.js` / `reports-system.js` retention use repeat-customer ratios, not `updated_at`.
+
+**Lesson:** `updated_at` is a row-mutation timestamp, never a user-activity timestamp; and a UI value read with no writer behind it is a lie — grep for the writer before trusting it.
+
 ## 2026-06-19 (later, cont.) — BUG LOG: scramble + leaderboard fuck-ups (candid retrospective)
 Pete hit a string of scramble/leaderboard defects during live testing of a 2-man (two-team) scramble at St Andrews — JOA/TRGG community leaderboard. All were **pre-existing** defects surfaced by real play, but several took more than one pass to land, and I misdiagnosed one. Logged frankly so they're not repeated.
 

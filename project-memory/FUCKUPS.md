@@ -6,6 +6,26 @@
 
 ---
 
+## #3 — Light theme: white-on-white whack-a-mole (shipped broken twice)
+**Found:** 2026-06-21 (Pete, live on his phone, in sunlight) · **Status:** ✅ FIXED & DEPLOYED (`fded2d26` → `e8854e95` systemic → `3e4a954b` polish) · **Severity:** Medium (only affects users who opt into Light; default Dark unaffected) — but a process failure I repeated.
+
+### Symptom
+Built a player-selectable Light color theme for Live Scoring + Start Round. After Pete approved a mockup and said "deploy," the live Light mode had **invisible white text and icons on the new white background** — chevrons, the map button icon, the nine-hole strip (player·nine, hole numbers, scores), the whole stat-tracking row, faint badges. Pete (rightly furious): *"This is the same kind of problems we dealt with the first time. You can't fucking get the idea of these colors with the fucking background."*
+
+### Root cause
+The dark theme **force-paints everything white**: catch-alls `#golferDashboard.round-active #golfer-scorecard span/p/button/h1-4/td/th { color:#fff !important }` (index.html ~3463-3489) + dozens of per-container white rules + JS-rendered inline `color:#fff` (nine-strip ~75237, stat row ~75333/75630, player cards ~75109). My light overrides flipped **backgrounds** to white but I re-colored **text/icons element-by-element** → every element I didn't explicitly catch stayed white = invisible. Also: a light text rule with only `#golferDashboard.theme-light .foo` (1 id) **loses** to the catch-all (2 ids,1 class,1 type), so even "fixed" elements silently reverted.
+
+### Fix
+Stop chasing elements. In light mode, **default the entire `#golfer-scorecard` surface to dark** text + dark icons (one rule each), then re-exempt only the colored-background controls (submit/END/Finish/Live/No-Point + solid stat circles) back to white. Score-circle borders preserve birdie/bogey coding; translucent dark backgrounds read light over white. Prefix `#golferDashboard.theme-light.round-active #golfer-scorecard` (2 ids+2 classes) beats the catch-all; no media queries → covers mobile + desktop. Then a polish pass for the header wrap, the white START ROUND button (green/red ready border), and white form controls.
+
+### Lessons
+1. **When the existing theme sets a property globally with `!important`, you cannot win it back element-by-element. Invert it globally too, then exempt the exceptions.** Default-the-surface + exempt-the-few beats whack-a-mole every time.
+2. **The git history was the warning.** The first dark→white attempt (`d4a42062`…`7ea86308`) was reverted for this exact failure mode. I read those commits, then repeated the mistake. Read reverts as *"here's how this fails,"* not just *"here's the old code."*
+3. **Verify on the user's actual device class before deploying.** This is a mobile-first, outdoor app. I screenshotted desktop (1280px) first; the responsive scorecard + the narrow-width header wrap only reproduced at phone widths (360-412px). Test mobile FIRST for this app.
+4. **Don't deploy a broad visual change on "looks good on one screenshot."** Light mode touches dozens of densely-styled, JS-rendered surfaces — enumerate them (hole strip, group, keypad, nine-strip, stat row, leaderboard, summary, start form) and check each before shipping, not after Pete finds them in the sun.
+
+---
+
 ## #2 — Event unregister silently failed — "Successfully unregistered" but still registered
 **Found:** 2026-06-21 (Pete, live) · **Status:** ✅ FIXED & DEPLOYED (DB policy `83a53030` + app guard `6863f146`) · **Severity:** High (user-facing, lied about success)
 

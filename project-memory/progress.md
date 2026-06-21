@@ -11,6 +11,8 @@ Built an opt-in **Light color theme** for the two outdoor-glare golfer pages, so
 
 **Misfires (own them):** I repeated the EXACT failure of the previously-reverted dark→white attempt (`d4a42062`…, all reverted) — chased contrast element-by-element instead of inverting the surface globally — and shipped white-on-white to production **twice** before the systemic fix. Pete found it live, on his phone, in the sun: *"This is the same kind of problems we dealt with the first time."* Also verified desktop-first when the app is mobile-first/outdoor. Full post-mortem: [[FUCKUPS.md]] #3. Verification + agent-browser gotchas (stale `getComputedStyle`, blank `--full` screenshots, mobile viewport widths): [[SESSION-2026-06-21.md]] §6.
 
+**Evening lite-dashboard fixes (`18f8657c`):** (1) **No-purple** — the Society Events cube icon + "Upcoming" pill were purple from two duplicate `.metric-card .bg-teal-100/.bg-teal-50` CSS rules with pasted purple gradients overriding the teal twins; recolored teal (both lite + full grids). (2) **Events counter** — the lite Society Events cube now shows "N Upcoming" = the player's upcoming **registered** events (Pete confirmed: registered-only, not browse), via new `#cubeEventsCount` in `updateOverviewCubes`. Verified Pete = "2 Upcoming".
+
 **Open:** scope is golfer Start Round + Live Scoring only (organizer/other tabs/global modals not themed); live-leaderboard overlay + start-page toggle-switch tracks not fully polished in light. See SESSION-2026-06-21.md §4.
 
 ## 2026-06-20 (later, cont. 3) — Caddy/schedule/back-button bugs (candid; several misfires)

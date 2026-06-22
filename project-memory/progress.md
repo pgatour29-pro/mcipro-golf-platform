@@ -13,7 +13,11 @@ Triggered by Pete: he messaged the JOA organizer through an event card and the o
 
 **Tested end-to-end + PASSED.** Verified the push infra (`system_alert` → Pete's LINE = `notified:1`) and the event-message→LINE chain by temporarily repointing JOA's `notify_line_id` to Pete's own phone, sending an app message, confirming the ping, then reverting to Jason + wiping all test data. **Gotchas:** DB inserts don't trigger the push (only the app's send button does); the badge is for the **recipient**, so sending to JOA as yourself shows nothing on your own cube. Full record: [[SESSION-2026-06-22.md]].
 
-_Next:_ Kakao push is parked — activate when Pete does the Kakao-console toggle + Jason re-login. Otherwise back to the STATUS.md open items.
+**Same-day follow-ups:**
+- **`40c6f598` fix** — Start Round: manually-added players' handicap chip (a `<span>`) was dark-on-dark in the light theme (the rule only whitened `<select>` dropdowns), so you couldn't read the hcp you typed. Tagged `.sc-hcp-chip` + light-theme override. Dark theme unchanged.
+- **`9b714d4c` HOTFIX (regression I caused)** — the parked Kakao-push work left `talk_message` in the Kakao login `scopes`; since that consent item isn't enabled in the Kakao console, Kakao **rejected Jason's login**. Reverted to `profile_nickname profile_image`. **Lesson: never request an OAuth scope before its consent item is configured in the provider console — it blocks login.** Kakao-push order is now: enable consent item in console FIRST → then re-add the scope → Jason re-logs in.
+
+_Next:_ Kakao push is parked — activate when Pete does the Kakao-console toggle + Jason re-login (then re-add the scope). Otherwise back to the STATUS.md open items.
 
 ## 2026-06-21 — Player-selectable Light/Dark color theme (Start Round + Live Scoring)
 Built an opt-in **Light color theme** for the two outdoor-glare golfer pages, so players can read the scorecard in sunlight. Default stays **Dark**; choice persists to profile (`golfInfo.colorTheme`). 3 commits, all deployed:

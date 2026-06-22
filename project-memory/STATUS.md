@@ -1,12 +1,13 @@
 # STATUS — current snapshot
 
-_Last updated: 2026-06-21_
+_Last updated: 2026-06-22_
 
 ## Where the project stands now
-Live in production and in daily use. Most recent: a **player-selectable Light/Dark COLOR theme** for the golfer **Start Round + Live Scoring** pages (outdoor-readable; default Dark, opt-in Light, saved to profile) — shipped 2026-06-21 (`fded2d26`→`e8854e95`→`3e4a954b`). This is separate from the Lite/Geekout density mode. No known critical issues open.
+Live in production and in daily use. Most recent: **event-message notifications** — an unread badge on the main Society Events surfaces (player cube + organizer Events tab + organizer-home cube) plus a **LINE push** to the counterparty on every event-thread message — shipped 2026-06-22 (`c5eb286c`→`97e19c8c`). Tested end-to-end and passed. A full **Kakao push** path is built but **parked** (needs a Kakao-console toggle). No known critical issues open.
 
 ## Current focus
-- **Light/Dark color theme** — just shipped + polished from live mobile feedback (see progress.md / SESSION-2026-06-21.md). Awaiting Pete's outdoor read; minor cosmetic items remain (below).
+- **Event-message notifications** — just shipped + verified live. JOA routes organizer pushes to Jason's LINE via `society_profiles.notify_line_id` (he logs in via Kakao). See SESSION-2026-06-22.md.
+- **Light/Dark color theme** (2026-06-21) — shipped + polished; minor cosmetic items remain (below).
 
 ## Next actions / open items
 (roughly highest-value first — confirm priority with Pete)
@@ -18,6 +19,7 @@ Live in production and in daily use. Most recent: a **player-selectable Light/Da
 - **Supabase 1000-row cap audit** — `.in('round_id', ids)` truncates at 1000 rows; Round History was fixed (chunk by 50) but ~5 other call sites are unaudited.
 - **Society Events card unresponsive** — a dashboard card at the bottom was reported unresponsive; was awaiting a tap-test from Pete to identify the overlay. _(Verify whether still an issue.)_
 - **JGTS** — auto-attribute Erik Lundman's non-TRGG rounds to the JGTS society.
+- **Kakao push (PARKED)** — the Kakao "send to me" push for Kakao-login organizers is built + deployed but dormant. To activate: in the Kakao Developers console (app `b11fe825…`) enable the `talk_message` consent item + the "send to me" Message product, then have Jason re-login once. If the app is in dev mode, add Jason as a team member or pass review. JOA uses the LINE path (`notify_line_id`) meanwhile. See SESSION-2026-06-22.md §6.
 - **Light/Dark theme follow-ups** _(cosmetic, 2026-06-21)_ — live-leaderboard overlay not eyeballed in light; start-page toggle-switch tracks slightly dark; hamburger drawer / games modal untested in light; theme scope is golfer Start Round + Live Scoring only. See SESSION-2026-06-21.md §4.
 
 ## Security track (planned, larger)

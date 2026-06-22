@@ -3,6 +3,18 @@
 > Dated log of what happened, what changed, and what should happen next. Newest first.
 > (Earlier entries are reconstructed from project memory and may not be exhaustive.)
 
+## 2026-06-22 — Event-message notifications (badges on the main events surfaces + LINE push)
+Triggered by Pete: he messaged the JOA organizer through an event card and the organizer never saw it. The private-thread feature (built 2026-06-19) was **pull-only** — no badge on any main surface, no push. Fixed both. 7 commits, all deployed:
+- **`c5eb286c` feat** — unread badge on the Society Events cube (player) + Events tab (organizer) for new notices/private messages (self-contained, NOT the Messages inbox); `_notifyThread` fires a LINE push to the counterparty on each message.
+- **`379fbdf9` feat (parked)** — full **Kakao push** pipeline for Kakao-login organizers (Jason/JOA): `kakao_push_tokens` table + `kakao-push` edge fn (memo "send to me" API) + `talk_message` scope + token capture in `kakao-oauth-exchange`. Inert until Pete enables `talk_message` in the Kakao console + Jason re-logs in.
+- **`21386aca` feat** — since Jason logs in via Kakao (can't LINE-push his login id) but has an older **push-capable LINE account** (`Udb12b92…`, has `messaging_user_id`), added `society_profiles.notify_line_id` (notify target decoupled from the login id) and pointed JOA's at his LINE. Questions reach him on LINE now, no wait on Kakao.
+- **`b603367a` + `d7ac7862` feat** — Pete clarified the badge must be on the **main cube**, not just the Events tab. The org's incoming questions now also badge the golfer Society Events cube (via `_myOrgEventIds()`) **and** the org-home lite Events cube (the one he circled). Three badge surfaces total.
+- **`3bb31ed6` + `97e19c8c` fix** — live-test bugs: badge was at a negative offset → clipped to a sliver in the inter-cube gap (moved inside); and it only hydrated on tab nav, not first dashboard paint (hooked into `initGolferDashboard`).
+
+**Tested end-to-end + PASSED.** Verified the push infra (`system_alert` → Pete's LINE = `notified:1`) and the event-message→LINE chain by temporarily repointing JOA's `notify_line_id` to Pete's own phone, sending an app message, confirming the ping, then reverting to Jason + wiping all test data. **Gotchas:** DB inserts don't trigger the push (only the app's send button does); the badge is for the **recipient**, so sending to JOA as yourself shows nothing on your own cube. Full record: [[SESSION-2026-06-22.md]].
+
+_Next:_ Kakao push is parked — activate when Pete does the Kakao-console toggle + Jason re-login. Otherwise back to the STATUS.md open items.
+
 ## 2026-06-21 — Player-selectable Light/Dark color theme (Start Round + Live Scoring)
 Built an opt-in **Light color theme** for the two outdoor-glare golfer pages, so players can read the scorecard in sunlight. Default stays **Dark**; choice persists to profile (`golfInfo.colorTheme`). 3 commits, all deployed:
 - **`fded2d26` feat** — `window.ThemeMode` controller (mirrors `DashboardMode`) + a `.theme-light` CSS layer + sun/moon toggle in the Start Round header and the Live Scoring hole strip + `is-active`/`needs-score`/`is-done` state classes on player cards. **Purely additive — gated on `.theme-light`, so Dark is byte-for-byte unchanged when off.** Distinct from Lite/Geekout density mode (Pete: *"this has nothing to do with the light and geekout modes"*).

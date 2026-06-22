@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>MyCaddiPro — The Caddie Mind</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,400&family=Hanken+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#04070a;--ink:#eef5f1;--muted:#69786f;
+    --green:#22c55e;--green-bright:#4ade80;--teal:#5eead4;--gold:#e3c178;--gold-deep:#d4a843;
+    --line:rgba(255,255,255,.08);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{background:radial-gradient(120% 120% at 50% 40%,#06100c 0%,#04070a 60%,#020405 100%);
+       color:var(--ink);font-family:"Hanken Grotesk",sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased;}
+  #c{position:fixed;inset:0;z-index:0;touch-action:none;}
+  .grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.045;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+
+  .ui{position:fixed;z-index:3;}
+  .mono{font-family:"JetBrains Mono",monospace;}
+
+  /* top bar */
+  .top{top:max(16px,env(safe-area-inset-top));left:18px;right:18px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+  .brand{font-family:"Fraunces",serif;font-weight:400;font-size:20px;letter-spacing:.01em;}
+  .brand .light{color:var(--green-bright);font-style:italic;}
+  .tag{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.26em;text-transform:uppercase;color:var(--muted);margin-top:3px;}
+  .livechip{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;
+    border:1px solid rgba(74,222,128,.35);color:var(--green-bright);border-radius:100px;padding:6px 11px;display:flex;align-items:center;gap:7px;background:rgba(74,222,128,.06);}
+  .livechip .dot{width:6px;height:6px;border-radius:50%;background:var(--green-bright);box-shadow:0 0 8px var(--green-bright);animation:pulse 1.4s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+
+  /* live feed */
+  .feed{bottom:max(16px,env(safe-area-inset-bottom));left:18px;width:min(380px,calc(100% - 36px));}
+  .feed-h{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.28em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+  .feed-h::before{content:"";width:18px;height:1px;background:var(--green);}
+  .ev{font-family:"JetBrains Mono",monospace;font-size:12px;line-height:1.35;padding:8px 12px;margin-bottom:7px;border-radius:8px;
+      background:rgba(10,18,14,.66);border:1px solid var(--line);border-left:2px solid var(--green);backdrop-filter:blur(8px);
+      transform:translateX(-12px);opacity:0;animation:slidein .5s forwards;}
+  @keyframes slidein{to{transform:none;opacity:1}}
+  .ev.gold{border-left-color:var(--gold);} .ev.teal{border-left-color:var(--teal);} .ev.bright{border-left-color:var(--green-bright);}
+  .ev .t{color:var(--muted);font-size:10px;}
+  .ev .k{color:var(--green-bright);} .ev.gold .k{color:var(--gold);} .ev.teal .k{color:var(--teal);}
+  .ev b{font-weight:700;color:var(--ink);}
+
+  /* right legend / telemetry */
+  .right{top:84px;right:18px;width:170px;text-align:right;}
+  .leg{margin-bottom:18px;}
+  .leg-row{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+    display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:7px;}
+  .leg-row i{width:8px;height:8px;border-radius:50%;display:inline-block;box-shadow:0 0 8px currentColor;}
+  .tele{border-top:1px solid var(--line);padding-top:14px;}
+  .tele-row{margin-bottom:11px;}
+  .tele-row .v{font-family:"Fraunces",serif;font-weight:300;font-size:30px;line-height:1;color:var(--ink);}
+  .tele-row .v .s{font-size:13px;color:var(--green-bright);}
+  .tele-row .l{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-top:3px;}
+
+  /* center prompt that fades on interaction */
+  .hint{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 18px);transform:translateX(-50%);z-index:3;
+    font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);
+    pointer-events:none;transition:opacity .6s;}
+  .back{position:fixed;left:18px;top:max(60px,calc(env(safe-area-inset-top) + 44px));z-index:3;
+    font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:7px 11px;border-radius:6px;background:rgba(0,0,0,.3);}
+  @media(max-width:640px){
+    .right{display:none}
+    .feed{width:calc(100% - 36px);} .ev:nth-child(n+4){display:none}
+    .back{top:auto;bottom:calc(env(safe-area-inset-bottom) + 250px)}
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="grain"></div>
+
+<div class="ui top">
+  <div>
+    <div class="brand">The <span class="light">Caddie</span> Mind</div>
+    <div class="tag">You play · it thinks</div>
+  </div>
+  <div class="livechip"><span class="dot"></span>Live · Hole <span id="holeNum">7</span>/18</div>
+</div>
+
+<a class="back" href="./the-round.html">← The Round</a>
+
+<div class="ui right">
+  <div class="leg">
+    <div class="leg-row"><span>Perception</span><i style="color:#4ade80"></i></div>
+    <div class="leg-row"><span>Memory</span><i style="color:#e3c178"></i></div>
+    <div class="leg-row"><span>Decision</span><i style="color:#22c55e"></i></div>
+    <div class="leg-row"><span>Scoring</span><i style="color:#5eead4"></i></div>
+    <div class="leg-row"><span>Side Games</span><i style="color:#d4a843"></i></div>
+  </div>
+  <div class="tele">
+    <div class="tele-row"><div class="v" id="tNeur">1,284</div><div class="l">signals / sec</div></div>
+    <div class="tele-row"><div class="v" id="tShots">312</div><div class="l">shots read today</div></div>
+    <div class="tele-row"><div class="v" id="tConf">98<span class="s">%</span></div><div class="l">club confidence</div></div>
+  </div>
+</div>
+
+<div class="ui feed">
+  <div class="feed-h">Live round feed — autonomous</div>
+  <div id="feed"></div>
+</div>
+
+<div class="hint" id="hint">Drag to look inside · tap a node</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" integrity="sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu" crossorigin="anonymous"></script>
+<script>
+/* ============================================================
+   THE CADDIE MIND
+   A living neural graph of the autonomous golf intelligence.
+   Regions = perception / memory / decision / scoring / side-games.
+   Signals flow along synapses; a live feed shows it DOING the work.
+   ============================================================ */
+const COL = {
+  perception:0x4ade80, memory:0xe3c178, decision:0x22c55e,
+  scoring:0x5eead4, sidegames:0xd4a843, core:0xffffff
+};
+
+// ---- region definition (label lists) ----
+const REGIONS = [
+  {key:'perception', dir:[ 1.0, 0.55, 0.4], nodes:['WIND','ELEVATION','DISTANCE','LIE','GREEN SPEED','SLOPE','PIN','TEMP']},
+  {key:'memory',     dir:[-1.0, 0.5,-0.3],  nodes:['YOUR BAG','CARRY 7i','CARRY DRIVE','MISS L/R','TEMPO','LAST 50 SHOTS','TENDENCIES']},
+  {key:'decision',   dir:[ 0.1,-0.2, 1.05], nodes:['CLUB PICK','TARGET','SHOT SHAPE','RISK','LAYUP?','AGGRESSION']},
+  {key:'scoring',    dir:[-0.7,-0.7, 0.2],  nodes:['GROSS','NET','STABLEFORD','HCP STROKES','THRU','LEADERBOARD']},
+  {key:'sidegames',  dir:[ 0.6,-0.85,-0.7], nodes:['SKINS','NASSAU','PRESS','JUNK / DOTS','SETTLE','PAYOUT']},
+];
+
+// ---------- scene ----------
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x04070a,0.055);
+const camera = new THREE.PerspectiveCamera(55,innerWidth/innerHeight,0.1,200);
+camera.position.set(0,0,15);
+const root = new THREE.Group(); scene.add(root);
+
+// ---------- textures ----------
+function glowTex(){
+  const c=document.createElement('canvas');c.width=c.height=128;const g=c.getContext('2d');
+  const grd=g.createRadialGradient(64,64,0,64,64,64);
+  grd.addColorStop(0,'rgba(255,255,255,1)');grd.addColorStop(.18,'rgba(255,255,255,.85)');
+  grd.addColorStop(.45,'rgba(255,255,255,.25)');grd.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle=grd;g.fillRect(0,0,128,128);
+  const t=new THREE.CanvasTexture(c);return t;
+}
+const GLOW = glowTex();
+function labelSprite(text,colorHex){
+  const c=document.createElement('canvas');const ctx=c.getContext('2d');
+  const font='600 30px "JetBrains Mono", monospace';ctx.font=font;
+  const w=Math.ceil(ctx.measureText(text).width)+16;const h=44;
+  c.width=w;c.height=h;ctx.font=font;ctx.textBaseline='middle';
+  ctx.shadowColor='rgba(0,0,0,.8)';ctx.shadowBlur=6;
+  ctx.fillStyle='#dfeee7';ctx.fillText(text,8,h/2);
+  const tex=new THREE.CanvasTexture(c);tex.minFilter=THREE.LinearFilter;
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthWrite:false,depthTest:false,opacity:.0}));
+  sp.scale.set(w/h*0.62,0.62,1);sp.userData.tex=tex;return sp;
+}
+
+// ---------- build nodes ----------
+const nodes = [];                 // {pos, color, region, mesh, label, base}
+function addNode(pos,color,region,label,size){
+  const m=new THREE.Sprite(new THREE.SpriteMaterial({map:GLOW,color,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending}));
+  m.position.copy(pos);m.scale.setScalar(size);root.add(m);
+  const lab=labelSprite(label,color);lab.position.copy(pos).add(new THREE.Vector3(0,size*0.55+0.32,0));root.add(lab);
+  const n={pos:pos.clone(),color,region,mesh:m,label:lab,base:size,phase:Math.random()*6.28};
+  nodes.push(n);return n;
+}
+// core
+const core = addNode(new THREE.Vector3(0,0,0),COL.core,'core','THE CADDIE',1.5);
+core.label.material.opacity=.9;
+// regions
+REGIONS.forEach(r=>{
+  const C=new THREE.Vector3(...r.dir).multiplyScalar(5.2);
+  r.nodes.forEach((label,i)=>{
+    const jitter=new THREE.Vector3((Math.random()-.5)*3.4,(Math.random()-.5)*3.4,(Math.random()-.5)*3.4);
+    const p=C.clone().add(jitter);
+    addNode(p,COL[r.key],r.key,label, i===0?0.95:0.6);
+  });
+});
+
+// ---------- edges ----------
+const edges=[];                   // [a,b] node indices
+function connect(a,b){edges.push([a,b]);}
+// region hubs (first node after core in each region) -> core; members -> hub & sometimes core
+let idx=1;
+REGIONS.forEach(r=>{
+  const start=idx, hub=start;
+  connect(0,hub);
+  for(let i=0;i<r.nodes.length;i++){
+    const ni=start+i;
+    if(ni!==hub) connect(hub,ni);
+    if(Math.random()<0.5) connect(0,ni);
+    if(i>0 && Math.random()<0.4) connect(ni,ni-1);
+  }
+  idx+=r.nodes.length;
+});
+// signature cross-region pathway: perception -> decision -> scoring -> side games
+function hubOf(key){const r=nodes.findIndex(n=>n.region===key);return r;}
+connect(hubOf('perception'),hubOf('decision'));
+connect(hubOf('memory'),hubOf('decision'));
+connect(hubOf('decision'),hubOf('scoring'));
+connect(hubOf('scoring'),hubOf('sidegames'));
+
+const epos=new Float32Array(edges.length*2*3);
+const ecol=new Float32Array(edges.length*2*3);
+edges.forEach((e,i)=>{
+  const a=nodes[e[0]].pos,b=nodes[e[1]].pos;
+  epos.set([a.x,a.y,a.z,b.x,b.y,b.z],i*6);
+  const ca=new THREE.Color(nodes[e[0]].color),cb=new THREE.Color(nodes[e[1]].color);
+  ecol.set([ca.r,ca.g,ca.b,cb.r,cb.g,cb.b],i*6);
+});
+const eGeo=new THREE.BufferGeometry();
+eGeo.setAttribute('position',new THREE.BufferAttribute(epos,3));
+eGeo.setAttribute('color',new THREE.BufferAttribute(ecol,3));
+const eLines=new THREE.LineSegments(eGeo,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:.12,blending:THREE.AdditiveBlending}));
+root.add(eLines);
+
+// ---------- flowing signals ----------
+const NS=260;
+const sGeo=new THREE.BufferGeometry();
+const sPos=new Float32Array(NS*3), sCol=new Float32Array(NS*3);
+const signals=[];
+for(let i=0;i<NS;i++){
+  const e=edges[(Math.random()*edges.length)|0];
+  signals.push({e,t:Math.random(),sp:0.004+Math.random()*0.012});
+  const c=new THREE.Color(nodes[e[1]].color);sCol.set([c.r,c.g,c.b],i*3);
+}
+sGeo.setAttribute('position',new THREE.BufferAttribute(sPos,3));
+sGeo.setAttribute('color',new THREE.BufferAttribute(sCol,3));
+const sPts=new THREE.Points(sGeo,new THREE.PointsMaterial({size:0.16,vertexColors:true,map:GLOW,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending}));
+root.add(sPts);
+
+// ---------- ambient dust ----------
+const dust=new THREE.Points(
+  (()=>{const g=new THREE.BufferGeometry();const a=new Float32Array(900);for(let i=0;i<900;i++)a[i]=(Math.random()-.5)*60;g.setAttribute('position',new THREE.BufferAttribute(a,3));return g;})(),
+  new THREE.PointsMaterial({color:0x2c7a52,size:0.07,transparent:true,opacity:.5,depthWrite:false,blending:THREE.AdditiveBlending})
+);
+scene.add(dust);
+
+// ---------- interaction (drag orbit + inertia) ----------
+let rx=0.1, ry=0, tgx=0.1, tgy=0, vx=0, vy=0, dragging=false, px=0, py=0;
+function down(x,y){dragging=true;px=x;py=y;document.getElementById('hint').style.opacity=0;}
+function move(x,y){if(!dragging)return;vy=(x-px)*0.005;vx=(y-py)*0.005;tgy+=vy;tgx+=vx;px=x;py=y;}
+function up(){dragging=false;}
+canvas.addEventListener('pointerdown',e=>down(e.clientX,e.clientY));
+addEventListener('pointermove',e=>move(e.clientX,e.clientY));
+addEventListener('pointerup',up);
+// pinch / wheel zoom
+addEventListener('wheel',e=>{camera.position.z=THREE.MathUtils.clamp(camera.position.z+e.deltaY*0.01,8,30);},{passive:true});
+
+// tap-to-focus a node (raycast)
+const ray=new THREE.Raycaster();ray.params.Sprite={threshold:0.1};
+canvas.addEventListener('pointerup',e=>{
+  if(Math.abs(vx)+Math.abs(vy)>0.02)return; // was a drag
+  const m=new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1);
+  ray.setFromCamera(m,camera);
+  const hit=ray.intersectObjects(nodes.map(n=>n.mesh));
+  if(hit.length){const n=nodes.find(x=>x.mesh===hit[0].object);if(n)pulseNode(n);}
+});
+function pulseNode(n){
+  n.label.material.opacity=1; n._flash=1.4;
+}
+
+// ---------- live feed (the autonomous work) ----------
+const feedEl=document.getElementById('feed');
+const ri=(a,b)=>a+((Math.random()*(b-a+1))|0);
+const pick=a=>a[(Math.random()*a.length)|0];
+let hole=7;
+const CLUBS=['Driver','3-wood','5-wood','4-iron','5-iron','6-iron','7-iron','8-iron','9-iron','PW','GW','SW'];
+const SHAPES=['flat','3y draw','5y draw','2y fade','4y fade','high','flighted'];
+const WHO=['YOU','Niran','Somchai','Erik'];
+function events(){
+  const yds=ri(95,455), wind=ri(3,22), dir=pick(['in','down','off the right','off the left','across']);
+  const lie=pick(['fairway','light rough','sitting down','fluffy lie','bunker','firm']);
+  const club=pick(CLUBS);
+  return [
+    {c:'',     h:`<span class="t">H${hole} · ${yds}y · ${wind}mph ${dir} · ${lie}</span><br>→ <span class="k">${club}</span> · play to <b>${ri(8,30)}ft</b>`},
+    {c:'',     h:`<span class="t">shot logged</span> · <span class="k">${club}</span> · <b>${ri(70,300)}y</b> · ${pick(SHAPES)}`},
+    {c:'teal', h:`<span class="t">${pick(WHO)} · net ${pick(['par','birdie','bogey','eagle'])}</span> · <span class="k">+${ri(0,4)} Stableford</span> auto-posted`},
+    {c:'gold', h:`<span class="t">Skins H${hole}</span> → <b>${pick(WHO)}</b> wins · <span class="k">฿${ri(2,9)}00</span> · ${ri(0,3)} carried`},
+    {c:'bright',h:`<span class="t">conditions</span> · wind shift <b>${wind+ri(2,6)}mph gust</b> · <span class="k">recalculating club…</span>`},
+    {c:'gold', h:`<span class="t">Nassau · back nine</span> · <b>${pick(WHO)}</b> <span class="k">presses</span> · now 1up`},
+    {c:'teal', h:`<span class="t">leaderboard</span> · <b>${pick(WHO)}</b> moves to <span class="k">T${ri(1,4)}</span> · thru ${hole}`},
+    {c:'',     h:`<span class="t">pin sheet</span> · ${pick(['front-left','back-right','centre','front, 4 on'])} · <span class="k">${ri(2,9)} past the flag</span>`},
+  ];
+}
+function emit(){
+  const e=pick(events());
+  const div=document.createElement('div');
+  div.className='ev '+e.c; div.innerHTML=e.h;
+  feedEl.prepend(div);
+  while(feedEl.children.length>6) feedEl.removeChild(feedEl.lastChild);
+  if(Math.random()<0.22){hole=hole%18+1;document.getElementById('holeNum').textContent=hole;}
+  // fire a burst of signals
+  for(let i=0;i<14;i++){const s=signals[(Math.random()*NS)|0];s.t=0;}
+}
+setInterval(emit,1900); emit(); setTimeout(emit,650);
+
+// ticking telemetry
+const tNeur=document.getElementById('tNeur'),tShots=document.getElementById('tShots'),tConf=document.getElementById('tConf');
+let shots=312;
+setInterval(()=>{
+  tNeur.textContent=ri(900,2100).toLocaleString();
+  if(Math.random()<0.6){shots+=ri(1,3);tShots.textContent=shots;}
+  tConf.innerHTML=ri(94,99)+'<span class="s">%</span>';
+},1400);
+
+// ---------- render ----------
+const clock=new THREE.Clock();
+const va=new THREE.Vector3(),vb=new THREE.Vector3(),vp=new THREE.Vector3();
+function tick(){
+  const t=clock.getElapsedTime();
+  if(!dragging){tgy+=0.0016; tgx+=vx; tgy+=vy; vx*=0.94; vy*=0.94;}
+  tgx=Math.max(-1.1,Math.min(1.1,tgx));        // clamp tilt, never flip
+  rx+=(tgx-rx)*0.08; ry+=(tgy-ry)*0.08;
+  root.rotation.y=ry; root.rotation.x=rx;
+  dust.rotation.y=-t*0.01;
+
+  // node breathing + flash decay
+  for(const n of nodes){
+    const b=n.base*(1+Math.sin(t*1.6+n.phase)*0.08);
+    let s=b;
+    if(n._flash){n._flash*=0.92; s=b*(1+n._flash); if(n._flash<0.02)n._flash=0;}
+    n.mesh.scale.setScalar(s);
+    // labels readable by default; tap brightens the one you touched
+    const target = (n.region==='core')?0.96:0.42;
+    n.label.material.opacity += ((n._flash?1:target) - n.label.material.opacity)*0.1;
+  }
+
+  // signals travel along edges
+  for(let i=0;i<NS;i++){
+    const s=signals[i]; s.t+=s.sp;
+    if(s.t>=1){s.t=0; s.e=edges[(Math.random()*edges.length)|0];
+      const c=new THREE.Color(nodes[s.e[1]].color);sCol.set([c.r,c.g,c.b],i*3);}
+    va.copy(nodes[s.e[0]].pos); vb.copy(nodes[s.e[1]].pos);
+    vp.lerpVectors(va,vb,s.t);
+    sPos.set([vp.x,vp.y,vp.z],i*3);
+  }
+  sGeo.attributes.position.needsUpdate=true;
+  sGeo.attributes.color.needsUpdate=true;
+
+  // gentle camera drift
+  camera.position.x=Math.sin(t*0.08)*0.6;
+  camera.lookAt(0,0,0);
+  renderer.render(scene,camera);
+  requestAnimationFrame(tick);
+}
+tick();
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>

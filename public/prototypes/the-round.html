@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>MyCaddiPro — The Round</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,400&family=Hanken+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#050807;
+    --bg2:#0a0f0c;
+    --ink:#f3f7f3;
+    --muted:#7e8c83;
+    --green:#22c55e;
+    --green-bright:#4ade80;
+    --gold:#e3c178;
+    --gold-deep:#b8943f;
+    --line:rgba(255,255,255,.08);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Hanken Grotesk",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  /* ---------- 3D canvas (fixed behind everything) ---------- */
+  #scene{position:fixed;inset:0;z-index:0;}
+  .vignette{position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(120% 90% at 50% 35%,transparent 40%,rgba(0,0,0,.55) 100%);}
+  .grain{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:.05;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+
+  /* ---------- HUD ---------- */
+  .hud{position:fixed;z-index:5;font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase;}
+  .hud.tl{top:max(20px,env(safe-area-inset-top));left:22px;}
+  .hud.tr{top:max(20px,env(safe-area-inset-top));right:22px;text-align:right;}
+  .hud .live{color:var(--green-bright);}
+  .hud .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green-bright);margin-right:6px;box-shadow:0 0 10px var(--green-bright);animation:pulse 1.6s infinite;vertical-align:middle;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .progress{position:fixed;left:0;top:0;height:2px;background:linear-gradient(90deg,var(--green),var(--green-bright));z-index:6;width:0;box-shadow:0 0 12px var(--green);}
+
+  /* ---------- content sections ---------- */
+  main{position:relative;z-index:4;}
+  section{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:0 28px;position:relative;}
+  .wrap{max-width:1100px;margin:0 auto;width:100%;}
+
+  .kicker{font-family:"JetBrains Mono",monospace;font-size:12px;letter-spacing:.32em;text-transform:uppercase;color:var(--green-bright);margin-bottom:22px;display:flex;align-items:center;gap:12px;}
+  .kicker::before{content:"";width:34px;height:1px;background:var(--green);display:inline-block;}
+
+  h1{font-family:"Fraunces",serif;font-weight:300;line-height:.92;letter-spacing:-.02em;
+     font-size:clamp(52px,13vw,168px);}
+  h1 em{font-style:italic;color:var(--green-bright);}
+  .lede{font-family:"Fraunces",serif;font-weight:300;font-size:clamp(26px,5.4vw,58px);line-height:1.06;letter-spacing:-.01em;max-width:14ch;}
+  .lede b{font-weight:600;color:var(--ink);}
+  .lede .g{color:var(--green-bright);font-style:italic;font-weight:400;}
+  p.sub{color:var(--muted);font-size:clamp(15px,2.2vw,19px);line-height:1.6;max-width:46ch;margin-top:26px;}
+
+  /* big telemetry stat (DRIP "5000 mAh" energy) */
+  .stat{font-family:"Fraunces",serif;font-weight:200;font-size:clamp(96px,26vw,300px);line-height:.8;letter-spacing:-.03em;
+        background:linear-gradient(180deg,#fff,var(--green-bright));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .stat .unit{font-size:.18em;letter-spacing:.1em;color:var(--muted);-webkit-text-fill-color:var(--muted);font-family:"JetBrains Mono",monospace;display:block;margin-top:14px;}
+  .stat-label{font-family:"JetBrains Mono",monospace;font-size:13px;letter-spacing:.3em;text-transform:uppercase;color:var(--gold);margin-bottom:18px;}
+
+  .feature-row{display:flex;flex-wrap:wrap;gap:14px;margin-top:36px;}
+  .chip{font-family:"JetBrains Mono",monospace;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
+        border:1px solid var(--line);border-radius:100px;padding:10px 18px;backdrop-filter:blur(4px);background:rgba(255,255,255,.02);}
+  .chip b{color:var(--green-bright);font-weight:500;}
+
+  .reveal{opacity:0;transform:translateY(40px);transition:opacity 1s cubic-bezier(.2,.7,.2,1),transform 1s cubic-bezier(.2,.7,.2,1);}
+  .reveal.in{opacity:1;transform:none;}
+  .reveal.d1{transition-delay:.12s}.reveal.d2{transition-delay:.24s}.reveal.d3{transition-delay:.36s}
+
+  .cta-btn{display:inline-flex;align-items:center;gap:12px;margin-top:40px;font-family:"Hanken Grotesk";font-weight:600;font-size:18px;
+    color:#04140a;background:var(--green-bright);border:none;border-radius:100px;padding:18px 30px;cursor:pointer;
+    box-shadow:0 0 0 1px rgba(74,222,128,.4),0 16px 50px -12px rgba(34,197,94,.6);transition:transform .3s,box-shadow .3s;}
+  .cta-btn:hover{transform:translateY(-2px);box-shadow:0 0 0 1px rgba(74,222,128,.6),0 24px 60px -10px rgba(34,197,94,.8);}
+  .cta-btn .arr{transition:transform .3s}.cta-btn:hover .arr{transform:translate(4px,-4px)}
+
+  .endline{font-family:"JetBrains Mono",monospace;font-size:12px;letter-spacing:.26em;text-transform:uppercase;color:var(--muted);margin-top:54px;border-top:1px solid var(--line);padding-top:22px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+
+  .scroll-cue{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:5;font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.3em;color:var(--muted);text-transform:uppercase;text-align:center;transition:opacity .6s;}
+  .scroll-cue .bar{width:1px;height:34px;background:linear-gradient(var(--green),transparent);margin:10px auto 0;animation:drop 2s infinite;}
+  @keyframes drop{0%{opacity:0;transform:scaleY(0);transform-origin:top}40%{opacity:1}100%{opacity:0;transform:scaleY(1);transform-origin:bottom}}
+  .badge{position:fixed;bottom:22px;right:22px;z-index:5;font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.2em;color:var(--muted);text-transform:uppercase;border:1px solid var(--line);padding:7px 12px;border-radius:6px;background:rgba(0,0,0,.3);backdrop-filter:blur(4px);}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div class="vignette"></div>
+<div class="grain"></div>
+<div class="progress" id="bar"></div>
+
+<div class="hud tl"><span class="dot"></span><span class="live">LIVE</span> · THE ROUND</div>
+<div class="hud tr">MYCADDIPRO<br>v.NEXT — 01</div>
+
+<main>
+  <!-- 1. HERO -->
+  <section data-light="#22c55e" data-spin="0">
+    <div class="wrap">
+      <div class="kicker reveal">The autonomous golf intelligence</div>
+      <h1 class="reveal d1">Just<br><em>play.</em></h1>
+      <p class="sub reveal d2">No scorecard. No pencil. No "whose honour is it." No working out the skins on the 18th. You walk the course and hit shots — everything else simply happens.</p>
+    </div>
+  </section>
+
+  <!-- 2. auto-scoring -->
+  <section data-light="#4ade80" data-spin="1">
+    <div class="wrap">
+      <div class="stat-label reveal">You never keep score again</div>
+      <div class="stat reveal d1">0<span class="unit">scorecards · every stroke captured for you</span></div>
+      <p class="sub reveal d2">It watches the round and writes it down — gross, net, Stableford, countback, the lot — for every player in your group, live, with nobody touching a pencil.</p>
+    </div>
+  </section>
+
+  <!-- 3. AI caddie / club for conditions -->
+  <section data-light="#e3c178" data-spin="2">
+    <div class="wrap">
+      <div class="kicker reveal">The caddie that reads the shot</div>
+      <h2 class="lede reveal d1">It knows the club <span class="g">before you do.</span></h2>
+      <p class="sub reveal d2">412 to the pin, 14mph into your face, ball sitting down in the rough, green firm. It has seen you hit this shot a hundred times — and tells you exactly what to pull.</p>
+      <div class="feature-row reveal d3">
+        <span class="chip">wind &amp; <b>elevation</b></span>
+        <span class="chip">your <b>lie</b></span>
+        <span class="chip">your <b>real</b> carry numbers</span>
+        <span class="chip"><b>miss</b> patterns</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. side games settle themselves -->
+  <section data-light="#22c55e" data-spin="3">
+    <div class="wrap">
+      <div class="stat-label reveal">The bets settle themselves</div>
+      <h2 class="lede reveal d1">Skins, Nassau, Stableford — <span class="g">paid out</span> while you walk to the next tee.</h2>
+      <p class="sub reveal d2">Set the game once. It tracks every press, every carryover, every junk, every penny — and tells each player what they're up or down, hole by hole, with no argument and no maths.</p>
+    </div>
+  </section>
+
+  <!-- 5. CTA -->
+  <section data-light="#4ade80" data-spin="4">
+    <div class="wrap">
+      <div class="kicker reveal">This doesn't exist yet</div>
+      <h2 class="lede reveal d1">We're not building a golf <b>app.</b><br>We're building the round's <span class="g">autopilot.</span></h2>
+      <button class="cta-btn reveal d2" onclick="location.href='./caddie-mind.html'">See the mind at work <span class="arr">↗</span></button>
+      <div class="endline reveal d3"><span>MYCADDIPRO — CONCEPT 01 / THE ROUND</span><span>BUILT WITH CLAUDE</span></div>
+    </div>
+  </section>
+</main>
+
+<div class="scroll-cue" id="cue">Scroll<div class="bar"></div></div>
+<a class="badge" href="./caddie-mind.html">The Caddie Mind →</a>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" integrity="sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" integrity="sha384-g4NTh/Iv5PPU4xPyhEWqPcwtNXOvdaDI8LLnyYfyNZOjKJeYQyjzQ9X5275eBjpt" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" integrity="sha384-Z3REaz79l2IaAZqJsSABtTbhjgOUYyV3p90XNnAPCSHg3EMTz1fouunq9WZRtj3d" crossorigin="anonymous"></script>
+<script>
+/* ============================================================
+   THE ROUND — scrollytelling hero
+   three.js glowing orb + orbiting light, scroll-driven
+   ============================================================ */
+gsap.registerPlugin(ScrollTrigger);
+
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x050807,0.085);
+const camera = new THREE.PerspectiveCamera(45,innerWidth/innerHeight,0.1,100);
+camera.position.set(0,0,6.4);
+
+/* --- the orb: the "ball / green" --- */
+const orb = new THREE.Group();
+scene.add(orb);
+
+const coreGeo = new THREE.IcosahedronGeometry(1.6,5);
+const coreMat = new THREE.MeshStandardMaterial({
+  color:0x0c160f, emissive:0x0b3d22, emissiveIntensity:.5,
+  metalness:.7, roughness:.35, flatShading:true
+});
+const core = new THREE.Mesh(coreGeo,coreMat);
+orb.add(core);
+
+// faceted wireframe shell
+const shell = new THREE.Mesh(
+  new THREE.IcosahedronGeometry(1.72,2),
+  new THREE.MeshBasicMaterial({color:0x22c55e,wireframe:true,transparent:true,opacity:.18})
+);
+orb.add(shell);
+
+// orbiting "swing arc" ring
+const ring = new THREE.Mesh(
+  new THREE.TorusGeometry(2.55,0.012,16,160),
+  new THREE.MeshBasicMaterial({color:0xe3c178,transparent:true,opacity:.5})
+);
+ring.rotation.x = Math.PI*0.42;
+orb.add(ring);
+const ring2 = ring.clone();
+ring2.rotation.x = Math.PI*0.58; ring2.rotation.y = Math.PI*0.3;
+ring2.material = new THREE.MeshBasicMaterial({color:0x22c55e,transparent:true,opacity:.35});
+orb.add(ring2);
+
+/* --- lights --- */
+const key = new THREE.PointLight(0x22c55e,40,30);
+key.position.set(3,2,3);
+scene.add(key);
+const rim = new THREE.PointLight(0xe3c178,18,30);
+rim.position.set(-4,-1,2);
+scene.add(rim);
+scene.add(new THREE.AmbientLight(0x0a1f14,1.2));
+
+/* --- particle field (pollen / dust) --- */
+const COUNT = 700;
+const pGeo = new THREE.BufferGeometry();
+const pos = new Float32Array(COUNT*3);
+for(let i=0;i<COUNT*3;i++) pos[i]=(Math.random()-0.5)*22;
+pGeo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+const particles = new THREE.Points(pGeo,new THREE.PointsMaterial({
+  color:0x4ade80,size:0.028,transparent:true,opacity:.6,depthWrite:false,
+  blending:THREE.AdditiveBlending
+}));
+scene.add(particles);
+
+/* --- scroll state --- */
+let spin = 0;            // eased target rotation driven by scroll
+let spinTarget = 0;
+const lightColor = new THREE.Color(0x22c55e);
+const lightTarget = new THREE.Color(0x22c55e);
+
+const total = () => document.body.scrollHeight - innerHeight;
+addEventListener('scroll',()=>{
+  const p = Math.min(scrollY/Math.max(total(),1),1);
+  document.getElementById('bar').style.width = (p*100)+'%';
+  spinTarget = p * Math.PI * 4;
+  document.getElementById('cue').style.opacity = scrollY>60?0:1;
+},{passive:true});
+
+/* per-section: set light color + reveal text */
+document.querySelectorAll('section').forEach((sec)=>{
+  ScrollTrigger.create({
+    trigger:sec, start:'top 62%', end:'bottom 38%',
+    onToggle:self=>{
+      sec.querySelectorAll('.reveal').forEach(el=>el.classList.toggle('in',self.isActive));
+      if(self.isActive) lightTarget.set(sec.dataset.light||'#22c55e');
+    }
+  });
+});
+// ensure hero is visible immediately
+document.querySelector('section .kicker')?.classList.add('in');
+document.querySelectorAll('section:first-child .reveal').forEach(e=>e.classList.add('in'));
+
+/* --- render loop --- */
+const clock = new THREE.Clock();
+function tick(){
+  const t = clock.getElapsedTime();
+  spin += (spinTarget - spin)*0.06;
+  lightColor.lerp(lightTarget,0.05);
+  key.color.copy(lightColor);
+
+  orb.rotation.y = spin*0.5 + t*0.05;
+  orb.rotation.x = Math.sin(t*0.15)*0.18 + spin*0.12;
+  core.rotation.y = -t*0.08;
+  shell.rotation.y = t*0.12; shell.rotation.x = t*0.06;
+  ring.rotation.z = t*0.2; ring2.rotation.z = -t*0.16;
+
+  // orbiting key light = the "glow that reacts to scroll"
+  key.position.x = Math.cos(t*0.5 + spin)*3.6;
+  key.position.z = Math.sin(t*0.5 + spin)*3.6;
+  key.position.y = Math.sin(t*0.3)*1.5 + 1;
+  key.intensity = 34 + Math.sin(t*2)*8;
+
+  particles.rotation.y = t*0.02;
+  camera.position.x += (0 - camera.position.x)*0.05;
+
+  renderer.render(scene,camera);
+  requestAnimationFrame(tick);
+}
+tick();
+
+addEventListener('resize',()=>{
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>

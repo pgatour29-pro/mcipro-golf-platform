@@ -6,7 +6,9 @@ _Last updated: 2026-06-22_
 Live in production and in daily use. Most recent: **event-message notifications** — an unread badge on the main Society Events surfaces (player cube + organizer Events tab + organizer-home cube) plus a **LINE push** to the counterparty on every event-thread message — shipped 2026-06-22 (`c5eb286c`→`97e19c8c`). Tested end-to-end and passed. A full **Kakao push** path is built but **parked** (needs a Kakao-console toggle). No known critical issues open.
 
 ## Current focus
-- **Event-message notifications** — just shipped + verified live. JOA routes organizer pushes to Jason's LINE via `society_profiles.notify_line_id` (he logs in via Kakao). See SESSION-2026-06-22.md.
+- **Event-message notifications** — shipped + verified live. JOA routes organizer pushes to Jason's LINE via `society_profiles.notify_line_id` (he logs in via Kakao). See SESSION-2026-06-22.md.
+- **Strict event fall-off** (2026-06-22) — all upcoming/caddy/schedule/reminder displays now drop an event the instant its tee time passes (no grace). See [feedback_event_falloff_strict] + SESSION-2026-06-22.md Part 2.
+- **Live-ops done 2026-06-22:** manual-player hcp chip readable in light theme; "Add Buddy" casing fix; Kakao login hotfix (reverted the talk_message scope); Kyungtae Kim onboarded (JOA member, hcp 3.9, round attributed, directory-findable).
 - **Light/Dark color theme** (2026-06-21) — shipped + polished; minor cosmetic items remain (below).
 
 ## Next actions / open items

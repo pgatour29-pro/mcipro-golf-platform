@@ -120,6 +120,28 @@ Deno.serve(async (req: Request) => {
       const effectiveId = `KAKAO-${profile.id}`;
       const authEmail = `${effectiveId.toLowerCase()}@kakao-users.mycaddipro.com`;
 
+      // Persist the Kakao tokens so kakao-push can send "send to me" notifications later.
+      // Only useful once the user has granted the talk_message scope. Non-fatal.
+      try {
+        const expiresAt = tokenData?.expires_in
+          ? new Date(Date.now() + Number(tokenData.expires_in) * 1000).toISOString()
+          : null;
+        await fetch(`${SB_URL}/rest/v1/kakao_push_tokens`, {
+          method: "POST",
+          headers: { ...sb, Prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify({
+            kakao_id: effectiveId,
+            access_token: tokenData.access_token,
+            refresh_token: tokenData.refresh_token ?? null,
+            expires_at: expiresAt,
+            scope: tokenData.scope ?? null,
+            updated_at: new Date().toISOString(),
+          }),
+        });
+      } catch (tokErr) {
+        console.warn("[kakao-oauth-exchange] token store failed (non-fatal):", String(tokErr));
+      }
+
       // 1. Existing mapping for this provider id?
       const prof: any = (await (await fetch(`${SB_URL}/rest/v1/profiles?line_user_id=eq.${encodeURIComponent(effectiveId)}&select=id,auth_user_id&limit=1`, { headers: sb })).json())?.[0] || null;
       // 2. Resolve the auth user (profiles.id & auth_user_id are FKs to auth.users; creating a user

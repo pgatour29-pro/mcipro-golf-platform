@@ -578,9 +578,15 @@ class GlobalPlayerDirectory {
     }
 
     async addToBuddies(playerId) {
-        // Use existing golf buddies system
-        if (window.golfBuddiesSystem) {
-            await window.golfBuddiesSystem.addBuddy(playerId);
+        // Use the existing Golf Buddies system (loaded from golf-buddies-v2.js as window.GolfBuddiesSystem).
+        // NOTE: the object is GolfBuddiesSystem (capital G) — the old lowercase ref always missed it.
+        const gb = window.GolfBuddiesSystem;
+        if (gb && typeof gb.addBuddy === 'function') {
+            // Ensure it's initialized (sets currentUserId) so addBuddy's auth guard passes.
+            if (!gb.currentUserId && typeof gb.init === 'function') {
+                await gb.init();
+            }
+            await gb.addBuddy(playerId);
             alert('Added to Golf Buddies!');
         } else {
             console.log('Add to buddies:', playerId);

@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>MyCaddiPro — Auto-Capture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,400&family=Hanken+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#04070a;--ink:#eef5f1;--muted:#69786f;
+    --green:#22c55e;--green-bright:#4ade80;--teal:#5eead4;--gold:#e3c178;--red:#f87171;
+    --line:rgba(255,255,255,.08);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{background:radial-gradient(120% 110% at 50% 0%,#08130d 0%,#04070a 55%,#020405 100%);
+       color:var(--ink);font-family:"Hanken Grotesk",sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased;
+       display:flex;flex-direction:column;height:100dvh;}
+  .mono{font-family:"JetBrains Mono",monospace}
+
+  /* ---- start overlay ---- */
+  #start{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:32px;
+    background:radial-gradient(120% 90% at 50% 30%,#0a1a12,#04070a 70%);}
+  #start .kick{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--green-bright);margin-bottom:24px;display:flex;align-items:center;gap:10px}
+  #start .kick::before,#start .kick::after{content:"";width:24px;height:1px;background:var(--green)}
+  #start h1{font-family:"Fraunces",serif;font-weight:300;font-size:clamp(40px,11vw,72px);line-height:.95;letter-spacing:-.02em;margin-bottom:20px}
+  #start h1 em{font-style:italic;color:var(--green-bright)}
+  #start p{color:var(--muted);max-width:30ch;line-height:1.55;font-size:16px;margin-bottom:40px}
+  .go{font-family:"Hanken Grotesk";font-weight:600;font-size:19px;color:#04140a;background:var(--green-bright);border:none;border-radius:100px;padding:20px 44px;
+      box-shadow:0 0 0 1px rgba(74,222,128,.4),0 18px 55px -12px rgba(34,197,94,.7);cursor:pointer;display:flex;align-items:center;gap:12px}
+  .go:active{transform:scale(.97)}
+  .permnote{margin-top:22px;font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+
+  /* ---- live header ---- */
+  header{padding:max(16px,env(safe-area-inset-top)) 18px 14px;display:flex;justify-content:space-between;align-items:flex-start;z-index:5}
+  .brand{font-family:"Fraunces",serif;font-size:18px}.brand em{font-style:italic;color:var(--green-bright)}
+  .listening{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--green-bright);display:flex;align-items:center;gap:7px;border:1px solid rgba(74,222,128,.3);border-radius:100px;padding:6px 11px;background:rgba(74,222,128,.06)}
+  .listening .dot{width:6px;height:6px;border-radius:50%;background:var(--green-bright);box-shadow:0 0 8px var(--green-bright);animation:pulse 1.3s infinite}
+  .listening.warn{color:var(--gold);border-color:rgba(227,193,120,.3);background:rgba(227,193,120,.06)}.listening.warn .dot{background:var(--gold);box-shadow:0 0 8px var(--gold)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+
+  /* ---- stat strip ---- */
+  .stats{display:flex;gap:10px;padding:0 18px 12px}
+  .stat{flex:1;border:1px solid var(--line);border-radius:12px;padding:11px 13px;background:rgba(10,18,14,.4)}
+  .stat .v{font-family:"Fraunces",serif;font-weight:300;font-size:30px;line-height:1}
+  .stat .v .s{font-size:13px;color:var(--green-bright);font-family:"JetBrains Mono",monospace}
+  .stat .l{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-top:5px}
+
+  /* ---- radar ---- */
+  .radarwrap{position:relative;margin:0 18px;border:1px solid var(--line);border-radius:16px;overflow:hidden;flex:1;min-height:180px;background:#05100a}
+  #radar{position:absolute;inset:0;width:100%;height:100%}
+  .radar-tag{position:absolute;top:10px;left:12px;font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+
+  /* ---- accel meter ---- */
+  .meter{margin:12px 18px 0}
+  .meter .row{display:flex;justify-content:space-between;font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .bar{position:relative;height:8px;border-radius:6px;background:rgba(255,255,255,.06);overflow:hidden}
+  .bar .fill{position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg,var(--teal),var(--green-bright));transition:width .06s linear}
+  .bar .fill.hot{background:linear-gradient(90deg,var(--green-bright),#bef264)}
+  .bar .thr{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--gold);box-shadow:0 0 6px var(--gold)}
+  .sens{display:flex;align-items:center;gap:10px;margin-top:10px;font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .sens input{flex:1;accent-color:var(--green-bright)}
+
+  /* ---- shot log ---- */
+  .log{margin:12px 0 0;padding:0 18px;max-height:30vh;overflow-y:auto}
+  .log-h{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.26em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+  .log-h::before{content:"";width:16px;height:1px;background:var(--green)}
+  .shot{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;background:rgba(10,18,14,.55);border:1px solid var(--line);margin-bottom:7px;
+        transform:translateX(-14px) scale(.98);opacity:0;animation:pop .45s cubic-bezier(.2,.8,.2,1) forwards}
+  @keyframes pop{to{transform:none;opacity:1}}
+  .shot .n{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--green-bright);width:30px}
+  .shot .club{font-weight:600;font-size:15px;flex:1}
+  .shot .club small{display:block;font-weight:400;font-size:11px;color:var(--muted);font-family:"JetBrains Mono",monospace;letter-spacing:.05em}
+  .shot .dist{font-family:"Fraunces",serif;font-size:22px;font-weight:300}
+  .shot .dist s{font-size:11px;color:var(--muted);font-family:"JetBrains Mono",monospace;text-decoration:none}
+  .shot.putt .dist{color:var(--teal)} .shot.holed{border-color:rgba(74,222,128,.5)}
+  .shot.holed .club{color:var(--green-bright)}
+
+  /* ---- footer controls ---- */
+  footer{padding:12px 18px max(14px,env(safe-area-inset-bottom));display:flex;gap:10px;align-items:center}
+  .sim{flex:1;font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--green-bright);
+       background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.3);border-radius:100px;padding:13px;cursor:pointer}
+  .sim:active{transform:scale(.98)}
+  .note{font-family:"JetBrains Mono",monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:center;padding:0 18px 8px;line-height:1.5}
+  a.back{position:fixed;right:14px;bottom:calc(env(safe-area-inset-bottom) + 70px);z-index:6;font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:7px 10px;border-radius:6px;background:rgba(0,0,0,.4)}
+  .flash{position:fixed;inset:0;background:radial-gradient(circle at 50% 50%,rgba(74,222,128,.25),transparent 60%);z-index:15;pointer-events:none;opacity:0}
+</style>
+</head>
+<body>
+
+<div class="flash" id="flash"></div>
+
+<div id="start">
+  <div class="kick">Autonomous capture</div>
+  <h1>Just put it in<br>your <em>pocket.</em></h1>
+  <p>No scorecard. No taps. Your phone feels every swing and knows where you are. Start the round and play — we log the rest.</p>
+  <button class="go" id="goBtn">Start the round <span>→</span></button>
+  <div class="permnote">Allows motion + location · one tap</div>
+</div>
+
+<header style="display:none" id="liveHdr">
+  <div>
+    <div class="brand">Auto-<em>Capture</em></div>
+  </div>
+  <div class="listening" id="status"><span class="dot"></span><span id="statusTxt">Listening</span></div>
+</header>
+
+<div class="stats" style="display:none" id="stats">
+  <div class="stat"><div class="v" id="sShots">0</div><div class="l">shots logged</div></div>
+  <div class="stat"><div class="v" id="sHole">1<span class="s">/18</span></div><div class="l">hole</div></div>
+  <div class="stat"><div class="v" id="sWalk">0<span class="s">m</span></div><div class="l">walked · GPS</div></div>
+</div>
+
+<div class="radarwrap" style="display:none" id="radarwrap">
+  <canvas id="radar"></canvas>
+  <div class="radar-tag">Hole map · live</div>
+</div>
+
+<div class="meter" style="display:none" id="meter">
+  <div class="row"><span>Swing sensor · live g-force</span><span id="magVal">0.0</span></div>
+  <div class="bar"><div class="fill" id="fill"></div><div class="thr" id="thr"></div></div>
+  <div class="sens">Sensitivity<input type="range" id="sens" min="8" max="40" value="20" step="1"><span id="sensVal">20</span></div>
+</div>
+
+<div class="log" style="display:none" id="logWrap">
+  <div class="log-h">Auto-logged shots — zero taps</div>
+  <div id="log"></div>
+</div>
+
+<footer style="display:none" id="footer">
+  <button class="sim" id="simBtn">⛳ Simulate a swing (test)</button>
+</footer>
+<div class="note" style="display:none" id="footnote">Detection is real — from your phone's motion sensor. Club &amp; yardage shown here are the system's inference (demo values); the full build computes them from GPS + your shot history.</div>
+
+<a class="back" href="./the-round.html">← The Round</a>
+
+<script>
+/* ============================================================
+   AUTO-CAPTURE — no-tap shot detection
+   Real device sensors: accelerometer (swing) + GPS (position).
+   Detection is genuine; club/yardage is inferred (demo here).
+   ============================================================ */
+const $ = id => document.getElementById(id);
+
+let motionOK=false, started=false;
+let threshold=20, liveMag=0, lastShotT=0;
+const REFRACTORY=2200;                       // ms between detected swings
+let shotCount=0, hole=1, walked=0;
+let lastFix=null;                            // {lat,lon}
+let autoTimer=null;
+
+/* ---------- realistic per-hole shot plan ---------- */
+// each hole = sequence of {club, yds, putt?} the system "infers"
+function buildHole(){
+  const par = [3,4,4,5,4][hole%5];
+  const plan=[];
+  if(par>=4) plan.push({club:'Driver', yds: 245+((Math.random()*40)|0)});
+  if(par===5) plan.push({club:'3-wood', yds: 230+((Math.random()*30)|0)});
+  // approach
+  const appr=[['9-iron',120],['8-iron',140],['7-iron',158],['6-iron',172],['5-iron',186]][(Math.random()*5)|0];
+  if(par>=4) plan.push({club:appr[0], yds:appr[1]+((Math.random()*12)|0)});
+  if(par===3) plan.push({club:appr[0], yds: 150+((Math.random()*40)|0)});
+  // short game sometimes
+  if(Math.random()<0.4) plan.push({club:'Pitch', yds: 28+((Math.random()*30)|0)});
+  // putts
+  plan.push({club:'Putt', yds: 14+((Math.random()*22)|0), putt:true});
+  if(Math.random()<0.7) plan.push({club:'Putt', yds: 2+((Math.random()*4)|0), putt:true, holed:true});
+  else plan[plan.length-1].holed=true;
+  return plan;
+}
+let holePlan=buildHole(), planIdx=0;
+
+/* ---------- the core: register a detected shot ---------- */
+function registerShot(source){
+  const step = holePlan[planIdx] || {club:'Wedge', yds: 40, putt:false};
+  shotCount++;
+  // confirm feedback
+  if(navigator.vibrate) navigator.vibrate(step.holed?[40,60,40]:30);
+  blip(step.putt?660:880);
+  flash();
+
+  addShotRow(shotCount, step);
+  plotShot(planIdx, holePlan.length, step);
+  $('sShots').textContent=shotCount;
+
+  planIdx++;
+  if(step.holed || planIdx>=holePlan.length){
+    // hole complete → next hole
+    setTimeout(()=>{
+      hole = hole%18 + 1;
+      $('sHole').innerHTML = hole+'<span class="s">/18</span>';
+      holePlan=buildHole(); planIdx=0;
+      clearRadar();
+    }, step.holed?700:400);
+  }
+}
+
+/* ---------- shot log row ---------- */
+function addShotRow(n, step){
+  const row=document.createElement('div');
+  row.className='shot'+(step.putt?' putt':'')+(step.holed?' holed':'');
+  const unit = step.putt? 'ft':'yds';
+  const label = step.holed? 'Holed · '+step.club : step.club;
+  const sub = step.putt? 'putt · auto' : (n===1?'tee shot · auto-detected':'auto-detected');
+  row.innerHTML=`<div class="n mono">${String(n).padStart(2,'0')}</div>
+    <div class="club">${label}<small>${sub}</small></div>
+    <div class="dist">${step.yds}<s> ${unit}</s></div>`;
+  $('log').prepend(row);
+  while($('log').children.length>14) $('log').removeChild($('log').lastChild);
+}
+
+/* ---------- radar (top-down hole) ---------- */
+const cv=$('radar'); let ctx, W,H, pts=[];
+function sizeRadar(){
+  const r=$('radarwrap').getBoundingClientRect();
+  cv.width=r.width*devicePixelRatio; cv.height=r.height*devicePixelRatio;
+  W=cv.width;H=cv.height; ctx=cv.getContext('2d'); ctx.scale(devicePixelRatio,devicePixelRatio);
+}
+function clearRadar(){ pts=[]; }
+function plotShot(i, total, step){
+  // march up the canvas from tee (bottom) toward pin (top)
+  const r=$('radarwrap').getBoundingClientRect();
+  const t = total<=1?1:(i/(total-1));
+  const x = r.width*(0.5 + (Math.sin(i*1.7)*0.16));
+  const y = r.height*(0.9 - t*0.78);
+  pts.push({x,y,putt:step.putt,holed:step.holed,born:performance.now()});
+}
+function drawRadar(){
+  if(!ctx){requestAnimationFrame(drawRadar);return;}
+  const r=$('radarwrap').getBoundingClientRect();
+  ctx.clearRect(0,0,r.width,r.height);
+  // green field glow
+  const g=ctx.createRadialGradient(r.width/2,r.height*0.15,10,r.width/2,r.height*0.5,r.height);
+  g.addColorStop(0,'rgba(34,197,94,.12)');g.addColorStop(1,'rgba(4,16,10,0)');
+  ctx.fillStyle=g;ctx.fillRect(0,0,r.width,r.height);
+  // range rings around pin (top center)
+  const px=r.width/2, py=r.height*0.12;
+  ctx.strokeStyle='rgba(255,255,255,.05)';ctx.lineWidth=1;
+  for(let k=1;k<=4;k++){ctx.beginPath();ctx.arc(px,py,k*r.height*0.22,0,7);ctx.stroke();}
+  // pin
+  ctx.fillStyle='#e3c178';ctx.beginPath();ctx.arc(px,py,3,0,7);ctx.fill();
+  ctx.strokeStyle='rgba(227,193,120,.5)';ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px,py-14);ctx.stroke();
+  // shot path
+  if(pts.length){
+    ctx.strokeStyle='rgba(74,222,128,.35)';ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);
+    for(const p of pts)ctx.lineTo(p.x,p.y); ctx.lineTo(px,py); ctx.stroke();ctx.setLineDash([]);
+    pts.forEach((p,i)=>{
+      const last=i===pts.length-1;
+      const pr2 = last? 6+Math.sin(performance.now()/200)*2 : 3.5;
+      ctx.fillStyle=p.holed?'#bef264':(p.putt?'#5eead4':'#4ade80');
+      ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=last?16:6;
+      ctx.beginPath();ctx.arc(p.x,p.y,pr2,0,7);ctx.fill();ctx.shadowBlur=0;
+    });
+  }
+  requestAnimationFrame(drawRadar);
+}
+
+/* ---------- feedback fx ---------- */
+let actx;
+function blip(freq){
+  try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+    const o=actx.createOscillator(),g=actx.createGain();
+    o.frequency.value=freq;o.type='sine';o.connect(g);g.connect(actx.destination);
+    g.gain.setValueAtTime(0.0001,actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.12,actx.currentTime+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001,actx.currentTime+0.18);
+    o.start();o.stop(actx.currentTime+0.2);
+  }catch(e){}
+}
+function flash(){const f=$('flash');f.style.transition='none';f.style.opacity='1';
+  requestAnimationFrame(()=>{f.style.transition='opacity .5s';f.style.opacity='0';});}
+
+/* ---------- sensors ---------- */
+function onMotion(e){
+  let mag, a=e.acceleration;
+  if(a && a.x!=null){ mag=Math.hypot(a.x||0,a.y||0,a.z||0); }
+  else { const gg=e.accelerationIncludingGravity; if(!gg)return; mag=Math.abs(Math.hypot(gg.x||0,gg.y||0,gg.z||0)-9.81); }
+  liveMag = liveMag*0.6 + mag*0.4;          // light smoothing
+  const now=performance.now();
+  if(liveMag>threshold && now-lastShotT>REFRACTORY){ lastShotT=now; registerShot('swing'); }
+}
+function onGeo(pos){
+  const {latitude:lat,longitude:lon}=pos.coords;
+  if(lastFix){
+    const d=haversine(lastFix.lat,lastFix.lon,lat,lon);
+    if(d>1 && d<60){ walked+=d; $('sWalk').innerHTML=Math.round(walked)+'<span class="s">m</span>'; }
+  }
+  lastFix={lat,lon};
+}
+function haversine(la1,lo1,la2,lo2){
+  const R=6371000,toR=x=>x*Math.PI/180;
+  const dla=toR(la2-la1),dlo=toR(lo2-lo1);
+  const x=Math.sin(dla/2)**2+Math.cos(toR(la1))*Math.cos(toR(la2))*Math.sin(dlo/2)**2;
+  return 2*R*Math.asin(Math.sqrt(x));
+}
+
+/* live meter loop */
+function meterLoop(){
+  const pct=Math.min(liveMag/40,1)*100;
+  const fill=$('fill'); fill.style.width=pct+'%';
+  fill.classList.toggle('hot', liveMag>threshold);
+  $('magVal').textContent=liveMag.toFixed(1);
+  liveMag*=0.86;                              // decay when idle
+  requestAnimationFrame(meterLoop);
+}
+
+/* ---------- start ---------- */
+async function start(){
+  if(started)return; started=true;
+  // motion permission (iOS 13+)
+  try{
+    if(typeof DeviceMotionEvent!=='undefined' && typeof DeviceMotionEvent.requestPermission==='function'){
+      const p=await DeviceMotionEvent.requestPermission(); motionOK=(p==='granted');
+    } else { motionOK = ('DeviceMotionEvent' in window); }
+  }catch(e){ motionOK=false; }
+  // geolocation
+  if(navigator.geolocation){
+    try{ navigator.geolocation.watchPosition(onGeo,()=>{},{enableHighAccuracy:true,maximumAge:1500,timeout:8000}); }catch(e){}
+  }
+  // reveal live UI
+  $('start').style.display='none';
+  ['liveHdr','stats','radarwrap','meter','logWrap','footer','footnote'].forEach(id=>$(id).style.display='');
+  sizeRadar(); drawRadar(); meterLoop();
+  $('thr').style.left=(threshold/40*100)+'%';
+
+  if(motionOK){
+    window.addEventListener('devicemotion', onMotion);
+    setStatus('Listening for swings', false);
+    // safety: if no real motion arrives in 7s (likely desktop), nudge to simulate
+    setTimeout(()=>{ if(shotCount===0 && liveMag<2) setStatus('No motion sensor — tap Simulate', true); }, 7000);
+  } else {
+    setStatus('No motion sensor — use Simulate', true);
+  }
+}
+function setStatus(txt,warn){ $('statusTxt').textContent=txt; $('status').classList.toggle('warn',warn); }
+
+/* ---------- wire up ---------- */
+$('goBtn').addEventListener('click', start);
+$('simBtn').addEventListener('click', ()=>{ if(actx&&actx.state==='suspended')actx.resume(); registerShot('sim'); });
+$('sens').addEventListener('input', e=>{ threshold=+e.target.value; $('sensVal').textContent=threshold; $('thr').style.left=(threshold/40*100)+'%'; });
+addEventListener('resize', ()=>{ if(started) sizeRadar(); });
+</script>
+</body>
+</html>

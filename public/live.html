@@ -244,6 +244,39 @@
         });
         // --- End Viewer Count ---
 
+        // --- Instant updates via Supabase Realtime (scorecards changes) ---
+        // Previously Spectate Live only polled every 30s. We now subscribe to
+        // scorecards changes (the scorecards row is UPDATEd on every hole via
+        // updateScorecardTotals) and refresh immediately. The 30s poll below
+        // stays as a safety net in case realtime drops.
+        // Subscribe ONCE per page load and never re-subscribe — that avoids the
+        // known "2nd subscribe to a same-named channel crashes" bug.
+        let _scoreRtChannel = null;
+        let _rtDebounceTimer = null;
+        function startScoreRealtime() {
+            if (_scoreRtChannel) return;
+            _scoreRtChannel = supabaseClient
+                .channel('live-scorecards-rt')
+                .on('postgres_changes',
+                    { event: '*', schema: 'public', table: 'scorecards' },
+                    () => {
+                        // Coalesce bursts (a whole group's holes land together)
+                        clearTimeout(_rtDebounceTimer);
+                        _rtDebounceTimer = setTimeout(() => {
+                            if (!viewingArchived && !document.hidden) loadAllData();
+                        }, 1200);
+                    })
+                .subscribe((status) => {
+                    console.log('[Live] realtime scorecards channel:', status);
+                });
+        }
+        startScoreRealtime();
+
+        window.addEventListener('beforeunload', () => {
+            try { if (_scoreRtChannel) supabaseClient.removeChannel(_scoreRtChannel); } catch (e) {}
+        });
+        // --- End instant updates ---
+
         // Get today's date in YYYY-MM-DD format (LOCAL timezone, not UTC)
         function getToday() {
             const now = new Date();

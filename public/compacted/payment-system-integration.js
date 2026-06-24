@@ -24,6 +24,9 @@ if (window.SocietyOrganizerSystem) {
     const originalRenderConfirmed = SocietyOrganizerSystem.renderConfirmedPlayers;
     SocietyOrganizerSystem.renderConfirmedPlayers = async function(registrations) {
         const tbody = document.getElementById('confirmedPlayersTable');
+        if (!tbody) return;
+        // Cache the rows so the inline Transport/Competition toggles can find a player by id.
+        this.allConfirmedPlayers = registrations || [];
         if (!registrations || registrations.length === 0) {
             tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-gray-500">No registrations yet</td></tr>';
             return;
@@ -57,8 +60,8 @@ if (window.SocietyOrganizerSystem) {
                         <div class="text-xs text-gray-500 mt-1">${paymentBadge}</div>
                     </td>
                     <td class="px-4 py-2">${Math.round(reg.handicap)}</td>
-                    <td class="px-4 py-2 text-center">${reg.wantTransport ? '✓' : '-'}</td>
-                    <td class="px-4 py-2 text-center">${reg.wantCompetition ? '✓' : '-'}</td>
+                    <td class="px-4 py-2 text-center"><button onclick="SocietyOrganizerSystem.toggleTransport('${reg.id}')" title="Toggle transport on/off" class="inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold transition-colors ${reg.wantTransport ? 'bg-green-100 text-green-700 border border-green-300 hover:bg-green-200' : 'bg-gray-100 text-gray-400 border border-gray-200 hover:bg-gray-200'}">${reg.wantTransport ? '✓' : '–'}</button></td>
+                    <td class="px-4 py-2 text-center"><button onclick="SocietyOrganizerSystem.toggleCompetition('${reg.id}')" title="Toggle competition on/off" class="inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold transition-colors ${reg.wantCompetition ? 'bg-green-100 text-green-700 border border-green-300 hover:bg-green-200' : 'bg-gray-100 text-gray-400 border border-gray-200 hover:bg-gray-200'}">${reg.wantCompetition ? '✓' : '–'}</button></td>
                     <td class="px-4 py-2 text-center">${(reg.partnerPrefs || []).length}</td>
                     <td class="px-4 py-2 text-center">
                         ${payment ? `฿${payment.total_amount.toLocaleString()}` : '-'}

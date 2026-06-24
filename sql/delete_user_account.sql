@@ -21,7 +21,19 @@ AS $$
 DECLARE
   v_result jsonb := '{}'::jsonb;
   v_cnt    bigint;
+  v_uuid   uuid;
   t        text[];
+  -- (table, uuid-column) personal tables keyed by the user's internal UUID (profiles.id),
+  -- e.g. chat/notifications/social. Safe: uuid is unique so a wrong/empty match is a no-op.
+  -- Shared-conversation owners (rooms.created_by etc.) are intentionally NOT deleted.
+  uuid_targets text[] := ARRAY[
+    ['activity_logs','user_id'], ['notifications','user_id'], ['push_tokens','user_id'],
+    ['chat_devices','user_id'], ['chat_room_members','user_id'], ['read_cursors','user_id'],
+    ['message_receipts','user_id'], ['typing_events','user_id'], ['friendships','user_id'],
+    ['support_tickets','user_id'], ['user_handicaps','user_id'], ['user_preferences','user_id'],
+    ['event_leaderboard','user_id'], ['conversation_participants','profile_id'],
+    ['caddy_reviews','user_id'], ['caddy_waitlist','user_id'], ['room_members','user_id']
+  ];
   -- (table, text-column) personal-data tables keyed by the user's TEXT id.
   -- Views are intentionally excluded. Order roughly children → parents.
   text_targets text[] := ARRAY[
@@ -74,6 +86,11 @@ BEGIN
     RAISE EXCEPTION 'p_user_id required';
   END IF;
 
+  -- Resolve the user's internal UUID (for chat/notification tables) BEFORE deleting profiles.
+  BEGIN
+    SELECT id INTO v_uuid FROM profiles WHERE line_user_id = p_user_id LIMIT 1;
+  EXCEPTION WHEN OTHERS THEN v_uuid := NULL; END;
+
   -- Child rows first (FK-safe). scorecards.id is uuid, scores.scorecard_id is text.
   BEGIN
     DELETE FROM scores WHERE scorecard_id IN (SELECT id::text FROM scorecards WHERE player_id = p_user_id);
@@ -100,7 +117,22 @@ BEGIN
     END;
   END LOOP;
 
-  RETURN jsonb_build_object('deleted_user', p_user_id, 'details', v_result);
+  -- UUID-keyed personal tables (chat/notifications/social), if the user has an internal uuid.
+  IF v_uuid IS NOT NULL THEN
+    FOREACH t SLICE 1 IN ARRAY uuid_targets LOOP
+      BEGIN
+        EXECUTE format('DELETE FROM public.%I WHERE %I = $1', t[1], t[2]) USING v_uuid;
+        GET DIAGNOSTICS v_cnt = ROW_COUNT;
+        IF v_cnt > 0 THEN
+          v_result := v_result || jsonb_build_object(t[1] || '.' || t[2], v_cnt);
+        END IF;
+      EXCEPTION WHEN OTHERS THEN
+        v_result := v_result || jsonb_build_object(t[1] || '.' || t[2] || '_error', SQLERRM);
+      END;
+    END LOOP;
+  END IF;
+
+  RETURN jsonb_build_object('deleted_user', p_user_id, 'uuid', v_uuid, 'details', v_result);
 END;
 $$;
 

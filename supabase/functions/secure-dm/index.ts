@@ -86,26 +86,28 @@ Deno.serve(async (req: Request) => {
 
       if (error) return json({ error: error.message }, 500, origin);
 
-      // Trigger LINE push notification to recipient
-      try {
-        const pushUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/line-push-notification`;
-        await fetch(pushUrl, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            type: "new_message",
-            sender_id: user_id,
-            sender_name: userProfile.name || "Someone",
-            recipient_id: recipient_id,
-            content: message_text,
-          }),
-        });
-      } catch (pushErr) {
-        console.error("LINE push failed:", pushErr);
-        // Don't fail the send — push is best-effort
+      // Fire the LINE push WITHOUT blocking the response — awaiting the LINE round-trip made
+      // sends feel slow. Run it in the background (waitUntil) so the client gets the inserted
+      // message back immediately; the push is best-effort.
+      const pushUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/line-push-notification`;
+      const pushPromise = fetch(pushUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "new_message",
+          sender_id: user_id,
+          sender_name: userProfile.name || "Someone",
+          recipient_id: recipient_id,
+          content: message_text,
+        }),
+      }).catch((pushErr) => { console.error("LINE push failed:", pushErr); });
+      // @ts-ignore - EdgeRuntime is provided by the Supabase edge runtime
+      if (typeof EdgeRuntime !== "undefined" && (EdgeRuntime as any).waitUntil) {
+        // @ts-ignore
+        (EdgeRuntime as any).waitUntil(pushPromise);
       }
 
       return json({ data }, 200, origin);

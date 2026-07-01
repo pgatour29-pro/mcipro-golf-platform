@@ -305,10 +305,54 @@ no SyntaxError, app booted, modal forced open with mock data and screenshotted.
 
 ---
 
+## July 1 — Instructions: always-visible cube + society default (set once, applies to every event)
+
+| Commit | What |
+|---|---|
+| `a30c4a6a` | Instructions cube in the golfer modal now **always renders** (was hidden when empty) |
+| `af098517` | **Society-default instructions** — set once, auto-fills new events, back-fills upcoming events |
+| `9a0e3178` | Same Instructions control added to the **Registrations page** (no page-jumping) |
+| `aa97adce` | Apply-to-all **visible feedback** (button flash) + explicit **"Remove from all"** |
+
+**Always-visible cube:** `#eventDetailInstructionsContainer` no longer hides when empty — it
+shows a muted `No special instructions — standard rules apply.` (KO variant too). Precedence:
+per-event instructions → (society default, baked in per event) → generic placeholder.
+
+**Society default:** new column `society_profiles.default_instructions` (added via mgmt token),
+read/written with the **same anon-UPDATE path as `default_transport_fee`/`default_competition_fee`**
+(so no new RLS/RPC). Functions `loadSocietyDefaultInstructions()` + `applyInstructionsToAllEvents(text, btnEl)`
++ `removeInstructionsFromAllEvents(btnEl, fieldId)`. New-event form auto-fills the Instructions field
+from the society default (mirrors `loadSocietyDefaultFees`).
+
+**"Set for all my events"** button: persists the default AND bulk-updates the society's UPCOMING
+events (`SocietyOrganizerSystem.events` filtered by `date >= today`, chunked `.in('id', …)`). This is
+where the July-1 trigger finding paid off — an **instructions-only `UPDATE society_events`** does NOT
+fire the LINE notification trigger (it only fires on `event_date` / `start_time` / `course_name` change
+or cancellation, verified via `pg_trigger`), so applying to all events does **not** spam players.
+The old blanket "never write society_events" rule is therefore too broad — instructions-only writes
+are safe. (TRGG can't inherit via `organizer_id` — all 30 upcoming TRGG events have `organizer_id = NULL`;
+they're title-prefix matched — so the value is baked into each event rather than joined at read time.)
+
+**Registrations page parity:** added `#regEventInstructions` into the existing editable "Event
+Details" card; saved via `saveEventDetails` → `updateEvent` (maps `instructions`), populated on event
+select. Same "Set for all my events" + "Remove from all" buttons. So the organizer manages
+instructions from either the event form or the registrations page; both stay in sync.
+
+**Feedback fix (important):** `NotificationManager.show()` is a no-op, so the apply/remove buttons
+gave zero feedback — a 2nd click "did nothing" and there was no obvious undo. Now the clicked button
+flashes solid-green `✓ Set for N events` / `✓ Cleared from N events` (red `Failed` on error) for
+~2.6s via `_flashInstrBtn(btnEl,…)`, and "Remove from all" clears the field + strips instructions from
+every upcoming event in one click. Verified the flash visually via headless render.
+
+---
+
 ## Cross-cutting rules reinforced this session
 
-- **`society_events` writes fire LINE notifications** to players — never bulk-edit that
-  table for cleanup. (Handicap/registration tables don't fire.)
+- **`society_events` writes fire LINE notifications** — but ONLY via a trigger that fires on
+  `event_date` / `start_time` / `course_name` change or cancellation. Other columns
+  (`instructions`, `notes`, `departure_time`, fees, title…) are notification-safe. So an
+  instructions-only bulk update is fine; a date/time/course fix still needs the disable-trigger
+  txn dance. (Handicap/registration tables don't fire at all.)
 - **Never blame cache.** Read the JS console errors first; find the real bug.
 - **`NotificationManager.show()` is a no-op** — "no toast" can mean feedback-less success or
   a swallowed error, not a failure.

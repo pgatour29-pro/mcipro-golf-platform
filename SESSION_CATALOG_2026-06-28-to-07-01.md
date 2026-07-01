@@ -346,6 +346,47 @@ every upcoming event in one click. Verified the flash visually via headless rend
 
 ---
 
+## July 1 — Match Play setup: light-theme colors
+
+`f214a698` — the live-scorecard Match Play setup (**Match Play Format** / **Assign Teams** /
+**Team Game Mode**, all inside `#matchPlayConfig`) uses hard-coded **dark inline backgrounds**
+(`rgba(30,41,59)`, built for the Geekout/dark theme) plus mixed text colors, so in the **lite
+theme** it rendered as dark cards with dark-on-dark format labels and light labels vanishing on
+white — unreadable. Added `body.theme-light` overrides (with `!important` to beat the inline dark
+backgrounds AND the pre-existing unconditional dark-card text-lightening rules) that make the cards
+**white with dark readable text**, keeping the blue/red/amber team accent borders
+(`[style*="rgba(30,41,59"]` → white; `#matchPlayConfig *` → `#1e293b`; re-assert `#3b82f6`/`#ef4444`/
+`#f59e0b` borders). Dark/Geekout theme untouched (rules scoped to `body.theme-light`). Verified both
+themes via headless render. NB: inline `style="…"` can only be beaten by a stylesheet rule marked
+`!important` (see [[feedback_inline_styles_override]]).
+
+---
+
+## July 1 — Supabase Security Advisor remediation (DB-only, no commit)
+
+Pete forwarded the Supabase Security Advisor email (2 CRITICALs). Fixed both at the database via
+`npx supabase db query --linked`:
+
+1. **"Table publicly accessible" (`rls_disabled_in_public`)** — only two tables had RLS off, both
+   created earlier this session: `trgg_members` (973 rows) and `trgg_handicap_alias`. Enabled RLS +
+   added the app's **standard 3-policy pattern** (`tmp_select`/`tmp_insert`/`tmp_update` for
+   `anon, authenticated`, `USING/CHECK true`, **no DELETE**) — matching ~60 other tables. This clears
+   the flag and blocks anonymous DELETE without breaking reads/writes (the browser uses the anon key).
+2. **"User data exposed through a view" (`auth_users_exposed`)** — the `chat_users` view
+   (`SELECT … u.email FROM auth.users u LEFT JOIN profiles p`) was readable by `anon`/`authenticated`,
+   leaking emails via the API. The app doesn't query the view directly (it uses `chat_messages`); only
+   two **SECURITY DEFINER** functions (`list_chat_contacts`, `search_chat_contacts`, owned by postgres)
+   read it. Fix: `REVOKE ALL ON public.chat_users FROM anon, authenticated, PUBLIC` — the view is no
+   longer API-exposed, the DEFINER functions still work. Verified only `postgres`/`service_role` retain
+   grants.
+
+⚠️ These are the app's **current** security posture (anon key can still read/write via the permissive
+`tmp_*` policies) — true per-user security still needs the auth cutover (see
+[[project_auth_architecture_v2]] / [[project_security_rls]]). This was reactive advisor triage, not
+the full Phase-2 remediation.
+
+---
+
 ## Cross-cutting rules reinforced this session
 
 - **`society_events` writes fire LINE notifications** — but ONLY via a trigger that fires on

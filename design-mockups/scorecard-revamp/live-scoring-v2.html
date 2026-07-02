@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Scoring — MciPro Revamp v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Outfit:wght@100;200;300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<style>
+  :root{
+    --bg:#07090C;
+    --glass:rgba(255,255,255,.045); --glass2:rgba(255,255,255,.07);
+    --stroke-hi:rgba(255,255,255,.22); --stroke-lo:rgba(255,255,255,.05);
+    --text:#F4F7F9; --sub:#8C96A1; --faint:#59636E;
+    --green:#22c55e; --green-hi:#4ade80; --green-deep:#15803d;
+    --green-dim:rgba(34,197,94,.15);
+    --red:#fb7185; --red-dim:rgba(244,63,94,.12);
+    --amber:#f0a531;
+    --ring-track:rgba(255,255,255,.07);
+    --key-face:rgba(255,255,255,.055);
+    --contour:rgba(34,197,94,.065);
+  }
+  body.theme-light{
+    --bg:#EAEEF1;
+    --glass:rgba(255,255,255,.62); --glass2:rgba(255,255,255,.9);
+    --stroke-hi:rgba(255,255,255,.95); --stroke-lo:rgba(15,23,42,.08);
+    --text:#0F141A; --sub:#5A6672; --faint:#98A3AE;
+    --green:#16a34a; --green-hi:#22c55e; --green-deep:#15803d;
+    --green-dim:rgba(22,163,74,.13);
+    --red:#e11d48; --red-dim:rgba(225,29,72,.09);
+    --amber:#d97706;
+    --ring-track:rgba(15,23,42,.09);
+    --key-face:rgba(255,255,255,.85);
+    --contour:rgba(22,163,74,.09);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  html,body{scrollbar-width:none}
+  ::-webkit-scrollbar{width:0;height:0}
+  .micon{font-family:'Material Symbols Outlined';font-weight:normal;font-style:normal;display:inline-block;line-height:1;white-space:nowrap;direction:ltr;font-variation-settings:'FILL' 0,'wght' 300,'GRAD' 0,'opsz' 24}
+  body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;position:relative;overflow-x:hidden}
+
+  /* ======== atmosphere: contour topo + ambient light ======== */
+  .atmo{position:fixed;inset:0;z-index:0;pointer-events:none}
+  .atmo .glow1{position:absolute;top:-140px;left:50%;transform:translateX(-50%);width:560px;height:460px;
+    background:radial-gradient(50% 50% at 50% 50%, rgba(34,197,94,.16), transparent 70%);filter:blur(10px)}
+  body.theme-light .atmo .glow1{background:radial-gradient(50% 50% at 50% 50%, rgba(22,163,74,.14), transparent 70%)}
+  .atmo .glow2{position:absolute;bottom:-180px;right:-120px;width:420px;height:420px;
+    background:radial-gradient(50% 50% at 50% 50%, rgba(34,197,94,.07), transparent 70%)}
+  .atmo svg{position:absolute;inset:0;width:100%;height:100%}
+  .atmo path{fill:none;stroke:var(--contour);stroke-width:1.1}
+
+  .page{position:relative;z-index:1;max-width:430px;margin:0 auto;padding:0 16px 12px;display:flex;flex-direction:column;gap:12px}
+
+  /* ======== iOS status bar + island ======== */
+  .statusbar{display:flex;align-items:center;justify-content:space-between;padding:14px 12px 0;height:44px;position:relative}
+  .statusbar .time{font:600 15px/1 'Instrument Sans';letter-spacing:.01em}
+  .statusbar .right{display:flex;gap:6px;align-items:center}
+  .statusbar .right .micon{font-size:16px}
+  .island{position:absolute;left:50%;top:11px;transform:translateX(-50%);width:118px;height:34px;border-radius:18px;background:#000;border:1px solid rgba(255,255,255,.06)}
+  body.theme-light .island{border-color:rgba(15,23,42,.12)}
+
+  /* ======== glass material ======== */
+  .glass{position:relative;background:var(--glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-radius:22px}
+  .glass::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;
+    background:linear-gradient(160deg,var(--stroke-hi),var(--stroke-lo) 38%,rgba(34,197,94,.14) 100%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+  body.theme-light .glass{box-shadow:0 10px 30px rgba(15,23,42,.07)}
+
+  /* ======== top utility ======== */
+  .util{display:flex;align-items:center;justify-content:space-between;margin-top:4px}
+  .util .cluster-l,.util .cluster-r{display:flex;gap:8px}
+  .ghost-ic{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--sub)}
+  .ghost-ic.glass{border-radius:50%}
+  .ghost-ic .micon{font-size:18px}
+  .util .mid{text-align:center}
+  .util .mid .c{font:600 10.5px/1 'JetBrains Mono';letter-spacing:.24em;color:var(--sub)}
+  .util .mid .c b{color:var(--green-hi);font-weight:600}
+  .util .mid .t{font:500 9px/1 'JetBrains Mono';letter-spacing:.2em;color:var(--faint);margin-top:5px}
+  .end-pill{height:38px;padding:0 16px;border-radius:19px;border:1px solid var(--red-dim);background:var(--red-dim);color:var(--red);font:700 11.5px/38px 'Instrument Sans';letter-spacing:.1em}
+
+  /* ======== compact instrument cluster ======== */
+  .cluster{display:flex;align-items:center;gap:10px;border-radius:24px;padding:14px 10px}
+  .nav-chev{width:34px;height:34px;color:var(--text);display:flex;align-items:center;justify-content:center;border-radius:50%;flex:none}
+  .nav-chev .micon{font-size:19px}
+  .gauge-wrap{position:relative;width:118px;height:118px;display:flex;align-items:center;justify-content:center;flex:none}
+  .gauge,.gauge-glow{position:absolute;inset:0;border-radius:50%;
+    background:conic-gradient(from 210deg, var(--green-deep) 0deg, var(--green) 80deg, var(--green-hi) 100deg, var(--ring-track) 100.5deg 300deg, transparent 300deg);
+    -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
+    mask:radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px))}
+  .gauge-glow{filter:blur(8px);opacity:.55}
+  .gauge-inner{text-align:center;position:relative;z-index:2}
+  .gauge-inner .k{font:600 8px/1 'JetBrains Mono';letter-spacing:.3em;color:var(--faint);text-transform:uppercase}
+  .gauge-inner .n{font:200 58px/1 'Outfit';letter-spacing:-.03em;margin-top:1px;
+    background:linear-gradient(180deg,var(--text) 45%,var(--sub) 110%);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hole-info{flex:1;min-width:0}
+  .hole-info .meta{font:500 12px/1 'JetBrains Mono';letter-spacing:.03em;color:var(--sub);white-space:nowrap}
+  .hole-info .meta b{color:var(--text);font-weight:600}
+  .hole-info .thru{font:500 9px/1 'JetBrains Mono';letter-spacing:.18em;color:var(--green-hi);margin-top:8px}
+  .pin-chip{display:inline-flex;align-items:center;gap:6px;margin-top:9px;padding:6px 10px;border-radius:12px;white-space:nowrap;
+    font:500 8.5px/1 'JetBrains Mono';letter-spacing:.14em;color:var(--sub);text-transform:uppercase}
+  .pin-chip i{width:6px;height:6px;border-radius:50%;background:var(--green-hi);box-shadow:0 0 8px var(--green-hi)}
+
+  /* ======== hole result ticks ======== */
+  .ticks{display:flex;gap:4px;align-items:center;padding:0 4px}
+  .ticks i{flex:1;height:14px;border-radius:4px;background:var(--glass);position:relative}
+  .ticks i.par{background:var(--green-deep);opacity:.55}
+  .ticks i.birdie{background:var(--green-hi);box-shadow:0 0 8px rgba(74,222,128,.5)}
+  .ticks i.bogey{background:var(--faint);opacity:.5}
+  .ticks i.cur{background:transparent;border:1.5px solid var(--green-hi);box-shadow:0 0 10px rgba(34,197,94,.4)}
+  .ticks span{font:500 10px/1 'JetBrains Mono';color:var(--faint);margin-left:6px;letter-spacing:.05em}
+
+  /* ======== players ======== */
+  .players{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+  .pc{border-radius:18px;padding:12px 6px 11px;text-align:center;position:relative}
+  .pc .av{width:38px;height:38px;border-radius:50%;margin:0 auto;background:var(--glass2);display:flex;align-items:center;justify-content:center;font:600 12px/1 'Instrument Sans';color:var(--sub);position:relative}
+  .pc .nm{font:700 15.5px/1 'Instrument Sans';margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pc .hcp{font:500 9px/1 'JetBrains Mono';color:var(--faint);margin-top:4px;letter-spacing:.08em}
+  .pc .sc{font:300 30px/1 'Outfit';margin-top:8px}
+  .pc .sc.empty{color:var(--faint);font-weight:100}
+  .pc .pts{font:600 9px/1 'JetBrains Mono';margin-top:5px;letter-spacing:.1em;color:var(--sub)}
+  .pc .pts b{color:var(--green-hi);font-weight:600}
+  .pc.active::before{background:linear-gradient(160deg,rgba(74,222,128,.65),rgba(34,197,94,.12) 45%,rgba(34,197,94,.4))}
+  .pc.active{box-shadow:0 0 26px rgba(34,197,94,.16)}
+  .pc.active .av{background:linear-gradient(135deg,var(--green-deep),var(--green));color:#fff;box-shadow:0 0 14px rgba(34,197,94,.45)}
+  .pc.active .tag{position:absolute;top:-8px;left:50%;transform:translateX(-50%);font:700 7.5px/1 'JetBrains Mono';letter-spacing:.16em;color:#052e14;background:linear-gradient(180deg,var(--green-hi),var(--green));padding:4px 8px;border-radius:8px;box-shadow:0 2px 10px rgba(34,197,94,.4)}
+
+  /* ======== preview ======== */
+  .preview{border-radius:20px;padding:13px 16px;display:flex;align-items:center;gap:15px}
+  .preview .big{font:200 46px/1 'Outfit';min-width:36px;text-align:center;
+    background:linear-gradient(180deg,var(--text),var(--sub));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .preview .info{flex:1}
+  .preview .who{font:700 21px/1.05 'Instrument Sans';letter-spacing:-.01em}
+  .preview .calc{display:flex;align-items:center;gap:7px;margin-top:7px;font:500 10.5px/1 'JetBrains Mono';letter-spacing:.06em;color:var(--sub)}
+  .preview .calc .micon{font-size:12px;color:var(--faint)}
+  .preview .calc b{color:var(--green-hi);font-weight:600}
+  .preview .x{width:36px;height:36px;border-radius:50%;background:var(--glass2);color:var(--sub);display:flex;align-items:center;justify-content:center;flex:none}
+  .preview .x .micon{font-size:16px}
+
+  /* ======== keypad ======== */
+  .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .key{height:68px;border-radius:18px;background:var(--key-face);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    border:1px solid var(--stroke-lo);color:var(--text);font:300 27px/62px 'Outfit';text-align:center;position:relative;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+  body.theme-light .key{box-shadow:0 2px 6px rgba(15,23,42,.06), inset 0 1px 0 #fff}
+  .key.hint{border-color:rgba(34,197,94,.55);box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 0 16px rgba(34,197,94,.14)}
+  .key.hint::after{content:'NET PAR';position:absolute;bottom:6px;left:0;right:0;font:700 6.5px/1 'JetBrains Mono';letter-spacing:.22em;color:var(--green-hi)}
+  .key.fn{font:600 12.5px/62px 'Instrument Sans';letter-spacing:.12em;color:var(--sub);text-transform:uppercase}
+  .key.go{background:linear-gradient(180deg,#34d873,var(--green-deep));border:0;color:#fff;
+    box-shadow:0 0 30px rgba(34,197,94,.35), inset 0 1px 0 rgba(255,255,255,.3)}
+  .key.go .micon{font-size:27px;line-height:64px;font-variation-settings:'FILL' 1,'wght' 600}
+
+  /* ======== quick + summary ======== */
+  .quick{display:flex;gap:9px}
+  .q{flex:1;color:var(--text);font:600 12.5px/1 'Instrument Sans';border-radius:16px;padding:13px 0;display:flex;align-items:center;justify-content:center;gap:7px}
+  .q .micon{font-size:16px;color:var(--green-hi)}
+  .q .dot{width:6px;height:6px;border-radius:50%;background:var(--green-hi);box-shadow:0 0 8px var(--green-hi)}
+  .sum{border-radius:20px;padding:14px 16px;display:flex;align-items:center;gap:14px}
+  .sum .ring{width:46px;height:46px;border-radius:50%;flex:none;
+    background:conic-gradient(var(--green-hi) 0 33%, var(--ring-track) 33% 100%);display:flex;align-items:center;justify-content:center}
+  .sum .ring b{width:35px;height:35px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center;font:600 10.5px/1 'JetBrains Mono';color:var(--text)}
+  body.theme-light .sum .ring b{background:#fff}
+  .sum .body{flex:1}
+  .sum .t{font:600 13.5px/1 'Instrument Sans'}
+  .sum .s{font:500 10.5px/1.5 'JetBrains Mono';color:var(--sub);margin-top:4px;letter-spacing:.02em;white-space:nowrap}
+  .sum .s b{color:var(--green-hi);font-weight:600}
+  .sum .micon{color:var(--faint);font-size:20px}
+
+  .finish{width:100%;border:0;border-radius:18px;padding:16px 0;margin-top:2px;
+    background:linear-gradient(180deg,#34d873,var(--green-deep));color:#fff;font:700 15.5px/1 'Instrument Sans';
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    box-shadow:0 0 26px rgba(34,197,94,.28), inset 0 1px 0 rgba(255,255,255,.3)}
+  .finish .micon{font-size:19px;font-variation-settings:'FILL' 1,'wght' 500}
+  .finish small{font:600 9px/1 'JetBrains Mono';letter-spacing:.14em;color:rgba(255,255,255,.75)}
+  .home-ind{width:135px;height:5px;border-radius:3px;background:var(--text);opacity:.35;margin:6px auto 2px}
+</style>
+</head>
+<body>
+<div class="atmo">
+  <svg viewBox="0 0 390 900" preserveAspectRatio="xMidYMid slice">
+    <path d="M-40,120 C60,60 180,140 260,90 S420,60 460,120"/>
+    <path d="M-40,160 C70,95 190,180 270,125 S430,95 470,160"/>
+    <path d="M-40,200 C80,130 200,220 280,160 S440,130 480,200"/>
+    <path d="M-60,420 C40,360 140,450 240,400 S400,360 460,430"/>
+    <path d="M-60,460 C50,395 150,490 250,435 S410,395 470,470"/>
+    <path d="M-40,700 C60,640 180,730 280,675 S440,640 480,710"/>
+    <path d="M-40,740 C70,675 190,770 290,710 S450,675 490,750"/>
+    <path d="M-40,780 C80,715 200,810 300,745 S460,715 500,790"/>
+  </svg>
+  <div class="glow1"></div>
+  <div class="glow2"></div>
+</div>
+
+<div class="page">
+
+  <div class="statusbar">
+    <span class="time">9:41</span>
+    <div class="island"></div>
+    <div class="right">
+      <span class="micon">signal_cellular_alt</span>
+      <span class="micon">wifi</span>
+      <span class="micon" style="transform:rotate(90deg)">battery_5_bar</span>
+    </div>
+  </div>
+
+  <div class="util">
+    <div class="cluster-l">
+      <div class="ghost-ic glass"><span class="micon">map</span></div>
+      <div class="ghost-ic glass"><span class="micon">dark_mode</span></div>
+    </div>
+    <div class="mid">
+      <div class="c">PHOENIX GOLD · <b>OCEAN</b></div>
+    </div>
+    <div class="cluster-r">
+      <button class="end-pill">END</button>
+    </div>
+  </div>
+
+  <div class="cluster glass">
+    <div class="nav-chev"><span class="micon">chevron_left</span></div>
+    <div class="gauge-wrap">
+      <div class="gauge-glow"></div>
+      <div class="gauge"></div>
+      <div class="gauge-inner">
+        <div class="k">Hole</div>
+        <div class="n">7</div>
+      </div>
+    </div>
+    <div class="hole-info">
+      <div class="meta">PAR <b>4</b> · <b>385</b>Y · SI <b>10</b></div>
+      <div class="pin-chip glass"><i></i>PIN BACK-RT</div>
+      <div class="thru">6/18 · LIVE 2H04</div>
+    </div>
+    <div class="nav-chev"><span class="micon">chevron_right</span></div>
+  </div>
+
+  <div class="ticks">
+    <i class="par"></i><i class="birdie"></i><i class="par"></i><i class="bogey"></i><i class="par"></i><i class="birdie"></i><i class="cur"></i>
+    <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+    <span>6/18</span>
+  </div>
+
+  <div class="players">
+    <div class="pc glass active">
+      <div class="tag">SCORING</div>
+      <div class="av">PP</div>
+      <div class="nm">Pete</div>
+      <div class="hcp">HCP 12</div>
+      <div class="sc">5</div>
+      <div class="pts"><b>14</b> PTS</div>
+    </div>
+    <div class="pc glass">
+      <div class="av">DT</div>
+      <div class="nm">Derek</div>
+      <div class="hcp">HCP 9</div>
+      <div class="sc">4</div>
+      <div class="pts"><b>16</b> PTS</div>
+    </div>
+    <div class="pc glass">
+      <div class="av">EL</div>
+      <div class="nm">Erik</div>
+      <div class="hcp">HCP 4</div>
+      <div class="sc empty">–</div>
+      <div class="pts"><b>15</b> PTS</div>
+    </div>
+    <div class="pc glass">
+      <div class="av">JK</div>
+      <div class="nm">Jason</div>
+      <div class="hcp">HCP 15</div>
+      <div class="sc empty">–</div>
+      <div class="pts"><b>11</b> PTS</div>
+    </div>
+  </div>
+
+  <div class="preview glass">
+    <div class="big">5</div>
+    <div class="info">
+      <div class="who">Pete Park</div>
+      <div class="calc">GROSS 5 <span class="micon">arrow_forward</span> NET 4 <span class="micon">arrow_forward</span> <b>2 PTS</b></div>
+    </div>
+    <div class="x"><span class="micon">close</span></div>
+  </div>
+
+  <div class="pad">
+    <button class="key">1</button><button class="key">2</button><button class="key">3</button>
+    <button class="key hint">4</button><button class="key">5</button><button class="key">6</button>
+    <button class="key">7</button><button class="key">8</button><button class="key">9</button>
+    <button class="key fn">Clear</button><button class="key">0</button><button class="key go"><span class="micon">check</span></button>
+  </div>
+
+  <div class="quick">
+    <button class="q glass"><span class="micon">menu_book</span>Yardage</button>
+    <button class="q glass"><span class="dot"></span>Leaderboard</button>
+    <button class="q glass"><span class="micon">casino</span>Games</button>
+  </div>
+
+  <div class="sum glass">
+    <div class="ring"><b>6/18</b></div>
+    <div class="body">
+      <div class="t">Round Summary</div>
+      <div class="s">STABLEFORD <b>14 PTS</b> · SKINS <b>2</b> · PACE +0:04</div>
+    </div>
+    <span class="micon">expand_more</span>
+  </div>
+
+  <button class="finish"><span class="micon">flag</span>Finish Round<small>SAVES SCORES</small></button>
+
+  <div class="home-ind"></div>
+
+</div>
+<script>
+  if (location.search.includes('light')) document.body.classList.add('theme-light');
+</script>
+</body>
+</html>

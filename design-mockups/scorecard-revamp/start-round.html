@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>New Round — MciPro Revamp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Outfit:wght@200;300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0D10; --bg-glow:rgba(34,197,94,.05);
+    --card:#14181D; --card2:#1B2026; --key:#1B2026;
+    --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.11);
+    --text:#F2F5F7; --sub:#8A939E; --faint:#5A6470;
+    --green:#22c55e; --green-deep:#16a34a; --green-dim:rgba(34,197,94,.14);
+    --amber:#f0a531; --amber-dim:rgba(240,165,49,.13);
+    --glow:0 0 28px rgba(34,197,94,.30);
+  }
+  body.theme-light{
+    --bg:#F2F4F6; --bg-glow:rgba(34,197,94,.06);
+    --card:#FFFFFF; --card2:#EDF0F3; --key:#EDF0F3;
+    --line:rgba(15,23,42,.08); --line2:rgba(15,23,42,.14);
+    --text:#10151B; --sub:#5B6672; --faint:#96A1AC;
+    --green:#16a34a; --green-deep:#15803d; --green-dim:rgba(22,163,74,.12);
+    --amber:#d97706; --amber-dim:rgba(217,119,6,.11);
+    --glow:0 8px 24px rgba(22,163,74,.28);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  .micon{font-family:'Material Symbols Outlined';font-weight:normal;font-style:normal;display:inline-block;line-height:1;letter-spacing:normal;text-transform:none;white-space:nowrap;word-wrap:normal;direction:ltr;font-variation-settings:'FILL' 0,'wght' 300,'GRAD' 0,'opsz' 24}
+  .micon.fill{font-variation-settings:'FILL' 1,'wght' 400}
+  body{
+    font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--text);
+    min-height:100vh;position:relative;
+  }
+  body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:radial-gradient(120% 45% at 50% -8%, var(--bg-glow) 0%, transparent 60%);}
+  .page{position:relative;z-index:1;max-width:430px;margin:0 auto;padding:18px 18px 28px}
+
+  /* ---- segmented mode toggle ---- */
+  .seg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:4px;gap:4px}
+  .seg button{flex:1;border:0;background:transparent;color:var(--sub);font:600 13px/1 'Instrument Sans';padding:11px 0;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:6px}
+  .seg button .micon{font-size:17px}
+  .seg button.on{background:var(--card2);color:var(--text);box-shadow:inset 0 0 0 1px var(--line2)}
+  .seg button.on .micon{color:var(--green)}
+
+  /* ---- header ---- */
+  header{margin:26px 2px 18px;display:flex;align-items:flex-end;justify-content:space-between}
+  .overline{font:600 10.5px/1 'JetBrains Mono';letter-spacing:.22em;color:var(--green);text-transform:uppercase;margin-bottom:9px}
+  h1{font:600 32px/1.05 'Instrument Sans';letter-spacing:-.02em}
+  .hdr-sub{font:500 13px/1 'Instrument Sans';color:var(--sub);margin-top:8px}
+  .hdr-actions{display:flex;gap:8px}
+  .ghost-ic{width:38px;height:38px;border-radius:50%;border:1px solid var(--line2);background:var(--card);color:var(--sub);display:flex;align-items:center;justify-content:center}
+  .ghost-ic .micon{font-size:19px}
+
+  /* ---- readiness ---- */
+  .ready{display:flex;align-items:center;gap:12px;margin:0 2px 20px}
+  .ready .bar{flex:1;height:3px;border-radius:2px;background:var(--card2);overflow:hidden}
+  .ready .bar i{display:block;height:100%;width:80%;border-radius:2px;background:linear-gradient(90deg,var(--green-deep),var(--green));box-shadow:0 0 10px rgba(34,197,94,.5)}
+  .ready span{font:500 11px/1 'JetBrains Mono';color:var(--sub);letter-spacing:.06em}
+
+  /* ---- groups ---- */
+  .gtitle{font:600 11px/1 'Instrument Sans';letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:22px 6px 9px}
+  .group{background:var(--card);border:1px solid var(--line);border-radius:20px;overflow:hidden}
+  .row{display:flex;align-items:center;gap:13px;padding:15px 16px;position:relative}
+  .row + .row::before{content:'';position:absolute;top:0;left:64px;right:16px;height:1px;background:var(--line)}
+  .tile{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex:none}
+  .tile .micon{font-size:19px}
+  .tile.g{background:var(--green-dim);color:var(--green)}
+  .tile.n{background:var(--card2);color:var(--sub)}
+  .tile.a{background:var(--amber-dim);color:var(--amber)}
+  .row .body{flex:1;min-width:0}
+  .row .lbl{font:600 14.5px/1.2 'Instrument Sans'}
+  .row .val{font:500 12.5px/1.35 'Instrument Sans';color:var(--sub);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .st-ok{width:22px;height:22px;border-radius:50%;background:var(--green-dim);color:var(--green);display:flex;align-items:center;justify-content:center;flex:none}
+  .st-ok .micon{font-size:14px;font-variation-settings:'FILL' 1,'wght' 600}
+  .chev{color:var(--faint);font-size:20px !important}
+
+  /* ---- nine combination ---- */
+  .nines{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:6px 16px 16px}
+  .nine{border-radius:15px;padding:13px 14px;border:1px solid var(--line2);background:var(--card2);position:relative}
+  .nine .k{font:600 9.5px/1 'JetBrains Mono';letter-spacing:.18em;color:var(--faint);text-transform:uppercase}
+  .nine .v{font:600 16px/1.15 'Instrument Sans';margin-top:7px;display:flex;align-items:center;gap:6px}
+  .nine.sel{border-color:rgba(34,197,94,.45);background:linear-gradient(180deg,var(--green-dim),transparent)}
+  .nine.sel .v{color:var(--text)}
+  .nine.sel .k{color:var(--green)}
+  .nine.pend{border-style:dashed}
+  .nine.pend .v{color:var(--faint);font-weight:500}
+  .dot-a{width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 8px var(--amber);flex:none}
+  .nine .exp{position:absolute;right:11px;top:12px;color:var(--faint);font-size:16px !important}
+
+  /* ---- players ---- */
+  .pl-row{padding:15px 16px 13px;display:flex;align-items:center;gap:13px}
+  .avs{display:flex}
+  .av{width:36px;height:36px;border-radius:50%;background:var(--card2);border:2px solid var(--card);display:flex;align-items:center;justify-content:center;font:600 12px/1 'Instrument Sans';color:var(--text);margin-left:-9px}
+  .av:first-child{margin-left:0}
+  .av.me{background:linear-gradient(135deg,var(--green-deep),var(--green));color:#fff}
+  .pl-actions{display:flex;gap:9px;padding:0 16px 16px}
+  .pill-btn{flex:1;border:1px solid var(--line2);background:var(--card2);color:var(--text);font:600 13px/1 'Instrument Sans';border-radius:13px;padding:12px 0;display:flex;align-items:center;justify-content:center;gap:7px}
+  .pill-btn .micon{font-size:17px;color:var(--green)}
+
+  /* ---- inline segmented (tees / nine order) ---- */
+  .mini-seg{display:flex;background:var(--card2);border-radius:11px;padding:3px;gap:3px;flex:none}
+  .mini-seg span{font:600 12px/1 'Instrument Sans';color:var(--sub);padding:8px 13px;border-radius:8px}
+  .mini-seg span.on{background:var(--card);color:var(--text);box-shadow:inset 0 0 0 1px var(--line2)}
+  .mini-seg span.on.w::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:#fff;border:1px solid rgba(0,0,0,.25);margin-right:6px;vertical-align:1px}
+  body.theme-light .mini-seg span.on.w::before{background:#fff;border-color:rgba(0,0,0,.3)}
+
+  /* ---- games chips ---- */
+  .chips{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;padding:14px 16px 12px}
+  .chip{border:1px solid var(--line2);background:var(--card2);border-radius:13px;padding:12px 6px;text-align:center;font:600 12.5px/1 'Instrument Sans';color:var(--sub);position:relative}
+  .chip.on{border-color:rgba(34,197,94,.5);background:var(--green-dim);color:var(--text)}
+  .chip.on::after{content:'check';font-family:'Material Symbols Outlined';font-variation-settings:'FILL' 1,'wght' 700;font-size:10px;position:absolute;top:6px;right:7px;color:var(--green)}
+  .game-sum{display:flex;align-items:center;gap:8px;padding:0 16px 15px;font:500 12px/1 'JetBrains Mono';color:var(--sub);letter-spacing:.02em}
+  .game-sum .micon{font-size:15px;color:var(--green)}
+
+  /* ---- switches ---- */
+  .sw{width:46px;height:28px;border-radius:15px;background:var(--card2);border:1px solid var(--line2);position:relative;flex:none}
+  .sw i{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--faint);transition:.2s}
+  .sw.on{background:var(--green);border-color:var(--green)}
+  .sw.on i{left:21px;background:#fff}
+
+  /* ---- game code ---- */
+  .code-cells{display:flex;gap:8px}
+  .code-cells b{width:34px;height:40px;border-radius:10px;background:var(--card2);border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;font:500 17px/1 'JetBrains Mono';color:var(--faint)}
+
+  /* ---- CTA ---- */
+  .cta-wrap{margin-top:26px}
+  .cta-note{display:flex;align-items:center;justify-content:center;gap:7px;font:500 12.5px/1 'Instrument Sans';color:var(--amber);margin-bottom:12px}
+  .cta-note .micon{font-size:15px}
+  .cta{width:100%;border:0;border-radius:18px;padding:18px 0;background:linear-gradient(180deg,#2bd268,var(--green-deep));color:#fff;font:700 17px/1 'Instrument Sans';letter-spacing:.01em;display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:var(--glow), inset 0 1px 0 rgba(255,255,255,.25)}
+  .cta .micon{font-size:20px;font-variation-settings:'FILL' 1,'wght' 500}
+  .foot{margin-top:14px;text-align:center;font:500 11px/1 'JetBrains Mono';letter-spacing:.14em;color:var(--faint)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="seg">
+    <button class="on"><span class="micon">sports_golf</span>Live Round</button>
+    <button><span class="micon">edit_note</span>Post Score</button>
+    <button><span class="micon">badge</span>Virtual Card</button>
+  </div>
+
+  <header>
+    <div>
+      <div class="overline">Travellers Rest · Wed Jul 2</div>
+      <h1>New Round</h1>
+      <div class="hdr-sub">Phoenix Gold Golf &amp; Country Club</div>
+    </div>
+    <div class="hdr-actions">
+      <div class="ghost-ic"><span class="micon">dark_mode</span></div>
+      <div class="ghost-ic"><span class="micon">help</span></div>
+    </div>
+  </header>
+
+  <div class="ready">
+    <div class="bar"><i></i></div>
+    <span>4 / 5 READY</span>
+  </div>
+
+  <div class="gtitle">Round</div>
+  <div class="group">
+    <div class="row">
+      <div class="tile g"><span class="micon">event</span></div>
+      <div class="body">
+        <div class="lbl">Event</div>
+        <div class="val">TRGG — Phoenix Golf &amp; CC · 43 available</div>
+      </div>
+      <div class="st-ok"><span class="micon">check</span></div>
+    </div>
+    <div class="row">
+      <div class="tile g"><span class="micon">golf_course</span></div>
+      <div class="body">
+        <div class="lbl">Course</div>
+        <div class="val">Phoenix Gold G&amp;CC · Pattaya</div>
+      </div>
+      <div class="st-ok"><span class="micon">check</span></div>
+    </div>
+    <div class="row">
+      <div class="tile a"><span class="micon">route</span></div>
+      <div class="body">
+        <div class="lbl">18-Hole Combination</div>
+        <div class="val">Pick your two nines</div>
+      </div>
+    </div>
+    <div class="nines">
+      <div class="nine sel">
+        <div class="k">Front 9</div>
+        <div class="v">Ocean</div>
+        <span class="micon exp">unfold_more</span>
+      </div>
+      <div class="nine pend">
+        <div class="k">Back 9</div>
+        <div class="v"><span class="dot-a"></span>Choose nine</div>
+        <span class="micon exp">unfold_more</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="gtitle">Players</div>
+  <div class="group">
+    <div class="pl-row">
+      <div class="avs">
+        <div class="av me">PP</div>
+        <div class="av">DT</div>
+        <div class="av">EL</div>
+      </div>
+      <div class="body">
+        <div class="lbl">Pete Park +2</div>
+        <div class="val">TRGG handicaps · 12.4 / 9.1 / 3.7</div>
+      </div>
+      <span class="micon chev">chevron_right</span>
+    </div>
+    <div class="pl-actions">
+      <button class="pill-btn"><span class="micon">person_add</span>Add Player</button>
+      <button class="pill-btn"><span class="micon">group</span>Buddies</button>
+    </div>
+  </div>
+
+  <div class="gtitle">Setup</div>
+  <div class="group">
+    <div class="row">
+      <div class="tile n"><span class="micon">flag</span></div>
+      <div class="body"><div class="lbl">Tees</div></div>
+      <div class="mini-seg"><span class="on w">White</span><span>Blue</span><span>Black</span></div>
+    </div>
+    <div class="row">
+      <div class="tile n"><span class="micon">start</span></div>
+      <div class="body"><div class="lbl">Start On</div></div>
+      <div class="mini-seg"><span class="on">Front 9</span><span>Back 9</span></div>
+    </div>
+  </div>
+
+  <div class="gtitle">Games</div>
+  <div class="group">
+    <div class="chips">
+      <div class="chip on">Stableford</div>
+      <div class="chip">Stroke Play</div>
+      <div class="chip">Match Play</div>
+      <div class="chip on">Skins</div>
+      <div class="chip">Nassau</div>
+      <div class="chip">Scramble</div>
+      <div class="chip">Best Ball</div>
+      <div class="chip">Aggregate</div>
+      <div class="chip">Bits</div>
+    </div>
+    <div class="game-sum"><span class="micon">tune</span>STABLEFORD 1 PT/HOLE · SKINS 10 · CODE 4271</div>
+  </div>
+
+  <div class="gtitle">Options</div>
+  <div class="group">
+    <div class="row">
+      <div class="tile n"><span class="micon">public</span></div>
+      <div class="body"><div class="lbl">Make Game Public</div><div class="val">Anyone can join your side games</div></div>
+      <div class="sw"><i></i></div>
+    </div>
+    <div class="row">
+      <div class="tile g"><span class="micon">visibility</span></div>
+      <div class="body"><div class="lbl">Live Spectating</div><div class="val">Friends can watch in real time</div></div>
+      <div class="sw on"><i></i></div>
+    </div>
+    <div class="row">
+      <div class="tile g"><span class="micon">monitoring</span></div>
+      <div class="body"><div class="lbl">Track Stats</div><div class="val">Fairways · GIR · Putts</div></div>
+      <div class="sw on"><i></i></div>
+    </div>
+  </div>
+
+  <div class="cta-wrap">
+    <div class="cta-note"><span class="micon">error</span>One step left — choose your back nine</div>
+    <button class="cta"><span class="micon">sports_golf</span>Start Round</button>
+    <div class="foot">MYCADDIPRO · LIVE SCORING</div>
+  </div>
+
+</div>
+<script>
+  if (location.search.includes('light')) document.body.classList.add('theme-light');
+</script>
+</body>
+</html>

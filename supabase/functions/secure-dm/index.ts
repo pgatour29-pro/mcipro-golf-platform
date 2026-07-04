@@ -97,11 +97,15 @@ Deno.serve(async (req: Request) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          // line-push-notification reads payload.record (nested), NOT flat fields — sending flat
+          // made it crash on undefined record, so no LINE notification ever fired.
           type: "new_message",
-          sender_id: user_id,
-          sender_name: userProfile.name || "Someone",
-          recipient_id: recipient_id,
-          content: message_text,
+          record: {
+            recipient_id: recipient_id,
+            sender_id: user_id,
+            sender_name: userProfile.name || "Someone",
+            content: message_text,
+          },
         }),
       }).catch((pushErr) => { console.error("LINE push failed:", pushErr); });
       // @ts-ignore - EdgeRuntime is provided by the Supabase edge runtime

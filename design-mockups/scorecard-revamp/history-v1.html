@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Round History — MciPro Revamp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Outfit:wght@200;300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0D10; --card:rgba(255,255,255,.045); --card2:rgba(255,255,255,.07);
+    --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.13);
+    --text:#F2F5F7; --sub:#8C96A1; --faint:#59636E;
+    --green:#22c55e; --green-hi:#4ade80; --green-deep:#15803d; --green-dim:rgba(34,197,94,.14);
+    --red:#fb7185; --amber:#f0a531; --blue:#60a5fa;
+  }
+  body.theme-light{
+    --bg:#F2F4F6; --card:#ffffff; --card2:#EDF0F3;
+    --line:rgba(15,23,42,.09); --line2:rgba(15,23,42,.14);
+    --text:#10151B; --sub:#5B6672; --faint:#96A1AC;
+    --green:#16a34a; --green-hi:#16a34a; --green-deep:#15803d; --green-dim:rgba(22,163,74,.12);
+    --red:#e11d48; --amber:#d97706; --blue:#2563eb;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+  html,body{scrollbar-width:none} ::-webkit-scrollbar{width:0;height:0}
+  .micon{font-family:'Material Symbols Outlined';font-weight:normal;display:inline-block;line-height:1;white-space:nowrap;font-variation-settings:'FILL' 0,'wght' 300}
+  body{font-family:'Instrument Sans',sans-serif;background:var(--bg);color:var(--text);position:relative}
+  body::before{content:'';position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(120% 30% at 50% -5%, rgba(34,197,94,.07), transparent 60%);}
+  .page{position:relative;max-width:430px;margin:0 auto;padding:16px 16px 30px;display:flex;flex-direction:column;gap:12px}
+
+  /* header */
+  .head{display:flex;align-items:flex-end;justify-content:space-between;margin:4px 2px 2px}
+  .overline{font:600 10px/1 'JetBrains Mono';letter-spacing:.22em;color:var(--green-hi);text-transform:uppercase;margin-bottom:8px}
+  h1{font:600 30px/1 'Instrument Sans';letter-spacing:-.02em}
+  .add{height:42px;padding:0 18px;border:none;border-radius:16px;background:linear-gradient(180deg,#34d873,var(--green-deep));color:#fff;font:700 13.5px/42px 'Instrument Sans';display:flex;align-items:center;gap:6px;box-shadow:0 0 24px rgba(34,197,94,.28), inset 0 1px 0 rgba(255,255,255,.28)}
+  .add .micon{font-size:17px;line-height:42px}
+
+  /* hero stat band */
+  .hero{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:16px 14px 13px}
+  .hero-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .hstat{text-align:center;position:relative;padding:2px 0}
+  .hstat + .hstat{border-left:1px solid var(--line)}
+  .hstat .v{font:300 30px/1 'Outfit';letter-spacing:-.02em}
+  .hstat .v.green{color:var(--green-hi)} .hstat .v.blue{color:var(--blue)}
+  .hstat .k{font:600 8.5px/1.4 'JetBrains Mono';letter-spacing:.14em;color:var(--faint);text-transform:uppercase;margin-top:6px}
+  .hstat .rank{font:600 8px/1 'JetBrains Mono';color:var(--sub);background:var(--card2);border-radius:7px;padding:3px 6px;position:absolute;top:-6px;right:6px}
+
+  /* perf tiles */
+  .perf{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+  .ptile{background:var(--card);border:1px solid var(--line);border-radius:16px;text-align:center;padding:11px 2px 9px}
+  .ptile .v{font:400 17px/1 'Outfit'}
+  .ptile .v.good{color:var(--green-hi)} .ptile .v.bad{color:var(--red)}
+  .ptile .k{font:600 7.5px/1.4 'JetBrains Mono';letter-spacing:.12em;color:var(--faint);text-transform:uppercase;margin-top:5px}
+
+  /* bounce/give */
+  .bg-row{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 14px;display:flex;gap:14px;align-items:center}
+  .bg-half{flex:1}
+  .bg-half .t{display:flex;justify-content:space-between;font:600 9px/1 'JetBrains Mono';letter-spacing:.1em;color:var(--sub);text-transform:uppercase;margin-bottom:7px}
+  .bg-half .t b{color:var(--text)}
+  .bar{height:4px;border-radius:2px;background:var(--card2);overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:2px}
+  .bg-half.up .bar i{width:13%;background:linear-gradient(90deg,var(--green-deep),var(--green-hi))}
+  .bg-half.down .bar i{width:31%;background:linear-gradient(90deg,#b91c1c,var(--red))}
+  .bg-half .s{font:500 8.5px/1 'JetBrains Mono';color:var(--faint);margin-top:6px}
+
+  /* filter */
+  .filter{display:flex;gap:8px;align-items:center}
+  .search{flex:1;display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 14px;color:var(--faint);font:500 13px/1 'Instrument Sans'}
+  .fchip{height:38px;padding:0 14px;border-radius:14px;background:var(--card);border:1px solid var(--line);color:var(--sub);font:600 12px/38px 'Instrument Sans'}
+  .fchip.on{background:var(--green-dim);border-color:rgba(34,197,94,.45);color:var(--text)}
+
+  /* round card */
+  .round{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:15px 16px 12px}
+  .r-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .r-course{font:700 16px/1.25 'Instrument Sans';letter-spacing:-.01em}
+  .r-meta{font:500 10px/1 'JetBrains Mono';letter-spacing:.06em;color:var(--faint);margin-top:6px}
+  .r-score{text-align:right;flex:none}
+  .r-score .g{font:300 40px/0.95 'Outfit';letter-spacing:-.03em;color:var(--red)}
+  .r-score .g.under{color:var(--green-hi)}
+  .r-score .d{font:600 9.5px/1 'JetBrains Mono';letter-spacing:.08em;color:var(--sub);margin-top:5px}
+  .r-score .d b{color:var(--green-hi)}
+  .mini{margin:12px 0 10px;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:9px 10px 7px}
+  .mini-row{display:grid;grid-template-columns:repeat(10,1fr);gap:2px;text-align:center}
+  .mini-row.h span{font:600 8px/1.6 'JetBrains Mono';color:var(--faint);letter-spacing:.02em}
+  .mini-row.s span{font:600 13.5px/1.5 'JetBrains Mono';color:var(--text)}
+  .mini-row.s span.tot{color:var(--text);font-weight:700}
+  .mini-row.s span.birdie{color:var(--green-hi)}
+  .mini-row.s span.bogey{color:var(--sub)}
+  .mini-row.s span.dbl{color:var(--red)}
+  .mini-div{height:1px;background:var(--line);margin:6px 0}
+  .r-foot{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding-top:10px}
+  .r-pace{font:500 9.5px/1.5 'JetBrains Mono';letter-spacing:.04em;color:var(--sub)}
+  .r-pace b{color:var(--text);font-weight:600}
+  .r-chips{display:flex;gap:6px;align-items:center}
+  .rchip{font:600 9px/1 'JetBrains Mono';letter-spacing:.06em;padding:5px 8px;border-radius:8px;background:var(--card2);color:var(--sub)}
+  .rchip.live{background:var(--green-dim);color:var(--green-hi)}
+  .r-actions{display:flex;gap:8px;margin-top:10px}
+  .ract{flex:1;padding:10px 0;border-radius:12px;background:var(--card2);border:1px solid var(--line);color:var(--text);font:600 12px/1 'Instrument Sans';display:flex;align-items:center;justify-content:center;gap:6px}
+  .ract .micon{font-size:15px;color:var(--green-hi)}
+  .ract.del{flex:0 0 46px;color:var(--red)} .ract.del .micon{color:var(--red)}
+
+  .legend{display:flex;gap:12px;justify-content:center;font:500 9px/1 'JetBrains Mono';color:var(--faint);letter-spacing:.06em}
+  .legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="head">
+    <div>
+      <div class="overline">Pete Park · 120 rounds</div>
+      <h1>Round History</h1>
+    </div>
+    <button class="add"><span class="micon">add</span>Add Round</button>
+  </div>
+
+  <div class="hero">
+    <div class="hero-grid">
+      <div class="hstat"><div class="v">120</div><div class="k">Rounds</div></div>
+      <div class="hstat"><span class="rank">#3/17</span><div class="v blue">76.5</div><div class="k">Avg Score</div></div>
+      <div class="hstat"><div class="v green">0.0</div><div class="k">Handicap</div></div>
+      <div class="hstat"><span class="rank">#1/17</span><div class="v green">66</div><div class="k">Best</div></div>
+    </div>
+  </div>
+
+  <div class="perf">
+    <div class="ptile"><div class="v good">58%</div><div class="k">FW</div></div>
+    <div class="ptile"><div class="v good">45%</div><div class="k">GIR</div></div>
+    <div class="ptile"><div class="v">30.9</div><div class="k">Putts</div></div>
+    <div class="ptile"><div class="v bad">0.6</div><div class="k">3-Putt</div></div>
+    <div class="ptile"><div class="v">11.2'</div><div class="k">Prox</div></div>
+  </div>
+
+  <div class="bg-row">
+    <div class="bg-half up">
+      <div class="t"><span>Bounce back 💪</span><b>13%</b></div>
+      <div class="bar"><i></i></div>
+      <div class="s">79/628 holes · #22/134</div>
+    </div>
+    <div class="bg-half down">
+      <div class="t"><span>Give back 🙃</span><b>31%</b></div>
+      <div class="bar"><i></i></div>
+      <div class="s">83/264 holes · #13/25</div>
+    </div>
+  </div>
+
+  <div class="filter">
+    <div class="search"><span class="micon" style="font-size:16px;">search</span>Filter rounds…</div>
+    <div class="fchip on">All</div>
+    <div class="fchip">Society</div>
+    <div class="fchip">Live</div>
+  </div>
+
+  <!-- round card 1 -->
+  <div class="round">
+    <div class="r-top">
+      <div>
+        <div class="r-course">Phoenix Gold GC<br>Mountain + Lake</div>
+        <div class="r-meta">JUL 2 · 18H · WHITE · 3H 44M</div>
+      </div>
+      <div class="r-score">
+        <div class="g">82</div>
+        <div class="d">+10 · <b>26 PTS</b></div>
+      </div>
+    </div>
+    <div class="mini">
+      <div class="mini-row h"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>OUT</span></div>
+      <div class="mini-row s"><span class="bogey">5</span><span>5</span><span>4</span><span>3</span><span>4</span><span class="bogey">5</span><span>5</span><span class="bogey">4</span><span class="dbl">6</span><span class="tot">41</span></div>
+      <div class="mini-div"></div>
+      <div class="mini-row h"><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span><span>IN</span></div>
+      <div class="mini-row s"><span>4</span><span class="bogey">4</span><span>4</span><span class="dbl">8</span><span class="bogey">5</span><span>5</span><span class="bogey">4</span><span class="bogey">5</span><span>5</span><span class="tot">41</span></div>
+    </div>
+    <div class="r-foot">
+      <div class="r-pace">F <b>1:56</b> · B <b>1:48</b> · <b>3:44</b></div>
+      <div class="r-chips">
+        <span class="rchip live">LIVE</span>
+        <span class="rchip">SOCIETY</span>
+        <span class="rchip">DIFF 10.0</span>
+      </div>
+    </div>
+    <div class="r-actions">
+      <button class="ract"><span class="micon">visibility</span>Details</button>
+      <button class="ract"><span class="micon">ios_share</span>Share</button>
+      <button class="ract del"><span class="micon">delete</span></button>
+    </div>
+  </div>
+
+  <!-- round card 2 (under par example) -->
+  <div class="round">
+    <div class="r-top">
+      <div>
+        <div class="r-course">Hermes Golf</div>
+        <div class="r-meta">JUL 1 · 18H · WHITE</div>
+      </div>
+      <div class="r-score">
+        <div class="g under">69</div>
+        <div class="d">−3 · <b>41 PTS</b></div>
+      </div>
+    </div>
+    <div class="mini">
+      <div class="mini-row h"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>OUT</span></div>
+      <div class="mini-row s"><span>4</span><span>5</span><span class="birdie">3</span><span>4</span><span class="bogey">5</span><span>4</span><span>4</span><span class="birdie">2</span><span>4</span><span class="tot">35</span></div>
+      <div class="mini-div"></div>
+      <div class="mini-row h"><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span><span>IN</span></div>
+      <div class="mini-row s"><span>4</span><span class="bogey">4</span><span>3</span><span>4</span><span>4</span><span class="bogey">5</span><span>3</span><span>4</span><span class="birdie">3</span><span class="tot">34</span></div>
+    </div>
+    <div class="r-foot">
+      <div class="r-pace">F <b>2:02</b> · B <b>1:55</b> · <b>3:57</b></div>
+      <div class="r-chips">
+        <span class="rchip">CASUAL</span>
+        <span class="rchip">DIFF 2.8</span>
+      </div>
+    </div>
+    <div class="r-actions">
+      <button class="ract"><span class="micon">visibility</span>Details</button>
+      <button class="ract"><span class="micon">ios_share</span>Share</button>
+      <button class="ract del"><span class="micon">delete</span></button>
+    </div>
+  </div>
+
+</div>
+<script>
+  if (location.search.includes('light')) document.body.classList.add('theme-light');
+</script>
+</body>
+</html>

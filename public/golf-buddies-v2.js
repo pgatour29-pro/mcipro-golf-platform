@@ -250,211 +250,374 @@ window.GolfBuddiesSystem = {
     },
 
     /**
-     * Open buddies modal
+     * Open buddies modal — SCV3 revamp (dark default + light via ThemeMode)
      */
     async openBuddiesModal() {
         try {
-            // Get user ID
-            var uid = this.currentUserId || 
-                (AppState?.currentUser?.lineUserId) || 
-                (AppState?.currentUser?.userId);
-            if (!uid) {
-                NotificationManager?.show?.('Please log in first', 'warning');
-                return;
-            }
+            var uid = this.currentUserId ||
+                (AppState && AppState.currentUser && (AppState.currentUser.lineUserId || AppState.currentUser.userId)) ||
+                localStorage.getItem('line_user_id') || localStorage.getItem('mcipro_biometric_user_id');
+            if (!uid) { NotificationManager && NotificationManager.show && NotificationManager.show('Please log in first', 'warning'); return; }
             this.currentUserId = uid;
 
-            // REMOVE any existing fix modal to start fresh
-            var existing = document.getElementById('buddyFixV4');
+            // fresh
+            var existing = document.getElementById('budModalV5');
             if (existing) existing.remove();
+            this._bdInjectStyles();
 
-            // Create completely NEW modal - no reliance on createBuddiesModal
             var overlay = document.createElement('div');
-            overlay.id = 'buddyFixV4';
-            overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:999999;padding:16px;';
-            overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
-
-            var card = document.createElement('div');
-            card.style.cssText = 'background:#fff;border-radius:16px;width:100%;max-width:500px;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 25px 50px rgba(0,0,0,0.25);';
-
-            // Header
-            var hdr = document.createElement('div');
-            hdr.style.cssText = 'padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(to right,#f0fdf4,#eff6ff);border-radius:16px 16px 0 0;';
-            hdr.innerHTML = '<div style="display:flex;align-items:center;gap:10px;"><span class="material-symbols-outlined" style="color:#059669;font-size:28px;">group</span><b style="font-size:18px;color:#111;">My Golf Buddies</b></div>';
-            var xBtn = document.createElement('button');
-            xBtn.innerHTML = '&times;';
-            xBtn.style.cssText = 'font-size:24px;background:none;border:none;cursor:pointer;color:#666;padding:4px 8px;line-height:1;';
-            xBtn.onclick = function() { overlay.remove(); };
-            hdr.appendChild(xBtn);
-            card.appendChild(hdr);
-
-            // Tab bar
-            var tabs = document.createElement('div');
-            tabs.style.cssText = 'display:flex;border-bottom:1px solid #e5e7eb;padding:0 16px;';
-            var tabNames = ['Buddies', 'Suggestions', 'Groups', 'Add'];
-            var tabIds = ['buddies', 'suggestions', 'groups', 'add'];
-            var contentPanels = [];
-            
-            tabNames.forEach(function(name, idx) {
-                var tab = document.createElement('button');
-                tab.textContent = name;
-                tab.style.cssText = 'padding:10px 16px;font-size:13px;font-weight:500;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;color:#666;';
-                if (idx === 0) { tab.style.borderBottomColor = '#059669'; tab.style.color = '#059669'; }
-                tab.onclick = function() {
-                    // Switch tabs
-                    tabs.querySelectorAll('button').forEach(function(b) { b.style.borderBottomColor = 'transparent'; b.style.color = '#666'; });
-                    tab.style.borderBottomColor = '#059669'; tab.style.color = '#059669';
-                    contentPanels.forEach(function(p, i) { p.style.display = (i === idx) ? 'block' : 'none'; });
-                    // Load tab content
-                    if (idx === 1) GolfBuddiesSystem._renderSuggestionsV4(contentPanels[1]);
-                    if (idx === 2) GolfBuddiesSystem._renderGroupsV4(contentPanels[2]);
-                    if (idx === 3) GolfBuddiesSystem._renderAddV4(contentPanels[3]);
-                };
-                tabs.appendChild(tab);
-            });
-            card.appendChild(tabs);
-
-            // Content panels
-            var contentWrap = document.createElement('div');
-            contentWrap.style.cssText = 'flex:1;overflow-y:auto;';
-            tabIds.forEach(function(id, idx) {
-                var panel = document.createElement('div');
-                panel.style.cssText = 'padding:16px;' + (idx > 0 ? 'display:none;' : '');
-                panel.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">Loading...</p>';
-                contentWrap.appendChild(panel);
-                contentPanels.push(panel);
-            });
-            card.appendChild(contentWrap);
-            overlay.appendChild(card);
-            document.body.appendChild(overlay);
-
-            // Load and render buddies
-            var buddiesPanel = contentPanels[0];
-            var buddies = [];
-            console.log('[Buddies] Modal query for user_id:', uid);
-            var res = await window.SupabaseDB.client
-                .from('golf_buddies').select('*')
-                .eq('user_id', uid)
-                .order('times_played_together', { ascending: false });
-
-            console.log('[Buddies] Modal query result:', { error: res.error, count: res.data?.length });
-
-            if (res.error) {
-                buddiesPanel.innerHTML = '<p style="color:#dc2626;padding:20px;text-align:center;">Error: ' + (res.error.message || 'Query failed') + '<br><small style="color:#999;">uid: ' + uid + '</small></p>';
-                return;
-            }
-
-            if (!res.data || res.data.length === 0) {
-                // Try alternative user ID formats
-                var altUid = localStorage.getItem('line_user_id') || localStorage.getItem('mcipro_biometric_user_id');
-                if (altUid && altUid !== uid) {
-                    console.log('[Buddies] Trying alt UID:', altUid);
-                    var altRes = await window.SupabaseDB.client
-                        .from('golf_buddies').select('*')
-                        .eq('user_id', altUid)
-                        .order('times_played_together', { ascending: false });
-                    if (altRes.data && altRes.data.length > 0) {
-                        res = altRes;
-                        uid = altUid;
-                        console.log('[Buddies] Found buddies with alt UID:', altRes.data.length);
-                    }
-                }
-            }
-
-            if (!res.data || res.data.length === 0) {
-                buddiesPanel.innerHTML = '<div style="text-align:center;padding:48px 16px;"><p style="font-size:48px;margin-bottom:12px;">👥</p><p style="color:#888;font-size:15px;margin-bottom:16px;">No buddies yet</p><p style="color:#aaa;font-size:13px;">Play some rounds and add your partners!</p><p style="color:#ccc;font-size:10px;margin-top:8px;">uid: ' + uid + '</p></div>';
-                return;
-            }
-
-            // Get profiles
-            var ids = res.data.map(function(b) { return b.buddy_id; });
-            var profRes = await window.SupabaseDB.client
-                .from('user_profiles').select('line_user_id, name, profile_data, handicap_index')
-                .in('line_user_id', ids);
-            var profs = profRes.data || [];
-
-            // Render each buddy
-            var html = '<p style="font-size:12px;color:#999;margin-bottom:10px;">' + res.data.length + ' buddies</p>';
-            for (var i = 0; i < res.data.length; i++) {
-                var rec = res.data[i];
-                var prof = null;
-                for (var j = 0; j < profs.length; j++) {
-                    if (profs[j].line_user_id === rec.buddy_id) { prof = profs[j]; break; }
-                }
-                var name = (prof && prof.name) ? prof.name : 'Unknown';
-                var initial = name.charAt(0).toUpperCase();
-                var tp = rec.times_played_together || 0;
-                var hcp = '-';
-                try {
-                    var hv = (prof && prof.handicap_index) || 
-                             (prof && prof.profile_data && prof.profile_data.golfInfo && prof.profile_data.golfInfo.handicap) ||
-                             (prof && prof.profile_data && prof.profile_data.handicap);
-                    if (hv != null) { var n = parseFloat(hv); if (!isNaN(n)) hcp = n.toFixed(1); }
-                } catch(e) {}
-
-                html += '<div style="display:flex;align-items:center;padding:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:8px;">' +
-                    '<div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#34d399,#3b82f6);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:18px;flex-shrink:0;">' + initial + '</div>' +
-                    '<div style="flex:1;margin-left:12px;">' +
-                        '<div style="font-weight:600;color:#111;font-size:15px;">' + name + '</div>' +
-                        '<div style="font-size:12px;color:#666;margin-top:2px;">HCP: ' + hcp + ' · Played: ' + tp + 'x</div>' +
+            overlay.id = 'budModalV5';
+            overlay.innerHTML =
+                '<div class="bd-backdrop"></div>' +
+                '<div class="bd-sheet">' +
+                    '<div class="bd-hd">' +
+                        '<div class="bd-hd-top">' +
+                            '<div><div class="bd-overline">My Golf Crew</div><div class="bd-h1">Golf Buddies</div></div>' +
+                            '<div class="bd-hdr-actions">' +
+                                '<button class="bd-ghost-ic" data-theme-toggle onclick="ThemeMode.toggle()" title="Toggle Light / Dark theme"><span class="micon theme-toggle-icon">light_mode</span></button>' +
+                                '<button class="bd-ghost-ic" onclick="GolfBuddiesSystem.closeBuddiesModal()" title="Close"><span class="micon">close</span></button>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="bd-seg">' +
+                            '<button id="bdTab-buddies" class="on" onclick="GolfBuddiesSystem._bdSwitchTab(\'buddies\')"><span class="micon">group</span>Buddies<span class="ct" id="bdCountBuddies"></span></button>' +
+                            '<button id="bdTab-groups" onclick="GolfBuddiesSystem._bdSwitchTab(\'groups\')"><span class="micon">groups_2</span>Groups<span class="ct" id="bdCountGroups"></span></button>' +
+                            '<button id="bdTab-discover" onclick="GolfBuddiesSystem._bdSwitchTab(\'discover\')"><span class="micon">person_search</span>Discover</button>' +
+                        '</div>' +
                     '</div>' +
-                    '<div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">' +
-                    '<button onclick="GolfBuddiesSystem.quickAddBuddy(\'' + rec.buddy_id + '\');var _m=document.getElementById(\'buddyFixV4\');if(_m)_m.remove();" style="padding:8px 14px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-weight:500;">+ Add</button>' +
-                    '<button id="delbuddy_' + rec.id + '" onclick="GolfBuddiesSystem.removeBuddy(\'' + rec.id + '\');" style="padding:10px 14px;background:#fee2e2;color:#dc2626;border:none;border-radius:8px;font-size:16px;cursor:pointer;font-weight:700;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;" title="Remove buddy">✕</button>' +
+                    '<div class="bd-body" id="bdBody">' +
+                        '<div class="bd-tabpane on" id="bdPane-buddies"><p class="bd-loading">Loading buddies…</p></div>' +
+                        '<div class="bd-tabpane" id="bdPane-groups"><p class="bd-loading">Loading…</p></div>' +
+                        '<div class="bd-tabpane" id="bdPane-discover"></div>' +
                     '</div>' +
                 '</div>';
+            overlay.querySelector('.bd-backdrop').addEventListener('click', function(){ GolfBuddiesSystem.closeBuddiesModal(); });
+            document.body.appendChild(overlay);
+            try { if (window.ThemeMode) ThemeMode.apply(); } catch (e) {}
+
+            // Discover pane shell is static (search + suggestions container)
+            this._renderDiscoverShell();
+
+            // Load + render buddies (primary)
+            this._bdSort = this._bdSort || 'played';
+            await this.loadBuddies();
+            if ((!this.buddies || this.buddies.length === 0)) {
+                var altUid = localStorage.getItem('line_user_id') || localStorage.getItem('mcipro_biometric_user_id');
+                if (altUid && altUid !== this.currentUserId) {
+                    this.currentUserId = altUid;
+                    await this.loadBuddies();
+                }
             }
-            buddiesPanel.innerHTML = html;
-            this.buddies = res.data.map(function(rec) {
-                var match = profs.filter(function(p) { return p.line_user_id === rec.buddy_id; });
-                return Object.assign({}, rec, { buddy: match });
-            });
+            this._renderBuddiesTab();
 
-        } catch(err) {
+            // Background: groups + suggestions
+            this.loadSavedGroups().then(() => this._renderGroupsTab());
+            this.loadSuggestions().then(() => this._renderSuggestList());
+
+        } catch (err) {
             console.error('[Buddies] openBuddiesModal error:', err);
-            var m = document.getElementById('buddyFixV4');
-            if (m) m.innerHTML = '<div style="background:#fff;padding:24px;border-radius:16px;margin:16px;text-align:center;"><p style="color:#dc2626;font-weight:600;margin-bottom:8px;">Error</p><p style="color:#666;font-size:13px;">' + (err.message || 'Unknown') + '</p></div>';
+            var m = document.getElementById('budModalV5');
+            if (m) { var b = m.querySelector('#bdPane-buddies'); if (b) b.innerHTML = '<div class="bd-empty"><div class="ei"><span class="micon">error</span></div><p>Could not load buddies</p><div class="sm">' + this._bdEsc(err.message || '') + '</div></div>'; }
         }
     },
 
-    /**
-     * Close buddies modal
-     */
+    /* ---------- small helpers ---------- */
+    _bdEsc(s){ return (''+(s==null?'':s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
+    _bdInitial(name){ var s=(''+(name||'')).trim(); return (s.charAt(0)||'?').toUpperCase(); },
+    _bdAvClass(i){ return 'c'+((i%5)+1); },
+    _bdHcp(val){
+        if (val===null||val===undefined||val==='') return '-';
+        if (typeof window.formatHandicapDisplay==='function') { try { return window.formatHandicapDisplay(val); } catch(e){} }
+        var n=parseFloat(val); return isNaN(n)?'-':n.toFixed(1);
+    },
+    _bdBuddyHcp(buddy){
+        var p = (buddy && buddy.buddy && buddy.buddy[0]) || null;
+        var v = (p && p.handicap_index) ??
+                (p && p.profile_data && p.profile_data.golfInfo && p.profile_data.golfInfo.handicap) ??
+                (p && p.profile_data && p.profile_data.handicap);
+        return this._bdHcp(v);
+    },
+    _bdShortDate(d){ if(!d) return ''; try{ var dt=new Date(d); if(isNaN(dt.getTime())) return ''; return dt.toLocaleDateString('en-US',{month:'short'})+" '"+(''+dt.getFullYear()).slice(-2); }catch(e){ return ''; } },
+    _bdGroupDate(d){ if(!d) return 'NEVER USED'; try{ var dt=new Date(d); if(isNaN(dt.getTime())) return 'NEVER USED'; return ('LAST USED '+dt.toLocaleDateString('en-US',{month:'short',day:'numeric'})).toUpperCase(); }catch(e){ return 'NEVER USED'; } },
+    _roundActive(){ try{ var d=document.getElementById('golferDashboard'); if(d&&d.classList.contains('round-active')) return true; if(typeof LiveScorecardManager!=='undefined'&&Array.isArray(LiveScorecardManager.players)&&LiveScorecardManager.players.length>0) return true; }catch(e){} return false; },
 
-    _renderSuggestionsV4(panel) {
-        if (typeof this.loadSuggestions === 'function') {
-            this.loadSuggestions().then(() => {
-                if (!this.suggestions || this.suggestions.length === 0) {
-                    panel.innerHTML = '<p style="text-align:center;color:#888;padding:32px;">No suggestions yet. Play more rounds!</p>';
-                    return;
-                }
-                this.renderSuggestions();
-            });
-        } else {
-            panel.innerHTML = '<p style="text-align:center;color:#888;padding:32px;">Suggestions loading...</p>';
-        }
+    _bdSwitchTab(name){
+        var m=document.getElementById('budModalV5'); if(!m) return;
+        ['buddies','groups','discover'].forEach(function(t){
+            var btn=m.querySelector('#bdTab-'+t); var pane=m.querySelector('#bdPane-'+t);
+            if(btn) btn.classList.toggle('on', t===name);
+            if(pane) pane.classList.toggle('on', t===name);
+        });
     },
 
-    _renderGroupsV4(panel) {
-        if (typeof this.loadSavedGroups === 'function') {
-            this.loadSavedGroups().then(() => {
-                if (!this.savedGroups || this.savedGroups.length === 0) {
-                    panel.innerHTML = '<p style="text-align:center;color:#888;padding:32px;">No saved groups yet</p>';
-                    return;
-                }
-                this.renderSavedGroups();
-            });
-        } else {
-            panel.innerHTML = '<p style="text-align:center;color:#888;padding:32px;">Groups loading...</p>';
+    /* ---------- BUDDIES TAB ---------- */
+    _bdSortBuddies(){
+        var arr=(this.buddies||[]).slice();
+        var s=this._bdSort||'played';
+        if(s==='played'){ arr.sort(function(a,b){ return (b.times_played_together||0)-(a.times_played_together||0); }); }
+        else if(s==='recent'){ arr.sort(function(a,b){ var da=a.last_played_together?new Date(a.last_played_together).getTime():0; var db=b.last_played_together?new Date(b.last_played_together).getTime():0; return db-da; }); }
+        else if(s==='az'){ arr.sort(function(a,b){ var na=((a.buddy&&a.buddy[0]&&a.buddy[0].name)||'').toLowerCase(); var nb=((b.buddy&&b.buddy[0]&&b.buddy[0].name)||'').toLowerCase(); return na<nb?-1:na>nb?1:0; }); }
+        return arr;
+    },
+    _bdSetSort(sort, el){
+        this._bdSort=sort;
+        var wrap=el&&el.parentElement; if(wrap){ wrap.querySelectorAll('span').forEach(function(s){ s.classList.remove('on'); }); el.classList.add('on'); }
+        this._renderBuddiesList();
+    },
+    _bdToggleEdit(el){
+        var body=document.getElementById('bdBody'); if(!body) return;
+        var editing=body.classList.toggle('editing');
+        if(el) el.textContent=editing?'Done':'Edit';
+    },
+    _bdBuddyRow(buddy, i){
+        var p=(buddy.buddy&&buddy.buddy[0])||null;
+        var name=(p&&p.name)||'Unknown';
+        var hcp=this._bdBuddyHcp(buddy);
+        var x=buddy.times_played_together||0;
+        var last=this._bdShortDate(buddy.last_played_together);
+        var live=this._roundActive();
+        var meta='<span class="hcp">HCP '+this._bdEsc(hcp)+'</span><span class="dot"></span><span class="played">'+x+' round'+(x===1?'':'s')+'</span>'+(last?'<span class="dot"></span><span>'+this._bdEsc(last)+'</span>':'');
+        return '<div class="bd-brow">'+
+            '<div class="bd-av '+this._bdAvClass(i)+'">'+this._bdEsc(this._bdInitial(name))+'</div>'+
+            '<div class="bd-info"><div class="bd-nm">'+this._bdEsc(name)+'</div><div class="bd-meta">'+meta+'</div></div>'+
+            '<div class="bd-act">'+
+                '<button class="bd-round-btn'+(live?' live':'')+'" onclick="GolfBuddiesSystem.quickAddBuddy(\''+buddy.buddy_id+'\')" title="Add to current round"><span class="micon">golf_course</span>To round</button>'+
+                '<button id="delbuddy_'+buddy.id+'" class="bd-icon-btn danger bd-remove-cell" onclick="GolfBuddiesSystem.removeBuddy(\''+buddy.id+'\')" title="Remove buddy"><span class="micon">person_remove</span></button>'+
+            '</div>'+
+        '</div>';
+    },
+    _renderBuddiesList(){
+        var list=document.getElementById('bdBuddyList'); if(!list) return;
+        var arr=this._bdSortBuddies();
+        list.innerHTML=arr.map((b,i)=>this._bdBuddyRow(b,i)).join('');
+    },
+    _renderBuddiesTab(){
+        var pane=document.getElementById('bdPane-buddies'); if(!pane) return;
+        var n=(this.buddies||[]).length;
+        var cb=document.getElementById('bdCountBuddies'); if(cb) cb.textContent=n?n:'';
+        if(!n){
+            pane.innerHTML='<div class="bd-empty"><div class="ei"><span class="micon">group_add</span></div><p>No buddies yet</p><div class="sm">Add players from the Discover tab, or after a round.</div></div>';
+            return;
         }
+        pane.innerHTML=
+            '<div class="bd-toolbar">'+
+                '<div class="bd-count-k"><b>'+n+'</b> buddies</div>'+
+                '<div style="display:flex;align-items:center;gap:8px">'+
+                    '<div class="bd-mini-seg">'+
+                        '<span class="'+(this._bdSort==='played'||!this._bdSort?'on':'')+'" onclick="GolfBuddiesSystem._bdSetSort(\'played\',this)">Played</span>'+
+                        '<span class="'+(this._bdSort==='recent'?'on':'')+'" onclick="GolfBuddiesSystem._bdSetSort(\'recent\',this)">Recent</span>'+
+                        '<span class="'+(this._bdSort==='az'?'on':'')+'" onclick="GolfBuddiesSystem._bdSetSort(\'az\',this)">A–Z</span>'+
+                    '</div>'+
+                    '<button class="bd-edit-btn" onclick="GolfBuddiesSystem._bdToggleEdit(this)">Edit</button>'+
+                '</div>'+
+            '</div>'+
+            '<div class="bd-group" id="bdBuddyList"></div>';
+        this._renderBuddiesList();
     },
 
-    _renderAddV4(panel) {
-        panel.innerHTML = '<div style="margin-bottom:12px;"><input type="text" placeholder="Search by name..." style="width:100%;padding:10px 14px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;box-sizing:border-box;" oninput="GolfBuddiesSystem.searchPlayers(this.value)"></div><div id="buddySearchResults"><p style="text-align:center;color:#888;padding:20px;">Type a name to search</p></div>';
+    /* ---------- GROUPS TAB ---------- */
+    async _renderGroupsTab(){
+        var pane=document.getElementById('bdPane-groups'); if(!pane) return;
+        var groups=this.savedGroups||[];
+        var cg=document.getElementById('bdCountGroups'); if(cg) cg.textContent=groups.length?groups.length:'';
+        var head='<button class="bd-new-group" onclick="GolfBuddiesSystem.createNewGroup()"><span class="micon">add</span>New Group</button>';
+        if(!groups.length){
+            pane.innerHTML=head+'<div class="bd-empty"><div class="ei"><span class="micon">groups_2</span></div><p>No saved groups yet</p><div class="sm">Group your regular partners for one-tap round setup.</div></div>';
+            return;
+        }
+        // resolve member names for avatar initials (one batched query)
+        var ids=[]; groups.forEach(function(g){ (g.member_ids||[]).forEach(function(id){ if(ids.indexOf(id)<0) ids.push(id); }); });
+        var nmeMap={};
+        if(ids.length){
+            try{
+                var res=await window.SupabaseDB.client.from('user_profiles').select('line_user_id, name').in('line_user_id', ids);
+                (res.data||[]).forEach(function(p){ nmeMap[p.line_user_id]=p.name; });
+            }catch(e){}
+        }
+        pane.innerHTML=head+groups.map((g,gi)=>this._bdGroupCard(g,gi,nmeMap)).join('');
+    },
+    _bdGroupCard(g, gi, nameMap){
+        var members=g.member_ids||[];
+        var count=members.length;
+        var shown=members.slice(0,5);
+        var avs=shown.map((id,i)=>'<div class="sm '+this._bdAvClass(gi+i)+'">'+this._bdEsc(this._bdInitial(nameMap[id]||'?'))+'</div>').join('');
+        if(count>5) avs+='<div class="sm more">+'+(count-5)+'</div>';
+        return '<div class="bd-gcard">'+
+            '<div class="bd-gcard-top">'+
+                '<div><div class="bd-gname">'+this._bdEsc(g.group_name)+'</div><div class="bd-gsub">'+count+' MEMBER'+(count===1?'':'S')+' · '+this._bdGroupDate(g.last_used)+'</div></div>'+
+                '<div class="bd-gtile"><span class="micon">flag</span></div>'+
+            '</div>'+
+            (count?'<div class="bd-avs">'+avs+'</div>':'')+
+            '<div class="bd-gactions">'+
+                '<button class="bd-gbtn primary" onclick="GolfBuddiesSystem.loadGroupToScorecard(\''+g.id+'\')"><span class="micon">play_arrow</span>Load to round</button>'+
+                '<button class="bd-gbtn" onclick="GolfBuddiesSystem.editGroup(\''+g.id+'\')"><span class="micon">edit</span>Edit</button>'+
+                '<button class="bd-gbtn mut" onclick="GolfBuddiesSystem.deleteGroup(\''+g.id+'\')" title="Delete group"><span class="micon">delete</span></button>'+
+            '</div>'+
+        '</div>';
+    },
+
+    /* ---------- DISCOVER TAB ---------- */
+    _renderDiscoverShell(){
+        var pane=document.getElementById('bdPane-discover'); if(!pane) return;
+        pane.innerHTML=
+            '<div class="bd-search"><span class="micon">search</span><input type="text" id="bdSearchInput" placeholder="Search players by name…" autocomplete="off" oninput="GolfBuddiesSystem.searchPlayers(this.value)"></div>'+
+            '<div id="bdSuggestSection">'+
+                '<div class="bd-sec-title"><span class="micon">auto_awesome</span>Suggested from your rounds</div>'+
+                '<div class="bd-group" id="bdSuggestList"><p class="bd-loading">Loading…</p></div>'+
+            '</div>'+
+            '<div id="bdSearchResults" style="display:none"></div>';
+    },
+    _bdDiscoverRow(id, name, hcp, sub){
+        var i = (this._bdDiscIdx = (this._bdDiscIdx||0)+1);
+        var meta='<span class="hcp">HCP '+this._bdEsc(hcp)+'</span>'+(sub?'<span class="dot"></span><span>'+this._bdEsc(sub)+'</span>':'');
+        return '<div class="bd-brow">'+
+            '<div class="bd-av '+this._bdAvClass(i)+'">'+this._bdEsc(this._bdInitial(name))+'</div>'+
+            '<div class="bd-info"><div class="bd-nm">'+this._bdEsc(name)+'</div><div class="bd-meta">'+meta+'</div></div>'+
+            '<div class="bd-act"><button class="bd-add-btn" onclick="GolfBuddiesSystem.addBuddy(\''+id+'\')"><span class="micon">person_add</span>Add</button></div>'+
+        '</div>';
+    },
+    _renderSuggestList(){
+        var list=document.getElementById('bdSuggestList'); if(!list) return;
+        var sg=this.suggestions||[];
+        if(!sg.length){
+            var sec=document.getElementById('bdSuggestSection');
+            if(sec) sec.innerHTML='<div class="bd-empty"><div class="ei"><span class="micon">auto_awesome</span></div><p>No suggestions yet</p><div class="sm">Play more rounds and we’ll surface players you’ve teed up with.</div></div>';
+            return;
+        }
+        this._bdDiscIdx=0;
+        list.innerHTML=sg.map(s=>this._bdDiscoverRow(s.buddy_id, s.buddy_name||'Unknown', this._bdHcp(s.handicap), 'played '+(s.times_played||0)+'x'+(s.last_played?' · '+this._bdShortDate(s.last_played):''))).join('');
+    },
+
+    /* ---------- refresh hooks (called after add/remove/group changes) ---------- */
+    _bdRefresh(kind){
+        if(!document.getElementById('budModalV5')) return;
+        if(kind==='buddies') this._renderBuddiesTab();
+        else if(kind==='groups') this._renderGroupsTab();
+        else if(kind==='suggest') this._renderSuggestList();
+    },
+
+    _bdInjectStyles(){
+        if(document.getElementById('bdModalV5Style')) return;
+        var css = `
+#budModalV5{ position:fixed; inset:0; z-index:99990;
+  --sheet:#0B0F14; --glass:rgba(255,255,255,.045); --glass2:rgba(255,255,255,.07);
+  --stroke-hi:rgba(255,255,255,.22); --stroke-lo:rgba(255,255,255,.06);
+  --text:#F4F7F9; --sub:#8C96A1; --faint:#59636E;
+  --green:#22c55e; --green-hi:#4ade80; --green-dim:rgba(34,197,94,.15);
+  --red:#f87171; --red-dim:rgba(248,113,113,.14); }
+body.theme-light #budModalV5{
+  --sheet:#F4F7F9; --glass:rgba(255,255,255,.62); --glass2:rgba(255,255,255,.9);
+  --stroke-hi:rgba(255,255,255,.95); --stroke-lo:rgba(15,23,42,.08);
+  --text:#0F141A; --sub:#5A6672; --faint:#98A3AE;
+  --green:#16a34a; --green-hi:#16a34a; --green-dim:rgba(22,163,74,.13);
+  --red:#dc2626; --red-dim:rgba(220,38,38,.1); }
+#budModalV5 *{ box-sizing:border-box; margin:0; }
+#budModalV5 .micon{ font-family:'Material Symbols Outlined'; font-weight:normal; font-style:normal; display:inline-block; line-height:1; white-space:nowrap; direction:ltr; font-variation-settings:'FILL' 0,'wght' 300,'GRAD' 0,'opsz' 24; }
+#budModalV5 button{ font-family:inherit; cursor:pointer; border:0; background:none; color:inherit; }
+#budModalV5 .bd-backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.6); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
+body.theme-light #budModalV5 .bd-backdrop{ background:rgba(15,23,42,.3); }
+#budModalV5 .bd-sheet{ position:relative; z-index:2; display:flex; flex-direction:column; height:100%; max-width:480px; margin:0 auto; background:var(--sheet); color:var(--text); overflow:hidden; font-family:'Instrument Sans',-apple-system,sans-serif; -webkit-font-smoothing:antialiased; }
+#budModalV5 .bd-sheet::-webkit-scrollbar,#budModalV5 .bd-body::-webkit-scrollbar{ width:0; height:0; }
+@media(min-width:540px){
+  #budModalV5{ display:flex; align-items:center; justify-content:center; padding:24px; }
+  #budModalV5 .bd-sheet{ height:auto; max-height:calc(100vh - 48px); border-radius:26px; box-shadow:0 40px 90px rgba(0,0,0,.5); }
+}
+#budModalV5 .bd-hd{ padding:20px 18px 0; flex:none; }
+#budModalV5 .bd-hd-top{ display:flex; align-items:flex-start; justify-content:space-between; }
+#budModalV5 .bd-overline{ font:600 10px/1 'JetBrains Mono',monospace; letter-spacing:.26em; color:var(--green-hi); text-transform:uppercase; margin-bottom:9px; }
+#budModalV5 .bd-h1{ font:600 26px/1 'Instrument Sans',sans-serif; letter-spacing:-.02em; color:var(--text); }
+#budModalV5 .bd-hdr-actions{ display:flex; gap:8px; }
+#budModalV5 .bd-ghost-ic{ width:36px; height:36px; border-radius:50%; color:var(--sub); display:flex; align-items:center; justify-content:center; background:var(--glass2); border:1px solid var(--stroke-lo); }
+#budModalV5 .bd-ghost-ic .micon{ font-size:18px; }
+#budModalV5 .bd-seg{ display:flex; padding:4px; gap:4px; margin:16px 0 6px; border-radius:16px; background:var(--glass); position:relative; }
+#budModalV5 .bd-seg::before{ content:''; position:absolute; inset:0; border-radius:16px; padding:1px; background:linear-gradient(160deg,var(--stroke-hi),var(--stroke-lo) 60%); -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none; }
+#budModalV5 .bd-seg button{ flex:1; color:var(--sub); font:600 12.5px/1 'Instrument Sans',sans-serif; padding:11px 0; border-radius:12px; display:flex; align-items:center; justify-content:center; gap:6px; }
+#budModalV5 .bd-seg button .micon{ font-size:16px; }
+#budModalV5 .bd-seg button .ct{ font:600 10px/1 'JetBrains Mono',monospace; opacity:.7; }
+#budModalV5 .bd-seg button .ct:empty{ display:none; }
+#budModalV5 .bd-seg button.on{ background:var(--glass2); color:var(--text); box-shadow:inset 0 0 0 1px var(--stroke-lo),0 2px 8px rgba(0,0,0,.18); }
+body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(--stroke-lo),0 2px 8px rgba(15,23,42,.08); }
+#budModalV5 .bd-seg button.on .micon{ color:var(--green-hi); }
+#budModalV5 .bd-body{ flex:1; overflow-y:auto; padding:14px 18px 24px; scrollbar-width:none; }
+#budModalV5 .bd-tabpane{ display:none; }
+#budModalV5 .bd-tabpane.on{ display:block; }
+#budModalV5 .bd-loading{ text-align:center; color:var(--sub); font:500 13px/1.4 'Instrument Sans',sans-serif; padding:32px 12px; }
+#budModalV5 .bd-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; }
+#budModalV5 .bd-count-k{ font:600 11px/1.3 'JetBrains Mono',monospace; letter-spacing:.06em; color:var(--sub); }
+#budModalV5 .bd-count-k b{ color:var(--text); }
+#budModalV5 .bd-mini-seg{ display:flex; background:var(--glass2); border-radius:11px; padding:3px; gap:2px; border:1px solid var(--stroke-lo); }
+#budModalV5 .bd-mini-seg span{ font:600 11px/1 'Instrument Sans',sans-serif; color:var(--sub); padding:7px 9px; border-radius:8px; }
+#budModalV5 .bd-mini-seg span.on{ background:var(--green); color:#fff; }
+#budModalV5 .bd-edit-btn{ font:600 12.5px/1 'Instrument Sans',sans-serif; color:var(--green-hi); padding:6px 4px; }
+#budModalV5 .bd-group{ border-radius:20px; overflow:hidden; background:var(--glass); position:relative; }
+#budModalV5 .bd-group::before{ content:''; position:absolute; inset:0; border-radius:20px; padding:1px; background:linear-gradient(160deg,var(--stroke-hi),var(--stroke-lo) 45%); -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none; z-index:1; }
+#budModalV5 .bd-brow{ display:flex; align-items:center; gap:12px; padding:12px 14px; position:relative; }
+#budModalV5 .bd-brow + .bd-brow::after{ content:''; position:absolute; top:0; left:64px; right:14px; height:1px; background:var(--stroke-lo); }
+#budModalV5 .bd-av{ width:44px; height:44px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font:600 16px/1 'Instrument Sans',sans-serif; color:#fff; background:linear-gradient(135deg,#34d399,#3b82f6); box-shadow:0 2px 8px rgba(0,0,0,.2); }
+#budModalV5 .c1{ background:linear-gradient(135deg,#34d399,#0ea5e9); }
+#budModalV5 .c2{ background:linear-gradient(135deg,#22c55e,#4f46e5); }
+#budModalV5 .c3{ background:linear-gradient(135deg,#14b8a6,#3b82f6); }
+#budModalV5 .c4{ background:linear-gradient(135deg,#10b981,#6366f1); }
+#budModalV5 .c5{ background:linear-gradient(135deg,#059669,#2563eb); }
+#budModalV5 .bd-info{ flex:1; min-width:0; }
+#budModalV5 .bd-nm{ font:600 15.5px/1.2 'Instrument Sans',sans-serif; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#budModalV5 .bd-meta{ display:flex; align-items:center; gap:7px; margin-top:4px; font:500 11.5px/1 'JetBrains Mono',monospace; color:var(--sub); letter-spacing:.02em; }
+#budModalV5 .bd-meta .hcp{ color:var(--green-hi); font-weight:600; }
+#budModalV5 .bd-meta .played{ color:var(--text); }
+#budModalV5 .bd-meta .dot{ width:3px; height:3px; border-radius:50%; background:var(--faint); flex:none; }
+#budModalV5 .bd-act{ display:flex; align-items:center; gap:8px; flex:none; }
+#budModalV5 .bd-round-btn{ display:inline-flex; align-items:center; gap:6px; padding:9px 13px; border-radius:11px; font:600 12.5px/1 'Instrument Sans',sans-serif; background:var(--glass2); border:1px solid var(--stroke-lo); color:var(--text); }
+#budModalV5 .bd-round-btn .micon{ font-size:15px; color:var(--green-hi); }
+#budModalV5 .bd-round-btn.live{ background:var(--green); border-color:transparent; color:#fff; }
+#budModalV5 .bd-round-btn.live .micon{ color:#fff; }
+#budModalV5 .bd-icon-btn{ width:38px; height:38px; border-radius:11px; flex:none; display:flex; align-items:center; justify-content:center; background:var(--glass2); border:1px solid var(--stroke-lo); color:var(--sub); }
+#budModalV5 .bd-icon-btn .micon{ font-size:18px; }
+#budModalV5 .bd-icon-btn.danger{ background:var(--red-dim); border-color:transparent; color:var(--red); }
+#budModalV5 .bd-remove-cell{ display:none; }
+#budModalV5 .bd-body.editing .bd-round-btn{ display:none; }
+#budModalV5 .bd-body.editing .bd-remove-cell{ display:flex; }
+#budModalV5 .bd-new-group{ width:100%; display:flex; align-items:center; justify-content:center; gap:8px; padding:13px; border-radius:16px; background:var(--green); color:#fff; font:600 14px/1 'Instrument Sans',sans-serif; box-shadow:0 6px 18px rgba(34,197,94,.28); margin-bottom:14px; }
+#budModalV5 .bd-new-group .micon{ font-size:19px; }
+#budModalV5 .bd-gcard{ border-radius:20px; background:var(--glass); position:relative; padding:16px 16px 14px; margin-bottom:12px; }
+#budModalV5 .bd-gcard::before{ content:''; position:absolute; inset:0; border-radius:20px; padding:1px; background:linear-gradient(160deg,var(--stroke-hi),var(--stroke-lo) 45%); -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none; }
+#budModalV5 .bd-gcard-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+#budModalV5 .bd-gname{ font:600 17px/1.15 'Instrument Sans',sans-serif; letter-spacing:-.01em; color:var(--text); }
+#budModalV5 .bd-gsub{ font:500 11px/1 'JetBrains Mono',monospace; letter-spacing:.05em; color:var(--sub); margin-top:6px; }
+#budModalV5 .bd-gtile{ width:40px; height:40px; border-radius:13px; flex:none; display:flex; align-items:center; justify-content:center; background:var(--green-dim); box-shadow:0 0 12px rgba(34,197,94,.10); }
+#budModalV5 .bd-gtile .micon{ font-size:22px; color:var(--green-hi); }
+#budModalV5 .bd-avs{ display:flex; align-items:center; margin:14px 0 4px; }
+#budModalV5 .bd-avs .sm{ width:30px; height:30px; border-radius:50%; border:2px solid var(--sheet); margin-left:-8px; display:flex; align-items:center; justify-content:center; font:600 10px/1 'Instrument Sans',sans-serif; color:#fff; background:linear-gradient(135deg,#34d399,#3b82f6); }
+#budModalV5 .bd-avs .sm:first-child{ margin-left:0; }
+#budModalV5 .bd-avs .more{ background:var(--glass2); color:var(--sub); }
+#budModalV5 .bd-gactions{ display:flex; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid var(--stroke-lo); }
+#budModalV5 .bd-gbtn{ flex:1; display:flex; align-items:center; justify-content:center; gap:6px; padding:11px 0; border-radius:12px; font:600 13px/1 'Instrument Sans',sans-serif; background:var(--glass2); border:1px solid var(--stroke-lo); color:var(--text); }
+#budModalV5 .bd-gbtn .micon{ font-size:16px; }
+#budModalV5 .bd-gbtn.primary{ background:var(--green); border-color:transparent; color:#fff; flex:1.4; }
+#budModalV5 .bd-gbtn.primary .micon{ color:#fff; }
+#budModalV5 .bd-gbtn.mut{ flex:none; width:46px; color:var(--sub); }
+#budModalV5 .bd-search{ position:relative; margin-bottom:16px; }
+#budModalV5 .bd-search .micon{ position:absolute; left:14px; top:50%; transform:translateY(-50%); font-size:19px; color:var(--faint); }
+#budModalV5 .bd-search input{ width:100%; padding:13px 14px 13px 42px; border-radius:14px; border:1px solid var(--stroke-lo); background:var(--glass2); color:var(--text); font:500 14.5px/1 'Instrument Sans',sans-serif; outline:none; }
+#budModalV5 .bd-search input::placeholder{ color:var(--faint); }
+#budModalV5 .bd-sec-title{ font:600 10px/1 'JetBrains Mono',monospace; letter-spacing:.18em; text-transform:uppercase; color:var(--faint); margin:4px 6px 10px; display:flex; align-items:center; gap:7px; }
+#budModalV5 .bd-sec-title .micon{ font-size:14px; color:var(--green-hi); }
+#budModalV5 .bd-add-btn{ display:inline-flex; align-items:center; gap:6px; padding:9px 14px; border-radius:11px; font:600 12.5px/1 'Instrument Sans',sans-serif; background:var(--green); color:#fff; box-shadow:0 4px 12px rgba(34,197,94,.24); }
+#budModalV5 .bd-add-btn .micon{ font-size:16px; }
+#budModalV5 .bd-add-btn.done{ background:var(--glass2); color:var(--sub); box-shadow:none; border:1px solid var(--stroke-lo); }
+#budModalV5 .bd-empty{ text-align:center; padding:46px 20px; }
+#budModalV5 .bd-empty .ei{ width:64px; height:64px; border-radius:20px; margin:0 auto 16px; display:flex; align-items:center; justify-content:center; background:var(--glass2); border:1px solid var(--stroke-lo); }
+#budModalV5 .bd-empty .ei .micon{ font-size:30px; color:var(--faint); }
+#budModalV5 .bd-empty p{ font:600 15px/1.4 'Instrument Sans',sans-serif; color:var(--sub); }
+#budModalV5 .bd-empty .sm{ font:500 12.5px/1.5 'Instrument Sans',sans-serif; color:var(--faint); margin-top:6px; max-width:280px; margin-left:auto; margin-right:auto; }
+`;
+        var st=document.createElement('style'); st.id='bdModalV5Style'; st.textContent=css; document.head.appendChild(st);
     },
 
 
     closeBuddiesModal() {
+        // SCV3 sheet
+        const v5 = document.getElementById('budModalV5');
+        if (v5) v5.remove();
+        // legacy modal (if ever present)
         const modal = document.getElementById('buddiesModal');
         if (modal) {
             modal.classList.add('hidden');
@@ -869,34 +1032,35 @@ window.GolfBuddiesSystem = {
      * Search for players to add as buddies
      */
     async searchPlayers(query) {
-        const container = document.getElementById('buddySearchResults');
-
-        if (!container) return;
+        const results = document.getElementById('bdSearchResults') || document.getElementById('buddySearchResults');
+        const suggestSec = document.getElementById('bdSuggestSection');
+        if (!results) return;
 
         if (!query || query.trim().length < 2) {
-            container.innerHTML = '<p class="text-center text-gray-500 py-8">Start typing to search for players...</p>';
+            results.style.display = 'none';
+            results.innerHTML = '';
+            if (suggestSec) suggestSec.style.display = '';
             return;
         }
 
-        container.innerHTML = '<p class="text-center text-gray-500 py-8">Searching...</p>';
+        if (suggestSec) suggestSec.style.display = 'none';
+        results.style.display = '';
+        results.innerHTML = '<p class="bd-loading">Searching…</p>';
 
         try {
-            // Build flexible search query for name variations (same as scorecard search)
+            // Flexible name-variation search (same engine as scorecard search)
             const searchWords = (window.sanitizeSearch ? sanitizeSearch(query) : query).split(/\s+/).filter(w => w.length > 0);
             let dbQuery = window.SupabaseDB.client
                 .from('user_profiles')
                 .select('line_user_id, name, profile_data');
 
             if (searchWords.length === 1) {
-                // Single word: simple search
                 dbQuery = dbQuery.ilike('name', `%${searchWords[0]}%`);
             } else if (searchWords.length === 2) {
-                // Two words: Search for ALL variations (handles "First Last", "Last, First", "Last First")
                 const word1 = searchWords[0];
                 const word2 = searchWords[1];
                 dbQuery = dbQuery.or(`name.ilike.%${word1} ${word2}%,name.ilike.%${word2}, ${word1}%,name.ilike.%${word2} ${word1}%`);
             } else {
-                // Three or more words: search for the full phrase
                 dbQuery = dbQuery.ilike('name', `%${query}%`);
             }
 
@@ -904,59 +1068,32 @@ window.GolfBuddiesSystem = {
 
             if (error) {
                 console.error('[Buddies] Search error:', error);
-                container.innerHTML = '<p class="text-center text-red-500 py-8">Error searching players</p>';
-                return;
-            }
-
-            if (!data || data.length === 0) {
-                container.innerHTML = '<p class="text-center text-gray-500 py-8">No players found</p>';
+                results.innerHTML = '<div class="bd-empty"><div class="ei"><span class="micon">error</span></div><p>Search error</p></div>';
                 return;
             }
 
             // Filter out current user and existing buddies
-            const existingBuddyIds = new Set(this.buddies.map(b => b.buddy_id));
-            const filtered = data.filter(p =>
+            const existingBuddyIds = new Set((this.buddies || []).map(b => b.buddy_id));
+            const filtered = (data || []).filter(p =>
                 p.line_user_id !== this.currentUserId &&
                 !existingBuddyIds.has(p.line_user_id)
             );
 
             if (filtered.length === 0) {
-                container.innerHTML = '<p class="text-center text-gray-500 py-8">No new players found (already buddies)</p>';
+                results.innerHTML = '<div class="bd-empty"><div class="ei"><span class="micon">search_off</span></div><p>No new players found</p><div class="sm">Everyone matching is already in your buddies.</div></div>';
                 return;
             }
 
-            const html = filtered.map(player => {
-                const name = (player.name || 'Unknown').replace(/'/g, '&apos;').replace(/"/g, '&quot;');
-                const handicapValue = player.profile_data?.golfInfo?.handicap;
-                const handicap = handicapValue !== null && handicapValue !== undefined ? (typeof window.formatHandicapDisplay === 'function' ? window.formatHandicapDisplay(handicapValue) : parseFloat(handicapValue).toFixed(1)) : '-';
-                const userId = player.line_user_id;
-
-                return `
-                    <div style="width: 100%; max-width: 100%; overflow: hidden; box-sizing: border-box;">
-                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem; background: white; border: 1px solid #e5e7eb; border-radius: 0.5rem; width: 100%; box-sizing: border-box;">
-                            <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 0; overflow: hidden;">
-                                <div style="width: 2rem; height: 2rem; border-radius: 50%; background: linear-gradient(135deg, #9ca3af, #4b5563); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 0.875rem; flex-shrink: 0;">
-                                    ${name.charAt(0).toUpperCase()}
-                                </div>
-                                <div style="min-width: 0; flex: 1; overflow: hidden;">
-                                    <div style="font-weight: 600; color: #111827; font-size: 0.875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</div>
-                                    <div style="font-size: 0.75rem; color: #6b7280;">HCP: ${handicap}</div>
-                                </div>
-                            </div>
-                            <button onclick="GolfBuddiesSystem.addBuddy('${userId}')"
-                                    style="padding: 0.5rem 0.75rem; background: #16a34a; color: white; border-radius: 0.5rem; font-size: 0.875rem; border: none; cursor: pointer; flex-shrink: 0; white-space: nowrap; min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; font-weight: 600;">
-                                + Add
-                            </button>
-                        </div>
-                    </div>
-                `;
+            this._bdDiscIdx = 0;
+            const rows = filtered.map(p => {
+                const hcp = this._bdHcp((p.profile_data && p.profile_data.golfInfo && p.profile_data.golfInfo.handicap) ?? (p.profile_data && p.profile_data.handicap));
+                return this._bdDiscoverRow(p.line_user_id, p.name || 'Unknown', hcp, '');
             }).join('');
-
-            container.innerHTML = html;
+            results.innerHTML = '<div class="bd-sec-title"><span class="micon">search</span>Search results</div><div class="bd-group">' + rows + '</div>';
 
         } catch (error) {
             console.error('[Buddies] Search exception:', error);
-            container.innerHTML = '<p class="text-center text-red-500 py-8">Error searching players</p>';
+            results.innerHTML = '<div class="bd-empty"><div class="ei"><span class="micon">error</span></div><p>Search error</p></div>';
         }
     },
 
@@ -1016,8 +1153,9 @@ window.GolfBuddiesSystem = {
             this.loadBuddies().then(() => {
                 this.updateBuddiesBadge();
                 this.renderMyBuddies();
+                this._bdRefresh('buddies');
             });
-            this.loadSuggestions().then(() => this.renderSuggestions());
+            this.loadSuggestions().then(() => { this.renderSuggestions(); this._bdRefresh('suggest'); });
 
         } catch (error) {
             console.error('[Buddies] Exception adding buddy:', error);
@@ -1062,6 +1200,13 @@ window.GolfBuddiesSystem = {
             this.loadBuddies().then(() => {
                 this.updateBuddiesBadge();
                 this.renderMyBuddies();
+                // Update SCV3 counts in place (preserves Edit mode); rebuild only if now empty
+                try {
+                    const n = (this.buddies || []).length;
+                    const cb = document.getElementById('bdCountBuddies'); if (cb) cb.textContent = n ? n : '';
+                    const tc = document.querySelector('#budModalV5 .bd-count-k b'); if (tc) tc.textContent = n;
+                    if (n === 0) this._bdRefresh('buddies');
+                } catch (e) {}
             });
 
             NotificationManager?.show?.('Buddy removed ✓', 'success');
@@ -1579,6 +1724,7 @@ window.GolfBuddiesSystem = {
             await this.loadSavedGroups();
             this.closeGroupModal();
             this.renderSavedGroups();
+            this._bdRefresh('groups');
 
         } catch (error) {
             console.error('[Buddies] Exception saving group:', error);
@@ -1607,6 +1753,7 @@ window.GolfBuddiesSystem = {
             // Reload
             await this.loadSavedGroups();
             this.renderSavedGroups();
+            this._bdRefresh('groups');
 
             NotificationManager?.show?.('Group deleted', 'success');
 

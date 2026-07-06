@@ -89,7 +89,7 @@ window.GolfBuddiesSystem = {
 
             const { data: profiles, error: profileError } = await window.SupabaseDB.client
                 .from('user_profiles')
-                .select('line_user_id, name, profile_data')
+                .select('line_user_id, name, profile_data, handicap_index')
                 .in('line_user_id', buddyIds);
 
             if (profileError) {
@@ -329,12 +329,18 @@ window.GolfBuddiesSystem = {
         if (typeof window.formatHandicapDisplay==='function') { try { return window.formatHandicapDisplay(val); } catch(e){} }
         var n=parseFloat(val); return isNaN(n)?'-':n.toFixed(1);
     },
+    // Resolve a profile's CURRENT handicap. handicap_index (kept current by the
+    // masterscore/paste tools) is authoritative; profile_data.handicap is written
+    // by the same tools; profile_data.golfInfo.handicap is legacy/stale — last.
+    _bdHcpVal(p){
+        if(!p) return null;
+        var v=p.handicap_index;
+        if(v===null||v===undefined||v==='') v=(p.profile_data&&p.profile_data.handicap);
+        if(v===null||v===undefined||v==='') v=(p.profile_data&&p.profile_data.golfInfo&&p.profile_data.golfInfo.handicap);
+        return v;
+    },
     _bdBuddyHcp(buddy){
-        var p = (buddy && buddy.buddy && buddy.buddy[0]) || null;
-        var v = (p && p.handicap_index) ??
-                (p && p.profile_data && p.profile_data.golfInfo && p.profile_data.golfInfo.handicap) ??
-                (p && p.profile_data && p.profile_data.handicap);
-        return this._bdHcp(v);
+        return this._bdHcp(this._bdHcpVal((buddy&&buddy.buddy&&buddy.buddy[0])||null));
     },
     _bdShortDate(d){ if(!d) return ''; try{ var dt=new Date(d); if(isNaN(dt.getTime())) return ''; return dt.toLocaleDateString('en-US',{month:'short'})+" '"+(''+dt.getFullYear()).slice(-2); }catch(e){ return ''; } },
     _bdGroupDate(d){ if(!d) return 'NEVER USED'; try{ var dt=new Date(d); if(isNaN(dt.getTime())) return 'NEVER USED'; return ('LAST USED '+dt.toLocaleDateString('en-US',{month:'short',day:'numeric'})).toUpperCase(); }catch(e){ return 'NEVER USED'; } },
@@ -1052,7 +1058,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
             const searchWords = (window.sanitizeSearch ? sanitizeSearch(query) : query).split(/\s+/).filter(w => w.length > 0);
             let dbQuery = window.SupabaseDB.client
                 .from('user_profiles')
-                .select('line_user_id, name, profile_data');
+                .select('line_user_id, name, profile_data, handicap_index');
 
             if (searchWords.length === 1) {
                 dbQuery = dbQuery.ilike('name', `%${searchWords[0]}%`);
@@ -1086,7 +1092,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
 
             this._bdDiscIdx = 0;
             const rows = filtered.map(p => {
-                const hcp = this._bdHcp((p.profile_data && p.profile_data.golfInfo && p.profile_data.golfInfo.handicap) ?? (p.profile_data && p.profile_data.handicap));
+                const hcp = this._bdHcp(this._bdHcpVal(p));
                 return this._bdDiscoverRow(p.line_user_id, p.name || 'Unknown', hcp, '');
             }).join('');
             results.innerHTML = '<div class="bd-sec-title"><span class="micon">search</span>Search results</div><div class="bd-group">' + rows + '</div>';
@@ -1454,7 +1460,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
         if (missingIds.length > 0) {
             const { data: profiles } = await window.SupabaseDB.client
                 .from('user_profiles')
-                .select('line_user_id, name, profile_data')
+                .select('line_user_id, name, profile_data, handicap_index')
                 .in('line_user_id', missingIds);
 
             if (profiles) {
@@ -1558,7 +1564,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
             const searchWords = (window.sanitizeSearch ? sanitizeSearch(query) : query).split(/\s+/).filter(w => w.length > 0);
             let dbQuery = window.SupabaseDB.client
                 .from('user_profiles')
-                .select('line_user_id, name, profile_data');
+                .select('line_user_id, name, profile_data, handicap_index');
 
             if (searchWords.length === 1) {
                 dbQuery = dbQuery.ilike('name', `%${searchWords[0]}%`);

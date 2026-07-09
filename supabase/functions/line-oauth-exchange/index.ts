@@ -75,136 +75,139 @@ Deno.serve(async (req: Request) => {
     const lineUserId: string = lineProfile.userId;
     console.log("[line-oauth-exchange] LINE user:", lineUserId);
 
-    // 3. Look up existing profile by line_user_id
-    const profileLookupRes = await fetch(
-      `${SB_URL}/rest/v1/profiles?line_user_id=eq.${lineUserId}&select=id,auth_user_id,line_user_id,display_name&limit=1`,
-      { headers }
-    );
-    const profiles = await profileLookupRes.json();
-    let profile = profiles?.[0] || null;
+    // 3-6. Mint the v2 Supabase Auth session (profiles row + auth user + magic link).
+    // BEST-EFFORT: LINE has already vouched for this user, so a failure in any of
+    // these steps must NEVER block the login — we return the profile without a
+    // token_hash and the client proceeds (it treats token_hash as optional).
+    // The old code hard-500'd here, which silently blocked EVERY new LINE signup.
+    let tokenHash: string | null = null;
+    let authWarning: string | null = null;
+    let profile: any = null;
+    try {
+      // 3. Look up existing profile row (canonical identity), keyed by line_user_id
+      const profileLookupRes = await fetch(
+        `${SB_URL}/rest/v1/profiles?line_user_id=eq.${lineUserId}&select=id,auth_user_id,line_user_id,display_name&limit=1`,
+        { headers }
+      );
+      const profiles = await profileLookupRes.json();
+      profile = (Array.isArray(profiles) && profiles[0]) || null;
 
-    // 4. If no profile exists, create one
-    if (!profile) {
-      console.log("[line-oauth-exchange] Creating new profile for:", lineUserId);
-      const createProfileRes = await fetch(`${SB_URL}/rest/v1/profiles`, {
-        method: "POST",
-        headers: { ...headers, "Prefer": "return=representation" },
-        body: JSON.stringify({
-          line_user_id: lineUserId,
-          display_name: lineProfile.displayName || "LINE User",
-        }),
-      });
-      const created = await createProfileRes.json();
-      profile = Array.isArray(created) ? created[0] : created;
-      if (!profile?.id) {
-        return json({ error: "profile_create_failed", detail: created }, 500, origin);
+      // 4. Resolve the auth user FIRST (its email is deterministic from the LINE id,
+      // so no profile row is needed yet). ORDER MATTERS: profiles.id is NOT NULL with
+      // no default and FK-references auth.users(id) — the profile row can only be
+      // created AFTER the auth user, with id = auth user id. Creating the profile
+      // first was the bug that failed every new LINE signup with profile_create_failed.
+      const authEmail = `${lineUserId.toLowerCase()}@${AUTH_EMAIL_DOMAIN}`;
+      let authUserId: string | null = profile?.auth_user_id || null;
+
+      // Verify existing mapping is still valid
+      if (authUserId) {
+        const checkRes = await fetch(`${SB_URL}/auth/v1/admin/users/${authUserId}`, { headers });
+        if (!checkRes.ok) {
+          console.log("[line-oauth-exchange] Stale auth_user_id, will recreate");
+          authUserId = null;
+        }
       }
-      console.log("[line-oauth-exchange] Profile created:", profile.id);
-    }
 
-    // 5. Ensure exactly ONE auth user per profile via auth_user_id mapping
-    const authEmail = `${lineUserId.toLowerCase()}@${AUTH_EMAIL_DOMAIN}`;
-    let authUserId: string | null = profile.auth_user_id || null;
-
-    // Verify existing mapping is still valid
-    if (authUserId) {
-      const checkRes = await fetch(`${SB_URL}/auth/v1/admin/users/${authUserId}`, { headers });
-      if (!checkRes.ok) {
-        console.log("[line-oauth-exchange] Stale auth_user_id, will recreate");
-        authUserId = null;
-      }
-    }
-
-    // Create auth user if needed
-    if (!authUserId) {
-      console.log("[line-oauth-exchange] Creating auth user for:", lineUserId);
-      const createRes = await fetch(`${SB_URL}/auth/v1/admin/users`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          email: authEmail,
-          email_confirm: true,
-          user_metadata: { line_user_id: lineUserId, profile_id: profile.id },
-        }),
-      });
-      const createData = await createRes.json();
-      if (!createRes.ok || !createData?.id) {
-        // Might already exist with this email — try to find it
-        if (createData?.msg?.includes("already been registered") || createData?.message?.includes("already been registered")) {
-          console.log("[line-oauth-exchange] Auth user exists with email, looking up...");
-          // List users by email to find the existing one
-          const listRes = await fetch(`${SB_URL}/auth/v1/admin/users?page=1&per_page=1`, {
-            headers,
-          });
+      if (!authUserId) {
+        console.log("[line-oauth-exchange] Creating auth user for:", lineUserId);
+        const createRes = await fetch(`${SB_URL}/auth/v1/admin/users`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            email: authEmail,
+            email_confirm: true,
+            user_metadata: { line_user_id: lineUserId },
+          }),
+        });
+        const createData = await createRes.json();
+        if (createRes.ok && createData?.id) {
+          authUserId = createData.id;
+          console.log("[line-oauth-exchange] Auth user created:", authUserId);
+        } else {
+          // Probably already exists with this email — find it (was per_page=1, which
+          // could only ever see one user and missed almost everyone)
+          console.log("[line-oauth-exchange] Auth user create failed, looking up by email...");
+          const listRes = await fetch(`${SB_URL}/auth/v1/admin/users?page=1&per_page=1000`, { headers });
           const listData = await listRes.json();
           const existing = listData?.users?.find((u: any) => u.email === authEmail);
           if (existing) {
             authUserId = existing.id;
             console.log("[line-oauth-exchange] Found existing auth user:", authUserId);
           } else {
-            return json({ error: "auth_user_create_failed", detail: createData }, 500, origin);
+            throw new Error("auth_user_create_failed: " + JSON.stringify(createData));
           }
-        } else {
-          return json({ error: "auth_user_create_failed", detail: createData }, 500, origin);
         }
-      } else {
-        authUserId = createData.id;
-        console.log("[line-oauth-exchange] Auth user created:", authUserId);
       }
 
-      // Persist the mapping
-      await fetch(`${SB_URL}/rest/v1/profiles?id=eq.${profile.id}`, {
-        method: "PATCH",
-        headers: { ...headers, "Prefer": "return=minimal" },
-        body: JSON.stringify({ auth_user_id: authUserId }),
+      // 5. Ensure the profiles row exists and is mapped to the auth user
+      if (!profile) {
+        console.log("[line-oauth-exchange] Creating profile row for:", lineUserId);
+        const upsertRes = await fetch(`${SB_URL}/rest/v1/profiles?on_conflict=id`, {
+          method: "POST",
+          headers: { ...headers, "Prefer": "resolution=merge-duplicates,return=representation" },
+          body: JSON.stringify({
+            id: authUserId,
+            auth_user_id: authUserId,
+            line_user_id: lineUserId,
+            display_name: lineProfile.displayName || "LINE User",
+          }),
+        });
+        const created = await upsertRes.json();
+        profile = (Array.isArray(created) ? created[0] : created) || null;
+        if (!profile?.id) throw new Error("profile_create_failed: " + JSON.stringify(created));
+        console.log("[line-oauth-exchange] Profile created:", profile.id);
+      } else if (profile.auth_user_id !== authUserId) {
+        await fetch(`${SB_URL}/rest/v1/profiles?id=eq.${profile.id}`, {
+          method: "PATCH",
+          headers: { ...headers, "Prefer": "return=minimal" },
+          body: JSON.stringify({ auth_user_id: authUserId }),
+        });
+        console.log("[line-oauth-exchange] auth_user_id mapped:", authUserId);
+      }
+
+      // 6. Mint a ONE-TIME magic-link token (no password ever set)
+      const linkRes = await fetch(`${SB_URL}/auth/v1/admin/generate_link`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          type: "magiclink",
+          email: authEmail,
+        }),
       });
-      console.log("[line-oauth-exchange] auth_user_id mapped:", authUserId);
+      const linkData = await linkRes.json();
+      console.log("[line-oauth-exchange] generateLink status:", linkRes.status);
+
+      // REST API returns hashed_token in properties, or action_link as a URL
+      let th = linkData?.properties?.hashed_token;
+      if (!th && linkData?.action_link) {
+        try {
+          const url = new URL(linkData.action_link);
+          th = url.searchParams.get("token_hash") || url.searchParams.get("token");
+          if (!th && url.hash) {
+            const hashParams = new URLSearchParams(url.hash.slice(1));
+            th = hashParams.get("token_hash") || hashParams.get("token");
+          }
+        } catch {}
+      }
+      if (!th) th = linkData?.hashed_token;
+      if (!linkRes.ok || !th) throw new Error("session_link_failed: " + JSON.stringify(linkData));
+
+      tokenHash = th;
+      console.log("[line-oauth-exchange] ✅ token_hash generated for:", lineUserId);
+    } catch (sessionErr: any) {
+      authWarning = String(sessionErr?.message || sessionErr);
+      console.error("[line-oauth-exchange] v2 session minting failed (login continues):", authWarning);
     }
 
-    // 6. Mint a ONE-TIME magic-link token (no password ever set)
-    const linkRes = await fetch(`${SB_URL}/auth/v1/admin/generate_link`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        type: "magiclink",
-        email: authEmail,
-      }),
-    });
-    const linkData = await linkRes.json();
-    console.log("[line-oauth-exchange] generateLink status:", linkRes.status);
-    console.log("[line-oauth-exchange] generateLink response keys:", Object.keys(linkData || {}));
-
-    // REST API returns hashed_token in properties, or action_link as a URL
-    let tokenHash = linkData?.properties?.hashed_token;
-    if (!tokenHash && linkData?.action_link) {
-      // Extract token_hash from action_link URL
-      try {
-        const url = new URL(linkData.action_link);
-        tokenHash = url.searchParams.get("token_hash") || url.searchParams.get("token");
-        // Also try hash fragment
-        if (!tokenHash && url.hash) {
-          const hashParams = new URLSearchParams(url.hash.slice(1));
-          tokenHash = hashParams.get("token_hash") || hashParams.get("token");
-        }
-      } catch {}
-    }
-    // hashed_token might also be at top level
-    if (!tokenHash) tokenHash = linkData?.hashed_token;
-
-    if (!linkRes.ok || !tokenHash) {
-      console.error("[line-oauth-exchange] generateLink failed:", JSON.stringify(linkData));
-      return json({ error: "session_link_failed", detail: linkData }, 500, origin);
-    }
-
-    console.log("[line-oauth-exchange] ✅ token_hash generated for:", lineUserId);
-
-    // 7. Return token_hash + profile. Client calls verifyOtp to establish session.
+    // 7. Return profile (+ token_hash when session minting succeeded).
     return json({
       ok: true,
-      token_hash: tokenHash,
+      ...(tokenHash ? { token_hash: tokenHash } : {}),
+      ...(authWarning ? { auth_warning: authWarning } : {}),
       profile: {
         userId: lineUserId,
-        displayName: lineProfile.displayName || profile.display_name || "LINE User",
+        displayName: lineProfile.displayName || profile?.display_name || "LINE User",
         pictureUrl: lineProfile.pictureUrl || "",
         statusMessage: lineProfile.statusMessage || "",
       },

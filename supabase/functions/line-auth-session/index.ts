@@ -28,28 +28,20 @@ Deno.serve(async (req) => {
   const supabase = serviceClient();
   const lineUserId = lineUser.lineUserId;
 
-  // 1. Find or create the profile (canonical identity), keyed by line_user_id.
+  // 1. Find the profile (canonical identity), keyed by line_user_id.
   let { data: profile } = await supabase
     .from("profiles")
     .select("id, auth_user_id, display_name")
     .eq("line_user_id", lineUserId)
     .maybeSingle();
 
-  if (!profile) {
-    const { data: created, error: cErr } = await supabase
-      .from("profiles")
-      .insert({ line_user_id: lineUserId, display_name: lineUser.name || "LINE User" })
-      .select("id, auth_user_id, display_name")
-      .single();
-    if (cErr || !created) {
-      return json({ error: "profile_create_failed", detail: cErr?.message }, 500, origin);
-    }
-    profile = created;
-  }
-
-  // 2. Ensure exactly one Supabase auth user per profile (auth_user_id mapping).
+  // 2. Resolve the auth user FIRST (deterministic email — no profile row needed).
+  // ORDER MATTERS: profiles.id is NOT NULL with no default and FK-references
+  // auth.users(id), so the profile row can only be created AFTER the auth user,
+  // with id = auth user id. Creating the profile first was the bug that failed
+  // every new LINE signup with profile_create_failed.
   const authEmail = `${lineUserId.toLowerCase()}@${AUTH_EMAIL_DOMAIN}`;
-  let authUserId: string | null = (profile.auth_user_id as string | null) ?? null;
+  let authUserId: string | null = (profile?.auth_user_id as string | null) ?? null;
 
   if (authUserId) {
     const { data: got } = await supabase.auth.admin.getUserById(authUserId);
@@ -60,17 +52,39 @@ Deno.serve(async (req) => {
     const { data: createdUser, error: uErr } = await supabase.auth.admin.createUser({
       email: authEmail,
       email_confirm: true,
-      user_metadata: { line_user_id: lineUserId, profile_id: profile.id },
+      user_metadata: { line_user_id: lineUserId },
     });
     if (createdUser?.user) {
       authUserId = createdUser.user.id;
     } else {
       // Email may already exist from a prior login -> locate it.
-      const { data: list } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 });
+      const { data: list } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
       const existing = list?.users?.find((u) => u.email === authEmail);
       if (existing) authUserId = existing.id;
       else return json({ error: "auth_user_create_failed", detail: uErr?.message }, 500, origin);
     }
+  }
+
+  // 3. Ensure the profiles row exists (id = auth user id) and is mapped.
+  if (!profile) {
+    const { data: created, error: cErr } = await supabase
+      .from("profiles")
+      .upsert(
+        {
+          id: authUserId,
+          auth_user_id: authUserId,
+          line_user_id: lineUserId,
+          display_name: lineUser.name || "LINE User",
+        },
+        { onConflict: "id" },
+      )
+      .select("id, auth_user_id, display_name")
+      .single();
+    if (cErr || !created) {
+      return json({ error: "profile_create_failed", detail: cErr?.message }, 500, origin);
+    }
+    profile = created;
+  } else if (profile.auth_user_id !== authUserId) {
     await supabase.from("profiles").update({ auth_user_id: authUserId }).eq("id", profile.id);
   }
 

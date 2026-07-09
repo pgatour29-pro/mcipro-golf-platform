@@ -1060,14 +1060,12 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
                 .from('user_profiles')
                 .select('line_user_id, name, profile_data, handicap_index');
 
-            if (searchWords.length === 1) {
-                dbQuery = dbQuery.ilike('name', `%${searchWords[0]}%`);
-            } else if (searchWords.length === 2) {
-                const word1 = searchWords[0];
-                const word2 = searchWords[1];
-                dbQuery = dbQuery.or(`name.ilike.%${word1} ${word2}%,name.ilike.%${word2}, ${word1}%,name.ilike.%${word2} ${word1}%`);
-            } else {
-                dbQuery = dbQuery.ilike('name', `%${query}%`);
+            // AND-chained ilikes: every word must appear, any order/format — matches
+            // "Mike Smith" AND "Smith, Mike". Never build a comma into .or(): PostgREST's
+            // logic-tree parser splits on commas ("failed to parse logic tree"), which
+            // made every multi-word search here error out.
+            for (const w of searchWords) {
+                dbQuery = dbQuery.ilike('name', `%${w}%`);
             }
 
             const { data, error } = await dbQuery.limit(20);
@@ -1566,14 +1564,10 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
                 .from('user_profiles')
                 .select('line_user_id, name, profile_data, handicap_index');
 
-            if (searchWords.length === 1) {
-                dbQuery = dbQuery.ilike('name', `%${searchWords[0]}%`);
-            } else if (searchWords.length === 2) {
-                const word1 = searchWords[0];
-                const word2 = searchWords[1];
-                dbQuery = dbQuery.or(`name.ilike.%${word1} ${word2}%,name.ilike.%${word2}, ${word1}%,name.ilike.%${word2} ${word1}%`);
-            } else {
-                dbQuery = dbQuery.ilike('name', `%${query}%`);
+            // AND-chained ilikes — see searchPlayers(): a comma inside .or() breaks
+            // PostgREST's logic-tree parser, killing every multi-word search.
+            for (const w of searchWords) {
+                dbQuery = dbQuery.ilike('name', `%${w}%`);
             }
 
             const { data, error } = await dbQuery.limit(10);

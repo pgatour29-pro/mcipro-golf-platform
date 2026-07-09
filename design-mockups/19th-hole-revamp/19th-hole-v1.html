@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>19th Hole Revamp — v1</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<style>
+  .micon{ font-family:'Material Symbols Outlined'; font-weight:normal; font-style:normal; display:inline-block; line-height:1; letter-spacing:normal; text-transform:none; white-space:nowrap; word-wrap:normal; direction:ltr; -webkit-font-smoothing:antialiased; }
+  .micon.fill{ font-variation-settings:'FILL' 1; }
+  *{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  button{ background:none; border:none; cursor:pointer; font-family:inherit; }
+  input,select,textarea{ font-family:inherit; }
+
+  body{
+    --sheet:#0B0F14; --glass:rgba(255,255,255,.045); --glass2:rgba(255,255,255,.07);
+    --stroke-hi:rgba(255,255,255,.22); --stroke-lo:rgba(255,255,255,.06);
+    --text:#F4F7F9; --sub:#8C96A1; --faint:#59636E;
+    --green:#22c55e; --green-hi:#4ade80; --green-dim:rgba(34,197,94,.15);
+    --amber:#fbbf24; --amber-dim:rgba(251,191,36,.14);
+    --red:#f87171; --red-dim:rgba(248,113,113,.14);
+    background:var(--sheet); color:var(--text);
+    font-family:'Instrument Sans',-apple-system,sans-serif; -webkit-font-smoothing:antialiased;
+    padding:18px 0 60px;
+  }
+  body.light{
+    --sheet:#F4F7F9; --glass:rgba(255,255,255,.62); --glass2:rgba(255,255,255,.9);
+    --stroke-hi:rgba(255,255,255,.95); --stroke-lo:rgba(15,23,42,.08);
+    --text:#0F141A; --sub:#5A6672; --faint:#98A3AE;
+    --green:#16a34a; --green-hi:#16a34a; --green-dim:rgba(22,163,74,.13);
+    --amber:#b45309; --amber-dim:rgba(180,83,9,.12);
+    --red:#dc2626; --red-dim:rgba(220,38,38,.10);
+  }
+
+  .frame{ width:390px; margin:0 auto; padding:0 14px; }
+  body.desktop .frame{ width:min(1400px,96vw); display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; align-items:start; }
+
+  /* ---------- shared chrome ---------- */
+  .sec{ margin-bottom:20px; }
+  .sec-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:9px; padding:0 2px; }
+  .overline{ font:600 10px/1 'JetBrains Mono',monospace; letter-spacing:.26em; color:var(--green-hi); text-transform:uppercase; display:flex; align-items:center; gap:7px; }
+  .overline .micon{ font-size:14px; }
+  .sec-link{ font:600 11.5px/1 'JetBrains Mono',monospace; letter-spacing:.08em; color:var(--sub); text-transform:uppercase; display:flex; align-items:center; gap:4px; }
+  .sec-link .micon{ font-size:14px; color:var(--green-hi); }
+
+  .card{ position:relative; border-radius:18px; background:var(--glass); overflow:hidden; }
+  .card::before{ content:''; position:absolute; inset:0; border-radius:18px; padding:1px;
+    background:linear-gradient(160deg,var(--stroke-hi),var(--stroke-lo) 55%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none; }
+
+  .chip{ font:700 9.5px/1 'JetBrains Mono',monospace; letter-spacing:.12em; text-transform:uppercase; padding:5px 8px; border-radius:7px; background:var(--green-dim); color:var(--green-hi); flex:none; }
+  .chip.solid{ background:var(--green); color:#fff; }
+  .chip.ghost{ background:var(--glass2); color:var(--sub); box-shadow:inset 0 0 0 1px var(--stroke-lo); }
+  .chip.amber{ background:var(--amber-dim); color:var(--amber); }
+  .chip.red{ background:var(--red-dim); color:var(--red); }
+
+  /* ---------- 1. dashboard entry block ---------- */
+  .mk-tiles{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .mk-tile{ position:relative; border-radius:14px; background:var(--glass); padding:12px 4px 10px; text-align:center; }
+  .mk-tile::before{ content:''; position:absolute; inset:0; border-radius:14px; padding:1px;
+    background:linear-gradient(160deg,var(--stroke-hi),var(--stroke-lo) 55%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none; }
+  .mk-tile .ti{ width:36px; height:36px; margin:0 auto 7px; border-radius:11px; background:var(--green-dim); display:flex; align-items:center; justify-content:center; }
+  .mk-tile .ti .micon{ font-size:19px; color:var(--green-hi); }
+  .mk-tile .tl{ font:600 11.5px/1 'Instrument Sans',sans-serif; color:var(--text); }
+  .mk-tile .bdg{ position:absolute; top:6px; right:6px; min-width:17px; height:17px; padding:0 4px; border-radius:9px; background:var(--red); color:#fff; font:700 10px/17px 'JetBrains Mono',monospace; }
+
+  /* ---------- 2. subtab bar ---------- */
+  .mtabs{ display:flex; gap:4px; padding:4px; border-radius:13px; background:var(--glass2); box-shadow:inset 0 0 0 1px var(--stroke-lo); margin-bottom:12px; }
+  .mtab{ flex:1; display:flex; align-items:center; justify-content:center; gap:5px; padding:9px 2px; border-radius:9px; font:700 10px/1 'JetBrains Mono',monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--sub); position:relative; }
+  .mtab .micon{ font-size:15px; }
+  .mtab.on{ background:var(--green); color:#fff; }
+  .mtab .bdg{ min-width:15px; height:15px; padding:0 3px; border-radius:8px; background:var(--red); color:#fff; font:700 9.5px/15px 'JetBrains Mono',monospace; }
+
+  /* ---------- sponsored band ---------- */
+  .ad-card{ padding:10px 12px 11px; margin-bottom:12px; }
+  .ad-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+  .ad-tag{ font:600 8.5px/1 'JetBrains Mono',monospace; letter-spacing:.24em; color:var(--faint); text-transform:uppercase; }
+  .ad-nav{ display:flex; gap:4px; }
+  .ad-nav button{ width:22px; height:22px; border-radius:50%; background:var(--glass2); box-shadow:inset 0 0 0 1px var(--stroke-lo); display:flex; align-items:center; justify-content:center; }
+  .ad-nav .micon{ font-size:14px; color:var(--sub); }
+  .ad-body{ display:flex; align-items:center; gap:11px; }
+  .ad-img{ width:46px; height:46px; border-radius:11px; flex:none; background:linear-gradient(135deg,var(--green-dim),var(--glass2)); display:flex; align-items:center; justify-content:center; }
+  .ad-img .micon{ font-size:22px; color:var(--green-hi); }
+  .ad-t{ font:600 13px/1.25 'Instrument Sans',sans-serif; color:var(--text); }
+  .ad-d{ font:500 11px/1.4 'Instrument Sans',sans-serif; color:var(--sub); display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; }
+  .ad-by{ font:600 9px/1 'JetBrains Mono',monospace; letter-spacing:.14em; color:var(--green-hi); text-transform:uppercase; margin-top:3px; }
+
+  /* ---------- search + filters ---------- */
+  .msearch{ position:relative; margin-bottom:9px; }
+  .msearch .micon.lead{ position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:18px; color:var(--faint); }
+  .msearch input{ width:100%; font:500 16px/1.2 'Instrument Sans',sans-serif; color:var(--text);
+    background:var(--sheet); border:1px solid var(--stroke-lo); border-radius:12px; padding:12px 38px 12px 38px; outline:none; }
+  body.light .msearch input{ background:#fff; }
+  .msearch input::placeholder{ color:var(--faint); }
+  .msearch .clr{ position:absolute; right:8px; top:50%; transform:translateY(-50%); width:24px; height:24px; border-radius:50%; background:var(--glass2); display:flex; align-items:center; justify-content:center; }
+  .msearch .clr .micon{ font-size:14px; color:var(--sub); }
+  .mcats{ display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; margin-bottom:12px; scrollbar-width:none; }
+  .mcat{ flex:none; display:flex; align-items:center; gap:5px; font:700 10.5px/1 'JetBrains Mono',monospace; letter-spacing:.08em; text-transform:uppercase; padding:8px 12px; border-radius:9px; background:var(--glass2); color:var(--sub); box-shadow:inset 0 0 0 1px var(--stroke-lo); }
+  .mcat .micon{ font-size:14px; }
+  .mcat.on{ background:var(--green); color:#fff; box-shadow:none; }
+
+  /* ---------- listing grid ---------- */
+  .lgrid{ display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  body.desktop .lgrid{ grid-template-columns:1fr 1fr; }
+  .lst{ position:relative; border-radius:15px; background:var(--glass); overflow:hidden; }
+  .lst::before{ content:''; position:absolute; inset:0; border-radius:15px; padding:1px;
+    background:linear-gradient(160deg,var(--stroke-hi),var(--stroke-lo) 55%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none; }
+  .lst-img{ aspect-ratio:1; background:linear-gradient(135deg,var(--green-dim),var(--glass2)); display:flex; align-items:center; justify-content:center; position:relative; }
+  .lst-img .micon.ph{ font-size:38px; color:var(--faint); }
+  .lst-fav{ position:absolute; top:7px; right:7px; width:28px; height:28px; border-radius:50%; background:rgba(11,15,20,.45); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; }
+  body.light .lst-fav{ background:rgba(255,255,255,.75); }
+  .lst-fav .micon{ font-size:16px; color:#fff; }
+  body.light .lst-fav .micon{ color:var(--sub); }
+  .lst-fav .micon.fav-on{ color:var(--green-hi); }
+  .lst-tag{ position:absolute; bottom:7px; left:7px; }
+  .lst-b{ padding:9px 10px 10px; }
+  .lst-t{ font:600 12.5px/1.3 'Instrument Sans',sans-serif; color:var(--text); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:32px; }
+  .lst-pr{ display:flex; align-items:baseline; justify-content:space-between; margin-top:6px; }
+  .lst-pr .p{ font:700 14.5px/1 'JetBrains Mono',monospace; letter-spacing:-.01em; color:var(--green-hi); }
+  .lst-pr .p.swap{ color:var(--amber); font-size:12px; letter-spacing:.08em; }
+  .lst-pr .p.wanted{ color:var(--sub); font-size:12px; letter-spacing:.08em; }
+  .lst-pr .ago{ font:600 9.5px/1 'JetBrains Mono',monospace; color:var(--faint); letter-spacing:.04em; }
+  .lst-loc{ display:flex; align-items:center; gap:4px; margin-top:5px; font:500 10.5px/1 'Instrument Sans',sans-serif; color:var(--sub); }
+  .lst-loc .micon{ font-size:12px; color:var(--faint); }
+  .load-more{ margin:12px auto 0; display:flex; align-items:center; gap:6px; font:700 11px/1 'JetBrains Mono',monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--green-hi); background:var(--green-dim); padding:10px 18px; border-radius:10px; }
+  .load-more .micon{ font-size:16px; }
+
+  /* ---------- my listings rows ---------- */
+  .ml-card{ padding:5px 12px; }
+  .ml-row{ display:flex; align-items:flex-start; gap:11px; padding:12px 2px; border-bottom:1px solid var(--stroke-lo); }
+  .ml-row:last-of-type{ border-bottom:none; }
+  .ml-img{ width:54px; height:54px; border-radius:12px; flex:none; background:linear-gradient(135deg,var(--green-dim),var(--glass2)); display:flex; align-items:center; justify-content:center; }
+  .ml-img .micon{ font-size:24px; color:var(--faint); }
+  .ml-info{ flex:1; min-width:0; }
+  .ml-t{ font:600 13.5px/1.25 'Instrument Sans',sans-serif; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ml-meta{ display:flex; align-items:center; gap:10px; margin-top:4px; }
+  .ml-p{ font:700 13px/1 'JetBrains Mono',monospace; color:var(--green-hi); }
+  .ml-v{ display:flex; align-items:center; gap:3px; font:600 10px/1 'JetBrains Mono',monospace; color:var(--faint); letter-spacing:.04em; }
+  .ml-v .micon{ font-size:12px; }
+  .ml-acts{ display:flex; gap:6px; margin-top:8px; }
+  .ml-act{ font:700 9.5px/1 'JetBrains Mono',monospace; letter-spacing:.1em; text-transform:uppercase; padding:6px 10px; border-radius:7px; background:var(--glass2); color:var(--sub); box-shadow:inset 0 0 0 1px var(--stroke-lo); }
+  .ml-act.go{ color:var(--green-hi); background:var(--green-dim); box-shadow:none; }
+  .ml-act.del{ color:var(--red); }
+
+  /* ---------- offers ---------- */
+  .off-seg{ display:flex; gap:6px; margin-bottom:10px; }
+  .off-tab{ display:flex; align-items:center; gap:6px; font:700 10.5px/1 'JetBrains Mono',monospace; letter-spacing:.1em; text-transform:uppercase; padding:9px 14px; border-radius:9px; background:var(--glass2); color:var(--sub); box-shadow:inset 0 0 0 1px var(--stroke-lo); }
+  .off-tab.on{ background:var(--green); color:#fff; box-shadow:none; }
+  .off-tab .bdg{ min-width:15px; height:15px; padding:0 3px; border-radius:8px; background:#fff; color:var(--green); font:700 9.5px/15px 'JetBrains Mono',monospace; }
+  .off-card{ padding:12px; margin-bottom:9px; }
+  .off-main{ display:flex; align-items:flex-start; gap:11px; }
+  .off-img{ width:46px; height:46px; border-radius:11px; flex:none; background:linear-gradient(135deg,var(--green-dim),var(--glass2)); display:flex; align-items:center; justify-content:center; }
+  .off-img .micon{ font-size:21px; color:var(--faint); }
+  .off-info{ flex:1; min-width:0; }
+  .off-t{ font:600 13px/1.25 'Instrument Sans',sans-serif; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .off-from{ font:500 11px/1.4 'Instrument Sans',sans-serif; color:var(--sub); }
+  .off-amt{ font:700 15px/1 'JetBrains Mono',monospace; color:var(--green-hi); margin-top:5px; }
+  .off-msg{ font:500 11.5px/1.45 'Instrument Sans',sans-serif; color:var(--sub); font-style:italic; margin-top:5px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .off-ago{ font:600 9.5px/1 'JetBrains Mono',monospace; color:var(--faint); letter-spacing:.04em; margin-top:5px; }
+  .off-acts{ display:flex; gap:7px; margin-top:11px; padding-top:11px; border-top:1px solid var(--stroke-lo); }
+  .btn-solid{ flex:1; display:flex; align-items:center; justify-content:center; gap:6px; padding:10px 0; border-radius:10px; background:var(--green); color:#fff; font:700 12px/1 'Instrument Sans',sans-serif; }
+  .btn-line{ flex:1; display:flex; align-items:center; justify-content:center; gap:6px; padding:10px 0; border-radius:10px; background:var(--glass2); color:var(--sub); box-shadow:inset 0 0 0 1px var(--stroke-lo); font:700 12px/1 'Instrument Sans',sans-serif; }
+  .btn-line.red{ color:var(--red); }
+  .btn-ico{ flex:none; width:38px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:var(--glass2); box-shadow:inset 0 0 0 1px var(--stroke-lo); }
+  .btn-ico .micon{ font-size:17px; color:var(--green-hi); }
+
+  /* ---------- detail sheet ---------- */
+  .dt-card{ overflow:hidden; }
+  .dt-gal{ aspect-ratio:4/3; background:linear-gradient(135deg,var(--green-dim),var(--glass2)); position:relative; display:flex; align-items:center; justify-content:center; }
+  .dt-gal .micon.ph{ font-size:56px; color:var(--faint); }
+  .dt-nav{ position:absolute; top:50%; transform:translateY(-50%); width:30px; height:30px; border-radius:50%; background:rgba(11,15,20,.45); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; }
+  body.light .dt-nav{ background:rgba(255,255,255,.8); }
+  .dt-nav .micon{ font-size:18px; color:#fff; }
+  body.light .dt-nav .micon{ color:var(--sub); }
+  .dt-nav.l{ left:9px; } .dt-nav.r{ right:9px; }
+  .dt-dots{ position:absolute; bottom:9px; left:50%; transform:translateX(-50%); display:flex; gap:5px; }
+  .dt-dots i{ width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.4); }
+  .dt-dots i.on{ background:#fff; }
+  .dt-topbar{ position:absolute; top:9px; left:9px; right:9px; display:flex; justify-content:space-between; }
+  .dt-tb{ width:32px; height:32px; border-radius:50%; background:rgba(11,15,20,.45); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; }
+  body.light .dt-tb{ background:rgba(255,255,255,.8); }
+  .dt-tb .micon{ font-size:17px; color:#fff; }
+  body.light .dt-tb .micon{ color:var(--sub); }
+  .dt-tbr{ display:flex; gap:7px; }
+  .dt-body{ padding:14px 15px 15px; }
+  .dt-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  .dt-t{ font:700 17px/1.25 'Instrument Sans',sans-serif; letter-spacing:-.01em; color:var(--text); }
+  .dt-p{ font:700 20px/1 'JetBrains Mono',monospace; letter-spacing:-.02em; color:var(--green-hi); white-space:nowrap; }
+  .dt-p .neg{ display:block; font:600 8.5px/1 'JetBrains Mono',monospace; letter-spacing:.16em; color:var(--sub); text-transform:uppercase; margin-top:4px; text-align:right; }
+  .dt-stats{ display:flex; align-items:stretch; border-radius:13px; background:var(--glass2); box-shadow:inset 0 0 0 1px var(--stroke-lo); padding:10px 0; margin:12px 0; }
+  .dt-stat{ flex:1; text-align:center; position:relative; }
+  .dt-stat + .dt-stat::before{ content:''; position:absolute; left:0; top:15%; height:70%; width:1px; background:var(--stroke-lo); }
+  .dt-stat .k{ font:600 8.5px/1 'JetBrains Mono',monospace; letter-spacing:.18em; color:var(--faint); text-transform:uppercase; display:block; margin-bottom:5px; }
+  .dt-stat .v{ font:600 11.5px/1 'Instrument Sans',sans-serif; color:var(--text); }
+  .dt-desc{ font:500 12.5px/1.6 'Instrument Sans',sans-serif; color:var(--sub); margin-bottom:12px; }
+  .dt-seller{ display:flex; align-items:center; gap:10px; padding:10px 11px; border-radius:12px; background:var(--glass2); box-shadow:inset 0 0 0 1px var(--stroke-lo); margin-bottom:13px; }
+  .dt-av{ width:36px; height:36px; border-radius:50%; background:var(--green-dim); display:flex; align-items:center; justify-content:center; flex:none; }
+  .dt-av .micon{ font-size:18px; color:var(--green-hi); }
+  .dt-sn{ font:600 13px/1.2 'Instrument Sans',sans-serif; color:var(--text); }
+  .dt-sp{ font:500 10.5px/1.4 'Instrument Sans',sans-serif; color:var(--faint); }
+  .dt-acts{ display:flex; gap:8px; }
+
+  /* ---------- forms (create + offer) ---------- */
+  .fm-card{ padding:14px 15px 16px; }
+  .fm-title{ display:flex; align-items:center; justify-content:space-between; margin-bottom:13px; }
+  .fm-title b{ font:700 16px/1 'Instrument Sans',sans-serif; letter-spacing:-.01em; }
+  .fm-title .x{ width:30px; height:30px; border-radius:50%; background:var(--glass2); box-shadow:inset 0 0 0 1px var(--stroke-lo); display:flex; align-items:center; justify-content:center; }
+  .fm-title .x .micon{ font-size:16px; color:var(--sub); }
+  .lbl{ font:600 9.5px/1 'JetBrains Mono',monospace; letter-spacing:.2em; text-transform:uppercase; color:var(--faint); display:block; margin:13px 0 7px; }
+  .lbl:first-of-type{ margin-top:0; }
+  .lbl .req{ color:var(--green-hi); }
+  .fin, .fsel, .ftxt{ width:100%; font:500 16px/1.2 'Instrument Sans',sans-serif; color:var(--text);
+    background:var(--sheet); border:1px solid var(--stroke-lo); border-radius:11px; padding:11px 12px; outline:none; }
+  body.light .fin, body.light .fsel, body.light .ftxt{ background:#fff; }
+  .fin::placeholder, .ftxt::placeholder{ color:var(--faint); }
+  .ftxt{ resize:none; line-height:1.5; }
+  .photos{ display:flex; gap:8px; }
+  .ph-add{ width:64px; height:64px; border-radius:12px; border:1.5px dashed var(--stroke-hi); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; }
+  .ph-add .micon{ font-size:20px; color:var(--green-hi); }
+  .ph-add span:not(.micon){ font:600 8px/1 'JetBrains Mono',monospace; letter-spacing:.1em; color:var(--faint); text-transform:uppercase; }
+  .ph-th{ width:64px; height:64px; border-radius:12px; background:linear-gradient(135deg,var(--green-dim),var(--glass2)); position:relative; display:flex; align-items:center; justify-content:center; }
+  .ph-th .micon{ font-size:24px; color:var(--faint); }
+  .ph-th .rm{ position:absolute; top:-5px; right:-5px; width:18px; height:18px; border-radius:50%; background:var(--red); display:flex; align-items:center; justify-content:center; }
+  .ph-th .rm .micon{ font-size:11px; color:#fff; }
+  .seg{ display:flex; gap:6px; }
+  .seg-b{ flex:1; display:flex; align-items:center; justify-content:center; gap:5px; padding:10px 2px; border-radius:10px; background:var(--glass2); color:var(--sub); box-shadow:inset 0 0 0 1px var(--stroke-lo); font:700 10.5px/1 'JetBrains Mono',monospace; letter-spacing:.06em; text-transform:uppercase; }
+  .seg-b .micon{ font-size:15px; }
+  .seg-b.on{ background:var(--green); color:#fff; box-shadow:none; }
+  .prow{ display:flex; gap:8px; align-items:center; }
+  .prow .fin{ flex:1; }
+  .tgl{ flex:none; display:flex; align-items:center; gap:7px; padding:11px 13px; border-radius:11px; background:var(--glass2); box-shadow:inset 0 0 0 1px var(--stroke-lo); font:600 11px/1 'Instrument Sans',sans-serif; color:var(--sub); }
+  .tgl .tk{ width:30px; height:18px; border-radius:9px; background:var(--green); position:relative; }
+  .tgl .tk::after{ content:''; position:absolute; top:2px; right:2px; width:14px; height:14px; border-radius:50%; background:#fff; }
+  .fm-sub{ width:100%; margin-top:16px; display:flex; align-items:center; justify-content:center; gap:7px; padding:13px 0; border-radius:12px; background:var(--green); color:#fff; font:700 14px/1 'Instrument Sans',sans-serif; }
+  .fm-sub .micon{ font-size:18px; }
+
+  /* ---------- disclaimer + safety ---------- */
+  .dsc-band{ display:flex; align-items:center; gap:8px; padding:9px 11px; border-radius:11px; background:var(--amber-dim); margin-bottom:12px; }
+  .dsc-band .micon{ font-size:15px; color:var(--amber); flex:none; }
+  .dsc-band p{ flex:1; font:500 10.5px/1.45 'Instrument Sans',sans-serif; color:var(--sub); }
+  .dsc-band p b{ color:var(--text); font-weight:600; }
+  .dsc-band .lnk{ flex:none; font:700 9.5px/1 'JetBrains Mono',monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); }
+  .dsc-card{ padding:14px 15px 15px; }
+  .dsc-h{ display:flex; align-items:center; gap:7px; font:600 10px/1 'JetBrains Mono',monospace; letter-spacing:.24em; text-transform:uppercase; color:var(--amber); margin-bottom:9px; }
+  .dsc-h .micon{ font-size:15px; }
+  .dsc-p{ font:500 11.5px/1.6 'Instrument Sans',sans-serif; color:var(--sub); margin-bottom:12px; }
+  .dsc-p b{ color:var(--text); font-weight:600; }
+  .tip{ display:flex; align-items:flex-start; gap:9px; padding:7px 0; border-top:1px solid var(--stroke-lo); }
+  .tip .micon{ font-size:15px; color:var(--green-hi); flex:none; margin-top:1px; }
+  .tip div{ font:500 11.5px/1.5 'Instrument Sans',sans-serif; color:var(--sub); }
+  .tip b{ color:var(--text); font-weight:600; display:block; font-size:12px; }
+  .dsc-mini{ display:flex; align-items:flex-start; gap:7px; padding:9px 11px; border-radius:10px; background:var(--glass2); box-shadow:inset 0 0 0 1px var(--stroke-lo); margin-bottom:12px; }
+  .dsc-mini .micon{ font-size:14px; color:var(--amber); flex:none; margin-top:1px; }
+  .dsc-mini p{ font:500 10.5px/1.5 'Instrument Sans',sans-serif; color:var(--sub); }
+
+  /* ---------- empty states ---------- */
+  .empty{ text-align:center; padding:22px 12px 24px; }
+  .empty .ei{ width:44px; height:44px; margin:0 auto 9px; border-radius:50%; background:var(--glass2); box-shadow:inset 0 0 0 1px var(--stroke-lo); display:flex; align-items:center; justify-content:center; }
+  .empty .ei .micon{ font-size:21px; color:var(--faint); }
+  .empty p{ font:600 13px/1.3 'Instrument Sans',sans-serif; color:var(--sub); margin-bottom:2px; }
+  .empty .sm{ font:500 11.5px/1.5 'Instrument Sans',sans-serif; color:var(--faint); margin-bottom:10px; }
+  .btn-ghost{ font:700 11px/1 'JetBrains Mono',monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--green-hi); background:var(--green-dim); padding:9px 14px; border-radius:9px; }
+
+  .demo-note{ width:390px; margin:26px auto 0; padding:0 14px; font:500 11px/1.6 'JetBrains Mono',monospace; color:var(--faint); }
+  body.desktop .demo-note{ width:min(1400px,96vw); grid-column:1/-1; }
+</style>
+</head>
+<body>
+
+<div class="frame">
+
+  <!-- ============ 1. DASHBOARD ENTRY BLOCK ============ -->
+  <div class="sec">
+    <div class="sec-head">
+      <span class="overline"><span class="micon">storefront</span>19th Hole</span>
+      <button class="sec-link">Browse All <span class="micon">arrow_forward</span></button>
+    </div>
+    <div class="mk-tiles">
+      <button class="mk-tile">
+        <div class="ti"><span class="micon">sports_golf</span></div>
+        <div class="tl">Gear</div>
+      </button>
+      <button class="mk-tile">
+        <div class="ti"><span class="micon">handyman</span></div>
+        <div class="tl">Services</div>
+      </button>
+      <button class="mk-tile">
+        <div class="ti"><span class="micon">add_circle</span></div>
+        <div class="tl">Sell</div>
+      </button>
+      <button class="mk-tile">
+        <div class="ti"><span class="micon">local_offer</span></div>
+        <div class="tl">Offers</div>
+        <span class="bdg">2</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ 2. MARKETPLACE · BROWSE ============ -->
+  <div class="sec">
+    <div class="sec-head">
+      <span class="overline"><span class="micon">storefront</span>19th Hole · Browse</span>
+    </div>
+
+    <div class="mtabs">
+      <button class="mtab on"><span class="micon">search</span>Browse</button>
+      <button class="mtab"><span class="micon">inventory_2</span>Mine</button>
+      <button class="mtab"><span class="micon">local_offer</span>Offers <span class="bdg">2</span></button>
+      <button class="mtab"><span class="micon">favorite</span>Saved</button>
+    </div>
+
+    <div class="card ad-card">
+      <div class="ad-top">
+        <span class="ad-tag">Sponsored</span>
+        <div class="ad-nav">
+          <button><span class="micon">chevron_left</span></button>
+          <button><span class="micon">chevron_right</span></button>
+        </div>
+      </div>
+      <div class="ad-body">
+        <div class="ad-img"><span class="micon">golf_course</span></div>
+        <div>
+          <div class="ad-t">Khao Kheow — Green-fee promo Jul</div>
+          <div class="ad-d">Weekday rounds from ฿1,800 incl. cart, book direct.</div>
+          <div class="ad-by">Khao Kheow C.C.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dsc-band">
+      <span class="micon">verified_user</span>
+      <p><b>Community board.</b> MyCaddiPro doesn't handle sales or take commission — deals are between members.</p>
+      <button class="lnk">Safety</button>
+    </div>
+
+    <div class="msearch">
+      <span class="micon lead">search</span>
+      <input type="text" placeholder="Search listings…">
+      <button class="clr"><span class="micon">close</span></button>
+    </div>
+    <div class="mcats">
+      <button class="mcat on"><span class="micon">apps</span>All</button>
+      <button class="mcat"><span class="micon">sports_golf</span>Golf</button>
+      <button class="mcat"><span class="micon">handyman</span>Services</button>
+      <button class="mcat"><span class="micon">category</span>General</button>
+    </div>
+
+    <div class="lgrid">
+      <div class="lst">
+        <div class="lst-img">
+          <span class="micon ph">sports_golf</span>
+          <button class="lst-fav"><span class="micon">favorite</span></button>
+          <span class="lst-tag chip">Negotiable</span>
+        </div>
+        <div class="lst-b">
+          <div class="lst-t">TaylorMade Stealth 2 Driver 10.5° — stiff shaft</div>
+          <div class="lst-pr"><span class="p">฿12,500</span><span class="ago">2H AGO</span></div>
+          <div class="lst-loc"><span class="micon">location_on</span>Pattaya</div>
+        </div>
+      </div>
+      <div class="lst">
+        <div class="lst-img">
+          <span class="micon ph">school</span>
+          <button class="lst-fav"><span class="micon fill fav-on">favorite</span></button>
+        </div>
+        <div class="lst-b">
+          <div class="lst-t">Golf lessons — PGA pro, Phoenix range</div>
+          <div class="lst-pr"><span class="p">฿1,500</span><span class="ago">5H AGO</span></div>
+          <div class="lst-loc"><span class="micon">location_on</span>Jomtien</div>
+        </div>
+      </div>
+      <div class="lst">
+        <div class="lst-img">
+          <span class="micon ph">golf_course</span>
+          <button class="lst-fav"><span class="micon">favorite</span></button>
+        </div>
+        <div class="lst-b">
+          <div class="lst-t">Scotty Cameron Newport 2 — 34"</div>
+          <div class="lst-pr"><span class="p swap">SWAP</span><span class="ago">1D AGO</span></div>
+          <div class="lst-loc"><span class="micon">location_on</span>Bangkok</div>
+        </div>
+      </div>
+      <div class="lst">
+        <div class="lst-img">
+          <span class="micon ph">shopping_bag</span>
+          <button class="lst-fav"><span class="micon">favorite</span></button>
+        </div>
+        <div class="lst-b">
+          <div class="lst-t">Wanted: left-handed iron set 5–PW</div>
+          <div class="lst-pr"><span class="p wanted">WANTED</span><span class="ago">3D AGO</span></div>
+          <div class="lst-loc"><span class="micon">location_on</span>Sriracha</div>
+        </div>
+      </div>
+    </div>
+    <div style="text-align:center;"><button class="load-more"><span class="micon">expand_more</span>Load More</button></div>
+  </div>
+
+  <!-- ============ 3. MY LISTINGS ============ -->
+  <div class="sec">
+    <div class="sec-head">
+      <span class="overline"><span class="micon">inventory_2</span>My Listings</span>
+      <button class="sec-link">Sell <span class="micon">add</span></button>
+    </div>
+    <div class="card ml-card">
+      <div class="ml-row">
+        <div class="ml-img"><span class="micon">sports_golf</span></div>
+        <div class="ml-info">
+          <div class="ml-t">Mizuno JPX 923 irons 5–PW</div>
+          <div class="ml-meta"><span class="ml-p">฿28,000</span><span class="ml-v"><span class="micon">visibility</span>46 VIEWS</span><span class="chip">Active</span></div>
+          <div class="ml-acts">
+            <button class="ml-act">Edit</button>
+            <button class="ml-act go">Mark Sold</button>
+            <button class="ml-act del">Delete</button>
+          </div>
+        </div>
+      </div>
+      <div class="ml-row">
+        <div class="ml-img"><span class="micon">directions_car</span></div>
+        <div class="ml-info">
+          <div class="ml-t">Clicgear 3.5 push cart</div>
+          <div class="ml-meta"><span class="ml-p">฿4,800</span><span class="ml-v"><span class="micon">visibility</span>112 VIEWS</span><span class="chip ghost">Sold</span></div>
+          <div class="ml-acts">
+            <button class="ml-act">Edit</button>
+            <button class="ml-act del">Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 4. OFFERS ============ -->
+  <div class="sec">
+    <div class="sec-head">
+      <span class="overline"><span class="micon">local_offer</span>Offers</span>
+    </div>
+    <div class="off-seg">
+      <button class="off-tab on">Received <span class="bdg">2</span></button>
+      <button class="off-tab">Sent</button>
+    </div>
+
+    <div class="card off-card">
+      <div class="off-main">
+        <div class="off-img"><span class="micon">sports_golf</span></div>
+        <div class="off-info">
+          <div class="off-t">Mizuno JPX 923 irons 5–PW</div>
+          <div class="off-from">From: Tom Britt</div>
+          <div class="off-amt">฿24,000</div>
+          <div class="off-msg">"Cash today if you can do 24k — I'm at Khao Kheow Friday."</div>
+          <div class="off-ago">2H AGO</div>
+        </div>
+        <span class="chip amber">Pending</span>
+      </div>
+      <div class="off-acts">
+        <button class="btn-solid"><span class="micon">check</span>Accept</button>
+        <button class="btn-line red">Decline</button>
+        <button class="btn-ico"><span class="micon">chat</span></button>
+      </div>
+    </div>
+
+    <div class="card off-card">
+      <div class="off-main">
+        <div class="off-img"><span class="micon">sports_golf</span></div>
+        <div class="off-info">
+          <div class="off-t">Mizuno JPX 923 irons 5–PW</div>
+          <div class="off-from">From: Erik Lundman</div>
+          <div class="off-amt">฿26,500</div>
+          <div class="off-ago">1D AGO</div>
+        </div>
+        <span class="chip">Accepted</span>
+      </div>
+    </div>
+
+    <div class="off-seg" style="margin-top:14px;">
+      <button class="off-tab">Received</button>
+      <button class="off-tab on">Sent</button>
+    </div>
+    <div class="card off-card">
+      <div class="off-main">
+        <div class="off-img"><span class="micon">golf_course</span></div>
+        <div class="off-info">
+          <div class="off-t">Scotty Cameron Newport 2 — 34"</div>
+          <div class="off-amt">฿9,000</div>
+          <div class="off-msg">"Would you take cash instead of a swap?"</div>
+          <div class="off-ago">3H AGO</div>
+        </div>
+        <span class="chip amber">Pending</span>
+      </div>
+      <div class="off-acts">
+        <button class="btn-line">Withdraw Offer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 5. LISTING DETAIL (sheet) ============ -->
+  <div class="sec">
+    <div class="sec-head">
+      <span class="overline"><span class="micon">open_in_full</span>Listing Detail</span>
+    </div>
+    <div class="card dt-card">
+      <div class="dt-gal">
+        <span class="micon ph">sports_golf</span>
+        <div class="dt-topbar">
+          <button class="dt-tb"><span class="micon">arrow_back</span></button>
+          <div class="dt-tbr">
+            <button class="dt-tb"><span class="micon">favorite</span></button>
+            <button class="dt-tb"><span class="micon">share</span></button>
+          </div>
+        </div>
+        <button class="dt-nav l"><span class="micon">chevron_left</span></button>
+        <button class="dt-nav r"><span class="micon">chevron_right</span></button>
+        <div class="dt-dots"><i class="on"></i><i></i><i></i></div>
+      </div>
+      <div class="dt-body">
+        <div class="dt-head">
+          <div class="dt-t">TaylorMade Stealth 2 Driver 10.5° — stiff shaft</div>
+          <div class="dt-p">฿12,500<span class="neg">Negotiable</span></div>
+        </div>
+        <div class="dt-stats">
+          <div class="dt-stat"><span class="k">Category</span><span class="v">Golf · Clubs</span></div>
+          <div class="dt-stat"><span class="k">Condition</span><span class="v">Like New</span></div>
+          <div class="dt-stat"><span class="k">Location</span><span class="v">Pattaya</span></div>
+          <div class="dt-stat"><span class="k">Views</span><span class="v">128</span></div>
+        </div>
+        <div class="dt-desc">Bought Jan 2026, maybe 10 rounds on it. Ventus Red 5-S shaft, headcover + wrench included. Meet at Phoenix or Siam CC area.</div>
+        <div class="dt-seller">
+          <div class="dt-av"><span class="micon">person</span></div>
+          <div>
+            <div class="dt-sn">Mike Smith</div>
+            <div class="dt-sp">Posted 2h ago</div>
+          </div>
+        </div>
+        <div class="dsc-mini" style="margin-bottom:11px;">
+          <span class="micon">shield</span>
+          <p>Private sale — MyCaddiPro isn't part of this transaction. Meet in person and inspect before you pay.</p>
+        </div>
+        <div class="dt-acts">
+          <button class="btn-solid"><span class="micon">local_offer</span>Make Offer</button>
+          <button class="btn-line"><span class="micon">chat</span>Message</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 6. SELL — CREATE LISTING (sheet) ============ -->
+  <div class="sec">
+    <div class="sec-head">
+      <span class="overline"><span class="micon">add_circle</span>Sell — Create Listing</span>
+    </div>
+    <div class="card fm-card">
+      <div class="fm-title"><b>Create Listing</b><button class="x"><span class="micon">close</span></button></div>
+
+      <span class="lbl">Photos · up to 5</span>
+      <div class="photos">
+        <div class="ph-th"><span class="micon">sports_golf</span><button class="rm"><span class="micon">close</span></button></div>
+        <div class="ph-th"><span class="micon">image</span><button class="rm"><span class="micon">close</span></button></div>
+        <button class="ph-add"><span class="micon">add_a_photo</span><span>Add</span></button>
+      </div>
+
+      <span class="lbl">Title <span class="req">*</span></span>
+      <input class="fin" type="text" value="TaylorMade Stealth 2 Driver 10.5°">
+
+      <span class="lbl">Category <span class="req">*</span></span>
+      <select class="fsel"><option>Golf Equipment · Clubs</option></select>
+
+      <span class="lbl">Listing Type <span class="req">*</span></span>
+      <div class="seg">
+        <button class="seg-b on"><span class="micon">sell</span>Sale</button>
+        <button class="seg-b"><span class="micon">swap_horiz</span>Swap</button>
+        <button class="seg-b"><span class="micon">search</span>Wanted</button>
+      </div>
+
+      <span class="lbl">Price (THB)</span>
+      <div class="prow">
+        <input class="fin" type="text" value="12,500">
+        <div class="tgl">Negotiable <span class="tk"></span></div>
+      </div>
+
+      <span class="lbl">Condition</span>
+      <div class="seg">
+        <button class="seg-b">New</button>
+        <button class="seg-b on">Like New</button>
+        <button class="seg-b">Good</button>
+        <button class="seg-b">Fair</button>
+      </div>
+
+      <span class="lbl">Description</span>
+      <textarea class="ftxt" rows="3" placeholder="Condition details, what's included, where to meet…"></textarea>
+
+      <span class="lbl">Location</span>
+      <input class="fin" type="text" placeholder="e.g. Pattaya, Bangkok">
+
+      <div class="dsc-mini" style="margin:14px 0 0;">
+        <span class="micon">info</span>
+        <p>Listings are member-to-member. MyCaddiPro doesn't sell, ship, or handle payment — and takes no commission.</p>
+      </div>
+      <button class="fm-sub"><span class="micon">rocket_launch</span>Post Listing</button>
+    </div>
+  </div>
+
+  <!-- ============ 7. MAKE OFFER (sheet) ============ -->
+  <div class="sec">
+    <div class="sec-head">
+      <span class="overline"><span class="micon">local_offer</span>Make an Offer</span>
+    </div>
+    <div class="card fm-card">
+      <div class="fm-title"><b>Make an Offer</b><button class="x"><span class="micon">close</span></button></div>
+
+      <span class="lbl">Offer Type</span>
+      <div class="seg">
+        <button class="seg-b on"><span class="micon">payments</span>Price</button>
+        <button class="seg-b"><span class="micon">swap_horiz</span>Swap</button>
+        <button class="seg-b"><span class="micon">help</span>Question</button>
+      </div>
+
+      <span class="lbl">Your Offer (THB)</span>
+      <input class="fin" type="text" placeholder="e.g. 11,000">
+
+      <span class="lbl">Message · optional</span>
+      <textarea class="ftxt" rows="3" placeholder="Add a note for the seller…"></textarea>
+
+      <div class="dsc-mini" style="margin:14px 0 0;">
+        <span class="micon">info</span>
+        <p>Your offer goes straight to the seller. MyCaddiPro doesn't process payments — settle in person, only after inspecting.</p>
+      </div>
+      <button class="fm-sub"><span class="micon">send</span>Send Offer</button>
+    </div>
+  </div>
+
+  <!-- ============ 8. DISCLAIMER + SAFETY (shown at bottom of Browse; band "Safety" scrolls here) ============ -->
+  <div class="sec">
+    <div class="sec-head">
+      <span class="overline" style="color:var(--amber)"><span class="micon">verified_user</span>Disclaimer &amp; Safety</span>
+    </div>
+    <div class="card dsc-card">
+      <div class="dsc-h"><span class="micon">gavel</span>The fine print</div>
+      <div class="dsc-p">The 19th Hole is a <b>community notice board</b>. MyCaddiPro does not sell, distribute, or verify any item or service listed here, is <b>not a party to any transaction</b> between buyer and seller, and <b>accepts no commission or fee</b> on anything listed or sold. Every deal is strictly between members — treat it like any private sale.</div>
+      <div class="dsc-h" style="color:var(--green-hi)"><span class="micon">health_and_safety</span>Stay safe</div>
+      <div class="tip"><span class="micon">groups</span><div><b>Meet in person, somewhere public</b>The clubhouse or pro shop is perfect. Never deal through a middleman.</div></div>
+      <div class="tip"><span class="micon">search_check</span><div><b>Inspect before you pay</b>Check the item in hand before any money moves. No deposits, no advance payment to "hold" an item.</div></div>
+      <div class="tip"><span class="micon">payments</span><div><b>Verify transfers yourself</b>A slip screenshot isn't proof — confirm the money in your own banking app before handing anything over.</div></div>
+      <div class="tip"><span class="micon">timer_off</span><div><b>Don't be rushed</b>Urgency and too-good-to-be-true prices are the classic scam signs.</div></div>
+      <div class="tip"><span class="micon">chat</span><div><b>Keep the chat in MyCaddiPro</b>In-app messages are your record if something goes wrong. Report suspicious listings to your organizer.</div></div>
+    </div>
+  </div>
+
+  <!-- ============ 9. EMPTY STATES (spec — build these too) ============ -->
+  <div class="sec">
+    <div class="sec-head"><span class="overline" style="color:var(--faint)"><span class="micon">rule</span>Empty states (spec)</span></div>
+    <div class="card" style="margin-bottom:10px;">
+      <div class="empty">
+        <div class="ei"><span class="micon">storefront</span></div>
+        <p>No listings match</p>
+        <div class="sm">Try another search or category — or be the first to list.</div>
+        <button class="btn-ghost">Sell Something</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:10px;">
+      <div class="empty">
+        <div class="ei"><span class="micon">inventory_2</span></div>
+        <p>Nothing listed yet</p>
+        <div class="sm">Clear out the garage — clubs, carts, lessons, anything golf.</div>
+        <button class="btn-ghost">Create Listing</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="empty">
+        <div class="ei"><span class="micon">local_offer</span></div>
+        <p>No offers yet</p>
+        <div class="sm">Offers you make and receive show up here.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="demo-note">
+  19TH-HOLE V1 · dark = default, ?light = light theme, ?desktop = 3-column full-width ·
+  parity: dashboard tiles (Gear/Services filter jump, Sell → create modal, Offers → my-offers + red badge), Browse All→,
+  4 sub-tabs, sponsored carousel w/ prev-next + impression/click tracking, live search (16px + clear) + category pills,
+  2-col listing grid (fav heart, negotiable tag, price by type: sale ฿ / SWAP / WANTED, time-ago, location), Load More (20/page),
+  My Listings (status Active/Sold/Expired, views, Edit / Mark Sold / Delete), Offers received+sent
+  (status pending/accepted/declined/withdrawn, Accept / Decline / Chat, Withdraw), Saved grid,
+  detail sheet (gallery + dots, fav, share, category/condition/location/views, description, seller, Make Offer / Message,
+  owner sees Edit / Mark Sold), create+edit form (5 photos, title, category+subcategory, sale/swap/wanted,
+  price + negotiable, condition, description, location), make-offer form (price/swap/question + amount + message),
+  offer badges everywhere (tab, sub-tab, dashboard tile) refresh as today.
+</div>
+
+<script>
+  const q = new URLSearchParams(location.search);
+  if (q.has('light')) document.body.classList.add('light');
+  if (q.has('desktop')) document.body.classList.add('desktop');
+</script>
+</body>
+</html>

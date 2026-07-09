@@ -467,18 +467,25 @@ window.GolfBuddiesSystem = {
         pane.innerHTML=
             '<div class="bd-search"><span class="micon">search</span><input type="text" id="bdSearchInput" placeholder="Search players by name…" autocomplete="off" oninput="GolfBuddiesSystem.searchPlayers(this.value)"></div>'+
             '<div id="bdSuggestSection">'+
-                '<div class="bd-sec-title"><span class="micon">auto_awesome</span>Suggested from your rounds</div>'+
+                '<div class="bd-sec-title"><span class="micon">history</span>Played with — quick add</div>'+
                 '<div class="bd-group" id="bdSuggestList"><p class="bd-loading">Loading…</p></div>'+
             '</div>'+
             '<div id="bdSearchResults" style="display:none"></div>';
     },
     _bdDiscoverRow(id, name, hcp, sub){
         var i = (this._bdDiscIdx = (this._bdDiscIdx||0)+1);
+        var live=this._roundActive();
         var meta='<span class="hcp">HCP '+this._bdEsc(hcp)+'</span>'+(sub?'<span class="dot"></span><span>'+this._bdEsc(sub)+'</span>':'');
+        // "To round" is the PRIMARY action here — players found via search / played-with
+        // go straight into the round; buddying is optional (icon) so one-off partners
+        // never clog the buddies list (Pete, 2026-07-09).
         return '<div class="bd-brow">'+
             '<div class="bd-av '+this._bdAvClass(i)+'">'+this._bdEsc(this._bdInitial(name))+'</div>'+
             '<div class="bd-info"><div class="bd-nm">'+this._bdEsc(name)+'</div><div class="bd-meta">'+meta+'</div></div>'+
-            '<div class="bd-act"><button class="bd-add-btn" onclick="GolfBuddiesSystem.addBuddy(\''+id+'\')"><span class="micon">person_add</span>Add</button></div>'+
+            '<div class="bd-act">'+
+                '<button class="bd-round-btn'+(live?' live':'')+'" onclick="GolfBuddiesSystem.quickAddBuddy(\''+id+'\')" title="Add to current round"><span class="micon">golf_course</span>To round</button>'+
+                '<button class="bd-icon-btn" onclick="GolfBuddiesSystem.addBuddy(\''+id+'\')" title="Add to buddies list"><span class="micon">person_add</span></button>'+
+            '</div>'+
         '</div>';
     },
     _renderSuggestList(){
@@ -486,7 +493,7 @@ window.GolfBuddiesSystem = {
         var sg=this.suggestions||[];
         if(!sg.length){
             var sec=document.getElementById('bdSuggestSection');
-            if(sec) sec.innerHTML='<div class="bd-empty"><div class="ei"><span class="micon">auto_awesome</span></div><p>No suggestions yet</p><div class="sm">Play more rounds and we’ll surface players you’ve teed up with.</div></div>';
+            if(sec) sec.innerHTML='<div class="bd-empty"><div class="ei"><span class="micon">history</span></div><p>No played-with players yet</p><div class="sm">Players you tee up with appear here for one-tap adding to future rounds — no need to make them buddies.</div></div>';
             return;
         }
         this._bdDiscIdx=0;

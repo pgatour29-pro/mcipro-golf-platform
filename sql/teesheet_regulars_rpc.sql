@@ -2,8 +2,12 @@
 -- Groups registrations by NORMALIZED player name (strips parentheticals — "Britt, Tom (Guest)" == "Britt, Tom",
 -- "Wallis, Dan (17.7)" == "Wallis, Dan") so dual-ID players count as one person. Returns the person's MOST
 -- RECENT registration id/name (their current identity), live profile handicap when available, play counts,
--- same-weekday count (p_event_date's day-of-week — "the Tuesday crowd"), and their top-2 weekdays for the
+-- same-weekday count (p_event_date's day-of-week — "the Tuesday crowd"), and their played-days list for the
 -- chip tooltip. Window = last 60 days of PAST events, min 2 rounds, ranked played + 1.5x day-affinity.
+-- top_days (Pete 2026-07-11, one week of real data): UNCAPPED — a weekday shows if played in the last
+-- 14 days (captures the current week's full pattern) OR played 2+ times in the window (what "usually"
+-- means once history accumulates). One-off days age out after a fortnight. window_events counts only
+-- events that HAVE registrations, so "4 OF LAST 15" reads honestly during adoption.
 -- SECURITY DEFINER: browser runs on the ANON key (same model as sync_event_reg_handicaps).
 create or replace function public.get_society_regulars(
   p_society_id uuid,
@@ -24,14 +28,17 @@ security definer
 set search_path = public
 as $$
 with target as (
-  select coalesce(p_event_date, current_date) as d
+  -- Cutoff = the event being built (client passes its LOCAL date). Fallback = Bangkok today, NEVER
+  -- UTC current_date: Thai mornings are still "yesterday" in UTC, which dropped the newest event
+  -- (Pete: Jul 10 rounds missing from "last played" on the Jul 11 sheet).
+  select coalesce(p_event_date, (now() at time zone 'Asia/Bangkok')::date) as d
 ),
 past_events as (
   select e.id, e.event_date
-  from society_events e
+  from society_events e, target t
   where e.society_id = p_society_id
-    and e.event_date < current_date
-    and e.event_date >= current_date - 60
+    and e.event_date < t.d
+    and e.event_date >= t.d - 60
 ),
 regs as (
   select r.player_id, r.player_name, r.handicap, e.event_date, r.created_at,
@@ -58,20 +65,17 @@ best as (
   order by nm, event_date desc, created_at desc
 ),
 days as (
-  select nm, string_agg(dy, E'·' order by c desc, dw) as top_days
+  select nm, string_agg(dy, E'·' order by mod(dw::int + 6, 7)) as top_days   -- MON-first week order
   from (
     select nm,
            extract(dow from event_date) as dw,
            upper(to_char(event_date, 'Dy')) as dy,
            count(distinct event_date) as c,
-           row_number() over (
-             partition by nm
-             order by count(distinct event_date) desc, extract(dow from event_date)
-           ) as rn
+           max(event_date) as last_dw
     from regs
     group by nm, extract(dow from event_date), upper(to_char(event_date, 'Dy'))
   ) x
-  where rn <= 2
+  where c >= 2 or last_dw >= (select d - 14 from target)   -- recent fortnight OR genuinely recurring
   group by nm
 )
 select b.player_id::text,
@@ -79,7 +83,7 @@ select b.player_id::text,
        coalesce(up.handicap_index, nullif(b.handicap::text, '')::numeric) as handicap,
        g.played,
        g.dow_played,
-       (select count(*)::int from past_events) as window_events,
+       (select count(*)::int from past_events pe where exists (select 1 from event_registrations er where er.event_id = pe.id)) as window_events,
        g.last_played,
        d.top_days
 from grouped g

@@ -16,6 +16,8 @@
 
 const BUDDIES_ENABLED = true;
 
+const _bt = (k, fb) => { try { const v = window.t ? window.t(k) : null; return (v && v !== k) ? v : fb; } catch (e) { return fb; } };
+
 window.GolfBuddiesSystem = {
     buddies: [],
     savedGroups: [],
@@ -257,7 +259,7 @@ window.GolfBuddiesSystem = {
             var uid = this.currentUserId ||
                 (AppState && AppState.currentUser && (AppState.currentUser.lineUserId || AppState.currentUser.userId)) ||
                 localStorage.getItem('line_user_id') || localStorage.getItem('mcipro_biometric_user_id');
-            if (!uid) { NotificationManager && NotificationManager.show && NotificationManager.show('Please log in first', 'warning'); return; }
+            if (!uid) { NotificationManager && NotificationManager.show && NotificationManager.show(_bt('buddies.login', 'Please log in first'), 'warning'); return; }
             this.currentUserId = uid;
 
             // fresh
@@ -272,16 +274,16 @@ window.GolfBuddiesSystem = {
                 '<div class="bd-sheet">' +
                     '<div class="bd-hd">' +
                         '<div class="bd-hd-top">' +
-                            '<div><div class="bd-overline">My Golf Crew</div><div class="bd-h1">Golf Buddies</div></div>' +
+                            '<div><div class="bd-overline">' + _bt('buddies.subtitle', 'My Golf Crew') + '</div><div class="bd-h1">' + _bt('buddies.title', 'Golf Buddies') + '</div></div>' +
                             '<div class="bd-hdr-actions">' +
                                 '<button class="bd-ghost-ic" data-theme-toggle onclick="ThemeMode.toggle()" title="Toggle Light / Dark theme"><span class="micon theme-toggle-icon">light_mode</span></button>' +
                                 '<button class="bd-ghost-ic" onclick="GolfBuddiesSystem.closeBuddiesModal()" title="Close"><span class="micon">close</span></button>' +
                             '</div>' +
                         '</div>' +
                         '<div class="bd-seg">' +
-                            '<button id="bdTab-buddies" class="on" onclick="GolfBuddiesSystem._bdSwitchTab(\'buddies\')"><span class="micon">group</span>Buddies<span class="ct" id="bdCountBuddies"></span></button>' +
-                            '<button id="bdTab-groups" onclick="GolfBuddiesSystem._bdSwitchTab(\'groups\')"><span class="micon">groups_2</span>Groups<span class="ct" id="bdCountGroups"></span></button>' +
-                            '<button id="bdTab-discover" onclick="GolfBuddiesSystem._bdSwitchTab(\'discover\')"><span class="micon">person_search</span>Discover</button>' +
+                            '<button id="bdTab-buddies" class="on" onclick="GolfBuddiesSystem._bdSwitchTab(\'buddies\')"><span class="micon">group</span>' + _bt('buddies.tab.buddies', 'Buddies') + '<span class="ct" id="bdCountBuddies"></span></button>' +
+                            '<button id="bdTab-groups" onclick="GolfBuddiesSystem._bdSwitchTab(\'groups\')"><span class="micon">groups_2</span>' + _bt('buddies.tab.groups', 'Groups') + '<span class="ct" id="bdCountGroups"></span></button>' +
+                            '<button id="bdTab-discover" onclick="GolfBuddiesSystem._bdSwitchTab(\'discover\')"><span class="micon">person_search</span>' + _bt('buddies.tab.discover', 'Discover') + '</button>' +
                         '</div>' +
                     '</div>' +
                     '<div class="bd-body" id="bdBody">' +
@@ -316,7 +318,7 @@ window.GolfBuddiesSystem = {
         } catch (err) {
             console.error('[Buddies] openBuddiesModal error:', err);
             var m = document.getElementById('budModalV5');
-            if (m) { var b = m.querySelector('#bdPane-buddies'); if (b) b.innerHTML = '<div class="bd-empty"><div class="ei"><span class="micon">error</span></div><p>Could not load buddies</p><div class="sm">' + this._bdEsc(err.message || '') + '</div></div>'; }
+            if (m) { var b = m.querySelector('#bdPane-buddies'); if (b) b.innerHTML = '<div class="bd-empty"><div class="ei"><span class="micon">error</span></div><p>' + _bt('buddies.error.load', 'Could not load buddies') + '</p><div class="sm">' + this._bdEsc(err.message || '') + '</div></div>'; }
         }
     },
 
@@ -386,7 +388,7 @@ window.GolfBuddiesSystem = {
             '<div class="bd-av '+this._bdAvClass(i)+'">'+this._bdEsc(this._bdInitial(name))+'</div>'+
             '<div class="bd-info"><div class="bd-nm">'+this._bdEsc(name)+'</div><div class="bd-meta">'+meta+'</div></div>'+
             '<div class="bd-act">'+
-                '<button class="bd-round-btn'+(live?' live':'')+'" onclick="GolfBuddiesSystem.quickAddBuddy(\''+buddy.buddy_id+'\')" title="Add to current round"><span class="micon">golf_course</span>To round</button>'+
+                '<button class="bd-round-btn'+(live?' live':'')+'" onclick="GolfBuddiesSystem.quickAddBuddy(\''+buddy.buddy_id+'\')" title="Add to current round"><span class="micon">golf_course</span>'+_bt('buddies.toround', 'To round')+'</button>'+
                 '<button id="delbuddy_'+buddy.id+'" class="bd-icon-btn danger bd-remove-cell" onclick="GolfBuddiesSystem.removeBuddy(\''+buddy.id+'\')" title="Remove buddy"><span class="micon">person_remove</span></button>'+
             '</div>'+
         '</div>';
@@ -401,7 +403,7 @@ window.GolfBuddiesSystem = {
         var n=(this.buddies||[]).length;
         var cb=document.getElementById('bdCountBuddies'); if(cb) cb.textContent=n?n:'';
         if(!n){
-            pane.innerHTML='<div class="bd-empty"><div class="ei"><span class="micon">group_add</span></div><p>No buddies yet</p><div class="sm">Add players from the Discover tab, or after a round.</div></div>';
+            pane.innerHTML='<div class="bd-empty"><div class="ei"><span class="micon">group_add</span></div><p>'+_bt('buddies.empty.none', 'No buddies yet')+'</p><div class="sm">'+_bt('buddies.empty.none.hint', 'Add players from the Discover tab, or after a round.')+'</div></div>';
             return;
         }
         pane.innerHTML=
@@ -413,7 +415,7 @@ window.GolfBuddiesSystem = {
                         '<span class="'+(this._bdSort==='recent'?'on':'')+'" onclick="GolfBuddiesSystem._bdSetSort(\'recent\',this)">Recent</span>'+
                         '<span class="'+(this._bdSort==='az'?'on':'')+'" onclick="GolfBuddiesSystem._bdSetSort(\'az\',this)">A–Z</span>'+
                     '</div>'+
-                    '<button class="bd-edit-btn" onclick="GolfBuddiesSystem._bdToggleEdit(this)">Edit</button>'+
+                    '<button class="bd-edit-btn" onclick="GolfBuddiesSystem._bdToggleEdit(this)">'+_bt('buddies.edit', 'Edit')+'</button>'+
                 '</div>'+
             '</div>'+
             '<div class="bd-group" id="bdBuddyList"></div>';
@@ -425,9 +427,9 @@ window.GolfBuddiesSystem = {
         var pane=document.getElementById('bdPane-groups'); if(!pane) return;
         var groups=this.savedGroups||[];
         var cg=document.getElementById('bdCountGroups'); if(cg) cg.textContent=groups.length?groups.length:'';
-        var head='<button class="bd-new-group" onclick="GolfBuddiesSystem.createNewGroup()"><span class="micon">add</span>New Group</button>';
+        var head='<button class="bd-new-group" onclick="GolfBuddiesSystem.createNewGroup()"><span class="micon">add</span>'+_bt('buddies.newgroup', 'New Group')+'</button>';
         if(!groups.length){
-            pane.innerHTML=head+'<div class="bd-empty"><div class="ei"><span class="micon">groups_2</span></div><p>No saved groups yet</p><div class="sm">Group your regular partners for one-tap round setup.</div></div>';
+            pane.innerHTML=head+'<div class="bd-empty"><div class="ei"><span class="micon">groups_2</span></div><p>'+_bt('buddies.empty.groups', 'No saved groups yet')+'</p><div class="sm">'+_bt('buddies.empty.groups.hint', 'Group your regular partners for one-tap round setup.')+'</div></div>';
             return;
         }
         // resolve member names for avatar initials (one batched query)
@@ -454,8 +456,8 @@ window.GolfBuddiesSystem = {
             '</div>'+
             (count?'<div class="bd-avs">'+avs+'</div>':'')+
             '<div class="bd-gactions">'+
-                '<button class="bd-gbtn primary" onclick="GolfBuddiesSystem.loadGroupToScorecard(\''+g.id+'\')"><span class="micon">play_arrow</span>Load to round</button>'+
-                '<button class="bd-gbtn" onclick="GolfBuddiesSystem.editGroup(\''+g.id+'\')"><span class="micon">edit</span>Edit</button>'+
+                '<button class="bd-gbtn primary" onclick="GolfBuddiesSystem.loadGroupToScorecard(\''+g.id+'\')"><span class="micon">play_arrow</span>'+_bt('buddies.loadtoround', 'Load to round')+'</button>'+
+                '<button class="bd-gbtn" onclick="GolfBuddiesSystem.editGroup(\''+g.id+'\')"><span class="micon">edit</span>'+_bt('buddies.edit', 'Edit')+'</button>'+
                 '<button class="bd-gbtn mut" onclick="GolfBuddiesSystem.deleteGroup(\''+g.id+'\')" title="Delete group"><span class="micon">delete</span></button>'+
             '</div>'+
         '</div>';
@@ -465,7 +467,7 @@ window.GolfBuddiesSystem = {
     _renderDiscoverShell(){
         var pane=document.getElementById('bdPane-discover'); if(!pane) return;
         pane.innerHTML=
-            '<div class="bd-search"><span class="micon">search</span><input type="text" id="bdSearchInput" placeholder="Search players by name…" autocomplete="off" oninput="GolfBuddiesSystem.searchPlayers(this.value)"></div>'+
+            '<div class="bd-search"><span class="micon">search</span><input type="text" id="bdSearchInput" placeholder="'+_bt('buddies.searchplaceholder', 'Search players by name…')+'" autocomplete="off" oninput="GolfBuddiesSystem.searchPlayers(this.value)"></div>'+
             '<div id="bdSuggestSection">'+
                 '<div class="bd-sec-title"><span class="micon">history</span>Played with — quick add</div>'+
                 '<div class="bd-group" id="bdSuggestList"><p class="bd-loading">Loading…</p></div>'+
@@ -483,7 +485,7 @@ window.GolfBuddiesSystem = {
             '<div class="bd-av '+this._bdAvClass(i)+'">'+this._bdEsc(this._bdInitial(name))+'</div>'+
             '<div class="bd-info"><div class="bd-nm">'+this._bdEsc(name)+'</div><div class="bd-meta">'+meta+'</div></div>'+
             '<div class="bd-act">'+
-                '<button class="bd-round-btn'+(live?' live':'')+'" onclick="GolfBuddiesSystem.quickAddBuddy(\''+id+'\')" title="Add to current round"><span class="micon">golf_course</span>To round</button>'+
+                '<button class="bd-round-btn'+(live?' live':'')+'" onclick="GolfBuddiesSystem.quickAddBuddy(\''+id+'\')" title="Add to current round"><span class="micon">golf_course</span>'+_bt('buddies.toround', 'To round')+'</button>'+
                 '<button class="bd-icon-btn" onclick="GolfBuddiesSystem.addBuddy(\''+id+'\')" title="Add to buddies list"><span class="micon">person_add</span></button>'+
             '</div>'+
         '</div>';
@@ -493,7 +495,7 @@ window.GolfBuddiesSystem = {
         var sg=this.suggestions||[];
         if(!sg.length){
             var sec=document.getElementById('bdSuggestSection');
-            if(sec) sec.innerHTML='<div class="bd-empty"><div class="ei"><span class="micon">history</span></div><p>No played-with players yet</p><div class="sm">Players you tee up with appear here for one-tap adding to future rounds — no need to make them buddies.</div></div>';
+            if(sec) sec.innerHTML='<div class="bd-empty"><div class="ei"><span class="micon">history</span></div><p>'+_bt('buddies.empty.played', 'No played-with players yet')+'</p><div class="sm">Players you tee up with appear here for one-tap adding to future rounds — no need to make them buddies.</div></div>';
             return;
         }
         this._bdDiscIdx=0;
@@ -722,7 +724,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
                                     <p class="text-sm text-gray-600">Quick-load groups of players for common rounds</p>
                                     <button onclick="GolfBuddiesSystem.createNewGroup()" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
                                         <span class="material-symbols-outlined text-sm align-middle">add</span>
-                                        New Group
+                                        ${_bt('buddies.newgroup', 'New Group')}
                                     </button>
                                 </div>
                                 <div id="savedGroupsList" class="space-y-3 w-full max-w-full">
@@ -958,7 +960,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
             container.innerHTML = `
                 <div class="text-center py-12">
                     <span class="material-symbols-outlined text-6xl text-gray-300 mb-4">groups_2</span>
-                    <p class="text-gray-500 mb-4">No saved groups yet</p>
+                    <p class="text-gray-500 mb-4">${_bt('buddies.empty.groups', 'No saved groups yet')}</p>
                     <p class="text-sm text-gray-400 mb-4">Create groups for your regular playing partners</p>
                     <button onclick="GolfBuddiesSystem.createNewGroup()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
                         Create First Group
@@ -1079,7 +1081,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
 
             if (error) {
                 console.error('[Buddies] Search error:', error);
-                results.innerHTML = '<div class="bd-empty"><div class="ei"><span class="micon">error</span></div><p>Search error</p></div>';
+                results.innerHTML = '<div class="bd-empty"><div class="ei"><span class="micon">error</span></div><p>'+_bt('buddies.error.search', 'Search error')+'</p></div>';
                 return;
             }
 
@@ -1091,7 +1093,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
             );
 
             if (filtered.length === 0) {
-                results.innerHTML = '<div class="bd-empty"><div class="ei"><span class="micon">search_off</span></div><p>No new players found</p><div class="sm">Everyone matching is already in your buddies.</div></div>';
+                results.innerHTML = '<div class="bd-empty"><div class="ei"><span class="micon">search_off</span></div><p>'+_bt('buddies.empty.discover', 'No new players found')+'</p><div class="sm">Everyone matching is already in your buddies.</div></div>';
                 return;
             }
 
@@ -1104,7 +1106,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
 
         } catch (error) {
             console.error('[Buddies] Search exception:', error);
-            results.innerHTML = '<div class="bd-empty"><div class="ei"><span class="micon">error</span></div><p>Search error</p></div>';
+            results.innerHTML = '<div class="bd-empty"><div class="ei"><span class="micon">error</span></div><p>'+_bt('buddies.error.search', 'Search error')+'</p></div>';
         }
     },
 
@@ -1313,7 +1315,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
         this.groupMemberProfiles = {}; // Reset profile cache
 
         // Set title and values
-        title.textContent = existingGroup ? 'Edit Group' : 'Create New Group';
+        title.textContent = existingGroup ? 'Edit Group' : _bt('buddies.creategroup', 'Create New Group');
         nameInput.value = existingGroup?.group_name || '';
         saveBtn.textContent = existingGroup ? 'Save Changes' : 'Create Group';
 
@@ -1357,7 +1359,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
                         <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-green-50 to-blue-50 rounded-t-lg">
                             <div class="flex items-center gap-2">
                                 <span class="material-symbols-outlined text-green-600">groups_2</span>
-                                <h3 id="groupModalTitle" class="text-lg font-bold text-gray-900">Create New Group</h3>
+                                <h3 id="groupModalTitle" class="text-lg font-bold text-gray-900">${_bt('buddies.creategroup', 'Create New Group')}</h3>
                             </div>
                             <button onclick="GolfBuddiesSystem.closeGroupModal()" class="text-gray-400 hover:text-gray-600 p-1">
                                 <span class="material-symbols-outlined">close</span>
@@ -1368,7 +1370,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
                         <div class="p-4 max-h-[70vh] overflow-y-auto">
                             <!-- Group Name -->
                             <div class="mb-4">
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Group Name</label>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">${_bt('buddies.groupname', 'Group Name')}</label>
                                 <input type="text" id="groupNameInput"
                                        placeholder="e.g., Sunday Regulars, Work Crew..."
                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
@@ -1515,7 +1517,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
         if (!container) return;
 
         if (this.buddies.length === 0) {
-            container.innerHTML = '<p class="text-gray-400 text-xs">No buddies yet</p>';
+            container.innerHTML = '<p class="text-gray-400 text-xs">'+_bt('buddies.empty.none', 'No buddies yet')+'</p>';
             return;
         }
 
@@ -1591,7 +1593,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
             );
 
             if (filtered.length === 0) {
-                container.innerHTML = '<p class="text-gray-500 text-xs py-2">No new players found</p>';
+                container.innerHTML = '<p class="text-gray-500 text-xs py-2">'+_bt('buddies.empty.discover', 'No new players found')+'</p>';
                 return;
             }
 
@@ -1627,7 +1629,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
 
         } catch (error) {
             console.error('[Buddies] Search error:', error);
-            container.innerHTML = '<p class="text-red-500 text-xs py-2">Search error</p>';
+            container.innerHTML = '<p class="text-red-500 text-xs py-2">'+_bt('buddies.error.search', 'Search error')+'</p>';
         }
     },
 

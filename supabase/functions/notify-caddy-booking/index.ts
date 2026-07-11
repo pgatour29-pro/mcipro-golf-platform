@@ -41,6 +41,153 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, x-client-info, apikey",
 };
 
+// ============================================================================
+// LOCALIZATION — per-recipient language (en | th | ko | ja), fallback en
+// Native-quality golf-domain strings. Emoji/placeholders/structure preserved.
+// ============================================================================
+const L10N: Record<string, Record<string, string>> = {
+  en: {
+    nb_alt: "New Caddy Booking Request",
+    nb_badge: "🎒 NEW BOOKING",
+    nb_title: "Caddy Request",
+    label_golfer: "Golfer: {name}",
+    label_caddy: "Caddy: {name}",
+    label_oldtime: "Old time: {time}",
+    label_newtime: "New time: {time}",
+    label_position: "Position: #{pos}",
+    unknown: "Unknown",
+    btn_view_app: "View in App",
+    btn_confirm: "Confirm Booking",
+    ap_title: "✅ Caddy Booking Confirmed!",
+    ap_footer: "Your caddy is confirmed. See you on the course!",
+    dn_title: "❌ Caddy Booking Declined",
+    dn_body: "We're sorry, but {caddy} is not available for:",
+    dn_the_caddy: "the caddy",
+    dn_footer: "Please try booking a different caddy or time.",
+    cn_caddy_title: "🚫 Booking Cancelled",
+    cn_caddy_footer: "This booking has been cancelled.",
+    cn_golfer_title: "🚫 Caddy Booking Cancelled",
+    cn_golfer_body: "Your caddy booking has been cancelled:",
+    tc_caddy_title: "⏰ Tee Time Changed",
+    tc_golfer_title: "⏰ Your Tee Time Changed",
+    wa_title: "📋 Added to Waitlist",
+    wa_body: "You're on the waitlist for:",
+    wa_footer: "We'll notify you if a spot opens up!",
+    wp_alt: "Caddy Spot Available!",
+    wp_badge: "🎉 SPOT AVAILABLE!",
+    wp_body: "Great news! A spot opened up.",
+  },
+  th: {
+    nb_alt: "คำขอจองแคดดี้ใหม่",
+    nb_badge: "🎒 การจองใหม่",
+    nb_title: "คำขอจองแคดดี้",
+    label_golfer: "นักกอล์ฟ: {name}",
+    label_caddy: "แคดดี้: {name}",
+    label_oldtime: "เวลาเดิม: {time}",
+    label_newtime: "เวลาใหม่: {time}",
+    label_position: "ลำดับที่: #{pos}",
+    unknown: "ไม่ทราบ",
+    btn_view_app: "ดูในแอป",
+    btn_confirm: "ยืนยันการจอง",
+    ap_title: "✅ ยืนยันการจองแคดดี้แล้ว!",
+    ap_footer: "ยืนยันแคดดี้ของคุณเรียบร้อยแล้ว พบกันที่สนามกอล์ฟ!",
+    dn_title: "❌ การจองแคดดี้ถูกปฏิเสธ",
+    dn_body: "ขออภัย {caddy} ไม่ว่างสำหรับ:",
+    dn_the_caddy: "แคดดี้",
+    dn_footer: "กรุณาลองจองแคดดี้หรือเวลาอื่น",
+    cn_caddy_title: "🚫 การจองถูกยกเลิก",
+    cn_caddy_footer: "การจองนี้ถูกยกเลิกแล้ว",
+    cn_golfer_title: "🚫 การจองแคดดี้ถูกยกเลิก",
+    cn_golfer_body: "การจองแคดดี้ของคุณถูกยกเลิกแล้ว:",
+    tc_caddy_title: "⏰ เวลาออกรอบเปลี่ยนแปลง",
+    tc_golfer_title: "⏰ เวลาออกรอบของคุณเปลี่ยนแปลง",
+    wa_title: "📋 เพิ่มเข้าลิสต์รอแล้ว",
+    wa_body: "คุณอยู่ในลิสต์รอสำหรับ:",
+    wa_footer: "เราจะแจ้งให้คุณทราบหากมีที่ว่าง!",
+    wp_alt: "มีที่ว่างสำหรับแคดดี้แล้ว!",
+    wp_badge: "🎉 มีที่ว่างแล้ว!",
+    wp_body: "ข่าวดี! มีที่ว่างเปิดขึ้นแล้ว",
+  },
+  ko: {
+    nb_alt: "새 캐디 예약 요청",
+    nb_badge: "🎒 새 예약",
+    nb_title: "캐디 요청",
+    label_golfer: "골퍼: {name}",
+    label_caddy: "캐디: {name}",
+    label_oldtime: "이전 시간: {time}",
+    label_newtime: "새 시간: {time}",
+    label_position: "순번: #{pos}",
+    unknown: "알 수 없음",
+    btn_view_app: "앱에서 보기",
+    btn_confirm: "예약 확정",
+    ap_title: "✅ 캐디 예약이 확정되었습니다!",
+    ap_footer: "캐디가 확정되었습니다. 코스에서 만나요!",
+    dn_title: "❌ 캐디 예약이 거절되었습니다",
+    dn_body: "죄송하지만 {caddy}님은 다음 시간에 예약할 수 없습니다:",
+    dn_the_caddy: "해당 캐디",
+    dn_footer: "다른 캐디나 시간으로 예약해 주세요.",
+    cn_caddy_title: "🚫 예약이 취소되었습니다",
+    cn_caddy_footer: "이 예약이 취소되었습니다.",
+    cn_golfer_title: "🚫 캐디 예약이 취소되었습니다",
+    cn_golfer_body: "캐디 예약이 취소되었습니다:",
+    tc_caddy_title: "⏰ 티타임이 변경되었습니다",
+    tc_golfer_title: "⏰ 티타임이 변경되었습니다",
+    wa_title: "📋 대기자 명단에 추가됨",
+    wa_body: "다음 예약의 대기자 명단에 등록되었습니다:",
+    wa_footer: "자리가 나면 알려드리겠습니다!",
+    wp_alt: "캐디 자리가 생겼습니다!",
+    wp_badge: "🎉 자리가 생겼습니다!",
+    wp_body: "좋은 소식입니다! 자리가 났습니다.",
+  },
+  ja: {
+    nb_alt: "新しいキャディ予約リクエスト",
+    nb_badge: "🎒 新規予約",
+    nb_title: "キャディ予約リクエスト",
+    label_golfer: "ゴルファー: {name}",
+    label_caddy: "キャディ: {name}",
+    label_oldtime: "変更前の時間: {time}",
+    label_newtime: "変更後の時間: {time}",
+    label_position: "順番: #{pos}",
+    unknown: "不明",
+    btn_view_app: "アプリで見る",
+    btn_confirm: "予約を確定する",
+    ap_title: "✅ キャディ予約が確定しました！",
+    ap_footer: "キャディが確定しました。コースでお会いしましょう！",
+    dn_title: "❌ キャディ予約が拒否されました",
+    dn_body: "申し訳ございませんが、{caddy}は以下の日時に対応できません:",
+    dn_the_caddy: "キャディ",
+    dn_footer: "別のキャディまたは時間でご予約ください。",
+    cn_caddy_title: "🚫 予約がキャンセルされました",
+    cn_caddy_footer: "この予約はキャンセルされました。",
+    cn_golfer_title: "🚫 キャディ予約がキャンセルされました",
+    cn_golfer_body: "キャディ予約がキャンセルされました:",
+    tc_caddy_title: "⏰ ティータイムが変更されました",
+    tc_golfer_title: "⏰ ティータイムが変更されました",
+    wa_title: "📋 キャンセル待ちに追加されました",
+    wa_body: "以下の予約のキャンセル待ちに登録されました:",
+    wa_footer: "空きが出たらお知らせします！",
+    wp_alt: "キャディの空きが出ました！",
+    wp_badge: "🎉 空きが出ました！",
+    wp_body: "朗報です！空きが出ました。",
+  },
+};
+
+const LOCALE_MAP: Record<string, string> = { en: "en-GB", th: "th-TH", ko: "ko-KR", ja: "ja-JP" };
+function localeFor(lang: string): string {
+  return LOCALE_MAP[lang] || "en-GB";
+}
+
+function tr(lang: string, key: string, params?: Record<string, any>): string {
+  const table = L10N[lang] || L10N.en;
+  let s = (table && table[key]) ?? L10N.en[key] ?? key;
+  if (params) {
+    for (const k of Object.keys(params)) {
+      s = s.replace(new RegExp("\\{" + k + "\\}", "g"), String(params[k]));
+    }
+  }
+  return s;
+}
+
 serve(async (req) => {
   try {
     // Handle CORS preflight
@@ -101,19 +248,19 @@ serve(async (req) => {
 async function handleNewBooking(supabase: any, booking: any) {
   console.log("[Caddy Notify] New booking for caddy:", booking.caddyName);
 
-  // Get caddy's LINE ID from caddy record
-  const caddyLineId = await getCaddyLineId(supabase, booking.caddyId);
+  // Get caddy's LINE ID + language from caddy record
+  const { id: caddyLineId, lang } = await getCaddyLineId(supabase, booking.caddyId);
   if (!caddyLineId) {
     console.log("[Caddy Notify] Caddy has no LINE ID");
     return { success: true, notified: 0, reason: "no_line_id" };
   }
 
-  const formattedDate = formatDate(booking.date);
+  const formattedDate = formatDate(booking.date, lang);
   const courseName = booking.courseDisplay || booking.course;
 
   const message: LineMessage = {
     type: "flex",
-    altText: "New Caddy Booking Request",
+    altText: tr(lang, "nb_alt"),
     contents: {
       type: "bubble",
       hero: {
@@ -122,15 +269,15 @@ async function handleNewBooking(supabase: any, booking: any) {
         backgroundColor: "#10B981",
         paddingAll: "16px",
         contents: [
-          { type: "text", text: "🎒 NEW BOOKING", color: "#FFFFFF", size: "sm", weight: "bold" },
-          { type: "text", text: "Caddy Request", color: "#FFFFFF", size: "xl", weight: "bold", margin: "sm" },
+          { type: "text", text: tr(lang, "nb_badge"), color: "#FFFFFF", size: "sm", weight: "bold" },
+          { type: "text", text: tr(lang, "nb_title"), color: "#FFFFFF", size: "xl", weight: "bold", margin: "sm" },
         ],
       },
       body: {
         type: "box",
         layout: "vertical",
         contents: [
-          { type: "text", text: "Golfer: " + (booking.golferName || "Unknown"), size: "md", weight: "bold" },
+          { type: "text", text: tr(lang, "label_golfer", { name: booking.golferName || tr(lang, "unknown") }), size: "md", weight: "bold" },
           { type: "text", text: "📅 " + formattedDate, size: "sm", color: "#666666", margin: "md" },
           { type: "text", text: "⏰ " + booking.time, size: "sm", color: "#666666" },
           { type: "text", text: "📍 " + courseName, size: "sm", color: "#666666", wrap: true },
@@ -142,7 +289,7 @@ async function handleNewBooking(supabase: any, booking: any) {
         contents: [
           {
             type: "button",
-            action: { type: "uri", label: "View in App", uri: "https://mycaddipro.com" },
+            action: { type: "uri", label: tr(lang, "btn_view_app"), uri: "https://mycaddipro.com" },
             style: "primary",
             color: "#10B981",
           },
@@ -167,17 +314,17 @@ async function handleApproved(supabase: any, booking: any) {
     return { success: true, notified: 0, reason: "no_line_id" };
   }
 
-  const messagingId = await getMessagingUserId(supabase, golferLineId);
-  const formattedDate = formatDate(booking.date);
+  const { id: messagingId, lang } = await getMessagingUserId(supabase, golferLineId);
+  const formattedDate = formatDate(booking.date, lang);
 
   const message: LineMessage = {
     type: "text",
-    text: "✅ Caddy Booking Confirmed!\n\n" +
-      "Caddy: " + (booking.caddyLocalName || booking.caddyName) + "\n" +
+    text: tr(lang, "ap_title") + "\n\n" +
+      tr(lang, "label_caddy", { name: booking.caddyLocalName || booking.caddyName }) + "\n" +
       "📅 " + formattedDate + "\n" +
       "⏰ " + booking.time + "\n" +
       "📍 " + (booking.courseDisplay || booking.course) + "\n\n" +
-      "Your caddy is confirmed. See you on the course!",
+      tr(lang, "ap_footer"),
   };
 
   const sent = await sendPushMessage(messagingId, [message]);
@@ -195,16 +342,16 @@ async function handleDenied(supabase: any, booking: any) {
     return { success: true, notified: 0, reason: "no_line_id" };
   }
 
-  const messagingId = await getMessagingUserId(supabase, golferLineId);
-  const formattedDate = formatDate(booking.date);
+  const { id: messagingId, lang } = await getMessagingUserId(supabase, golferLineId);
+  const formattedDate = formatDate(booking.date, lang);
 
   const message: LineMessage = {
     type: "text",
-    text: "❌ Caddy Booking Declined\n\n" +
-      "We're sorry, but " + (booking.caddyName || "the caddy") + " is not available for:\n" +
+    text: tr(lang, "dn_title") + "\n\n" +
+      tr(lang, "dn_body", { caddy: booking.caddyName || tr(lang, "dn_the_caddy") }) + "\n" +
       "📅 " + formattedDate + "\n" +
       "⏰ " + booking.time + "\n\n" +
-      "Please try booking a different caddy or time.",
+      tr(lang, "dn_footer"),
   };
 
   const sent = await sendPushMessage(messagingId, [message]);
@@ -218,33 +365,34 @@ async function handleCancelled(supabase: any, booking: any) {
   console.log("[Caddy Notify] Booking cancelled:", booking.id);
 
   let notified = 0;
-  const formattedDate = formatDate(booking.date);
 
-  // Notify caddy
-  const caddyLineId = await getCaddyLineId(supabase, booking.caddyId);
+  // Notify caddy (in the caddy's language)
+  const { id: caddyLineId, lang: caddyLang } = await getCaddyLineId(supabase, booking.caddyId);
   if (caddyLineId) {
+    const caddyDate = formatDate(booking.date, caddyLang);
     const caddyMessage: LineMessage = {
       type: "text",
-      text: "🚫 Booking Cancelled\n\n" +
-        "Golfer: " + (booking.golferName || "Unknown") + "\n" +
-        "📅 " + formattedDate + "\n" +
+      text: tr(caddyLang, "cn_caddy_title") + "\n\n" +
+        tr(caddyLang, "label_golfer", { name: booking.golferName || tr(caddyLang, "unknown") }) + "\n" +
+        "📅 " + caddyDate + "\n" +
         "⏰ " + booking.time + "\n" +
         "📍 " + (booking.courseDisplay || booking.course) + "\n\n" +
-        "This booking has been cancelled.",
+        tr(caddyLang, "cn_caddy_footer"),
     };
     const caddySent = await sendPushMessage(caddyLineId, [caddyMessage]);
     if (caddySent) notified++;
   }
 
-  // Notify golfer
+  // Notify golfer (in the golfer's language)
   if (booking.golferId?.startsWith("U")) {
-    const golferMessagingId = await getMessagingUserId(supabase, booking.golferId);
+    const { id: golferMessagingId, lang: golferLang } = await getMessagingUserId(supabase, booking.golferId);
+    const golferDate = formatDate(booking.date, golferLang);
     const golferMessage: LineMessage = {
       type: "text",
-      text: "🚫 Caddy Booking Cancelled\n\n" +
-        "Your caddy booking has been cancelled:\n" +
-        "Caddy: " + (booking.caddyLocalName || booking.caddyName) + "\n" +
-        "📅 " + formattedDate + "\n" +
+      text: tr(golferLang, "cn_golfer_title") + "\n\n" +
+        tr(golferLang, "cn_golfer_body") + "\n" +
+        tr(golferLang, "label_caddy", { name: booking.caddyLocalName || booking.caddyName }) + "\n" +
+        "📅 " + golferDate + "\n" +
         "⏰ " + booking.time,
     };
     const golferSent = await sendPushMessage(golferMessagingId, [golferMessage]);
@@ -261,34 +409,35 @@ async function handleTimeChanged(supabase: any, booking: any) {
   console.log("[Caddy Notify] Time changed:", booking.oldTime, "->", booking.time);
 
   let notified = 0;
-  const formattedDate = formatDate(booking.date);
 
-  // Notify caddy
-  const caddyLineId = await getCaddyLineId(supabase, booking.caddyId);
+  // Notify caddy (in the caddy's language)
+  const { id: caddyLineId, lang: caddyLang } = await getCaddyLineId(supabase, booking.caddyId);
   if (caddyLineId) {
+    const caddyDate = formatDate(booking.date, caddyLang);
     const caddyMessage: LineMessage = {
       type: "text",
-      text: "⏰ Tee Time Changed\n\n" +
-        "Golfer: " + (booking.golferName || "Unknown") + "\n" +
-        "📅 " + formattedDate + "\n" +
-        "Old time: " + booking.oldTime + "\n" +
-        "New time: " + booking.time + "\n" +
+      text: tr(caddyLang, "tc_caddy_title") + "\n\n" +
+        tr(caddyLang, "label_golfer", { name: booking.golferName || tr(caddyLang, "unknown") }) + "\n" +
+        "📅 " + caddyDate + "\n" +
+        tr(caddyLang, "label_oldtime", { time: booking.oldTime }) + "\n" +
+        tr(caddyLang, "label_newtime", { time: booking.time }) + "\n" +
         "📍 " + (booking.courseDisplay || booking.course),
     };
     const caddySent = await sendPushMessage(caddyLineId, [caddyMessage]);
     if (caddySent) notified++;
   }
 
-  // Notify golfer
+  // Notify golfer (in the golfer's language)
   if (booking.golferId?.startsWith("U")) {
-    const golferMessagingId = await getMessagingUserId(supabase, booking.golferId);
+    const { id: golferMessagingId, lang: golferLang } = await getMessagingUserId(supabase, booking.golferId);
+    const golferDate = formatDate(booking.date, golferLang);
     const golferMessage: LineMessage = {
       type: "text",
-      text: "⏰ Your Tee Time Changed\n\n" +
-        "Caddy: " + (booking.caddyLocalName || booking.caddyName) + "\n" +
-        "📅 " + formattedDate + "\n" +
-        "Old time: " + booking.oldTime + "\n" +
-        "New time: " + booking.time,
+      text: tr(golferLang, "tc_golfer_title") + "\n\n" +
+        tr(golferLang, "label_caddy", { name: booking.caddyLocalName || booking.caddyName }) + "\n" +
+        "📅 " + golferDate + "\n" +
+        tr(golferLang, "label_oldtime", { time: booking.oldTime }) + "\n" +
+        tr(golferLang, "label_newtime", { time: booking.time }),
     };
     const golferSent = await sendPushMessage(golferMessagingId, [golferMessage]);
     if (golferSent) notified++;
@@ -308,18 +457,18 @@ async function handleWaitlistAdded(supabase: any, booking: any) {
     return { success: true, notified: 0, reason: "no_line_id" };
   }
 
-  const messagingId = await getMessagingUserId(supabase, golferLineId);
-  const formattedDate = formatDate(booking.date);
+  const { id: messagingId, lang } = await getMessagingUserId(supabase, golferLineId);
+  const formattedDate = formatDate(booking.date, lang);
 
   const message: LineMessage = {
     type: "text",
-    text: "📋 Added to Waitlist\n\n" +
-      "You're on the waitlist for:\n" +
-      "Caddy: " + (booking.caddyLocalName || booking.caddyName) + "\n" +
+    text: tr(lang, "wa_title") + "\n\n" +
+      tr(lang, "wa_body") + "\n" +
+      tr(lang, "label_caddy", { name: booking.caddyLocalName || booking.caddyName }) + "\n" +
       "📅 " + formattedDate + "\n" +
       "⏰ " + booking.time + "\n\n" +
-      "Position: #" + (booking.position || 1) + "\n\n" +
-      "We'll notify you if a spot opens up!",
+      tr(lang, "label_position", { pos: booking.position || 1 }) + "\n\n" +
+      tr(lang, "wa_footer"),
   };
 
   const sent = await sendPushMessage(messagingId, [message]);
@@ -337,12 +486,12 @@ async function handleWaitlistPromoted(supabase: any, booking: any) {
     return { success: true, notified: 0, reason: "no_line_id" };
   }
 
-  const messagingId = await getMessagingUserId(supabase, golferLineId);
-  const formattedDate = formatDate(booking.date);
+  const { id: messagingId, lang } = await getMessagingUserId(supabase, golferLineId);
+  const formattedDate = formatDate(booking.date, lang);
 
   const message: LineMessage = {
     type: "flex",
-    altText: "Caddy Spot Available!",
+    altText: tr(lang, "wp_alt"),
     contents: {
       type: "bubble",
       hero: {
@@ -351,15 +500,15 @@ async function handleWaitlistPromoted(supabase: any, booking: any) {
         backgroundColor: "#10B981",
         paddingAll: "16px",
         contents: [
-          { type: "text", text: "🎉 SPOT AVAILABLE!", color: "#FFFFFF", size: "lg", weight: "bold" },
+          { type: "text", text: tr(lang, "wp_badge"), color: "#FFFFFF", size: "lg", weight: "bold" },
         ],
       },
       body: {
         type: "box",
         layout: "vertical",
         contents: [
-          { type: "text", text: "Great news! A spot opened up.", size: "sm", wrap: true },
-          { type: "text", text: "Caddy: " + (booking.caddyLocalName || booking.caddyName), size: "md", weight: "bold", margin: "md" },
+          { type: "text", text: tr(lang, "wp_body"), size: "sm", wrap: true },
+          { type: "text", text: tr(lang, "label_caddy", { name: booking.caddyLocalName || booking.caddyName }), size: "md", weight: "bold", margin: "md" },
           { type: "text", text: "📅 " + formattedDate, size: "sm", color: "#666666" },
           { type: "text", text: "⏰ " + booking.time, size: "sm", color: "#666666" },
           { type: "text", text: "📍 " + (booking.courseDisplay || booking.course), size: "sm", color: "#666666", wrap: true },
@@ -371,7 +520,7 @@ async function handleWaitlistPromoted(supabase: any, booking: any) {
         contents: [
           {
             type: "button",
-            action: { type: "uri", label: "Confirm Booking", uri: "https://mycaddipro.com" },
+            action: { type: "uri", label: tr(lang, "btn_confirm"), uri: "https://mycaddipro.com" },
             style: "primary",
             color: "#10B981",
           },
@@ -388,56 +537,58 @@ async function handleWaitlistPromoted(supabase: any, booking: any) {
 // HELPER FUNCTIONS
 // ============================================================================
 
-async function getCaddyLineId(supabase: any, caddyId: string): Promise<string | null> {
-  if (!caddyId) return null;
+async function getCaddyLineId(supabase: any, caddyId: string): Promise<{ id: string | null; lang: string }> {
+  if (!caddyId) return { id: null, lang: "en" };
 
-  // First check caddy_profiles table
+  // First check caddy_profiles table for the messaging target
   const { data: caddy } = await supabase
     .from("caddy_profiles")
     .select("line_user_id, messaging_user_id")
     .eq("id", caddyId)
     .single();
 
-  if (caddy?.messaging_user_id?.startsWith("U")) {
-    return caddy.messaging_user_id;
-  }
-  if (caddy?.line_user_id?.startsWith("U")) {
-    return caddy.line_user_id;
-  }
-
-  // Fall back to user_profiles if caddy has a linked profile
+  // Language comes from a linked user_profiles row (caddy_profiles may not carry
+  // a language column, so only user_profiles is queried for it). Default 'en'.
   const { data: profile } = await supabase
     .from("user_profiles")
-    .select("line_user_id, messaging_user_id")
+    .select("line_user_id, messaging_user_id, language")
     .eq("caddy_id", caddyId)
     .single();
 
+  const lang = profile?.language || "en";
+
+  if (caddy?.messaging_user_id?.startsWith("U")) {
+    return { id: caddy.messaging_user_id, lang };
+  }
+  if (caddy?.line_user_id?.startsWith("U")) {
+    return { id: caddy.line_user_id, lang };
+  }
   if (profile?.messaging_user_id?.startsWith("U")) {
-    return profile.messaging_user_id;
+    return { id: profile.messaging_user_id, lang };
   }
   if (profile?.line_user_id?.startsWith("U")) {
-    return profile.line_user_id;
+    return { id: profile.line_user_id, lang };
   }
 
-  return null;
+  return { id: null, lang };
 }
 
-async function getMessagingUserId(supabase: any, lineUserId: string): Promise<string> {
-  if (!lineUserId?.startsWith("U")) return lineUserId;
+async function getMessagingUserId(supabase: any, lineUserId: string): Promise<{ id: string; lang: string }> {
+  if (!lineUserId?.startsWith("U")) return { id: lineUserId, lang: "en" };
 
   const { data: profile } = await supabase
     .from("user_profiles")
-    .select("messaging_user_id")
+    .select("messaging_user_id, language")
     .eq("line_user_id", lineUserId)
     .single();
 
-  return profile?.messaging_user_id || lineUserId;
+  return { id: profile?.messaging_user_id || lineUserId, lang: profile?.language || "en" };
 }
 
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string, lang: string = "en"): string {
   try {
     const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", {
+    return date.toLocaleDateString(localeFor(lang), {
       weekday: "short",
       month: "short",
       day: "numeric",

@@ -33,6 +33,132 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, x-client-info, apikey",
 };
 
+// ============================================================================
+// LOCALIZATION — per-recipient language (en | th | ko | ja), fallback en
+// Native-quality golf-domain strings. Emoji/placeholders/structure preserved.
+// ============================================================================
+const L10N: Record<string, Record<string, string>> = {
+  en: {
+    evt_update_header: "📢 Event Update: {title}",
+    evt_update_changedby: "👤 Changed by: {name}",
+    evt_update_cancelled: "⚠️ This event has been CANCELLED.",
+    evt_update_newdate: "📅 New Date: {date}",
+    evt_update_newtime: "⏰ New Time: {time}",
+    evt_update_newvenue: "📍 New Venue: {venue}",
+    evt_update_footer: "Check the app for details.",
+    dm_wrapper: '💬 New message from {name}\n\n"{preview}"\n\nOpen MyCaddiPro to reply.',
+    group_wrapper: '👥 {title}\n\n{name}: "{preview}"\n\nOpen MyCaddiPro to reply.',
+    group_chat_default: "Group Chat",
+    announce_header: "📣 {society} Announcement",
+    announce_footer: "Open MyCaddiPro for details.",
+    society_default: "Society",
+    newevt_alt: "🏌️ New Event: {title}",
+    newevt_badge: "🏌️ NEW EVENT",
+    newevt_button: "View Event",
+    venue_tba: "TBA",
+    emergency_alt: "🚨 EMERGENCY: {msg}",
+    emergency_header: "EMERGENCY ALERT",
+    emergency_body_default: "Emergency Alert",
+    emergency_unknown: "Unknown",
+  },
+  th: {
+    evt_update_header: "📢 อัปเดตกิจกรรม: {title}",
+    evt_update_changedby: "👤 แก้ไขโดย: {name}",
+    evt_update_cancelled: "⚠️ กิจกรรมนี้ถูกยกเลิกแล้ว",
+    evt_update_newdate: "📅 วันที่ใหม่: {date}",
+    evt_update_newtime: "⏰ เวลาใหม่: {time}",
+    evt_update_newvenue: "📍 สถานที่ใหม่: {venue}",
+    evt_update_footer: "ดูรายละเอียดเพิ่มเติมในแอป",
+    dm_wrapper: '💬 ข้อความใหม่จาก {name}\n\n"{preview}"\n\nเปิด MyCaddiPro เพื่อตอบกลับ',
+    group_wrapper: '👥 {title}\n\n{name}: "{preview}"\n\nเปิด MyCaddiPro เพื่อตอบกลับ',
+    group_chat_default: "แชทกลุ่ม",
+    announce_header: "📣 ประกาศจาก {society}",
+    announce_footer: "เปิด MyCaddiPro เพื่อดูรายละเอียด",
+    society_default: "สมาคม",
+    newevt_alt: "🏌️ กิจกรรมใหม่: {title}",
+    newevt_badge: "🏌️ กิจกรรมใหม่",
+    newevt_button: "ดูกิจกรรม",
+    venue_tba: "รอประกาศ",
+    emergency_alt: "🚨 เหตุฉุกเฉิน: {msg}",
+    emergency_header: "การแจ้งเตือนฉุกเฉิน",
+    emergency_body_default: "การแจ้งเตือนฉุกเฉิน",
+    emergency_unknown: "ไม่ทราบ",
+  },
+  ko: {
+    evt_update_header: "📢 이벤트 업데이트: {title}",
+    evt_update_changedby: "👤 변경한 사람: {name}",
+    evt_update_cancelled: "⚠️ 이 이벤트가 취소되었습니다.",
+    evt_update_newdate: "📅 새 날짜: {date}",
+    evt_update_newtime: "⏰ 새 시간: {time}",
+    evt_update_newvenue: "📍 새 장소: {venue}",
+    evt_update_footer: "자세한 내용은 앱에서 확인하세요.",
+    dm_wrapper: '💬 {name}님의 새 메시지\n\n"{preview}"\n\nMyCaddiPro를 열어 답장하세요.',
+    group_wrapper: '👥 {title}\n\n{name}: "{preview}"\n\nMyCaddiPro를 열어 답장하세요.',
+    group_chat_default: "그룹 채팅",
+    announce_header: "📣 {society} 공지사항",
+    announce_footer: "자세한 내용은 MyCaddiPro에서 확인하세요.",
+    society_default: "소사이어티",
+    newevt_alt: "🏌️ 새 이벤트: {title}",
+    newevt_badge: "🏌️ 새 이벤트",
+    newevt_button: "이벤트 보기",
+    venue_tba: "미정",
+    emergency_alt: "🚨 긴급 상황: {msg}",
+    emergency_header: "긴급 경보",
+    emergency_body_default: "긴급 경보",
+    emergency_unknown: "알 수 없음",
+  },
+  ja: {
+    evt_update_header: "📢 イベント更新: {title}",
+    evt_update_changedby: "👤 変更者: {name}",
+    evt_update_cancelled: "⚠️ このイベントは中止になりました。",
+    evt_update_newdate: "📅 新しい日付: {date}",
+    evt_update_newtime: "⏰ 新しい時間: {time}",
+    evt_update_newvenue: "📍 新しい会場: {venue}",
+    evt_update_footer: "詳細はアプリでご確認ください。",
+    dm_wrapper: '💬 {name}さんから新しいメッセージ\n\n"{preview}"\n\nMyCaddiPro を開いて返信してください。',
+    group_wrapper: '👥 {title}\n\n{name}: "{preview}"\n\nMyCaddiPro を開いて返信してください。',
+    group_chat_default: "グループチャット",
+    announce_header: "📣 {society} からのお知らせ",
+    announce_footer: "詳細は MyCaddiPro でご確認ください。",
+    society_default: "ソサエティ",
+    newevt_alt: "🏌️ 新しいイベント: {title}",
+    newevt_badge: "🏌️ 新着イベント",
+    newevt_button: "イベントを見る",
+    venue_tba: "未定",
+    emergency_alt: "🚨 緊急事態: {msg}",
+    emergency_header: "緊急アラート",
+    emergency_body_default: "緊急アラート",
+    emergency_unknown: "不明",
+  },
+};
+
+const LOCALE_MAP: Record<string, string> = { en: "en-GB", th: "th-TH", ko: "ko-KR", ja: "ja-JP" };
+function localeFor(lang: string): string {
+  return LOCALE_MAP[lang] || "en-GB";
+}
+
+function tr(lang: string, key: string, params?: Record<string, any>): string {
+  const table = L10N[lang] || L10N.en;
+  let s = (table && table[key]) ?? L10N.en[key] ?? key;
+  if (params) {
+    for (const k of Object.keys(params)) {
+      s = s.replace(new RegExp("\\{" + k + "\\}", "g"), String(params[k]));
+    }
+  }
+  return s;
+}
+
+// Bucket recipient IDs by their language so each bucket gets a localized body.
+function groupByLang(ids: string[], langByTarget: Map<string, string>): Map<string, string[]> {
+  const groups = new Map<string, string[]>();
+  for (const id of ids) {
+    const lang = langByTarget.get(id) || "en";
+    if (!groups.has(lang)) groups.set(lang, []);
+    groups.get(lang)!.push(id);
+  }
+  return groups;
+}
+
 serve(async (req) => {
   try {
     // Handle CORS preflight
@@ -188,20 +314,27 @@ async function handleNewEvent(supabase: any, event: any) {
 
   console.log("[LINE Push] Found", golferIds.length, "potential recipients");
 
-  // Look up messaging_user_ids from user_profiles
+  // Look up messaging_user_ids + language from user_profiles
   const { data: profiles } = await supabase
     .from("user_profiles")
-    .select("line_user_id, messaging_user_id")
+    .select("line_user_id, messaging_user_id, language")
     .in("line_user_id", golferIds);
 
-  // Use messaging_user_id if available, otherwise fall back to line_user_id
+  // Use messaging_user_id if available, otherwise fall back to line_user_id.
+  // Track each target's language for per-recipient composition.
+  const langByTarget = new Map<string, string>();
   const messagingUserIds = (profiles || [])
-    .map((p: any) => p.messaging_user_id || p.line_user_id)
+    .map((p: any) => {
+      const target = p.messaging_user_id || p.line_user_id;
+      if (target?.startsWith("U")) langByTarget.set(target, p.language || "en");
+      return target;
+    })
     .filter((id: string) => id?.startsWith("U"));
 
-  // FIX: Also include golfer IDs that don't have profiles (fallback)
+  // FIX: Also include golfer IDs that don't have profiles (fallback, default 'en')
   const profileLineIds = new Set((profiles || []).map((p: any) => p.line_user_id));
   const missingIds = golferIds.filter((id: string) => !profileLineIds.has(id));
+  for (const id of missingIds) if (!langByTarget.has(id)) langByTarget.set(id, "en");
   const lineUserIds = [...new Set([...messagingUserIds, ...missingIds])];
 
   console.log("[LINE Push] New event targets:", lineUserIds.length, "(profiles:", messagingUserIds.length, ", fallback:", missingIds.length, ")");
@@ -226,28 +359,30 @@ async function handleNewEvent(supabase: any, event: any) {
     return { success: true, notified: 0 };
   }
 
-  // Build LINE Flex Message
-  const eventDate = new Date(event.event_date).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-
-  const message = buildEventFlexMessage({
-    title: event.title,
-    date: eventDate,
-    venue: event.course_name || "TBA",
-    description: event.description || "",
-    eventId: event.id,
-  });
-
-  // Send via multicast (up to 500 users at once)
-  const batches = chunkArray(usersToNotify, 500);
+  // Group by recipient language and send a localized Flex per language
+  const byLang = groupByLang(usersToNotify, langByTarget);
   let totalSent = 0;
 
-  for (const batch of batches) {
-    const sent = await sendMulticast(batch, [message]);
-    totalSent += sent;
+  for (const [lang, ids] of byLang) {
+    const eventDate = new Date(event.event_date).toLocaleDateString(localeFor(lang), {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+
+    const message = buildEventFlexMessage({
+      title: event.title,
+      date: eventDate,
+      venue: event.course_name || tr(lang, "venue_tba"),
+      description: event.description || "",
+      eventId: event.id,
+    }, lang);
+
+    // Send via multicast (up to 500 users at once)
+    const batches = chunkArray(ids, 500);
+    for (const batch of batches) {
+      totalSent += await sendMulticast(batch, [message]);
+    }
   }
 
   console.log(`[LINE Push] Notified ${totalSent} users about new event`);
@@ -292,20 +427,27 @@ async function handleEventUpdate(supabase: any, newEvent: any, oldEvent: any) {
     return { success: true, notified: 0, reason: "no_line_users" };
   }
 
-  // FIX: Look up messaging_user_ids (consistent with other handlers)
+  // FIX: Look up messaging_user_ids + language (consistent with other handlers)
   const { data: profiles } = await supabase
     .from("user_profiles")
-    .select("line_user_id, messaging_user_id")
+    .select("line_user_id, messaging_user_id, language")
     .in("line_user_id", golferIds);
 
-  // Use messaging_user_id if available, otherwise fall back to line_user_id
+  // Use messaging_user_id if available, otherwise fall back to line_user_id.
+  // Track each target's language for per-recipient composition.
+  const langByTarget = new Map<string, string>();
   const messagingUserIds = (profiles || [])
-    .map((p: any) => p.messaging_user_id || p.line_user_id)
+    .map((p: any) => {
+      const target = p.messaging_user_id || p.line_user_id;
+      if (target?.startsWith("U")) langByTarget.set(target, p.language || "en");
+      return target;
+    })
     .filter((id: string) => id?.startsWith("U"));
 
-  // Also include golfer IDs that don't have profiles (fallback)
+  // Also include golfer IDs that don't have profiles (fallback, default 'en')
   const profileLineIds = new Set((profiles || []).map((p: any) => p.line_user_id));
   const missingIds = golferIds.filter((id: string) => !profileLineIds.has(id));
+  for (const id of missingIds) if (!langByTarget.has(id)) langByTarget.set(id, "en");
   const allTargetIds = [...new Set([...messagingUserIds, ...missingIds])];
 
   console.log("[LINE Push] Event update targets:", allTargetIds.length, "(profiles:", messagingUserIds.length, ", fallback:", missingIds.length, ")");
@@ -328,41 +470,44 @@ async function handleEventUpdate(supabase: any, newEvent: any, oldEvent: any) {
     modifierName = modifier?.display_name || modifier?.name || null;
   }
 
-  // Build update message
-  let updateText = `📢 Event Update: ${newEvent.title}\n\n`;
-
-  // Show who made the change
-  if (modifierName) {
-    updateText += `👤 Changed by: ${modifierName}\n\n`;
-  }
-
-  if (newEvent.status === "cancelled") {
-    updateText += "⚠️ This event has been CANCELLED.\n";
-  } else {
-    if (newEvent.event_date !== oldEvent?.event_date) {
-      updateText += `📅 New Date: ${new Date(newEvent.event_date).toLocaleDateString()}\n`;
-    }
-    if (newEvent.start_time !== oldEvent?.start_time) {
-      updateText += `⏰ New Time: ${newEvent.start_time}\n`;
-    }
-    if (newEvent.course_name !== oldEvent?.course_name) {
-      updateText += `📍 New Venue: ${newEvent.course_name}\n`;
-    }
-  }
-
-  updateText += `\nCheck the app for details.`;
-
-  const message: LineMessage = {
-    type: "text",
-    text: updateText,
-  };
-
-  const batches = chunkArray(allTargetIds, 500);
+  // Group by recipient language, compose the update text per language, and send
+  const byLang = groupByLang(allTargetIds, langByTarget);
   let totalSent = 0;
 
-  for (const batch of batches) {
-    const sent = await sendMulticast(batch, [message]);
-    totalSent += sent;
+  for (const [lang, ids] of byLang) {
+    // Build update message
+    let updateText = tr(lang, "evt_update_header", { title: newEvent.title }) + "\n\n";
+
+    // Show who made the change
+    if (modifierName) {
+      updateText += tr(lang, "evt_update_changedby", { name: modifierName }) + "\n\n";
+    }
+
+    if (newEvent.status === "cancelled") {
+      updateText += tr(lang, "evt_update_cancelled") + "\n";
+    } else {
+      if (newEvent.event_date !== oldEvent?.event_date) {
+        updateText += tr(lang, "evt_update_newdate", { date: new Date(newEvent.event_date).toLocaleDateString(localeFor(lang)) }) + "\n";
+      }
+      if (newEvent.start_time !== oldEvent?.start_time) {
+        updateText += tr(lang, "evt_update_newtime", { time: newEvent.start_time }) + "\n";
+      }
+      if (newEvent.course_name !== oldEvent?.course_name) {
+        updateText += tr(lang, "evt_update_newvenue", { venue: newEvent.course_name }) + "\n";
+      }
+    }
+
+    updateText += "\n" + tr(lang, "evt_update_footer");
+
+    const message: LineMessage = {
+      type: "text",
+      text: updateText,
+    };
+
+    const batches = chunkArray(ids, 500);
+    for (const batch of batches) {
+      totalSent += await sendMulticast(batch, [message]);
+    }
   }
 
   console.log("[LINE Push] Event update sent to", totalSent, "users");
@@ -387,15 +532,16 @@ async function handleDirectMessage(supabase: any, message: any) {
     return { success: true, notified: 0, reason: "invalid_line_id" };
   }
 
-  // Get recipient's messaging_user_id (may be null)
+  // Get recipient's messaging_user_id + language (may be null)
   const { data: recipient } = await supabase
     .from("user_profiles")
-    .select("messaging_user_id, name")
+    .select("messaging_user_id, name, language")
     .eq("line_user_id", recipientId)
     .single();
 
   // FIX: Fall back to line_user_id if messaging_user_id is null
   const targetId = recipient?.messaging_user_id || recipientId;
+  const lang = recipient?.language || "en";
   console.log("[LINE Push] Direct message target:", targetId, "(messaging_user_id:", recipient?.messaging_user_id, ", line_user_id:", recipientId, ")");
 
   // Check if user wants message notifications
@@ -424,7 +570,7 @@ async function handleDirectMessage(supabase: any, message: any) {
 
   const lineMessage: LineMessage = {
     type: "text",
-    text: `💬 New message from ${senderName}\n\n"${preview}"\n\nOpen MyCaddiPro to reply.`,
+    text: tr(lang, "dm_wrapper", { name: senderName, preview }),
   };
 
   const sent = await sendPushMessage(targetId, [lineMessage]);
@@ -533,22 +679,29 @@ async function handleNewMessage(supabase: any, message: any) {
 
   console.log("[LINE Push] LINE users to notify:", lineUserIds);
 
-  // Look up messaging_user_ids from user_profiles
+  // Look up messaging_user_ids + language from user_profiles
   const { data: userProfiles } = await supabase
     .from("user_profiles")
-    .select("line_user_id, messaging_user_id")
+    .select("line_user_id, messaging_user_id, language")
     .in("line_user_id", lineUserIds);
 
   console.log("[LINE Push] user_profiles lookup:", userProfiles?.length || 0, "found");
 
-  // Use messaging_user_id if available, otherwise use line_user_id
+  // Use messaging_user_id if available, otherwise use line_user_id.
+  // Track each target's language for per-recipient composition.
+  const langByTarget = new Map<string, string>();
   const messagingUserIds = (userProfiles || [])
-    .map((p: any) => p.messaging_user_id || p.line_user_id)
+    .map((p: any) => {
+      const target = p.messaging_user_id || p.line_user_id;
+      if (target?.startsWith("U")) langByTarget.set(target, p.language || "en");
+      return target;
+    })
     .filter((id: string) => id?.startsWith("U"));
 
-  // Also include LINE user IDs that don't have user_profiles
+  // Also include LINE user IDs that don't have user_profiles (fallback, default 'en')
   const profileLineIds = new Set((userProfiles || []).map((p: any) => p.line_user_id));
   const missingLineIds = lineUserIds.filter(id => !profileLineIds.has(id));
+  for (const id of missingLineIds) if (!langByTarget.has(id)) langByTarget.set(id, "en");
   const allTargetIds = [...new Set([...messagingUserIds, ...missingLineIds])];
 
   console.log("[LINE Push] Final target IDs:", allTargetIds);
@@ -601,29 +754,35 @@ async function handleNewMessage(supabase: any, message: any) {
   // Build notification message
   const preview = message.content?.substring(0, 50) + (message.content?.length > 50 ? "..." : "");
 
-  let lineMessage: LineMessage;
-
-  if (room.type === "group") {
-    // Group message notification
-    lineMessage = {
-      type: "text",
-      text: `👥 ${room.title || "Group Chat"}\n\n${senderName}: "${preview}"\n\nOpen MyCaddiPro to reply.`,
-    };
-  } else {
-    // Direct message notification
-    lineMessage = {
-      type: "text",
-      text: `💬 New message from ${senderName}\n\n"${preview}"\n\nOpen MyCaddiPro to reply.`,
-    };
-  }
-
-  // Send via multicast
-  const batches = chunkArray(usersToNotify, 500);
+  // Group by recipient language and compose a localized body per language
+  const byLang = groupByLang(usersToNotify, langByTarget);
   let totalSent = 0;
 
-  for (const batch of batches) {
-    const sent = await sendMulticast(batch, [lineMessage]);
-    totalSent += sent;
+  for (const [lang, ids] of byLang) {
+    let lineMessage: LineMessage;
+
+    if (room.type === "group") {
+      // Group message notification
+      lineMessage = {
+        type: "text",
+        text: tr(lang, "group_wrapper", {
+          title: room.title || tr(lang, "group_chat_default"),
+          name: senderName,
+          preview,
+        }),
+      };
+    } else {
+      // Direct message notification
+      lineMessage = {
+        type: "text",
+        text: tr(lang, "dm_wrapper", { name: senderName, preview }),
+      };
+    }
+
+    const batches = chunkArray(ids, 500);
+    for (const batch of batches) {
+      totalSent += await sendMulticast(batch, [lineMessage]);
+    }
   }
 
   console.log(`[LINE Push] Notified ${totalSent} users about new ${room.type} message`);
@@ -643,7 +802,7 @@ async function handleGroupMessage(supabase: any, message: any) {
     .eq("id", message.group_id)
     .single();
 
-  const groupName = group?.name || "Group Chat";
+  const groupName = group?.name || null;
 
   // Get all group members except sender
   const { data: members, error: membersError } = await supabase
@@ -673,22 +832,29 @@ async function handleGroupMessage(supabase: any, message: any) {
     return { success: true, notified: 0, reason: "no_line_users" };
   }
 
-  // Look up messaging_user_id from user_profiles (same as direct messages)
+  // Look up messaging_user_id + language from user_profiles (same as direct messages)
   const { data: profiles } = await supabase
     .from("user_profiles")
-    .select("line_user_id, messaging_user_id")
+    .select("line_user_id, messaging_user_id, language")
     .in("line_user_id", memberLineIds);
 
   console.log("[LINE Push] Found profiles:", profiles?.length || 0);
 
-  // Use messaging_user_id if available, otherwise line_user_id
+  // Use messaging_user_id if available, otherwise line_user_id.
+  // Track each target's language for per-recipient composition.
+  const langByTarget = new Map<string, string>();
   const lineUserIds = (profiles || [])
-    .map((p: any) => p.messaging_user_id || p.line_user_id)
+    .map((p: any) => {
+      const target = p.messaging_user_id || p.line_user_id;
+      if (target?.startsWith("U")) langByTarget.set(target, p.language || "en");
+      return target;
+    })
     .filter((id: string) => id?.startsWith("U"));
 
-  // Also include LINE IDs without profiles
+  // Also include LINE IDs without profiles (fallback, default 'en')
   const profileLineIds = new Set((profiles || []).map((p: any) => p.line_user_id));
   const missingIds = memberLineIds.filter((id: string) => !profileLineIds.has(id));
+  for (const id of missingIds) if (!langByTarget.has(id)) langByTarget.set(id, "en");
   const allTargetIds = [...new Set([...lineUserIds, ...missingIds])];
 
   console.log("[LINE Push] Final target IDs:", allTargetIds);
@@ -709,18 +875,24 @@ async function handleGroupMessage(supabase: any, message: any) {
   // Build message
   const preview = message.message_text?.substring(0, 50) + (message.message_text?.length > 50 ? "..." : "");
 
-  const lineMessage: LineMessage = {
-    type: "text",
-    text: `👥 ${groupName}\n\n${senderName}: "${preview}"\n\nOpen MyCaddiPro to reply.`,
-  };
-
-  // Send via multicast
-  const batches = chunkArray(allTargetIds, 500);
+  // Group by recipient language and send a localized body per language
+  const byLang = groupByLang(allTargetIds, langByTarget);
   let totalSent = 0;
 
-  for (const batch of batches) {
-    const sent = await sendMulticast(batch, [lineMessage]);
-    totalSent += sent;
+  for (const [lang, ids] of byLang) {
+    const lineMessage: LineMessage = {
+      type: "text",
+      text: tr(lang, "group_wrapper", {
+        title: groupName || tr(lang, "group_chat_default"),
+        name: senderName,
+        preview,
+      }),
+    };
+
+    const batches = chunkArray(ids, 500);
+    for (const batch of batches) {
+      totalSent += await sendMulticast(batch, [lineMessage]);
+    }
   }
 
   console.log(`[LINE Push] Notified ${totalSent} users about group message`);
@@ -813,17 +985,38 @@ async function handleAnnouncement(supabase: any, announcement: any) {
     .eq("id", announcement.society_id)
     .single();
 
-  const lineMessage: LineMessage = {
-    type: "text",
-    text: `📣 ${society?.name || "Society"} Announcement\n\n${announcement.title}\n\n${announcement.content?.substring(0, 200) || ""}${announcement.content?.length > 200 ? "..." : ""}\n\nOpen MyCaddiPro for details.`,
-  };
+  // Recipients here are LINE IDs used directly (from society_members / subscriptions /
+  // registrations), so look up their language separately. Any recipient without a
+  // profile row defaults to 'en'.
+  const { data: langProfiles } = await supabase
+    .from("user_profiles")
+    .select("line_user_id, language")
+    .in("line_user_id", lineUserIds);
 
-  const batches = chunkArray(lineUserIds, 500);
+  const langByTarget = new Map<string, string>();
+  (langProfiles || []).forEach((p: any) => {
+    if (p.line_user_id) langByTarget.set(p.line_user_id, p.language || "en");
+  });
+
+  // Group by recipient language and compose the announcement per language
+  const contentPreview = announcement.content?.substring(0, 200) || "";
+  const contentEllipsis = announcement.content?.length > 200 ? "..." : "";
+  const byLang = groupByLang(lineUserIds, langByTarget);
   let totalSent = 0;
 
-  for (const batch of batches) {
-    const sent = await sendMulticast(batch, [lineMessage]);
-    totalSent += sent;
+  for (const [lang, ids] of byLang) {
+    const lineMessage: LineMessage = {
+      type: "text",
+      text: tr(lang, "announce_header", { society: society?.name || tr(lang, "society_default") }) +
+        "\n\n" + announcement.title +
+        "\n\n" + contentPreview + contentEllipsis +
+        "\n\n" + tr(lang, "announce_footer"),
+    };
+
+    const batches = chunkArray(ids, 500);
+    for (const batch of batches) {
+      totalSent += await sendMulticast(batch, [lineMessage]);
+    }
   }
 
   return { success: true, notified: totalSent };
@@ -1062,15 +1255,21 @@ async function handleEmergencyAlert(supabase: any, alert: any) {
 
   const targetIds: string[] = [];
 
+  // Track each staff recipient's language; organizers (added below) default to 'en'.
+  const langByTarget = new Map<string, string>();
+
   // 1. Get all managers and proshop staff
   const { data: staff } = await supabase
     .from("user_profiles")
-    .select("line_user_id, name, role")
+    .select("line_user_id, name, role, language")
     .in("role", ["manager", "proshop"]);
 
   if (staff) {
     for (const s of staff) {
-      if (s.line_user_id?.startsWith("U")) targetIds.push(s.line_user_id);
+      if (s.line_user_id?.startsWith("U")) {
+        targetIds.push(s.line_user_id);
+        langByTarget.set(s.line_user_id, s.language || "en");
+      }
     }
     console.log("[LINE Push] Found", staff.length, "staff members");
   }
@@ -1121,39 +1320,45 @@ async function handleEmergencyAlert(supabase: any, alert: any) {
   };
   const icon = emergencyIcons[alert.type] || "🚨";
 
-  const messages: LineMessage[] = [{
-    type: "flex",
-    altText: `🚨 EMERGENCY: ${alert.message || alert.type}`,
-    contents: {
-      type: "bubble",
-      styles: {
-        header: { backgroundColor: "#DC2626" },
-        body: { backgroundColor: "#FEF2F2" },
-      },
-      header: {
-        type: "box",
-        layout: "vertical",
-        contents: [
-          { type: "text", text: `${icon} EMERGENCY ALERT`, color: "#FFFFFF", weight: "bold", size: "lg", align: "center" },
-        ],
-      },
-      body: {
-        type: "box",
-        layout: "vertical",
-        spacing: "md",
-        contents: [
-          { type: "text", text: alert.message || "Emergency Alert", weight: "bold", size: "md", wrap: true, color: "#991B1B" },
-          { type: "text", text: `👤 ${alert.user_name || "Unknown"}`, size: "sm", color: "#374151" },
-          ...(locationLine ? [{ type: "text", text: locationLine, size: "sm", color: "#374151", wrap: true }] : []),
-          ...(groupLine ? [{ type: "text", text: groupLine, size: "sm", color: "#374151", wrap: true }] : []),
-          ...(alert.society_name ? [{ type: "text", text: `🏌️ ${alert.society_name}`, size: "sm", color: "#374151" }] : []),
-          { type: "text", text: `🕐 ${new Date(alert.timestamp || Date.now()).toLocaleString("en-GB", { timeZone: "Asia/Bangkok" })}`, size: "xs", color: "#6B7280" },
-        ],
-      },
-    },
-  }];
+  // Group recipients by language (staff carry profile language; organizers default 'en')
+  const byLang = groupByLang(uniqueIds, langByTarget);
+  let sent = 0;
 
-  const sent = await sendLineMulticast(uniqueIds, messages);
+  for (const [lang, ids] of byLang) {
+    const messages: LineMessage[] = [{
+      type: "flex",
+      altText: tr(lang, "emergency_alt", { msg: alert.message || alert.type }),
+      contents: {
+        type: "bubble",
+        styles: {
+          header: { backgroundColor: "#DC2626" },
+          body: { backgroundColor: "#FEF2F2" },
+        },
+        header: {
+          type: "box",
+          layout: "vertical",
+          contents: [
+            { type: "text", text: `${icon} ${tr(lang, "emergency_header")}`, color: "#FFFFFF", weight: "bold", size: "lg", align: "center" },
+          ],
+        },
+        body: {
+          type: "box",
+          layout: "vertical",
+          spacing: "md",
+          contents: [
+            { type: "text", text: alert.message || tr(lang, "emergency_body_default"), weight: "bold", size: "md", wrap: true, color: "#991B1B" },
+            { type: "text", text: `👤 ${alert.user_name || tr(lang, "emergency_unknown")}`, size: "sm", color: "#374151" },
+            ...(locationLine ? [{ type: "text", text: locationLine, size: "sm", color: "#374151", wrap: true }] : []),
+            ...(groupLine ? [{ type: "text", text: groupLine, size: "sm", color: "#374151", wrap: true }] : []),
+            ...(alert.society_name ? [{ type: "text", text: `🏌️ ${alert.society_name}`, size: "sm", color: "#374151" }] : []),
+            { type: "text", text: `🕐 ${new Date(alert.timestamp || Date.now()).toLocaleString(localeFor(lang), { timeZone: "Asia/Bangkok" })}`, size: "xs", color: "#6B7280" },
+          ],
+        },
+      },
+    }];
+
+    sent += await sendMulticast(ids, messages);
+  }
 
   return {
     success: true,
@@ -1331,10 +1536,10 @@ function buildEventFlexMessage(event: {
   venue: string;
   description: string;
   eventId: string;
-}): LineMessage {
+}, lang: string): LineMessage {
   return {
     type: "flex",
-    altText: `🏌️ New Event: ${event.title}`,
+    altText: tr(lang, "newevt_alt", { title: event.title }),
     contents: {
       type: "bubble",
       hero: {
@@ -1345,7 +1550,7 @@ function buildEventFlexMessage(event: {
         contents: [
           {
             type: "text",
-            text: "🏌️ NEW EVENT",
+            text: tr(lang, "newevt_badge"),
             color: "#FFFFFF",
             size: "sm",
             weight: "bold",
@@ -1429,7 +1634,7 @@ function buildEventFlexMessage(event: {
             type: "button",
             action: {
               type: "uri",
-              label: "View Event",
+              label: tr(lang, "newevt_button"),
               uri: `https://mycaddipro.com/?event=${event.eventId}`,
             },
             style: "primary",

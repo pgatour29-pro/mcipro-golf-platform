@@ -1892,13 +1892,17 @@ export async function subscribeGlobalMessages() {
     return state.globalSub;
   }
 
-  // If exists but not joined, tear down cleanly
+  // If exists but not joined, tear down cleanly.
+  // removeChannel (NOT unsubscribe): unsubscribe leaves the topic in the client registry,
+  // so channel('realtime:chat_messages') returns the same subscribed instance and the
+  // .on('postgres_changes', ...) below throws "cannot add callbacks after subscribe()".
   if (state.globalSub) {
     try {
-      await state.globalSub.unsubscribe();
+      await supabase.removeChannel(state.globalSub);
     } catch (err) {
-      console.warn('[Chat] Error unsubscribing old global channel:', err);
+      console.warn('[Chat] Error removing old global channel:', err);
     }
+    state.globalSub = null;
   }
 
   console.log('[Chat] Setting up global message subscription with backfill');
@@ -2208,9 +2212,10 @@ function initWebSocketKeepalive() {
       const supabaseUrl = supabase.supabaseUrl;
       const anonKey = supabase.supabaseKey;
 
-      // Keepalive ping to REST (prevents connection timeout)
-      fetch(`${supabaseUrl}/rest/v1/?select=1`, {
-        method: 'GET',
+      // Keepalive ping to REST (prevents connection timeout).
+      // HEAD on a real table: the bare /rest/v1/ root 401s under publishable keys.
+      fetch(`${supabaseUrl}/rest/v1/user_profiles?select=line_user_id&limit=1`, {
+        method: 'HEAD',
         cache: 'no-store',
         keepalive: true,
         headers: {

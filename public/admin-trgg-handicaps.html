@@ -171,15 +171,17 @@
                                 <div class="text-xs text-gray-400 mb-1">Suggested match</div>
                                 <div class="font-medium text-gray-700">${escHtml(row.suggested_name)}</div>
                                 <div class="text-xs text-gray-500">${Math.round((row.similarity || 0) * 100)}% similar</div>
-                                <div class="flex gap-2 mt-2 justify-end">
+                                <div class="flex gap-2 mt-2 justify-end flex-wrap">
                                     <button onclick="approveMatch('${row.id}', '${row.trgg_name.replace(/'/g,"\\'")}', ${row.trgg_handicap}, '${row.suggested_profile_id}')" class="px-3 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700">Approve</button>
                                     <button onclick="openSearch('${row.id}', '${row.trgg_name.replace(/'/g,"\\'")}', ${row.trgg_handicap})" class="px-3 py-1 text-xs border rounded-lg hover:bg-gray-50">Pick Different</button>
+                                    <button onclick="addAsNew('${row.id}', '${row.trgg_name.replace(/'/g,"\\'")}', ${row.trgg_handicap})" class="px-3 py-1 text-xs border border-emerald-600 text-emerald-700 rounded-lg hover:bg-emerald-50">Add as new player</button>
                                     <button onclick="rejectMatch('${row.id}')" class="px-3 py-1 text-xs border rounded-lg text-red-600 hover:bg-red-50">Reject</button>
                                 </div>
                             ` : `
                                 <div class="text-xs text-gray-400 mb-1">No match suggestion</div>
-                                <div class="flex gap-2 mt-2 justify-end">
-                                    <button onclick="openSearch('${row.id}', '${row.trgg_name.replace(/'/g,"\\'")}', ${row.trgg_handicap})" class="px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700">Pick User</button>
+                                <div class="flex gap-2 mt-2 justify-end flex-wrap">
+                                    <button onclick="addAsNew('${row.id}', '${row.trgg_name.replace(/'/g,"\\'")}', ${row.trgg_handicap})" class="px-3 py-1 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Add as new player</button>
+                                    <button onclick="openSearch('${row.id}', '${row.trgg_name.replace(/'/g,"\\'")}', ${row.trgg_handicap})" class="px-3 py-1 text-xs border rounded-lg hover:bg-gray-50">Pick User</button>
                                     <button onclick="rejectMatch('${row.id}')" class="px-3 py-1 text-xs border rounded-lg text-red-600 hover:bg-red-50">Reject</button>
                                 </div>
                             `}
@@ -220,6 +222,55 @@
             let s = input;
             if (s.includes(',')) { const [last, first] = s.split(','); s = first.trim() + ' ' + last.trim(); }
             return s.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+        }
+
+        // ---- New-player creation (Pete 2026-07-12: new names on the pull get ADDED, not queued) ----
+        // Mirrors TRGGHandicapPaste in the app: profile + TRGG society_members + society_handicaps +
+        // trgg_user_map (so the next pull auto-matches). A name that uniquely matches an UNLINKED
+        // trgg_members row is an existing member with no profile — link the roster row; otherwise they
+        // show in the TRGG Directory as NON-MEMBER (get_trgg_directory_nonmembers picks up TRGG-HCP-%).
+        const TRGG_SID = '7c0e4b72-d925-44bc-afda-38259a7ba346';
+        const nameKey = s => String(s == null ? '' : s).toLowerCase().replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean).sort().join(' ');
+        let _unlinkedRoster = null;
+        async function loadUnlinkedRoster() {
+            if (_unlinkedRoster) return _unlinkedRoster;
+            _unlinkedRoster = {};
+            const { data } = await sb.from('trgg_members').select('id, full_name, matched_user_id');
+            (data || []).forEach(m => { if (m.matched_user_id) return; const k = nameKey(m.full_name); if (k) (_unlinkedRoster[k] = _unlinkedRoster[k] || []).push(m); });
+            return _unlinkedRoster;
+        }
+        let _newSeq = 0;
+        async function createNewPlayer(name, hcp) {
+            const gid = 'TRGG-HCP-' + Date.now() + '-' + (++_newSeq);
+            const { error: pErr } = await sb.from('user_profiles').insert({
+                line_user_id: gid, name: name, display_name: name, role: 'golfer',
+                handicap_index: hcp, trgg_handicap: hcp,
+                profile_data: { handicap: hcp, is_manual_entry: true },
+                society_name: 'Travellers Rest Golf Group'
+            });
+            if (pErr) throw pErr;
+            try { await sb.from('society_members').insert({ id: crypto.randomUUID(), society_id: TRGG_SID, golfer_id: gid, role: 'member', status: 'active', joined_at: new Date().toISOString() }); } catch (e) {}
+            await sb.from('society_handicaps').upsert({ golfer_id: gid, society_id: TRGG_SID, handicap_index: hcp, calculation_method: 'TRGG-masterscoreboard', last_calculated_at: new Date().toISOString() }, { onConflict: 'golfer_id,society_id' });
+            try { await sb.from('trgg_user_map').insert({ trgg_name: name, trgg_name_norm: normalizeName(name), profile_id: gid, last_handicap: hcp, last_synced_at: new Date().toISOString() }); } catch (e) {}
+            let rosterLinked = false;
+            try {
+                const roster = await loadUnlinkedRoster();
+                const rows = roster[nameKey(name)] || [];
+                if (rows.length === 1) {
+                    const { data } = await sb.from('trgg_members').update({ matched_user_id: gid }).eq('id', rows[0].id).is('matched_user_id', null).select('id');
+                    rosterLinked = !!(data && data.length);
+                    if (rosterLinked) rows[0].matched_user_id = gid;
+                }
+            } catch (e) {}
+            return { gid, rosterLinked };
+        }
+        async function addAsNew(pendingId, trggName, trggHcp) {
+            try {
+                const r = await createNewPlayer(trggName, trggHcp);
+                await sb.from('trgg_pending_matches').update({ status: 'approved', resolved_at: new Date().toISOString() }).eq('id', pendingId);
+                alert(trggName + (r.rosterLinked ? ' added and linked to their TRGG member record.' : ' added — shows in the TRGG Directory as a non-member.'));
+                loadAll();
+            } catch (e) { alert('Error: ' + e.message); }
         }
 
         async function approveMatch(pendingId, trggName, trggHcp, profileId) {
@@ -388,7 +439,7 @@
                 const { data: maps } = await sb.from('trgg_user_map').select('trgg_name_norm, profile_id');
                 const mapLookup = new Map((maps || []).map(m => [m.trgg_name_norm, m.profile_id]));
 
-                let matched = 0, suggested = 0, review = 0, updated = 0;
+                let matched = 0, suggested = 0, review = 0, updated = 0, created = 0, rosterLinked = 0;
 
                 for (const row of parsedRows) {
                     const norm = normalizeName(row.name);
@@ -423,15 +474,31 @@
                         continue;
                     }
 
-                    // Queue for review
-                    await sb.from('trgg_pending_matches').upsert({
-                        sync_run_id: run.id, trgg_name: row.name, trgg_name_norm: norm,
-                        trgg_handicap: row.handicap,
-                        suggested_profile_id: best?.similarity >= 0.75 ? best.id : null,
-                        suggested_name: best?.similarity >= 0.75 ? best.full_name : null,
-                        similarity: best?.similarity ?? null, status: 'pending'
-                    }, { onConflict: 'trgg_name_norm', ignoreDuplicates: false });
-                    if (best?.similarity >= 0.75) suggested++; else review++;
+                    // Plausible lookalike (75–92%) → human review so a misspelling doesn't create a
+                    // duplicate. Genuinely NEW name → create them right now (Pete's rule).
+                    if (best?.similarity >= 0.75) {
+                        await sb.from('trgg_pending_matches').upsert({
+                            sync_run_id: run.id, trgg_name: row.name, trgg_name_norm: norm,
+                            trgg_handicap: row.handicap,
+                            suggested_profile_id: best.id, suggested_name: best.full_name,
+                            similarity: best.similarity, status: 'pending'
+                        }, { onConflict: 'trgg_name_norm', ignoreDuplicates: false });
+                        suggested++;
+                        continue;
+                    }
+                    try {
+                        const r = await createNewPlayer(row.name, row.handicap);
+                        created++; if (r.rosterLinked) rosterLinked++;
+                    } catch (e) {
+                        // creation failed — fall back to the review queue so the name isn't lost
+                        await sb.from('trgg_pending_matches').upsert({
+                            sync_run_id: run.id, trgg_name: row.name, trgg_name_norm: norm,
+                            trgg_handicap: row.handicap,
+                            suggested_profile_id: null, suggested_name: null,
+                            similarity: best?.similarity ?? null, status: 'pending'
+                        }, { onConflict: 'trgg_name_norm', ignoreDuplicates: false });
+                        review++;
+                    }
                 }
 
                 // Update run
@@ -443,7 +510,7 @@
                     raw_snapshot: { rows: parsedRows }
                 }).eq('id', run.id);
 
-                alert(`Import complete!\n\nProcessed: ${parsedRows.length}\nAuto-matched: ${matched}\nUpdated: ${updated}\nNeeds review: ${suggested + review}`);
+                alert(`Import complete!\n\nProcessed: ${parsedRows.length}\nAuto-matched: ${matched}\nUpdated: ${updated}\nNew players created: ${created}${rosterLinked ? ` (${rosterLinked} linked to member roster)` : ''}${created > rosterLinked ? '\nNew names show in the TRGG Directory as non-members' : ''}\nNeeds review: ${suggested + review}`);
 
                 document.getElementById('pasteInput').value = '';
                 document.getElementById('parsePreview').classList.add('hidden');

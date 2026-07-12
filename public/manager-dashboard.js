@@ -101,10 +101,11 @@
 
         // ================= COURSE CONTEXT =================
         stemOf(name) {
-            const stop = ['golf', 'club', 'country', 'course', 'resort', 'international', 'the', 'spa', 'cc', 'and', '&', 'gc'];
+            // full tokens — a 5-char trim made '%patta%' match Pattana AND Pattaya
+            const stop = ['golf', 'club', 'country', 'county', 'course', 'resort', 'international', 'the', 'spa', 'cc', 'and', '&', 'gc'];
             const toks = String(name || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/)
-                .filter(w => w && !stop.includes(w)).slice(0, 2).map(w => w.slice(0, 5));
-            return toks.length ? toks : [String(name || '').toLowerCase().slice(0, 5)];
+                .filter(w => w && !stop.includes(w)).slice(0, 2);
+            return toks.length ? toks : [String(name || '').toLowerCase().trim()];
         },
         async resolveCourse() {
             try {
@@ -212,7 +213,7 @@
         },
         async eventsFor(fromISO, toISO) {
             // society events at this course: by course_id OR by name stem (two queries, merged)
-            const sel = 'id,title,event_date,start_time,departure_time,status,society_id,organizer_name,course_id,course_name,max_participants,member_fee,entry_fee';
+            const sel = 'id,title,event_date,start_time,departure_time,status,society_id,organizer_name,booking_name,course_id,course_name,max_participants,member_fee,entry_fee';
             let a = db().from('society_events').select(sel).eq('course_id', MD.course.id);
             if (fromISO) a = a.gte('event_date', fromISO);
             if (toISO) a = a.lte('event_date', toISO);
@@ -221,7 +222,11 @@
             if (toISO) b = b.lte('event_date', toISO);
             const [ra, rb] = await Promise.all([a, b]);
             const seen = {}; const out = [];
-            [].concat(ra.data || [], rb.data || []).forEach(ev => { if (!seen[ev.id]) { seen[ev.id] = 1; out.push(ev); } });
+            [].concat(ra.data || [], rb.data || []).forEach(ev => {
+                // name-matched rows that explicitly belong to another course don't count
+                if (ev.course_id && ev.course_id !== MD.course.id) return;
+                if (!seen[ev.id]) { seen[ev.id] = 1; out.push(ev); }
+            });
             out.sort((x, y) => String(x.event_date + (x.start_time || '')).localeCompare(String(y.event_date + (y.start_time || ''))));
             return out;
         },
@@ -364,7 +369,7 @@
                 const [cards, events, caddyB, food, alerts, conds] = await Promise.all([
                     MD.scorecardsSince(todayStart),
                     MD.eventsFor(today, today),
-                    db().from('caddy_bookings').select('id,caddie_name,golfer_name,tee_time_iso,status,booking_date').eq('booking_date', today).or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(200),
+                    db().from('caddy_bookings').select('id,course_id,caddie_name,golfer_name,tee_time_iso,status,booking_date').eq('booking_date', today).or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(200),
                     MD.orNameFilters(db().from('food_orders').select('id,order_number,customer_name,total,status,created_at,delivery_type'), 'course_name').gte('created_at', todayStart).order('created_at', { ascending: false }).limit(100),
                     db().from('emergency_alerts').select('id,type,message,user_name,status,created_at,course_name,current_hole').eq('status', 'active').order('created_at', { ascending: false }).limit(20),
                     MD.orNameFilters(db().from('course_conditions').select('id,rating,comment,tags,user_name,created_at'), 'course_name').order('created_at', { ascending: false }).limit(5)
@@ -375,7 +380,7 @@
                 const groups = MD.buildLiveGroups(cards.filter(c => !c.completed_at), scores);
                 const onCourse = groups.filter(g => g.onCourse);
                 const playersOn = onCourse.reduce((a, g) => a + g.players.length, 0);
-                const caddyRows = (caddyB.data || []).filter(b => b.status !== 'cancelled');
+                const caddyRows = (caddyB.data || []).filter(b => b.status !== 'cancelled' && (!b.course_id || b.course_id === MD.course.id));
                 const openFood = (food.data || []).filter(o => !['delivered', 'completed', 'cancelled'].includes(String(o.status || '').toLowerCase()));
                 const courseAlerts = (alerts.data || []).filter(a => !a.course_name || String(a.course_name).toLowerCase().includes(MD.course.stem[0]));
                 const evIds = events.map(e => e.id);
@@ -1150,7 +1155,7 @@
             const [cards, events, caddyB, food, conds] = await Promise.all([
                 MD.scorecardsSince(fromISO, 'id,player_id,player_name,started_at,completed_at,society_name,created_at,group_id'),
                 MD.eventsFor(fromDate, today),
-                db().from('caddy_bookings').select('id,caddie_name,booking_date,status,payment_amount,payment_status').gte('booking_date', fromDate).or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(1000),
+                db().from('caddy_bookings').select('id,course_id,caddie_name,booking_date,status,payment_amount,payment_status').gte('booking_date', fromDate).or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(1000),
                 MD.orNameFilters(db().from('food_orders').select('id,total,status,created_at'), 'course_name').gte('created_at', fromISO).limit(1000),
                 MD.orNameFilters(db().from('course_conditions').select('id,rating,created_at'), 'course_name').gte('created_at', fromISO).limit(500)
             ]);
@@ -1158,7 +1163,7 @@
             const regCounts = events.length ? await MD.regCountsFor(events.map(e => e.id)) : {};
             if (seq !== MD._seq.an) return;
 
-            const caddyRows = (caddyB.data || []).filter(b => b.status !== 'cancelled');
+            const caddyRows = (caddyB.data || []).filter(b => b.status !== 'cancelled' && (!b.course_id || b.course_id === MD.course.id));
             const foodRows = (food.data || []).filter(o => String(o.status || '').toLowerCase() !== 'cancelled');
             const condRows = conds.data || [];
             const uniquePlayers = new Set(cards.map(c => c.player_id).filter(Boolean)).size;
@@ -1389,14 +1394,14 @@
         const [cards, events, caddyB, food, alerts, conds, wo] = await Promise.all([
             MD.scorecardsSince(dayISO).then(cs => cs.filter(c => c.created_at <= dayEnd)),
             MD.eventsFor(from, from),
-            db().from('caddy_bookings').select('id,caddie_name,golfer_name,status,payment_amount').eq('booking_date', from).or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(500),
+            db().from('caddy_bookings').select('id,course_id,caddie_name,golfer_name,status,payment_amount').eq('booking_date', from).or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(500),
             MD.orNameFilters(db().from('food_orders').select('id,order_number,customer_name,total,status,created_at'), 'course_name').gte('created_at', dayISO).lte('created_at', dayEnd).limit(500),
             db().from('emergency_alerts').select('id,type,message,user_name,status,created_at').gte('created_at', dayISO).lte('created_at', dayEnd).limit(100),
             MD.orNameFilters(db().from('course_conditions').select('rating,comment,user_name,created_at'), 'course_name').gte('created_at', dayISO).lte('created_at', dayEnd).limit(100),
             db().from('course_work_orders').select('title,status,priority,assigned_to,created_at').eq('course_id', MD.course.id).gte('created_at', dayISO).lte('created_at', dayEnd).limit(100)
         ]);
         const regs = events.length ? await MD.regCountsFor(events.map(e => e.id)) : {};
-        const caddyRows = (caddyB.data || []).filter(b => b.status !== 'cancelled');
+        const caddyRows = (caddyB.data || []).filter(b => b.status !== 'cancelled' && (!b.course_id || b.course_id === MD.course.id));
         const foodRows = food.data || [];
         return {
             kpis: [
@@ -1444,7 +1449,7 @@
         const regs = events.length ? await MD.regCountsFor(events.map(e => e.id)) : {};
         const bySoc = {};
         events.forEach(e => {
-            const k = e.organizer_name || 'Unknown';
+            const k = e.organizer_name || e.booking_name || 'Unknown';
             const s = bySoc[k] || (bySoc[k] = { events: 0, regs: 0, rounds: 0 });
             s.events++; s.regs += (regs[e.id] || 0);
         });
@@ -1465,10 +1470,10 @@
         };
     };
     MD.rpt_caddy = async function (from, to) {
-        const { data } = await db().from('caddy_bookings').select('caddie_name,golfer_name,booking_date,status,payment_amount,payment_status')
+        const { data } = await db().from('caddy_bookings').select('course_id,caddie_name,golfer_name,booking_date,status,payment_amount,payment_status')
             .gte('booking_date', from).lte('booking_date', to)
             .or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(1000);
-        const rows = (data || []);
+        const rows = (data || []).filter(b => !b.course_id || b.course_id === MD.course.id);
         const byCaddie = {};
         rows.filter(b => b.status !== 'cancelled').forEach(b => {
             const k = b.caddie_name || 'Unassigned';

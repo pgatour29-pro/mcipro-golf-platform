@@ -147,9 +147,12 @@
             wrap.className = 'fixed inset-0 z-[9000] flex items-center justify-center bg-black/50 p-4';
             wrap.innerHTML = `
               <div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
-                <div class="px-5 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-t-xl">
-                  <h2 class="text-lg font-bold">${mi('golf_course')} ${esc(tr('mgr.pickcourse', 'Select your course'))}</h2>
-                  <p class="text-xs opacity-90">${esc(tr('mgr.pickcourse.sub', 'The dashboard shows live operations for this course. You can change it later from the header.'))}</p>
+                <div class="px-5 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-t-xl flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <h2 class="text-lg font-bold">${mi('golf_course')} ${esc(tr('mgr.pickcourse', 'Select your course'))}</h2>
+                    <p class="text-xs opacity-90">${esc(tr('mgr.pickcourse.sub', 'The dashboard shows live operations for this course. You can change it later from the header.'))}</p>
+                  </div>
+                  ${MD.course && MD.course.id ? `<button id="mgrCoursePickerClose" class="shrink-0 -mr-1 -mt-1 p-1.5 rounded-lg text-white hover:bg-white/20 text-xl leading-none" aria-label="${esc(tr('common.close', 'Close'))}">${mi('close')}</button>` : ''}
                 </div>
                 <div class="p-3 border-b border-gray-100">
                   <input id="mgrCourseSearch" type="text" placeholder="${esc(tr('common.search', 'Search'))}..." class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg" autocomplete="off">
@@ -157,6 +160,8 @@
                 <div id="mgrCourseList" class="flex-1 overflow-y-auto p-2"></div>
               </div>`;
             document.body.appendChild(wrap);
+            const closeBtn = document.getElementById('mgrCoursePickerClose');
+            if (closeBtn) closeBtn.addEventListener('click', () => wrap.remove());
             const paint = (q) => {
                 const ql = (q || '').toLowerCase();
                 const rows = list.filter(c => !ql || (c.name || '').toLowerCase().includes(ql) || (c.id || '').includes(ql));
@@ -179,7 +184,7 @@
             const el = document.getElementById('mgrCourseName');
             if (el) el.textContent = MD.course ? MD.course.name : '';
         },
-        changeCourse() { localStorage.removeItem('mgr_course_v1'); MD.showCoursePicker(); },
+        changeCourse() { MD.showCoursePicker(); },
 
         async loadSettingsRow() {
             try {

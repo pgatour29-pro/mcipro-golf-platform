@@ -217,6 +217,9 @@ const GMAnalytics = {
     // ============================================
 
     updateAnalyticsDashboard() {
+        // Manager dashboard was rebuilt (manager-dashboard.js) — its legacy DOM ids
+        // are gone from that screen. Bail out safely if the target DOM is absent.
+        if (!document.getElementById('analytics-revenue-now')) return;
         const financial = this.calculateFinancialHealth();
         const operational = this.calculateOperationalEfficiency();
         const customer = this.calculateCustomerExperience();

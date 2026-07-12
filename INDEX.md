@@ -85,7 +85,7 @@ Screens:
 - 36,525 — `createProfileScreen`
 - 36,714 — `golferDashboard` (largest; inline scripts at 37,158 / 38,968 / 40,460 / 41,799 / 42,433)
 - 44,845 — `caddieDashboard`
-- 45,666 — `managerDashboard`
+- ~53,220 — `managerDashboard` (REBUILT v538: 119-line shell; all content rendered by external `manager-dashboard.js` — ManagerDashboard, real Supabase data for all 9 tabs)
 - 47,044 — `proshopDashboard`
 - 48,373 — `maintenanceDashboard`
 - 49,236 — `adminDashboard`
@@ -108,7 +108,7 @@ payment modals (54,328–54,548), addScore (54,803), photoScore (54,946). Societ
 ### External defer-script loads (63,240–63,412)
 gm-analytics-engine, society-golf-analytics, admin-pricing-control, payment-tracking ×3,
 analytics-drilldown/export, reports-system, staff-security/management, maintenance-management,
-weather-integration, course-data-manager, unified-player-service, global-player-directory,
+weather-integration, manager-dashboard (v538 manager revamp — all manager tabs), course-data-manager, unified-player-service, global-player-directory,
 player-scorecard-viewer, time-windowed-leaderboards, tournament-series-manager, society-dashboard-enhanced.
 
 ### Society backend (63,448–66,428)

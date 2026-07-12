@@ -344,20 +344,24 @@
       background: #fff;
       border-radius: 12px;
       border: 1px solid var(--border);
-      overflow: hidden;
+      overflow: clip; /* clip (not hidden) so the sticky header can stick to the viewport */
     }
     .grid-header {
       display: grid;
       grid-template-columns: 80px repeat(var(--cols), 1fr);
       background: #f8fafc;
-      border-bottom: 2px solid var(--border);
+      border-bottom: 2px solid #94a3b8;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      box-shadow: 0 2px 6px rgba(15,23,42,0.10);
     }
     .grid-header-cell {
       padding: 14px 8px;
       text-align: center;
-      font-weight: 600;
+      font-weight: 700;
       font-size: 14px;
-      border-right: 1px solid var(--border);
+      border-right: 1px solid rgba(15,23,42,0.15);
     }
     .grid-header-cell:last-child {
       border-right: none;
@@ -365,22 +369,31 @@
     .grid-header-cell.time-header {
       background: #fff;
       color: var(--ink);
+      border-right: 2px solid rgba(15,23,42,0.25);
     }
-    .grid-header-cell.course-a { background: var(--course-a-header); color: #166534; }
-    .grid-header-cell.course-b { background: var(--course-b-header); color: #1e40af; }
-    .grid-header-cell.course-c { background: var(--course-c-header); color: #92400e; }
-    .grid-header-cell.course-d { background: var(--course-d-header); color: #0f766e; }
+    .grid-header-cell.course-a { background: var(--course-a-header); color: #14532d; }
+    .grid-header-cell.course-b { background: var(--course-b-header); color: #1e3a8a; }
+    .grid-header-cell.course-c { background: var(--course-c-header); color: #78350f; }
+    .grid-header-cell.course-d { background: var(--course-d-header); color: #134e4a; }
 
     .grid-row {
       display: grid;
       grid-template-columns: 80px repeat(var(--cols), 1fr);
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid rgba(15,23,42,0.14);
     }
     .grid-row:last-child {
       border-bottom: none;
     }
-    .grid-row:hover {
-      background: #fafbfc;
+    /* Heavier rule at each full hour so time blocks read at a glance */
+    .grid-row.hour-row {
+      border-top: 2px solid rgba(15,23,42,0.30);
+    }
+    .grid-row.hour-row:first-child {
+      border-top: none;
+    }
+    /* Zebra tint on alternate rows — works over any course colour */
+    .grid-row:nth-child(even) .slot {
+      box-shadow: inset 0 0 0 999px rgba(15,23,42,0.035);
     }
     .time-cell {
       padding: 12px 8px;
@@ -389,18 +402,35 @@
       font-size: 13px;
       color: var(--ink);
       background: #fff;
-      border-right: 1px solid var(--border);
+      border-right: 2px solid rgba(15,23,42,0.25);
       font-variant-numeric: tabular-nums;
+    }
+    .grid-row.hour-row .time-cell {
+      font-weight: 800;
+      font-size: 14px;
     }
     .slot {
       padding: 4px;
       min-height: 52px;
-      border-right: 1px solid var(--border);
+      border-right: 1px solid rgba(15,23,42,0.14);
       cursor: pointer;
       transition: background 0.15s;
     }
+    .slot:last-child {
+      border-right: none;
+    }
     .slot:hover {
       background: #f1f5f9;
+    }
+    /* Empty-slot affordance: show a + when hovering a free slot */
+    .slot:not(:has(.pill)):hover::after {
+      content: '+';
+      display: block;
+      text-align: center;
+      line-height: 44px;
+      font-size: 20px;
+      font-weight: 700;
+      color: rgba(15,23,42,0.40);
     }
     .slot.course-a { background: var(--course-a); }
     .slot.course-b { background: var(--course-b); }
@@ -419,7 +449,8 @@
       padding: 6px 8px;
       font-size: 12px;
       cursor: grab;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+      border: 1px solid rgba(15,23,42,0.10);
       border-left: 3px solid #86efac;
       transition: transform 0.1s, box-shadow 0.1s;
     }
@@ -3861,6 +3892,132 @@
     // ==================== STORAGE ====================
     const storageKey = d => `teesheet.bookings.v2::${d}`;
 
+    // ---- Supabase-backed tee sheet bookings ----
+    // The `bookings` table is the source of truth; localStorage is a per-device cache.
+    let lastLocalSave = 0;
+    const teeSheetDbCache = {};      // date -> last-known live DB bookings (native shape)
+    const teeSheetLastFetch = {};    // date -> timestamp of last successful fetch
+    const TEESHEET_TTL = 10000;
+
+    function bookingToDbRow(b, date) {
+      const golfers = b.golfers || [];
+      return {
+        id: b.id,
+        date: date,
+        time: b.time || null,
+        tee_time: date + 'T' + (b.time || '00:00') + ':00',
+        name: b.name || (golfers[0] && golfers[0].name) || '',
+        golfer_name: b.name || (golfers[0] && golfers[0].name) || '',
+        players: golfers.length || 1,
+        group_id: b.groupId || b.id, // column is NOT NULL; singles fall back to their own id
+        kind: 'tee',
+        booking_type: b.bookingType || 'regular',
+        tee_sheet_course: b.course || null,
+        tee_number: (b.tee === 0 || b.tee) ? b.tee : null,
+        course_id: el.courseSelect.value || null,
+        course_name: (el.courseSelect.options[el.courseSelect.selectedIndex] || {}).text || '',
+        notes: b.notes || '',
+        status: 'confirmed',
+        source: 'teesheet',
+        is_vip: (b.bookingType === 'vip'),
+        deleted: false,
+        updated_at: new Date().toISOString(),
+        booking_data: {
+          golfers: golfers,
+          groupName: b.groupName || null,
+          groupIndex: (b.groupIndex === 0 || b.groupIndex) ? b.groupIndex : null,
+          groupTotal: b.groupTotal || null,
+          col: (b.col === 0 || b.col) ? b.col : null,
+          recurringGroupId: b.recurringGroupId || null
+        }
+      };
+    }
+
+    function dbRowToBooking(row) {
+      const bd = row.booking_data || {};
+      const b = {
+        id: row.id,
+        time: row.time,
+        course: row.tee_sheet_course || undefined,
+        tee: (row.tee_number === 0 || row.tee_number) ? row.tee_number : undefined,
+        bookingType: row.booking_type || 'regular',
+        golfers: bd.golfers || [],
+        notes: row.notes || '',
+        name: row.name || row.golfer_name || '',
+        caddyNumber: (bd.golfers && bd.golfers[0] && bd.golfers[0].caddyNumber) || '',
+        createdAt: row.created_at
+      };
+      if (bd.col === 0 || bd.col) b.col = bd.col;
+      if (row.group_id && row.group_id !== row.id) b.groupId = row.group_id; // singles store their own id as group_id
+      if (bd.groupName) b.groupName = bd.groupName;
+      if (bd.groupIndex === 0 || bd.groupIndex) b.groupIndex = bd.groupIndex;
+      if (bd.groupTotal) b.groupTotal = bd.groupTotal;
+      if (bd.recurringGroupId) b.recurringGroupId = bd.recurringGroupId;
+      return b;
+    }
+
+    async function upsertBookingsToDb(bookingsArr, date) {
+      if (!supabaseClient || !bookingsArr.length) return;
+      lastLocalSave = Date.now();
+      const rows = bookingsArr.map(b => bookingToDbRow(b, date));
+      const { error } = await supabaseClient.from('bookings').upsert(rows, { onConflict: 'id' });
+      if (error) console.error('[TeeSheet] DB upsert failed:', error);
+    }
+
+    async function softDeleteBookingsInDb(ids) {
+      if (!supabaseClient || !ids.length) return;
+      lastLocalSave = Date.now();
+      const { error } = await supabaseClient.from('bookings')
+        .update({ deleted: true, updated_at: new Date().toISOString() })
+        .in('id', ids);
+      if (error) console.error('[TeeSheet] DB soft-delete failed:', error);
+    }
+
+    // Fetch this date's tee sheet bookings from Supabase, migrate any legacy
+    // localStorage-only bookings up to the DB, then refresh the local cache.
+    async function fetchTeeSheetBookings(date) {
+      if (!supabaseClient) return null;
+      const now = Date.now();
+      if (teeSheetLastFetch[date] && (now - teeSheetLastFetch[date]) < TEESHEET_TTL) {
+        return teeSheetDbCache[date] || [];
+      }
+      // A local save may still be in flight; don't clobber the cache mid-write
+      if (now - lastLocalSave < 2500) return teeSheetDbCache[date] || null;
+      try {
+        let query = supabaseClient.from('bookings')
+          .select('*')
+          .eq('date', date)
+          .eq('source', 'teesheet')
+          .not('id', 'like', 'teesheet-%');
+        const courseId = el.courseSelect.value;
+        if (courseId) query = query.or(`course_id.eq.${courseId},course_id.is.null`);
+        const { data, error } = await query;
+        if (error) { console.error('[TeeSheet] DB fetch failed:', error); return null; }
+
+        const knownIds = new Set((data || []).map(r => r.id));
+        const live = (data || []).filter(r => !r.deleted).map(dbRowToBooking);
+
+        // One-time migration: push legacy local-only bookings (pre-DB era) up to Supabase.
+        // Ids already known to the DB (even soft-deleted) are never re-uploaded.
+        let legacy = [];
+        try { legacy = JSON.parse(localStorage.getItem(storageKey(date)) || '[]'); } catch {}
+        const toMigrate = legacy.filter(b => b && b.id && !knownIds.has(b.id));
+        if (toMigrate.length) {
+          console.log('[TeeSheet] Migrating', toMigrate.length, 'legacy local bookings to DB for', date);
+          await upsertBookingsToDb(toMigrate, date);
+          live.push(...toMigrate);
+        }
+
+        teeSheetDbCache[date] = live;
+        teeSheetLastFetch[date] = now;
+        localStorage.setItem(storageKey(date), JSON.stringify(live));
+        return live;
+      } catch (e) {
+        console.error('[TeeSheet] DB fetch error:', e);
+        return null;
+      }
+    }
+
     // Enhanced getDay - merges local bookings with caddy bookings from database
     const getDay = d => {
       // Get local tee sheet bookings
@@ -3921,8 +4078,9 @@
 
     // Async version that fetches from database first
     const getDayAsync = async d => {
-      // Fetch caddy bookings, society events, and event registrations in parallel
+      // Fetch tee sheet bookings, caddy bookings, society events, and event registrations in parallel
       await Promise.all([
+        fetchTeeSheetBookings(d),
         fetchCaddyBookings(d),
         fetchSocietyEvents(d),
         fetchEventRegistrations(d)
@@ -3947,10 +4105,23 @@
       });
       localStorage.setItem(storageKey(d), JSON.stringify(localOnlyBookings));
 
-      // Sync each booking to parent BookingManager for caddy booking integration
+      // Supabase is the source of truth: upsert live bookings, soft-delete removed ones
+      try {
+        const removedIds = new Set((teeSheetDbCache[d] || []).map(b => b.id));
+        localOnlyBookings.forEach(b => removedIds.delete(b.id));
+        upsertBookingsToDb(localOnlyBookings, d);
+        if (removedIds.size) softDeleteBookingsInDb(Array.from(removedIds));
+        teeSheetDbCache[d] = localOnlyBookings.slice();
+        teeSheetLastFetch[d] = Date.now();
+      } catch (e) {
+        console.warn('[TeeSheet] DB sync in setDay failed:', e);
+      }
+
+      // Sync each NATIVE booking to parent BookingManager for Schedule tab + caddy notifications.
+      // Same id as our direct DB row so parent cloud saves converge on ONE bookings row (no dupes).
       const courseId = el.courseSelect.value;
-      if (arr && arr.length > 0) {
-        arr.forEach(booking => {
+      if (localOnlyBookings.length > 0) {
+        localOnlyBookings.forEach(booking => {
           // Build ISO teeTime for Schedule tab compatibility
           const teeTimeISO = `${d}T${booking.time}:00`;
 
@@ -3960,17 +4131,21 @@
 
           // Convert tee sheet booking to BookingManager format
           const parentBooking = {
-            id: `teesheet-${booking.id}`,
+            id: booking.id,
             type: 'tee_time',
             source: 'teesheet',
             course: courseId,
+            courseId: courseId,
             courseDisplay: el.courseSelect.options[el.courseSelect.selectedIndex]?.text || courseId,
             date: d,
             time: booking.time,
             teeTime: teeTimeISO,  // ISO datetime for Schedule tab
+            teeSheetCourse: booking.course || null,
+            teeNumber: (booking.tee === 0 || booking.tee) ? booking.tee : null,
+            isVIP: (booking.bookingType || booking.type) === 'vip',
             golferName: golferName,  // For golfer filtering
             status: 'confirmed',
-            bookingType: booking.type || 'regular',
+            bookingType: booking.bookingType || booking.type || 'regular',
             groupId: booking.groupId || null,
             groupName: booking.groupName || null,
             notes: booking.notes || '',
@@ -4183,6 +4358,46 @@
       };
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
       console.log('[TeeSheet] Settings saved:', settings);
+      pushSettingsToDb();
+    }
+
+    // ---- Shared settings via golf_course_settings.teesheet_config ----
+    // Every device at the same course sees the same layout/times/pricing.
+    async function pushSettingsToDb() {
+      if (!supabaseClient) return;
+      const courseId = el.courseSelect.value;
+      if (!courseId) return;
+      const cfg = { basic: getSettings(), full: getFullSettings(), updatedAt: new Date().toISOString() };
+      const courseName = (el.courseSelect.options[el.courseSelect.selectedIndex] || {}).text || courseId;
+      try {
+        const { error } = await supabaseClient.from('golf_course_settings')
+          .upsert({ course_id: courseId, course_name: courseName, teesheet_config: cfg }, { onConflict: 'course_id' });
+        if (error) console.warn('[TeeSheet] Settings push failed:', error);
+      } catch (e) { console.warn('[TeeSheet] Settings push error:', e); }
+    }
+
+    async function pullSettingsFromDb() {
+      if (!supabaseClient) return false;
+      const courseId = el.courseSelect.value;
+      if (!courseId) return false;
+      try {
+        const { data, error } = await supabaseClient.from('golf_course_settings')
+          .select('teesheet_config').eq('course_id', courseId).maybeSingle();
+        if (error || !data || !data.teesheet_config) return false;
+        const cfg = data.teesheet_config;
+        if (cfg.basic) {
+          // Merge, keeping this device's course selection
+          const merged = Object.assign({}, cfg.basic, { golfCourse: courseId });
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+          if (cfg.basic.courseLayout) el.complexSelect.value = cfg.basic.courseLayout;
+          if (cfg.basic.startTime) el.startTime.value = cfg.basic.startTime;
+          if (cfg.basic.endTime) el.endTime.value = cfg.basic.endTime;
+          if (cfg.basic.interval) el.intervalSelect.value = cfg.basic.interval;
+          if (cfg.basic.teesPerCourse) el.teesSelect.value = cfg.basic.teesPerCourse;
+        }
+        if (cfg.full) localStorage.setItem(FULL_SETTINGS_KEY, JSON.stringify(cfg.full));
+        return true;
+      } catch (e) { return false; }
     }
 
     // ==================== INIT ====================
@@ -4359,7 +4574,9 @@
       for (let m = startM; m <= endM; m += step) {
         const timeStr = hhmm(m);
 
-        let rowHtml = `<div class="grid-row" data-time="${timeStr}">`;
+        // First row of each new hour gets the heavier rule (intervals rarely land on :00 exactly)
+        const isHourRow = m === startM || Math.floor(m / 60) !== Math.floor((m - step) / 60);
+        let rowHtml = `<div class="grid-row${isHourRow ? ' hour-row' : ''}" data-time="${timeStr}">`;
         rowHtml += `<div class="time-cell">${timeStr}</div>`;
 
         layout.cols.forEach((col, idx) => {
@@ -5819,12 +6036,16 @@
       await fetchSocietyEvents(currentDate);
       render();
 
-      // Then fetch caddy bookings and re-render
+      // Then fetch bookings and re-render
       await Promise.all([
+        fetchTeeSheetBookings(currentDate),
         fetchCaddyBookings(currentDate),
         fetchEventRegistrations(currentDate)
       ]);
       render();
+
+      // Keep the realtime channel pointed at the visible date
+      subscribeRealtime(currentDate);
     }
 
     el.prevDay.addEventListener('click', async () => {
@@ -6043,9 +6264,10 @@
       } catch { return {}; }
     }
 
-    // Save full settings to localStorage
+    // Save full settings to localStorage + shared course settings in DB
     function saveFullSettings(settings) {
       localStorage.setItem(FULL_SETTINGS_KEY, JSON.stringify(settings));
+      pushSettingsToDb();
     }
 
     // Get pricing periods from DOM
@@ -7051,22 +7273,65 @@
         const date = event.data.date || el.dateInput.value;
         const courseId = el?.courseSelect?.value || '';
         const societyCacheKey = `${date}::${courseId}`;
+        delete teeSheetLastFetch[date];
         delete caddyBookingsCache[date];
         delete lastFetchTime[date];
         delete societyEventsCache[societyCacheKey];
         delete societyEventsLastFetchTime[societyCacheKey];
         delete eventRegistrationsCache[date];
         delete eventRegLastFetchTime[date];
-        render();
+        fetchAndRender();
       }
     });
 
-    // Gentle auto-refresh every 60 seconds for society events, caddy bookings and event registrations
+    // ==================== REALTIME SYNC ====================
+    // Live postgres_changes subscription so every device sees changes instantly.
+    // The 30s poll below stays as a fallback for missed events.
+    let rtDebounceTimer = null;
+    let rtSubscribedDate = null;
+
+    function handleRealtimeEvent() {
+      // Skip echoes of our own writes; the poll covers anything genuinely missed
+      if (Date.now() - lastLocalSave < 2000) return;
+      clearTimeout(rtDebounceTimer);
+      rtDebounceTimer = setTimeout(() => {
+        const date = el.dateInput.value;
+        const courseId = el?.courseSelect?.value || '';
+        clearAllCaches(date, courseId);
+        Promise.all([
+          fetchTeeSheetBookings(date),
+          fetchCaddyBookings(date),
+          fetchSocietyEvents(date),
+          fetchEventRegistrations(date)
+        ]).then(render).catch(e => console.warn('[TeeSheet] Realtime refresh failed:', e));
+      }, 700);
+    }
+
+    function subscribeRealtime(date) {
+      if (!supabaseClient || typeof supabaseClient.channel !== 'function') return;
+      if (rtSubscribedDate === date) return;
+      // Remove any previous tee sheet channel BEFORE re-subscribing (channel reuse crashes)
+      try {
+        (supabaseClient.getChannels ? supabaseClient.getChannels() : []).forEach(c => {
+          if (c.topic && c.topic.indexOf('teesheet-live') !== -1) supabaseClient.removeChannel(c);
+        });
+      } catch (e) {}
+      rtSubscribedDate = date;
+      supabaseClient.channel('teesheet-live-' + date)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings', filter: 'date=eq.' + date }, handleRealtimeEvent)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'caddy_bookings', filter: 'booking_date=eq.' + date }, handleRealtimeEvent)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'society_events', filter: 'event_date=eq.' + date }, handleRealtimeEvent)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'event_registrations' }, handleRealtimeEvent)
+        .subscribe(status => console.log('[TeeSheet] Realtime channel (' + date + '):', status));
+    }
+
+    // Gentle auto-refresh every 30 seconds as a realtime fallback
     setInterval(() => {
       const currentDate = el.dateInput.value;
       const courseId = el?.courseSelect?.value || '';
       const societyCacheKey = `${currentDate}::${courseId}`;
       // Clear cache to force re-fetch
+      delete teeSheetLastFetch[currentDate];
       delete caddyBookingsCache[currentDate];
       delete lastFetchTime[currentDate];
       delete societyEventsCache[societyCacheKey];
@@ -7075,16 +7340,16 @@
       delete eventRegLastFetchTime[currentDate];
       // Fetch new data in background
       Promise.all([
+        fetchTeeSheetBookings(currentDate),
         fetchCaddyBookings(currentDate),
         fetchSocietyEvents(currentDate),
         fetchEventRegistrations(currentDate)
-      ]).then(([caddyBookings, societyEvts, eventRegs]) => {
-        const hasData = (caddyBookings && caddyBookings.length > 0) ||
+      ]).then(([tsBookings, caddyBookings, societyEvts, eventRegs]) => {
+        const hasData = (tsBookings && tsBookings.length > 0) ||
+                        (caddyBookings && caddyBookings.length > 0) ||
                         (societyEvts && societyEvts.length > 0) ||
                         (eventRegs && eventRegs.length > 0);
         if (hasData) {
-          console.log('[TeeSheet] Auto-refresh: found', caddyBookings?.length || 0, 'caddy bookings,',
-                      societyEvts?.length || 0, 'society slots,', eventRegs?.length || 0, 'event regs');
           render();
         }
       }).catch(e => console.warn('[TeeSheet] Auto-refresh failed:', e));
@@ -7098,6 +7363,7 @@
     // Helper to clear all caches for a date
     function clearAllCaches(date, courseId) {
       const cacheKey = `${date}::${courseId}`;
+      delete teeSheetLastFetch[date];
       delete caddyBookingsCache[date];
       delete lastFetchTime[date];
       delete societyEventsCache[cacheKey];
@@ -7108,6 +7374,9 @@
 
     // Fetch data then render on initial load with retry
     (async function initialLoad() {
+      // Apply shared course settings first so the grid renders with the right layout/times
+      const gotDbSettings = await pullSettingsFromDb();
+      if (gotDbSettings) console.log('[TeeSheet] Applied shared settings from DB');
       await fetchAndRender();
       const currentDate = el.dateInput.value;
       const courseId = el?.courseSelect?.value || '';

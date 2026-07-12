@@ -143,17 +143,29 @@
         },
         paintHeader() {
             try {
-                const p = document.querySelector('#proshopDashboard header p');
-                if (p && !document.getElementById('ps-course-chip')) {
-                    const chip = document.createElement('span');
-                    chip.id = 'ps-course-chip';
-                    chip.className = 'ml-2 text-xs bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full';
-                    chip.textContent = PS.course.name;
-                    p.appendChild(chip);
-                } else if (document.getElementById('ps-course-chip')) {
-                    document.getElementById('ps-course-chip').textContent = PS.course.name;
+                const nameEl = document.getElementById('ps-course-chip-name');
+                const chip = document.getElementById('ps-course-chip');
+                if (nameEl) nameEl.textContent = PS.course.name;
+                if (chip) chip.style.display = '';   // classes take over: hidden <sm, flex ≥sm
+                if (!PS._clockTimer) {
+                    const tick = () => {
+                        const el = document.getElementById('ps-clock');
+                        if (el) { const d = new Date(); el.textContent = pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+                    };
+                    tick();
+                    PS._clockTimer = setInterval(tick, 15000);
                 }
             } catch (e) { }
+        },
+        statTile(icon, val, label, tone) {
+            return `
+              <div class="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3 min-w-0">
+                <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-lg ${tone || 'bg-emerald-50 text-emerald-600'}">${mi(icon)}</div>
+                <div class="min-w-0">
+                  <div class="text-xl font-bold text-gray-900 leading-tight truncate">${val}</div>
+                  <div class="text-xs text-gray-500 truncate">${label}</div>
+                </div>
+              </div>`;
         },
 
         // ================= TAB ROUTER =================
@@ -194,6 +206,7 @@
                 })
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'proshop_sales', filter: 'course_id=eq.' + PS.course.id }, () => {
                     if (PS.isTabActive('proshop-sales')) PS.loadSales(true);
+                    if (PS.isTabActive('proshop-pos')) PS.loadPOS(true);   // today-strip on the POS
                 })
                 .subscribe();
         },
@@ -212,11 +225,17 @@
             const seq = (PS._seq.pos = (PS._seq.pos || 0) + 1);
             if (!PS._loaded.pos && !silent) host.innerHTML = `<div class="text-center text-gray-500 py-10">${tr('common.loading', 'Loading')}…</div>`;
             try {
-                const { data, error } = await db().from('proshop_products').select('*')
-                    .eq('course_id', PS.course.id).eq('active', true).order('category').order('name').limit(500);
-                if (error) throw error;
+                const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+                const [prod, sale] = await Promise.all([
+                    db().from('proshop_products').select('*')
+                        .eq('course_id', PS.course.id).eq('active', true).order('category').order('name').limit(500),
+                    db().from('proshop_sales').select('total,created_at')
+                        .eq('course_id', PS.course.id).gte('created_at', todayStart.toISOString()).limit(500)
+                ]);
+                if (prod.error) throw prod.error;
                 if (seq !== PS._seq.pos) return;
-                PS.products = data || [];
+                PS.products = prod.data || [];
+                PS._todaySales = sale.error ? (PS._todaySales || []) : (sale.data || []);
                 PS.renderPOS();
                 PS._loaded.pos = true;
             } catch (e) {
@@ -231,60 +250,76 @@
             const list = PS.products.filter(p =>
                 (PS._posCat === 'all' || p.category === PS._posCat) &&
                 (!q || p.name.toLowerCase().includes(q) || String(p.sku || '').toLowerCase().includes(q)));
-            const catBtn = (id, label) => `
-              <button onclick="ProshopDashboard.posCat('${id}')" class="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${PS._posCat === id ? 'bg-green-600 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'}">${esc(label)}</button>`;
+            const tSales = PS._todaySales || [];
+            const tSum = tSales.reduce((s, r) => s + Number(r.total || 0), 0);
+            const low = PS.products.filter(p => p.stock > 0 && p.stock <= p.reorder_level).length;
+            const catBtn = (id, label, icon) => `
+              <button onclick="ProshopDashboard.posCat('${id}')" class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${PS._posCat === id ? 'bg-slate-900 text-white shadow-sm' : 'bg-white border border-gray-200 text-gray-700 hover:border-gray-400'}">${icon ? mi(icon) : ''} ${esc(label)}</button>`;
             const inCart = (id) => PS.cart.find(c => c.id === id);
+            const cartN = PS.cart.reduce((s, c) => s + c.qty, 0);
+            const total = Math.max(0, PS.cartSubtotal() - (PS._discount || 0));
             host.innerHTML = `
-              <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div class="lg:col-span-2">
-                  <div class="flex items-center gap-2 mb-3">
-                    <input id="ps-pos-q" value="${esc(PS._posQ)}" placeholder="${tr('common.search', 'Search')} ${tr('ps.products', 'products')}..." class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm">
+              <div class="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+                ${PS.statTile('payments', fmtB(tSum), tr('ps.today', 'Today') + ' · ' + tSales.length + ' ' + tr('ps.sales2', 'sales'))}
+                ${PS.statTile('shopping_bag', fmtN(PS.products.length), tr('ps.products2', 'Products'), 'bg-sky-50 text-sky-600')}
+                ${PS.statTile('inventory_2', fmtN(low), tr('ps.lowstock', 'Low stock'), low ? 'bg-amber-50 text-amber-600' : 'bg-gray-100 text-gray-400')}
+              </div>
+              <div class="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-start">
+                <div class="lg:col-span-2 xl:col-span-3">
+                  <div class="flex flex-wrap items-center gap-2 mb-3">
+                    <div class="relative flex-1 min-w-48">
+                      <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-lg pointer-events-none">search</span>
+                      <input id="ps-pos-q" value="${esc(PS._posQ)}" placeholder="${tr('common.search', 'Search')} ${tr('ps.products', 'products')}..." class="w-full bg-white border border-gray-200 rounded-lg pl-10 pr-3 py-2 text-sm focus:border-green-500 focus:outline-none">
+                    </div>
+                    <div class="flex gap-1.5 overflow-x-auto">
+                      ${catBtn('all', tr('common.all', 'All'))}${CATEGORIES.map(c => catBtn(c.id, c.label, c.icon)).join('')}
+                    </div>
                   </div>
-                  <div class="flex gap-2 overflow-x-auto pb-2 mb-3">
-                    ${catBtn('all', tr('common.all', 'All'))}${CATEGORIES.map(c => catBtn(c.id, c.label)).join('')}
-                  </div>
-                  <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                  <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5">
                     ${list.map(p => `
-                      <button onclick="ProshopDashboard.addToCart('${p.id}')" class="text-left bg-white border ${p.stock <= 0 ? 'border-gray-200 opacity-50' : 'border-gray-200 hover:border-green-400 hover:shadow-md'} rounded-xl p-3 transition-all" ${p.stock <= 0 ? 'disabled' : ''}>
-                        <div class="text-xs text-gray-500 mb-1">${esc(catLabel(p.category))}${p.sku ? ' · ' + esc(p.sku) : ''}</div>
-                        <div class="font-semibold text-gray-900 text-sm leading-tight mb-2">${esc(p.name)}</div>
-                        <div class="flex items-center justify-between">
-                          <span class="text-green-700 font-bold">${fmtB(p.price)}</span>
-                          <span class="text-xs ${p.stock <= p.reorder_level ? 'text-orange-600 font-semibold' : 'text-gray-500'}">${p.stock <= 0 ? tr('ps.outofstock', 'Out of stock') : p.stock + ' ' + tr('ps.instock', 'in stock')}</span>
+                      <button onclick="ProshopDashboard.addToCart('${p.id}')" class="relative text-left bg-white rounded-xl p-3 border transition-all ${p.stock <= 0 ? 'border-gray-200 opacity-45' : (inCart(p.id) ? 'border-green-500 ring-1 ring-green-500 shadow-sm' : 'border-gray-200 hover:border-green-400 hover:shadow-md hover:-translate-y-0.5')}" ${p.stock <= 0 ? 'disabled' : ''}>
+                        ${inCart(p.id) ? `<span class="absolute -top-1.5 -right-1.5 bg-green-600 text-white text-[11px] font-bold rounded-full h-6 w-6 flex items-center justify-center shadow">${inCart(p.id).qty}</span>` : ''}
+                        <div class="flex items-center gap-1 text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">${mi(( CATEGORIES.find(c => c.id === p.category) || { icon: 'sell' }).icon)} ${esc(catLabel(p.category))}</div>
+                        <div class="font-semibold text-gray-900 text-sm leading-snug mb-2" style="min-height:2.4em;">${esc(p.name)}</div>
+                        <div class="flex items-end justify-between gap-1">
+                          <span class="text-green-700 font-bold text-base leading-none">${fmtB(p.price)}</span>
+                          <span class="text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${p.stock <= 0 ? 'bg-red-50 text-red-600' : (p.stock <= p.reorder_level ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-500')}">${p.stock <= 0 ? tr('ps.outofstock', 'Out of stock') : p.stock}</span>
                         </div>
-                        ${inCart(p.id) ? `<div class="mt-2 text-xs font-semibold text-green-700">${mi('check_circle')} ${inCart(p.id).qty} ${tr('ps.incart', 'in cart')}</div>` : ''}
-                      </button>`).join('') || `<div class="col-span-full text-center text-gray-500 py-8">${tr('common.noresults', 'No results')}</div>`}
+                      </button>`).join('') || `<div class="col-span-full bg-white border border-dashed border-gray-300 rounded-xl text-center text-gray-500 text-sm py-10">${tr('common.noresults', 'No results')}</div>`}
                   </div>
                 </div>
-                <div>
-                  <div class="bg-white border border-gray-200 rounded-xl p-4 lg:sticky lg:top-4">
-                    <h3 class="font-bold text-gray-900 mb-3 flex items-center gap-2">${mi('shopping_cart')} ${tr('ps.cart', 'Cart')} ${PS.cart.length ? `<span class="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5">${PS.cart.reduce((s, c) => s + c.qty, 0)}</span>` : ''}</h3>
-                    <div class="space-y-2 mb-3" style="max-height:40vh;overflow-y:auto;">
+                <div class="lg:sticky lg:top-3">
+                  <div class="bg-slate-900 rounded-2xl p-4 shadow-lg">
+                    <h3 class="font-bold text-white mb-3 flex items-center gap-2 text-sm">${mi('shopping_cart', 'text-emerald-400')} ${tr('ps.cart', 'Cart')} ${cartN ? `<span class="text-[11px] bg-emerald-500 text-white rounded-full px-2 py-0.5 font-bold">${cartN}</span>` : ''}</h3>
+                    <div class="space-y-1.5 mb-3" style="max-height:38vh;overflow-y:auto;">
                       ${PS.cart.map(c => `
-                        <div class="flex items-center gap-2 border-b border-gray-100 pb-2">
+                        <div class="flex items-center gap-2 bg-slate-800 rounded-lg px-2.5 py-2">
                           <div class="flex-1 min-w-0">
-                            <div class="text-sm font-medium text-gray-900 truncate">${esc(c.name)}</div>
-                            <div class="text-xs text-gray-500">${fmtB(c.price)} × ${c.qty}</div>
+                            <div class="text-sm font-medium text-white truncate">${esc(c.name)}</div>
+                            <div class="text-[11px] text-slate-400">${fmtB(c.price)} × ${c.qty} = <span class="text-emerald-400 font-semibold">${fmtB(c.price * c.qty)}</span></div>
                           </div>
-                          <button onclick="ProshopDashboard.cartQty('${c.id}',-1)" class="w-7 h-7 rounded-lg border border-gray-300 text-gray-700 font-bold">−</button>
-                          <button onclick="ProshopDashboard.cartQty('${c.id}',1)" class="w-7 h-7 rounded-lg border border-gray-300 text-gray-700 font-bold">+</button>
-                          <button onclick="ProshopDashboard.cartRemove('${c.id}')" class="w-7 h-7 rounded-lg text-red-500 hover:bg-red-50">${mi('close')}</button>
-                        </div>`).join('') || `<div class="text-sm text-gray-500 text-center py-6">${tr('ps.cartempty', 'Cart is empty — tap a product to add it')}</div>`}
+                          <button onclick="ProshopDashboard.cartQty('${c.id}',-1)" class="w-7 h-7 rounded-md bg-slate-700 hover:bg-slate-600 text-white font-bold leading-none">−</button>
+                          <button onclick="ProshopDashboard.cartQty('${c.id}',1)" class="w-7 h-7 rounded-md bg-slate-700 hover:bg-slate-600 text-white font-bold leading-none">+</button>
+                          <button onclick="ProshopDashboard.cartRemove('${c.id}')" class="w-7 h-7 rounded-md text-red-400 hover:bg-red-500/20">${mi('close')}</button>
+                        </div>`).join('') || `<div class="text-sm text-slate-400 text-center py-8 border border-dashed border-slate-700 rounded-xl">${tr('ps.cartempty', 'Cart is empty — tap a product to add it')}</div>`}
                     </div>
                     <div class="space-y-2 text-sm">
-                      <input id="ps-cart-customer" placeholder="${tr('ps.customeropt', 'Customer name (optional)')}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                      <div class="flex items-center justify-between text-gray-700"><span>${tr('ps.subtotal', 'Subtotal')}</span><span>${fmtB(PS.cartSubtotal())}</span></div>
-                      <div class="flex items-center justify-between text-gray-700">
+                      <input id="ps-cart-customer" placeholder="${tr('ps.customeropt', 'Customer name (optional)')}" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none" autocomplete="off">
+                      <div class="flex items-center justify-between text-slate-300"><span>${tr('ps.subtotal', 'Subtotal')}</span><span>${fmtB(PS.cartSubtotal())}</span></div>
+                      <div class="flex items-center justify-between text-slate-300">
                         <span>${tr('ps.discount', 'Discount')} (฿)</span>
-                        <input id="ps-cart-discount" type="number" min="0" value="${PS._discount || 0}" class="w-24 border border-gray-300 rounded-lg px-2 py-1 text-right text-sm">
+                        <input id="ps-cart-discount" type="number" min="0" value="${PS._discount || 0}" class="w-24 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-right text-sm text-white focus:border-emerald-500 focus:outline-none">
                       </div>
-                      <div class="flex items-center justify-between font-bold text-gray-900 text-base border-t border-gray-200 pt-2"><span>${tr('ps.total', 'Total')}</span><span id="ps-cart-total">${fmtB(PS.cartSubtotal() - (PS._discount || 0))}</span></div>
+                      <div class="flex items-center justify-between border-t border-slate-700 pt-2">
+                        <span class="text-slate-300 font-semibold">${tr('ps.total', 'Total')}</span>
+                        <span id="ps-cart-total" class="text-2xl font-extrabold text-emerald-400 tabular-nums">${fmtB(total)}</span>
+                      </div>
                       <div class="grid grid-cols-3 gap-2 pt-1">
-                        <button onclick="ProshopDashboard.checkout('cash')" class="bg-green-600 hover:bg-green-700 text-white rounded-lg py-2.5 text-sm font-semibold">${tr('ps.cash', 'Cash')}</button>
-                        <button onclick="ProshopDashboard.checkout('card')" class="bg-slate-700 hover:bg-slate-800 text-white rounded-lg py-2.5 text-sm font-semibold">${tr('ps.card', 'Card')}</button>
-                        <button onclick="ProshopDashboard.checkout('transfer')" class="bg-slate-500 hover:bg-slate-600 text-white rounded-lg py-2.5 text-sm font-semibold">${tr('ps.transfer', 'Transfer')}</button>
+                        <button onclick="ProshopDashboard.checkout('cash')" class="bg-green-600 hover:bg-green-500 text-white rounded-lg py-3 text-xs font-bold flex flex-col items-center gap-0.5">${mi('payments')} ${tr('ps.cash', 'Cash')}</button>
+                        <button onclick="ProshopDashboard.checkout('card')" class="bg-slate-700 hover:bg-slate-600 text-white rounded-lg py-3 text-xs font-bold flex flex-col items-center gap-0.5">${mi('credit_card')} ${tr('ps.card', 'Card')}</button>
+                        <button onclick="ProshopDashboard.checkout('transfer')" class="bg-sky-700 hover:bg-sky-600 text-white rounded-lg py-3 text-xs font-bold flex flex-col items-center gap-0.5">${mi('qr_code_2')} ${tr('ps.transfer', 'Transfer')}</button>
                       </div>
-                      ${PS.cart.length ? `<button onclick="ProshopDashboard.cartClear()" class="w-full text-red-600 hover:bg-red-50 rounded-lg py-2 text-sm">${tr('ps.clearcart', 'Clear cart')}</button>` : ''}
+                      ${PS.cart.length ? `<button onclick="ProshopDashboard.cartClear()" class="w-full text-red-400 hover:bg-red-500/10 rounded-lg py-2 text-xs font-semibold">${tr('ps.clearcart', 'Clear cart')}</button>` : ''}
                     </div>
                   </div>
                 </div>
@@ -343,6 +378,7 @@
                     p.stock = newStock;
                 }
                 toast(tr('ps.salesaved', 'Sale recorded') + ' — ' + fmtB(total), 'success');
+                (PS._todaySales = PS._todaySales || []).push({ total: total, created_at: new Date().toISOString() });
                 PS.cart = []; PS._discount = 0;
                 PS.renderPOS();
             } catch (e) {
@@ -383,9 +419,9 @@
             const value = PS.products.reduce((s, p) => s + Number(p.price) * (p.stock || 0), 0);
             host.innerHTML = `
               <div class="grid grid-cols-3 gap-3 mb-4">
-                <div class="bg-white border border-gray-200 rounded-xl p-4"><div class="text-2xl font-bold text-gray-900">${PS.products.length}</div><div class="text-xs text-gray-600">${tr('ps.products2', 'Products')}</div></div>
-                <div class="bg-white border border-gray-200 rounded-xl p-4"><div class="text-2xl font-bold ${low.length ? 'text-orange-600' : 'text-gray-900'}">${low.length}</div><div class="text-xs text-gray-600">${tr('ps.lowstock', 'Low stock')}</div></div>
-                <div class="bg-white border border-gray-200 rounded-xl p-4"><div class="text-2xl font-bold text-gray-900">${fmtB(value)}</div><div class="text-xs text-gray-600">${tr('ps.stockvalue', 'Stock value')}</div></div>
+                ${PS.statTile('shopping_bag', fmtN(PS.products.length), tr('ps.products2', 'Products'), 'bg-sky-50 text-sky-600')}
+                ${PS.statTile('inventory_2', fmtN(low.length), tr('ps.lowstock', 'Low stock'), low.length ? 'bg-amber-50 text-amber-600' : 'bg-gray-100 text-gray-400')}
+                ${PS.statTile('paid', fmtB(value), tr('ps.stockvalue', 'Stock value'))}
               </div>
               <div class="flex flex-wrap items-center gap-2 mb-3">
                 <input id="ps-inv-q" value="${esc(PS._invQ)}" placeholder="${tr('common.search', 'Search')}..." class="flex-1 min-w-40 border border-gray-300 rounded-lg px-3 py-2 text-sm">
@@ -550,20 +586,15 @@
                 byCat[cat] = (byCat[cat] || 0) + Number(i.price) * Number(i.qty);
             }));
             const catMax = Math.max(1, ...Object.values(byCat));
-            const tile = (label, val, sub) => `
-              <div class="bg-white border border-gray-200 rounded-xl p-4">
-                <div class="text-2xl font-bold text-gray-900">${val}</div>
-                <div class="text-xs text-gray-600">${label}${sub ? ` · <span class="text-gray-500">${sub}</span>` : ''}</div>
-              </div>`;
             host.innerHTML = `
               <div class="flex items-center justify-between mb-4">
                 <h3 class="font-bold text-gray-900">${tr('ps.sales30', 'Sales — last 30 days')}</h3>
-                <button onclick="ProshopDashboard.exportSalesCSV()" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">${mi('download')} CSV</button>
+                <button onclick="ProshopDashboard.exportSalesCSV()" class="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 hover:border-gray-400">${mi('download')} CSV</button>
               </div>
               <div class="grid grid-cols-3 gap-3 mb-4">
-                ${tile(tr('ps.today', 'Today'), fmtB(sum(todayRows)), todayRows.length + ' ' + tr('ps.sales2', 'sales'))}
-                ${tile(tr('ps.days7', '7 days'), fmtB(sum(wk)), wk.length + ' ' + tr('ps.sales2', 'sales'))}
-                ${tile(tr('ps.days30', '30 days'), fmtB(sum(rows)), rows.length + ' ' + tr('ps.sales2', 'sales'))}
+                ${PS.statTile('payments', fmtB(sum(todayRows)), tr('ps.today', 'Today') + ' · ' + todayRows.length + ' ' + tr('ps.sales2', 'sales'))}
+                ${PS.statTile('date_range', fmtB(sum(wk)), tr('ps.days7', '7 days') + ' · ' + wk.length + ' ' + tr('ps.sales2', 'sales'), 'bg-sky-50 text-sky-600')}
+                ${PS.statTile('calendar_month', fmtB(sum(rows)), tr('ps.days30', '30 days') + ' · ' + rows.length + ' ' + tr('ps.sales2', 'sales'), 'bg-teal-50 text-teal-600')}
               </div>
               <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div class="bg-white border border-gray-200 rounded-xl p-4">
@@ -669,8 +700,8 @@
                 <input id="ps-cust-q" value="${esc(PS._custQ || '')}" placeholder="${tr('common.search', 'Search')}..." class="border border-gray-300 rounded-lg px-3 py-2 text-sm w-52">
               </div>
               <div class="grid grid-cols-2 gap-3 mb-4">
-                <div class="bg-white border border-gray-200 rounded-xl p-4"><div class="text-2xl font-bold text-gray-900">${PS._custRows.length}</div><div class="text-xs text-gray-600">${tr('ps.uniquegolfers', 'Unique golfers')}</div></div>
-                <div class="bg-white border border-gray-200 rounded-xl p-4"><div class="text-2xl font-bold text-gray-900">${PS._custRows.filter(r => r.next).length}</div><div class="text-xs text-gray-600">${tr('ps.upcoming', 'With upcoming bookings')}</div></div>
+                ${PS.statTile('group', fmtN(PS._custRows.length), tr('ps.uniquegolfers', 'Unique golfers'))}
+                ${PS.statTile('event_upcoming', fmtN(PS._custRows.filter(r => r.next).length), tr('ps.upcoming', 'With upcoming bookings'), 'bg-sky-50 text-sky-600')}
               </div>
               <div class="bg-white border border-gray-200 rounded-xl overflow-x-auto">
                 <table class="w-full text-sm">

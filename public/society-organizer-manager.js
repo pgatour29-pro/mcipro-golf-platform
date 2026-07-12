@@ -2045,7 +2045,7 @@ const RegistrationsManager = {
         if (!confirm('Remove this player from the event?')) return;
 
         try {
-            await SocietyGolfDB.removeRegistration(regId);
+            await SocietyGolfDB.deleteRegistration(regId);  // removeRegistration doesn't exist; deleteRegistration also prunes event_pairings
             await this.loadEventData(this.currentEventId);
             NotificationManager.show('Player removed', 'success');
         } catch (error) {

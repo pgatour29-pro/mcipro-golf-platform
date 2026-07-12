@@ -21,9 +21,11 @@
  *
  * SAFETY
  *   - Dry run first: nothing is written until you click OK on the confirm.
- *   - Update-only: it updates handicaps for players already in MyCaddiPro and
- *     REPORTS anyone it couldn't match (it does NOT create new players — run the
- *     in-app paste tool if you need to add brand-new members).
+ *   - NEW names (Pete 2026-07-12): anyone on the list who isn't in MyCaddiPro is
+ *     ADDED — a second confirm lists exactly who, then they get a profile +
+ *     TRGG society membership + handicap, and show up in the TRGG Directory as
+ *     NON-MEMBERS. A name that uniquely matches an UNLINKED trgg_members row is
+ *     an existing member with no profile — that roster row is linked instead.
  *   - Uses the same publishable/anon key + RLS path the app already uses.
  * ========================================================================== */
 (async () => {
@@ -105,7 +107,7 @@
   try { const ar = await rest('trgg_handicap_alias?select=alias_key,golfer_id'); if (ar.ok) (await ar.json()).forEach(a => aliasMap[a.alias_key] = a.golfer_id); } catch (e) {}
 
   /* ---- 3. Match (order-independent, per-key 1:1 rank) ------------------- */
-  const profUpd = [], shRows = [], unmatched = []; let matched = 0;
+  const profUpd = [], shRows = [], newbies = []; let matched = 0;
   const stamp = new Date().toISOString();
   for (const e of entries) {
     let p = null;
@@ -114,7 +116,7 @@
       if (lockedIds.has(aliasId)) { lockedSkipped++; continue; }   // manual override — leave it alone
       p = profById[aliasId];
     } else { const list = byKey[e.key] || []; const idx = used[e.key] || 0; if (idx < list.length) { p = list[idx]; used[e.key] = idx + 1; } }
-    if (!p) { if (lockedKeys.has(e.key)) { lockedSkipped++; continue; } unmatched.push(e.name); continue; }
+    if (!p) { if (lockedKeys.has(e.key)) { lockedSkipped++; continue; } newbies.push(e); continue; }
     matched++;
     const pd = Object.assign({}, p.profile_data || {}); pd.handicap = e.num;
     // skip the profile PATCH when nothing changed (avoids ~1k needless writes)
@@ -124,8 +126,51 @@
     shRows.push({ golfer_id: p.line_user_id, society_id: SID, handicap_index: e.num, calculation_method: 'TRGG-masterscoreboard', last_calculated_at: stamp });
   }
 
-  /* ---- 4. Write: profiles (changed only) + society_handicaps upsert ----- */
-  log(`Matched ${matched}/${entries.length}. Writing ${profUpd.length} profile changes + ${shRows.length} society rows…`);
+  /* ---- 3b. NEW names → create them (confirm exactly who, first) ---------- */
+  // Mirrors TRGGHandicapPaste: profile (TRGG-HCP-… id → shows in the TRGG Directory
+  // as NON-MEMBER via get_trgg_directory_nonmembers) + society_members + handicap.
+  // A name uniquely matching an UNLINKED trgg_members row = existing member with no
+  // profile — link that roster row instead of leaving a non-member duplicate.
+  let skippedNew = 0;
+  if (newbies.length && !confirm(`${newbies.length} NEW name(s) are not in MyCaddiPro yet:\n\n  ` +
+      newbies.slice(0, 15).map(x => `${x.name} — ${x.num}`).join('\n  ') + (newbies.length > 15 ? '\n  …' : '') +
+      `\n\nOK = ADD them (profile + TRGG membership + handicap; they appear in the TRGG Directory as non-members).\nCancel = skip adding, just update the matched players.`)) {
+    skippedNew = newbies.length; newbies.length = 0;
+  }
+  const newProf = [], newMem = [], memLink = [];
+  if (newbies.length) {
+    const memByKey = {};
+    try { const mr = await rest('trgg_members?select=id,full_name,matched_user_id'); if (mr.ok) (await mr.json()).forEach(m => { if (m.matched_user_id) return; const k = nameKey(m.full_name); if (k) (memByKey[k] = memByKey[k] || []).push(m); }); } catch (e) { console.warn('[TRGG pull] roster load failed', e); }
+    let seq = 0; const ts = Date.now();
+    for (const e of newbies) {
+      const gid = 'TRGG-HCP-' + ts + '-' + (++seq);
+      newProf.push({ line_user_id: gid, name: e.name, display_name: e.name, role: 'golfer', handicap_index: e.num, trgg_handicap: e.num, profile_data: { handicap: e.num, is_manual_entry: true }, society_name: 'Travellers Rest Golf Group' });
+      newMem.push({ id: crypto.randomUUID(), society_id: SID, golfer_id: gid, role: 'member', status: 'active', joined_at: stamp });
+      shRows.push({ golfer_id: gid, society_id: SID, handicap_index: e.num, calculation_method: 'TRGG-masterscoreboard', last_calculated_at: stamp });
+      const rows = memByKey[e.key] || [];
+      if (rows.length === 1) memLink.push({ rowId: rows[0].id, gid });   // unique unlinked roster row → link it
+    }
+  }
+
+  /* ---- 4. Write: new profiles + memberships + roster links, then updates - */
+  log(`Matched ${matched}/${entries.length}, creating ${newProf.length}. Writing ${profUpd.length} profile changes + ${shRows.length} society rows…`);
+  let newErr = 0;
+  for (const c of chunk(newProf, 200)) {
+    const r = await rest('user_profiles', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(c) });
+    if (!r.ok) { newErr += c.length; log('new profile insert error', r.status, await r.text()); }
+  }
+  for (const c of chunk(newMem, 200)) {
+    try { await rest('society_members', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(c) }); } catch (e) {}
+  }
+  let rosterLinked = 0;
+  for (const l of memLink) {
+    try {
+      const r = await rest(`trgg_members?id=eq.${l.rowId}&matched_user_id=is.null`, {
+        method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ matched_user_id: l.gid })
+      });
+      if (r.ok && (await r.json()).length) rosterLinked++;
+    } catch (e) {}
+  }
   let profErr = 0;
   for (const c of chunk(profUpd, 25)) {
     await Promise.all(c.map(async u => {
@@ -149,9 +194,11 @@
 
   const msg = `TRGG handicaps updated ✅\n\n` +
     `Scraped:   ${entries.length}\nMatched:   ${matched}\nProfiles updated: ${profUpd.length}${profErr ? ' (' + profErr + ' failed)' : ''}\n` +
+    (newProf.length ? `Added NEW: ${newProf.length - newErr}${newErr ? ' (' + newErr + ' FAILED — see console)' : ''}${rosterLinked ? ', ' + rosterLinked + ' linked to their member record' : ''} → in the TRGG Directory as non-members:\n  ` + newbies.slice(0, 20).map(x => x.name).join(', ') + (newbies.length > 20 ? ' …' : '') + '\n' : '') +
+    (skippedNew ? `New names SKIPPED (you cancelled): ${skippedNew}\n` : '') +
     `Society rows: ${shRows.length}${shErr ? ' (errors — see console)' : ''}\nUpcoming regs synced: ${regSync}\n` +
     (lockedSkipped ? `Locked (kept manual): ${lockedSkipped}\n` : '') +
-    (unmatched.length ? `\nNOT matched (${unmatched.length}) — add via the in-app paste tool:\n  ` + unmatched.slice(0, 20).join(', ') + (unmatched.length > 20 ? ' …' : '') : '\nEveryone matched.');
-  log(msg); if (unmatched.length) console.log('[TRGG pull] Unmatched:', unmatched);
+    (!newProf.length && !skippedNew ? '\nEveryone matched.' : '');
+  log(msg); if (newbies.length) console.log('[TRGG pull] Added new:', newbies.map(x => x.name));
   alert(msg);
 })();

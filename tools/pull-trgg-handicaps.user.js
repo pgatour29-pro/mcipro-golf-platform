@@ -2,7 +2,7 @@
 // @name         Pull TRGG Handicaps → MyCaddiPro
 // @namespace    mycaddipro.trgg
 // @version      1.0
-// @description  Adds a button to the masterscore handicap list that scrapes it and pushes the handicaps into MyCaddiPro (same match + upsert as the in-app paste tool). Works on desktop AND Android.
+// @description  Adds a button to the masterscore handicap list that scrapes it and pushes the handicaps into MyCaddiPro (same match + upsert as the in-app paste tool, including ADDING new names to the directory). Works on desktop AND Android.
 // @match        https://www.masterscoreboard.co.uk/*
 // @match        https://masterscoreboard.co.uk/*
 // @run-at       document-idle
@@ -86,7 +86,7 @@
       const aliasMap = {};
       try { const ar = await rest('trgg_handicap_alias?select=alias_key,golfer_id'); if (ar.ok) (await ar.json()).forEach(a => aliasMap[a.alias_key] = a.golfer_id); } catch (e) {}
 
-      const profUpd = [], shRows = [], unmatched = []; let matched = 0;
+      const profUpd = [], shRows = [], newbies = []; let matched = 0;
       const stamp = new Date().toISOString();
       for (const e of entries) {
         let p = null;
@@ -95,7 +95,7 @@
           if (lockedIds.has(aliasId)) { lockedSkipped++; continue; }   // manual override — leave it alone
           p = profById[aliasId];
         } else { const list = byKey[e.key] || []; const idx = used[e.key] || 0; if (idx < list.length) { p = list[idx]; used[e.key] = idx + 1; } }
-        if (!p) { if (lockedKeys.has(e.key)) { lockedSkipped++; continue; } unmatched.push(e.name); continue; }
+        if (!p) { if (lockedKeys.has(e.key)) { lockedSkipped++; continue; } newbies.push(e); continue; }
         matched++;
         const pd = Object.assign({}, p.profile_data || {}); pd.handicap = e.num;
         const cur = p.handicap_index == null ? null : parseFloat(p.handicap_index);
@@ -104,7 +104,48 @@
         shRows.push({ golfer_id: p.line_user_id, society_id: SID, handicap_index: e.num, calculation_method: 'TRGG-masterscoreboard', last_calculated_at: stamp });
       }
 
-      setBtn(`Writing ${profUpd.length}…`);
+      // NEW names → create them (confirm exactly who, first). Mirrors TRGGHandicapPaste:
+      // TRGG-HCP-… profile (→ TRGG Directory non-member) + society_members + handicap;
+      // a name uniquely matching an UNLINKED trgg_members row links that roster row instead.
+      let skippedNew = 0;
+      if (newbies.length && !confirm(`${newbies.length} NEW name(s) are not in MyCaddiPro yet:\n\n  ` +
+          newbies.slice(0, 15).map(x => `${x.name} — ${x.num}`).join('\n  ') + (newbies.length > 15 ? '\n  …' : '') +
+          `\n\nOK = ADD them (profile + TRGG membership + handicap; they appear in the TRGG Directory as non-members).\nCancel = skip adding, just update the matched players.`)) {
+        skippedNew = newbies.length; newbies.length = 0;
+      }
+      const newProf = [], newMem = [], memLink = [];
+      if (newbies.length) {
+        const memByKey = {};
+        try { const mr = await rest('trgg_members?select=id,full_name,matched_user_id'); if (mr.ok) (await mr.json()).forEach(m => { if (m.matched_user_id) return; const k = nameKey(m.full_name); if (k) (memByKey[k] = memByKey[k] || []).push(m); }); } catch (e) {}
+        let seq = 0; const ts = Date.now();
+        for (const e of newbies) {
+          const gid = 'TRGG-HCP-' + ts + '-' + (++seq);
+          newProf.push({ line_user_id: gid, name: e.name, display_name: e.name, role: 'golfer', handicap_index: e.num, trgg_handicap: e.num, profile_data: { handicap: e.num, is_manual_entry: true }, society_name: 'Travellers Rest Golf Group' });
+          newMem.push({ id: crypto.randomUUID(), society_id: SID, golfer_id: gid, role: 'member', status: 'active', joined_at: stamp });
+          shRows.push({ golfer_id: gid, society_id: SID, handicap_index: e.num, calculation_method: 'TRGG-masterscoreboard', last_calculated_at: stamp });
+          const rows = memByKey[e.key] || [];
+          if (rows.length === 1) memLink.push({ rowId: rows[0].id, gid });
+        }
+      }
+
+      setBtn(`Writing ${profUpd.length + newProf.length}…`);
+      let newErr = 0;
+      for (const c of chunk(newProf, 200)) {
+        const r = await rest('user_profiles', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(c) });
+        if (!r.ok) newErr += c.length;
+      }
+      for (const c of chunk(newMem, 200)) {
+        try { await rest('society_members', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(c) }); } catch (e) {}
+      }
+      let rosterLinked = 0;
+      for (const l of memLink) {
+        try {
+          const r = await rest(`trgg_members?id=eq.${l.rowId}&matched_user_id=is.null`, {
+            method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ matched_user_id: l.gid })
+          });
+          if (r.ok && (await r.json()).length) rosterLinked++;
+        } catch (e) {}
+      }
       let profErr = 0;
       for (const c of chunk(profUpd, 25)) {
         await Promise.all(c.map(async u => {
@@ -127,8 +168,10 @@
 
       alert(`TRGG handicaps updated ✅\n\n` +
         `Scraped:   ${entries.length}\nMatched:   ${matched}\nProfiles updated: ${profUpd.length}${profErr ? ' (' + profErr + ' failed)' : ''}\n` +
+        (newProf.length ? `Added NEW: ${newProf.length - newErr}${newErr ? ' (' + newErr + ' FAILED)' : ''}${rosterLinked ? ', ' + rosterLinked + ' linked to their member record' : ''} → in the TRGG Directory as non-members:\n  ` + newbies.slice(0, 20).map(x => x.name).join(', ') + (newbies.length > 20 ? ' …' : '') + '\n' : '') +
+        (skippedNew ? `New names SKIPPED (you cancelled): ${skippedNew}\n` : '') +
         `Society rows: ${shRows.length}${shErr ? ' (some errors)' : ''}\nUpcoming regs synced: ${regSync}\n` +
-        (unmatched.length ? `\nNOT matched (${unmatched.length}) — add via the in-app paste tool:\n  ` + unmatched.slice(0, 20).join(', ') + (unmatched.length > 20 ? ' …' : '') : '\nEveryone matched.'));
+        (!newProf.length && !skippedNew ? '\nEveryone matched.' : ''));
     } catch (err) {
       alert('Error: ' + (err && err.message ? err.message : err));
     } finally {

@@ -608,6 +608,31 @@
         document.body.style.overflow = '';
     }
 
+    // ------------------------------------------------------------------
+    // Entry points — tap the handicap number where you already look at it:
+    // header identity line (HCP: x.x) and the Rounds-tab stat band. Both
+    // golfer-dashboard-scoped; delegated so re-renders can't unbind them.
+    // ------------------------------------------------------------------
+    function wireEntryPoints() {
+        const st = document.createElement('style');
+        st.textContent = '#golferDashboard .user-handicap{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}' +
+            '#golferDashboard .scv3h-stat.hl-tap{cursor:pointer}';
+        document.head.appendChild(st);
+        const cell = document.getElementById('rounds-handicap');
+        if (cell && cell.parentElement) cell.parentElement.classList.add('hl-tap');
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('#golferDashboard .user-handicap') ||
+                e.target.closest('#golferDashboard .scv3h-stat.hl-tap')) {
+                open();
+            }
+        });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', wireEntryPoints);
+    } else {
+        wireEntryPoints();
+    }
+
     window.HandicapLedger = { open, close };
     console.log('[HandicapLedger] HLV1 ready');
 })();

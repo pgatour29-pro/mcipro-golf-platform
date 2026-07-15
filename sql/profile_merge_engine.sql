@@ -60,8 +60,17 @@ BEGIN
     RAISE EXCEPTION 'absorbed % looks like a real account — pass p_force := true to merge it', p_absorbed;
   END IF;
 
-  -- Quiet merge: suppress user + FK triggers for this transaction only.
-  SET LOCAL session_replication_role = replica;
+  -- Quiet merge: best-effort trigger suppression (only a superuser can set this GUC — works
+  -- under the management-API/cron path, silently skipped under the browser's anon role).
+  -- Verified safe either way: the triggers on the touched tables are no-ops on a merge —
+  -- auto_promote_waitlist needs a capacity change (a player_id swap isn't one) and sends no
+  -- notification; auto_update_society_handicaps_on_round only fires on new/completed rounds,
+  -- not a golfer_id change; sync_handicap_to_profile merely keeps the profile handicap in sync.
+  BEGIN
+    SET LOCAL session_replication_role = replica;
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
 
   -- Move every TEXT column across public that literally holds the absorbed id, except the identity
   -- tables (handled explicitly). A 30-char LINE / TRGG-GUEST id can't collide with unrelated free text.

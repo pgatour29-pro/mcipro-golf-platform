@@ -56,6 +56,7 @@ Roughly 60 feature modules are *already* external `.js` files loaded via `<scrip
 - 13,333 — `LineAuthentication` (LINE LIFF auth)
 - 14,910 — course request system
 - 15,053 — multi-provider OAuth
+- 15,341 — **`PWAInstallGate`** — forced "add to home screen" flow (v590). LINE can't install PWAs → `?install=1` handoff to system browser; Android one-tap; iOS Safari steps. Fired centrally from `redirectToDashboard()` (~19,487). Early head capture at line ~48. See [`PWA_INSTALL_GATE_2026-07-16.md`](PWA_INSTALL_GATE_2026-07-16.md).
 - 15,797 — `OTPAuthentication`
 - 15,955 — `FallbackAuthentication`
 - 16,035 — `NotificationManager`

@@ -149,6 +149,9 @@ LANGUAGE sql STABLE AS $$
               WHERE tok <> '') AS key
     FROM user_profiles up
     WHERE coalesce(up.name,'') <> ''
+      -- golfers only: organizer/society/staff identity rows are not duplicate players
+      AND COALESCE(up.role,'') NOT IN ('organizer','society_organizer','manager','admin','staff','proshop')
+      AND NOT EXISTS (SELECT 1 FROM society_profiles sp WHERE sp.id::text = up.line_user_id)
   ),
   ranked AS (
     SELECT b.*,

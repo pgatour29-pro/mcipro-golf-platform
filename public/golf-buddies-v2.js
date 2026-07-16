@@ -1069,12 +1069,16 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
                 .from('user_profiles')
                 .select('line_user_id, name, profile_data, handicap_index');
 
-            // AND-chained ilikes: every word must appear, any order/format — matches
-            // "Mike Smith" AND "Smith, Mike". Never build a comma into .or(): PostgREST's
-            // logic-tree parser splits on commas ("failed to parse logic tree"), which
-            // made every multi-word search here error out.
+            // Anchored word-prefix + nickname variants — SAME rules as the platform engine
+            // (SocietyGolfDB.searchPlayers, v581/v582): every typed word must prefix a name
+            // token in any order ("peter park" and "park peter" both find "Pete Park"), and
+            // each word expands to its nickname group ("peter"→"pete", "bob"→"robert").
+            // Values are sanitized (comma-free) so they're safe inside .or().
             for (const w of searchWords) {
-                dbQuery = dbQuery.ilike('name', `%${w}%`);
+                const variants = (window._nickVariants ? window._nickVariants(w) : [w]);
+                const clauses = [];
+                for (const v of variants) { clauses.push(`name.ilike.${v}%`, `name.ilike.% ${v}%`); }
+                dbQuery = dbQuery.or(clauses.join(','));
             }
 
             const { data, error } = await dbQuery.limit(20);
@@ -1091,6 +1095,8 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
                 p.line_user_id !== this.currentUserId &&
                 !existingBuddyIds.has(p.line_user_id)
             );
+            // Surname-weighted relevance, same ranking as the platform engine
+            if (window.scoreNamePrefix) filtered.sort((a, b) => window.scoreNamePrefix(b.name, query) - window.scoreNamePrefix(a.name, query));
 
             if (filtered.length === 0) {
                 results.innerHTML = '<div class="bd-empty"><div class="ei"><span class="micon">search_off</span></div><p>'+_bt('buddies.empty.discover', 'No new players found')+'</p><div class="sm">Everyone matching is already in your buddies.</div></div>';
@@ -1573,10 +1579,13 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
                 .from('user_profiles')
                 .select('line_user_id, name, profile_data, handicap_index');
 
-            // AND-chained ilikes — see searchPlayers(): a comma inside .or() breaks
-            // PostgREST's logic-tree parser, killing every multi-word search.
+            // Anchored word-prefix + nickname variants — same engine rules as searchPlayers()
+            // above; sanitized tokens are comma-free so they're safe inside .or().
             for (const w of searchWords) {
-                dbQuery = dbQuery.ilike('name', `%${w}%`);
+                const variants = (window._nickVariants ? window._nickVariants(w) : [w]);
+                const clauses = [];
+                for (const v of variants) { clauses.push(`name.ilike.${v}%`, `name.ilike.% ${v}%`); }
+                dbQuery = dbQuery.or(clauses.join(','));
             }
 
             const { data, error } = await dbQuery.limit(10);
@@ -1591,6 +1600,8 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
                 p.line_user_id !== this.currentUserId &&
                 !this.selectedGroupMembers.includes(p.line_user_id)
             );
+            // Surname-weighted relevance, same ranking as the platform engine
+            if (window.scoreNamePrefix) filtered.sort((a, b) => window.scoreNamePrefix(b.name, query) - window.scoreNamePrefix(a.name, query));
 
             if (filtered.length === 0) {
                 container.innerHTML = '<p class="text-gray-500 text-xs py-2">'+_bt('buddies.empty.discover', 'No new players found')+'</p>';

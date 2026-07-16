@@ -536,9 +536,11 @@ class SocietyDashboardEnhanced {
     filterMembers(query) {
         if (!this.currentMembers) return;
 
+        // Platform matcher: any word order + nicknames ("peter park" finds "Park, Pete")
         const filtered = this.currentMembers.filter(m => {
             const name = m.user_profiles?.name || m.golfer_name || '';
-            return name.toLowerCase().includes(query.toLowerCase());
+            return window.nameTokensMatch ? window.nameTokensMatch(query, name)
+                                          : name.toLowerCase().includes(query.toLowerCase());
         });
 
         this.renderMembersList('members-list-container', filtered);

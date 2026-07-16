@@ -118,6 +118,63 @@ const tt2 = [{ id: 'c', name: 'C', handicap: 0, scores: sc([4]) }, { id: 'd', na
 eq('Team tie: HALVES (default) => all square', E.calculateTeamMatchPlay(tt1, tt2, oneHole, false, false, 'bestball_halves').overall, 0);
 eq('Team tie: TIEBREAKER => Team1 down 1 (2nd ball 6 vs 5)', E.calculateTeamMatchPlay(tt1, tt2, oneHole, false, false, 'bestball_tiebreaker').overall, -1);
 
+// =========================================================
+// 3-Man Waltz — engine + organizer team board parity
+// =========================================================
+// Scratch trio on all-par-4s: A pars (2 pts/hole), B bogeys (1), C birdies (3).
+// Rotation: hole1 best-1 = 3, hole2 best-2 = 3+2 = 5, hole3 best-3 = 6 → 14 per cycle × 6 = 84.
+const wA = { id: 'a', handicap: 0, scores: sc(Array(18).fill(4)) };
+const wB = { id: 'b', handicap: 0, scores: sc(Array(18).fill(5)) };
+const wC = { id: 'c', handicap: 0, scores: sc(Array(18).fill(3)) };
+const wEng = E.calculateWaltz([wA, wB, wC], H, true);
+eq('Waltz engine: scratch A/B/C rotation total = 84', wEng.total, 84);
+eq('Waltz engine: hole 1 counts best 1 (birdie 3)', wEng.byHole[0].teamPoints, 3);
+eq('Waltz engine: hole 2 counts best 2 (3+2)', wEng.byHole[1].teamPoints, 5);
+eq('Waltz engine: hole 3 counts all 3 (3+2+1)', wEng.byHole[2].teamPoints, 6);
+
+// Organizer board aggregates the per-hole stableford_points the scorers SAVED — must equal
+// the engine total when fed the same per-hole points.
+const { loadWaltzBoard } = require('./loadEngine');
+let W;
+try { W = loadWaltzBoard(); }
+catch (err) { console.error('FATAL: could not load Waltz board helpers from index.html\n', err.message); process.exit(2); }
+const savedRow = (id, ptsPerHole) => ({
+    golfer_id: id, scores: Array.from({ length: 18 }, (_, i) => ({ hole_number: i + 1, gross_score: 4, stableford_points: ptsPerHole }))
+});
+const wStats = W._waltzTeamStats([savedRow('a', 2), savedRow('b', 1), savedRow('c', 3)]);
+eq('Waltz board: team total matches engine (84)', wStats.total, wEng.total);
+eq('Waltz board: thru 18', wStats.thru, 18);
+eq('Waltz board: hole pattern 3/5/6', wStats.teamHolePts.slice(0, 3), [3, 5, 6]);
+
+// Partial round: only holes 1-2 entered → thru 2, total 3+5 = 8, rest null
+const partialRow = (id, pts) => ({
+    golfer_id: id, scores: [1, 2].map(h => ({ hole_number: h, gross_score: 4, stableford_points: pts }))
+});
+const wPart = W._waltzTeamStats([partialRow('a', 2), partialRow('b', 1), partialRow('c', 3)]);
+check('Waltz board: partial round thru 2, total 8, hole 3 null',
+    wPart.thru === 2 && wPart.total === 8 && wPart.teamHolePts[2] === null,
+    `thru=${wPart.thru}, total=${wPart.total}, h3=${wPart.teamHolePts[2]}`);
+
+// Pickup (0 points WITH a score) counts as an entered 0, never as "not played"
+const wPickup = W._waltzTeamStats([
+    { golfer_id: 'a', scores: [{ hole_number: 1, gross_score: 9, stableford_points: 0 }] },
+    { golfer_id: 'b', scores: [] }
+]);
+check('Waltz board: pickup counts as 0 (hole played, 0 pts)', wPickup.teamHolePts[0] === 0 && wPickup.thru === 1,
+    `h1=${wPickup.teamHolePts[0]}, thru=${wPickup.thru}`);
+
+// Team building: tee-sheet groups first, scorecard group_id pulls a walk-on into a
+// teammate's team, strays stay unassigned (no pseudo-team).
+const wRows = [
+    { golfer_id: 'p1', group_id: 'sc1' }, { golfer_id: 'p2', group_id: 'sc1' }, { golfer_id: 'p3' },
+    { golfer_id: 'w1', group_id: 'sc1' },   // walk-on scored in p1/p2's group
+    { golfer_id: 'stray' }
+];
+const wTeams = W._buildWaltzTeams.call({ _waltzPairingGroups: [['p1', 'p2', 'p3']] }, wRows);
+check('Waltz teams: tee-sheet trio + walk-on merged into one team, stray unassigned',
+    wTeams.teams.length === 1 && wTeams.teams[0].length === 4 && wTeams.unassigned.length === 1 && wTeams.unassigned[0].golfer_id === 'stray',
+    JSON.stringify({ teams: wTeams.teams.map(t => t.map(r => r.golfer_id)), unassigned: wTeams.unassigned.map(r => r.golfer_id) }));
+
 // ---- report ----
 console.log(`\nScoring engine tests: ${pass} passed, ${fail} failed`);
 if (fail) { console.log('\n' + failures.join('\n')); process.exit(1); }

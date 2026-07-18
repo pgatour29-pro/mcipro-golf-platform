@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scoring Revamp — Par-3 2s + Points (SCR2 v1)</title>
+<style>
+  :root{
+    --ink:#111827; --mut:#6b7280; --dim:#9ca3af; --hair:#e5e7eb; --bg:#f3f4f6;
+    --card:#ffffff; --sky:#0284c7; --skyD:#0369a1; --grn:#22c55e; --grnD:#16a34a;
+    --grnBg:#f0fdf4; --grnHair:#bbf7d0; --amb:#f59e0b; --red:#ef4444;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);padding:14px;font-size:14px;}
+  .mono{font-family:'Consolas','JetBrains Mono',monospace;}
+  .wrap{max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:12px;}
+  .card{background:var(--card);border:1px solid var(--hair);border-radius:14px;padding:14px;}
+  .card h3{font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--mut);display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+  .chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:10px;font-weight:700;}
+  .chip.live{background:#fef2f2;color:var(--red);}
+  .chip.live .dot{width:6px;height:6px;border-radius:99px;background:var(--red);animation:pulse 1.2s infinite;}
+  @keyframes pulse{50%{opacity:.35}}
+  .chip.grn{background:var(--grnBg);color:var(--grnD);border:1px solid var(--grnHair);}
+  .chip.gray{background:#f3f4f6;color:var(--mut);}
+  label.f{font-size:10px;font-weight:700;color:var(--mut);letter-spacing:.05em;display:block;margin-bottom:3px;}
+  input.v, select.v{width:100%;border:1px solid var(--hair);border-radius:9px;padding:6px 8px;font-size:13px;font-weight:600;color:var(--ink);background:#fff;}
+  input.v:focus{outline:2px solid var(--sky);}
+  /* ---- A. points & awards ---- */
+  .pts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:8px;}
+  .pts-cell{border:1px solid var(--hair);border-radius:10px;padding:6px 8px;background:#fafafa;}
+  .pts-cell .pos{font-size:10px;font-weight:800;color:var(--mut);}
+  .pts-cell .pos .medal{font-size:11px;}
+  .pts-cell input{width:100%;border:none;background:transparent;font-size:16px;font-weight:800;color:var(--ink);font-family:'Consolas',monospace;padding:1px 0;}
+  .toolrow{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:10px;}
+  .toolrow .fld{flex:0 0 auto;}
+  .twos-band{margin-top:12px;border:1px solid var(--grnHair);background:var(--grnBg);border-radius:12px;padding:10px 12px;}
+  .twos-band .hd{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  .twos-band .hd .t{font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--grnD);}
+  .sw{width:34px;height:19px;border-radius:99px;background:var(--grn);position:relative;flex:0 0 auto;}
+  .sw::after{content:'';position:absolute;top:2px;right:2px;width:15px;height:15px;border-radius:99px;background:#fff;}
+  .twos-fields{display:flex;gap:10px;flex-wrap:wrap;align-items:end;}
+  .twos-fields .fld{flex:1 1 90px;min-width:90px;}
+  .twos-fields .eq{font-size:15px;font-weight:800;color:var(--grnD);padding-bottom:7px;}
+  .calc{background:#fff;border:1px dashed var(--grnHair);border-radius:9px;padding:6px 9px;font-size:11px;color:var(--mut);}
+  .calc b{color:var(--grnD);font-family:'Consolas',monospace;font-size:13px;}
+  .note{font-size:10px;color:var(--dim);margin-top:8px;}
+  /* ---- B. leaderboard + 2s panel ---- */
+  .lb-wrap{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:12px;align-items:start;}
+  table.lb{width:100%;border-collapse:collapse;font-size:12.5px;}
+  table.lb th{font-size:9.5px;font-weight:800;letter-spacing:.06em;color:var(--dim);text-align:left;padding:6px 7px;border-bottom:1px solid var(--hair);}
+  table.lb td{padding:7px;border-bottom:1px solid #f3f4f6;white-space:nowrap;}
+  table.lb td.num{font-family:'Consolas',monospace;font-weight:700;}
+  tr.win td{background:#fffbeb;}
+  .twochip{display:inline-flex;align-items:center;gap:3px;background:var(--grnBg);border:1px solid var(--grnHair);color:var(--grnD);border-radius:999px;padding:1px 7px;font-size:9.5px;font-weight:800;margin-left:6px;font-family:'Consolas',monospace;}
+  .panel2s{border:1px solid var(--grnHair);border-radius:14px;background:var(--card);overflow:hidden;}
+  .panel2s .ph{background:var(--grnBg);padding:9px 12px;display:flex;align-items:center;gap:7px;border-bottom:1px solid var(--grnHair);}
+  .panel2s .ph .t{font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--grnD);}
+  .panel2s .ph .cnt{margin-left:auto;background:var(--grn);color:#fff;border-radius:999px;min-width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;font-family:'Consolas',monospace;}
+  .two-row{display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid #f3f4f6;}
+  .two-row .n2{width:26px;height:26px;border-radius:8px;background:var(--grn);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;font-family:'Consolas',monospace;flex:0 0 auto;}
+  .two-row .who{min-width:0;}
+  .two-row .who .nm{font-weight:700;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;}
+  .two-row .who .h{font-size:10px;color:var(--mut);}
+  .two-row .val{margin-left:auto;font-family:'Consolas',monospace;font-weight:800;font-size:12px;color:var(--grnD);}
+  .panel2s .pf{padding:9px 12px;background:#fafafa;display:flex;justify-content:space-between;font-size:10.5px;color:var(--mut);font-weight:600;}
+  .panel2s .pf b{color:var(--grnD);font-family:'Consolas',monospace;font-size:12px;}
+  /* ---- C. hole-by-hole ---- */
+  .hbh{overflow-x:auto;}
+  table.grid{border-collapse:collapse;font-size:11.5px;min-width:640px;}
+  table.grid th, table.grid td{border:1px solid var(--hair);padding:4px 0;text-align:center;min-width:34px;font-family:'Consolas',monospace;}
+  table.grid th{background:#f9fafb;font-size:9.5px;color:var(--mut);}
+  table.grid td.pl{font-family:inherit;font-weight:700;text-align:left;padding:4px 8px;min-width:110px;}
+  td.eag{background:#eab308;color:#fff;font-weight:800;}
+  td.bir{background:#ef4444;color:#fff;font-weight:800;}
+  td.par3two{background:var(--grn);color:#fff;font-weight:800;position:relative;box-shadow:inset 0 0 0 2px #fff, inset 0 0 0 3.5px var(--grnD);}
+  td.par3two::after{content:'2s';position:absolute;top:-6px;right:-3px;background:var(--grnD);color:#fff;font-size:7px;font-weight:800;border-radius:6px;padding:0.5px 3px;}
+  td.parx{background:#e5e7eb;}
+  td.bog{background:#dbeafe;}
+  td.dbl{background:#bfdbfe;}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:10px;color:var(--mut);align-items:center;}
+  .legend .sq{width:12px;height:12px;border-radius:3px;display:inline-block;vertical-align:-2px;margin-right:3px;}
+  .btn{border:none;border-radius:9px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;}
+  .btn.p{background:var(--sky);color:#fff;}
+  .btn.g{background:var(--grn);color:#fff;}
+  .btn.s{background:#fff;border:1px solid var(--hair);color:var(--ink);}
+  .cap{font-size:10px;color:var(--dim);text-align:center;margin-top:-4px;}
+  @media(max-width:760px){ .lb-wrap{grid-template-columns:1fr;} body{padding:8px;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ A · POINTS & AWARDS (revamped existing card) ============ -->
+  <div class="card">
+    <h3>🏆 CHAMPIONSHIP POINTS &amp; AWARDS <span class="chip gray">saved on event</span></h3>
+    <div class="toolrow">
+      <div class="fld" style="width:120px;"><label class="f">POINT SYSTEM</label>
+        <select class="v"><option>Custom</option><option>F1 style</option><option>Linear</option><option>Winner heavy</option></select>
+      </div>
+      <div class="fld" style="width:78px;"><label class="f">PLACES</label><input class="v mono" value="5"></div>
+      <button class="btn s" style="margin-left:auto;">Save</button>
+      <button class="btn p">Save &amp; Publish</button>
+    </div>
+    <div class="pts-grid">
+      <div class="pts-cell"><div class="pos"><span class="medal">🥇</span> 1ST</div><input value="25"></div>
+      <div class="pts-cell"><div class="pos"><span class="medal">🥈</span> 2ND</div><input value="18"></div>
+      <div class="pts-cell"><div class="pos"><span class="medal">🥉</span> 3RD</div><input value="15"></div>
+      <div class="pts-cell"><div class="pos">4TH</div><input value="12"></div>
+      <div class="pts-cell"><div class="pos">5TH</div><input value="10"></div>
+    </div>
+
+    <div class="twos-band">
+      <div class="hd"><span class="sw"></span><span class="t">PAR-3 2s POT</span><span class="chip grn">4 par 3s on this course</span></div>
+      <div class="twos-fields">
+        <div class="fld"><label class="f">BUY-IN / PLAYER</label><input class="v mono" value="50"></div>
+        <div class="fld"><label class="f">POT (AUTO · 25 PLAYERS)</label><input class="v mono" value="1,250"></div>
+        <div class="eq">→</div>
+        <div class="calc">3 twos so far · split pays <b>416</b> each</div>
+      </div>
+      <div class="note">Auto-detected from live scores (gross 2 on a par 3). Winners land in Prizes &amp; Payouts exactly as today — this card and the registration awards section stay in sync.</div>
+    </div>
+  </div>
+
+  <!-- ============ B · LIVE LEADERBOARD + 2s SIDE PANEL ============ -->
+  <div class="card">
+    <h3>📊 LIVE LEADERBOARD <span class="chip live"><span class="dot"></span>LIVE</span><span style="margin-left:auto;font-weight:600;color:var(--dim);font-size:10px;">TRGG · Pattaya Country Club · Stableford</span></h3>
+    <div class="lb-wrap">
+      <div style="overflow-x:auto;">
+        <table class="lb">
+          <thead><tr><th>POS</th><th>PLAYER</th><th>HCP</th><th>GROSS</th><th>NET</th><th>PTS</th><th>CHAMP</th><th>THRU</th></tr></thead>
+          <tbody>
+            <tr class="win"><td class="num">🏆 1</td><td>Tom Britt<span class="twochip">2s ×1</span></td><td class="num">12.4</td><td class="num">74</td><td class="num">62</td><td class="num">41</td><td class="num">25</td><td class="num">F</td></tr>
+            <tr class="win"><td class="num">🏆 2</td><td>Erik Lundman</td><td class="num">8.1</td><td class="num">73</td><td class="num">65</td><td class="num">38</td><td class="num">18</td><td class="num">F</td></tr>
+            <tr><td class="num">3</td><td>Somchai P.<span class="twochip">2s ×1</span></td><td class="num">15.0</td><td class="num">80</td><td class="num">65</td><td class="num">36</td><td class="num">15</td><td class="num">16</td></tr>
+            <tr><td class="num">4</td><td>Marshall Root</td><td class="num">19.3</td><td class="num">86</td><td class="num">67</td><td class="num">34</td><td class="num">12</td><td class="num">15</td></tr>
+            <tr><td class="num">5</td><td>Kev Tompsett<span class="twochip">2s ×1</span></td><td class="num">15.4</td><td class="num">84</td><td class="num">69</td><td class="num">33</td><td class="num">10</td><td class="num">14</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="panel2s">
+        <div class="ph"><span style="font-size:13px;">⛳</span><span class="t">PAR-3 2s</span><span class="cnt">3</span></div>
+        <div class="two-row"><div class="n2">2</div><div class="who"><div class="nm">Tom Britt</div><div class="h">Hole 5 · Par 3 · SI 14</div></div><div class="val">+416</div></div>
+        <div class="two-row"><div class="n2">2</div><div class="who"><div class="nm">Somchai P.</div><div class="h">Hole 8 · Par 3 · SI 16</div></div><div class="val">+416</div></div>
+        <div class="two-row"><div class="n2">2</div><div class="who"><div class="nm">Kev Tompsett</div><div class="h">Hole 12 · Par 3 · SI 10</div></div><div class="val">+416</div></div>
+        <div class="pf"><span>Pot <b>1,250</b> · 3 winners</span><span><b>416</b> each</span></div>
+      </div>
+    </div>
+    <div class="cap" style="margin-top:8px;">Desktop: panel sits beside the table · Phone: panel stacks directly under the leaderboard</div>
+  </div>
+
+  <!-- ============ C · HOLE-BY-HOLE with 2s highlight ============ -->
+  <div class="card">
+    <h3>🕳️ HOLE-BY-HOLE <span class="chip gray">front 9 shown</span></h3>
+    <div class="hbh">
+      <table class="grid">
+        <tr><th style="text-align:left;padding-left:8px;">HOLE</th><th>1</th><th>2</th><th>3</th><th>4</th><th style="background:var(--grnBg);color:var(--grnD);">5</th><th>6</th><th>7</th><th style="background:var(--grnBg);color:var(--grnD);">8</th><th>9</th><th>OUT</th></tr>
+        <tr><th style="text-align:left;padding-left:8px;">PAR</th><th>4</th><th>5</th><th>4</th><th>4</th><th style="background:var(--grnBg);color:var(--grnD);">3</th><th>4</th><th>5</th><th style="background:var(--grnBg);color:var(--grnD);">3</th><th>4</th><th>36</th></tr>
+        <tr><td class="pl">Tom Britt</td><td class="parx">4</td><td class="bir">4</td><td class="parx">4</td><td class="bog">5</td><td class="par3two">2</td><td class="parx">4</td><td class="parx">5</td><td class="parx">3</td><td class="bog">5</td><td><b>36</b></td></tr>
+        <tr><td class="pl">Somchai P.</td><td class="bog">5</td><td class="parx">5</td><td class="dbl">7</td><td class="parx">4</td><td class="parx">3</td><td class="bog">5</td><td class="eag">3</td><td class="par3two">2</td><td class="parx">4</td><td><b>38</b></td></tr>
+        <tr><td class="pl">Marshall Root</td><td class="bog">5</td><td class="bog">6</td><td class="parx">4</td><td class="bog">5</td><td class="bog">4</td><td class="parx">4</td><td class="bog">6</td><td class="parx">3</td><td class="bog">5</td><td><b>42</b></td></tr>
+      </table>
+    </div>
+    <div class="legend">
+      <span><span class="sq" style="background:var(--grn);box-shadow:inset 0 0 0 2px #fff, inset 0 0 0 3px var(--grnD);"></span><b style="color:var(--grnD);">PAR-3 TWO</b></span>
+      <span><span class="sq" style="background:#eab308;"></span>Eagle+</span>
+      <span><span class="sq" style="background:#ef4444;"></span>Birdie</span>
+      <span><span class="sq" style="background:#e5e7eb;"></span>Par</span>
+      <span><span class="sq" style="background:#dbeafe;"></span>Bogey</span>
+      <span><span class="sq" style="background:#bfdbfe;"></span>Double+</span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

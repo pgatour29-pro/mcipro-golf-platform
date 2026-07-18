@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Society Results - MyCaddiPro</title>
+    <link rel="icon" href="data:,">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <style>
+        /* Theme variables — dark default (matches in-app ThemeMode), .theme-light overrides */
+        :root {
+            --bg:#0f172a; --card:#1e293b; --card2:#273449; --ink:#f1f5f9; --sub:#94a3b8;
+            --line:#334155; --green:#22c55e; --green-deep:#16a34a; --gold:#f59e0b;
+            --cell:#1e293b; --cell-line:#334155; --band:#273449;
+        }
+        body.theme-light {
+            --bg:#f1f5f9; --card:#ffffff; --card2:#f8fafc; --ink:#0f172a; --sub:#64748b;
+            --line:#e2e8f0; --cell:#ffffff; --cell-line:#e2e8f0; --band:#f1f5f9;
+        }
+        html, body { background: var(--bg); color: var(--ink); }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; overflow-x: clip; }
+        .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; }
+        .sub { color: var(--sub); }
+        .msym { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; display:inline-block; line-height:1; vertical-align:middle; }
+
+        /* Society chips */
+        .soc-chip { border:1px solid var(--line); background:var(--card); color:var(--sub); border-radius:999px; padding:6px 14px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap; }
+        .soc-chip.active { background:var(--green-deep); border-color:var(--green-deep); color:#fff; }
+
+        /* Event strip */
+        .ev-strip { display:flex; gap:8px; overflow-x:auto; padding:2px 2px 6px; -webkit-overflow-scrolling:touch; }
+        .ev-card { flex:0 0 auto; width:168px; text-align:left; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:9px 11px; cursor:pointer; }
+        .ev-card.active { border-color:var(--green); box-shadow:0 0 0 1px var(--green); }
+        .ev-card .d { font-size:10px; font-weight:700; color:var(--green); text-transform:uppercase; }
+        .ev-card .t { font-size:12.5px; font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+        .ev-card .c { font-size:10.5px; color:var(--sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+
+        /* Tabs */
+        .rtab { flex:1; text-align:center; padding:11px 4px 9px; font-size:13.5px; font-weight:800; color:var(--sub); border-bottom:3px solid transparent; cursor:pointer; letter-spacing:.2px; }
+        .rtab.active { color:var(--green); border-bottom-color:var(--green); }
+
+        /* Tables */
+        .res-table { width:100%; border-collapse:collapse; font-size:13.5px; }
+        .res-table th { font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--sub); font-weight:700; padding:8px 8px; border-bottom:1px solid var(--line); background:var(--card2); }
+        .res-table td { padding:10px 8px; border-bottom:1px solid var(--line); }
+        .winner-row { background: linear-gradient(90deg, rgba(245,158,11,.16), rgba(245,158,11,.05)); }
+        .player-btn { display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:600; color:var(--ink); }
+        .expand-icon { transition: transform .2s; font-size:18px; color:var(--sub); }
+        .expand-icon.expanded { transform: rotate(180deg); }
+        .hole-details { display:none; }
+        .hole-details.show { display:table-row; }
+
+        /* Hole grid */
+        .hole-grid { display:grid; grid-template-columns:repeat(10,1fr); gap:2px; }
+        .hole-cell { text-align:center; padding:4px 1px; font-size:11px; border-radius:4px; color:var(--ink); }
+        .hole-head { background:var(--band); font-weight:700; font-size:10px; color:var(--sub); }
+        .hole-par { color:var(--sub); font-size:9px; }
+        .hole-tot { font-weight:800; background:var(--band); }
+        .hole-score { background:var(--cell); border:1px solid var(--cell-line); }
+        .score-eagle { background:#3b82f6; color:#fff; border-radius:50%; font-weight:bold; box-shadow:0 0 0 2px #1d4ed8; }
+        .score-birdie { background:#60a5fa; color:#fff; border-radius:50%; font-weight:bold; }
+        .score-bogey { background:#ef4444; color:#fff; font-weight:bold; }
+        .score-double { background:#991b1b; color:#fff; font-weight:bold; box-shadow:inset 0 0 0 2px #fca5a5; }
+        .score-two { box-shadow:0 0 0 2px var(--green) !important; }
+        .pts-cell { color:var(--green); font-size:9.5px; font-weight:700; }
+
+        /* Podium */
+        .podium { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+        .pod-card { border-radius:14px; padding:12px 8px; text-align:center; border:1px solid var(--line); background:var(--card); }
+        .pod-1 { border-color:#f59e0b; background:linear-gradient(180deg, rgba(245,158,11,.22), rgba(245,158,11,.05)); }
+        .pod-2 { border-color:#94a3b8; background:linear-gradient(180deg, rgba(148,163,184,.20), rgba(148,163,184,.04)); }
+        .pod-3 { border-color:#d97706; background:linear-gradient(180deg, rgba(217,119,6,.18), rgba(217,119,6,.04)); }
+        .pod-medal { font-size:26px; }
+        .pod-name { font-size:13px; font-weight:800; color:var(--ink); margin-top:4px; word-break:break-word; }
+        .pod-score { font-size:17px; font-weight:800; color:var(--green); margin-top:2px; }
+        .pod-sub { font-size:10.5px; color:var(--sub); margin-top:1px; }
+
+        /* 2s */
+        .two-row { display:flex; align-items:center; gap:12px; padding:10px 12px; border-bottom:1px solid var(--line); }
+        .two-hole { width:44px; height:44px; border-radius:10px; background:var(--green-deep); color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; flex-shrink:0; }
+        .two-hole .h { font-size:16px; font-weight:800; line-height:1; }
+        .two-hole .p { font-size:8.5px; font-weight:700; opacity:.85; text-transform:uppercase; }
+
+        .icon-btn { border:1px solid var(--line); background:var(--card); color:var(--sub); border-radius:10px; width:34px; height:34px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+        .lang-btn { border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:10px; height:34px; padding:0 10px; font-size:12px; font-weight:800; cursor:pointer; }
+        .scroll-x { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+        .division-band { font-size:12.5px; font-weight:800; color:var(--ink); background:var(--band); border-radius:8px; padding:7px 11px; margin:12px 0 6px; }
+    </style>
+</head>
+<body>
+    <!-- 1-line compact header -->
+    <header style="border-bottom:1px solid var(--line); background:var(--card);">
+        <div class="max-w-5xl mx-auto px-3 py-2 flex items-center gap-2">
+            <button class="icon-btn" id="backBtn" title="Back"><span class="msym" style="font-size:20px;">arrow_back</span></button>
+            <span class="msym" style="font-size:22px; color:var(--gold);">emoji_events</span>
+            <h1 style="font-size:16px; font-weight:800; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" data-i18n="title">Society Results</h1>
+            <button class="lang-btn" id="langBtn" title="Language">EN</button>
+            <button class="icon-btn" data-theme-toggle onclick="toggleTheme()" title="Theme"><span class="msym theme-toggle-icon" style="font-size:20px;">light_mode</span></button>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-3 pb-10">
+        <!-- Society chips -->
+        <div class="flex gap-2 py-3 scroll-x" id="socChips"></div>
+
+        <!-- Published event strip -->
+        <div id="evStripWrap">
+            <div class="ev-strip" id="evStrip"><div class="sub text-sm py-2" data-i18n="loading">Loading…</div></div>
+        </div>
+
+        <!-- Event view -->
+        <div id="eventView" class="hidden">
+            <!-- Hero band -->
+            <div class="card mt-2 px-4 py-3">
+                <div class="flex items-center justify-between gap-3">
+                    <div style="min-width:0;">
+                        <div class="flex items-center gap-2">
+                            <h2 id="evTitle" style="font-size:17px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></h2>
+                            <span id="evFinalBadge" class="hidden" style="font-size:10px; font-weight:800; background:var(--green-deep); color:#fff; border-radius:999px; padding:2px 8px;" data-i18n="final">FINAL</span>
+                        </div>
+                        <div id="evMeta" class="sub" style="font-size:12px; margin-top:2px;"></div>
+                    </div>
+                    <div class="text-right flex-shrink-0">
+                        <div id="evPlayers" style="font-size:15px; font-weight:800; color:var(--green);"></div>
+                        <div class="sub" style="font-size:10.5px;" data-i18n="players">players</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="card mt-3 overflow-hidden">
+                <div class="flex" style="border-bottom:1px solid var(--line);">
+                    <div class="rtab active" id="tab-winners" onclick="switchTab('winners')" data-i18n="tabWinners">Winners</div>
+                    <div class="rtab" id="tab-field" onclick="switchTab('field')" data-i18n="tabField">Full Results</div>
+                    <div class="rtab" id="tab-twos" onclick="switchTab('twos')" data-i18n="tabTwos">2s</div>
+                </div>
+                <div id="pane-winners" class="p-3"></div>
+                <div id="pane-field" class="p-0 hidden"></div>
+                <div id="pane-twos" class="p-3 hidden"></div>
+            </div>
+        </div>
+
+        <!-- No event selected / empty -->
+        <div id="emptyView" class="card mt-2 px-4 py-12 text-center hidden">
+            <span class="msym sub" style="font-size:44px;">scoreboard</span>
+            <p class="sub mt-2 text-sm" id="emptyMsg" data-i18n="noEvents">No published events yet.</p>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
+        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Same society definitions + title-prefix matching as the in-app hub / Season Standings
+        const SOCIETIES = [
+            { key:'TRGG', name:'Travellers Rest Golf Group', prefixes:['TRGG -','Travellers Rest Golf -'], color:'#16a34a' },
+            { key:'JOA',  name:'JOA Golf Pattaya',           prefixes:['JOA'],                             color:'#2563eb' },
+            { key:'JGTS', name:'JGTS Golf',                  prefixes:['JGTS'],                            color:'#d97706' }
+        ];
+
+        // ---------- i18n (parity: EN/TH/KO/JA) ----------
+        const I18N = {
+            en: { title:'Society Results', loading:'Loading…', final:'FINAL', players:'players',
+                  tabWinners:'Winners', tabField:'Full Results', tabTwos:'2s',
+                  noEvents:'No published events yet. Events appear here once the organizer publishes the results.',
+                  notPublished:'Results for this event haven’t been published yet.',
+                  noScores:'No scorecards were recorded for this event.',
+                  noTwos:'No 2s were scored at this event.',
+                  twosSummaryA:'twos', twosSummaryB:'players', officialPot:'2s pot winners (official)',
+                  errLoad:'Couldn’t load. Tap to retry.',
+                  pos:'Pos', player:'Player', hcp:'HCP', gross:'Gross', net:'Net', pts:'Pts', score:'Score',
+                  out:'Out', inn:'In', total:'Total', hole:'Hole', par:'Par', si:'SI',
+                  tapHint:'Tap a player to review the hole-by-hole scorecard',
+                  holeByHole:'Hole-by-hole (gross)', birdie:'Birdie', eagle:'Eagle', bogey:'Bogey', double:'Double+',
+                  individual:'Individual standings', poyPts:'pts', on:'on', unpublished:'UNOFFICIAL',
+                  waltzTitle:'3-Man Waltz — Team Standings', waltzSub:'Best 1 · 2 · 3 points count per hole, rotating',
+                  scrambleTitle:'Scramble — Team Standings', scrambleSub:'One ball per team',
+                  matchTitle:'Match Play', matchSub:'Net score wins the hole', allSquare:'All Square', up:'UP', thru:'thru', finalWord:'Final', team:'Team', cnt:'Cnt' },
+            th: { title:'ผลการแข่งขันก๊วนกอล์ฟ', loading:'กำลังโหลด…', final:'สิ้นสุด', players:'ผู้เล่น',
+                  tabWinners:'ผู้ชนะ', tabField:'ผลทั้งหมด', tabTwos:'โฮล 2s',
+                  noEvents:'ยังไม่มีรายการที่ประกาศผล ผลจะแสดงที่นี่เมื่อผู้จัดประกาศผลแล้ว',
+                  notPublished:'ยังไม่มีการประกาศผลอย่างเป็นทางการของรายการนี้',
+                  noScores:'ไม่มีสกอร์การ์ดที่บันทึกไว้สำหรับรายการนี้',
+                  noTwos:'ไม่มีผู้เล่นทำสกอร์ 2 ในรายการนี้',
+                  twosSummaryA:'สกอร์ 2', twosSummaryB:'ผู้เล่น', officialPot:'ผู้ชนะพ็อต 2s (ทางการ)',
+                  errLoad:'โหลดไม่สำเร็จ แตะเพื่อลองใหม่',
+                  pos:'อันดับ', player:'ผู้เล่น', hcp:'แต้มต่อ', gross:'กรอส', net:'เน็ต', pts:'แต้ม', score:'สกอร์',
+                  out:'เอาท์', inn:'อิน', total:'รวม', hole:'หลุม', par:'พาร์', si:'SI',
+                  tapHint:'แตะชื่อผู้เล่นเพื่อดูสกอร์รายหลุม',
+                  holeByHole:'สกอร์รายหลุม (กรอส)', birdie:'เบอร์ดี้', eagle:'อีเกิล', bogey:'โบกี้', double:'ดับเบิล+',
+                  individual:'อันดับรายบุคคล', poyPts:'แต้ม', on:'ที่', unpublished:'ไม่เป็นทางการ',
+                  waltzTitle:'วอลทซ์ 3 คน — อันดับทีม', waltzSub:'นับแต้มที่ดีที่สุด 1 · 2 · 3 คนต่อหลุม หมุนเวียน',
+                  scrambleTitle:'สแครมเบิล — อันดับทีม', scrambleSub:'หนึ่งลูกต่อทีม',
+                  matchTitle:'แมตช์เพลย์', matchSub:'เน็ตสกอร์ชนะหลุม', allSquare:'เสมอ', up:'อัพ', thru:'ผ่าน', finalWord:'จบ', team:'ทีม', cnt:'นับ' },
+            ko: { title:'소사이어티 결과', loading:'로딩 중…', final:'최종', players:'명',
+                  tabWinners:'우승자', tabField:'전체 결과', tabTwos:'2s',
+                  noEvents:'아직 발표된 이벤트가 없습니다. 주최자가 결과를 발표하면 여기에 표시됩니다.',
+                  notPublished:'이 이벤트의 공식 결과가 아직 발표되지 않았습니다.',
+                  noScores:'이 이벤트에 기록된 스코어카드가 없습니다.',
+                  noTwos:'이 이벤트에서 2를 기록한 선수가 없습니다.',
+                  twosSummaryA:'개의 2', twosSummaryB:'명', officialPot:'2s 팟 우승자 (공식)',
+                  errLoad:'불러오지 못했습니다. 다시 시도하려면 탭하세요.',
+                  pos:'순위', player:'선수', hcp:'핸디', gross:'그로스', net:'네트', pts:'포인트', score:'스코어',
+                  out:'전반', inn:'후반', total:'합계', hole:'홀', par:'파', si:'SI',
+                  tapHint:'선수를 탭하면 홀별 스코어카드를 볼 수 있습니다',
+                  holeByHole:'홀별 스코어 (그로스)', birdie:'버디', eagle:'이글', bogey:'보기', double:'더블+',
+                  individual:'개인 순위', poyPts:'점', on:'', unpublished:'비공식',
+                  waltzTitle:'3인 왈츠 — 팀 순위', waltzSub:'홀마다 상위 1 · 2 · 3명의 점수 합산, 순환',
+                  scrambleTitle:'스크램블 — 팀 순위', scrambleSub:'팀당 한 볼',
+                  matchTitle:'매치 플레이', matchSub:'네트 스코어로 홀 승리', allSquare:'올 스퀘어', up:'UP', thru:'~', finalWord:'최종', team:'팀', cnt:'인원' },
+            ja: { title:'ソサエティ結果', loading:'読み込み中…', final:'最終', players:'名',
+                  tabWinners:'入賞者', tabField:'全結果', tabTwos:'2s',
+                  noEvents:'公開されたイベントはまだありません。主催者が結果を公開するとここに表示されます。',
+                  notPublished:'このイベントの公式結果はまだ公開されていません。',
+                  noScores:'このイベントのスコアカードは記録されていません。',
+                  noTwos:'このイベントで2を記録した選手はいません。',
+                  twosSummaryA:'つの2', twosSummaryB:'名', officialPot:'2sポット勝者（公式）',
+                  errLoad:'読み込めませんでした。タップして再試行。',
+                  pos:'順位', player:'選手', hcp:'HDCP', gross:'グロス', net:'ネット', pts:'ポイント', score:'スコア',
+                  out:'アウト', inn:'イン', total:'合計', hole:'ホール', par:'パー', si:'SI',
+                  tapHint:'選手をタップするとホール別スコアを確認できます',
+                  holeByHole:'ホール別スコア（グロス）', birdie:'バーディ', eagle:'イーグル', bogey:'ボギー', double:'ダブル+',
+                  individual:'個人順位', poyPts:'pt', on:'', unpublished:'非公式',
+                  waltzTitle:'3人ワルツ — チーム順位', waltzSub:'ホールごとに上位1・2・3名の点を加算（循環）',
+                  scrambleTitle:'スクランブル — チーム順位', scrambleSub:'チームで1ボール',
+                  matchTitle:'マッチプレー', matchSub:'ネットスコアでホールを獲得', allSquare:'オールスクエア', up:'UP', thru:'〜', finalWord:'最終', team:'チーム', cnt:'人数' }
+        };
+        const LANGS = ['en','th','ko','ja'];
+        let lang = (function(){
+            try {
+                const own = localStorage.getItem('mcipro_results_lang');
+                if (own && I18N[own]) return own;
+                const app = localStorage.getItem('mci-pro-language');
+                if (app && I18N[app]) return app;
+            } catch(e){}
+            return 'en';
+        })();
+        function rt(k){ return (I18N[lang] && I18N[lang][k]) || I18N.en[k] || k; }
+        function rtLocale(){ return lang==='th'?'th-TH':lang==='ko'?'ko-KR':lang==='ja'?'ja-JP':'en-GB'; }
+        function applyStaticI18n(){
+            document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = rt(el.getAttribute('data-i18n')); });
+            document.getElementById('langBtn').textContent = lang.toUpperCase();
+            document.documentElement.lang = lang;
+        }
+        document.getElementById('langBtn').onclick = function(){
+            lang = LANGS[(LANGS.indexOf(lang)+1) % LANGS.length];
+            try { localStorage.setItem('mcipro_results_lang', lang); } catch(e){}
+            applyStaticI18n();
+            renderSocChips(); renderStrip();
+            if (state.eventData) renderEvent();
+            else refreshEmpty();
+        };
+
+        // ---------- Theme (shares mcipro_colorTheme with the app; dark default) ----------
+        function applyTheme(){
+            let t = 'dark';
+            try { const v = localStorage.getItem('mcipro_colorTheme'); if (v==='light'||v==='dark') t = v; } catch(e){}
+            document.body.classList.toggle('theme-light', t==='light');
+            document.querySelectorAll('[data-theme-toggle] .theme-toggle-icon').forEach(ic => { ic.textContent = t==='light' ? 'dark_mode' : 'light_mode'; });
+        }
+        function toggleTheme(){
+            let t = 'dark';
+            try { const v = localStorage.getItem('mcipro_colorTheme'); if (v==='light'||v==='dark') t = v; } catch(e){}
+            const next = t==='light' ? 'dark' : 'light';
+            try { localStorage.setItem('mcipro_colorTheme', next); } catch(e){}
+            applyTheme();
+        }
+        applyTheme();
+
+        document.getElementById('backBtn').onclick = function(){
+            try {
+                if (document.referrer && new URL(document.referrer).host === location.host && history.length > 1) { history.back(); return; }
+            } catch(e){}
+            location.href = '/';
+        };
+
+        // ---------- Helpers ----------
+        function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+        function localToday(){
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+        }
+        function fmtDate(s, opts){
+            try { return new Date(s+'T00:00:00').toLocaleDateString(rtLocale(), opts || {weekday:'short', day:'numeric', month:'short', year:'numeric'}); }
+            catch(e){ return s||''; }
+        }
+        function stripPrefix(title, soc){
+            let t = String(title||'');
+            if (soc) (soc.prefixes||[]).forEach(p => { t = t.split(p).join(''); });
+            return t.trim() || String(title||'Event');
+        }
+        function socForTitle(title){
+            const t = String(title||'');
+            return SOCIETIES.find(s => (s.prefixes||[]).some(p => t.startsWith(p))) || null;
+        }
+        function scFormats(sc){ return String(sc.scoring_format||'').toLowerCase(); }
+
+        // ---------- State ----------
+        const state = {
+            socKey: null,          // selected society key
+            events: [],            // published events of selected society (newest first)
+            selectedEventId: null,
+            eventData: null,       // { event, results, entries, teamBoards, twos, officialTwos, scoreType, published }
+            tab: 'winners',
+            stripSeq: 0,           // society/event-list loads
+            evSeq: 0,              // event-detail loads (separate so a strip load can't cancel it)
+            loadingEventId: null
+        };
+        const expandedPlayers = new Set();
+
+        function setUrl(){
+            try {
+                const p = new URLSearchParams();
+                if (state.socKey) p.set('society', state.socKey.toLowerCase());
+                if (state.selectedEventId) p.set('event', state.selectedEventId);
+                history.replaceState(null, '', location.pathname + '?' + p.toString() + '#' + state.tab);
+            } catch(e){}
+        }
+
+        // ---------- Society chips ----------
+        function renderSocChips(){
+            const el = document.getElementById('socChips');
+            el.innerHTML = SOCIETIES.map(s =>
+                `<button class="soc-chip ${state.socKey===s.key?'active':''}" data-soc="${s.key}">${esc(s.name)}</button>`
+            ).join('');
+            el.querySelectorAll('[data-soc]').forEach(b => b.onclick = () => selectSociety(b.getAttribute('data-soc')));
+        }
+
+        // ---------- Published events of a society ----------
+        async function selectSociety(key, keepEvent){
+            state.socKey = key;
+            try { localStorage.setItem('mcipro_results_soc', key); } catch(e){}
+            renderSocChips();
+            if (!keepEvent){ state.selectedEventId = null; state.eventData = null; }
+            document.getElementById('evStrip').innerHTML = `<div class="sub text-sm py-2">${esc(rt('loading'))}</div>`;
+            const soc = SOCIETIES.find(s => s.key===key);
+            const seq = ++state.stripSeq;
+            try {
+                let q = sb.from('society_events').select('id,title,course_name,event_date');
+                if (soc.prefixes.length > 1) q = q.or(soc.prefixes.map(p => 'title.ilike.' + p + '%').join(','));
+                else q = q.ilike('title', soc.prefixes[0] + '%');
+                const { data: evs } = await q.lte('event_date', localToday()).order('event_date', {ascending:false}).limit(300);
+                // published = has rows in event_results (chunked: 1000-row cap safety)
+                const ids = (evs||[]).map(e => e.id);
+                const pub = new Set();
+                for (let i=0; i<ids.length; i+=50){
+                    const { data: r } = await sb.from('event_results').select('event_id').in('event_id', ids.slice(i, i+50));
+                    (r||[]).forEach(x => pub.add(x.event_id));
+                }
+                if (seq !== state.stripSeq) return;
+                state.events = (evs||[]).filter(e => pub.has(e.id));
+                renderStrip();
+                if (state.selectedEventId){
+                    // deep-linked/current event: don't re-load if it's already loaded or in flight
+                    const cur = state.eventData && state.eventData.event && state.eventData.event.id;
+                    if (cur !== state.selectedEventId && state.loadingEventId !== state.selectedEventId) loadEvent(state.selectedEventId);
+                }
+                else if (state.events.length){ loadEvent(state.events[0].id); }
+                else { showEmpty(rt('noEvents')); setUrl(); }
+            } catch(e){
+                console.warn('[Results] selectSociety', e);
+                if (seq !== state.stripSeq) return;
+                document.getElementById('evStrip').innerHTML = `<div class="sub text-sm py-2" style="cursor:pointer;" onclick="selectSociety('${esc(key)}')">${esc(rt('errLoad'))}</div>`;
+            }
+        }
+
+        function renderStrip(){
+            const el = document.getElementById('evStrip');
+            const soc = SOCIETIES.find(s => s.key===state.socKey);
+            if (!state.events.length){ el.innerHTML = ''; return; }
+            el.innerHTML = state.events.map(e => `
+                <button class="ev-card ${state.selectedEventId===e.id?'active':''}" data-ev="${esc(e.id)}">
+                    <div class="d">${esc(fmtDate(e.event_date, {day:'numeric', month:'short'}))}</div>
+                    <div class="t">${esc(stripPrefix(e.title, soc))}</div>
+                    <div class="c">${esc(e.course_name||'')}</div>
+                </button>`).join('');
+            el.querySelectorAll('[data-ev]').forEach(b => b.onclick = () => loadEvent(b.getAttribute('data-ev')));
+        }
+
+        function showEmpty(msg){
+            // never blank out an event that is showing/loading via deep link
+            if (state.eventData || state.loadingEventId) return;
+            document.getElementById('eventView').classList.add('hidden');
+            const ev = document.getElementById('emptyView');
+            ev.classList.remove('hidden');
+            document.getElementById('emptyMsg').textContent = msg;
+        }
+        function refreshEmpty(){
+            if (!document.getElementById('emptyView').classList.contains('hidden')) showEmpty(rt('noEvents'));
+        }
+
+        // ---------- Event loading ----------
+        async function loadEvent(eventId){
+            state.selectedEventId = eventId;
+            state.loadingEventId = eventId;
+            expandedPlayers.clear();
+            renderStrip();
+            setUrl();
+            const seq = ++state.evSeq;
+            document.getElementById('emptyView').classList.add('hidden');
+            document.getElementById('eventView').classList.remove('hidden');
+            document.getElementById('evTitle').textContent = rt('loading');
+            document.getElementById('evMeta').textContent = '';
+            document.getElementById('evPlayers').textContent = '';
+            ['winners','field','twos'].forEach(t => document.getElementById('pane-'+t).innerHTML = `<div class="sub text-sm p-4 text-center">${esc(rt('loading'))}</div>`);
+            try {
+                const [evRes, resRes, cardRes, winRes] = await Promise.all([
+                    sb.from('society_events').select('id,title,course_name,event_date,format').eq('id', eventId).maybeSingle(),
+                    sb.from('event_results').select('*').eq('event_id', eventId).order('position', {ascending:true}),
+                    sb.from('scorecards').select(`id, player_id, player_name, total_gross, total_net, playing_handicap, status, created_at, scoring_format, group_id,
+                        scores (hole_number, gross_score, net_score, stableford_points, par, stroke_index)`).eq('event_id', eventId),
+                    sb.from('event_winnings').select('player_id, player_name, category, label, notes, division').eq('event_id', eventId)
+                ]);
+                if (seq !== state.evSeq) return;
+                const event = evRes.data || { id:eventId, title:'Event' };
+                const results = resRes.data || [];
+                const cards = cardRes.data || [];
+                const winnings = winRes.data || [];
+
+                // sync society chip to the event's title if deep-linked cross-society
+                const soc = socForTitle(event.title);
+                if (soc && soc.key !== state.socKey){ state.socKey = soc.key; renderSocChips(); selectSociety(soc.key, true); }
+
+                // best scorecard per player (most holes, else latest) — same dedup as live.html
+                const best = new Map();
+                for (const sc of cards){
+                    const ex = best.get(sc.player_id);
+                    const n = (sc.scores||[]).length, xn = ex ? (ex.scores||[]).length : -1;
+                    if (!ex || n > xn || (n === xn && new Date(sc.created_at) > new Date(ex.created_at))) best.set(sc.player_id, sc);
+                }
+                const unique = [...best.values()];
+
+                const entries = unique.map(sc => {
+                    const hs = new Array(18).fill(null), hp = new Array(18).fill(null), hsi = new Array(18).fill(null), hpts = new Array(18).fill(null);
+                    let gross=0, net=0, pts=0, holes=0;
+                    for (const s of (sc.scores||[])){
+                        if (s.hole_number>=1 && s.hole_number<=18){
+                            hs[s.hole_number-1] = s.gross_score;
+                            hp[s.hole_number-1] = s.par || 4;
+                            hsi[s.hole_number-1] = s.stroke_index || null;
+                            hpts[s.hole_number-1] = s.stableford_points;
+                            gross += s.gross_score||0; net += (s.net_score!=null?s.net_score:(s.gross_score||0));
+                            pts += s.stableford_points||0; holes++;
+                        }
+                    }
+                    return { player_id: sc.player_id, player_name: sc.player_name || 'Player',
+                             hcp: sc.playing_handicap, gross, net, pts, holes,
+                             hole_scores: hs, hole_pars: hp, hole_si: hsi, hole_pts: hpts };
+                });
+
+                // official published row per player
+                const pubBy = new Map(); results.forEach(r => { if (!pubBy.has(String(r.player_id))) pubBy.set(String(r.player_id), r); });
+                entries.forEach(en => { en.pub = pubBy.get(String(en.player_id)) || null; });
+
+                const scoreType = (results[0] && results[0].score_type) || ((event.format||'').includes('stroke') ? 'stroke_play' : 'stableford');
+
+                // Order: official positions first (publish applied countback), then the rest by score
+                const restSort = (a,b) => scoreType==='stroke_play' ? (a.gross-b.gross || b.pts-a.pts) : (b.pts-a.pts || a.net-b.net);
+                const inPub = entries.filter(e => e.pub).sort((a,b) => (a.pub.position||999)-(b.pub.position||999));
+                const outPub = entries.filter(e => !e.pub).sort(restSort);
+                const ordered = inPub.concat(outPub);
+
+                // 2s — app-wide standard: gross 2 on any hole (SCR2)
+                const twos = [];
+                entries.forEach(en => {
+                    en.hole_scores.forEach((s,i) => { if (s===2) twos.push({ player_id:en.player_id, player_name:en.player_name, hole:i+1, par:en.hole_pars[i], si:en.hole_si[i] }); });
+                });
+                twos.sort((a,b) => a.hole-b.hole || String(a.player_name).localeCompare(String(b.player_name)));
+
+                const teamBoards = await buildTeamBoards(unique, eventId);
+                if (seq !== state.evSeq) return;
+                state.loadingEventId = null;
+
+                state.eventData = {
+                    event, results, entries: ordered, teamBoards, twos,
+                    officialTwos: winnings.filter(w => w.category==='2s_pot'),
+                    scoreType, published: results.length > 0
+                };
+                renderEvent();
+            } catch(e){
+                console.warn('[Results] loadEvent', e);
+                if (seq !== state.evSeq) return;
+                state.loadingEventId = null;
+                ['winners','field','twos'].forEach(t => document.getElementById('pane-'+t).innerHTML =
+                    `<div class="sub text-sm p-4 text-center" style="cursor:pointer;" onclick="loadEvent('${esc(eventId)}')">${esc(rt('errLoad'))}</div>`);
+            }
+        }
+
+        // ---------- Team boards (ported from live.html — formats live in scorecards.scoring_format) ----------
+        async function buildTeamBoards(scorecards, eventId){
+            try {
+                const cards = scorecards || [];
+                if (!cards.length) return null;
+                const anyWaltz = cards.some(sc => scFormats(sc).includes('waltz'));
+                const anyScramble = cards.some(sc => scFormats(sc).includes('scramble'));
+                const anyMatch = cards.some(sc => scFormats(sc).includes('matchplay'));
+                if (!anyWaltz && !anyScramble && !anyMatch) return null;
+
+                const best = new Map();
+                for (const sc of cards){
+                    const ex = best.get(sc.player_id);
+                    const tNew = sc.created_at ? Date.parse(sc.created_at) : 0;
+                    const tOld = ex && ex.created_at ? Date.parse(ex.created_at) : 0;
+                    if (!ex || tNew > tOld || (tNew === tOld && (sc.scores||[]).length > (ex.scores||[]).length)) best.set(sc.player_id, sc);
+                }
+                const players = new Map();
+                best.forEach((sc, pid) => {
+                    const holePts = new Array(18).fill(null), holeNets = new Array(18).fill(null), holeGross = new Array(18).fill(null);
+                    let pts=0, gross=0, net=0, thru=0;
+                    (sc.scores||[]).forEach(h => {
+                        if (h.hole_number>=1 && h.hole_number<=18){
+                            holePts[h.hole_number-1] = Number(h.stableford_points)||0;
+                            holeGross[h.hole_number-1] = (h.gross_score!=null)?Number(h.gross_score):null;
+                            holeNets[h.hole_number-1] = (h.net_score!=null)?Number(h.net_score):null;
+                            pts += Number(h.stableford_points)||0;
+                            gross += Number(h.gross_score)||0;
+                            net += (h.net_score!=null)?Number(h.net_score):(Number(h.gross_score)||0);
+                            thru = Math.max(thru, h.hole_number);
+                        }
+                    });
+                    players.set(String(pid), { id:String(pid), name:sc.player_name||'Player', group:sc.group_id||'', fmt:scFormats(sc), pts, gross, net, holePts, holeNets, holeGross, thru });
+                });
+
+                const boards = { waltz:null, scramble:null, matches:null, labels:[] };
+
+                if (anyWaltz){
+                    let teamDefs = [];
+                    if (eventId){
+                        try {
+                            const { data: pairRows } = await sb.from('event_pairings').select('groups').eq('event_id', eventId).limit(1);
+                            const raw = (pairRows && pairRows[0] && Array.isArray(pairRows[0].groups)) ? pairRows[0].groups : [];
+                            // event_pairings.groups has TWO shapes: legacy array-of-arrays and {players:[...]}
+                            teamDefs = raw.map(g => {
+                                const ps = Array.isArray(g) ? g : ((g && g.players) || []);
+                                return ps.map(x => String(x.playerId || x.id || '')).filter(Boolean);
+                            }).filter(ids => ids.length);
+                        } catch(e){ console.warn('[Results] Waltz pairings load failed', e); }
+                    }
+                    if (!teamDefs.length){
+                        const byGroup = {};
+                        players.forEach(p => { if (p.fmt.includes('waltz')) (byGroup[p.group] = byGroup[p.group]||[]).push(p.id); });
+                        teamDefs = Object.values(byGroup);
+                    }
+                    const wCount = h => ((h-1)%3)+1;
+                    const teams = teamDefs.map(ids => {
+                        const members = ids.map(id => players.get(String(id))).filter(Boolean);
+                        const teamHolePts = new Array(18).fill(null);
+                        let total=0, thru=0;
+                        for (let h=1; h<=18; h++){
+                            const mp = members.map(m => m.holePts[h-1]).filter(p => p!==null && p!==undefined);
+                            if (!mp.length) continue;
+                            thru = h;
+                            const hp = mp.sort((a,b) => b-a).slice(0, wCount(h)).reduce((a,b) => a+b, 0);
+                            teamHolePts[h-1] = hp; total += hp;
+                        }
+                        return { name: members.map(m => m.name).join(' · ')||'Team', total, thru, teamHolePts, members };
+                    }).filter(tm => tm.members.length).sort((a,b) => b.total-a.total);
+                    if (teams.length){ boards.waltz = teams; boards.labels.push('3-Man Waltz'); }
+                }
+
+                if (anyScramble){
+                    const clusters = new Map();
+                    players.forEach(p => {
+                        if (!p.fmt.includes('scramble')) return;
+                        const key = p.group + '|' + p.holeGross.join(',');
+                        if (!clusters.has(key)) clusters.set(key, { members:[], pts:p.pts, gross:p.gross, net:p.net, thru:p.thru });
+                        clusters.get(key).members.push(p.name);
+                    });
+                    const teams = [...clusters.values()].map(c => ({ ...c, name:c.members.join(' · ') }))
+                        .sort((a,b) => b.pts-a.pts || a.net-b.net);
+                    if (teams.length){ boards.scramble = teams; boards.labels.push('Scramble'); }
+                }
+
+                if (anyMatch){
+                    const byGroup = {};
+                    players.forEach(p => { if (p.fmt.includes('matchplay')) (byGroup[p.group] = byGroup[p.group]||[]).push(p); });
+                    const matches = [];
+                    Object.values(byGroup).forEach(g => {
+                        if (g.length !== 2) return;
+                        const [a,b] = g;
+                        let up=0, thru=0;
+                        for (let h=0; h<18; h++){
+                            const an = a.holeNets[h]!=null ? a.holeNets[h] : a.holeGross[h];
+                            const bn = b.holeNets[h]!=null ? b.holeNets[h] : b.holeGross[h];
+                            if (an==null || bn==null) continue;
+                            thru = h+1;
+                            if (an < bn) up++; else if (bn < an) up--;
+                        }
+                        if (thru) matches.push({ a, b, up, thru });
+                    });
+                    if (matches.length){ boards.matches = matches; boards.labels.push('Match Play'); }
+                }
+
+                return (boards.waltz || boards.scramble || boards.matches) ? boards : null;
+            } catch(e){ console.warn('[Results] team boards failed', e); return null; }
+        }
+
+        // ---------- Rendering ----------
+        function renderEvent(){
+            const d = state.eventData;
+            if (!d) return;
+            const soc = SOCIETIES.find(s => s.key===state.socKey);
+            document.getElementById('eventView').classList.remove('hidden');
+            document.getElementById('emptyView').classList.add('hidden');
+            document.getElementById('evTitle').textContent = stripPrefix(d.event.title, soc);
+            const fmtLabel = (d.teamBoards && d.teamBoards.labels.length) ? d.teamBoards.labels.join(' + ')
+                : (d.scoreType==='stroke_play' ? 'Stroke Play' : 'Stableford');
+            document.getElementById('evMeta').textContent =
+                fmtDate(d.event.event_date) + (d.event.course_name ? ' · ' + d.event.course_name : '') + ' · ' + fmtLabel;
+            document.getElementById('evPlayers').textContent = String(d.entries.length || d.results.length || 0);
+            document.getElementById('evFinalBadge').classList.toggle('hidden', !d.published);
+            document.getElementById('evFinalBadge').textContent = d.published ? rt('final') : rt('unpublished');
+            document.getElementById('evFinalBadge').style.background = d.published ? 'var(--green-deep)' : '#64748b';
+            renderWinners(); renderField(); renderTwos();
+            switchTab(state.tab, true);
+        }
+
+        function switchTab(tab, silent){
+            state.tab = tab;
+            ['winners','field','twos'].forEach(t => {
+                document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+                document.getElementById('pane-'+t).classList.toggle('hidden', t!==tab);
+            });
+            if (!silent) setUrl();
+        }
+
+        function medal(pos){ return pos===1?'🥇':pos===2?'🥈':pos===3?'🥉':String(pos==null?'':pos); }
+        function scoreLabel(r, scoreType){
+            if (r.score==null) return '';
+            return scoreType==='stableford' ? (r.score + ' ' + rt('pts').toLowerCase()) : String(r.score);
+        }
+
+        // --- Winners tab ---
+        function renderWinners(){
+            const d = state.eventData;
+            const el = document.getElementById('pane-winners');
+            if (!d.published){
+                el.innerHTML = `<div class="text-center py-10"><span class="msym sub" style="font-size:40px;">pending</span>
+                    <p class="sub text-sm mt-2">${esc(rt('notPublished'))}</p></div>`;
+                return;
+            }
+            const groups = {}; const order = [];
+            d.results.forEach(r => { const g = r.division || ''; if (!(g in groups)){ groups[g]=[]; order.push(g); } groups[g].push(r); });
+
+            let html = '';
+            const single = order.length === 1;
+            if (single){
+                const list = groups[order[0]].slice().sort((a,b) => (a.position||999)-(b.position||999));
+                const top3 = list.filter(r => r.position>=1 && r.position<=3).slice(0,3);
+                if (top3.length){
+                    const cls = { 1:'pod-1', 2:'pod-2', 3:'pod-3' };
+                    const orderPods = [top3.find(r=>r.position===2), top3.find(r=>r.position===1), top3.find(r=>r.position===3)].filter(Boolean);
+                    html += '<div class="podium mb-3">' + orderPods.map(r => `
+                        <div class="pod-card ${cls[r.position]||''}" style="${r.position===1?'transform:translateY(-6px);':''}">
+                            <div class="pod-medal">${medal(r.position)}</div>
+                            <div class="pod-name">${esc(r.player_name||'Player')}</div>
+                            <div class="pod-score">${esc(scoreLabel(r, d.scoreType))}</div>
+                            ${r.points_earned ? `<div class="pod-sub">+${esc(r.points_earned)} ${esc(rt('poyPts'))}</div>` : ''}
+                        </div>`).join('') + '</div>';
+                }
+            }
+            order.forEach(g => {
+                const list = groups[g].slice().sort((a,b) => (a.position||999)-(b.position||999));
+                if (g) html += `<div class="division-band">${esc(g)}</div>`;
+                html += list.map(r => `
+                    <div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);">
+                        <span style="width:34px;text-align:center;font-weight:800;font-size:${r.position<=3?'17px':'13.5px'};color:${r.position<=3?'var(--gold)':'var(--sub)'};">${medal(r.position)}</span>
+                        <div style="flex:1;min-width:0;font-weight:600;font-size:14px;">${esc(r.player_name||'Player')}</div>
+                        <div style="text-align:right;">
+                            <div style="font-weight:800;color:var(--green);font-size:14.5px;">${esc(scoreLabel(r, d.scoreType))}</div>
+                            ${r.points_earned ? `<div style="font-size:10px;color:var(--sub);">+${esc(r.points_earned)} ${esc(rt('poyPts'))}</div>` : ''}
+                        </div>
+                    </div>`).join('');
+            });
+            el.innerHTML = html || `<div class="sub text-sm text-center py-8">${esc(rt('notPublished'))}</div>`;
+        }
+
+        // --- Full Results tab ---
+        function renderField(){
+            const d = state.eventData;
+            const el = document.getElementById('pane-field');
+            if (!d.entries.length){
+                el.innerHTML = `<div class="text-center py-10"><span class="msym sub" style="font-size:40px;">scoreboard</span>
+                    <p class="sub text-sm mt-2">${esc(rt('noScores'))}</p></div>`;
+                return;
+            }
+            const teamHtml = renderTeamBoardsHtml(d.teamBoards);
+            const rows = d.entries.map((en, i) => {
+                const pos = en.pub && en.pub.position ? en.pub.position : (i+1);
+                const pid = String(en.player_id || ('p'+i)).replace(/[^A-Za-z0-9_-]/g, '_');
+                const twosCount = en.hole_scores.filter(s => s===2).length;
+                return `
+                    <tr class="${pos===1 ? 'winner-row' : ''}">
+                        <td class="text-center" style="font-weight:800;color:${pos<=3?'var(--gold)':'var(--sub)'};">${medal(pos)}</td>
+                        <td>
+                            <span class="player-btn" data-player-id="${pid}">
+                                <span class="msym expand-icon" id="icon-${pid}">expand_more</span>
+                                <span>${esc(en.player_name)}</span>
+                                ${twosCount ? `<span style="font-size:9.5px;font-weight:800;color:var(--green);border:1px solid var(--green);border-radius:999px;padding:0 6px;">2s ×${twosCount}</span>` : ''}
+                            </span>
+                        </td>
+                        <td class="text-center sub">${en.hcp!=null ? esc(en.hcp) : '-'}</td>
+                        <td class="text-center" style="font-weight:700;">${en.gross || '-'}</td>
+                        <td class="text-center" style="font-weight:700;">${en.net || '-'}</td>
+                        <td class="text-center" style="font-weight:800;color:var(--green);">${en.pts || '-'}</td>
+                    </tr>
+                    ${renderHoleDetails(en, 6, pid)}`;
+            }).join('');
+            el.innerHTML = `
+                ${teamHtml}
+                ${teamHtml ? `<div class="px-4 pt-3 pb-1" style="font-size:11px;font-weight:800;color:var(--sub);text-transform:uppercase;">${esc(rt('individual'))}</div>` : ''}
+                <div class="px-3 pt-2 pb-1 sub" style="font-size:11px;">${esc(rt('tapHint'))}</div>
+                <div class="scroll-x"><table class="res-table" style="min-width:480px;">
+                    <thead><tr>
+                        <th class="text-center" style="width:44px;">${esc(rt('pos'))}</th>
+                        <th class="text-left">${esc(rt('player'))}</th>
+                        <th class="text-center">${esc(rt('hcp'))}</th>
+                        <th class="text-center">${esc(rt('gross'))}</th>
+                        <th class="text-center">${esc(rt('net'))}</th>
+                        <th class="text-center">${esc(rt('pts'))}</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table></div>`;
+            restoreExpandedState();
+        }
+
+        function getScoreClass(score, par){
+            if (score===null || par===null) return 'hole-score';
+            const diff = score - par;
+            let cls;
+            if (diff <= -2) cls = 'hole-score score-eagle';
+            else if (diff === -1) cls = 'hole-score score-birdie';
+            else if (diff === 0) cls = 'hole-score';
+            else if (diff === 1) cls = 'hole-score score-bogey';
+            else cls = 'hole-score score-double';
+            if (score === 2) cls += ' score-two';
+            return cls;
+        }
+
+        function renderHoleDetails(en, colspan, pid){
+            const nine = (start) => {
+                const holes = en.hole_scores.slice(start, start+9);
+                const pars = en.hole_pars.slice(start, start+9);
+                const pts = en.hole_pts.slice(start, start+9);
+                const tot = holes.reduce((s,v) => s+(v||0), 0);
+                const ptsTot = pts.reduce((s,v) => s+(v||0), 0);
+                return `
+                    <div class="hole-grid mb-1">
+                        ${holes.map((_,i) => `<div class="hole-cell hole-head">${start+i+1}</div>`).join('')}
+                        <div class="hole-cell hole-head">${esc(start===0?rt('out'):rt('inn'))}</div>
+                    </div>
+                    <div class="hole-grid mb-1">
+                        ${pars.map(p => `<div class="hole-cell hole-par">P${p||4}</div>`).join('')}
+                        <div class="hole-cell"></div>
+                    </div>
+                    <div class="hole-grid mb-1">
+                        ${holes.map((s,i) => `<div class="hole-cell ${getScoreClass(s, pars[i])}">${s!==null?s:'-'}</div>`).join('')}
+                        <div class="hole-cell hole-tot">${tot||'-'}</div>
+                    </div>
+                    <div class="hole-grid">
+                        ${pts.map(p => `<div class="hole-cell pts-cell">${p!=null?p:''}</div>`).join('')}
+                        <div class="hole-cell pts-cell" style="font-weight:800;">${ptsTot||''}</div>
+                    </div>`;
+            };
+            return `
+                <tr id="details-${pid}" class="hole-details" style="background:var(--card2);">
+                    <td colspan="${colspan}" class="p-3">
+                        <div style="font-size:11px;font-weight:700;color:var(--sub);margin-bottom:8px;">
+                            ${esc(rt('holeByHole'))}
+                            <span style="font-weight:400;margin-left:10px;">
+                                <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#60a5fa;margin-right:3px;"></span>${esc(rt('birdie'))}
+                                <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6;margin:0 3px 0 8px;"></span>${esc(rt('eagle'))}
+                                <span style="display:inline-block;width:10px;height:10px;background:#ef4444;margin:0 3px 0 8px;"></span>${esc(rt('bogey'))}
+                                <span style="display:inline-block;width:10px;height:10px;background:#991b1b;margin:0 3px 0 8px;"></span>${esc(rt('double'))}
+                            </span>
+                        </div>
+                        <div class="mb-2">${nine(0)}</div>
+                        <div>${nine(9)}</div>
+                        <div class="text-right sub" style="font-size:11px;margin-top:6px;">
+                            ${esc(rt('total'))}: <b style="color:var(--ink);">${en.gross||'-'}</b>
+                            · ${esc(rt('net'))}: <b style="color:var(--ink);">${en.net||'-'}</b>
+                            · <b style="color:var(--green);">${en.pts||0} ${esc(rt('pts')).toLowerCase()}</b>
+                        </div>
+                    </td>
+                </tr>`;
+        }
+
+        function togglePlayerDetails(pid){
+            const row = document.getElementById('details-'+pid);
+            const icon = document.getElementById('icon-'+pid);
+            if (!row) return;
+            const on = row.classList.toggle('show');
+            if (icon) icon.classList.toggle('expanded', on);
+            if (on) expandedPlayers.add(pid); else expandedPlayers.delete(pid);
+        }
+        function restoreExpandedState(){
+            expandedPlayers.forEach(pid => {
+                const row = document.getElementById('details-'+pid);
+                const icon = document.getElementById('icon-'+pid);
+                if (row){ row.classList.add('show'); if (icon) icon.classList.add('expanded'); }
+            });
+        }
+        document.addEventListener('click', function(e){
+            const p = e.target.closest('.player-btn');
+            if (p && p.getAttribute('data-player-id')) togglePlayerDetails(p.getAttribute('data-player-id'));
+        });
+
+        // --- 2s tab ---
+        function renderTwos(){
+            const d = state.eventData;
+            const el = document.getElementById('pane-twos');
+            if (!d.twos.length){
+                el.innerHTML = `<div class="text-center py-10"><span class="msym sub" style="font-size:40px;">looks_two</span>
+                    <p class="sub text-sm mt-2">${esc(rt('noTwos'))}</p></div>`;
+                return;
+            }
+            const playerCount = new Set(d.twos.map(t => String(t.player_id))).size;
+            let html = `
+                <div style="display:flex;align-items:center;gap:10px;background:var(--band);border-radius:10px;padding:10px 14px;margin-bottom:10px;">
+                    <span class="msym" style="font-size:22px;color:var(--green);">looks_two</span>
+                    <div style="font-size:13.5px;font-weight:700;">
+                        ${d.twos.length} ${esc(rt('twosSummaryA'))} · ${playerCount} ${esc(rt('twosSummaryB'))}
+                    </div>
+                </div>`;
+            html += d.twos.map(t => `
+                <div class="two-row">
+                    <div class="two-hole"><div class="h">${t.hole}</div><div class="p">${esc(rt('par'))} ${t.par||''}</div></div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:700;font-size:14px;">${esc(t.player_name)}</div>
+                        <div class="sub" style="font-size:11px;">${esc(rt('hole'))} ${t.hole}${t.si ? ' · '+esc(rt('si'))+' '+esc(t.si) : ''}</div>
+                    </div>
+                    <span style="font-size:20px;font-weight:800;color:var(--green);">2</span>
+                </div>`).join('');
+            if (d.officialTwos.length){
+                html += `<div class="division-band mt-3">${esc(rt('officialPot'))}</div>`;
+                html += d.officialTwos.map(w => `
+                    <div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line);">
+                        <span class="msym" style="font-size:18px;color:var(--gold);">verified</span>
+                        <div style="flex:1;font-weight:600;font-size:13.5px;">${esc(w.player_name||'Player')}</div>
+                        <div class="sub" style="font-size:11.5px;">${esc(w.notes||w.label||'')}</div>
+                    </div>`).join('');
+            }
+            el.innerHTML = html;
+        }
+
+        // ---------- Team boards HTML (ported from live.html, theme-var restyle) ----------
+        function renderTeamBoardsHtml(teamBoards){
+            if (!teamBoards) return '';
+            let html = '';
+            if (teamBoards.waltz){
+                const wCount = h => ((h-1)%3)+1;
+                const cnt = hs => hs.map(h => `<td class="text-center" style="min-width:18px;font-weight:700;color:var(--green);">${wCount(h)}</td>`).join('');
+                html += `
+                    <div class="px-3 pt-3">
+                        <div style="background:var(--band);border-left:4px solid var(--green);border-radius:8px;padding:8px 12px;margin-bottom:8px;">
+                            <div style="font-weight:800;font-size:14px;">${esc(rt('waltzTitle'))}</div>
+                            <div class="sub" style="font-size:11px;">${esc(rt('waltzSub'))}</div>
+                        </div>
+                        ${teamBoards.waltz.map((tm,i) => {
+                            const f9 = tm.teamHolePts.slice(0,9), b9 = tm.teamHolePts.slice(9);
+                            const f9T = f9.filter(p=>p!==null).reduce((a,b)=>a+b,0);
+                            const b9T = b9.filter(p=>p!==null).reduce((a,b)=>a+b,0);
+                            const cell = p => `<td class="text-center" style="color:var(--green);font-weight:600;">${p!==null?p:'-'}</td>`;
+                            const memberLine = tm.members.map(m => `<span>${esc(m.name)} <b style="color:var(--green);">${m.pts}</b></span>`).join('<span class="sub"> · </span>');
+                            return `<div style="border-bottom:1px solid var(--line);padding:8px 0;" class="${i===0?'winner-row':''}">
+                                <div class="flex items-center justify-between mb-1 px-1">
+                                    <div class="flex items-center gap-2" style="min-width:0;">
+                                        <span style="font-weight:800;color:var(--sub);">${i+1}</span>
+                                        ${i===0 ? '<span>🏆</span>' : ''}
+                                        <span style="font-weight:800;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(tm.name)}</span>
+                                    </div>
+                                    <span style="font-weight:800;color:var(--green);white-space:nowrap;">${tm.total} ${esc(rt('pts')).toLowerCase()}</span>
+                                </div>
+                                <div style="font-size:11px;" class="px-1 mb-1">${memberLine}</div>
+                                <div class="scroll-x">
+                                    <table style="width:100%;border-collapse:collapse;font-size:9px;color:var(--sub);">
+                                        <tr><td style="font-weight:700;padding-right:4px;">H</td>${[1,2,3,4,5,6,7,8,9].map(h=>`<td class="text-center" style="min-width:18px;">${h}</td>`).join('')}<td class="text-center" style="min-width:22px;font-weight:800;">${esc(rt('out'))}</td><td style="width:4px;"></td>${[10,11,12,13,14,15,16,17,18].map(h=>`<td class="text-center" style="min-width:18px;">${h}</td>`).join('')}<td class="text-center" style="min-width:22px;font-weight:800;">${esc(rt('inn'))}</td></tr>
+                                        <tr><td style="font-weight:700;color:var(--green);">${esc(rt('cnt'))}</td>${cnt([1,2,3,4,5,6,7,8,9])}<td></td><td></td>${cnt([10,11,12,13,14,15,16,17,18])}<td></td></tr>
+                                        <tr><td style="font-weight:700;">${esc(rt('pts'))}</td>${f9.map(cell).join('')}<td class="text-center" style="font-weight:800;color:var(--green);">${f9T||'-'}</td><td></td>${b9.map(cell).join('')}<td class="text-center" style="font-weight:800;color:var(--green);">${b9T||'-'}</td></tr>
+                                    </table>
+                                </div>
+                            </div>`;
+                        }).join('')}
+                    </div>`;
+            }
+            if (teamBoards.scramble){
+                html += `
+                    <div class="px-3 pt-3">
+                        <div style="background:var(--band);border-left:4px solid var(--green);border-radius:8px;padding:8px 12px;margin-bottom:8px;">
+                            <div style="font-weight:800;font-size:14px;">${esc(rt('scrambleTitle'))}</div>
+                            <div class="sub" style="font-size:11px;">${esc(rt('scrambleSub'))}</div>
+                        </div>
+                        <div class="scroll-x"><table class="res-table">
+                            <thead><tr>
+                                <th class="text-center">${esc(rt('pos'))}</th><th class="text-left">${esc(rt('team'))}</th>
+                                <th class="text-center">${esc(rt('gross'))}</th><th class="text-center">${esc(rt('net'))}</th><th class="text-center">${esc(rt('pts'))}</th>
+                            </tr></thead>
+                            <tbody>${teamBoards.scramble.map((tm,i) => `
+                                <tr class="${i===0?'winner-row':''}">
+                                    <td class="text-center" style="font-weight:800;">${i+1}${i===0?' 🏆':''}</td>
+                                    <td>${esc(tm.name)}</td>
+                                    <td class="text-center">${tm.gross||'-'}</td>
+                                    <td class="text-center">${tm.net||'-'}</td>
+                                    <td class="text-center" style="font-weight:800;color:var(--green);">${tm.pts}</td>
+                                </tr>`).join('')}
+                            </tbody>
+                        </table></div>
+                    </div>`;
+            }
+            if (teamBoards.matches){
+                html += `
+                    <div class="px-3 pt-3">
+                        <div style="background:var(--band);border-left:4px solid var(--green);border-radius:8px;padding:8px 12px;margin-bottom:8px;">
+                            <div style="font-weight:800;font-size:14px;">${esc(rt('matchTitle'))}</div>
+                            <div class="sub" style="font-size:11px;">${esc(rt('matchSub'))}</div>
+                        </div>
+                        ${teamBoards.matches.map(m => {
+                            const leader = m.up>0 ? m.a : (m.up<0 ? m.b : null);
+                            const status = m.up===0 ? rt('allSquare') : (esc(leader.name)+' '+Math.abs(m.up)+' '+rt('up'));
+                            return `<div class="flex items-center justify-between" style="border-bottom:1px solid var(--line);padding:8px 4px;font-size:13px;">
+                                <span style="${m.up>0?'font-weight:800;color:var(--green);':''}">${esc(m.a.name)}</span>
+                                <span class="text-center px-2">
+                                    <span style="font-weight:800;">${status}</span>
+                                    <span class="sub block" style="font-size:10.5px;">${m.thru>=18 ? esc(rt('finalWord')) : esc(rt('thru'))+' '+m.thru}</span>
+                                </span>
+                                <span style="${m.up<0?'font-weight:800;color:var(--green);':''}">${esc(m.b.name)}</span>
+                            </div>`;
+                        }).join('')}
+                    </div>`;
+            }
+            return html;
+        }
+
+        // ---------- Boot ----------
+        (async function boot(){
+            applyStaticI18n();
+            renderSocChips();
+            const params = new URLSearchParams(location.search);
+            const evParam = params.get('event');
+            const socParam = (params.get('society')||'').toUpperCase();
+            const hash = (location.hash||'').replace('#','');
+            if (['winners','field','twos'].includes(hash)) state.tab = hash;
+
+            let socKey = SOCIETIES.some(s => s.key===socParam) ? socParam : null;
+            if (!socKey){ try { const last = localStorage.getItem('mcipro_results_soc'); if (SOCIETIES.some(s => s.key===last)) socKey = last; } catch(e){} }
+            if (!socKey) socKey = 'TRGG';
+
+            if (evParam){
+                // Deep link straight to an event; resolve the society from the event title,
+                // and load the society's published strip around it.
+                state.selectedEventId = evParam;
+                state.socKey = socKey;
+                renderSocChips();
+                loadEvent(evParam);
+                selectSociety(socKey, true);
+            } else {
+                selectSociety(socKey);
+            }
+        })();
+    </script>
+</body>
+</html>

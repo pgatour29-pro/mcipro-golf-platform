@@ -369,53 +369,7 @@
                 allEvents = events || [];
                 allPools = pools || [];
 
-                // Group by date
-                const eventsByDate = {};
-
-                for (const event of allEvents) {
-                    const date = event.event_date;
-                    if (!eventsByDate[date]) eventsByDate[date] = [];
-                    eventsByDate[date].push({ type: 'event', data: event });
-                }
-
-                for (const pool of allPools) {
-                    const date = pool.date_iso;
-                    if (!eventsByDate[date]) eventsByDate[date] = [];
-                    eventsByDate[date].push({ type: 'pool', data: pool });
-                }
-
-                // Sort dates descending
-                const sortedDates = Object.keys(eventsByDate).sort((a, b) => b.localeCompare(a));
-
-                if (sortedDates.length === 0) {
-                    sidebar.innerHTML = `
-                        <div class="text-center py-8 text-gray-400">
-                            <span class="material-symbols-outlined text-3xl mb-2">event_busy</span>
-                            <p class="text-sm">No events found</p>
-                        </div>
-                    `;
-                    return;
-                }
-
-                let html = '';
-                for (const date of sortedDates) {
-                    const items = eventsByDate[date];
-                    const isLive = isToday(date);
-                    const isPast = isPastDate(date);
-
-                    html += `
-                        <div class="mb-3">
-                            <div class="flex items-center gap-2 px-2 py-1 text-xs font-semibold text-gray-500 uppercase">
-                                ${isLive ? '<span class="w-2 h-2 bg-red-500 rounded-full live-badge"></span>' : ''}
-                                ${formatDate(date)}
-                                ${isPast ? '<span class="text-amber-600 font-normal">(Archived)</span>' : ''}
-                            </div>
-                            ${items.map(item => renderSidebarItem(item, isLive, isPast)).join('')}
-                        </div>
-                    `;
-                }
-
-                sidebar.innerHTML = html;
+                renderSidebar();
 
             } catch (error) {
                 console.error('Error loading event history:', error);
@@ -426,6 +380,96 @@
                     </div>
                 `;
             }
+        }
+
+        // ==========================================
+        // SIDEBAR — calendar-style: TODAY first, Upcoming/Past collapsed.
+        // The sidebar re-renders on every 30s refresh, so section open/closed
+        // state lives outside the DOM or it would snap shut mid-browse.
+        // ==========================================
+        const sidebarOpen = { upcoming: false, past: false, _init: false };
+
+        function toggleSidebarSection(key) {
+            sidebarOpen[key] = !sidebarOpen[key];
+            renderSidebar();
+        }
+
+        function renderSidebar() {
+            const sidebar = document.getElementById('eventHistorySidebar');
+            const eventsByDate = {};
+            for (const event of allEvents) {
+                (eventsByDate[event.event_date] = eventsByDate[event.event_date] || []).push({ type: 'event', data: event });
+            }
+            for (const pool of allPools) {
+                (eventsByDate[pool.date_iso] = eventsByDate[pool.date_iso] || []).push({ type: 'pool', data: pool });
+            }
+
+            const today = getToday();
+            const dates = Object.keys(eventsByDate);
+            const futureDates = dates.filter(d => d > today).sort();                      // nearest first
+            const pastDates = dates.filter(d => d < today).sort((a, b) => b.localeCompare(a)); // newest first
+            const todayItems = eventsByDate[today] || [];
+            const upCount = futureDates.reduce((n, d) => n + eventsByDate[d].length, 0);
+            const pastCount = pastDates.reduce((n, d) => n + eventsByDate[d].length, 0);
+
+            // First render with no games today: open Past so the page isn't a dead end
+            if (!sidebarOpen._init) {
+                sidebarOpen._init = true;
+                if (!todayItems.length && pastCount) sidebarOpen.past = true;
+            }
+
+            if (!todayItems.length && !upCount && !pastCount) {
+                sidebar.innerHTML = `
+                    <div class="text-center py-8 text-gray-400">
+                        <span class="material-symbols-outlined text-3xl mb-2">event_busy</span>
+                        <p class="text-sm">No events found</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const dateBlock = (date) => {
+                const isLive = isToday(date);
+                const isPast = isPastDate(date);
+                return `
+                    <div class="mb-2">
+                        <div class="flex items-center gap-2 px-2 py-1 text-xs font-semibold text-gray-500 uppercase">
+                            ${formatDate(date)}
+                        </div>
+                        ${eventsByDate[date].map(item => renderSidebarItem(item, isLive, isPast)).join('')}
+                    </div>
+                `;
+            };
+
+            const sectionHeader = (key, label) => `
+                <button onclick="toggleSidebarSection('${key}')"
+                        class="w-full flex items-center justify-between px-2 py-2 mt-1 text-xs font-semibold text-gray-500 uppercase hover:bg-gray-100 rounded-lg border-t border-gray-100">
+                    <span>${label}</span>
+                    <span class="material-symbols-outlined text-sm expand-icon ${sidebarOpen[key] ? 'expanded' : ''}">expand_more</span>
+                </button>
+            `;
+
+            let html = `
+                <div class="mb-2">
+                    <div class="flex items-center gap-2 px-2 py-1 text-xs font-semibold text-red-600 uppercase">
+                        <span class="w-2 h-2 bg-red-500 rounded-full live-badge"></span>
+                        Today
+                    </div>
+                    ${todayItems.length
+                        ? todayItems.map(item => renderSidebarItem(item, true, false)).join('')
+                        : '<p class="px-3 py-1 text-xs text-gray-400">No events today</p>'}
+                </div>
+            `;
+            if (upCount) {
+                html += sectionHeader('upcoming', `Upcoming (${upCount})`);
+                if (sidebarOpen.upcoming) html += futureDates.map(dateBlock).join('');
+            }
+            if (pastCount) {
+                html += sectionHeader('past', `Past Events (${pastCount})`);
+                if (sidebarOpen.past) html += pastDates.map(dateBlock).join('');
+            }
+
+            sidebar.innerHTML = html;
         }
 
         // Render sidebar item
@@ -470,8 +514,24 @@
             }
         }
 
+        // Wait out any in-flight background refresh, then load — otherwise a
+        // click that lands mid-refresh hits the isLoading guard and does nothing.
+        async function loadAllDataNow() {
+            let tries = 0;
+            while (isLoading && tries++ < 40) await new Promise(r => setTimeout(r, 150));
+            await loadAllData();
+        }
+
+        // After picking an event, put the user ON its leaderboard — on mobile the
+        // sidebar sits below the boards, so without this they tap and then have to
+        // scroll all the way back up to see anything happen.
+        function scrollToBoard(domId) {
+            const target = (domId && document.getElementById(domId)) || document.getElementById('leaderboardsContainer');
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
         // Select an event to view
-        function selectEvent(eventId, isPast) {
+        async function selectEvent(eventId, isPast) {
             selectedEventId = eventId;
             selectedPoolId = null;
             viewingArchived = isPast;
@@ -482,11 +542,12 @@
                 document.getElementById('selectedEventHeader').classList.add('hidden');
             }
 
-            loadAllData();
+            await loadAllDataNow();
+            scrollToBoard('event-card-' + eventId);
         }
 
         // Select a pool to view
-        function selectPool(poolId, isPast) {
+        async function selectPool(poolId, isPast) {
             selectedPoolId = poolId;
             selectedEventId = null;
             viewingArchived = isPast;
@@ -497,7 +558,8 @@
                 document.getElementById('selectedEventHeader').classList.add('hidden');
             }
 
-            loadAllData();
+            await loadAllDataNow();
+            scrollToBoard('pool-card-' + poolId);
         }
 
         // Show live events (back to default view)
@@ -1365,7 +1427,7 @@
             const teamHtml = renderTeamBoardsHtml(teamBoards);
 
             return `
-                <div class="bg-white rounded-lg shadow-sm mb-4 overflow-hidden">
+                <div id="event-card-${event.id}" class="bg-white rounded-lg shadow-sm mb-4 overflow-hidden">
                     <div class="bg-gradient-to-r ${isArchived ? 'from-gray-600 to-gray-700' : 'from-blue-600 to-blue-700'} text-white p-4">
                         <div class="flex items-center justify-between">
                             <div>
@@ -1403,7 +1465,7 @@
             const dateDisplay = formatDate(pool.date_iso);
 
             return `
-                <div class="bg-white rounded-lg shadow-sm mb-4 overflow-hidden">
+                <div id="pool-card-${pool.id}" class="bg-white rounded-lg shadow-sm mb-4 overflow-hidden">
                     <div class="bg-gradient-to-r ${isArchived ? 'from-gray-600 to-gray-700' : `from-${config.color}-500 to-${config.color}-600`} text-white p-4">
                         <div class="flex items-center justify-between">
                             <div class="flex items-center gap-2">

@@ -663,7 +663,7 @@
             const { data: scorecards, error } = await supabaseClient
                 .from('scorecards')
                 .select(`
-                    id, player_id, player_name, total_gross, total_net, status, created_at,
+                    id, player_id, player_name, total_gross, total_net, status, created_at, scoring_format, group_id,
                     scores (hole_number, gross_score, net_score, stableford_points, par)
                 `)
                 .eq('event_id', eventId);
@@ -678,7 +678,7 @@
                 const { data: extraCards } = await supabaseClient
                     .from('scorecards')
                     .select(`
-                        id, player_id, player_name, total_gross, total_net, status, created_at,
+                        id, player_id, player_name, total_gross, total_net, status, created_at, scoring_format, group_id,
                         scores (hole_number, gross_score, net_score, stableford_points, par)
                     `)
                     .is('event_id', null)
@@ -781,6 +781,9 @@
                 });
             }
 
+            // Team-format standings (Waltz / Scramble / Match Play) ride along on the array
+            leaderboard.teamBoards = await buildTeamBoards(uniqueScorecards, eventId);
+
             return leaderboard;
         }
 
@@ -863,7 +866,7 @@
             const { data: scorecards, error } = await supabaseClient
                 .from('scorecards')
                 .select(`
-                    id, player_id, player_name, created_at,
+                    id, player_id, player_name, created_at, scoring_format, group_id,
                     scores (hole_number, gross_score, net_score, stableford_points, par)
                 `)
                 .eq('group_id', groupId)
@@ -902,13 +905,249 @@
 
             // Sort by stableford points
             leaderboard.sort((a, b) => b.total_stableford - a.total_stableford);
+            leaderboard.teamBoards = await buildTeamBoards(scorecards, null);
             return leaderboard;
+        }
+
+        // ==========================================
+        // TEAM-FORMAT BOARDS (Waltz / Scramble / Match Play)
+        // society_events.format stays 'stableford' for these games — the REAL
+        // formats live in scorecards.scoring_format (a JSON array string like
+        // ["stableford","waltz"]). Detect there, never from the event row.
+        // Waltz math mirrors the in-app team board: per hole take the best N
+        // member Stableford points where N rotates 1→2→3.
+        // Scramble teammates share one ball, so their scorecards are identical —
+        // cluster by group + identical hole scores and show one row per team.
+        // ==========================================
+        function scFormats(sc) { return String(sc.scoring_format || '').toLowerCase(); }
+
+        async function buildTeamBoards(scorecards, eventId) {
+            try {
+                const cards = scorecards || [];
+                if (!cards.length) return null;
+                const anyWaltz = cards.some(sc => scFormats(sc).includes('waltz'));
+                const anyScramble = cards.some(sc => scFormats(sc).includes('scramble'));
+                const anyMatch = cards.some(sc => scFormats(sc).includes('matchplay'));
+                if (!anyWaltz && !anyScramble && !anyMatch) return null;
+
+                // Newest scorecard per player (same dedup as the in-app team board)
+                const best = new Map();
+                for (const sc of cards) {
+                    const ex = best.get(sc.player_id);
+                    const tNew = sc.created_at ? Date.parse(sc.created_at) : 0;
+                    const tOld = ex && ex.created_at ? Date.parse(ex.created_at) : 0;
+                    if (!ex || tNew > tOld || (tNew === tOld && (sc.scores || []).length > (ex.scores || []).length)) best.set(sc.player_id, sc);
+                }
+                const players = new Map();
+                best.forEach((sc, pid) => {
+                    const holePts = new Array(18).fill(null), holeNets = new Array(18).fill(null), holeGross = new Array(18).fill(null);
+                    let pts = 0, gross = 0, net = 0, thru = 0;
+                    (sc.scores || []).forEach(h => {
+                        if (h.hole_number >= 1 && h.hole_number <= 18) {
+                            holePts[h.hole_number - 1] = Number(h.stableford_points) || 0;
+                            holeGross[h.hole_number - 1] = (h.gross_score != null) ? Number(h.gross_score) : null;
+                            holeNets[h.hole_number - 1] = (h.net_score != null) ? Number(h.net_score) : null;
+                            pts += Number(h.stableford_points) || 0;
+                            gross += Number(h.gross_score) || 0;
+                            net += (h.net_score != null) ? Number(h.net_score) : (Number(h.gross_score) || 0);
+                            thru = Math.max(thru, h.hole_number);
+                        }
+                    });
+                    players.set(String(pid), { id: String(pid), name: sc.player_name || 'Player', group: sc.group_id || '', fmt: scFormats(sc), pts, gross, net, holePts, holeNets, holeGross, thru });
+                });
+
+                const boards = { waltz: null, scramble: null, matches: null, labels: [] };
+
+                // ---- 3-Man Waltz ----
+                if (anyWaltz) {
+                    let teamDefs = [];
+                    if (eventId) {
+                        try {
+                            const { data: pairRows } = await supabaseClient
+                                .from('event_pairings').select('groups').eq('event_id', eventId).limit(1);
+                            const raw = (pairRows && pairRows[0] && Array.isArray(pairRows[0].groups)) ? pairRows[0].groups : [];
+                            // event_pairings.groups has TWO shapes: legacy array-of-arrays and {players:[...]}
+                            teamDefs = raw.map(g => {
+                                const ps = Array.isArray(g) ? g : ((g && g.players) || []);
+                                return ps.map(x => String(x.playerId || x.id || '')).filter(Boolean);
+                            }).filter(ids => ids.length);
+                        } catch (e) { console.warn('[Live] Waltz pairings load failed', e); }
+                    }
+                    if (!teamDefs.length) {
+                        // No pairings (casual round): the playing group IS the team
+                        const byGroup = {};
+                        players.forEach(p => { if (p.fmt.includes('waltz')) (byGroup[p.group] = byGroup[p.group] || []).push(p.id); });
+                        teamDefs = Object.values(byGroup);
+                    }
+                    const wCount = h => ((h - 1) % 3) + 1;
+                    const teams = teamDefs.map(ids => {
+                        const members = ids.map(id => players.get(String(id))).filter(Boolean);
+                        const teamHolePts = new Array(18).fill(null);
+                        let total = 0, thru = 0;
+                        for (let h = 1; h <= 18; h++) {
+                            const mp = members.map(m => m.holePts[h - 1]).filter(p => p !== null && p !== undefined);
+                            if (!mp.length) continue;
+                            thru = h;
+                            const hp = mp.sort((a, b) => b - a).slice(0, wCount(h)).reduce((a, b) => a + b, 0);
+                            teamHolePts[h - 1] = hp;
+                            total += hp;
+                        }
+                        return { name: members.map(m => m.name).join(' · ') || 'Team', total, thru, teamHolePts, members };
+                    }).filter(tm => tm.members.length).sort((a, b) => b.total - a.total);
+                    if (teams.length) { boards.waltz = teams; boards.labels.push('3-Man Waltz'); }
+                }
+
+                // ---- Scramble ----
+                if (anyScramble) {
+                    const clusters = new Map();
+                    players.forEach(p => {
+                        if (!p.fmt.includes('scramble')) return;
+                        const key = p.group + '|' + p.holeGross.join(',');
+                        if (!clusters.has(key)) clusters.set(key, { members: [], pts: p.pts, gross: p.gross, net: p.net, thru: p.thru });
+                        clusters.get(key).members.push(p.name);
+                    });
+                    const teams = [...clusters.values()].map(c => ({ ...c, name: c.members.join(' · ') }))
+                        .sort((a, b) => b.pts - a.pts || a.net - b.net);
+                    if (teams.length) { boards.scramble = teams; boards.labels.push('Scramble'); }
+                }
+
+                // ---- Match Play (singles: 2 scorecards in a group) ----
+                if (anyMatch) {
+                    const byGroup = {};
+                    players.forEach(p => { if (p.fmt.includes('matchplay')) (byGroup[p.group] = byGroup[p.group] || []).push(p); });
+                    const matches = [];
+                    Object.values(byGroup).forEach(g => {
+                        if (g.length !== 2) return; // team matches need pairing data live scorecards don't carry
+                        const [a, b] = g;
+                        let up = 0, thru = 0;
+                        for (let h = 0; h < 18; h++) {
+                            const an = a.holeNets[h] != null ? a.holeNets[h] : a.holeGross[h];
+                            const bn = b.holeNets[h] != null ? b.holeNets[h] : b.holeGross[h];
+                            if (an == null || bn == null) continue;
+                            thru = h + 1;
+                            if (an < bn) up++; else if (bn < an) up--;
+                        }
+                        if (thru) matches.push({ a, b, up, thru });
+                    });
+                    if (matches.length) { boards.matches = matches; boards.labels.push('Match Play'); }
+                }
+
+                return (boards.waltz || boards.scramble || boards.matches) ? boards : null;
+            } catch (e) { console.warn('[Live] team boards failed', e); return null; }
+        }
+
+        function escTeamHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+        function renderTeamBoardsHtml(teamBoards) {
+            if (!teamBoards) return '';
+            let html = '';
+
+            if (teamBoards.waltz) {
+                const wCount = h => ((h - 1) % 3) + 1;
+                const cntCells = hs => hs.map(h => `<td class="text-center font-bold text-pink-500" style="min-width:18px;">${wCount(h)}</td>`).join('');
+                html += `
+                    <div class="px-4 pt-4">
+                        <div class="bg-gradient-to-r from-pink-100 to-pink-50 px-4 py-2 rounded-lg border-l-4 border-pink-500 mb-2">
+                            <h3 class="font-bold text-gray-900">3-Man Waltz — Team Standings</h3>
+                            <p class="text-xs text-gray-600">Best 1 · 2 · 3 points count per hole, rotating</p>
+                        </div>
+                        ${teamBoards.waltz.map((tm, i) => {
+                            const f9 = tm.teamHolePts.slice(0, 9), b9 = tm.teamHolePts.slice(9);
+                            const f9T = f9.filter(p => p !== null).reduce((a, b) => a + b, 0);
+                            const b9T = b9.filter(p => p !== null).reduce((a, b) => a + b, 0);
+                            const ptCell = p => `<td class="text-center text-green-600 font-semibold">${p !== null ? p : '-'}</td>`;
+                            const memberLine = tm.members.map(m => `<span class="text-gray-700">${escTeamHtml(m.name)} <b class="text-green-600">${m.pts}</b></span>`).join('<span class="text-gray-300"> · </span>');
+                            return `<div class="border-b border-gray-200 py-2 ${i === 0 ? 'winner-row' : ''}">
+                                <div class="flex items-center justify-between mb-1">
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-bold text-gray-700">${i + 1}</span>
+                                        ${i === 0 ? '<span>🏆</span>' : ''}
+                                        <span class="font-bold text-gray-900 text-sm">${escTeamHtml(tm.name)}</span>
+                                        <span class="text-gray-400 text-xs">Thru ${tm.thru || '-'}</span>
+                                    </div>
+                                    <span class="font-extrabold text-pink-700">${tm.total} pts</span>
+                                </div>
+                                <div class="text-xs mb-1">${memberLine}</div>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full border-collapse text-gray-500" style="font-size:9px;">
+                                        <tr><td class="font-semibold pr-1">H</td>${[1,2,3,4,5,6,7,8,9].map(h => `<td class="text-center" style="min-width:18px;">${h}</td>`).join('')}<td class="text-center font-bold text-teal-600" style="min-width:22px;">Out</td><td style="width:4px;"></td>${[10,11,12,13,14,15,16,17,18].map(h => `<td class="text-center" style="min-width:18px;">${h}</td>`).join('')}<td class="text-center font-bold text-teal-600" style="min-width:22px;">In</td></tr>
+                                        <tr><td class="font-semibold text-pink-500">Cnt</td>${cntCells([1,2,3,4,5,6,7,8,9])}<td></td><td></td>${cntCells([10,11,12,13,14,15,16,17,18])}<td></td></tr>
+                                        <tr><td class="font-semibold">Pts</td>${f9.map(ptCell).join('')}<td class="text-center font-bold text-green-600">${f9T || '-'}</td><td></td>${b9.map(ptCell).join('')}<td class="text-center font-bold text-green-600">${b9T || '-'}</td></tr>
+                                    </table>
+                                </div>
+                            </div>`;
+                        }).join('')}
+                    </div>`;
+            }
+
+            if (teamBoards.scramble) {
+                html += `
+                    <div class="px-4 pt-4">
+                        <div class="bg-gradient-to-r from-green-100 to-green-50 px-4 py-2 rounded-lg border-l-4 border-green-500 mb-2">
+                            <h3 class="font-bold text-gray-900">Scramble — Team Standings</h3>
+                            <p class="text-xs text-gray-600">One ball per team</p>
+                        </div>
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 border-b">
+                                <tr class="text-gray-600">
+                                    <th class="py-2 px-2 text-center">Pos</th>
+                                    <th class="py-2 px-2 text-left">Team</th>
+                                    <th class="py-2 px-2 text-center">Thru</th>
+                                    <th class="py-2 px-2 text-center">Gross</th>
+                                    <th class="py-2 px-2 text-center">Net</th>
+                                    <th class="py-2 px-2 text-center">Pts</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${teamBoards.scramble.map((tm, i) => `
+                                    <tr class="${i === 0 ? 'winner-row font-bold' : 'border-b border-gray-100'}">
+                                        <td class="py-2 px-2 text-center">${i + 1}${i === 0 ? ' 🏆' : ''}</td>
+                                        <td class="py-2 px-2">${escTeamHtml(tm.name)}</td>
+                                        <td class="py-2 px-2 text-center">${tm.thru || '-'}</td>
+                                        <td class="py-2 px-2 text-center">${tm.gross || '-'}</td>
+                                        <td class="py-2 px-2 text-center">${tm.net || '-'}</td>
+                                        <td class="py-2 px-2 text-center font-bold text-green-600">${tm.pts}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>`;
+            }
+
+            if (teamBoards.matches) {
+                html += `
+                    <div class="px-4 pt-4">
+                        <div class="bg-gradient-to-r from-blue-100 to-blue-50 px-4 py-2 rounded-lg border-l-4 border-blue-500 mb-2">
+                            <h3 class="font-bold text-gray-900">Match Play</h3>
+                            <p class="text-xs text-gray-600">Net score wins the hole</p>
+                        </div>
+                        ${teamBoards.matches.map(m => {
+                            const leader = m.up > 0 ? m.a : (m.up < 0 ? m.b : null);
+                            const status = m.up === 0 ? 'All Square' : `${escTeamHtml(leader.name)} ${Math.abs(m.up)} UP`;
+                            return `<div class="flex items-center justify-between border-b border-gray-100 py-2 text-sm">
+                                <span class="${m.up > 0 ? 'font-bold text-blue-700' : 'text-gray-700'}">${escTeamHtml(m.a.name)}</span>
+                                <span class="text-center px-2">
+                                    <span class="font-bold ${m.up === 0 ? 'text-gray-600' : 'text-blue-700'}">${status}</span>
+                                    <span class="text-gray-400 text-xs block">${m.thru >= 18 ? 'Final' : 'thru ' + m.thru}</span>
+                                </span>
+                                <span class="${m.up < 0 ? 'font-bold text-blue-700' : 'text-gray-700'}">${escTeamHtml(m.b.name)}</span>
+                            </div>`;
+                        }).join('')}
+                    </div>`;
+            }
+
+            return html;
         }
 
         // NEW: Render casual round card (for public live spectatable rounds)
         function renderCasualRoundCard(round, leaderboard) {
             const courseName = round.course_name || 'Golf Course';
             const startTime = new Date(round.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const teamBoards = leaderboard.teamBoards || null;
+            const teamHtml = renderTeamBoardsHtml(teamBoards);
+            const gameLabel = (teamBoards && teamBoards.labels.length)
+                ? `${teamBoards.labels.join(' + ')} — Live`
+                : 'Casual Round (Live Spectatable)';
 
             return `
                 <div class="bg-white rounded-lg shadow-lg overflow-hidden mb-6 border-2 border-red-200">
@@ -919,7 +1158,7 @@
                                 <span class="material-symbols-outlined text-2xl">visibility</span>
                                 <div>
                                     <h3 class="text-lg font-bold">${courseName}</h3>
-                                    <p class="text-red-100 text-sm">Casual Round (Live Spectatable)</p>
+                                    <p class="text-red-100 text-sm">${gameLabel}</p>
                                 </div>
                             </div>
                             <div class="text-right">
@@ -931,6 +1170,9 @@
                             </div>
                         </div>
                     </div>
+
+                    ${teamHtml}
+                    ${teamHtml ? '<div class="px-4 pt-3 pb-1 text-xs font-semibold text-gray-500 uppercase">Individual Standings</div>' : ''}
 
                     <!-- Leaderboard Table -->
                     <div class="overflow-x-auto">
@@ -1114,7 +1356,13 @@
                 'scramble': 'Scramble',
                 'best_ball': 'Best Ball'
             };
-            const formatLabel = formatLabels[format] || 'Stableford';
+            // The event row often just says 'stableford' — when the scorecards reveal a
+            // team game (Waltz/Scramble/Match Play), name the REAL game in the header.
+            const teamBoards = leaderboard.teamBoards || null;
+            const formatLabel = (teamBoards && teamBoards.labels.length)
+                ? teamBoards.labels.join(' + ')
+                : (formatLabels[format] || 'Stableford');
+            const teamHtml = renderTeamBoardsHtml(teamBoards);
 
             return `
                 <div class="bg-white rounded-lg shadow-sm mb-4 overflow-hidden">
@@ -1136,6 +1384,8 @@
                             </div>
                         </div>
                     </div>
+                    ${teamHtml}
+                    ${teamHtml ? '<div class="px-4 pt-3 pb-1 text-xs font-semibold text-gray-500 uppercase">Individual Standings</div>' : ''}
                     ${renderLeaderboardTable(leaderboard, format)}
                 </div>
             `;

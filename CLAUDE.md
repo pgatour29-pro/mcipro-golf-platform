@@ -4,6 +4,11 @@ This file is the operating manual for ANY Claude model working in this repo. It 
 gets done here — the debugging method, the traps, the deploy ritual, and how to work with Pete.
 Deviating from it is how past sessions shipped three wrong fixes in a row. Read it, follow it.
 
+The full reasoning doctrine — the Fable 5 thinking method every session and every model must
+follow, with per-rule case law and the pre-flight/exit checklists — is imported here:
+
+@FABLE5_THINKING.md
+
 Deep history lives in `project-memory/` (Obsidian vault, local-only): `FUCKUPS.md` (numbered
 post-mortems — read before touching anything you recognize from a title), dated Session Catalogs,
 `CATALOG.md` (where-things-live lookup). `INDEX.md` at repo root maps the monolith.
@@ -130,8 +135,11 @@ building, not after.
   money/fees/membership rules, destructive data ops, product behavior with no precedent.
 - No unsolicited check-ins; deploy confirmations are wanted. Telegram replies must go through the
   reply tool.
-- Never route secrets through the session (dashboard → terminal → store only). Repo is private;
-  never commit service-role keys or society passwords.
+- Never route secrets through the session (dashboard → terminal → store only). The repo is
+  **PUBLIC** (verified `"private": false` 2026-07-19 — making it private is still an open
+  remediation item): treat EVERYTHING committed as world-readable. Never commit service-role
+  keys, society passwords, PINs, or security-hole inventories; sensitive notes live in the
+  gitignored `project-memory/` vault only. Re-check visibility before committing anything borderline.
 
 ## Model routing
 - `public/index.html` edits stay in the MAIN session (Fable/lead model) — do not hand monolith

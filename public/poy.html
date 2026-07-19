@@ -161,10 +161,21 @@
         return 'low';
     }
 
+    let poyShowAll = false;
     function renderLeaderboard(players) {
         if (players.length === 0) {
             document.getElementById('leaderboard').innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;">No players found</div>';
             return;
+        }
+
+        // Embedded in the app: cap the initial list so the section stays a sane height —
+        // the full cache is ~900 players (≈51,000px tall). Search always covers everyone.
+        const CAP = 50;
+        const searching = ((document.getElementById('searchInput') || {}).value || '').trim().length > 0;
+        let list = players, capped = false;
+        if (EMBED && !poyShowAll && !searching && players.length > CAP + 10) {
+            list = players.slice(0, CAP);
+            capped = true;
         }
 
         // Header
@@ -178,7 +189,7 @@
             </div>
         `;
 
-        players.forEach((p, idx) => {
+        list.forEach((p, idx) => {
             const posStyle = p.pos <= 3
                 ? `background:${p.pos === 1 ? 'linear-gradient(135deg,#fbbf24,#f59e0b)' : p.pos === 2 ? 'linear-gradient(135deg,#e2e8f0,#94a3b8)' : 'linear-gradient(135deg,#f59e0b,#d97706)'};color:${p.pos === 2 ? '#1e293b' : '#422006'};`
                 : 'background:rgba(255,255,255,0.1);color:#94a3b8;';
@@ -208,7 +219,16 @@
             `;
         });
 
+        if (capped) {
+            html += `<button onclick="poyExpandAll()" style="display:block;width:100%;padding:13px;background:none;border:none;border-top:1px solid rgba(255,255,255,0.1);color:#22c55e;font-size:13px;font-weight:700;cursor:pointer;">Show all ${players.length} players</button>`;
+        }
+
         document.getElementById('leaderboard').innerHTML = html;
+    }
+
+    function poyExpandAll() {
+        poyShowAll = true;
+        renderLeaderboard(allPlayers);
     }
 
     function toggleDetail(id) {

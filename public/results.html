@@ -82,6 +82,13 @@
         .two-hole .h { font-size:16px; font-weight:800; line-height:1; }
         .two-hole .p { font-size:8.5px; font-weight:700; opacity:.85; text-transform:uppercase; }
 
+        /* Embed mode (?embed=1): rendered inside the app's Event Results tab. The app supplies
+           the header/back/theme, so we show content only, transparent over the app canvas,
+           and post our height up so the app page stays the single scroller. */
+        html.embed, body.embed { background:transparent; }
+        body.embed header { display:none; }
+        body.embed main { padding-left:0; padding-right:0; }
+
         .icon-btn { border:1px solid var(--line); background:var(--card); color:var(--sub); border-radius:10px; width:34px; height:34px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
         .lang-btn { border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:10px; height:34px; padding:0 10px; font-size:12px; font-weight:800; cursor:pointer; }
         .scroll-x { overflow-x:auto; -webkit-overflow-scrolling:touch; }
@@ -153,6 +160,10 @@
         const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
         const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Embedded inside the app's Event Results tab? (see index.html golfer-results pane)
+        const EMBED = new URLSearchParams(location.search).get('embed') === '1';
+        if (EMBED) { document.documentElement.classList.add('embed'); document.body.classList.add('embed'); }
 
         // Same society definitions + title-prefix matching as the in-app hub / Season Standings
         const SOCIETIES = [
@@ -232,9 +243,10 @@
         let lang = (function(){
             try {
                 const own = localStorage.getItem('mcipro_results_lang');
-                if (own && I18N[own]) return own;
                 const app = localStorage.getItem('mci-pro-language');
-                if (app && I18N[app]) return app;
+                // embedded: the app's language governs (our lang button is hidden with the header)
+                if (EMBED) { if (app && I18N[app]) return app; if (own && I18N[own]) return own; }
+                else { if (own && I18N[own]) return own; if (app && I18N[app]) return app; }
             } catch(e){}
             return 'en';
         })();
@@ -257,7 +269,8 @@
         // ---------- Theme (shares mcipro_colorTheme with the app; dark default) ----------
         function applyTheme(){
             let t = 'dark';
-            try { const v = localStorage.getItem('mcipro_colorTheme'); if (v==='light'||v==='dark') t = v; } catch(e){}
+            if (EMBED) t = 'light'; // app tab canvas is always light — match it
+            else try { const v = localStorage.getItem('mcipro_colorTheme'); if (v==='light'||v==='dark') t = v; } catch(e){}
             document.body.classList.toggle('theme-light', t==='light');
             document.querySelectorAll('[data-theme-toggle] .theme-toggle-icon').forEach(ic => { ic.textContent = t==='light' ? 'dark_mode' : 'light_mode'; });
         }
@@ -960,6 +973,17 @@
                 selectSociety(socKey);
             }
         })();
+
+        // Embed height reporting: keep the parent frame sized to our content so the app page
+        // scrolls as one (ResizeObserver catches renders; the interval is a safety net).
+        if (EMBED) {
+            const _postH = function(){
+                try { parent.postMessage({ type:'mciproResultsHeight', h: document.documentElement.scrollHeight }, window.location.origin); } catch(e){}
+            };
+            try { new ResizeObserver(_postH).observe(document.body); } catch(e){}
+            window.addEventListener('load', _postH);
+            setInterval(_postH, 1200);
+        }
     </script>
 </body>
 </html>

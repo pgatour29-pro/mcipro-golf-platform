@@ -32,6 +32,9 @@
         .stat-val { font-size: 20px; font-weight: 700; color: #ffffff; }
         .stat-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; }
         .back-btn { display: inline-flex; align-items: center; gap: 4px; color: #22c55e; font-size: 13px; font-weight: 600; cursor: pointer; padding: 8px 0; text-decoration: none; }
+        /* Embed mode (?embed=1): rendered inside the app's POY tab as a dark sheet — height
+           fits content (no forced viewport height) and the app page does the scrolling. */
+        body.embed { min-height: 0; border-radius: 16px; }
     </style>
 </head>
 <body>
@@ -70,6 +73,19 @@
     <script src="supabase-config.js"></script>
     <script>
     let allPlayers = [];
+
+    // Embedded inside the app's POY tab? (see index.html golfer-poy pane) — report our height
+    // so the parent frame grows to fit and the app page stays the single scroller.
+    const EMBED = new URLSearchParams(location.search).get('embed') === '1';
+    if (EMBED) {
+        document.body.classList.add('embed');
+        const _postH = function(){
+            try { parent.postMessage({ type: 'mciproPoyHeight', h: document.documentElement.scrollHeight }, window.location.origin); } catch(e){}
+        };
+        try { new ResizeObserver(_postH).observe(document.body); } catch(e){}
+        window.addEventListener('load', _postH);
+        setInterval(_postH, 1200);
+    }
 
     async function loadPOY() {
         const sb = window.SupabaseDB?.client;

@@ -615,7 +615,15 @@
     // ------------------------------------------------------------------
     function wireEntryPoints() {
         const st = document.createElement('style');
-        st.textContent = '#golferDashboard .user-handicap{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}' +
+        // v648: dotted underline was too faint on mobile — the header HCP now
+        // reads as a tappable green chip with an expand chevron.
+        st.textContent = '#golferDashboard .user-handicap{cursor:pointer;display:inline-flex;align-items:center;gap:1px;' +
+            'padding:2px 4px 2px 8px;margin-left:3px;border-radius:999px;' +
+            'background:rgba(34,197,94,.14);box-shadow:inset 0 0 0 1.5px #16a34a;' +
+            'color:#15803d;font-weight:800;line-height:1.2;text-decoration:none;white-space:nowrap;}' +
+            '#golferDashboard .user-handicap:active{background:rgba(34,197,94,.28);}' +
+            '#golferDashboard .user-handicap::after{content:"expand_more";font-family:"Material Symbols Outlined";' +
+            'font-size:15px;line-height:1;font-weight:400;font-feature-settings:"liga";-webkit-font-feature-settings:"liga";}' +
             '#golferDashboard .scv3h-stat.hl-tap{cursor:pointer}';
         document.head.appendChild(st);
         const cell = document.getElementById('rounds-handicap');

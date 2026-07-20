@@ -297,8 +297,10 @@
         // ---------- Helpers ----------
         function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
         function localToday(){
-            const d = new Date();
-            return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+            // Bangkok date — events are Thailand-based, so the "current event" rolls over at Thai
+            // midnight (12:00am) regardless of where the viewer is. en-CA formats as YYYY-MM-DD.
+            try { return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }); }
+            catch(e){ const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
         }
         function fmtDate(s, opts){
             try { return new Date(s+'T00:00:00').toLocaleDateString(rtLocale(), opts || {weekday:'short', day:'numeric', month:'short', year:'numeric'}); }
@@ -400,14 +402,22 @@
                     (scRes.data||[]).forEach(x => listed.add(x.event_id));
                 }));
                 if (seq !== state.stripSeq) return;
-                state.events = (evs||[]).filter(e => listed.has(e.id));
+                // TODAY's event is ALWAYS current — even before any scores are in — so at 12:01am the
+                // new day's event takes over as the default. Other days show only once they have
+                // results/scores. (evs is date-desc, so today's event sorts to the front.)
+                const _today = localToday();
+                state.events = (evs||[]).filter(e => listed.has(e.id) || e.event_date === _today);
                 renderStrip();
                 if (state.selectedEventId){
                     // deep-linked/current event: don't re-load if it's already loaded or in flight
                     const cur = state.eventData && state.eventData.event && state.eventData.event.id;
                     if (cur !== state.selectedEventId && state.loadingEventId !== state.selectedEventId) loadEvent(state.selectedEventId);
                 }
-                else if (state.events.length){ loadEvent(state.events[0].id); }
+                else if (state.events.length){
+                    // Prefer today's event as the current one; otherwise the most recent past event.
+                    const todays = state.events.find(e => e.event_date === _today);
+                    loadEvent((todays || state.events[0]).id);
+                }
                 else { showEmpty(rt('noEvents')); setUrl(); }
             } catch(e){
                 console.warn('[Results] selectSociety', e);

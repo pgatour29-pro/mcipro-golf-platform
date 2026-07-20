@@ -153,9 +153,14 @@ LANGUAGE sql STABLE AS $$
              ELSE 'other'
            END AS type,
            EXISTS(SELECT 1 FROM society_members sm WHERE sm.golfer_id = up.line_user_id) AS has_mem,
-           (SELECT string_agg(tok,' ' ORDER BY tok)
-              FROM unnest(string_to_array(regexp_replace(lower(coalesce(up.name,'')),'[^a-z0-9]+',' ','g'),' ')) tok
-              WHERE tok <> '') AS key
+           -- Nickname-canonical token key: every token maps through name_nickname_variants() to a
+           -- stable group representative (the sorted group's first member), so "park peter" and
+           -- "Pete Park" land in the SAME group. The raw-token key let that exact pair slip past
+           -- the sweep (2026-07-20) — pete ≠ peter as strings.
+           (SELECT string_agg(ct,' ' ORDER BY ct)
+              FROM (SELECT (name_nickname_variants(tok))[1] AS ct
+                      FROM unnest(string_to_array(regexp_replace(lower(coalesce(up.name,'')),'[^a-z0-9]+',' ','g'),' ')) tok
+                     WHERE tok <> '') c) AS key
     FROM user_profiles up
     WHERE coalesce(up.name,'') <> ''
       -- golfers only: organizer/society/staff identity rows are not duplicate players

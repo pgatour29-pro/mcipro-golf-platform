@@ -456,18 +456,20 @@
             document.getElementById('evPlayers').textContent = '';
             ['winners','field','twos'].forEach(t => document.getElementById('pane-'+t).innerHTML = `<div class="sub text-sm p-4 text-center">${esc(rt('loading'))}</div>`);
             try {
-                const [evRes, resRes, cardRes, winRes] = await Promise.all([
+                const [evRes, resRes, cardRes, winRes, rndRes] = await Promise.all([
                     sb.from('society_events').select('id,title,course_name,event_date,format,society_id,divisions').eq('id', eventId).maybeSingle(),
                     sb.from('event_results').select('*').eq('event_id', eventId).order('position', {ascending:true}),
                     sb.from('scorecards').select(`id, player_id, player_name, total_gross, total_net, handicap, playing_handicap, status, created_at, scoring_format, group_id,
                         scores (hole_number, gross_score, net_score, stableford_points, par, stroke_index)`).eq('event_id', eventId),
-                    sb.from('event_winnings').select('player_id, player_name, category, label, notes, division').eq('event_id', eventId)
+                    sb.from('event_winnings').select('player_id, player_name, category, label, notes, division').eq('event_id', eventId),
+                    sb.from('rounds').select('golfer_id, player_name, total_gross, total_net, total_stableford, holes_played, handicap_used, status').eq('society_event_id', eventId)
                 ]);
                 if (seq !== state.evSeq) return;
                 const event = evRes.data || { id:eventId, title:'Event' };
                 const results = resRes.data || [];
                 const cards = cardRes.data || [];
                 const winnings = winRes.data || [];
+                const eventRounds = rndRes.data || [];
 
                 // Resolve the event's handicap divisions (flights). Prefer the event's own
                 // divisions; fall back to the society's payout-template flights. Used to split
@@ -513,10 +515,33 @@
                              hole_scores: hs, hole_pars: hp, hole_si: hsi, hole_pts: hpts };
                 });
 
+                // Union in players who have a COMPLETED round but no scorecard — e.g. guests
+                // whose totals the organizer typed straight into `rounds` (no live card, so no
+                // hole-by-hole scores). Without this they show on the organizer board (which
+                // reads rounds) but vanish from Results (which reads scorecards). No hole data
+                // → totals-only row, no expandable grid.
+                const haveIds = new Set(entries.map(e => String(e.player_id)));
+                (eventRounds || []).forEach(r => {
+                    if (!r.golfer_id || haveIds.has(String(r.golfer_id))) return;
+                    if (r.status && r.status !== 'completed') return;
+                    const idx = r.handicap_used;
+                    const playing = (idx!=null && isFinite(parseFloat(idx))) ? Math.round(parseFloat(idx)) : null;
+                    const gross = r.total_gross || 0;
+                    const net = (r.total_net!=null) ? r.total_net : (playing!=null ? gross - playing : gross);
+                    entries.push({ player_id: r.golfer_id, player_name: r.player_name || 'Player',
+                        hcp: playing, hcpIndex: idx, gross, net, pts: r.total_stableford || 0,
+                        holes: r.holes_played || 0, roundOnly: true,
+                        hole_scores: new Array(18).fill(null), hole_pars: new Array(18).fill(null),
+                        hole_si: new Array(18).fill(null), hole_pts: new Array(18).fill(null) });
+                    haveIds.add(String(r.golfer_id));
+                });
+
                 // official published row per player
                 const pubBy = new Map(); results.forEach(r => { if (!pubBy.has(String(r.player_id))) pubBy.set(String(r.player_id), r); });
                 entries.forEach(en => {
                     en.pub = pubBy.get(String(en.player_id)) || null;
+                    // A round-only entry with an unresolved name picks up the published name if any.
+                    if ((!en.player_name || en.player_name==='Player') && en.pub && en.pub.player_name) en.player_name = en.pub.player_name;
                     // Division: trust the published row when present (organizer's flighting),
                     // otherwise flight live by the player's handicap index so the full-results
                     // board separates correctly even before results are published.
@@ -774,12 +799,14 @@
             const rowFor = (en, pos) => {
                 const pid = String(en.player_id || 'p').replace(/[^A-Za-z0-9_-]/g, '_');
                 const twosCount = en.hole_scores.filter(s => s===2).length;
+                // No hole-by-hole data (totals-only round) → no expand chevron / detail grid.
+                const hasHoles = !en.roundOnly && en.hole_scores.some(s => s!=null);
                 return `
                     <tr class="${showPlaces && pos===1 ? 'winner-row' : ''}">
                         <td class="text-center" style="font-weight:800;color:${showPlaces && pos<=3?'var(--gold)':'var(--sub)'};">${showPlaces ? medal(pos) : '-'}</td>
                         <td>
-                            <span class="player-btn" data-player-id="${pid}">
-                                <span class="msym expand-icon" id="icon-${pid}">expand_more</span>
+                            <span class="${hasHoles ? 'player-btn' : ''}" ${hasHoles ? `data-player-id="${pid}"` : ''}>
+                                ${hasHoles ? `<span class="msym expand-icon" id="icon-${pid}">expand_more</span>` : ''}
                                 <span>${esc(en.player_name)}</span>
                                 ${twosCount ? `<span style="font-size:9.5px;font-weight:800;color:var(--green);border:1px solid var(--green);border-radius:999px;padding:0 6px;">2s ×${twosCount}</span>` : ''}
                             </span>
@@ -789,7 +816,7 @@
                         <td class="text-center" style="font-weight:700;">${en.net || '-'}</td>
                         <td class="text-center" style="font-weight:800;color:var(--green);">${en.pts || '-'}</td>
                     </tr>
-                    ${renderHoleDetails(en, 6, pid)}`;
+                    ${hasHoles ? renderHoleDetails(en, 6, pid) : ''}`;
             };
             const tableFor = (list) => {
                 const rows = list.map((en, i) => {

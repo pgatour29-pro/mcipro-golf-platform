@@ -63,6 +63,7 @@
         .score-bogey { background:#ef4444; color:#fff; font-weight:bold; }
         .score-double { background:#991b1b; color:#fff; font-weight:bold; box-shadow:inset 0 0 0 2px #fca5a5; }
         .score-two { box-shadow:0 0 0 2px var(--green) !important; }
+        .score-ace { background:var(--gold); color:#fff; border-radius:50%; font-weight:bold; box-shadow:0 0 0 2px #b45309 !important; }
         .pts-cell { color:var(--green); font-size:9.5px; font-weight:700; }
 
         /* Podium */
@@ -81,6 +82,8 @@
         .two-hole { width:44px; height:44px; border-radius:10px; background:var(--green-deep); color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; flex-shrink:0; }
         .two-hole .h { font-size:16px; font-weight:800; line-height:1; }
         .two-hole .p { font-size:8.5px; font-weight:700; opacity:.85; text-transform:uppercase; }
+        /* Aces (hole-in-one) — gold variant of the 2s styling */
+        .ace-hole { background:var(--gold) !important; }
 
         /* Embed mode (?embed=1): rendered inside the app's Event Results tab. The app supplies
            the header/back/theme, so we show content only, transparent over the app canvas,
@@ -141,10 +144,12 @@
                     <div class="rtab active" id="tab-winners" onclick="switchTab('winners')" data-i18n="tabWinners">Winners</div>
                     <div class="rtab" id="tab-field" onclick="switchTab('field')" data-i18n="tabField">Full Results</div>
                     <div class="rtab" id="tab-twos" onclick="switchTab('twos')" data-i18n="tabTwos">2s</div>
+                    <div class="rtab" id="tab-aces" onclick="switchTab('aces')" data-i18n="tabAces">Aces</div>
                 </div>
                 <div id="pane-winners" class="p-3"></div>
                 <div id="pane-field" class="p-0 hidden"></div>
                 <div id="pane-twos" class="p-3 hidden"></div>
+                <div id="pane-aces" class="p-3 hidden"></div>
             </div>
         </div>
 
@@ -175,13 +180,15 @@
         // ---------- i18n (parity: EN/TH/KO/JA) ----------
         const I18N = {
             en: { title:'Society Results', loading:'Loading…', final:'FINAL', players:'players',
-                  tabWinners:'Winners', tabField:'Full Results', tabTwos:'2s',
+                  tabWinners:'Winners', tabField:'Full Results', tabTwos:'2s', tabAces:'Aces',
                   noEvents:'No published events yet. Events appear here once the organizer publishes the results.',
                   notPublished:'Results for this event haven’t been published yet.',
                   noScores:'No scorecards were recorded for this event.',
                   noTwos:'No 2s were scored at this event.',
                   twosSummaryA:'twos', twosSummaryB:'players', officialPot:'2s pot winners (official)',
                   season2sTitle:'Par-3 2s Race', seasonTwosEmpty:'No par-3 2s recorded for this year yet.',
+                  noAces:'No holes-in-one were scored at this event.', acesSummaryA:'aces', officialAcePot:'Hole-in-One pot winners (official)',
+                  seasonAcesTitle:'Aces Race', seasonAcesEmpty:'No holes-in-one recorded for this period yet.', allTime:'All-time',
                   errLoad:'Couldn’t load. Tap to retry.',
                   pos:'Pos', player:'Player', hcp:'HCP', gross:'Gross', net:'Net', pts:'Pts', score:'Score',
                   out:'Out', inn:'In', total:'Total', hole:'Hole', par:'Par', si:'SI',
@@ -192,13 +199,15 @@
                   scrambleTitle:'Scramble — Team Standings', scrambleSub:'One ball per team',
                   matchTitle:'Match Play', matchSub:'Net score wins the hole', allSquare:'All Square', up:'UP', thru:'thru', finalWord:'Final', team:'Team', cnt:'Cnt' },
             th: { title:'ผลการแข่งขันก๊วนกอล์ฟ', loading:'กำลังโหลด…', final:'สิ้นสุด', players:'ผู้เล่น',
-                  tabWinners:'ผู้ชนะ', tabField:'ผลทั้งหมด', tabTwos:'โฮล 2s',
+                  tabWinners:'ผู้ชนะ', tabField:'ผลทั้งหมด', tabTwos:'โฮล 2s', tabAces:'โฮลอินวัน',
                   noEvents:'ยังไม่มีรายการที่ประกาศผล ผลจะแสดงที่นี่เมื่อผู้จัดประกาศผลแล้ว',
                   notPublished:'ยังไม่มีการประกาศผลอย่างเป็นทางการของรายการนี้',
                   noScores:'ไม่มีสกอร์การ์ดที่บันทึกไว้สำหรับรายการนี้',
                   noTwos:'ไม่มีผู้เล่นทำสกอร์ 2 ในรายการนี้',
                   twosSummaryA:'สกอร์ 2', twosSummaryB:'ผู้เล่น', officialPot:'ผู้ชนะพ็อต 2s (ทางการ)',
                   season2sTitle:'ตารางสะสม 2s พาร์ 3', seasonTwosEmpty:'ยังไม่มีสกอร์ 2 บนพาร์ 3 ในปีนี้',
+                  noAces:'ไม่มีโฮลอินวันในรายการนี้', acesSummaryA:'โฮลอินวัน', officialAcePot:'ผู้ชนะพ็อตโฮลอินวัน (ทางการ)',
+                  seasonAcesTitle:'ตารางสะสมโฮลอินวัน', seasonAcesEmpty:'ยังไม่มีโฮลอินวันในช่วงเวลานี้', allTime:'ทั้งหมด',
                   errLoad:'โหลดไม่สำเร็จ แตะเพื่อลองใหม่',
                   pos:'อันดับ', player:'ผู้เล่น', hcp:'แต้มต่อ', gross:'กรอส', net:'เน็ต', pts:'แต้ม', score:'สกอร์',
                   out:'เอาท์', inn:'อิน', total:'รวม', hole:'หลุม', par:'พาร์', si:'SI',
@@ -209,13 +218,15 @@
                   scrambleTitle:'สแครมเบิล — อันดับทีม', scrambleSub:'หนึ่งลูกต่อทีม',
                   matchTitle:'แมตช์เพลย์', matchSub:'เน็ตสกอร์ชนะหลุม', allSquare:'เสมอ', up:'อัพ', thru:'ผ่าน', finalWord:'จบ', team:'ทีม', cnt:'นับ' },
             ko: { title:'소사이어티 결과', loading:'로딩 중…', final:'최종', players:'명',
-                  tabWinners:'우승자', tabField:'전체 결과', tabTwos:'2s',
+                  tabWinners:'우승자', tabField:'전체 결과', tabTwos:'2s', tabAces:'홀인원',
                   noEvents:'아직 발표된 이벤트가 없습니다. 주최자가 결과를 발표하면 여기에 표시됩니다.',
                   notPublished:'이 이벤트의 공식 결과가 아직 발표되지 않았습니다.',
                   noScores:'이 이벤트에 기록된 스코어카드가 없습니다.',
                   noTwos:'이 이벤트에서 2를 기록한 선수가 없습니다.',
                   twosSummaryA:'개의 2', twosSummaryB:'명', officialPot:'2s 팟 우승자 (공식)',
                   season2sTitle:'파3 2s 랭킹', seasonTwosEmpty:'올해 파3에서 기록된 2가 아직 없습니다.',
+                  noAces:'이 이벤트에서 홀인원이 없었습니다.', acesSummaryA:'홀인원', officialAcePot:'홀인원 팟 우승자 (공식)',
+                  seasonAcesTitle:'홀인원 랭킹', seasonAcesEmpty:'이 기간에 기록된 홀인원이 아직 없습니다.', allTime:'전체',
                   errLoad:'불러오지 못했습니다. 다시 시도하려면 탭하세요.',
                   pos:'순위', player:'선수', hcp:'핸디', gross:'그로스', net:'네트', pts:'포인트', score:'스코어',
                   out:'전반', inn:'후반', total:'합계', hole:'홀', par:'파', si:'SI',
@@ -226,13 +237,15 @@
                   scrambleTitle:'스크램블 — 팀 순위', scrambleSub:'팀당 한 볼',
                   matchTitle:'매치 플레이', matchSub:'네트 스코어로 홀 승리', allSquare:'올 스퀘어', up:'UP', thru:'~', finalWord:'최종', team:'팀', cnt:'인원' },
             ja: { title:'ソサエティ結果', loading:'読み込み中…', final:'最終', players:'名',
-                  tabWinners:'入賞者', tabField:'全結果', tabTwos:'2s',
+                  tabWinners:'入賞者', tabField:'全結果', tabTwos:'2s', tabAces:'ホールインワン',
                   noEvents:'公開されたイベントはまだありません。主催者が結果を公開するとここに表示されます。',
                   notPublished:'このイベントの公式結果はまだ公開されていません。',
                   noScores:'このイベントのスコアカードは記録されていません。',
                   noTwos:'このイベントで2を記録した選手はいません。',
                   twosSummaryA:'つの2', twosSummaryB:'名', officialPot:'2sポット勝者（公式）',
                   season2sTitle:'パー3 2sランキング', seasonTwosEmpty:'今年パー3で記録された2はまだありません。',
+                  noAces:'このイベントでホールインワンはありませんでした。', acesSummaryA:'エース', officialAcePot:'ホールインワンポット勝者（公式）',
+                  seasonAcesTitle:'ホールインワンランキング', seasonAcesEmpty:'この期間に記録されたホールインワンはまだありません。', allTime:'通算',
                   errLoad:'読み込めませんでした。タップして再試行。',
                   pos:'順位', player:'選手', hcp:'HDCP', gross:'グロス', net:'ネット', pts:'ポイント', score:'スコア',
                   out:'アウト', inn:'イン', total:'合計', hole:'ホール', par:'パー', si:'SI',
@@ -349,7 +362,9 @@
             evSeq: 0,              // event-detail loads (separate so a strip load can't cancel it)
             loadingEventId: null,
             season2s: {},          // cache: 'SOC|year' → aggregated par-3 2s race
-            season2sYear: null
+            season2sYear: null,
+            season1s: {},          // cache: 'SOC|year|all' → aggregated hole-in-one race
+            season1sYear: null
         };
         const expandedPlayers = new Set();
 
@@ -464,7 +479,7 @@
             document.getElementById('evTitle').textContent = rt('loading');
             document.getElementById('evMeta').textContent = '';
             document.getElementById('evPlayers').textContent = '';
-            ['winners','field','twos'].forEach(t => document.getElementById('pane-'+t).innerHTML = `<div class="sub text-sm p-4 text-center">${esc(rt('loading'))}</div>`);
+            ['winners','field','twos','aces'].forEach(t => document.getElementById('pane-'+t).innerHTML = `<div class="sub text-sm p-4 text-center">${esc(rt('loading'))}</div>`);
             try {
                 const [evRes, resRes, cardRes, winRes, rndRes] = await Promise.all([
                     sb.from('society_events').select('id,title,course_name,event_date,format,society_id,divisions').eq('id', eventId).maybeSingle(),
@@ -605,13 +620,21 @@
                 });
                 twos.sort((a,b) => a.hole-b.hole || String(a.player_name).localeCompare(String(b.player_name)));
 
+                // Aces — a gross 1 on any hole (a hole-in-one)
+                const aces = [];
+                entries.forEach(en => {
+                    en.hole_scores.forEach((s,i) => { if (s===1) aces.push({ player_id:en.player_id, player_name:en.player_name, hole:i+1, par:en.hole_pars[i], si:en.hole_si[i] }); });
+                });
+                aces.sort((a,b) => a.hole-b.hole || String(a.player_name).localeCompare(String(b.player_name)));
+
                 const teamBoards = await buildTeamBoards(unique, eventId);
                 if (seq !== state.evSeq) return;
                 state.loadingEventId = null;
 
                 state.eventData = {
-                    event, results, entries: ordered, teamBoards, twos, divisions,
+                    event, results, entries: ordered, teamBoards, twos, aces, divisions,
                     officialTwos: winnings.filter(w => w.category==='2s_pot'),
+                    officialAces: winnings.filter(w => w.category==='hio_pot'),
                     scoreType, published: results.length > 0
                 };
                 renderEvent();
@@ -619,7 +642,7 @@
                 console.warn('[Results] loadEvent', e);
                 if (seq !== state.evSeq) return;
                 state.loadingEventId = null;
-                ['winners','field','twos'].forEach(t => document.getElementById('pane-'+t).innerHTML =
+                ['winners','field','twos','aces'].forEach(t => document.getElementById('pane-'+t).innerHTML =
                     `<div class="sub text-sm p-4 text-center" style="cursor:pointer;" onclick="loadEvent('${esc(eventId)}')">${esc(rt('errLoad'))}</div>`);
             }
         }
@@ -749,7 +772,7 @@
             document.getElementById('evFinalBadge').classList.toggle('hidden', !d.published);
             document.getElementById('evFinalBadge').textContent = d.published ? rt('final') : rt('unpublished');
             document.getElementById('evFinalBadge').style.background = d.published ? 'var(--green-deep)' : '#64748b';
-            renderWinners(); renderField(); renderTwos();
+            renderWinners(); renderField(); renderTwos(); renderAces();
             // Unpublished events have NO winners yet — the Winners tab would just say
             // "not published". Open on Full Results (the actual field/scores) instead, unless
             // the viewer explicitly picked a tab (deep link or a manual tap).
@@ -760,7 +783,7 @@
         function switchTab(tab, silent){
             state.tab = tab;
             if (!silent) state.tabExplicit = true;
-            ['winners','field','twos'].forEach(t => {
+            ['winners','field','twos','aces'].forEach(t => {
                 document.getElementById('tab-'+t).classList.toggle('active', t===tab);
                 document.getElementById('pane-'+t).classList.toggle('hidden', t!==tab);
             });
@@ -914,6 +937,7 @@
             else if (diff === 0) cls = 'hole-score';
             else if (diff === 1) cls = 'hole-score score-bogey';
             else cls = 'hole-score score-double';
+            if (score === 1) cls += ' score-ace';
             if (score === 2) cls += ' score-two';
             return cls;
         }
@@ -1119,6 +1143,144 @@
                     }).join('');
             } catch(e){
                 console.warn('[Results] season 2s', e);
+                if (body.isConnected) body.innerHTML = `<div class="sub text-sm text-center py-6">${esc(rt('errLoad'))}</div>`;
+            }
+        }
+
+        // --- Aces tab: this event's holes-in-one + the society's aces race (per-year + all-time) ---
+        function renderAces(){
+            const d = state.eventData;
+            const el = document.getElementById('pane-aces');
+            if (!el) return;
+            let html = '';
+            if (!d.aces.length){
+                html += `<div class="text-center py-6"><span class="msym sub" style="font-size:40px;">golf_course</span>
+                    <p class="sub text-sm mt-2">${esc(rt('noAces'))}</p></div>`;
+            } else {
+                const playerCount = new Set(d.aces.map(a => String(a.player_id))).size;
+                html += `
+                    <div style="display:flex;align-items:center;gap:10px;background:var(--band);border-radius:10px;padding:10px 14px;margin-bottom:10px;">
+                        <span class="msym" style="font-size:22px;color:var(--gold);">golf_course</span>
+                        <div style="font-size:13.5px;font-weight:700;">
+                            ${d.aces.length} ${esc(rt('acesSummaryA'))} · ${playerCount} ${esc(rt('twosSummaryB'))}
+                        </div>
+                    </div>`;
+                html += d.aces.map(a => `
+                    <div class="two-row">
+                        <div class="two-hole ace-hole"><div class="h">${a.hole}</div><div class="p">${esc(rt('par'))} ${a.par||''}</div></div>
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:700;font-size:14px;">${esc(a.player_name)}</div>
+                            <div class="sub" style="font-size:11px;">${esc(rt('hole'))} ${a.hole}${a.si ? ' · '+esc(rt('si'))+' '+esc(a.si) : ''}</div>
+                        </div>
+                        <span style="font-size:20px;font-weight:800;color:var(--gold);">1</span>
+                    </div>`).join('');
+                if (d.officialAces.length){
+                    html += `<div class="division-band mt-3">${esc(rt('officialAcePot'))}</div>`;
+                    html += d.officialAces.map(w => `
+                        <div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line);">
+                            <span class="msym" style="font-size:18px;color:var(--gold);">verified</span>
+                            <div style="flex:1;font-weight:600;font-size:13.5px;">${esc(w.player_name||'Player')}</div>
+                            <div class="sub" style="font-size:11.5px;">${esc(w.notes||w.label||'')}</div>
+                        </div>`).join('');
+                }
+            }
+            // Aces race: every gross 1 across ALL this society's events — All-time chip + per-year
+            const years = ['all'];
+            for (let y = new Date().getFullYear(); y >= 2025; y--) years.push(y);
+            html += `
+                <div class="division-band" style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+                    <span>${esc(rt('seasonAcesTitle'))}</span>
+                    <span style="display:flex;gap:6px;flex-wrap:wrap;">${years.map(y =>
+                        `<button class="s1y-chip" data-y="${y}" style="border:1px solid var(--line);background:var(--card);color:var(--sub);border-radius:999px;padding:3px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">${y==='all'?esc(rt('allTime')):y}</button>`).join('')}</span>
+                </div>
+                <div id="season1sBody"><div class="sub text-sm p-3 text-center">${esc(rt('loading'))}</div></div>`;
+            el.innerHTML = html;
+            el.querySelectorAll('.s1y-chip').forEach(b => b.onclick = () => { const v = b.getAttribute('data-y'); renderSeason1s(v==='all'?'all':parseInt(v,10)); });
+            // Aces are rare — default the race to All-time so there's always something to see.
+            renderSeason1s(state.season1sYear || 'all');
+        }
+
+        async function loadSeason1s(socKey, year){
+            const key = socKey + '|' + year;
+            if (state.season1s[key]) return state.season1s[key];
+            const soc = SOCIETIES.find(s => s.key === socKey);
+            if (!soc) return { year, list: [] };
+            let q = sb.from('society_events').select('id, event_date, course_name');
+            if (soc.prefixes.length > 1) q = q.or(soc.prefixes.map(p => 'title.ilike.' + p + '%').join(','));
+            else q = q.ilike('title', soc.prefixes[0] + '%');
+            if (year !== 'all') q = q.gte('event_date', year + '-01-01').lte('event_date', year + '-12-31');
+            const { data: evs } = await q.order('event_date', {ascending: false}).limit(1000);
+            const events = evs || [];
+            const evById = {};
+            events.forEach(e => evById[e.id] = e);
+            const ids = events.map(e => e.id);
+            const byPlayer = new Map(), seen = new Set();
+            for (let i = 0; i < ids.length; i += 50){
+                // one ace row per score (gross 1, ANY hole), parent scorecard embedded via !inner
+                const { data: rows } = await sb.from('scores')
+                    .select('hole_number, scorecards!inner(event_id, player_id, player_name)')
+                    .eq('gross_score', 1)
+                    .in('scorecards.event_id', ids.slice(i, i + 50))
+                    .limit(1000);
+                (rows || []).forEach(r => {
+                    const sc = r.scorecards; if (!sc) return;
+                    // duplicate scorecards for the same player+event must not double-count an ace
+                    const dk = sc.event_id + '|' + sc.player_id + '|' + r.hole_number;
+                    if (seen.has(dk)) return; seen.add(dk);
+                    const pk = String(sc.player_id);
+                    if (!byPlayer.has(pk)) byPlayer.set(pk, { player_id: pk, player_name: sc.player_name || 'Player', aces: [] });
+                    const ev = evById[sc.event_id] || {};
+                    byPlayer.get(pk).aces.push({ hole: r.hole_number, date: ev.event_date, course: ev.course_name });
+                });
+            }
+            const list = [...byPlayer.values()].sort((a, b) =>
+                b.aces.length - a.aces.length || String(a.player_name).localeCompare(String(b.player_name)));
+            list.forEach(p => p.aces.sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))));
+            const out = { year, list };
+            state.season1s[key] = out;
+            return out;
+        }
+
+        async function renderSeason1s(year){
+            state.season1sYear = year;
+            document.querySelectorAll('.s1y-chip').forEach(b => {
+                const v = b.getAttribute('data-y');
+                const on = (v === 'all' ? 'all' : parseInt(v, 10)) === year;
+                b.style.background = on ? 'var(--gold)' : 'var(--card)';
+                b.style.color = on ? '#fff' : 'var(--sub)';
+                b.style.borderColor = on ? 'var(--gold)' : 'var(--line)';
+            });
+            const body = document.getElementById('season1sBody'); if (!body) return;
+            body.innerHTML = `<div class="sub text-sm p-3 text-center">${esc(rt('loading'))}</div>`;
+            const socKey = state.socKey;
+            try {
+                const data = await loadSeason1s(socKey, year);
+                if (state.season1sYear !== year || state.socKey !== socKey || !body.isConnected) return;
+                if (!data.list.length){
+                    body.innerHTML = `<div class="sub text-sm text-center py-6">${esc(rt('seasonAcesEmpty'))}</div>`;
+                    return;
+                }
+                const totalAces = data.list.reduce((s, p) => s + p.aces.length, 0);
+                const yearLabel = year === 'all' ? rt('allTime') : year;
+                let rank = 0, prev = null;
+                body.innerHTML =
+                    `<div class="sub" style="font-size:11.5px;padding:8px 4px 4px;">${totalAces} ${esc(rt('acesSummaryA'))} · ${data.list.length} ${esc(rt('twosSummaryB'))} · ${esc(String(yearLabel))}</div>` +
+                    data.list.map((p, i) => {
+                        if (p.aces.length !== prev){ rank = i + 1; prev = p.aces.length; }
+                        const subLine = p.aces.slice(0, 4).map(t =>
+                            'H' + t.hole + (t.date ? ' · ' + fmtDate(t.date, {day:'numeric', month:'short'}) : '')).join('   ') +
+                            (p.aces.length > 4 ? '   +' + (p.aces.length - 4) : '');
+                        return `<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);">
+                            <span style="width:30px;text-align:center;font-weight:800;font-size:${rank <= 3 ? '16px' : '13px'};color:${rank <= 3 ? 'var(--gold)' : 'var(--sub)'};">${rank <= 3 ? medal(rank) : rank}</span>
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-weight:600;font-size:14px;">${esc(p.player_name)}</div>
+                                <div class="sub" style="font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(subLine)}</div>
+                            </div>
+                            <span style="font-size:15px;font-weight:800;color:var(--gold);white-space:nowrap;">⛳ ×${p.aces.length}</span>
+                        </div>`;
+                    }).join('');
+            } catch(e){
+                console.warn('[Results] season aces', e);
                 if (body.isConnected) body.innerHTML = `<div class="sub text-sm text-center py-6">${esc(rt('errLoad'))}</div>`;
             }
         }

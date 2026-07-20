@@ -315,6 +315,27 @@
         }
         function scFormats(sc){ return String(sc.scoring_format||'').toLowerCase(); }
 
+        // ---------- Handicap divisions (flights) ----------
+        // Normalize a divisions array to [{name,min,max}]. Boundaries are HANDICAP INDEX
+        // values (e.g. 0–14.5), so callers must match on the index, not the playing handicap.
+        function normDivisions(raw){
+            if (typeof raw === 'string'){ try { raw = JSON.parse(raw); } catch(_){ return null; } }
+            if (!Array.isArray(raw) || !raw.length) return null;
+            const out = raw.map((d,i) => ({
+                name: (d && d.name) || ('Division ' + (i+1)),
+                min: parseFloat(d && d.minHandicap!=null ? d.minHandicap : (d && d.min!=null ? d.min : 0)) || 0,
+                max: parseFloat(d && d.maxHandicap!=null ? d.maxHandicap : (d && d.max!=null ? d.max : 999))
+            })).filter(d => isFinite(d.max));
+            return out.length ? out : null;
+        }
+        function divisionForHandicap(hcpIndex, divisions){
+            if (!Array.isArray(divisions) || !divisions.length || hcpIndex==null) return null;
+            const h = parseFloat(hcpIndex);
+            if (!isFinite(h)) return null;
+            for (const d of divisions){ if (h >= d.min && h <= d.max) return d.name; }
+            return null;
+        }
+
         // ---------- State ----------
         const state = {
             socKey: null,          // selected society key
@@ -436,9 +457,9 @@
             ['winners','field','twos'].forEach(t => document.getElementById('pane-'+t).innerHTML = `<div class="sub text-sm p-4 text-center">${esc(rt('loading'))}</div>`);
             try {
                 const [evRes, resRes, cardRes, winRes] = await Promise.all([
-                    sb.from('society_events').select('id,title,course_name,event_date,format').eq('id', eventId).maybeSingle(),
+                    sb.from('society_events').select('id,title,course_name,event_date,format,society_id,divisions').eq('id', eventId).maybeSingle(),
                     sb.from('event_results').select('*').eq('event_id', eventId).order('position', {ascending:true}),
-                    sb.from('scorecards').select(`id, player_id, player_name, total_gross, total_net, playing_handicap, status, created_at, scoring_format, group_id,
+                    sb.from('scorecards').select(`id, player_id, player_name, total_gross, total_net, handicap, playing_handicap, status, created_at, scoring_format, group_id,
                         scores (hole_number, gross_score, net_score, stableford_points, par, stroke_index)`).eq('event_id', eventId),
                     sb.from('event_winnings').select('player_id, player_name, category, label, notes, division').eq('event_id', eventId)
                 ]);
@@ -447,6 +468,19 @@
                 const results = resRes.data || [];
                 const cards = cardRes.data || [];
                 const winnings = winRes.data || [];
+
+                // Resolve the event's handicap divisions (flights). Prefer the event's own
+                // divisions; fall back to the society's payout-template flights. Used to split
+                // BOTH the winners and the full-results boards into per-division leaderboards.
+                let divisions = normDivisions(event.divisions);
+                if (!divisions && event.society_id){
+                    try {
+                        const { data: tpl } = await sb.from('society_payout_templates')
+                            .select('divisions').eq('society_id', String(event.society_id)).maybeSingle();
+                        if (seq !== state.evSeq) return;
+                        divisions = normDivisions(tpl && tpl.divisions);
+                    } catch(_){ /* table/col absent → no flighting */ }
+                }
 
                 // sync society chip to the event's title if deep-linked cross-society
                 const soc = socForTitle(event.title);
@@ -475,13 +509,19 @@
                         }
                     }
                     return { player_id: sc.player_id, player_name: sc.player_name || 'Player',
-                             hcp: sc.playing_handicap, gross, net, pts, holes,
+                             hcp: sc.playing_handicap, hcpIndex: sc.handicap, gross, net, pts, holes,
                              hole_scores: hs, hole_pars: hp, hole_si: hsi, hole_pts: hpts };
                 });
 
                 // official published row per player
                 const pubBy = new Map(); results.forEach(r => { if (!pubBy.has(String(r.player_id))) pubBy.set(String(r.player_id), r); });
-                entries.forEach(en => { en.pub = pubBy.get(String(en.player_id)) || null; });
+                entries.forEach(en => {
+                    en.pub = pubBy.get(String(en.player_id)) || null;
+                    // Division: trust the published row when present (organizer's flighting),
+                    // otherwise flight live by the player's handicap index so the full-results
+                    // board separates correctly even before results are published.
+                    en.division = (en.pub && en.pub.division) || divisionForHandicap(en.hcpIndex, divisions) || null;
+                });
 
                 const scoreType = (results[0] && results[0].score_type) || ((event.format||'').includes('stroke') ? 'stroke_play' : 'stableford');
 
@@ -503,7 +543,7 @@
                 state.loadingEventId = null;
 
                 state.eventData = {
-                    event, results, entries: ordered, teamBoards, twos,
+                    event, results, entries: ordered, teamBoards, twos, divisions,
                     officialTwos: winnings.filter(w => w.category==='2s_pot'),
                     scoreType, published: results.length > 0
                 };
@@ -660,6 +700,15 @@
             if (r.score==null) return '';
             return scoreType==='stableford' ? (r.score + ' ' + rt('pts').toLowerCase()) : String(r.score);
         }
+        // Ordered division keys for a set of boards: configured divisions first (in the
+        // organizer's order), then any other named bucket, then the unassigned '' bucket last.
+        function orderedDivKeys(present, divisions){
+            const keys = [];
+            (divisions || []).forEach(dv => { if (present.has(dv.name) && !keys.includes(dv.name)) keys.push(dv.name); });
+            [...present].forEach(k => { if (k !== '' && !keys.includes(k)) keys.push(k); });
+            if (present.has('')) keys.push('');
+            return keys;
+        }
 
         // --- Winners tab ---
         function renderWinners(){
@@ -670,29 +719,31 @@
                     <p class="sub text-sm mt-2">${esc(rt('notPublished'))}</p></div>`;
                 return;
             }
-            const groups = {}; const order = [];
-            d.results.forEach(r => { const g = r.division || ''; if (!(g in groups)){ groups[g]=[]; order.push(g); } groups[g].push(r); });
+            // Group official rows by division; each division gets its OWN podium + ranked
+            // list (positions are already ranked per-division at publish time).
+            const groups = {}; const present = new Set();
+            d.results.forEach(r => { const g = r.division || ''; if (!groups[g]) groups[g]=[]; groups[g].push(r); present.add(g); });
+            const order = orderedDivKeys(present, d.divisions);
+
+            const podiumHtml = (list) => {
+                const top3 = list.filter(r => r.position>=1 && r.position<=3);
+                if (!top3.length) return '';
+                const cls = { 1:'pod-1', 2:'pod-2', 3:'pod-3' };
+                const orderPods = [top3.find(r=>r.position===2), top3.find(r=>r.position===1), top3.find(r=>r.position===3)].filter(Boolean);
+                return '<div class="podium mb-3">' + orderPods.map(r => `
+                    <div class="pod-card ${cls[r.position]||''}" style="${r.position===1?'transform:translateY(-6px);':''}">
+                        <div class="pod-medal">${medal(r.position)}</div>
+                        <div class="pod-name">${esc(r.player_name||'Player')}</div>
+                        <div class="pod-score">${esc(scoreLabel(r, d.scoreType))}</div>
+                        ${r.points_earned ? `<div class="pod-sub">+${esc(r.points_earned)} ${esc(rt('poyPts'))}</div>` : ''}
+                    </div>`).join('') + '</div>';
+            };
 
             let html = '';
-            const single = order.length === 1;
-            if (single){
-                const list = groups[order[0]].slice().sort((a,b) => (a.position||999)-(b.position||999));
-                const top3 = list.filter(r => r.position>=1 && r.position<=3).slice(0,3);
-                if (top3.length){
-                    const cls = { 1:'pod-1', 2:'pod-2', 3:'pod-3' };
-                    const orderPods = [top3.find(r=>r.position===2), top3.find(r=>r.position===1), top3.find(r=>r.position===3)].filter(Boolean);
-                    html += '<div class="podium mb-3">' + orderPods.map(r => `
-                        <div class="pod-card ${cls[r.position]||''}" style="${r.position===1?'transform:translateY(-6px);':''}">
-                            <div class="pod-medal">${medal(r.position)}</div>
-                            <div class="pod-name">${esc(r.player_name||'Player')}</div>
-                            <div class="pod-score">${esc(scoreLabel(r, d.scoreType))}</div>
-                            ${r.points_earned ? `<div class="pod-sub">+${esc(r.points_earned)} ${esc(rt('poyPts'))}</div>` : ''}
-                        </div>`).join('') + '</div>';
-                }
-            }
             order.forEach(g => {
                 const list = groups[g].slice().sort((a,b) => (a.position||999)-(b.position||999));
                 if (g) html += `<div class="division-band">${esc(g)}</div>`;
+                html += podiumHtml(list);
                 html += list.map(r => `
                     <div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);">
                         <span style="width:34px;text-align:center;font-weight:800;font-size:${r.position<=3?'17px':'13.5px'};color:${r.position<=3?'var(--gold)':'var(--sub)'};">${medal(r.position)}</span>
@@ -719,9 +770,9 @@
             // Places are OFFICIAL only: if the event has no published results, show no
             // positions/medals/winner highlight anywhere — just the scores.
             const showPlaces = d.published;
-            const rows = d.entries.map((en, i) => {
-                const pos = en.pub && en.pub.position ? en.pub.position : (i+1);
-                const pid = String(en.player_id || ('p'+i)).replace(/[^A-Za-z0-9_-]/g, '_');
+
+            const rowFor = (en, pos) => {
+                const pid = String(en.player_id || 'p').replace(/[^A-Za-z0-9_-]/g, '_');
                 const twosCount = en.hole_scores.filter(s => s===2).length;
                 return `
                     <tr class="${showPlaces && pos===1 ? 'winner-row' : ''}">
@@ -739,12 +790,13 @@
                         <td class="text-center" style="font-weight:800;color:var(--green);">${en.pts || '-'}</td>
                     </tr>
                     ${renderHoleDetails(en, 6, pid)}`;
-            }).join('');
-            el.innerHTML = `
-                ${teamHtml}
-                ${teamHtml ? `<div class="px-4 pt-3 pb-1" style="font-size:11px;font-weight:800;color:var(--sub);text-transform:uppercase;">${esc(rt('individual'))}</div>` : ''}
-                <div class="px-3 pt-2 pb-1 sub" style="font-size:11px;">${esc(rt('tapHint'))}</div>
-                <div class="scroll-x"><table class="res-table" style="min-width:480px;">
+            };
+            const tableFor = (list) => {
+                const rows = list.map((en, i) => {
+                    const pos = (showPlaces && en.pub && en.pub.position) ? en.pub.position : (i+1);
+                    return rowFor(en, pos);
+                }).join('');
+                return `<div class="scroll-x"><table class="res-table" style="min-width:480px;">
                     <thead><tr>
                         <th class="text-center" style="width:44px;">${esc(rt('pos'))}</th>
                         <th class="text-left">${esc(rt('player'))}</th>
@@ -755,6 +807,27 @@
                     </tr></thead>
                     <tbody>${rows}</tbody>
                 </table></div>`;
+            };
+
+            // Split the field into a separate leaderboard per division when the event is
+            // flighted; otherwise one combined board (unchanged).
+            let boards = '';
+            if (d.divisions && d.divisions.length){
+                const groups = {}; const present = new Set();
+                d.entries.forEach(en => { const g = en.division || ''; if (!groups[g]) groups[g]=[]; groups[g].push(en); present.add(g); });
+                orderedDivKeys(present, d.divisions).forEach(g => {
+                    if (g) boards += `<div class="division-band" style="margin:14px 12px 4px;">${esc(g)}</div>`;
+                    boards += tableFor(groups[g]);
+                });
+            } else {
+                boards = tableFor(d.entries);
+            }
+
+            el.innerHTML = `
+                ${teamHtml}
+                ${teamHtml ? `<div class="px-4 pt-3 pb-1" style="font-size:11px;font-weight:800;color:var(--sub);text-transform:uppercase;">${esc(rt('individual'))}</div>` : ''}
+                <div class="px-3 pt-2 pb-1 sub" style="font-size:11px;">${esc(rt('tapHint'))}</div>
+                ${boards}`;
             restoreExpandedState();
         }
 

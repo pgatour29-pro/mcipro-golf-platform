@@ -462,7 +462,7 @@
                     sb.from('scorecards').select(`id, player_id, player_name, total_gross, total_net, handicap, playing_handicap, status, created_at, scoring_format, group_id,
                         scores (hole_number, gross_score, net_score, stableford_points, par, stroke_index)`).eq('event_id', eventId),
                     sb.from('event_winnings').select('player_id, player_name, category, label, notes, division').eq('event_id', eventId),
-                    sb.from('rounds').select('golfer_id, player_name, total_gross, total_net, total_stableford, holes_played, handicap_used, status').eq('society_event_id', eventId)
+                    sb.from('rounds').select('id, golfer_id, player_name, total_gross, total_net, total_stableford, holes_played, handicap_used, status').eq('society_event_id', eventId)
                 ]);
                 if (seq !== state.evSeq) return;
                 const event = evRes.data || { id:eventId, title:'Event' };
@@ -521,6 +521,7 @@
                 // reads rounds) but vanish from Results (which reads scorecards). No hole data
                 // → totals-only row, no expandable grid.
                 const haveIds = new Set(entries.map(e => String(e.player_id)));
+                const roundOnlyEntries = [];   // rounds with no scorecard — may still have round_holes
                 (eventRounds || []).forEach(r => {
                     if (!r.golfer_id || haveIds.has(String(r.golfer_id))) return;
                     if (r.status && r.status !== 'completed') return;
@@ -528,13 +529,44 @@
                     const playing = (idx!=null && isFinite(parseFloat(idx))) ? Math.round(parseFloat(idx)) : null;
                     const gross = r.total_gross || 0;
                     const net = (r.total_net!=null) ? r.total_net : (playing!=null ? gross - playing : gross);
-                    entries.push({ player_id: r.golfer_id, player_name: r.player_name || 'Player',
+                    const en = { player_id: r.golfer_id, player_name: r.player_name || 'Player',
                         hcp: playing, hcpIndex: idx, gross, net, pts: r.total_stableford || 0,
-                        holes: r.holes_played || 0, roundOnly: true,
+                        holes: r.holes_played || 0, roundOnly: true, _roundId: r.id,
                         hole_scores: new Array(18).fill(null), hole_pars: new Array(18).fill(null),
-                        hole_si: new Array(18).fill(null), hole_pts: new Array(18).fill(null) });
+                        hole_si: new Array(18).fill(null), hole_pts: new Array(18).fill(null) };
+                    entries.push(en);
+                    roundOnlyEntries.push(en);
                     haveIds.add(String(r.golfer_id));
                 });
+
+                // These archived rounds keep their hole-by-hole in `round_holes` (not `scores`).
+                // Pull it so their scorecard grid AND their gross 2s show in Results — otherwise a
+                // par-3 two entered on the organizer side (round_holes) is invisible to golfers.
+                const _rids = roundOnlyEntries.map(e => e._roundId).filter(Boolean);
+                if (_rids.length) {
+                    const byRound = {};
+                    for (let i = 0; i < _rids.length; i += 200) {
+                        const { data: rh } = await sb.from('round_holes')
+                            .select('round_id, hole_number, gross_score, net_score, stableford_points, par, stroke_index')
+                            .in('round_id', _rids.slice(i, i + 200));
+                        if (seq !== state.evSeq) return;
+                        (rh || []).forEach(h => { (byRound[h.round_id] = byRound[h.round_id] || []).push(h); });
+                    }
+                    roundOnlyEntries.forEach(en => {
+                        const holes = byRound[en._roundId] || [];
+                        if (!holes.length) return;   // truly totals-only → stays a totals row
+                        holes.forEach(h => {
+                            const i = h.hole_number - 1;
+                            if (i >= 0 && i < 18) {
+                                en.hole_scores[i] = h.gross_score;
+                                en.hole_pars[i] = h.par || 4;
+                                en.hole_si[i] = h.stroke_index || null;
+                                en.hole_pts[i] = h.stableford_points;
+                            }
+                        });
+                        en.roundOnly = false;   // has real hole data now → expandable + counts for 2s
+                    });
+                }
 
                 // official published row per player
                 const pubBy = new Map(); results.forEach(r => { if (!pubBy.has(String(r.player_id))) pubBy.set(String(r.player_id), r); });

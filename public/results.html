@@ -708,11 +708,16 @@
             document.getElementById('evFinalBadge').textContent = d.published ? rt('final') : rt('unpublished');
             document.getElementById('evFinalBadge').style.background = d.published ? 'var(--green-deep)' : '#64748b';
             renderWinners(); renderField(); renderTwos();
+            // Unpublished events have NO winners yet — the Winners tab would just say
+            // "not published". Open on Full Results (the actual field/scores) instead, unless
+            // the viewer explicitly picked a tab (deep link or a manual tap).
+            if (!state.tabExplicit) state.tab = d.published ? 'winners' : 'field';
             switchTab(state.tab, true);
         }
 
         function switchTab(tab, silent){
             state.tab = tab;
+            if (!silent) state.tabExplicit = true;
             ['winners','field','twos'].forEach(t => {
                 document.getElementById('tab-'+t).classList.toggle('active', t===tab);
                 document.getElementById('pane-'+t).classList.toggle('hidden', t!==tab);
@@ -1174,7 +1179,7 @@
             const evParam = params.get('event');
             const socParam = (params.get('society')||'').toUpperCase();
             const hash = (location.hash||'').replace('#','');
-            if (['winners','field','twos'].includes(hash)) state.tab = hash;
+            if (['winners','field','twos'].includes(hash)) { state.tab = hash; state.tabExplicit = true; }
 
             let socKey = SOCIETIES.some(s => s.key===socParam) ? socParam : null;
             if (!socKey){ try { const last = localStorage.getItem('mcipro_results_soc'); if (SOCIETIES.some(s => s.key===last)) socKey = last; } catch(e){} }

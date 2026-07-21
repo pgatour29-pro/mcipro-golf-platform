@@ -82,6 +82,7 @@
         // ================= INIT =================
         async init() {
             if (!db()) { setTimeout(() => MD.init(), 800); return; }
+            MD.injectStyle();
             const ok = await MD.resolveCourse();
             if (!ok) return; // picker shown; init re-runs after pick
             MD.paintHeader();
@@ -393,24 +394,14 @@
                 if (seq !== MD._seq.overview) return;
 
                 const behindCount = onCourse.filter(g => g.behind >= 1.5).length;
-                const stat = (icon, iconCls, label, val, sub, tab) => `
-                  <button onclick="showManagerTab('${tab || 'overview'}', event)" class="bg-white rounded-xl border border-gray-200 p-3 text-left hover:shadow-md transition w-full">
-                    <div class="flex items-center justify-between">
-                      <span class="text-xs text-gray-500 font-medium">${esc(label)}</span>
-                      <span class="material-symbols-outlined ${iconCls}" style="font-size:18px;">${icon}</span>
-                    </div>
-                    <div class="text-2xl font-bold text-gray-900 leading-tight">${val}</div>
-                    <div class="text-[11px] text-gray-500">${sub}</div>
-                  </button>`;
-
                 host.innerHTML = `
-                  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 mb-3">
-                    ${stat('directions_walk', 'text-green-600', tr('mgr.oncourse', 'On Course Now'), fmtN(playersOn), fmtN(onCourse.length) + ' ' + tr('mgr.groups', 'groups'), 'traffic')}
-                    ${stat('golf_course', 'text-blue-600', tr('mgr.roundstoday', 'Rounds Today'), fmtN(cards.length), fmtN(cards.filter(c => c.completed_at).length) + ' ' + tr('mgr.finished', 'finished'), 'traffic')}
-                    ${stat('event', 'text-teal-600', tr('mgr.eventstoday', "Events Today"), fmtN(events.length), fmtN(Object.values(regCounts).reduce((a, b) => a + b, 0)) + ' ' + tr('mgr.registered', 'registered'), 'traffic')}
-                    ${stat('person_pin_circle', 'text-emerald-600', tr('mgr.caddiestoday', 'Caddies Today'), fmtN(caddyRows.length), tr('mgr.bookings', 'bookings'), 'staff')}
-                    ${stat('restaurant', 'text-orange-600', tr('mgr.openorders', 'Open F&B Orders'), fmtN(openFood.length), fmtN((food.data || []).length) + ' ' + tr('mgr.today', 'today'), 'analytics')}
-                    ${stat('emergency', courseAlerts.length ? 'text-red-600' : 'text-gray-400', tr('mgr.alerts', 'Active Alerts'), fmtN(courseAlerts.length), behindCount ? fmtN(behindCount) + ' ' + tr('mgr.slowgroups', 'slow groups') : tr('mgr.allclear', 'All clear'), 'messages')}
+                  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+                    ${MD.kpi({ icon: 'directions_walk', color: 'green', val: fmtN(playersOn), label: tr('mgr.oncourse', 'On Course Now'), sub: fmtN(onCourse.length) + ' ' + tr('mgr.groups', 'groups'), tab: 'traffic' })}
+                    ${MD.kpi({ icon: 'golf_course', color: 'blue', val: fmtN(cards.length), label: tr('mgr.roundstoday', 'Rounds Today'), sub: fmtN(cards.filter(c => c.completed_at).length) + ' ' + tr('mgr.finished', 'finished'), tab: 'traffic' })}
+                    ${MD.kpi({ icon: 'event', color: 'teal', val: fmtN(events.length), label: tr('mgr.eventstoday', 'Events Today'), sub: fmtN(Object.values(regCounts).reduce((a, b) => a + b, 0)) + ' ' + tr('mgr.registered', 'registered'), tab: 'traffic' })}
+                    ${MD.kpi({ icon: 'person_pin_circle', color: 'emerald', val: fmtN(caddyRows.length), label: tr('mgr.caddiestoday', 'Caddies Today'), sub: tr('mgr.bookings', 'bookings'), tab: 'staff' })}
+                    ${MD.kpi({ icon: 'restaurant', color: 'orange', val: fmtN(openFood.length), label: tr('mgr.openorders', 'Open F&B Orders'), sub: fmtN((food.data || []).length) + ' ' + tr('mgr.today', 'today'), tab: 'analytics' })}
+                    ${MD.kpi({ icon: 'emergency', color: courseAlerts.length ? 'red' : 'gray', val: fmtN(courseAlerts.length), label: tr('mgr.alerts', 'Active Alerts'), sub: behindCount ? fmtN(behindCount) + ' ' + tr('mgr.slowgroups', 'slow groups') : tr('mgr.allclear', 'All clear'), tab: 'messages' })}
                   </div>
                   <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
                     <div class="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-4">
@@ -492,6 +483,52 @@
         },
         errorBox() {
             return `<div class="text-center py-10 text-gray-500"><span class="material-symbols-outlined text-3xl text-red-400 block mb-2">error</span><p class="text-sm">${esc(tr('mgr.loaderror', 'Could not load data — check connection and retry'))}</p></div>`;
+        },
+
+        // ================= REVAMP DESIGN SYSTEM =================
+        // Injected once. Scoped to #managerDashboard so id-specificity lifts the
+        // existing Tailwind cards (radius/shadow/border) without touching other screens.
+        injectStyle() {
+            if (document.getElementById('mgr-revamp-css')) return;
+            if (!document.getElementById('mgr-font-jakarta')) {
+                const l = document.createElement('link');
+                l.id = 'mgr-font-jakarta'; l.rel = 'stylesheet';
+                l.href = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap';
+                document.head.appendChild(l);
+            }
+            const s = document.createElement('style');
+            s.id = 'mgr-revamp-css';
+            s.textContent = `
+              #managerDashboard{background:#eef1f6;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;}
+              #managerDashboard .mgr-num{font-variant-numeric:tabular-nums;}
+              #managerDashboard .rounded-xl{border-radius:16px;}
+              #managerDashboard .border-gray-200{border-color:#e7ebf1 !important;}
+              #managerDashboard .bg-white.border{box-shadow:0 1px 2px rgba(16,24,40,.04),0 10px 26px -20px rgba(16,24,40,.45);}
+              #managerDashboard .mgr-kpi{background:#fff;border:1px solid #e7ebf1;border-radius:16px;padding:14px;box-shadow:0 1px 2px rgba(16,24,40,.04),0 10px 26px -20px rgba(16,24,40,.45);transition:box-shadow .15s,transform .15s;}
+              #managerDashboard button.mgr-kpi:hover{box-shadow:0 2px 4px rgba(16,24,40,.05),0 16px 30px -18px rgba(16,24,40,.5);transform:translateY(-1px);}
+              #managerDashboard .mgr-chip{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;flex-shrink:0;}
+              #managerDashboard .mgr-chip .material-symbols-outlined{font-size:19px !important;}
+              #managerDashboard .mgr-sec{font-size:14px;font-weight:700;color:#0f172a;display:flex;align-items:center;gap:8px;}
+              #managerDashboard .mgr-bar{height:6px;border-radius:6px;background:#eef1f6;overflow:hidden;}
+              #managerDashboard .mgr-bar>span{display:block;height:100%;border-radius:6px;}
+            `;
+            document.head.appendChild(s);
+        },
+        // Shared premium KPI tile. o = {icon,color,val,label,sub,trend,tab}
+        kpi(o) {
+            const c = o.color || 'green';
+            const trend = o.trend ? `<span class="text-[11px] font-bold ${o.trend[0] === '-' ? 'text-red-600' : 'text-green-600'} flex items-center gap-0.5">${mi(o.trend[0] === '-' ? 'trending_down' : 'trending_up')}${esc(String(o.trend).replace(/^\+/, ''))}</span>` : '';
+            const inner = `
+              <div class="flex items-center justify-between">
+                <span class="mgr-chip bg-${c}-50">${mi(o.icon, 'text-' + c + '-600')}</span>
+                ${trend}
+              </div>
+              <div class="text-[23px] font-extrabold text-gray-900 mgr-num leading-tight mt-2">${o.val}</div>
+              <div class="text-[12px] font-semibold text-gray-500">${esc(o.label)}</div>
+              ${o.sub ? `<div class="text-[11px] text-gray-400 font-medium">${o.sub}</div>` : ''}`;
+            return o.tab
+                ? `<button onclick="showManagerTab('${o.tab}', event)" class="mgr-kpi text-left w-full">${inner}</button>`
+                : `<div class="mgr-kpi">${inner}</div>`;
         }
     };
 
@@ -1194,33 +1231,23 @@
             const socTop = Object.entries(socMix).sort((a, b) => b[1] - a[1]).slice(0, 8);
             const socMax = socTop.length ? socTop[0][1] : 1;
 
-            const kpi = (label, val, sub, icon, cls) => `
-              <div class="bg-white rounded-xl border border-gray-200 p-3">
-                <div class="flex items-center justify-between">
-                  <span class="text-xs text-gray-500 font-medium">${esc(label)}</span>
-                  <span class="material-symbols-outlined ${cls}" style="font-size:18px;">${icon}</span>
-                </div>
-                <div class="text-2xl font-bold text-gray-900 leading-tight">${val}</div>
-                <div class="text-[11px] text-gray-500">${sub}</div>
-              </div>`;
-
             host.innerHTML = `
-              <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <div class="flex items-center gap-2">
-                  <h3 class="text-sm font-bold text-gray-900">${mi('monitoring', 'text-green-600')} ${esc(tr('mgr.opsanalytics', 'Operations analytics'))}</h3>
-                  <span class="text-[11px] text-gray-400">${esc(tr('mgr.realdata', 'platform data only — no estimates'))}</span>
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <div>
+                  <h2 class="text-lg font-extrabold text-gray-900 tracking-tight flex items-center gap-2">${mi('monitoring', 'text-green-600')} ${esc(tr('mgr.opsanalytics', 'Analytics'))} <span class="text-gray-400 font-semibold text-sm">· ${tr('mgr.last', 'last')} ${days === 365 ? '12 ' + tr('mgr.months', 'months') : days + ' ' + tr('mgr.days', 'days')}</span></h2>
+                  <p class="text-[11px] text-gray-400 font-medium">${esc(tr('mgr.realdata', 'platform data only — no estimates'))}</p>
                 </div>
-                <div class="flex gap-1.5">
-                  ${[7, 30, 90, 365].map(d => `<button data-days="${d}" class="mgr-an-days px-3 py-1 rounded-full text-xs font-semibold ${MD._anState.days === d ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">${d === 365 ? '1Y' : d + 'D'}</button>`).join('')}
+                <div class="flex gap-1 p-1 bg-white border border-gray-200 rounded-xl">
+                  ${[7, 30, 90, 365].map(d => `<button data-days="${d}" class="mgr-an-days px-3 h-8 rounded-lg text-xs font-bold ${MD._anState.days === d ? 'bg-green-600 text-white' : 'text-gray-500 hover:bg-gray-100'}">${d === 365 ? '1Y' : d + 'D'}</button>`).join('')}
                 </div>
               </div>
-              <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 mb-3">
-                ${kpi(tr('mgr.rounds', 'Rounds'), fmtN(cards.length), fmtN(uniquePlayers) + ' ' + tr('mgr.uniqueplayers', 'unique players'), 'golf_course', 'text-blue-600')}
-                ${kpi(tr('mgr.events', 'Society events'), fmtN(events.length), fmtN(totalRegs) + ' ' + tr('mgr.registrations', 'registrations'), 'event', 'text-teal-600')}
-                ${kpi(tr('mgr.caddybookings', 'Caddy bookings'), fmtN(caddyRows.length), caddyRevenue ? fmtB(caddyRevenue) : '—', 'person_pin_circle', 'text-emerald-600')}
-                ${kpi(tr('mgr.fnborders', 'F&B orders'), fmtN(foodRows.length), foodRevenue ? fmtB(foodRevenue) : '—', 'restaurant', 'text-orange-600')}
-                ${kpi(tr('mgr.condrating', 'Condition rating'), avgCond + ' ★', fmtN(condRows.length) + ' ' + tr('mgr.reports', 'reports'), 'grass', 'text-green-600')}
-                ${kpi(tr('mgr.busiestday', 'Busiest day'), esc(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dows.indexOf(Math.max(...dows))] || '—'), tr('mgr.byrounds', 'by rounds'), 'calendar_month', 'text-gray-500')}
+              <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+                ${MD.kpi({ icon: 'golf_course', color: 'blue', val: fmtN(cards.length), label: tr('mgr.rounds', 'Rounds'), sub: fmtN(uniquePlayers) + ' ' + tr('mgr.uniqueplayers', 'unique players') })}
+                ${MD.kpi({ icon: 'event', color: 'teal', val: fmtN(events.length), label: tr('mgr.events', 'Society events'), sub: fmtN(totalRegs) + ' ' + tr('mgr.registrations', 'registrations') })}
+                ${MD.kpi({ icon: 'person_pin_circle', color: 'emerald', val: fmtN(caddyRows.length), label: tr('mgr.caddybookings', 'Caddy bookings'), sub: caddyRevenue ? fmtB(caddyRevenue) : '—' })}
+                ${MD.kpi({ icon: 'restaurant', color: 'orange', val: fmtN(foodRows.length), label: tr('mgr.fnborders', 'F&B orders'), sub: foodRevenue ? fmtB(foodRevenue) : '—' })}
+                ${MD.kpi({ icon: 'grade', color: 'amber', val: avgCond + ' ★', label: tr('mgr.condrating', 'Condition rating'), sub: fmtN(condRows.length) + ' ' + tr('mgr.reports', 'reports') })}
+                ${MD.kpi({ icon: 'calendar_month', color: 'gray', val: esc(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dows.indexOf(Math.max(...dows))] || '—'), label: tr('mgr.busiestday', 'Busiest day'), sub: tr('mgr.byrounds', 'by rounds') })}
               </div>
               <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
                 <div class="bg-white rounded-xl border border-gray-200 p-4">
@@ -1254,7 +1281,12 @@
             // charts
             const mkChart = (id, cfg) => {
                 const el = document.getElementById(id);
-                if (!el || typeof Chart === 'undefined') return;
+                if (!el) return;
+                if (typeof Chart === 'undefined') {
+                    const box = el.parentElement;
+                    if (box) box.innerHTML = `<div class="flex items-center justify-center h-full text-xs text-gray-400 font-medium">${esc(tr('mgr.chartsloading', 'Charts loading — reopen this tab in a moment'))}</div>`;
+                    return;
+                }
                 if (MD._charts[id]) { try { MD._charts[id].destroy(); } catch (e) { } }
                 MD._charts[id] = new Chart(el.getContext('2d'), cfg);
             };

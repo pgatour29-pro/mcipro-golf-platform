@@ -409,12 +409,19 @@
                 const chunks = [];
                 for (let i=0; i<ids.length; i+=10) chunks.push(ids.slice(i, i+10));
                 await Promise.all(chunks.map(async chunk => {
-                    const [rRes, scRes] = await Promise.all([
+                    const [rRes, scRes, pRes] = await Promise.all([
                         sb.from('event_results').select('event_id').in('event_id', chunk),
-                        sb.from('scorecards').select('event_id').gt('total_gross', 0).in('event_id', chunk)
+                        sb.from('scorecards').select('event_id').gt('total_gross', 0).in('event_id', chunk),
+                        // A set TEE SHEET (event_pairings) also qualifies — matches loadEvent's
+                        // full-field gate (v694): the event then lists its whole registered field
+                        // as not-started rows, filling in as scores post. Without this, a
+                        // tee-sheeted event with no scores yet drops off the strip the day after
+                        // (it only survived while it was "today"). event_pairings = 1 row/event.
+                        sb.from('event_pairings').select('event_id').in('event_id', chunk)
                     ]);
                     (rRes.data||[]).forEach(x => listed.add(x.event_id));
                     (scRes.data||[]).forEach(x => listed.add(x.event_id));
+                    (pRes.data||[]).forEach(x => listed.add(x.event_id));
                 }));
                 if (seq !== state.stripSeq) return;
                 // TODAY's event is ALWAYS current — even before any scores are in — so at 12:01am the

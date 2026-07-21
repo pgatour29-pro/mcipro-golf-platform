@@ -373,13 +373,14 @@
             try {
                 const todayStart = localMidnightISO();
                 const today = localDateStr();
-                const [cards, events, caddyB, food, alerts, conds] = await Promise.all([
+                const [cards, events, caddyB, food, alerts, conds, proshop] = await Promise.all([
                     MD.scorecardsSince(todayStart),
                     MD.eventsFor(today, today),
-                    db().from('caddy_bookings').select('id,course_id,caddie_name,golfer_name,tee_time_iso,status,booking_date').eq('booking_date', today).or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(200),
+                    db().from('caddy_bookings').select('id,course_id,caddie_name,golfer_name,tee_time_iso,status,booking_date,payment_amount,payment_status').eq('booking_date', today).or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(200),
                     MD.orNameFilters(db().from('food_orders').select('id,order_number,customer_name,total,status,created_at,delivery_type'), 'course_name').gte('created_at', todayStart).order('created_at', { ascending: false }).limit(100),
                     db().from('emergency_alerts').select('id,type,message,user_name,status,created_at,course_name,current_hole').eq('status', 'active').order('created_at', { ascending: false }).limit(20),
-                    MD.orNameFilters(db().from('course_conditions').select('id,rating,comment,tags,user_name,created_at'), 'course_name').order('created_at', { ascending: false }).limit(5)
+                    MD.orNameFilters(db().from('course_conditions').select('id,rating,comment,tags,user_name,created_at'), 'course_name').order('created_at', { ascending: false }).limit(5),
+                    db().from('proshop_sales').select('total').eq('course_id', MD.course.id).gte('created_at', todayStart).limit(1000)
                 ]);
                 if (seq !== MD._seq.overview) return;
                 const scores = await MD.scoresFor(cards.filter(c => !c.completed_at).map(c => c.id));
@@ -395,6 +396,16 @@
                 if (seq !== MD._seq.overview) return;
 
                 const behindCount = onCourse.filter(g => g.behind >= 1.5).length;
+                // today's takings snapshot (ties to Cash Audit)
+                const gfR = (() => { const dw = new Date(today + 'T00:00:00').getDay(); return Number((dw === 0 || dw === 6) ? (MD.pricing.greenFeeWeekend || MD.pricing.greenFeeWeekday) : MD.pricing.greenFeeWeekday) || 0; })();
+                const takeParts = [
+                    { v: cards.length * gfR, color: 'green' },
+                    { v: caddyRows.reduce((a, b) => a + (Number(b.payment_amount) || 0), 0), color: 'sky' },
+                    { v: (food.data || []).reduce((a, o) => a + (Number(o.total) || 0), 0), color: 'orange' },
+                    { v: (proshop.data || []).reduce((a, o) => a + (Number(o.total) || 0), 0), color: 'violet' }
+                ];
+                const takeTotal = takeParts.reduce((a, p) => a + p.v, 0);
+                const caddyUnpaid = caddyRows.filter(b => String(b.payment_status || '').toLowerCase() !== 'paid').reduce((a, b) => a + (Number(b.payment_amount) || 0), 0);
                 host.innerHTML = `
                   <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
                     ${MD.kpi({ icon: 'directions_walk', color: 'green', val: fmtN(playersOn), label: tr('mgr.oncourse', 'On Course Now'), sub: fmtN(onCourse.length) + ' ' + tr('mgr.groups', 'groups'), tab: 'traffic' })}
@@ -422,6 +433,15 @@
                         : `<div class="text-center py-8 text-gray-400"><span class="material-symbols-outlined text-4xl block mb-2 text-gray-300">golf_course</span><p class="text-sm">${esc(tr('mgr.nolive', 'No groups on course right now'))}</p><p class="text-xs mt-1">${esc(tr('mgr.nolive.sub', 'Groups appear here the moment live scoring starts'))}</p></div>`}
                     </div>
                     <div class="space-y-3">
+                      <button onclick="showManagerTab('cash', event)" class="w-full text-left bg-white rounded-xl border border-gray-200 p-4">
+                        <div class="flex items-center justify-between mb-1">
+                          <h3 class="text-sm font-bold text-gray-900">${mi('payments', 'text-green-600')} ${esc(tr('mgr.ov.takings', "Today's takings"))}</h3>
+                          <span class="text-xs font-semibold text-green-700">${esc(tr('mgr.cash.title', 'Cash Audit'))} →</span>
+                        </div>
+                        <div class="text-[26px] font-extrabold mgr-num tracking-tight text-gray-900">${fmtB(takeTotal)}</div>
+                        ${takeTotal ? `<div class="flex gap-1 h-2 rounded-full overflow-hidden my-2">${takeParts.map(p => p.v ? `<div class="bg-${p.color}-500" style="width:${Math.round(p.v / takeTotal * 100)}%"></div>` : '').join('')}</div>` : '<div class="h-2 my-2"></div>'}
+                        <div class="text-[11px] text-gray-500 font-medium">${esc(tr('mgr.ov.takingslegend', 'Green fee · Caddy · F&B · Pro-shop'))}${caddyUnpaid ? ` · <span class="text-red-600 font-semibold">${fmtB(caddyUnpaid)} ${esc(tr('mgr.cash.unpaid', 'unpaid'))}</span>` : ''}</div>
+                      </button>
                       <div class="bg-white rounded-xl border border-gray-200 p-4">
                         <h3 class="text-sm font-bold text-gray-900 mb-2">${mi('event', 'text-teal-600')} ${esc(tr('mgr.todaysevents', "Today's tee sheet"))}</h3>
                         ${events.length ? events.map(ev => `

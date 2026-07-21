@@ -484,14 +484,16 @@
                 ['winners','field','twos','aces'].forEach(t => document.getElementById('pane-'+t).innerHTML = `<div class="sub text-sm p-4 text-center">${esc(rt('loading'))}</div>`);
             }
             try {
-                const [evRes, resRes, cardRes, winRes, rndRes, regRes] = await Promise.all([
+                const [evRes, resRes, cardRes, winRes, rndRes, pairRes, regRes] = await Promise.all([
                     sb.from('society_events').select('id,title,course_name,event_date,format,society_id,divisions').eq('id', eventId).maybeSingle(),
                     sb.from('event_results').select('*').eq('event_id', eventId).order('position', {ascending:true}),
                     sb.from('scorecards').select(`id, player_id, player_name, total_gross, total_net, handicap, playing_handicap, status, created_at, scoring_format, group_id,
                         scores (hole_number, gross_score, net_score, stableford_points, par, stroke_index)`).eq('event_id', eventId),
                     sb.from('event_winnings').select('player_id, player_name, category, label, notes, division').eq('event_id', eventId),
                     sb.from('rounds').select('id, golfer_id, player_name, total_gross, total_net, total_stableford, holes_played, handicap_used, status').eq('society_event_id', eventId),
-                    // The registered field — so Results lists everyone once players are registered.
+                    // Tee sheet made? (the trigger) + the registered field (who to list).
+                    // NB: event_pairings has NO 'id' column — key is event_id.
+                    sb.from('event_pairings').select('event_id').eq('event_id', eventId).limit(1),
                     sb.from('event_registrations').select('player_id, player_name, handicap, status').eq('event_id', eventId)
                 ]);
                 if (seq !== state.evSeq) return;
@@ -610,10 +612,10 @@
                     en.division = (en.pub && en.pub.division) || divisionForHandicap(en.hcpIndex, divisions) || null;
                 });
 
-                // FULL FIELD: once players are registered (the roster / tee sheet), list EVERY one.
-                // Those with no scorecard/round yet show as not-started ('-' scores), sorted to the
-                // bottom, and fill in + move up as scores come in (mirrors the organizer scoring board).
-                if (regRes && regRes.data && regRes.data.length) {
+                // FULL FIELD: once the TEE SHEET has been set for the event, list EVERY registered
+                // player. Those with no scorecard/round yet show as not-started ('-' scores), sorted
+                // to the bottom, and fill in + move up as scores come in (mirrors the scoring board).
+                if (pairRes && pairRes.data && pairRes.data.length) {
                     ((regRes && regRes.data) || []).forEach(r => {
                         if (!r.player_id || haveIds.has(String(r.player_id))) return;
                         if (String(r.status || '').toLowerCase() === 'cancelled') return;

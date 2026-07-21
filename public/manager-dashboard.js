@@ -319,6 +319,7 @@
                 traffic: () => MD.loadTraffic(),
                 staff: () => MD.loadStaff(),
                 analytics: () => MD.loadAnalytics(),
+                cash: () => MD.loadCash(),
                 reports: () => MD.renderReportsHome(),
                 settings: () => MD.renderSettings(),
                 maintenance: () => MD.loadMaintenance(),
@@ -2163,6 +2164,208 @@
                 MD.renderSettings();
             }
         }));
+    };
+
+    // ================= CASH AUDITING =================
+    MD._cashDate = null;
+    MD.fmtDate = function (d) {
+        try { return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); } catch (e) { return d; }
+    };
+    MD.loadCash = async function () {
+        const host = document.getElementById('mgr-cash-body');
+        if (!host) return;
+        if (!MD._cashDate) MD._cashDate = localDateStr();
+        const seq = (MD._seq.cash = (MD._seq.cash || 0) + 1);
+        if (!MD._loaded.cash) host.innerHTML = MD.spinner();
+        try {
+            const date = MD._cashDate;
+            const dayStart = new Date(date + 'T00:00:00');
+            const dayEnd = new Date(dayStart.getTime() + 86400000);
+            const startISO = dayStart.toISOString(), endISO = dayEnd.toISOString();
+            const dow = dayStart.getDay();
+            const isWeekend = (dow === 0 || dow === 6);
+            const gfRate = Number(isWeekend ? (MD.pricing.greenFeeWeekend || MD.pricing.greenFeeWeekday) : MD.pricing.greenFeeWeekday) || 0;
+
+            const [rounds, caddy, food, pro, saved] = await Promise.all([
+                db().from('scorecards').select('id').eq('course_id', MD.course.id).gte('created_at', startISO).lt('created_at', endISO).limit(1000),
+                db().from('caddy_bookings').select('payment_amount,payment_status,payment_method,status,caddie_name,golfer_name').eq('booking_date', date).or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(1000),
+                MD.orNameFilters(db().from('food_orders').select('total,status,created_at'), 'course_name').gte('created_at', startISO).lt('created_at', endISO).limit(1000),
+                db().from('proshop_sales').select('total,payment_method').eq('course_id', MD.course.id).gte('created_at', startISO).lt('created_at', endISO).limit(1000),
+                db().from('cash_reconciliation').select('*').eq('course_id', MD.course.id).eq('biz_date', date).maybeSingle()
+            ]);
+            if (seq !== MD._seq.cash) return;
+
+            const roundN = (rounds.data || []).length;
+            const caddyRows = (caddy.data || []).filter(b => b.status !== 'cancelled');
+            const foodRows = (food.data || []).filter(o => String(o.status || '').toLowerCase() !== 'cancelled');
+            const proRows = pro.data || [];
+            const counts = (saved.data && saved.data.counts) || {};
+            const closed = !!(saved.data && saved.data.closed);
+
+            const isCash = (m) => String(m || '').toLowerCase() === 'cash';
+            const sum = (arr, f) => arr.reduce((a, x) => a + (Number(f(x)) || 0), 0);
+            const caddyPaid = caddyRows.filter(b => String(b.payment_status || '').toLowerCase() === 'paid');
+
+            const src = [
+                { key: 'greenfee', label: tr('mgr.cash.greenfee', 'Green fees'), icon: 'golf_course', color: 'green', txns: roundN, expected: roundN * gfRate, cash: null, card: null, est: true },
+                {
+                    key: 'caddy', label: tr('mgr.cash.caddy', 'Caddy fees'), icon: 'person_pin_circle', color: 'sky', txns: caddyRows.length, expected: sum(caddyRows, b => b.payment_amount),
+                    cash: sum(caddyPaid.filter(b => isCash(b.payment_method)), b => b.payment_amount), card: sum(caddyPaid.filter(b => !isCash(b.payment_method)), b => b.payment_amount), est: false
+                },
+                { key: 'food', label: tr('mgr.cash.food', 'F&B'), icon: 'restaurant', color: 'orange', txns: foodRows.length, expected: sum(foodRows, o => o.total), cash: null, card: null, est: false },
+                {
+                    key: 'proshop', label: tr('mgr.cash.proshop', 'Pro-shop'), icon: 'storefront', color: 'violet', txns: proRows.length, expected: sum(proRows, o => o.total),
+                    cash: sum(proRows.filter(o => isCash(o.payment_method)), o => o.total), card: sum(proRows.filter(o => !isCash(o.payment_method)), o => o.total), est: false
+                }
+            ];
+            const totExp = sum(src, s => s.expected), totCash = sum(src, s => s.cash || 0), totCard = sum(src, s => s.card || 0);
+            let totCounted = 0, anyCounted = false;
+            src.forEach(s => { if (counts[s.key] != null && counts[s.key] !== '') { totCounted += Number(counts[s.key]) || 0; anyCounted = true; } });
+            const totVar = anyCounted ? (totCounted - totExp) : null;
+            const unpaidRows = caddyRows.filter(b => String(b.payment_status || '').toLowerCase() !== 'paid' && Number(b.payment_amount) > 0);
+            const unpaidTotal = sum(unpaidRows, b => b.payment_amount);
+            const totTxns = src.reduce((a, s) => a + s.txns, 0);
+
+            const cashPct = (totCash + totCard) ? Math.round(totCash / (totCash + totCard) * 100) : 0;
+            const donut = (totCash + totCard) ? `conic-gradient(#16a34a 0 ${cashPct}%,#0ea5e9 0)` : '#e5e7eb';
+            const varCell = (v) => v == null ? '<span class="text-gray-300">—</span>' : (v === 0 ? '<span class="text-green-600 font-bold">✓</span>' : `<span class="font-bold ${v < 0 ? 'text-red-600' : 'text-amber-600'}">${v < 0 ? '−' : '+'}${fmtB(Math.abs(v))}</span>`);
+
+            const rowHtml = src.map(s => {
+                const cv = (counts[s.key] != null && counts[s.key] !== '') ? Number(counts[s.key]) : null;
+                const v = cv == null ? null : (cv - s.expected);
+                return `<tr class="border-b border-gray-100">
+                    <td class="py-2.5"><span class="inline-flex items-center gap-2 font-semibold text-gray-800">${mi(s.icon, 'text-' + s.color + '-500')}${esc(s.label)}${s.est ? ' <span class="text-[9px] font-bold uppercase text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">est</span>' : ''}</span></td>
+                    <td class="text-right text-gray-500">${fmtN(s.txns)}</td>
+                    <td class="text-right font-semibold mgr-num">${fmtB(s.expected)}</td>
+                    <td class="text-right text-gray-500 mgr-num">${s.cash == null ? '—' : fmtB(s.cash)}</td>
+                    <td class="text-right text-gray-500 mgr-num">${s.card == null ? '—' : fmtB(s.card)}</td>
+                    <td class="text-right"><span class="inline-flex items-center gap-0.5"><span class="text-gray-400 text-xs">฿</span><input type="number" inputmode="numeric" class="mgr-cash-in w-24 text-right px-2 py-1 rounded-lg border border-gray-200 bg-white font-semibold mgr-num focus:outline-none focus:ring-2 focus:ring-green-200" data-src="${s.key}" value="${cv == null ? '' : cv}" placeholder="${Math.round(s.expected)}" ${closed ? 'disabled' : ''}></span></td>
+                    <td class="text-right mgr-cash-var mgr-num" data-src="${s.key}">${varCell(v)}</td>
+                  </tr>`;
+            }).join('');
+
+            host.innerHTML = `
+              <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+                <div>
+                  <h2 class="text-lg font-extrabold text-gray-900 tracking-tight flex items-center gap-2">${mi('account_balance_wallet', 'text-green-600')} ${esc(tr('mgr.cash.title', 'Cash Auditing'))}${closed ? ' <span class="text-[10px] font-bold uppercase tracking-wide text-gray-500 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full">' + esc(tr('mgr.cash.closedday', 'Closed')) + '</span>' : ''}</h2>
+                  <p class="text-[12.5px] text-gray-500 font-medium">${esc(tr('mgr.cash.sub', "Reconcile the day's takings against cash counted — flag any over/short."))}</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button class="mgr-cash-nav w-9 h-9 grid place-items-center rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50" data-d="-1">${mi('chevron_left')}</button>
+                  <div class="flex flex-col items-center leading-tight px-4 py-1.5 rounded-xl border border-gray-200 bg-white">
+                    <span class="text-[10px] uppercase tracking-wide text-gray-400 font-bold">${esc(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dow])}</span>
+                    <span class="font-bold text-[14px] text-gray-900">${esc(MD.fmtDate(date))}</span>
+                  </div>
+                  <button class="mgr-cash-nav w-9 h-9 grid place-items-center rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50" data-d="1">${mi('chevron_right')}</button>
+                  <button class="mgr-cash-today h-9 px-3 rounded-xl border border-gray-200 bg-white text-green-700 font-bold text-[13px]">${esc(tr('mgr.today', 'Today'))}</button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                <div class="mgr-kpi"><div class="text-[11px] font-bold uppercase tracking-wide text-gray-400">${esc(tr('mgr.cash.expected', 'Expected takings'))}</div><div class="text-[24px] font-extrabold mgr-num mt-1 text-gray-900">${fmtB(totExp)}</div><div class="text-[11px] text-gray-500 font-medium">${fmtN(totTxns)} ${esc(tr('mgr.cash.txns', 'transactions'))}</div></div>
+                <div class="mgr-kpi"><div class="text-[11px] font-bold uppercase tracking-wide text-gray-400">${esc(tr('mgr.cash.counted', 'Counted'))}</div><div class="text-[24px] font-extrabold mgr-num mt-1 text-gray-900" id="mgr-cash-counted">${anyCounted ? fmtB(totCounted) : '—'}</div><div class="text-[11px] text-gray-500 font-medium">${unpaidTotal ? fmtB(unpaidTotal) + ' ' + esc(tr('mgr.cash.unpaid', 'unpaid')) : esc(tr('mgr.cash.allsettled', 'all settled'))}</div></div>
+                <div class="mgr-kpi"><div class="text-[11px] font-bold uppercase tracking-wide text-gray-400">${esc(tr('mgr.cash.variance', 'Variance'))}</div><div class="text-[24px] font-extrabold mgr-num mt-1 ${totVar == null ? 'text-gray-300' : totVar < 0 ? 'text-red-600' : totVar > 0 ? 'text-amber-600' : 'text-green-600'}" id="mgr-cash-totvar">${totVar == null ? '—' : (totVar === 0 ? '฿0' : (totVar < 0 ? '−' : '+') + fmtB(Math.abs(totVar)))}</div><div class="text-[11px] font-semibold ${totVar == null ? 'text-gray-400' : totVar < 0 ? 'text-red-600' : 'text-gray-500'}" id="mgr-cash-varnote">${totVar == null ? esc(tr('mgr.cash.entercounts', 'enter counts')) : totVar < 0 ? esc(tr('mgr.cash.short', 'short')) : totVar > 0 ? esc(tr('mgr.cash.over', 'over')) : esc(tr('mgr.cash.balanced', 'balanced'))}</div></div>
+                <div class="mgr-kpi"><div class="text-[11px] font-bold uppercase tracking-wide text-gray-400">${esc(tr('mgr.cash.method', 'Cash / Card'))}</div>
+                  <div class="flex items-center gap-3 mt-1">
+                    <div class="w-11 h-11 rounded-full flex-shrink-0" style="background:${donut}"></div>
+                    <div class="text-[12px] font-semibold leading-tight text-gray-600"><span class="text-green-600">●</span> ${esc(tr('mgr.cash.cash', 'Cash'))} ${fmtB(totCash)}<br><span class="text-sky-500">●</span> ${esc(tr('mgr.cash.card', 'Card'))} ${fmtB(totCard)}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <h3 class="mgr-sec">${mi('receipt_long', 'text-green-600')} ${esc(tr('mgr.cash.bysource', 'Reconciliation by source'))}</h3>
+                    <button id="mgr-cash-save" class="h-8 px-3 rounded-lg ${closed ? 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50' : 'bg-green-600 text-white hover:bg-green-700'} text-[12.5px] font-bold flex items-center gap-1">${mi(closed ? 'lock_open' : 'lock')}${closed ? esc(tr('mgr.cash.reopen', 'Reopen day')) : esc(tr('mgr.cash.close', 'Close & save day'))}</button>
+                  </div>
+                  <div class="overflow-x-auto">
+                    <table class="w-full text-[13px] mgr-num">
+                      <thead><tr class="text-[10px] uppercase tracking-wide text-gray-400 font-bold border-b border-gray-200">
+                        <th class="text-left py-2 font-bold">${esc(tr('mgr.cash.source', 'Source'))}</th><th class="text-right font-bold">${esc(tr('mgr.cash.txns2', 'Txns'))}</th><th class="text-right font-bold">${esc(tr('mgr.cash.expected2', 'Expected'))}</th><th class="text-right font-bold">${esc(tr('mgr.cash.cash', 'Cash'))}</th><th class="text-right font-bold">${esc(tr('mgr.cash.card', 'Card'))}</th><th class="text-right font-bold">${esc(tr('mgr.cash.counted', 'Counted'))}</th><th class="text-right font-bold">${esc(tr('mgr.cash.var', 'Var'))}</th>
+                      </tr></thead>
+                      <tbody>${rowHtml}</tbody>
+                      <tfoot><tr class="border-t-2 border-gray-300 font-extrabold text-gray-900">
+                        <td class="py-2.5">${esc(tr('mgr.cash.total', 'Total'))}</td><td class="text-right">${fmtN(totTxns)}</td><td class="text-right">${fmtB(totExp)}</td><td class="text-right">${fmtB(totCash)}</td><td class="text-right">${fmtB(totCard)}</td><td class="text-right" id="mgr-cash-tcounted">${anyCounted ? fmtB(totCounted) : '—'}</td><td class="text-right ${totVar == null ? 'text-gray-300' : totVar < 0 ? 'text-red-600' : totVar > 0 ? 'text-amber-600' : 'text-green-600'}" id="mgr-cash-tvar">${totVar == null ? '—' : (totVar === 0 ? '✓' : (totVar < 0 ? '−' : '+') + fmtB(Math.abs(totVar)))}</td>
+                      </tr></tfoot>
+                    </table>
+                  </div>
+                  <p class="text-[11px] text-gray-400 mt-2">${esc(tr('mgr.cash.note', 'Expected = system totals (caddy, F&B & pro-shop from their records; green fee = rounds × rate card). Enter the cash actually counted per till; variance flags over/short.'))}${gfRate ? '' : ' <span class="text-amber-600 font-semibold">' + esc(tr('mgr.cash.norate', 'Set the green-fee rate in Settings for an accurate green-fee figure.')) + '</span>'}</p>
+                </div>
+
+                <div class="bg-white rounded-xl border border-gray-200 p-4">
+                  <h3 class="mgr-sec mb-3">${mi('error', 'text-red-500')} ${esc(tr('mgr.cash.unpaidt', 'Unpaid / outstanding'))}</h3>
+                  ${unpaidRows.length ? unpaidRows.slice(0, 20).map(b => `
+                    <div class="flex items-center gap-2.5 p-2 rounded-lg border border-gray-100 mb-2">
+                      <span class="w-1.5 h-8 rounded bg-red-400"></span>
+                      <div class="flex-1 min-w-0"><div class="font-semibold text-[12.5px] truncate text-gray-800">${esc(b.golfer_name || tr('mgr.cash.caddybk', 'Caddy booking'))}</div><div class="text-[11px] text-gray-500 truncate">${esc(b.caddie_name || '')} · ${esc(b.payment_status || 'unpaid')}</div></div>
+                      <span class="font-bold mgr-num text-[13px] text-gray-900">${fmtB(b.payment_amount)}</span>
+                    </div>`).join('') : `<p class="text-xs text-gray-400 py-6 text-center">${esc(tr('mgr.cash.nounpaid', 'Everything settled for this day'))}</p>`}
+                  ${unpaidRows.length ? `<div class="mt-2 pt-3 border-t border-gray-200 flex items-center justify-between"><span class="text-[12px] font-semibold text-gray-500">${esc(tr('mgr.cash.totout', 'Total outstanding'))}</span><span class="font-extrabold mgr-num text-red-600">${fmtB(unpaidTotal)}</span></div>` : ''}
+                </div>
+              </div>`;
+
+            MD._loaded.cash = true;
+            MD._cashCtx = { date, expected: {}, closed, totExp };
+            src.forEach(s => MD._cashCtx.expected[s.key] = s.expected);
+
+            host.querySelectorAll('.mgr-cash-nav').forEach(b => b.addEventListener('click', () => {
+                const d = new Date(MD._cashDate + 'T00:00:00'); d.setDate(d.getDate() + Number(b.dataset.d));
+                MD._cashDate = localDateStr(d); MD._loaded.cash = false; MD.loadCash();
+            }));
+            host.querySelector('.mgr-cash-today')?.addEventListener('click', () => { MD._cashDate = localDateStr(); MD._loaded.cash = false; MD.loadCash(); });
+
+            const recompute = () => {
+                let tc = 0, any = false;
+                host.querySelectorAll('.mgr-cash-in').forEach(inp => {
+                    const key = inp.dataset.src, exp = MD._cashCtx.expected[key] || 0, raw = inp.value.trim();
+                    const cell = host.querySelector('.mgr-cash-var[data-src="' + key + '"]');
+                    if (raw === '') { if (cell) cell.innerHTML = '<span class="text-gray-300">—</span>'; return; }
+                    const cv = Number(raw) || 0; any = true; tc += cv;
+                    const v = cv - exp;
+                    if (cell) cell.innerHTML = v === 0 ? '<span class="text-green-600 font-bold">✓</span>' : `<span class="font-bold ${v < 0 ? 'text-red-600' : 'text-amber-600'}">${v < 0 ? '−' : '+'}${fmtB(Math.abs(v))}</span>`;
+                });
+                const tv = any ? (tc - MD._cashCtx.totExp) : null;
+                const tvColor = tv == null ? 'text-gray-300' : tv < 0 ? 'text-red-600' : tv > 0 ? 'text-amber-600' : 'text-green-600';
+                const setTxt = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+                setTxt('mgr-cash-counted', any ? fmtB(tc) : '—');
+                setTxt('mgr-cash-tcounted', any ? fmtB(tc) : '—');
+                const tve = document.getElementById('mgr-cash-totvar');
+                if (tve) { tve.className = 'text-[24px] font-extrabold mgr-num mt-1 ' + tvColor; tve.textContent = tv == null ? '—' : (tv === 0 ? '฿0' : (tv < 0 ? '−' : '+') + fmtB(Math.abs(tv))); }
+                const nte = document.getElementById('mgr-cash-varnote');
+                if (nte) nte.textContent = tv == null ? tr('mgr.cash.entercounts', 'enter counts') : tv < 0 ? tr('mgr.cash.short', 'short') : tv > 0 ? tr('mgr.cash.over', 'over') : tr('mgr.cash.balanced', 'balanced');
+                const tvr = document.getElementById('mgr-cash-tvar');
+                if (tvr) { tvr.className = 'text-right ' + tvColor; tvr.innerHTML = tv == null ? '—' : (tv === 0 ? '✓' : (tv < 0 ? '−' : '+') + fmtB(Math.abs(tv))); }
+            };
+            host.querySelectorAll('.mgr-cash-in').forEach(inp => inp.addEventListener('input', recompute));
+            host.querySelector('#mgr-cash-save')?.addEventListener('click', () => { if (MD._cashCtx.closed) MD.reopenCash(); else MD.saveCash(); });
+        } catch (e) {
+            console.error('[MD] cash', e);
+            if (!MD._loaded.cash) host.innerHTML = MD.errorBox();
+        }
+    };
+
+    MD.saveCash = async function () {
+        const host = document.getElementById('mgr-cash-body');
+        if (!host || !MD._cashCtx) return;
+        const counts = {};
+        host.querySelectorAll('.mgr-cash-in').forEach(inp => { const v = inp.value.trim(); if (v !== '') counts[inp.dataset.src] = Number(v) || 0; });
+        const row = { course_id: MD.course.id, biz_date: MD._cashCtx.date, counts, closed: true, saved_by: uid(), saved_by_name: uname(), updated_at: new Date().toISOString() };
+        try {
+            const { error } = await db().from('cash_reconciliation').upsert(row, { onConflict: 'course_id,biz_date' });
+            if (error) { console.warn('[MD] cash save', error); toast(tr('mgr.cash.saveerr', 'Could not save — check connection'), 'error'); return; }
+            toast(tr('mgr.cash.saved', 'Day closed & saved'), 'success');
+            MD._loaded.cash = false; MD.loadCash();
+        } catch (e) { toast(tr('mgr.cash.saveerr', 'Could not save — check connection'), 'error'); }
+    };
+
+    MD.reopenCash = async function () {
+        if (!MD._cashCtx) return;
+        try {
+            const { error } = await db().from('cash_reconciliation').update({ closed: false, updated_at: new Date().toISOString() }).eq('course_id', MD.course.id).eq('biz_date', MD._cashCtx.date);
+            if (error) { toast(tr('mgr.cash.saveerr', 'Could not save — check connection'), 'error'); return; }
+            MD._loaded.cash = false; MD.loadCash();
+        } catch (e) { toast(tr('mgr.cash.saveerr', 'Could not save — check connection'), 'error'); }
     };
 
     window.ManagerDashboard = MD;

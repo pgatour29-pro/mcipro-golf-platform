@@ -916,18 +916,14 @@
         const shown = MD._woState.filter === 'open' ? open
             : MD._woState.filter === 'all' ? all
                 : all.filter(w => w.status === MD._woState.filter);
-        const metric = (label, val, cls) => `
-          <div class="bg-white rounded-xl border border-gray-200 p-3 text-center">
-            <div class="text-2xl font-bold ${cls || 'text-gray-900'}">${val}</div>
-            <div class="text-[11px] text-gray-500">${esc(label)}</div>
-          </div>`;
         const avgRating = conds.length ? (conds.reduce((a, c) => a + (c.rating || 0), 0) / conds.length).toFixed(1) : '—';
+        const critN = open.filter(w => w.priority === 'critical').length;
         host.innerHTML = `
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-            ${metric(tr('mgr.openwo', 'Open work orders'), fmtN(open.length))}
-            ${metric(tr('mgr.criticalwo', 'Critical'), fmtN(open.filter(w => w.priority === 'critical').length), open.some(w => w.priority === 'critical') ? 'text-red-600' : 'text-gray-900')}
-            ${metric(tr('mgr.done30', 'Completed (30d)'), fmtN(all.filter(w => w.status === 'completed' && new Date(w.updated_at) > new Date(Date.now() - 30 * 86400000)).length), 'text-green-600')}
-            ${metric(tr('mgr.condrating', 'Condition rating'), avgRating + ' ★', 'text-emerald-600')}
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            ${MD.kpi({ icon: 'build', color: 'orange', val: fmtN(open.length), label: tr('mgr.openwo', 'Open work orders') })}
+            ${MD.kpi({ icon: 'priority_high', color: critN ? 'red' : 'gray', val: fmtN(critN), label: tr('mgr.criticalwo', 'Critical') })}
+            ${MD.kpi({ icon: 'task_alt', color: 'green', val: fmtN(all.filter(w => w.status === 'completed' && new Date(w.updated_at) > new Date(Date.now() - 30 * 86400000)).length), label: tr('mgr.done30', 'Completed (30d)') })}
+            ${MD.kpi({ icon: 'grass', color: 'emerald', val: avgRating + ' ★', label: tr('mgr.condrating', 'Condition rating') })}
           </div>
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <div class="bg-white rounded-xl border border-gray-200 p-4">
@@ -1195,12 +1191,13 @@
             const fromISO = daysAgoISO(days);
             const fromDate = localDateStr(new Date(Date.now() - days * 86400000));
             const today = localDateStr();
-            const [cards, events, caddyB, food, conds] = await Promise.all([
+            const [cards, events, caddyB, food, conds, proshop] = await Promise.all([
                 MD.scorecardsSince(fromISO, 'id,player_id,player_name,started_at,completed_at,society_name,created_at,group_id'),
                 MD.eventsFor(fromDate, today),
                 db().from('caddy_bookings').select('id,course_id,caddie_name,booking_date,status,payment_amount,payment_status').gte('booking_date', fromDate).or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(1000),
                 MD.orNameFilters(db().from('food_orders').select('id,total,status,created_at'), 'course_name').gte('created_at', fromISO).limit(1000),
-                MD.orNameFilters(db().from('course_conditions').select('id,rating,created_at'), 'course_name').gte('created_at', fromISO).limit(500)
+                MD.orNameFilters(db().from('course_conditions').select('id,rating,created_at'), 'course_name').gte('created_at', fromISO).limit(500),
+                db().from('proshop_sales').select('total,created_at').eq('course_id', MD.course.id).gte('created_at', fromISO).limit(2000)
             ]);
             if (seq !== MD._seq.an) return;
             const regCounts = events.length ? await MD.regCountsFor(events.map(e => e.id)) : {};
@@ -1232,11 +1229,24 @@
             const socTop = Object.entries(socMix).sort((a, b) => b[1] - a[1]).slice(0, 8);
             const socMax = socTop.length ? socTop[0][1] : 1;
 
+            // revenue breakdown — green fee estimated from rate card; caddy/F&B/pro-shop recorded
+            const proshopRev = (proshop.data || []).reduce((a, o) => a + (Number(o.total) || 0), 0);
+            const gfWk = Number(MD.pricing.greenFeeWeekday) || 0, gfWe = Number(MD.pricing.greenFeeWeekend) || gfWk;
+            let greenFeeRev = 0;
+            Object.entries(perDay).forEach(([d, n]) => { const dw = new Date(d + 'T00:00:00').getDay(); greenFeeRev += n * ((dw === 0 || dw === 6) ? gfWe : gfWk); });
+            const revParts = [
+                { label: tr('mgr.cash.greenfee', 'Green fees'), val: greenFeeRev, color: 'green', est: true },
+                { label: tr('mgr.cash.caddy', 'Caddy fees'), val: caddyRevenue, color: 'sky' },
+                { label: tr('mgr.cash.food', 'F&B'), val: foodRevenue, color: 'orange' },
+                { label: tr('mgr.cash.proshop', 'Pro-shop'), val: proshopRev, color: 'violet' }
+            ];
+            const revTotal = revParts.reduce((a, p) => a + p.val, 0);
+
             host.innerHTML = `
               <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
                 <div>
                   <h2 class="text-lg font-extrabold text-gray-900 tracking-tight flex items-center gap-2">${mi('monitoring', 'text-green-600')} ${esc(tr('mgr.opsanalytics', 'Analytics'))} <span class="text-gray-400 font-semibold text-sm">· ${tr('mgr.last', 'last')} ${days === 365 ? '12 ' + tr('mgr.months', 'months') : days + ' ' + tr('mgr.days', 'days')}</span></h2>
-                  <p class="text-[11px] text-gray-400 font-medium">${esc(tr('mgr.realdata', 'platform data only — no estimates'))}</p>
+                  <p class="text-[11px] text-gray-400 font-medium">${esc(tr('mgr.an.revnote', 'green fee estimated from your rate card · everything else recorded'))}</p>
                 </div>
                 <div class="flex gap-1 p-1 bg-white border border-gray-200 rounded-xl">
                   ${[7, 30, 90, 365].map(d => `<button data-days="${d}" class="mgr-an-days px-3 h-8 rounded-lg text-xs font-bold ${MD._anState.days === d ? 'bg-green-600 text-white' : 'text-gray-500 hover:bg-gray-100'}">${d === 365 ? '1Y' : d + 'D'}</button>`).join('')}
@@ -1249,6 +1259,22 @@
                 ${MD.kpi({ icon: 'restaurant', color: 'orange', val: fmtN(foodRows.length), label: tr('mgr.fnborders', 'F&B orders'), sub: foodRevenue ? fmtB(foodRevenue) : '—' })}
                 ${MD.kpi({ icon: 'grade', color: 'amber', val: avgCond + ' ★', label: tr('mgr.condrating', 'Condition rating'), sub: fmtN(condRows.length) + ' ' + tr('mgr.reports', 'reports') })}
                 ${MD.kpi({ icon: 'calendar_month', color: 'gray', val: esc(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dows.indexOf(Math.max(...dows))] || '—'), label: tr('mgr.busiestday', 'Busiest day'), sub: tr('mgr.byrounds', 'by rounds') })}
+              </div>
+              <div class="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+                <div class="flex flex-wrap items-end justify-between gap-4 mb-3">
+                  <div>
+                    <div class="text-[11px] font-bold uppercase tracking-wide text-gray-400">${esc(tr('mgr.an.totalrev', 'Total revenue'))} · ${days === 365 ? '1Y' : days + 'D'}</div>
+                    <div class="text-[32px] font-extrabold mgr-num tracking-tight leading-none text-gray-900">${fmtB(revTotal)}</div>
+                  </div>
+                  ${revTotal ? `<div class="flex gap-1 h-2.5 rounded-full overflow-hidden flex-1 min-w-[180px] max-w-[560px] self-center">${revParts.map(p => p.val ? `<div class="bg-${p.color}-500" style="width:${Math.round(p.val / revTotal * 100)}%"></div>` : '').join('')}</div>` : ''}
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  ${revParts.map(p => `<div>
+                    <div class="flex items-center justify-between text-[12px] font-semibold text-gray-600"><span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-${p.color}-500"></span>${esc(p.label)}${p.est ? ' <span class="text-[9px] uppercase text-gray-400 font-bold">est</span>' : ''}</span><span class="mgr-num text-gray-400">${revTotal ? Math.round(p.val / revTotal * 100) : 0}%</span></div>
+                    <div class="mgr-num text-[16px] font-extrabold text-gray-900 mt-0.5">${fmtB(p.val)}</div>
+                  </div>`).join('')}
+                </div>
+                ${greenFeeRev ? '' : `<p class="text-[11px] text-amber-600 font-semibold mt-2">${esc(tr('mgr.an.setrate', 'Set the green-fee rate in Settings to include green-fee revenue.'))}</p>`}
               </div>
               <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
                 <div class="bg-white rounded-xl border border-gray-200 p-4">

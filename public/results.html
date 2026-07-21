@@ -467,27 +467,32 @@
         }
 
         // ---------- Event loading ----------
-        async function loadEvent(eventId){
+        async function loadEvent(eventId, silent){
             state.selectedEventId = eventId;
             state.loadingEventId = eventId;
-            expandedPlayers.clear();
+            if (!silent) expandedPlayers.clear();
             renderStrip();
             setUrl();
             const seq = ++state.evSeq;
             document.getElementById('emptyView').classList.add('hidden');
             document.getElementById('eventView').classList.remove('hidden');
-            document.getElementById('evTitle').textContent = rt('loading');
-            document.getElementById('evMeta').textContent = '';
-            document.getElementById('evPlayers').textContent = '';
-            ['winners','field','twos','aces'].forEach(t => document.getElementById('pane-'+t).innerHTML = `<div class="sub text-sm p-4 text-center">${esc(rt('loading'))}</div>`);
+            // silent = a background re-pull (live score population) — don't flash the loading state.
+            if (!silent) {
+                document.getElementById('evTitle').textContent = rt('loading');
+                document.getElementById('evMeta').textContent = '';
+                document.getElementById('evPlayers').textContent = '';
+                ['winners','field','twos','aces'].forEach(t => document.getElementById('pane-'+t).innerHTML = `<div class="sub text-sm p-4 text-center">${esc(rt('loading'))}</div>`);
+            }
             try {
-                const [evRes, resRes, cardRes, winRes, rndRes] = await Promise.all([
+                const [evRes, resRes, cardRes, winRes, rndRes, regRes] = await Promise.all([
                     sb.from('society_events').select('id,title,course_name,event_date,format,society_id,divisions').eq('id', eventId).maybeSingle(),
                     sb.from('event_results').select('*').eq('event_id', eventId).order('position', {ascending:true}),
                     sb.from('scorecards').select(`id, player_id, player_name, total_gross, total_net, handicap, playing_handicap, status, created_at, scoring_format, group_id,
                         scores (hole_number, gross_score, net_score, stableford_points, par, stroke_index)`).eq('event_id', eventId),
                     sb.from('event_winnings').select('player_id, player_name, category, label, notes, division').eq('event_id', eventId),
-                    sb.from('rounds').select('id, golfer_id, player_name, total_gross, total_net, total_stableford, holes_played, handicap_used, status').eq('society_event_id', eventId)
+                    sb.from('rounds').select('id, golfer_id, player_name, total_gross, total_net, total_stableford, holes_played, handicap_used, status').eq('society_event_id', eventId),
+                    // The registered field — so Results lists everyone once players are registered.
+                    sb.from('event_registrations').select('player_id, player_name, handicap, status').eq('event_id', eventId)
                 ]);
                 if (seq !== state.evSeq) return;
                 const event = evRes.data || { id:eventId, title:'Event' };
@@ -605,10 +610,31 @@
                     en.division = (en.pub && en.pub.division) || divisionForHandicap(en.hcpIndex, divisions) || null;
                 });
 
+                // FULL FIELD: once players are registered (the roster / tee sheet), list EVERY one.
+                // Those with no scorecard/round yet show as not-started ('-' scores), sorted to the
+                // bottom, and fill in + move up as scores come in (mirrors the organizer scoring board).
+                if (regRes && regRes.data && regRes.data.length) {
+                    ((regRes && regRes.data) || []).forEach(r => {
+                        if (!r.player_id || haveIds.has(String(r.player_id))) return;
+                        if (String(r.status || '').toLowerCase() === 'cancelled') return;
+                        const idx = r.handicap;
+                        const playing = (idx != null && isFinite(parseFloat(idx))) ? Math.round(parseFloat(idx)) : null;
+                        entries.push({ player_id: r.player_id, player_name: r.player_name || 'Player',
+                            hcp: playing, hcpIndex: idx, gross: 0, net: 0, pts: 0, holes: 0, _notStarted: true, pub: null,
+                            division: divisionForHandicap(idx, divisions) || null,
+                            hole_scores: new Array(18).fill(null), hole_pars: new Array(18).fill(null),
+                            hole_si: new Array(18).fill(null), hole_pts: new Array(18).fill(null) });
+                        haveIds.add(String(r.player_id));
+                    });
+                }
+
                 const scoreType = (results[0] && results[0].score_type) || ((event.format||'').includes('stroke') ? 'stroke_play' : 'stableford');
 
                 // Order: official positions first (publish applied countback), then the rest by score
-                const restSort = (a,b) => scoreType==='stroke_play' ? (a.gross-b.gross || b.pts-a.pts) : (b.pts-a.pts || a.net-b.net);
+                const restSort = (a,b) => {
+                    if (!!a._notStarted !== !!b._notStarted) return a._notStarted ? 1 : -1;   // unscored always last
+                    return scoreType==='stroke_play' ? (a.gross-b.gross || b.pts-a.pts) : (b.pts-a.pts || a.net-b.net);
+                };
                 const inPub = entries.filter(e => e.pub).sort((a,b) => (a.pub.position||999)-(b.pub.position||999));
                 const outPub = entries.filter(e => !e.pub).sort(restSort);
                 const ordered = inPub.concat(outPub);
@@ -1404,6 +1430,10 @@
 
         // Embed height reporting: keep the parent frame sized to our content so the app page
         // scrolls as one (ResizeObserver catches renders; the interval is a safety net).
+        // Live-populate: silently re-pull the selected event periodically so scores appear as they
+        // come in — unscored players stay at the bottom and move up when their card posts.
+        setInterval(function(){ try { if (state.selectedEventId && document.visibilityState !== 'hidden') loadEvent(state.selectedEventId, true); } catch(e){} }, 40000);
+
         if (EMBED) {
             const _postH = function(){
                 try { parent.postMessage({ type:'mciproResultsHeight', h: document.documentElement.scrollHeight }, window.location.origin); } catch(e){}

@@ -102,6 +102,9 @@ building, not after.
 5. ONLY THEN tell Pete it's deployed. A fix he asked for = go-ahead to deploy; speculative or
    destructive work = ask first. Edge functions deploy separately
    (`supabase functions deploy NAME`); pre-auth ones need `--no-verify-jwt` or login loops.
+6. The live architecture map (/lab/arch.html) self-refreshes via the local `.git/hooks/pre-push`
+   hook (runs `arch_map/verify.py` — scans code, verifies vs prod DB, uploads snapshot). If the
+   hook is missing (fresh clone), run `python3 arch_map/verify.py` manually after deploying.
 
 ## Frontend rules (the app is 142K lines of loaded footguns)
 - Inline `onclick=` handlers need globals (`window.X = X`). No HTML inside onclick attrs; no

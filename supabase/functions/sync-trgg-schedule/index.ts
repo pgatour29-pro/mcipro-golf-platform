@@ -302,10 +302,12 @@ Deno.serve(async (req) => {
 
     const normTime = (t: string | null | undefined) => (t || '').slice(0, 5); // HH:MM vs HH:MM:SS
 
-    // A same-date row only counts as the website's event if it refers to the same
-    // course — matched loosely on the leading course words. Special-series rows
-    // (e.g. "Chiang Mai Classic 2026 — R3 Highlands") legitimately share a date
-    // with a regular schedule row and must never be updated or deleted here.
+    // Societies legitimately run several events on one date (high-season splits
+    // across venues, second waves at the same course). A same-date row only counts
+    // as the website's event if it refers to the same course — matched loosely on
+    // the leading course words, since spellings differ between writers. Special
+    // rows (e.g. "Chiang Mai Classic 2026 — R3 Highlands") must never be touched.
+    // Deletion is stricter still: same course AND same tee time (see dup loop).
     const normText = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
     const courseKeys = (evt: ParsedEvent): string[] => {
       const keys: string[] = [];
@@ -362,8 +364,11 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Canonical row = most registrations, tie broken by oldest created_at
+      // Canonical row = tee time matching the website first (so a second wave at
+      // the same course is never grabbed), then most registrations, then oldest
+      const teeKey = normTime(evt.tee_time);
       const canonical = [...rows].sort((a, b) =>
+        Number(normTime(b.start_time) === teeKey) - Number(normTime(a.start_time) === teeKey) ||
         (regCounts.get(b.id) || 0) - (regCounts.get(a.id) || 0) ||
         a.created_at.localeCompare(b.created_at)
       )[0];
@@ -401,10 +406,13 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Self-heal: remove surplus rows for this date, migrating any linked data
-      // to the canonical row first. DELETE on society_events has no LINE trigger.
+      // Self-heal: a row is a DUPLICATE only if it has the same course AND the
+      // same tee time as the canonical row — same course at a different time is
+      // a second wave and stays. Linked data migrates to the canonical row
+      // before deletion. DELETE on society_events has no LINE trigger.
       for (const dup of rows) {
         if (dup.id === canonical.id) continue;
+        if (normTime(dup.start_time) !== normTime(canonical.start_time)) continue;
         let repointFailed = false;
         for (const table of ['event_registrations', 'event_pairings', 'event_announcements']) {
           const { error } = await supabase

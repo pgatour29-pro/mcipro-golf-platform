@@ -118236,36 +118236,28 @@ class GolferEventsManager {
 
     // Original fallback: group by mutual partner preferences, with open spots.
     _renderPreferenceGroups(regs, event, currentUserId) {
-        var groups = [];
-        var assigned = {};
-        // A registrant + the players they ADDED during their registration form ONE group (host's group) —
-        // same rule as the organizer tee sheet, so a host's added players show together on the event card
-        // instead of in separate cards. Booking groups are placed first, then partner-preference grouping
-        // handles everyone else.
+        // Union-find over BOTH link kinds — booking groups (host + the players they added) and partner-
+        // preference picks resolved through PlayTogetherUnits.targets (all three stored pref shapes,
+        // nickname/surname-order aware). Direction-agnostic and transitive: "A picked B" merges A into
+        // B's whole group even when B is already in a booking pair. The old greedy single pass could
+        // never append to an already-formed group, so adding a partner exiled anyone who had picked you.
+        // Chains longer than 4 split in list order (4 = display capacity of a group card).
+        var parent = {}, ids = [];
+        regs.forEach(function(r){ var k = String(r.playerId); if (parent[k] == null) { parent[k] = k; ids.push(k); } });
+        var find = function(k){ while (parent[k] !== k) { parent[k] = parent[parent[k]]; k = parent[k]; } return k; };
+        var uni = function(a, b){ a = find(a); b = find(b); if (a !== b) parent[b] = a; };
+        var targetsOf = {};
+        if (window.PlayTogetherUnits) regs.forEach(function(r){ targetsOf[String(r.playerId)] = PlayTogetherUnits.targets(r, regs); });
         if (window.BookingGroups) {
-            var _byId = {}; regs.forEach(function(r){ _byId[String(r.playerId)] = r; });
             window.BookingGroups.detect(regs).forEach(function(b){
-                var members = b.memberIds.map(function(id){ return _byId[String(id)]; }).filter(function(r){ return r && !assigned[r.playerId]; });
-                if (members.length < 2) return;
-                members.forEach(function(r){ assigned[r.playerId] = true; });
-                groups.push(members);
+                b.memberIds.forEach(function(m){ m = String(m); if (parent[m] != null) uni(String(b.hostId), m); });
             });
         }
-        regs.forEach(function(a) {
-            if (assigned[a.playerId]) return;
-            var group = [a];
-            assigned[a.playerId] = true;
-            var aPrefs = (a.partnerPrefs || []);
-            regs.forEach(function(b) {
-                if (assigned[b.playerId] || b.playerId === a.playerId) return;
-                if (group.length >= 4) return;
-                var bPrefs = (b.partnerPrefs || []);
-                var aWantsB = aPrefs.some(function(p) { return p === b.playerName || p === b.playerId; });
-                var bWantsA = bPrefs.some(function(p) { return p === a.playerName || p === a.playerId; });
-                if (aWantsB || bWantsA) { group.push(b); assigned[b.playerId] = true; }
-            });
-            groups.push(group);
-        });
+        ids.forEach(function(k){ (targetsOf[k] || []).forEach(function(tid){ if (parent[tid] != null) uni(k, tid); }); });
+        var buckets = {}, order = [];
+        regs.forEach(function(r){ var root = find(String(r.playerId)); if (!buckets[root]) { buckets[root] = []; order.push(root); } buckets[root].push(r); });
+        var groups = [];
+        order.forEach(function(root){ var m = buckets[root]; for (var i = 0; i < m.length; i += 4) groups.push(m.slice(i, i + 4)); });
 
         var listHtml = '';
         groups.forEach(function(group) {
@@ -118277,9 +118269,9 @@ class GolferEventsManager {
                 var isMe = reg.playerId === currentUserId;
                 var bgStyle = isMe ? 'background:#f0fdf4;' : '';
                 var youTag = isMe ? ' <span style="font-size:10px;color:#059669;font-weight:700;">(You)</span>' : '';
-                var currentName = AppState.currentUser && AppState.currentUser.name;
-                var theirPrefs = reg.partnerPrefs || [];
-                var selectedMe = !isMe && theirPrefs.some(function(p) { return p === currentName || p === currentUserId; });
+                // Same resolver as the grouping above — if this badge fires, the union above has
+                // already merged this player into your group. Badge and grouping can never disagree.
+                var selectedMe = !isMe && (targetsOf[String(reg.playerId)] || []).indexOf(String(currentUserId)) !== -1;
                 var selectedMeTag = selectedMe ? ' <span style="font-size:9px;color:#059669;background:#dcfce7;padding:1px 5px;border-radius:4px;"><span class="material-symbols-outlined" style="font-size:inherit;vertical-align:middle;line-height:1;">handshake</span> selected you</span>' : '';
                 var hcpStr = reg.handicap != null ? 'HCP: ' + window.formatHandicapDisplay(reg.handicap) : '';
                 var transportFee = parseFloat(event && event.transportFee) || 300;

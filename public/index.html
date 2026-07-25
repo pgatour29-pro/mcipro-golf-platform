@@ -7576,7 +7576,7 @@
                 'ts2.interval': 'INTERVAL',
                 'ts2.groupof': 'GROUP OF',
                 'ts2.min': 'MIN',
-                'ts2.autogroup': 'AUTO GROUP BY HCP',
+                'ts2.autogroup': 'AUTO GROUP',
                 'ts2.group': 'GROUP',
                 'ts2.preview': 'PREVIEW',
                 'ts2.print': 'PRINT',
@@ -9420,7 +9420,7 @@
                 'ts2.interval': 'ช่วงห่าง',
                 'ts2.groupof': 'กลุ่มละ',
                 'ts2.min': 'นาที',
-                'ts2.autogroup': 'จัดกลุ่มตาม HCP',
+                'ts2.autogroup': 'จัดกลุ่มอัตโนมัติ',
                 'ts2.group': 'กลุ่ม',
                 'ts2.preview': 'ดูตัวอย่าง',
                 'ts2.print': 'พิมพ์',
@@ -11255,7 +11255,7 @@
                 'ts2.interval': '간격',
                 'ts2.groupof': '조당 인원',
                 'ts2.min': '분',
-                'ts2.autogroup': '핸디캡별 자동 편성',
+                'ts2.autogroup': '자동 편성',
                 'ts2.group': '조',
                 'ts2.preview': '미리보기',
                 'ts2.print': '인쇄',
@@ -13148,7 +13148,7 @@
                 'ts2.interval': '間隔',
                 'ts2.groupof': '1組あたり',
                 'ts2.min': '分',
-                'ts2.autogroup': 'HC自動組分け',
+                'ts2.autogroup': '自動組分け',
                 'ts2.group': '組',
                 'ts2.preview': 'プレビュー',
                 'ts2.print': '印刷',
@@ -130804,6 +130804,10 @@ window.TeeSheet = {
         this.render();
         if(window.NotificationManager && window.NotificationManager.show){ window.NotificationManager.show(vanNum ? t('toast.vans.assigned').replace('{n}', vanNum) : t('toast.vans.none'), vanNum?'success':'info'); }
     },
+    // Auto-group: play-together units (partner requests + host bookings + scramble pairs) stay WHOLE;
+    // everyone else packs in around them in registration order. NO handicap or division sorting —
+    // divisions apply to RESULTS only; who shares a tee-sheet group is free-form (Pete 2026-07-25).
+    // Scramble: pairs place first and stay slot-aligned (1-2 / 3-4) so positional teams read right.
     autoGroup: function(){
         if(this._isWaltz()) return this._autoGroupWaltz();
         var size=this._groupSize||4, self=this;
@@ -130811,8 +130815,20 @@ window.TeeSheet = {
         var seen={}; all.forEach(function(p){ seen[String(p.playerId)]=1; });
         this.manualPool.forEach(function(m){ if(!seen[String(m.playerId)]){ all.push(m); seen[String(m.playerId)]=1; } });
         this.groups.forEach(function(g){ (g.players||[]).forEach(function(p){ if(self._isManual(p.playerId) && !seen[String(p.playerId)]){ all.push(p); seen[String(p.playerId)]=1; } }); });
-        all.sort(function(a,b){ return (parseFloat(a.handicap)||0)-(parseFloat(b.handicap)||0); });
-        var gs=[]; for(var i=0;i<all.length;i+=size){ gs.push({ players: all.slice(i,i+size), teeTime:this.eventTee }); }
+        var units = window.PlayTogetherUnits ? PlayTogetherUnits.units(this.regs, this.regs, this._unitBreaks) : [];
+        var inU={}; units.forEach(function(u){ u.forEach(function(m){ inU[String(m.playerId)]=1; }); });
+        var atoms = units.map(function(u){ return u.map(function(m){ return {playerId:m.playerId, playerName:m.playerName, handicap:m.handicap}; }); });
+        all.forEach(function(p){ if(!inU[String(p.playerId)]) atoms.push([p]); });
+        var scr = this._isScramble2();
+        if (scr) atoms.sort(function(a,b){ return b.length - a.length; });   // pairs before singles → 2+2 alignment
+        var gs=[];
+        atoms.forEach(function(atom){
+            var g=null;
+            if (scr) { var last=gs[gs.length-1]; if(last && last.players.length + atom.length <= size) g=last; }   // sequential keeps team slots aligned
+            else { g = gs.find(function(x){ return x.players.length + atom.length <= size; }) || null; }           // first-fit packs tight
+            if(!g){ g={ players: [], teeTime: self.eventTee }; gs.push(g); }
+            atom.forEach(function(p){ g.players.push(p); });
+        });
         while(gs.length<12){ gs.push({ players:[], teeTime:'', teeFixed:false }); }   // keep the 12 pre-set cubes
         this.groups=gs; this.manualPool=[]; this._saveGroups(); this.render();
     },

@@ -132575,7 +132575,14 @@ const RegistrationsManager = {
         } else if (part) {
             detail = '<div class="scv3r-pdet a">' + t('orgreg2.pay.partial') + ' ฿' + (parseFloat(reg.amountPaid) || 0).toLocaleString() + ' · ' + t('orgreg2.owes') + ' ฿' + Math.max(0, (parseFloat(reg.totalFee) || 0) - (parseFloat(reg.amountPaid) || 0)).toLocaleString() + '</div>';
         } else {
-            const wants = (reg.partnerPrefs || []).filter(x => typeof x === 'string' && !(x.length > 20 && x.indexOf('U') === 0)).slice(0, 2);
+            // partner_prefs entries arrive in three shapes — extract the NAME (never raw JSON), drop bare LINE ids.
+            const wants = (reg.partnerPrefs || []).map(x => {
+                if (x == null) return null;
+                if (typeof x === 'object') return x.playerName || x.name || null;
+                const s = String(x).trim();
+                if (s.charAt(0) === '{') { try { const o = JSON.parse(s); return o.playerName || o.name || null; } catch (e) { return null; } }
+                return s;
+            }).filter(x => typeof x === 'string' && x && !(x.length > 20 && x.indexOf('U') === 0)).slice(0, 2);
             if (wants.length) detail = '<div class="scv3r-pdet d">' + t('orgreg2.wants') + ' ' + esc(wants.join(', ').toUpperCase()) + '</div>';
         }
         // Check-in circle removed (Pete: it read as a paid checkbox but was the 'arrived' toggle).

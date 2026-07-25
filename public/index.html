@@ -7591,6 +7591,9 @@
                 'ts2.unteams': 'UNASSIGNED TEAMS',
                 'ts2.unsingles': 'SINGLES POOL',
                 'ts2.noteams': 'No teams yet — pairs land here.',
+                'ts2.reqtogether': 'REQUESTED TOGETHER',
+                'ts2.unittip': 'Requested to play together — moves as one group',
+                'ts2.unitbreak': 'Split into singles (this session only)',
                 'ts2.droptarget': 'DROP ON A GROUP',
                 'ts2.allgrouped': 'Everyone\'s grouped.',
                 'ts2.noplayers': 'No players yet — search above, or they load from registrations.',
@@ -9432,6 +9435,9 @@
                 'ts2.unteams': 'ทีมที่ยังไม่จัด',
                 'ts2.unsingles': 'พูลเดี่ยว',
                 'ts2.noteams': 'ยังไม่มีทีม — คู่จะแสดงที่นี่',
+                'ts2.reqtogether': 'ขอเล่นด้วยกัน',
+                'ts2.unittip': 'ขอเล่นด้วยกัน — ย้ายพร้อมกันทั้งกลุ่ม',
+                'ts2.unitbreak': 'แยกเป็นรายคน (เฉพาะรอบนี้)',
                 'ts2.droptarget': 'วางลงกลุ่ม',
                 'ts2.allgrouped': 'จัดกลุ่มครบทุกคนแล้ว',
                 'ts2.noplayers': 'ยังไม่มีผู้เล่น — ค้นหาด้านบน หรือโหลดจากการลงทะเบียน',
@@ -11264,6 +11270,9 @@
                 'ts2.unteams': '미배정 팀',
                 'ts2.unsingles': '싱글 풀',
                 'ts2.noteams': '아직 팀 없음 — 짝은 여기 표시됩니다',
+                'ts2.reqtogether': '동반 요청',
+                'ts2.unittip': '함께 플레이 요청 — 한 팀으로 이동합니다',
+                'ts2.unitbreak': '개별로 분리 (이번 세션만)',
                 'ts2.droptarget': '그룹에 놓기',
                 'ts2.allgrouped': '모두 배정 완료',
                 'ts2.noplayers': '선수 없음 — 위에서 검색하거나 등록에서 불러옵니다',
@@ -13154,6 +13163,9 @@
                 'ts2.unteams': '未配置チーム',
                 'ts2.unsingles': 'シングルプール',
                 'ts2.noteams': 'チームなし — ペアはここに表示',
+                'ts2.reqtogether': '同組リクエスト',
+                'ts2.unittip': '同組希望 — 全員まとめて移動します',
+                'ts2.unitbreak': '個別に分ける（このセッションのみ）',
                 'ts2.droptarget': 'グループにドロップ',
                 'ts2.allgrouped': '全員配置済み',
                 'ts2.noplayers': '選手なし — 上で検索するか登録から読み込まれます',
@@ -123499,8 +123511,10 @@ const GolferEventRegManager = {
                 totalFee: r.total_fee,
                 paymentStatus: r.payment_status || 'pending',
                 partnerPrefs: r.partner_prefs || [],
+                specialRequests: r.special_requests || {},   // PTU: hostId/sameGroup drive play-together units
                 lineUserId: r.player_id
             }));
+            this._unitBreaks = {};   // unit splits are per-event, per-session
 
             // Load waitlist
             const { data: wait } = await window.SupabaseDB.client
@@ -124009,27 +124023,47 @@ const GolferEventRegManager = {
         if (unassigned.length > 0) {
             const headerText = hasGroups ? `Unassigned (${unassigned.length})` : `Registered Players (${unassigned.length})`;
             const borderClass = hasGroups ? 'border-t pt-3 mt-3' : '';
+            // PTU: requested-together players render as glued green blocks above the singles — dragging
+            // any member moves the whole unit (movePlayerToGroup pulls the mates along).
+            const _units = window.PlayTogetherUnits ? PlayTogetherUnits.units(
+                this.registrations.filter(r => unassigned.some(p => String(p.playerId) === String(r.playerId))),
+                this.registrations, this._unitBreaks) : [];
+            const _inUnit = {}; _units.forEach(u => u.forEach(m => { _inUnit[String(m.playerId)] = 1; }));
+            const _singles = unassigned.filter(p => !_inUnit[String(p.playerId)]);
+            const _unitBlocks = _units.map(u => `
+                        <div class="border border-green-300 bg-green-50 rounded-lg p-1.5" style="grid-column:1/-1;">
+                            <div class="flex items-center justify-between mb-1 px-0.5">
+                                <span style="font-size:9px;font-weight:800;letter-spacing:.08em;color:#15803d;">PLAYS TOGETHER ×${u.length} — MOVES AS ONE</span>
+                                <button onclick="GolferEventRegManager.breakUnitOf('${u[0].playerId}')" title="Split into singles (this session only)" style="font-size:9px;font-weight:700;color:#15803d;text-decoration:underline;background:none;border:none;cursor:pointer;">SPLIT</button>
+                            </div>
+                            <div class="space-y-1">${u.map(m => this._unassignedRowHTML(m, _vanMap)).join('')}</div>
+                        </div>`).join('');
             container.innerHTML += `
                 <div class="${borderClass}">
                     <div class="text-xs font-medium text-gray-500 mb-2">${headerText}</div>
                     <div class="grid grid-cols-2 gap-1.5 md:grid-cols-1 md:gap-1">
-                        ${unassigned.map(p => {
-                            const reg = this.registrations.find(r => r.playerId === p.playerId);
-                            const hcpRaw = (reg && reg.handicap != null && reg.handicap !== '') ? reg.handicap : (this.currentHandicaps?.[p.playerId] ?? p.handicap);
-                            const hcp = window.formatHandicapDisplay ? window.formatHandicapDisplay(hcpRaw) : hcpRaw;
-                            const isPaid = reg?.paymentStatus === 'paid';
-                            const textColor = isPaid ? 'text-blue-600 font-medium' : 'text-red-600';
-                            return `
+                        ${_unitBlocks}
+                        ${_singles.map(p => this._unassignedRowHTML(p, _vanMap)).join('')}
+                    </div>
+                </div>
+            `;
+        }
+    },
+
+    // One unassigned row (yellow chip) — shared by the singles grid and the PTU unit blocks.
+    _unassignedRowHTML(p, _vanMap) {
+        const reg = this.registrations.find(r => r.playerId === p.playerId);
+        const hcpRaw = (reg && reg.handicap != null && reg.handicap !== '') ? reg.handicap : (this.currentHandicaps?.[p.playerId] ?? p.handicap);
+        const hcp = window.formatHandicapDisplay ? window.formatHandicapDisplay(hcpRaw) : hcpRaw;
+        const isPaid = reg?.paymentStatus === 'paid';
+        const textColor = isPaid ? 'text-blue-600 font-medium' : 'text-red-600';
+        return `
                             <div class="pairing-player bg-yellow-50 rounded px-2 py-1 text-xs flex justify-between items-center border border-yellow-200"
                                  draggable="true" data-player-id="${p.playerId}"
                                  ondragstart="GolferEventRegManager.onDragStart(event, '${p.playerId}')">
                                 <span class="${textColor}">${p.playerName} (${hcp})</span>${(reg && GolferEventRegManager._onTransport(reg)) ? ('<span title="On the van" style="font-size:9px;font-weight:700;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;color:#2563eb;background:#dbeafe;"><span class="material-symbols-outlined" style="font-size:11px;vertical-align:-2px;">airport_shuttle</span> '+((reg.specialRequests&&reg.specialRequests.van&&reg.specialRequests.van!=='own')?('VAN '+reg.specialRequests.van):(_vanMap&&_vanMap[p.playerId]?('VAN '+_vanMap[p.playerId]):'VAN'))+'</span>') : '<span title="Own transport / direct" style="font-size:9px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;">DIRECT</span>'}
                             </div>
-                        `}).join('')}
-                    </div>
-                </div>
-            `;
-        }
+                        `;
     },
 
     getUnassignedPlayers() {
@@ -124095,6 +124129,23 @@ const GolferEventRegManager = {
         } catch (e) { console.error('[GolferEventRegManager] Drop error:', e); }
     },
 
+    // PTU: other members of playerId's play-together unit while still UNASSIGNED — [] once placed
+    // (units act on the way IN only; in-group moves stay individual).
+    _unitBreaks: {},
+    _unitMatesOf(playerId) {
+        if (!window.PlayTogetherUnits) return [];
+        const groups = (this.pairingsData && this.pairingsData.groups) || [];
+        const assigned = new Set();
+        groups.forEach(g => (g.players || []).forEach(p => assigned.add(String(p.playerId))));
+        if (assigned.has(String(playerId))) return [];
+        const un = this.registrations.filter(r => !assigned.has(String(r.playerId)));
+        return PlayTogetherUnits.mates(playerId, un, this.registrations, this._unitBreaks);
+    },
+    breakUnitOf(playerId) {
+        [String(playerId)].concat(this._unitMatesOf(playerId)).forEach(k => { this._unitBreaks[k] = 1; });
+        this.renderPairings();
+    },
+
     async movePlayerToGroup(playerId, groupNumber) {
         if (!this.pairingsData || !this.pairingsData.groups) return;
         const playerReg = this.registrations.find(r => r.playerId === playerId);
@@ -124104,8 +124155,10 @@ const GolferEventRegManager = {
         // RegistrationsManager copy — a full target used to bail AFTER stripping the player
         // from their group in memory, and the next save persisted the removal).
         if (targetGroup && (targetGroup.players || []).some(p => p.playerId === playerId)) return;
-        if (targetGroup && (targetGroup.players || []).length >= this.groupSize) {
-            window.NotificationManager?.show('Group is full', 'warning');
+        // PTU: an unassigned player's requested partners ride along — the whole unit must fit.
+        const mates = this._unitMatesOf(playerId);
+        if (targetGroup && (targetGroup.players || []).length + 1 + mates.length > this.groupSize) {
+            window.NotificationManager?.show(mates.length ? ('No room for this group of ' + (mates.length + 1)) : 'Group is full', 'warning');
             return;
         }
         const playerData = { playerId: playerReg.playerId, playerName: playerReg.playerName, handicap: playerReg.handicap };
@@ -124113,6 +124166,10 @@ const GolferEventRegManager = {
         if (targetGroup) {
             if (!targetGroup.players) targetGroup.players = [];
             targetGroup.players.push(playerData);
+            mates.forEach(mid => {
+                const mr = this.registrations.find(r => String(r.playerId) === String(mid));
+                if (mr) targetGroup.players.push({ playerId: mr.playerId, playerName: mr.playerName, handicap: mr.handicap });
+            });
         }
         await this.savePairings();
         this.renderPairings();
@@ -129036,6 +129093,64 @@ window.GolfDivisions = {
     }
 };
 
+// ===== PLAY-TOGETHER UNITS (PTU v729) — SHARED resolver for every pairing surface ================
+// Players who asked to play together — the registration form's PLAY WITH picks (event_registrations.
+// partner_prefs) or a host's booking (special_requests.hostId) — resolve into units of 2–5 that the
+// pairing surfaces (TeeSheet, RegistrationsManager, GolferEventRegManager) treat as ONE draggable block
+// while unassigned. Once placed, players move individually — units act on the way IN only.
+// partner_prefs entries arrive in three shapes (three forms wrote them over time): JSON strings
+// {"playerId":<registration ROW id>,"playerName":"…"}, bare names (legacy modal), and raw ids — resolve
+// by reg row id, then player id, then nickname-aware name. One direction is enough (A naming B links
+// both); chains merge; a chain longer than a 5-ball splits into 5s in list order; sameGroup:false opts
+// a guest out of their host's unit. `breaks` = {playerId:1} session-only splits (no data writes).
+window.PlayTogetherUnits = {
+    _norm: function(n){ return String(n||'').toLowerCase().replace(/\(.*?\)/g,' ').replace(/[^a-z ]/g,'').replace(/\s+/g,' ').trim(); },
+    targets: function(r, regs){
+        var self=this, out=[];
+        ((r && r.partnerPrefs) || []).forEach(function(p){
+            var id=null, nm=null;
+            if (p && typeof p==='object'){ id=p.playerId; nm=p.playerName||p.name; }
+            else if (p != null){
+                var s=String(p).trim(); if(!s) return;
+                if (s.charAt(0)==='{'){ try{ var o=JSON.parse(s); id=o.playerId; nm=o.playerName||o.name; }catch(e){ return; } }
+                else { id=s; nm=s; }
+            }
+            var hit=null;
+            if (id != null && id !== '') hit=(regs||[]).find(function(x){ return String(x.id)===String(id) || String(x.playerId)===String(id); });
+            if (!hit && nm){
+                var key=self._norm(nm);
+                hit=(regs||[]).find(function(x){ return self._norm(x.playerName)===key || (window.samePersonName && samePersonName(x.playerName, nm)); });
+            }
+            if (hit && String(hit.playerId)!==String(r.playerId)) out.push(String(hit.playerId));
+        });
+        return out;
+    },
+    units: function(un, regs, breaks){
+        var self=this, pool={}, ids=[]; breaks=breaks||{};
+        (un||[]).forEach(function(r){ var k=String(r.playerId); if(!pool[k] && !breaks[k]){ pool[k]=r; ids.push(k); } });
+        var parent={}; ids.forEach(function(k){ parent[k]=k; });
+        var find=function(k){ while(parent[k]!==k){ parent[k]=parent[parent[k]]; k=parent[k]; } return k; };
+        var uni=function(a,b){ a=find(a); b=find(b); if(a!==b) parent[b]=a; };
+        ids.forEach(function(k){
+            var r=pool[k];
+            self.targets(r, regs).forEach(function(tid){ if(pool[tid]) uni(k, tid); });
+            var sr=(r&&r.specialRequests)||{};
+            if (sr.sameGroup !== false){ var hid=String(sr.hostId||sr.host_id||''); if(hid && hid!==k && pool[hid]) uni(k, hid); }
+        });
+        var buckets={}, order=[];
+        ids.forEach(function(k){ var root=find(k); if(!buckets[root]){ buckets[root]=[]; order.push(root); } buckets[root].push(pool[k]); });
+        var units=[];
+        order.forEach(function(root){ var m=buckets[root]; if(m.length<2) return; for(var i=0;i<m.length;i+=5){ var c=m.slice(i,i+5); if(c.length>=2) units.push(c); } });
+        return units;
+    },
+    mates: function(pid, un, regs, breaks){
+        var k=String(pid);
+        if (!(un||[]).some(function(r){ return String(r.playerId)===k; })) return [];
+        var u=this.units(un, regs, breaks).find(function(m){ return m.some(function(x){ return String(x.playerId)===k; }); });
+        return u ? u.filter(function(x){ return String(x.playerId)!==k; }).map(function(x){ return String(x.playerId); }) : [];
+    }
+};
+
 // ===== BOOKING GROUPS — a host + the players they add during their OWN registration form one group. =====
 // The added players are linked to their host by special_requests.hostId (stamped at registration). Legacy
 // guests with no hostId fall back to created-at clustering: a GUEST-* reg belongs to the non-guest reg
@@ -129309,6 +129424,13 @@ window.TeeSheet = {
             '#teeSheetOverlay .ts2-teamchip .tx{color:#60a5fa;font-weight:700;opacity:.7;}'+
             '#teeSheetOverlay .ts2-teamchip .tb{font:700 8px/1 \'JetBrains Mono\',monospace;letter-spacing:.1em;color:#fff;background:#3b82f6;border-radius:5px;padding:3px 5px;}'+
             '#teeSheetOverlay .ts2-teamchip .mx{color:#60a5fa;}'+
+            /* Play-together UNIT chip (PTU) — green (request palette), wraps for 3-5 names; ×N badge = size */
+            '#teeSheetOverlay .ts2-unitchip{border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.08);flex-wrap:wrap;max-width:100%;}'+
+            '#teeSheetOverlay .ts2-unitchip .um{display:inline-flex;align-items:center;gap:5px;color:var(--t-ink);}'+
+            '#teeSheetOverlay .ts2-unitchip .um .h{color:var(--t-grn);}'+
+            '#teeSheetOverlay .ts2-unitchip .tx{color:var(--t-grn);font-weight:700;opacity:.7;}'+
+            '#teeSheetOverlay .ts2-unitchip .tb{background:#16a34a;}'+
+            '#teeSheetOverlay .ts2-unitchip .mx{color:var(--t-grn);}'+
             /* ✦ REGULARS tray (RGV1): dashed GHOST chips = suggestions, visually distinct from the amber pool
                chips so they can never read as registered. Hover card explains WHY each name is suggested. */
             '#teeSheetOverlay .ts2-rhead{display:flex;align-items:center;justify-content:space-between;margin:14px 0 3px;}'+
@@ -129508,7 +129630,7 @@ window.TeeSheet = {
         var _seq = (this._loadSeq = (this._loadSeq||0)+1); var self=this;
         var _stale = function(){ return _seq !== self._loadSeq || String(self.eventId) !== String(eventId); };
         try { this._unsubscribeRealtime(); } catch(e){}
-        this.eventId=eventId; this.manualPool=[];
+        this.eventId=eventId; this.manualPool=[]; this._unitBreaks={};   // unit splits are per-event, per-session
         var ev=this._evSource().find(function(e){ return e.id===eventId; }) || {};
         this.eventName = String(ev.name || ev.title || 'Event').replace(/&amp;/g, '&');
         this.societyName = ev.societyName || ev.society_name || null;
@@ -129679,6 +129801,50 @@ window.TeeSheet = {
             holder.specialRequests = sr;   // local mirror → immediate re-render splits them
             self.render();
         }catch(e){ console.warn('[TeeSheet] unlinkTeam', e); }
+    },
+    // ===== Play-together units (PTU v729): players who asked to play together — the registration form's
+    // PLAY WITH picks (partner_prefs) or a host's booking (special_requests.hostId) — glue into ONE unit
+    // in the unassigned pool and travel together into a group cube. Links resolve fresh from regs on every
+    // render, so a late registrant naming players still in the pool joins their unit automatically. Units
+    // apply ONLY while unassigned: once placed, players move/delete individually (unlike scramble pairs,
+    // whose mate re-derives on every move). ✕ splits a unit for this session only — registrations untouched.
+    // 2-man scramble events keep their locked-pair flow; the unit engine stands down there entirely.
+    _unitBreaks: {},
+    // Delegates to the shared window.PlayTogetherUnits resolver (one engine for TeeSheet +
+    // RegistrationsManager + GolferEventRegManager). Scramble events stand down — locked-pair flow rules.
+    _prefUnits: function(un){
+        if (this._isScramble2() || !window.PlayTogetherUnits) return [];
+        return PlayTogetherUnits.units(un, this.regs, this._unitBreaks);
+    },
+    // Other members of pid's unit while pid is still UNASSIGNED — [] once placed, so in-group moves stay
+    // individual (the unit exists only on the way IN). Every placement path calls this: drag, dock, ＋.
+    _unitMates: function(pid){
+        if (this._isScramble2()) return [];
+        var k=String(pid); if (this._assigned()[k]) return [];
+        var un=this._pool();
+        if (!un.some(function(r){ return String(r.playerId)===k; })) return [];
+        var u=this._prefUnits(un).find(function(m){ return m.some(function(x){ return String(x.playerId)===k; }); });
+        return u ? u.filter(function(x){ return String(x.playerId)!==k; }).map(function(x){ return String(x.playerId); }) : [];
+    },
+    // ✕ on a unit chip: dissolve the whole unit back into singles for THIS session (no data writes —
+    // the requests stay on the registrations; a reload re-links them).
+    breakUnitOf: function(pid){
+        var self=this, un=this._pool();
+        var u=this._prefUnits(un).find(function(m){ return m.some(function(x){ return String(x.playerId)===String(pid); }); });
+        (u||[]).forEach(function(x){ self._unitBreaks[String(x.playerId)]=1; });
+        this.render();
+    },
+    // One unassigned play-together UNIT chip (2–5 members): names glued with ＋, drag or the ＋ picker
+    // moves everyone, ×N badge shows the size, ✕ splits it back into singles.
+    _unitChip: function(members){
+        var self=this, a=members[0];
+        var rows=members.map(function(m){ var h=self._hcp(m.handicap); return '<span class="um">'+self._esc(m.playerName)+(h?'<span class="h">'+h+'</span>':'')+'</span>'; }).join('<span class="tx">＋</span>');
+        return '<span onpointerdown="TeeSheet.pdown(event,\''+a.playerId+'\')" class="ts2-pchip ts2-teamchip ts2-unitchip" title="'+t('ts2.unittip')+'">'+
+            rows+
+            '<span class="tb">×'+members.length+'</span>'+
+            (self.groups.length ? '<select onchange="TeeSheet.addPlayer(this.value,\''+a.playerId+'\')" title="'+t('ts2.unittip')+'"><option value="">＋</option>'+self.groups.map(function(g,i){ return '<option value="'+i+'">G'+(i+1)+'</option>'; }).join('')+'</select>' : '')+
+            '<button onclick="TeeSheet.breakUnitOf(\''+a.playerId+'\')" title="'+t('ts2.unitbreak')+'" class="mx">✕</button>'+
+        '</span>';
     },
     // "Added" (non-registered) player = typed manually OR picked from the directory search. They ride in
     // manualPool when unassigned and carry their van on the player object (registered players use special_requests).
@@ -130114,8 +130280,17 @@ window.TeeSheet = {
             if (_sgl.length) side += '<div class="ts2-pool">'+ _sgl.map(function(r){ return self._poolChip(r); }).join('') + '</div>';
             else side += '<div class="ts2-pool"><div style="'+_emp+'">'+(grouped?t('ts2.allgrouped'):t('ts2.noplayers'))+'</div></div>';   // stays a drop target for unassign-by-drag
         } else {
-            side += '<div class="ts2-stitle" style="margin-top:12px;">'+t('ts2.unassigned')+' · '+un.length+'</div>';
-            if (un.length) side += '<div class="ts2-pool">'+ un.map(function(r){ return self._poolChip(r); }).join('') + '</div>';
+            // Play-together units (PTU): requested-together players surface as glued unit chips above the
+            // singles — computed fresh every render, so a late registrant naming pool players auto-joins.
+            var _uts=self._prefUnits(un);
+            var _inU={}; _uts.forEach(function(u){ u.forEach(function(m){ _inU[String(m.playerId)]=1; }); });
+            var _sgl2=un.filter(function(r){ return !_inU[String(r.playerId)]; });
+            if (_uts.length) {
+                side += '<div class="ts2-stitle" style="margin-top:12px;">'+t('ts2.reqtogether')+' · '+_uts.length+'</div>';
+                side += '<div class="ts2-pool ts2-tpool">'+ _uts.map(function(u){ return self._unitChip(u); }).join('') + '</div>';
+            }
+            side += '<div class="ts2-stitle" style="margin-top:12px;">'+t('ts2.unassigned')+' · '+_sgl2.length+'</div>';
+            if (_sgl2.length) side += '<div class="ts2-pool">'+ _sgl2.map(function(r){ return self._poolChip(r); }).join('') + '</div>';
             else side += '<div class="ts2-pool"><div style="color:var(--t-dim);font:500 12px/1.4 \'Instrument Sans\',sans-serif;">'+(grouped?t('ts2.allgrouped'):t('ts2.noplayers'))+'</div></div>';   // stays a drop target for unassign-by-drag
         }
         // ===== ✦ REGULARS tray (RGV1) — ghost-chip suggestions, drag/＋ to place (never auto-placed) =====
@@ -130535,8 +130710,10 @@ window.TeeSheet = {
         if(r){ pObj={playerId:r.playerId, playerName:r.playerName, handicap:r.handicap}; }
         else { var mi=this.manualPool.findIndex(function(m){ return String(m.playerId)===String(playerId); }); if(mi>=0) pObj=this.manualPool.splice(mi,1)[0]; else { pObj=this._takeFromSuggest(playerId); if(!pObj) return; } }
         var mate=this._pairPartner(playerId);                 // 2-man scramble: the pair travels together
+        var unit=this._unitMates(playerId);                   // play-together unit rides along (pool-only)
         this.groups[groupIdx].players.push(pObj);
         if(mate){ var mObj=this._takePlayer(mate); if(mObj) this.groups[groupIdx].players.push(mObj); }
+        for(var ui=0; ui<unit.length; ui++){ var uObj=this._takePlayer(unit[ui]); if(uObj) this.groups[groupIdx].players.push(uObj); }
         this._saveGroups(); this.render();
     },
     removePlayer: function(groupIdx, playerId){
@@ -130771,10 +130948,12 @@ window.TeeSheet = {
     _moveToGroup: function(pid, targetIdx){
         targetIdx=parseInt(targetIdx); if(isNaN(targetIdx)||!this.groups[targetIdx]){ this.render(); return; }
         var mate=this._pairPartner(pid);                 // 2-man scramble: the pair travels together
+        var unit=this._unitMates(pid);                   // play-together unit: everyone rides along (pool-only)
         var pObj=this._takePlayer(pid);
         if(!pObj){ this.render(); return; }
         this.groups[targetIdx].players.push(pObj);
         if(mate){ var mObj=this._takePlayer(mate); if(mObj) this.groups[targetIdx].players.push(mObj); }   // keep the teammate adjacent
+        for(var ui=0; ui<unit.length; ui++){ var uObj=this._takePlayer(unit[ui]); if(uObj) this.groups[targetIdx].players.push(uObj); }
         this._saveGroups(); this.render();
     },
     _dropToPool: function(pid){ var mate=this._pairPartner(pid); var pObj=this._pluckFromGroups(pid); if(pObj && this._isManual(pObj.playerId)) this.manualPool.push(pObj); if(mate){ var mObj=this._pluckFromGroups(mate); if(mObj && this._isManual(mObj.playerId)) this.manualPool.push(mObj); } this._saveGroups(); this.render(); },
@@ -131764,6 +131943,7 @@ const RegistrationsManager = {
             this.registrations = registrations || [];
             this.waitlist = waitlist || [];
             this.pairingsData = pairings;
+            this._unitBreaks = {};   // PTU unit splits are per-event, per-session
 
             // A registrant's added players form ONE group with the host — auto-place the booking into a
             // group (not the unassigned pool) so it shows grouped here + on the tee sheet + golfer card.
@@ -132987,27 +133167,47 @@ const RegistrationsManager = {
         if (unassigned.length > 0) {
             const headerText = hasGroups ? `Unassigned (${unassigned.length})` : `Registered Players (${unassigned.length})`;
             const borderClass = hasGroups ? 'border-t pt-3 mt-3' : '';
+            // PTU: requested-together players render as glued green blocks above the singles — dragging
+            // any member moves the whole unit (movePlayerToGroup pulls the mates along; swap is gated).
+            const _units = window.PlayTogetherUnits ? PlayTogetherUnits.units(
+                this.registrations.filter(r => unassigned.some(p => String(p.playerId) === String(r.playerId))),
+                this.registrations, this._unitBreaks) : [];
+            const _inUnit = {}; _units.forEach(u => u.forEach(m => { _inUnit[String(m.playerId)] = 1; }));
+            const _singles = unassigned.filter(p => !_inUnit[String(p.playerId)]);
+            const _unitBlocks = _units.map(u => `
+                        <div class="border border-green-300 bg-green-50 rounded-lg p-1.5" style="grid-column:1/-1;">
+                            <div class="flex items-center justify-between mb-1 px-0.5">
+                                <span style="font-size:9px;font-weight:800;letter-spacing:.08em;color:#15803d;">PLAYS TOGETHER ×${u.length} — MOVES AS ONE</span>
+                                <button onclick="RegistrationsManager.breakUnitOf('${u[0].playerId}')" title="Split into singles (this session only)" style="font-size:9px;font-weight:700;color:#15803d;text-decoration:underline;background:none;border:none;cursor:pointer;">SPLIT</button>
+                            </div>
+                            <div class="space-y-1">${u.map(m => this._unassignedRowHTML(m, _vanMap)).join('')}</div>
+                        </div>`).join('');
             container.innerHTML += `
                 <div class="${borderClass}">
                     <div class="text-xs font-medium text-gray-500 mb-2">${headerText}</div>
                     <div class="grid grid-cols-2 gap-1.5 md:grid-cols-1 md:gap-1">
-                        ${unassigned.map(p => {
-                            const reg = this.registrations.find(r => r.playerId === p.playerId);
-                            const hcpRaw = (reg && reg.handicap != null && reg.handicap !== '') ? reg.handicap : (this.currentHandicaps?.[p.playerId] ?? p.handicap);
-                            const hcp = window.formatHandicapDisplay ? window.formatHandicapDisplay(hcpRaw) : hcpRaw;
-                            const isPaid = reg?.paymentStatus === 'paid';
-                            const textColor = isPaid ? 'text-blue-600 font-medium' : 'text-red-600';
-                            return `
+                        ${_unitBlocks}
+                        ${_singles.map(p => this._unassignedRowHTML(p, _vanMap)).join('')}
+                    </div>
+                </div>
+            `;
+        }
+    },
+
+    // One unassigned row (yellow chip) — shared by the singles grid and the PTU unit blocks.
+    _unassignedRowHTML(p, _vanMap) {
+        const reg = this.registrations.find(r => r.playerId === p.playerId);
+        const hcpRaw = (reg && reg.handicap != null && reg.handicap !== '') ? reg.handicap : (this.currentHandicaps?.[p.playerId] ?? p.handicap);
+        const hcp = window.formatHandicapDisplay ? window.formatHandicapDisplay(hcpRaw) : hcpRaw;
+        const isPaid = reg?.paymentStatus === 'paid';
+        const textColor = isPaid ? 'text-blue-600 font-medium' : 'text-red-600';
+        return `
                             <div class="pairing-player bg-yellow-50 rounded px-2 py-1 text-xs flex justify-between items-center border border-yellow-200"
                                  data-player-id="${p.playerId}"
                                  onpointerdown="RegistrationsManager.pdown(event, '${p.playerId}')">
                                 <span class="${textColor}">${p.playerName} (${hcp})</span>${(reg && GolferEventRegManager._onTransport(reg)) ? ('<span title="On the van" style="font-size:9px;font-weight:700;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;color:#2563eb;background:#dbeafe;"><span class="material-symbols-outlined" style="font-size:11px;vertical-align:-2px;">airport_shuttle</span> '+((reg.specialRequests&&reg.specialRequests.van&&reg.specialRequests.van!=='own')?('VAN '+reg.specialRequests.van):(_vanMap&&_vanMap[p.playerId]?('VAN '+_vanMap[p.playerId]):'VAN'))+'</span>') : '<span title="Own transport / direct" style="font-size:9px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;">DIRECT</span>'}
                             </div>
-                        `}).join('')}
-                    </div>
-                </div>
-            `;
-        }
+                        `;
     },
 
     getUnassignedPlayers() {
@@ -133270,7 +133470,13 @@ const RegistrationsManager = {
         setTimeout(() => document.removeEventListener('click', swallow, true), 350);
         if (e.type === 'pointercancel' || !hov) return;
         if (kind === 'chip') this.movePlayerToGroup(d.pid, parseInt(hov.getAttribute('data-g'), 10));
-        else if (kind === 'swap') this.swapPlayers(d.pid, hov.getAttribute('data-player-id'));
+        else if (kind === 'swap') {
+            // PTU: a unit drag can't swap one-for-one — treat drop-on-player as a drop into their group.
+            if (this._unitMatesOf(d.pid).length) {
+                const grp = hov.closest('.pairing-group');
+                if (grp) this.movePlayerToGroup(d.pid, parseInt(grp.getAttribute('data-group'), 10));
+            } else this.swapPlayers(d.pid, hov.getAttribute('data-player-id'));
+        }
         else if (kind === 'grp') this.movePlayerToGroup(d.pid, parseInt(hov.getAttribute('data-group'), 10));
     },
 
@@ -133300,6 +133506,23 @@ const RegistrationsManager = {
     },
     _hideDock() { if (this._dockEl) { this._dockEl.classList.remove('on'); this._dockEl.querySelectorAll('.dchip.hov').forEach(x => x.classList.remove('hov')); } },
 
+    // PTU: other members of playerId's play-together unit while still UNASSIGNED — [] once placed
+    // (units act on the way IN only; in-group moves and swaps stay individual).
+    _unitBreaks: {},
+    _unitMatesOf(playerId) {
+        if (!window.PlayTogetherUnits) return [];
+        const groups = (this.pairingsData && this.pairingsData.groups) || [];
+        const assigned = new Set();
+        groups.forEach(g => (g.players || []).forEach(p => assigned.add(String(p.playerId))));
+        if (assigned.has(String(playerId))) return [];
+        const un = this.registrations.filter(r => !assigned.has(String(r.playerId)));
+        return PlayTogetherUnits.mates(playerId, un, this.registrations, this._unitBreaks);
+    },
+    breakUnitOf(playerId) {
+        [String(playerId)].concat(this._unitMatesOf(playerId)).forEach(k => { this._unitBreaks[k] = 1; });
+        this.renderPairings();
+    },
+
     async movePlayerToGroup(playerId, groupNumber) {
         if (!this.pairingsData || !this.pairingsData.groups) return;
         const playerReg = this.registrations.find(r => r.playerId === playerId);
@@ -133309,8 +133532,10 @@ const RegistrationsManager = {
         // their group in memory and THEN bailed on a full target, leaving a phantom
         // removal that the next save would persist.
         if (targetGroup && (targetGroup.players || []).some(p => p.playerId === playerId)) return;
-        if (targetGroup && (targetGroup.players || []).length >= this.groupSize) {
-            window.NotificationManager?.show('Group is full — drop ON a player to swap places', 'warning');
+        // PTU: an unassigned player's requested partners ride along — the whole unit must fit.
+        const mates = this._unitMatesOf(playerId);
+        if (targetGroup && (targetGroup.players || []).length + 1 + mates.length > this.groupSize) {
+            window.NotificationManager?.show(mates.length ? ('No room for this group of ' + (mates.length + 1)) : 'Group is full — drop ON a player to swap places', 'warning');
             return;
         }
         const playerData = { playerId: playerReg.playerId, playerName: playerReg.playerName, handicap: playerReg.handicap };
@@ -133318,6 +133543,10 @@ const RegistrationsManager = {
         if (targetGroup) {
             if (!targetGroup.players) targetGroup.players = [];
             targetGroup.players.push(playerData);
+            mates.forEach(mid => {
+                const mr = this.registrations.find(r => String(r.playerId) === String(mid));
+                if (mr) targetGroup.players.push({ playerId: mr.playerId, playerName: mr.playerName, handicap: mr.handicap });
+            });
         }
         await this.savePairings();
         this.renderPairings();

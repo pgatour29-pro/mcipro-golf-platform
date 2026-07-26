@@ -6542,6 +6542,17 @@
         .scv3g-ec .d { flex:0 0 44px; text-align:center; background:var(--g-box); border:1px solid var(--g-hair); border-radius:11px; padding:7px 0; align-self:flex-start; }
         .scv3g-ec .d .w { font:600 8px/1 'JetBrains Mono',monospace; color:var(--g-dim); }
         .scv3g-ec .d .n { font:300 20px/1.1 'Outfit',sans-serif; }
+        /* Weekend (red, logout-button shade) / Thai holiday (green) cube tints (v735).
+           Dark theme = translucent tints on the dark canvas; light theme = the exact
+           .header-btn-logout gradient (#fef2f2→#fee2e2) and its green twin. */
+        .scv3g-ec .d.wknd { background:rgba(251,113,133,.14); border-color:rgba(251,113,133,.35); }
+        .scv3g-ec .d.wknd .w, .scv3g-ec .d.wknd .n { color:#fb7185; }
+        .scv3g-ec .d.hol { background:rgba(74,222,128,.14); border-color:rgba(74,222,128,.35); }
+        .scv3g-ec .d.hol .w, .scv3g-ec .d.hol .n { color:#4ade80; }
+        body.theme-light .scv3g-ec .d.wknd { background:linear-gradient(135deg,#fef2f2 0%,#fee2e2 100%); border-color:rgba(220,38,38,.15); }
+        body.theme-light .scv3g-ec .d.wknd .w, body.theme-light .scv3g-ec .d.wknd .n { color:#dc2626; }
+        body.theme-light .scv3g-ec .d.hol { background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%); border-color:rgba(22,163,74,.15); }
+        body.theme-light .scv3g-ec .d.hol .w, body.theme-light .scv3g-ec .d.hol .n { color:#16a34a; }
         .scv3g-ec .m { flex:1; min-width:0; }
         .scv3g-ec .nm { font:700 15px/1.15 'Instrument Sans',sans-serif; display:flex; align-items:center; gap:6px; min-width:0; }
         .scv3g-ec .nm > span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -115696,6 +115707,28 @@ const PinSheetManager = {
 window.PinSheetManager = PinSheetManager;
 console.log('[PinSheet] Module loaded');
 
+// ── Date-cube tinting (v735): Thai public holidays (green) + weekends (red) ──
+// Holiday wins when a holiday lands on a weekend. Keys are 'YYYY-MM-DD'.
+// 2026 = official cabinet list (incl. Jan 2 bridge day + Dec 7 substitution).
+// 2027 Buddhist lunar dates are provisional — refresh when the cabinet publishes.
+const TH_HOLIDAYS = new Set([
+    '2026-01-01','2026-01-02','2026-03-03','2026-04-06','2026-04-13','2026-04-14','2026-04-15',
+    '2026-05-01','2026-05-04','2026-05-31','2026-06-01','2026-06-03','2026-07-28','2026-07-29',
+    '2026-07-30','2026-08-12','2026-10-13','2026-10-23','2026-12-05','2026-12-07','2026-12-10','2026-12-31',
+    '2027-01-01','2027-02-21','2027-04-06','2027-04-13','2027-04-14','2027-04-15','2027-05-01',
+    '2027-05-03','2027-05-04','2027-05-20','2027-06-03','2027-07-18','2027-07-19','2027-07-28',
+    '2027-08-12','2027-10-13','2027-10-23','2027-10-25','2027-12-05','2027-12-06','2027-12-10','2027-12-31'
+]);
+// Weekday from the Y-M-D parts directly — new Date('YYYY-MM-DD') parses as UTC
+// midnight and can shift a day in western timezones.
+window.dateCubeMood = function(dateVal) {
+    const ymd = String(dateVal || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return '';
+    if (TH_HOLIDAYS.has(ymd)) return 'hol';
+    const dow = new Date(+ymd.slice(0, 4), +ymd.slice(5, 7) - 1, +ymd.slice(8, 10)).getDay();
+    return (dow === 0 || dow === 6) ? 'wknd' : '';
+};
+
 // ==================================================================
 // GOLFER EVENTS SYSTEM - Browse and Register for Society Events
 // ==================================================================
@@ -116771,7 +116804,7 @@ class GolferEventsManager {
         return `
             <div id="event-card-${event.id}" class="scv3g-ec ${isCancelled ? 'cancelled' : ''}" onclick="GolferEventsSystem.openEventDetail('${event.id}', ${event.isUserRegistered ? 'true' : 'false'})">
                 ${notificationBadge}
-                <div class="d"><div class="w">${eventDate.toLocaleDateString(L.lang === 'ko' ? 'ko-KR' : 'en-US', { weekday: 'short' }).toUpperCase()}</div><div class="n">${eventDate.getDate()}</div></div>
+                <div class="d ${window.dateCubeMood(event.date)}"><div class="w">${eventDate.toLocaleDateString(L.lang === 'ko' ? 'ko-KR' : 'en-US', { weekday: 'short' }).toUpperCase()}</div><div class="n">${eventDate.getDate()}</div></div>
                 <div class="m">
                     <div class="nm">${_logo}<span>${event.courseName || event.name}</span></div>
                     <div class="s">${_meta}</div>
@@ -122063,7 +122096,7 @@ class GolferEventsManager {
             const sub = [wk, tee ? (_lvT('gmv1.tee', 'TEE') + ' ' + tee) : '', esc(event.course_name || '')].filter(Boolean).join(' · ');
             return `
             <div class="scv3g-ec${event.status === 'cancelled' ? ' cancelled' : ''}">
-                <div class="d"><span class="w">${mon}</span><span class="n">${dayN}</span></div>
+                <div class="d ${window.dateCubeMood(d)}"><span class="w">${mon}</span><span class="n">${dayN}</span></div>
                 <div class="m">
                     <div class="nm"><span>${esc(event.title || event.name || 'Event')}</span></div>
                     <div class="s">${sub}</div>

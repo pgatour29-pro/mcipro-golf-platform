@@ -129664,7 +129664,9 @@ window.TeeSheet = {
             try { await this._loadNines(); } catch(e){}   // resolve the venue's real nines for two-way start
             this.render();
             if (this._hcpToast) { this._hcpToast = false; this._flashHcpRefresh(this._lastHcpSync); }
-            this._syncRegistrations();   // register anyone already grouped but not yet on the roster (backfill)
+            // Backfill grouped-but-unregistered players, THEN sweep the non-member surcharge so the
+            // +฿100 lands even when the organizer only ever opens the tee sheet (not Registrations).
+            this._syncRegistrations().then(function(){ return self._applyNonMemberSurcharge(); }).catch(function(e){ console.warn('[TeeSheet] non-member sweep', e); });
             this._subscribeRealtime(eventId);   // live-sync with registrations + other devices
             this._loadRegulars(ev);      // ✦ REGULARS tray — fire-and-forget, renders when it lands
         } catch(e){ console.warn('[TeeSheet] load', e); if(body) body.innerHTML='<div style="text-align:center;padding:40px;color:#94a3b8;">Couldn\'t load this event.</div>'; }
@@ -129725,6 +129727,7 @@ window.TeeSheet = {
             try { this._ensureDivisions(this._evSource().find(function(e){ return e.id===eventId; }) || {}); } catch(e){}
             try { await this._loadNines(); } catch(e){}
             this.render();
+            try { this._applyNonMemberSurcharge(); } catch(e){}   // a live-added registrant may be a non-member
         } catch(e){ console.warn('[TeeSheet] live reload', e); }
     },
     _assigned: function(){ var s={}; this.groups.forEach(function(g){ (g.players||[]).forEach(function(p){ s[String(p.playerId)]=1; }); }); return s; },
@@ -130994,6 +130997,39 @@ window.TeeSheet = {
             }
         } finally { this._syncing=false; }
         if(changed){ try { await SocietyGolfDB.savePairings(this.eventId, { eventId:this.eventId, groupSize:this._groupSize, groups:this.groups, lockedAt:null, lockedBy:null }); } catch(e){} }
+        try { this.render(); } catch(e){}
+    },
+    // Non-member +฿100 sweep — the surcharge used to be applied ONLY when the organizer opened the
+    // Registrations tab (RegistrationsManager.recalculateFees cross-match), so a tee-sheet-only
+    // workflow printed non-members at the member fee. Same directory verdict as the MEM tag
+    // (TRGGMembership.forPlayer); DELTA-only on the stored total_fee — never a full recompute,
+    // the stored fee is the organizer's authority. Idempotent: flagged rows are left alone.
+    _applyNonMemberSurcharge: async function(){
+        if (!this._isTRGGEvent() || !window.TRGGMembership) return;
+        // Fail CLOSED: if the roster didn't actually load, everyone would look like a non-member.
+        if (!TRGGMembership._allRows || !TRGGMembership._allRows.length) return;
+        var updates=[];
+        (this.regs||[]).forEach(function(r){
+            if (!r || !r.id) return;
+            var mem; try { mem = TRGGMembership.forPlayer(r.playerId, r.playerName); } catch(e){ return; }
+            var sr = Object.assign({}, r.specialRequests||{});
+            var fee = parseFloat(r.totalFee)||0, newFee = fee;
+            if (!mem.isCurrent && !sr.nonMember) {                       // expired or not in the directory
+                sr.nonMember = true;
+                if (fee > 0) newFee = fee + TRGGMembership.NON_MEMBER_FEE;
+            } else if (mem.isCurrent && sr.nonMember && !sr.renewMembership) {
+                delete sr.nonMember;                                     // current member → drop a stale surcharge
+                if (fee > 0) newFee = Math.max(0, fee - TRGGMembership.NON_MEMBER_FEE);
+            } else return;
+            r.specialRequests = sr; r.totalFee = newFee;                 // local NOW so the next render is right
+            updates.push({ id: r.id, payload: { special_requests: sr, total_fee: newFee } });
+        });
+        if (!updates.length) return;
+        this._lastLocalSave = Date.now();   // our own reg writes echo back via realtime — skip the reload flicker
+        try {
+            await Promise.all(updates.map(function(u){ return window.SupabaseDB.client.from('event_registrations').update(u.payload).eq('id', u.id); }));
+            console.log('[TeeSheet] Non-member surcharge synced on '+updates.length+' registration(s)');
+        } catch(e){ console.warn('[TeeSheet] non-member surcharge sync', e); }
         try { this.render(); } catch(e){}
     },
     _sheetText: function(){ var self=this; this._vanMap=this._deriveVanMap(); var lines=['⛳ '+this.eventName]; this.groups.forEach(function(g,i){ if(!(g.players||[]).length) return; lines.push(''); var twoway=self._twoWayActive(); var glabel=twoway?self._groupTag(i):t('ts2.s.group').replace('{n}', i+1); var nineStr=twoway?('  ['+self._playOrderStr(i)+']'):''; lines.push(glabel+(g.teeTime?(' — '+g.teeTime):'')+nineStr); (g.players||[]).forEach(function(p){ var v=self._vanOf(p.playerId); lines.push('  • '+p.playerName+' ('+self._hcp(self._hcpOf(p.playerId, p.handicap))+')'+(v?('  ['+self._vanLabel(v)+']'):'')); }); }); return lines.join('\n'); },

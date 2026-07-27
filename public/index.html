@@ -117536,14 +117536,38 @@ class GolferEventsManager {
             document.getElementById('regPlayerName').value = AppState.currentUser.name;
         }
 
-        // The handicap captured at sign-up MUST be the player's CURRENT GLOBAL handicap, read LIVE from
-        // the system (user_profiles) — NOT the cached login profile, which goes stale after a handicap
-        // upload. (Previously this used society_handicaps / the cached AppState, so sign-ups captured an
-        // outdated HCP.)
+        // Sign-up handicap = SOCIETY-FIRST (Pete 2026-07-27): a TRGG event must show the TRGG
+        // society handicap (masterscoreboard), not the global/anchored index — same rule as the
+        // header and the tee-sheet reg-sync RPC. Scoped to the EVENT's society only (never
+        // "most recent any-society"); TRGG lives under two society ids, so try both. The live
+        // global profile stays the fallback for events whose society has no row for this golfer
+        // — read LIVE from user_profiles, NOT the cached login profile, which goes stale after
+        // a handicap upload.
         let handicap = null;
         const golferId = AppState.currentUser?.lineUserId;
+        const _evSoc = this.currentEvent?.societyId || this.currentEvent?.society_id || null;
 
-        if (golferId) {
+        if (golferId && _evSoc) {
+            try {
+                const TRGG_IDS = ['7c0e4b72-d925-44bc-afda-38259a7ba346', '17451cf3-8b57-4166-af0a-dd902b7fb1af'];
+                const socIds = TRGG_IDS.includes(String(_evSoc)) ? TRGG_IDS : [String(_evSoc)];
+                const { data: socRows } = await window.SupabaseDB.client
+                    .from('society_handicaps')
+                    .select('handicap_index, society_id, updated_at')
+                    .eq('golfer_id', golferId)
+                    .in('society_id', socIds)
+                    .order('updated_at', { ascending: false, nullsFirst: false });
+                const hit = (socRows || []).find(r => r.handicap_index != null);
+                if (hit) {
+                    handicap = Number(hit.handicap_index);
+                    console.log('[GolferEventsSystem] Sign-up handicap = SOCIETY row:', handicap);
+                }
+            } catch (err) {
+                console.warn('[GolferEventsSystem] society handicap fetch failed:', err);
+            }
+        }
+
+        if (golferId && handicap == null) {
             try {
                 const { data: prof } = await window.SupabaseDB.client
                     .from('user_profiles')

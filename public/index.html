@@ -126759,6 +126759,17 @@ window.OrgLiteRegistrations = {
                 } catch (e) { console.warn('[OrgLiteReg] auto non-member', e); }
             }
         }
+        // Van ⇒ transport (Pete's rule): anyone sitting on a van pays the bus fee — catch it at the
+        // register too, in case the van was assigned before the billing hookup existed. Mirrors the
+        // non-member auto-apply above.
+        if (!r.wantTransport && r.specialRequests && r.specialRequests.van && r.specialRequests.van !== 'own') {
+            try {
+                var tfV = parseFloat(fees.transportFee) || 300;
+                var nfV = (parseFloat(r.totalFee) || 0) + tfV;
+                var respV = await window.SupabaseDB.client.from('event_registrations').update({ total_fee: nfV, want_transport: true }).eq('id', r.id);
+                if (!(respV && respV.error)) { r.wantTransport = true; r.totalFee = nfV; }
+            } catch (e) { console.warn('[OrgLiteReg] auto van transport', e); }
+        }
         var owed = parseFloat(r.totalFee) || 0;
         this._slip = { regId: regId, owed: owed, method: 'cash', received: owed, keepExtra: false, ref: '', renew: !!(r.specialRequests && r.specialRequests.renewMembership), mem: mem,
             fees: { transportFee: parseFloat(fees.transportFee) || 0, competitionFee: parseFloat(fees.competitionFee) || 0 } };
@@ -129697,9 +129708,9 @@ window.TeeSheet = {
             try { await this._loadNines(); } catch(e){}   // resolve the venue's real nines for two-way start
             this.render();
             if (this._hcpToast) { this._hcpToast = false; this._flashHcpRefresh(this._lastHcpSync); }
-            // Backfill grouped-but-unregistered players, THEN sweep the non-member surcharge so the
-            // +฿100 lands even when the organizer only ever opens the tee sheet (not Registrations).
-            this._syncRegistrations().then(function(){ return self._applyNonMemberSurcharge(); }).catch(function(e){ console.warn('[TeeSheet] non-member sweep', e); });
+            // Backfill grouped-but-unregistered players, THEN sweep the surcharges (non-member ฿100,
+            // van ⇒ transport ฿300) so both land even when the organizer only ever opens the tee sheet.
+            this._syncRegistrations().then(function(){ return self._applyNonMemberSurcharge(); }).then(function(){ return self._applyVanTransportFee(); }).catch(function(e){ console.warn('[TeeSheet] fee sweeps', e); });
             this._subscribeRealtime(eventId);   // live-sync with registrations + other devices
             this._loadRegulars(ev);      // ✦ REGULARS tray — fire-and-forget, renders when it lands
         } catch(e){ console.warn('[TeeSheet] load', e); if(body) body.innerHTML='<div style="text-align:center;padding:40px;color:#94a3b8;">Couldn\'t load this event.</div>'; }
@@ -129761,6 +129772,7 @@ window.TeeSheet = {
             try { await this._loadNines(); } catch(e){}
             this.render();
             try { this._applyNonMemberSurcharge(); } catch(e){}   // a live-added registrant may be a non-member
+            try { this._applyVanTransportFee(); } catch(e){}      // a live van assignment must carry its ฿300
         } catch(e){ console.warn('[TeeSheet] live reload', e); }
     },
     _assigned: function(){ var s={}; this.groups.forEach(function(g){ (g.players||[]).forEach(function(p){ s[String(p.playerId)]=1; }); }); return s; },
@@ -130763,8 +130775,15 @@ window.TeeSheet = {
             // registration page + golfer card (which read want_transport) match: a van / special = on
             // transport, Direct (own) / cleared = off.
             var onT = !!(val && val!=='own');
+            var payload = { special_requests: sr, want_transport: onT };
+            // Billing follows the van (Pete's rule: on a van = the ฿300 is on the bill). Delta only when
+            // the billable flag actually flips — same discipline as RegistrationsManager.toggleTransport.
+            if (onT !== !!r.wantTransport) {
+                var fee = parseFloat(r.totalFee)||0;
+                if (fee > 0) { r.totalFee = Math.max(0, fee + (onT ? this._transportFee() : -this._transportFee())); payload.total_fee = r.totalFee; }
+            }
             r.wantTransport = onT;
-            try { await window.SupabaseDB.client.from('event_registrations').update({ special_requests: sr, want_transport: onT }).eq('id', r.id); } catch(e){ console.warn('[TeeSheet] setVan', e); }
+            try { await window.SupabaseDB.client.from('event_registrations').update(payload).eq('id', r.id); } catch(e){ console.warn('[TeeSheet] setVan', e); }
         } else {
             var po=this._playerObj(playerId); if(po){ if(!val) delete po.van; else po.van=val; } this._saveGroups();
         }
@@ -130789,12 +130808,19 @@ window.TeeSheet = {
     // Set every player in the group to one van (V3, All Dir, …). Individual rows still override afterward.
     setGroupVan: async function(i, val){
         var self=this, g=this.groups[i]; if(!g || !(g.players||[]).length) return;
-        var onT=!!(val && val!=='own'), updates=[], touchedManual=false;
+        var onT=!!(val && val!=='own'), tf=this._transportFee(), updates=[], touchedManual=false;
         (g.players||[]).forEach(function(p){
             var r=self.regs.find(function(x){ return String(x.playerId)===String(p.playerId); });
             if(r){
-                var sr=Object.assign({}, r.specialRequests||{}); if(!val) delete sr.van; else sr.van=val; r.specialRequests=sr; r.wantTransport=onT;
-                updates.push({ id:r.id, sr:sr, onT:onT });
+                var sr=Object.assign({}, r.specialRequests||{}); if(!val) delete sr.van; else sr.van=val; r.specialRequests=sr;
+                var payload={ special_requests: sr, want_transport: onT };
+                // Billing follows the van (Pete's rule) — ฿300 delta per player, only on a real flag flip.
+                if (onT !== !!r.wantTransport) {
+                    var fee=parseFloat(r.totalFee)||0;
+                    if (fee > 0) { r.totalFee=Math.max(0, fee+(onT?tf:-tf)); payload.total_fee=r.totalFee; }
+                }
+                r.wantTransport=onT;
+                updates.push({ id:r.id, payload:payload });
             } else {
                 var po=self._playerObj(p.playerId); if(po){ if(!val) delete po.van; else po.van=val; touchedManual=true; }
             }
@@ -130802,7 +130828,7 @@ window.TeeSheet = {
         if(touchedManual) this._saveGroups();
         this.render();
         for(var u=0; u<updates.length; u++){
-            try { await window.SupabaseDB.client.from('event_registrations').update({ special_requests: updates[u].sr, want_transport: updates[u].onT }).eq('id', updates[u].id); }
+            try { await window.SupabaseDB.client.from('event_registrations').update(updates[u].payload).eq('id', updates[u].id); }
             catch(e){ console.warn('[TeeSheet] setGroupVan', e); }
         }
     },
@@ -131064,6 +131090,37 @@ window.TeeSheet = {
             console.log('[TeeSheet] Non-member surcharge synced on '+updates.length+' registration(s)');
         } catch(e){ console.warn('[TeeSheet] non-member surcharge sync', e); }
         try { this.render(); } catch(e){}
+    },
+    // Van ⇒ transport-fee sweep (v737, Pete's rule: assigned to a van = billed for the bus). The Van
+    // Manifest + older tee-sheet writes stored special_requests.van WITHOUT flipping want_transport, so a
+    // rider showed a van but was never charged the ฿300. Same DELTA-only discipline as the non-member
+    // sweep above: want_transport is the "fee is in the total" marker — van ON + flag OFF → flag + delta,
+    // never a full recompute. Flagged rows are left alone (recalculateFees trues those up on the
+    // Registrations tab). 'own' = Direct (never billed); 'special' rides = billed, same as setVan.
+    _applyVanTransportFee: async function(){
+        var tf = this._transportFee();
+        var updates = [];
+        (this.regs||[]).forEach(function(r){
+            if (!r || !r.id || r.wantTransport) return;
+            var v = (r.specialRequests && r.specialRequests.van) || '';
+            if (!v || v === 'own') return;
+            r.wantTransport = true;
+            var fee = parseFloat(r.totalFee) || 0;
+            if (fee > 0) r.totalFee = fee + tf;
+            updates.push({ id: r.id, payload: { want_transport: true, total_fee: r.totalFee } });
+        });
+        if (!updates.length) return;
+        this._lastLocalSave = Date.now();
+        try {
+            await Promise.all(updates.map(function(u){ return window.SupabaseDB.client.from('event_registrations').update(u.payload).eq('id', u.id); }));
+            console.log('[TeeSheet] Van transport fee applied on '+updates.length+' registration(s)');
+        } catch(e){ console.warn('[TeeSheet] van transport sweep', e); }
+        try { this.render(); } catch(e){}
+    },
+    // Same 300 fallback as every other fee surface (registerPlayer, calculatePlayerFee): 0/unset = ฿300.
+    _transportFee: function(){
+        var self=this, ev=(this._evSource()||[]).find(function(e){ return String(e.id)===String(self.eventId); }) || {};
+        return parseFloat(ev.transportFee != null ? ev.transportFee : ev.transport_fee) || 300;
     },
     _sheetText: function(){ var self=this; this._vanMap=this._deriveVanMap(); var lines=['⛳ '+this.eventName]; this.groups.forEach(function(g,i){ if(!(g.players||[]).length) return; lines.push(''); var twoway=self._twoWayActive(); var glabel=twoway?self._groupTag(i):t('ts2.s.group').replace('{n}', i+1); var nineStr=twoway?('  ['+self._playOrderStr(i)+']'):''; lines.push(glabel+(g.teeTime?(' — '+g.teeTime):'')+nineStr); (g.players||[]).forEach(function(p){ var v=self._vanOf(p.playerId); lines.push('  • '+p.playerName+' ('+self._hcp(self._hcpOf(p.playerId, p.handicap))+')'+(v?('  ['+self._vanLabel(v)+']'):'')); }); }); return lines.join('\n'); },
     shareLINE: function(){ window.open('https://line.me/R/share?text='+encodeURIComponent(this._sheetText()),'_blank'); },
@@ -132443,14 +132500,21 @@ const RegistrationsManager = {
                 } catch (e) { console.warn('[Registrations] TRGG cross-match', e); }
             }
 
+            // Van ⇒ transport (Pete's rule): a player parked on a van by the tee sheet or Van Manifest
+            // pays the bus fee even if they never ticked transport at registration. Normalize the flag
+            // BEFORE the expected-fee calc so the ฿300 lands in the same write.
+            let wtChanged = false;
+            if (!reg.wantTransport && _sr.van && _sr.van !== 'own') { reg.wantTransport = true; wtChanged = true; }
+
             const expectedFee = this.calculatePlayerFee(reg.wantTransport, reg.wantCompetition, _sr.nonMember, _sr.renewMembership, _sr.renewFee);
             const storedFee = parseFloat(reg.totalFee) || 0;
 
-            if (srChanged || storedFee !== expectedFee) {
+            if (srChanged || wtChanged || storedFee !== expectedFee) {
                 reg.specialRequests = _sr;
                 reg.totalFee = expectedFee; // apply locally NOW so the render is correct instantly
                 const payload = { total_fee: expectedFee };
                 if (srChanged) payload.special_requests = _sr;
+                if (wtChanged) payload.want_transport = true;
                 updates.push({ id: reg.id, payload });
             }
         }
@@ -133355,17 +133419,30 @@ const RegistrationsManager = {
     },
 
     // Persist a player's van/vehicle choice (1-15, 'own', or '' = unassigned) to their registration.
+    // Billing follows the van (Pete's rule): a van/special seat turns transport billing ON (+฿300 if it
+    // wasn't billed yet), 'own' (Direct) turns it OFF. '' stays billing-neutral — an unassigned rider may
+    // still be group-derived or mid-reshuffle.
     async setPlayerVan(playerId, value) {
         var reg = (this.registrations || []).find(function(r){ return String(r.playerId) === String(playerId); });
         if (!reg) return;
         var sr = Object.assign({}, reg.specialRequests || {});
         if (!value) delete sr.van; else sr.van = value;
         reg.specialRequests = sr;
+        var payload = { special_requests: sr };
+        var onT = !value ? null : (value !== 'own');
+        if (onT !== null && onT !== !!reg.wantTransport) {
+            var tf = (this.eventFees && this.eventFees.transportFee) || 300;
+            var fee = parseFloat(reg.totalFee) || 0;
+            if (fee > 0) { reg.totalFee = Math.max(0, fee + (onT ? tf : -tf)); payload.total_fee = reg.totalFee; }
+            reg.wantTransport = onT;
+            payload.want_transport = onT;
+        }
         try {
-            await window.SupabaseDB.client.from('event_registrations').update({ special_requests: sr }).eq('id', reg.id);
+            await window.SupabaseDB.client.from('event_registrations').update(payload).eq('id', reg.id);
         } catch (e) { console.warn('[Registrations] setPlayerVan', e); }
         this.renderVanManifest();
         this.renderPairings();
+        try { this.updateRowUI(reg.id); this.renderStats(); } catch (e) {}
     },
 
     // The shared Van Manifest — who's in which van. Organizer assigns here; players see their van.

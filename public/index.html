@@ -20302,11 +20302,7 @@
                         setTimeout(async () => {
                             try {
                                 await window.SupabaseDB.waitForReady();
-                                const { data: _guests } = await window.SupabaseDB.client
-                                    .from('user_profiles')
-                                    .select('line_user_id, name, profile_data, society_name, society_id')
-                                    .or('line_user_id.ilike.player_%,line_user_id.ilike.MANUAL-%,line_user_id.ilike.%-GUEST-%')
-                                    .limit(1500);
+                                const { data: _guests } = await this.guestProfileQuery(profile.displayName || userProfile.name || '');
                                 const _strong = this.findProfileMatches(profile.displayName || userProfile.name || '', _guests || [])
                                     .filter(m => m.match_confidence >= 0.95);
                                 if (_strong.length) await this.showMemberLinkConfirmation(lineUserId, profile, _strong, true);
@@ -20357,15 +20353,10 @@
                         const displayName = (profile.displayName || '').trim();
                         console.log('[LINE] Searching for matches with name:', displayName);
 
-                        // Search across all user_profiles for potential matches
-                        const { data: allProfiles, error: profilesError } = await window.SupabaseDB.client
-                            .from('user_profiles')
-                            .select('line_user_id, name, profile_data, society_name, society_id')
-                            // Match UNCLAIMED guest profiles by name (live-scoring player_*, organizer MANUAL-*,
-                            // society *-GUEST-*). The old `.is('line_user_id', null)` matched nothing — line_user_id
-                            // is the NOT-NULL PK — so this matcher never found anyone.
-                            .or('line_user_id.ilike.player_%,line_user_id.ilike.MANUAL-%,line_user_id.ilike.%-GUEST-%')
-                            .limit(1500);
+                        // Match UNCLAIMED guest profiles by name (live-scoring player_*, organizer MANUAL-*,
+                        // society *-GUEST-*), narrowed server-side by name tokens — see guestProfileQuery
+                        // for why load-everything truncates at 1000 and loses matches.
+                        const { data: allProfiles, error: profilesError } = await this.guestProfileQuery(displayName);
 
                         if (profilesError) {
                             console.error('[LINE] Error loading profiles:', profilesError);
@@ -20552,6 +20543,22 @@
                 const last = parts.shift().trim();
                 const first = parts.join(',').trim();
                 return first ? (first + ' ' + last) : last;
+            }
+
+            // Name-narrowed guest search. PostgREST hard-caps every response at 1000 rows and the
+            // guest pool is already past it (1238 on 2026-07-27) — a load-everything query silently
+            // drops the tail, which is exactly how Tom Britt's roster profile ("Britt, Tom") missed
+            // his claim list even though the matcher scores it 1.0. Filtering by the display name's
+            // 3+ letter tokens server-side returns a handful of rows and is immune to pool growth.
+            static guestProfileQuery(displayName, cols) {
+                const toks = String(displayName || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ')
+                    .split(/\s+/).filter(t => t.length >= 3);
+                let q = window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select(cols || 'line_user_id, name, profile_data, society_name, society_id')
+                    .or('line_user_id.ilike.player_%,line_user_id.ilike.MANUAL-%,line_user_id.ilike.%-GUEST-%');
+                if (toks.length) q = q.or(toks.map(t => 'name.ilike.%' + t + '%').join(','));
+                return q.limit(1000);
             }
 
             static findProfileMatches(displayName, profiles) {
@@ -22175,15 +22182,10 @@
                 if (window.MobileDebug) window.MobileDebug.log(`Searching for: "${displayName}"`, 'info');
                 console.log(`[OAuth] Searching for existing profiles matching name: "${displayName}"`);
 
-                // Search for ALL profiles - don't filter by provider column (may not exist)
-                // We'll filter in JS instead
-                const { data: allProfiles, error: profilesError } = await window.SupabaseDB.client
-                    .from('user_profiles')
-                    .select('line_user_id, name, display_name, profile_data, society_name, society_id')
-                    // Only match UNCLAIMED guest profiles by name (avoids suggesting a real member's
-                    // already-claimed account). Guest ids: player_* / MANUAL-* / *-GUEST-*.
-                    .or('line_user_id.ilike.player_%,line_user_id.ilike.MANUAL-%,line_user_id.ilike.%-GUEST-%')
-                    .limit(1500);
+                // Only match UNCLAIMED guest profiles (player_* / MANUAL-* / *-GUEST-*), narrowed
+                // server-side by name tokens — see guestProfileQuery for the 1000-row truncation trap.
+                const { data: allProfiles, error: profilesError } = await LineAuthentication.guestProfileQuery(
+                    displayName, 'line_user_id, name, display_name, profile_data, society_name, society_id');
 
                 if (profilesError) {
                     if (window.MobileDebug) window.MobileDebug.log(`Profile search error: ${profilesError.message}`, 'error');

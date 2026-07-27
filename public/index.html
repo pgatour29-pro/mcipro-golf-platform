@@ -20289,6 +20289,31 @@
 
                     console.log('[LINE] User logged in:', AppState.currentUser);
 
+                    // CLAIM RE-OFFER: a blank shell profile (no handicap, no society) usually means the
+                    // first-login matcher never got to run — the shell was created before the matcher
+                    // step (install-gate double hop) or the prompt was missed — leaving the member's real
+                    // roster profile unclaimed (Tom Britt, 2026-07-27). Re-offer the claim on every login
+                    // until it's accepted or explicitly declined. ≥0.95 = exact/sorted-token match only.
+                    const _blankShell = !userProfile.society_id && !(userProfile.society_name || '').trim() &&
+                        userProfile.handicap_index == null &&
+                        (userProfile.profile_data?.handicap ?? userProfile.profile_data?.golfInfo?.handicap) == null;
+                    if (_blankShell && (userProfile.role || 'golfer') === 'golfer' &&
+                        !localStorage.getItem('mcipro_claim_declined_' + lineUserId)) {
+                        setTimeout(async () => {
+                            try {
+                                await window.SupabaseDB.waitForReady();
+                                const { data: _guests } = await window.SupabaseDB.client
+                                    .from('user_profiles')
+                                    .select('line_user_id, name, profile_data, society_name, society_id')
+                                    .or('line_user_id.ilike.player_%,line_user_id.ilike.MANUAL-%,line_user_id.ilike.%-GUEST-%')
+                                    .limit(1500);
+                                const _strong = this.findProfileMatches(profile.displayName || userProfile.name || '', _guests || [])
+                                    .filter(m => m.match_confidence >= 0.95);
+                                if (_strong.length) await this.showMemberLinkConfirmation(lineUserId, profile, _strong, true);
+                            } catch (e) { console.warn('[MemberLink] re-offer check failed:', e); }
+                        }, 4000);
+                    }
+
                     // Biometric enrollment for external/installed users. The install gate
                     // itself is owned centrally by redirectToDashboard() (respects the
                     // "Maybe later" session snooze); don't double-fire it here.
@@ -20900,7 +20925,7 @@
                 }
             }
 
-            static async showMemberLinkConfirmation(lineUserId, profile, matches) {
+            static async showMemberLinkConfirmation(lineUserId, profile, matches, reoffer = false) {
                 // Remove any existing modal
                 const existingModal = document.getElementById('memberLinkModal');
                 if (existingModal) existingModal.remove();
@@ -20992,6 +21017,7 @@
                     lineUserId,
                     profile,
                     matches,
+                    reoffer,           // true = profile row already exists → claim runs through the merge engine
                     selectedIndex: 0 // Default to first match
                 };
 
@@ -21028,32 +21054,48 @@
                     const oldGuestId = selectedMatch.golfer_id || (selectedMatch.profile_data && selectedMatch.profile_data.line_user_id);
                     const innerData = (selectedMatch.profile_data && selectedMatch.profile_data.profile_data) || {};
 
-                    // CLAIM the guest profile: repoint its id (the PK) to this LINE account + drop the guest flag.
-                    const { error } = await window.SupabaseDB.client
-                        .from('user_profiles')
-                        .update({
-                            line_user_id: lineUserId,
-                            profile_data: { ...innerData, linePictureUrl: profile.pictureUrl, isGuest: false, claimedAt: new Date().toISOString() }
-                        })
-                        .eq('line_user_id', oldGuestId);
+                    // A row for this LINE id already exists whenever the claim is RE-OFFERED (the blank
+                    // shell was created before the matcher could run). Repointing the guest PK onto an
+                    // existing id would collide — route through the server-side merge engine instead: it
+                    // moves every table (scorecards, rounds, registrations, tee-sheet groups JSON),
+                    // backfills the blank shell from the roster profile, and audits in profile_merges.
+                    const { data: existingRow } = await window.SupabaseDB.client
+                        .from('user_profiles').select('line_user_id').eq('line_user_id', lineUserId).maybeSingle();
 
-                    if (error) {
-                        throw error;
-                    }
-
-                    // Move their PAST ROUNDS onto the new account (rounds were stored under the guest id).
-                    // Non-fatal — a relink error must NEVER block the login.
                     let relinked = false;
-                    if (oldGuestId && oldGuestId !== lineUserId) {
-                        try {
-                            const sb = window.SupabaseDB.client;
-                            await sb.from('scorecards').update({ player_id: lineUserId }).eq('player_id', oldGuestId);
-                            await sb.from('rounds').update({ golfer_id: lineUserId }).eq('golfer_id', oldGuestId);
-                            await sb.from('event_registrations').update({ player_id: lineUserId }).eq('player_id', oldGuestId);
-                            relinked = true;
-                            console.log('[MemberLink] ✅ Past rounds relinked', oldGuestId, '->', lineUserId);
-                        } catch (e) {
-                            console.warn('[MemberLink] round relink failed (non-fatal):', e);
+                    if (existingRow) {
+                        const { error: mergeErr } = await window.SupabaseDB.client.rpc('merge_golfer_profiles', {
+                            p_survivor: lineUserId, p_absorbed: oldGuestId, p_reason: 'first-login claim (re-offer)'
+                        });
+                        if (mergeErr) throw mergeErr;
+                        relinked = true;
+                    } else {
+                        // CLAIM the guest profile: repoint its id (the PK) to this LINE account + drop the guest flag.
+                        const { error } = await window.SupabaseDB.client
+                            .from('user_profiles')
+                            .update({
+                                line_user_id: lineUserId,
+                                profile_data: { ...innerData, linePictureUrl: profile.pictureUrl, isGuest: false, claimedAt: new Date().toISOString() }
+                            })
+                            .eq('line_user_id', oldGuestId);
+
+                        if (error) {
+                            throw error;
+                        }
+
+                        // Move their PAST ROUNDS onto the new account (rounds were stored under the guest id).
+                        // Non-fatal — a relink error must NEVER block the login.
+                        if (oldGuestId && oldGuestId !== lineUserId) {
+                            try {
+                                const sb = window.SupabaseDB.client;
+                                await sb.from('scorecards').update({ player_id: lineUserId }).eq('player_id', oldGuestId);
+                                await sb.from('rounds').update({ golfer_id: lineUserId }).eq('golfer_id', oldGuestId);
+                                await sb.from('event_registrations').update({ player_id: lineUserId }).eq('player_id', oldGuestId);
+                                relinked = true;
+                                console.log('[MemberLink] ✅ Past rounds relinked', oldGuestId, '->', lineUserId);
+                            } catch (e) {
+                                console.warn('[MemberLink] round relink failed (non-fatal):', e);
+                            }
                         }
                     }
 
@@ -21097,6 +21139,16 @@
                     if (!confirm('We found a strong match:\n\n' + nm + hcp + soc + '\n\nIf this is you, go back and tap "Yes, That\'s Me!" to keep your handicap, membership and round history.\n\nCreate a brand-new SEPARATE profile anyway?')) {
                         return; // leave the match modal open so they can accept the match
                     }
+                }
+
+                // RE-OFFER mode: the profile already exists — nothing to create. Remember the decline
+                // so we stop asking on every login (an organizer merge can still fix it later).
+                if (window.memberLinkData && window.memberLinkData.reoffer) {
+                    try { localStorage.setItem('mcipro_claim_declined_' + lineUserId, '1'); } catch (e) {}
+                    console.log('[MemberLink] Re-offered claim declined — snoozed');
+                    document.getElementById('memberLinkModal').remove();
+                    delete window.memberLinkData;
+                    return;
                 }
 
                 console.log('[MemberLink] User declined match, creating new profile...');

@@ -114,6 +114,31 @@ BEGIN
       'table', r.table_name, 'column', r.column_name, 'rows', v_cnt, 'deleted_dupes', v_del);
   END LOOP;
 
+  -- Tee-sheet groups store playerIds INSIDE the groups JSONB — the column sweep above can't see
+  -- them (proven live: Tom Britt claim, 2026-07-27). String-replace the id; a 15+ char
+  -- placeholder / LINE id can't collide with other JSON content.
+  UPDATE event_pairings
+     SET groups = replace(groups::text, p_absorbed, p_survivor)::jsonb
+   WHERE groups::text LIKE '%' || p_absorbed || '%';
+  GET DIAGNOSTICS v_cnt = ROW_COUNT;
+  IF v_cnt > 0 THEN
+    v_moved := v_moved || jsonb_build_object(
+      'table','event_pairings','column','groups(jsonb)','rows',v_cnt,'deleted_dupes',0);
+  END IF;
+
+  -- A first-login claim absorbs a rich roster/guest profile into a BLANK LINE shell — carry the
+  -- absorbed profile's identity data onto the survivor wherever the survivor is empty
+  -- (merge-don't-clobber: the survivor's own values always win; isGuest never survives).
+  UPDATE user_profiles s SET
+    handicap_index   = COALESCE(s.handicap_index, v_abs.handicap_index),
+    society_id       = COALESCE(s.society_id, v_abs.society_id),
+    society_name     = CASE WHEN COALESCE(s.society_name,'') = '' THEN v_abs.society_name ELSE s.society_name END,
+    home_course_id   = COALESCE(s.home_course_id, v_abs.home_course_id),
+    home_course_name = COALESCE(s.home_course_name, v_abs.home_course_name),
+    home_club        = COALESCE(s.home_club, v_abs.home_club),
+    profile_data     = (COALESCE(v_abs.profile_data,'{}'::jsonb) - 'isGuest') || COALESCE(s.profile_data,'{}'::jsonb)
+  WHERE s.line_user_id = p_survivor;
+
   -- Remove the now-empty absorbed profile shell.
   DELETE FROM user_profiles WHERE line_user_id = p_absorbed;
 

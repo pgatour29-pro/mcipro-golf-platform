@@ -28786,7 +28786,10 @@ Sent from Login Page`;
                                 const course = reg.society_events?.course_name || '';
                                 const date = reg.society_events?.event_date || '';
                                 for (const num of nums) {
-                                    const key = num + '@@' + course.toLowerCase().trim();
+                                    // Key by NORMALIZED course — "Greenwood", "Greenwood CC" and
+                                    // "Greenwood Golf Club" are the same place; raw-string keys split
+                                    // one caddy's history into duplicate cards.
+                                    const key = num + '@@' + this.normalizeCourse(course).toLowerCase().trim();
                                     if (!caddyUsage[key]) caddyUsage[key] = { number: num, count: 0, course: course, lastDate: '' };
                                     caddyUsage[key].count++;
                                     if (date > caddyUsage[key].lastDate) caddyUsage[key].lastDate = date;
@@ -28807,11 +28810,11 @@ Sent from Login Page`;
                     // caddy at HER course still shows even when the same number was used elsewhere.
                     try {
                         const nbEntries = await CaddyNotebook.getEntries();
-                        const existingKeys = new Set(this.caddyHistory.map(h => h.number + '@@' + ((h.courses[0] || '').toLowerCase().trim())));
+                        const existingKeys = new Set(this.caddyHistory.map(h => h.number + '@@' + this.normalizeCourse(h.courses[0] || '').toLowerCase().trim()));
                         nbEntries.forEach(nb => {
                             if (!nb.caddy_number) return;
                             const num = String(parseInt(nb.caddy_number));
-                            const key = num + '@@' + ((nb.course_name || '').toLowerCase().trim());
+                            const key = num + '@@' + this.normalizeCourse(nb.course_name || '').toLowerCase().trim();
                             if (existingKeys.has(key)) return;
                             existingKeys.add(key);
                             this.caddyHistory.push({
@@ -29039,14 +29042,14 @@ Sent from Login Page`;
                     if (!e.caddy_number) return;
                     const num = String(parseInt(e.caddy_number));
                     notebookByNum[num] = notebookByNum[num] || e;
-                    notebookByKey[num + '@@' + ((e.course_name || '').toLowerCase().trim())] = e;
+                    notebookByKey[num + '@@' + this.normalizeCourse(e.course_name || '').toLowerCase().trim()] = e;
                 });
 
                 container.innerHTML = history.map(h => {
                     const lastDate = h.lastDate ? new Date(h.lastDate).toLocaleDateString(_lvLocale(), { month: 'short', day: 'numeric' }) : '';
                     const coursesStr = h.courses.map(c => c.replace(/golf|club|country|course|international|resort/gi, '').trim().split(' ').slice(0,2).join(' ')).join(', ');
                     const regularBadge = h.isRegular ? '<span class="mcv1-tag grn">Regular</span>' : '';
-                    const nbEntry = notebookByKey[h.number + '@@' + ((h.courses[0] || '').toLowerCase().trim())] || notebookByNum[h.number];
+                    const nbEntry = notebookByKey[h.number + '@@' + this.normalizeCourse(h.courses[0] || '').toLowerCase().trim()] || notebookByNum[h.number];
                     const hasNote = nbEntry && nbEntry.notes;
                     const notePreview = hasNote ? `<div class="mcv1-note">"${nbEntry.notes}"</div>` : '';
                     const stars = nbEntry?.rating ? '<span class="mcv1-stars">' + '★'.repeat(nbEntry.rating) + '</span>' : '';

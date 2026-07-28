@@ -619,12 +619,16 @@ class SocietyDashboardEnhanced {
                 <div class="divide-y divide-gray-100">
                     ${events.map(event => {
                         const date = new Date(event.event_date);
+                        const mood = (typeof window.dateCubeMood === 'function') ? window.dateCubeMood(event.event_date) : '';
+                        const cubeBg = mood === 'wknd' ? ' bg-red-50 rounded-lg' : mood === 'hol' ? ' bg-green-50 rounded-lg' : '';
+                        const cubeNum = mood === 'wknd' ? 'text-red-600' : mood === 'hol' ? 'text-green-700' : 'text-emerald-600';
+                        const cubeMon = mood === 'wknd' ? 'text-red-600' : mood === 'hol' ? 'text-green-700' : 'text-gray-500';
                         return `
                             <div class="p-4 flex items-center gap-4 hover:bg-gray-50 cursor-pointer"
                                  onclick="societyDashboardEnhanced.showEventDetails('${event.id}')">
-                                <div class="text-center w-14">
-                                    <div class="text-2xl font-bold text-emerald-600">${date.getDate()}</div>
-                                    <div class="text-xs text-gray-500">${date.toLocaleDateString('en-US', { month: 'short' })}</div>
+                                <div class="text-center w-14${cubeBg}">
+                                    <div class="text-2xl font-bold ${cubeNum}">${date.getDate()}</div>
+                                    <div class="text-xs ${cubeMon}">${date.toLocaleDateString('en-US', { month: 'short' })}</div>
                                 </div>
                                 <div class="flex-1">
                                     <div class="font-medium text-gray-800">${event.event_name || 'Untitled Event'}</div>
@@ -659,13 +663,17 @@ class SocietyDashboardEnhanced {
                 ${events.map(event => {
                     const date = new Date(event.event_date);
                     const isToday = date.toDateString() === new Date().toDateString();
+                    const mood = (typeof window.dateCubeMood === 'function') ? window.dateCubeMood(event.event_date) : '';
+                    const cubeBg = mood === 'wknd' ? 'bg-red-50' : mood === 'hol' ? 'bg-green-50' : 'bg-emerald-50';
+                    const cubeNum = mood === 'wknd' ? 'text-red-600' : mood === 'hol' ? 'text-green-700' : 'text-emerald-600';
+                    const cubeMon = mood === 'wknd' ? 'text-red-700' : mood === 'hol' ? 'text-green-700' : 'text-emerald-700';
 
                     return `
                         <div class="bg-white rounded-xl shadow p-4 ${isToday ? 'ring-2 ring-emerald-500' : ''}">
                             <div class="flex items-start gap-4">
-                                <div class="text-center bg-emerald-50 rounded-lg p-2 min-w-[60px]">
-                                    <div class="text-2xl font-bold text-emerald-600">${date.getDate()}</div>
-                                    <div class="text-xs text-emerald-700">${date.toLocaleDateString('en-US', { month: 'short' })}</div>
+                                <div class="text-center ${cubeBg} rounded-lg p-2 min-w-[60px]">
+                                    <div class="text-2xl font-bold ${cubeNum}">${date.getDate()}</div>
+                                    <div class="text-xs ${cubeMon}">${date.toLocaleDateString('en-US', { month: 'short' })}</div>
                                 </div>
                                 <div class="flex-1">
                                     <h4 class="font-semibold text-gray-800">${event.event_name || 'Untitled'}</h4>

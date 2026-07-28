@@ -652,18 +652,23 @@
             const events = await MD.eventsFor(from, to);
             const counts = events.length ? await MD.regCountsFor(events.map(e => e.id)) : {};
             if (!document.getElementById('mgr-teesheet-week')) return;
-            el.innerHTML = events.length ? events.slice(0, 12).map(ev => `
+            el.innerHTML = events.length ? events.slice(0, 12).map(ev => {
+              const mood = (typeof window.dateCubeMood === 'function') ? window.dateCubeMood(ev.event_date) : '';
+              const dowCls = mood === 'wknd' ? 'text-red-600' : mood === 'hol' ? 'text-green-600' : 'text-gray-400';
+              const numCls = mood === 'wknd' ? 'text-red-700' : mood === 'hol' ? 'text-green-700' : 'text-gray-900';
+              return `
               <div class="py-1.5 border-b border-gray-50 last:border-0 flex items-center gap-2">
                 <span class="w-12 text-center">
-                  <span class="block text-[10px] font-bold text-gray-400 uppercase">${new Date(ev.event_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</span>
-                  <span class="block text-sm font-bold text-gray-900">${esc(String(ev.event_date).slice(8, 10))}</span>
+                  <span class="block text-[10px] font-bold ${dowCls} uppercase">${new Date(ev.event_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                  <span class="block text-sm font-bold ${numCls}">${esc(String(ev.event_date).slice(8, 10))}</span>
                 </span>
                 <div class="min-w-0 flex-1">
                   <div class="text-sm font-semibold text-gray-900 truncate">${esc(ev.title)}</div>
                   <div class="text-[11px] text-gray-500">${esc((ev.start_time || '').slice(0, 5))} · ${esc(ev.organizer_name || '')}</div>
                 </div>
                 <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-700">${fmtN(counts[ev.id] || 0)}${ev.max_participants ? '/' + ev.max_participants : ''}</span>
-              </div>`).join('')
+              </div>`;
+            }).join('')
             : `<p class="text-xs text-gray-400 py-4 text-center">${esc(tr('mgr.noupcoming', 'No upcoming events at this course'))}</p>`;
         } catch (e) { el.innerHTML = MD.errorBox(); }
     };
@@ -1794,13 +1799,17 @@
           <div class="bg-white rounded-xl border border-gray-200 p-4">
             <h4 class="text-sm font-bold text-gray-900 mb-2">${esc(tr('mgr.week', '7-day outlook'))}</h4>
             <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1.5">
-              ${(w.daily && w.daily.time ? w.daily.time : []).map((d, i) => `
+              ${(w.daily && w.daily.time ? w.daily.time : []).map((d, i) => {
+                const mood = (typeof window.dateCubeMood === 'function') ? window.dateCubeMood(d) : '';
+                const dayCls = mood === 'wknd' ? 'text-red-600' : mood === 'hol' ? 'text-green-600' : 'text-gray-500';
+                return `
                 <div class="text-center rounded-lg bg-gray-50 py-2">
-                  <div class="text-[10px] font-bold text-gray-500 uppercase">${new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                  <div class="text-[10px] font-bold ${dayCls} uppercase">${new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</div>
                   <span class="material-symbols-outlined text-gray-600" style="font-size:20px;">${MD.wmoInfo(w.daily.weather_code[i]).icon}</span>
                   <div class="text-xs font-bold text-gray-900">${Math.round(w.daily.temperature_2m_max[i])}° <span class="text-gray-400 font-normal">${Math.round(w.daily.temperature_2m_min[i])}°</span></div>
                   <div class="text-[10px] ${w.daily.precipitation_probability_max[i] > 50 ? 'text-blue-600 font-semibold' : 'text-gray-400'}">${w.daily.precipitation_probability_max[i] || 0}% · ${(w.daily.precipitation_sum[i] || 0).toFixed(1)}mm</div>
-                </div>`).join('')}
+                </div>`;
+              }).join('')}
             </div>
           </div>`;
         MD._loaded.weather = true;
@@ -2290,6 +2299,9 @@
                   </tr>`;
             }).join('');
 
+            const dateMood = (typeof window.dateCubeMood === 'function') ? window.dateCubeMood(date) : '';
+            const dateCls = dateMood === 'wknd' ? 'text-red-700' : dateMood === 'hol' ? 'text-green-700' : 'text-gray-900';
+
             host.innerHTML = `
               <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
                 <div>
@@ -2300,7 +2312,7 @@
                   <button class="mgr-cash-nav w-9 h-9 grid place-items-center rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50" data-d="-1">${mi('chevron_left')}</button>
                   <div class="flex flex-col items-center leading-tight px-4 py-1.5 rounded-xl border border-gray-200 bg-white">
                     <span class="text-[10px] uppercase tracking-wide text-gray-400 font-bold">${esc(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dow])}</span>
-                    <span class="font-bold text-[14px] text-gray-900">${esc(MD.fmtDate(date))}</span>
+                    <span class="font-bold text-[14px] ${dateCls}">${esc(MD.fmtDate(date))}</span>
                   </div>
                   <button class="mgr-cash-nav w-9 h-9 grid place-items-center rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50" data-d="1">${mi('chevron_right')}</button>
                   <button class="mgr-cash-today h-9 px-3 rounded-xl border border-gray-200 bg-white text-green-700 font-bold text-[13px]">${esc(tr('mgr.today', 'Today'))}</button>

@@ -28810,21 +28810,31 @@ Sent from Login Page`;
                     // caddy at HER course still shows even when the same number was used elsewhere.
                     try {
                         const nbEntries = await CaddyNotebook.getEntries();
-                        const existingKeys = new Set(this.caddyHistory.map(h => h.number + '@@' + this.normalizeCourse(h.courses[0] || '').toLowerCase().trim()));
+                        const byKey = {};
+                        this.caddyHistory.forEach(h => { byKey[h.number + '@@' + this.normalizeCourse(h.courses[0] || '').toLowerCase().trim()] = h; });
                         nbEntries.forEach(nb => {
                             if (!nb.caddy_number) return;
                             const num = String(parseInt(nb.caddy_number));
                             const key = num + '@@' + this.normalizeCourse(nb.course_name || '').toLowerCase().trim();
-                            if (existingKeys.has(key)) return;
-                            existingKeys.add(key);
-                            this.caddyHistory.push({
+                            const nbCount = Math.max(1, parseInt(nb.times_used) || 1);
+                            const existing = byKey[key];
+                            if (existing) {
+                                // times_used is the golfer's own tally and can include rounds that
+                                // never went through a booking — a FLOOR on the merged count, never
+                                // additive (booked rounds are already part of the tally).
+                                if (nbCount > existing.count) existing.count = nbCount;
+                                return;
+                            }
+                            byKey[key] = {
                                 number: num,
-                                count: Math.max(1, parseInt(nb.times_used) || 1),
+                                count: nbCount,
                                 courses: nb.course_name ? [nb.course_name] : [],
                                 lastDate: nb.last_used_at || nb.created_at || '',
                                 isRegular: true
-                            });
+                            };
+                            this.caddyHistory.push(byKey[key]);
                         });
+                        this.caddyHistory.sort((a, b) => b.count - a.count);
                     } catch(e) {}
 
                     console.log(`[Caddy Organizer] Loaded ${this.userPreferences.length} preferences, ${this.caddyHistory?.length || 0} from history`);

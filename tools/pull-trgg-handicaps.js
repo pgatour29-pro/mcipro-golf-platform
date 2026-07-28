@@ -106,7 +106,16 @@
   const aliasMap = {};
   try { const ar = await rest('trgg_handicap_alias?select=alias_key,golfer_id'); if (ar.ok) (await ar.json()).forEach(a => aliasMap[a.alias_key] = a.golfer_id); } catch (e) {}
 
-  /* ---- 3. Match (order-independent, per-key 1:1 rank) ------------------- */
+  /* ---- 3. Match (exact raw name first, then order-independent 1:1 rank) -- */
+  // Exact pass FIRST: the master list can carry BOTH token orders of one name pair as two
+  // DIFFERENT golfers ("Jin, Yun Jong" AND "Jong, Jin Yun"). Order-independent matching alone
+  // crosses their handicaps or re-creates one of them on every pull (daily dup loop, 2026-07-28).
+  // An entry matching a profile's raw name verbatim claims it up front; leftovers use the key rank.
+  const ordKey = s => String(s == null ? '' : s).toLowerCase()
+    .replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+  const byOrd = {}; Object.keys(byKey).forEach(k => byKey[k].forEach(p => { const o = ordKey(p.name); if (o) (byOrd[o] = byOrd[o] || []).push(p); }));
+  const usedIds = new Set(); const exactPick = {};
+  for (const e of entries) { if (aliasMap[e.key]) continue; const cands = byOrd[ordKey(e.name)] || []; const p = cands.find(x => !usedIds.has(x.line_user_id)); if (p) { usedIds.add(p.line_user_id); exactPick[e.name] = p; } }
   const profUpd = [], shRows = [], newbies = []; let matched = 0;
   const stamp = new Date().toISOString();
   for (const e of entries) {
@@ -115,7 +124,10 @@
     if (aliasId && profById[aliasId]) {
       if (lockedIds.has(aliasId)) { lockedSkipped++; continue; }   // manual override — leave it alone
       p = profById[aliasId];
-    } else { const list = byKey[e.key] || []; const idx = used[e.key] || 0; if (idx < list.length) { p = list[idx]; used[e.key] = idx + 1; } }
+    } else {
+      p = exactPick[e.name] || null;
+      if (!p) { const list = byKey[e.key] || []; let i = used[e.key] || 0; while (i < list.length) { const c = list[i++]; if (!usedIds.has(c.line_user_id)) { p = c; break; } } used[e.key] = i; if (p) usedIds.add(p.line_user_id); }
+    }
     if (!p) { if (lockedKeys.has(e.key)) { lockedSkipped++; continue; } newbies.push(e); continue; }
     matched++;
     const pd = Object.assign({}, p.profile_data || {}); pd.handicap = e.num;

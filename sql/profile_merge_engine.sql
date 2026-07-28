@@ -178,6 +178,11 @@ LANGUAGE sql STABLE AS $$
              ELSE 'other'
            END AS type,
            EXISTS(SELECT 1 FROM society_members sm WHERE sm.golfer_id = up.line_user_id) AS has_mem,
+           -- Order-PRESERVING normalized name. The TRGG master list can carry BOTH token orders of
+           -- one name pair as two DIFFERENT golfers ("Jin, Yun Jong" AND "Jong, Jin Yun") — the pull
+           -- keeps them as two hcp_pull profiles on purpose. Sweeping them back together made the
+           -- pull re-create one every run (daily dup loop, 12 merges 7/14→7/27, fixed 2026-07-28).
+           trim(regexp_replace(lower(coalesce(up.name,'')),'[^a-z0-9]+',' ','g')) AS ord,
            -- Nickname-canonical token key: every token maps through name_nickname_variants() to a
            -- stable group representative (the sorted group's first member), so "park peter" and
            -- "Pete Park" land in the SAME group. The raw-token key let that exact pair slip past
@@ -207,6 +212,9 @@ LANGUAGE sql STABLE AS $$
            count(*) FILTER (WHERE type='real_LINE') AS n_real,
            count(DISTINCT round(hcp_num, 1)) FILTER (WHERE hcp_num IS NOT NULL) AS distinct_hcps,
            bool_or(type='other') AS has_other,   -- unrecognized id (e.g. raw UUID) → never auto
+           -- ≥2 pull profiles whose RAW names differ = two distinct rows on the TRGG master list
+           -- (it lists each person once) → two real people, never auto-merge
+           count(DISTINCT ord) FILTER (WHERE type='hcp_pull')::int AS hcp_pull_names,
            max(id) FILTER (WHERE rn=1) AS survivor,
            jsonb_agg(jsonb_build_object(
              'id', id, 'type', type, 'name', name, 'hcp', hcp,
@@ -218,12 +226,12 @@ LANGUAGE sql STABLE AS $$
   )
   SELECT key,
          n,
-         CASE WHEN n_real >= 2 OR distinct_hcps > 1 OR has_other THEN 'review' ELSE 'auto' END AS tier,
+         CASE WHEN n_real >= 2 OR distinct_hcps > 1 OR has_other OR hcp_pull_names > 1 THEN 'review' ELSE 'auto' END AS tier,
          CASE WHEN distinct_hcps > 1 THEN 'conflict' ELSE 'ok' END AS hcp_status,
          survivor,
          members
   FROM grp
-  ORDER BY (CASE WHEN n_real >= 2 OR distinct_hcps > 1 OR has_other THEN 'review' ELSE 'auto' END), n DESC;
+  ORDER BY (CASE WHEN n_real >= 2 OR distinct_hcps > 1 OR has_other OR hcp_pull_names > 1 THEN 'review' ELSE 'auto' END), n DESC;
 $$;
 
 GRANT EXECUTE ON FUNCTION find_duplicate_profiles() TO anon, authenticated;

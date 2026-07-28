@@ -104949,6 +104949,15 @@ const TRGGHandicapPaste = {
         catch(e){ console.warn('[TRGG Paste] member roster load failed', e); }
 
         const profUpd=[], shRows=[], newProf=[], newMem=[], memLink=[]; let matched=0, created=0; const stamp=Date.now(); let seq=0;
+        // Exact-name pass FIRST: the master list can carry BOTH token orders of one name pair as two
+        // DIFFERENT golfers ("Jin, Yun Jong" AND "Jong, Jin Yun"). Order-independent matching alone
+        // crosses their handicaps or re-creates one of them on every pull (the daily dup loop,
+        // 2026-07-28). An entry that matches a profile's raw name verbatim claims that profile up
+        // front; only the leftovers fall through to the order-independent per-key rank.
+        const ordKey = s => String(s==null?'':s).toLowerCase().replace(/\([^)]*\)/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
+        const byOrd={}; Object.keys(byKey).forEach(k=>byKey[k].forEach(p=>{ const o=ordKey(p.name); if(o) (byOrd[o]=byOrd[o]||[]).push(p); }));
+        const usedIds=new Set(); const exactPick={};
+        for(const e of entries){ if(aliasMap[e.key]) continue; const cands=byOrd[ordKey(e.name)]||[]; const p=cands.find(x=>!usedIds.has(x.line_user_id)); if(p){ usedIds.add(p.line_user_id); exactPick[e.name]=p; } }
         for(const e of entries){
             // Known alias → update that real account directly (no dup)
             const aliasId = aliasMap[e.key];
@@ -104961,9 +104970,13 @@ const TRGGHandicapPaste = {
                 matched++;
                 continue;
             }
-            const list=byKey[e.key]||[]; const idx=used[e.key]||0;
-            if(idx < list.length){
-                const p=list[idx]; used[e.key]=idx+1;
+            let p = exactPick[e.name] || null;
+            if(!p){
+                const list=byKey[e.key]||[]; let i=used[e.key]||0;
+                while(i<list.length){ const c=list[i++]; if(!usedIds.has(c.line_user_id)){ p=c; break; } }
+                used[e.key]=i; if(p) usedIds.add(p.line_user_id);
+            }
+            if(p){
                 const pd=Object.assign({}, p.profile_data||{}); pd.handicap=e.num;
                 profUpd.push({ id:p.line_user_id, hcp:e.num, pd });
                 shRows.push({ golfer_id:p.line_user_id, society_id:SID, handicap_index:e.num, calculation_method:'TRGG-masterscoreboard', last_calculated_at:new Date().toISOString() });

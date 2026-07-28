@@ -28728,6 +28728,12 @@ Sent from Login Page`;
 
                     const uniqueCourses = [...new Set([...systemCourses, ...dbNames])].filter(Boolean).sort();
 
+                    // init() re-runs on every tab open — REBUILD the list (keep only the static
+                    // "All Courses" option) or the same 24 courses stack up again on every visit.
+                    // A long-lived PWA session grows the select to hundreds of options, and the
+                    // native dropdown lags or won't open at all on mobile.
+                    while (courseFilter.options.length > 1) courseFilter.remove(1);
+
                     uniqueCourses.forEach(courseName => {
                         const option = document.createElement('option');
                         option.value = courseName;
@@ -28735,11 +28741,17 @@ Sent from Login Page`;
                         courseFilter.appendChild(option);
                     });
 
-                    // Default to "All Courses" — do NOT auto-pick the first course. Auto-picking showed
-                    // a course label (e.g. "Bangpra International") that didn't match the Notebook, which
-                    // lists every saved caddy, making the selector look broken.
-                    this.currentCourse = '';
-                    courseFilter.value = '';
+                    // Keep the user's prior pick if it still exists; otherwise default to
+                    // "All Courses" — do NOT auto-pick the first course. Auto-picking showed
+                    // a course label (e.g. "Bangpra International") that didn't match the Notebook,
+                    // which lists every saved caddy, making the selector look broken.
+                    const prev = this.currentCourse || '';
+                    if (prev && uniqueCourses.includes(prev)) {
+                        courseFilter.value = prev;
+                    } else {
+                        this.currentCourse = '';
+                        courseFilter.value = '';
+                    }
                 } catch (error) {
                     console.error('[Caddy Organizer] Error loading courses:', error);
                 }

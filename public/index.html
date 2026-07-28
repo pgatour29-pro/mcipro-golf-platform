@@ -130468,6 +130468,25 @@ window.TeeSheet = {
             return Array.isArray(s.round_event_ids) && s.round_event_ids.map(String).indexOf(idStr) !== -1;
         }) || null;
     },
+    // True RANDOM DRAW (series days 1-2 of King of the Mountain): Fisher-Yates shuffle of the
+    // field, ignoring Play-Together units — every draw is a fresh deal. Replaces current groups.
+    autoGroupRandom: function(){
+        var self = this, size = this._groupSize || 4;
+        var all = this.regs.map(function(r){ return { playerId:r.playerId, playerName:r.playerName, handicap:r.handicap }; });
+        var seen = {}; all.forEach(function(p){ seen['i'+String(p.playerId)] = 1; if(p.playerName) seen['n'+self._normName(p.playerName)] = 1; });
+        this.groups.forEach(function(g){ (g.players||[]).forEach(function(p){
+            var k1='i'+String(p.playerId), k2='n'+self._normName(p.playerName||'');
+            if (!seen[k1] && !seen[k2]) { seen[k1]=1; seen[k2]=1; all.push(p); }
+        }); });
+        if (!all.length) { NotificationManager.show('No players on this round yet', 'warning'); return; }
+        if (!confirm('Random draw for ' + all.length + ' players — this replaces the current groups. Continue?')) return;
+        for (var i = all.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = all[i]; all[i] = all[j]; all[j] = t; }
+        var gs = []; for (var k = 0; k < all.length; k += size) gs.push({ players: all.slice(k, k + size), teeTime:'', teeFixed:false, startNine:null, secondNine:null });
+        while (gs.length < 12) gs.push({ players: [], teeTime: '', teeFixed: false });
+        this.groups = gs; this.manualPool = [];
+        this._saveGroups(); this.render();
+        NotificationManager.show('Random draw complete — ' + all.length + ' players dealt', 'success');
+    },
     // Rebuild the groups from the series Order-of-Merit standings (sum of points_earned across the
     // series' published rounds). Leaders can go out LAST (tournament convention) or FIRST.
     autoGroupStandings: async function(){
@@ -130909,6 +130928,7 @@ window.TeeSheet = {
             '<div class="ts2-tset"><span class="k">'+t('ts2.interval')+'</span><select onchange="TeeSheet.setIntervalMin(this.value)">'+intOpts+'</select></div>'+
             '<div class="ts2-tset"><span class="k">'+t('ts2.groupof')+'</span><select onchange="TeeSheet.setGroupSize(this.value)">'+sizeOpts+'</select></div>'+
             '<button onclick="TeeSheet.autoGroup()" class="ts2-tbtn"><span class="material-symbols-outlined">bolt</span>'+t('ts2.autogroup')+'</button>'+
+            (this._series ? '<button onclick="TeeSheet.autoGroupRandom()" class="ts2-tbtn" style="border-color:#8b5cf6;color:#6d28d9;"><span class="material-symbols-outlined">casino</span>RANDOM DRAW</button>' : '')+
             (this._series ? '<button onclick="TeeSheet.autoGroupStandings()" class="ts2-tbtn" style="border-color:#f59e0b;color:#b45309;"><span class="material-symbols-outlined">social_leaderboard</span>BY STANDINGS</button>' : '')+
             '<button onclick="TeeSheet.addGroup()" class="ts2-tbtn"><span class="material-symbols-outlined">add</span>'+t('ts2.group')+'</button>'+
             '<span class="ts2-spacer"></span>'+

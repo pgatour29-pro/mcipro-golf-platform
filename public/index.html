@@ -129796,6 +129796,7 @@ window.TeeSheet = {
     eventId: null, eventName: '', eventTee: '07:00', regs: [], groups: [], manualPool: [], _groupSize: 4, _manualSeq: 0, _targetGroup: 'auto', firstTee: '07:00', interval: 5,
     _lastSuggest: [], _sugActive: -1, _searchSeq: 0, _slotSuggest: [], _slotActive: -1, _slotSeq: 0,
     suggestPool: [], _sugDismissed: {}, suggestHidden: false, _sugOpen: false, _sugMeta: null, sugSort: 'az', _sugBatches: [],
+    _series: null,   // active event_series this event belongs to (SERF1 — series field tray + BY STANDINGS)
     _esc: function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
     _hcp: function(h){ if(h==null||h===''||h==='null'||(typeof h==='number'&&isNaN(h))) return ''; return window.formatHandicapDisplay ? window.formatHandicapDisplay(h) : h; },
     // 3-Man Waltz event? By name OR the event's declared FORMAT (dropdown) — so a Waltz event that
@@ -130196,6 +130197,7 @@ window.TeeSheet = {
         var _stale = function(){ return _seq !== self._loadSeq || String(self.eventId) !== String(eventId); };
         try { this._unsubscribeRealtime(); } catch(e){}
         this.eventId=eventId; this.manualPool=[]; this._unitBreaks={};   // unit splits are per-event, per-session
+        this._series = null;   // multi-round series (King of the Mountain etc.) — resolved below
         var ev=this._evSource().find(function(e){ return e.id===eventId; }) || {};
         this.eventName = String(ev.name || ev.title || 'Event').replace(/&amp;/g, '&');
         this.societyName = ev.societyName || ev.society_name || null;
@@ -130206,6 +130208,10 @@ window.TeeSheet = {
         // a player's HCP may have changed between when they registered and now (tee-sheet generation).
         this._lastHcpSync = null;
         try { if (window.SupabaseDB && SupabaseDB.client) { var _hr = await SupabaseDB.client.rpc('sync_event_reg_handicaps', { p_event_id: String(eventId) }); this._lastHcpSync = (_hr && typeof _hr.data === 'number') ? _hr.data : null; } } catch(e){ console.warn('[TeeSheet] handicap refresh', e); }
+        // Series detection (event_series membership) — drives the FIELD tray, the BY STANDINGS
+        // button, and disables the TRGG fee sweeps (series fields are cross-society, fees external).
+        try { this._series = await this._loadSeries(eventId); } catch(e){ this._series = null; }
+        if (_stale()) return;
         try {
             var res = await Promise.all([SocietyGolfDB.getRegistrations(eventId), SocietyGolfDB.getPairings(eventId)]);
             if (_stale()) { console.log('[TeeSheet] Stale load for', eventId, '— discarded'); return; }
@@ -130446,11 +130452,95 @@ window.TeeSheet = {
         var surname=this._esc(parts.pop());
         return '<span class="nmwrap"><span class="fn">'+this._esc(parts.join(' '))+' </span><span class="ln">'+surname+'</span></span>';
     },
+    // ✦ Multi-round series support (SERF1, 2026-07-28 — built for King of the Mountain Hua Hin).
+    // An event belongs to a series when its id is in an active event_series.round_event_ids.
+    _seriesCache: undefined,
+    _loadSeries: async function(eventId){
+        if (!(window.SupabaseDB && SupabaseDB.client)) return null;
+        if (this._seriesCache === undefined) {
+            try {
+                var r = await SupabaseDB.client.from('event_series').select('id,name,round_event_ids').eq('status','active');
+                this._seriesCache = (r && r.data) || [];
+            } catch(e){ this._seriesCache = []; }
+        }
+        var idStr = String(eventId);
+        return (this._seriesCache || []).find(function(s){
+            return Array.isArray(s.round_event_ids) && s.round_event_ids.map(String).indexOf(idStr) !== -1;
+        }) || null;
+    },
+    // Rebuild the groups from the series Order-of-Merit standings (sum of points_earned across the
+    // series' published rounds). Leaders can go out LAST (tournament convention) or FIRST.
+    autoGroupStandings: async function(){
+        var s = this._series; if (!s) return;
+        var self = this, size = this._groupSize || 4;
+        var ids = (s.round_event_ids || []).map(String);
+        var res;
+        try { res = await SupabaseDB.client.from('event_results').select('event_id,player_id,player_name,points_earned').in('event_id', ids); }
+        catch(e){ NotificationManager.show('Could not load series results', 'error'); return; }
+        var rows = (res && res.data) || [];
+        if (!rows.length) { NotificationManager.show('No published results yet for ' + (s.name||'this series'), 'warning'); return; }
+        var pts = {};
+        rows.forEach(function(r){
+            var keys = [];
+            if (r.player_id) keys.push('i'+String(r.player_id));
+            if (r.player_name) keys.push('n'+self._normName(r.player_name));
+            var v = Number(r.points_earned) || 0;
+            keys.forEach(function(k){ pts[k] = (pts[k]||0) + v; });
+        });
+        var ptsOf = function(p){
+            if (p.playerId != null && pts['i'+String(p.playerId)] != null) return pts['i'+String(p.playerId)];
+            var n = self._normName(p.playerName);
+            return (n && pts['n'+n] != null) ? pts['n'+n] : 0;
+        };
+        // Today's field = this round's registrations (plus anyone already manually grouped).
+        var all = this.regs.map(function(r){ return { playerId:r.playerId, playerName:r.playerName, handicap:r.handicap }; });
+        var seen = {}; all.forEach(function(p){ seen['i'+String(p.playerId)] = 1; if(p.playerName) seen['n'+self._normName(p.playerName)] = 1; });
+        this.groups.forEach(function(g){ (g.players||[]).forEach(function(p){
+            var k1='i'+String(p.playerId), k2='n'+self._normName(p.playerName||'');
+            if (!seen[k1] && !seen[k2]) { seen[k1]=1; seen[k2]=1; all.push(p); }
+        }); });
+        if (!all.length) { NotificationManager.show('No players on this round yet', 'warning'); return; }
+        all.sort(function(a,b){ return (ptsOf(b)-ptsOf(a)) || String(a.playerName||'').localeCompare(String(b.playerName||'')); });
+        var leadersLast = confirm((s.name||'Series') + ' standings loaded for ' + all.length + ' players.\n\nOK = leaders tee off LAST (final groups)\nCancel = leaders tee off FIRST');
+        var chunks = []; for (var i=0; i<all.length; i+=size) chunks.push(all.slice(i, i+size));
+        if (leadersLast) chunks.reverse();
+        var gs = chunks.map(function(c){ return { players:c, teeTime:'', teeFixed:false, startNine:null, secondNine:null }; });
+        while (gs.length < 12) gs.push({ players: [], teeTime: '', teeFixed: false });
+        this.groups = gs; this.manualPool = [];
+        this._saveGroups(); this.render();
+        NotificationManager.show('Groups arranged by ' + (s.name||'series') + ' standings — leaders ' + (leadersLast?'last':'first'), 'success');
+    },
     _loadRegulars: async function(ev){
         var self=this, evId=this.eventId;
         this.suggestPool=[]; this._sugMeta=null; this._sugBatches=[];
         try {
             if (!(window.SupabaseDB && SupabaseDB.client)) return;
+            // ✦ SERIES MODE (King of the Mountain etc.): the tray is NOT the society regulars —
+            // it is the SERIES FIELD: every player entered in ANY round of the series, constant
+            // for the whole event, so organizers place the same cross-society field each day.
+            if (this._series) {
+                var sIds = (this._series.round_event_ids || []).map(String);
+                try { if (window.TRGGMembership) await TRGGMembership.load(); } catch(e){}
+                var regLists = await Promise.all(sIds.map(function(id){ return SocietyGolfDB.getRegistrations(id).catch(function(){ return []; }); }));
+                if (String(this.eventId) !== String(evId)) return;   // stale — user switched events mid-flight
+                var seen = {}, fieldPool = [];
+                regLists.forEach(function(list){ (list||[]).forEach(function(r){
+                    var key = r.playerId ? ('i'+String(r.playerId)) : ('n'+self._normName(r.playerName));
+                    if (!key || key==='n') return;
+                    if (seen[key]) { seen[key]._played += 1; return; }
+                    var entry = { playerId: String(r.playerId||''), playerName: r.playerName, handicap: (r.handicap==null?null:r.handicap),
+                                  _played: 1, _days: '', _last: '' };
+                    seen[key] = entry; fieldPool.push(entry);
+                }); });
+                if (!fieldPool.length) return;
+                this._sugMeta = { win: sIds.length, total: fieldPool.length, day: '', seriesName: this._series.name || 'Series' };
+                this.suggestPool = fieldPool;
+                this.sugSort = 'az';
+                this._sugSortApply();
+                this._sugPrune();
+                this.render();
+                return;
+            }
             var socId = ev.society_id || ev.societyId || null;
             if (!socId && this.societyName) {
                 try {
@@ -130819,6 +130909,7 @@ window.TeeSheet = {
             '<div class="ts2-tset"><span class="k">'+t('ts2.interval')+'</span><select onchange="TeeSheet.setIntervalMin(this.value)">'+intOpts+'</select></div>'+
             '<div class="ts2-tset"><span class="k">'+t('ts2.groupof')+'</span><select onchange="TeeSheet.setGroupSize(this.value)">'+sizeOpts+'</select></div>'+
             '<button onclick="TeeSheet.autoGroup()" class="ts2-tbtn"><span class="material-symbols-outlined">bolt</span>'+t('ts2.autogroup')+'</button>'+
+            (this._series ? '<button onclick="TeeSheet.autoGroupStandings()" class="ts2-tbtn" style="border-color:#f59e0b;color:#b45309;"><span class="material-symbols-outlined">social_leaderboard</span>BY STANDINGS</button>' : '')+
             '<button onclick="TeeSheet.addGroup()" class="ts2-tbtn"><span class="material-symbols-outlined">add</span>'+t('ts2.group')+'</button>'+
             '<span class="ts2-spacer"></span>'+
             '<button onclick="TeeSheet.preview()" class="ts2-tbtn"><span class="material-symbols-outlined">visibility</span>'+t('ts2.preview')+'</button>'+
@@ -130873,12 +130964,15 @@ window.TeeSheet = {
             var disN=Object.keys(this._sugDismissed[this.eventId]||{}).length;
             var onSheet=Math.max(0, ((this._sugMeta&&this._sugMeta.total)||0) - this.suggestPool.length - disN);
             var MOS=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+            var isField = !!(this._sugMeta && this._sugMeta.seriesName);
             side += '<div class="ts2-rhead">'+
-                '<span class="t"><span class="material-symbols-outlined">auto_awesome</span>'+t('ts2.regulars')+' · '+this.suggestPool.length+'</span>'+
+                '<span class="t"><span class="material-symbols-outlined">'+(isField?'emoji_events':'auto_awesome')+'</span>'+(isField?(this._sugMeta.seriesName+' FIELD').toUpperCase():t('ts2.regulars'))+' · '+this.suggestPool.length+'</span>'+
                 '<button class="hide" onclick="TeeSheet.toggleSuggest()">'+(this.suggestHidden?t('ts2.show'):t('ts2.hide'))+'</button></div>';
             if (!this.suggestHidden) {
                 var selN=this._sugBatches.reduce(function(n,b){ return n+b.length; },0);
-                side += '<div class="ts2-rsub">TOP '+(((this._sugMeta&&this._sugMeta.total)||0))+' MOST-REPEATED · LAST 60 DAYS'+(onSheet?(' · '+onSheet+' ALREADY ON SHEET'):'')+(selN?'':' · <b>TAP NAMES TO GROUP</b>')+
+                side += '<div class="ts2-rsub">'+(isField
+                        ? ('SERIES FIELD · ALL ENTERED PLAYERS ACROSS '+win+' ROUNDS'+(onSheet?(' · '+onSheet+' ALREADY ON SHEET'):'')+(selN?'':' · <b>TAP NAMES TO GROUP</b>'))
+                        : ('TOP '+(((this._sugMeta&&this._sugMeta.total)||0))+' MOST-REPEATED · LAST 60 DAYS'+(onSheet?(' · '+onSheet+' ALREADY ON SHEET'):'')+(selN?'':' · <b>TAP NAMES TO GROUP</b>')))+
                     '<span class="ts2-rtabs"><button class="'+(this.sugSort==='az'?'on':'')+'" onclick="TeeSheet.setSugSort(\'az\')">A–Z</button>'+
                     '<button class="'+(this.sugSort==='recent'?'on':'')+'" onclick="TeeSheet.setSugSort(\'recent\')">RECENT</button>'+
                     (this._isTRGGEvent()?'<button class="'+(this.sugSort==='members'?'on':'')+'" onclick="TeeSheet.setSugSort(\'members\')">MEMBERS</button>':'')+'</span></div>';
@@ -131593,6 +131687,7 @@ window.TeeSheet = {
     // (TRGGMembership.forPlayer); DELTA-only on the stored total_fee — never a full recompute,
     // the stored fee is the organizer's authority. Idempotent: flagged rows are left alone.
     _applyNonMemberSurcharge: async function(){
+        if (this._series) return;   // series fields are cross-society; fees handled by the promoter, never auto-surcharge
         if (!this._isTRGGEvent() || !window.TRGGMembership) return;
         // Fail CLOSED: if the roster didn't actually load, everyone would look like a non-member.
         if (!TRGGMembership._allRows || !TRGGMembership._allRows.length) return;
@@ -131627,6 +131722,7 @@ window.TeeSheet = {
     // never a full recompute. Flagged rows are left alone (recalculateFees trues those up on the
     // Registrations tab). 'own' = Direct (never billed); 'special' rides = billed, same as setVan.
     _applyVanTransportFee: async function(){
+        if (this._series) return;   // series fields: transport is part of the promoter's package, never auto-bill
         var tf = this._transportFee();
         var updates = [];
         (this.regs||[]).forEach(function(r){

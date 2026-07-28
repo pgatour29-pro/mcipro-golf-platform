@@ -118165,11 +118165,15 @@ class GolferEventsManager {
                 }
             }
 
-            // Check if anyone selected the current user as a preferred partner
-            const currentUserId = AppState.currentUser?.lineUserId;
+            // Check if anyone selected the current user as a preferred partner. v750: resolve through
+            // PlayTogetherUnits (the old bare string compare missed the JSON pref shape entirely), with
+            // ignoreConsent so already-declined pickers still show — that's where the undo lives.
+            const currentUserId = AppState.currentUser?.lineUserId || localStorage.getItem('line_user_id');
             const currentUserName = AppState.currentUser?.name;
+            const _ptu = window.PlayTogetherUnits;
             const selectedByPlayers = registrations.filter(reg => {
-                if (reg.playerId === currentUserId) return false;
+                if (String(reg.playerId) === String(currentUserId)) return false;
+                if (_ptu) return _ptu.targets(reg, registrations, { ignoreConsent: true }).indexOf(String(currentUserId)) !== -1;
                 const prefs = reg.partnerPrefs || [];
                 return prefs.some(p => p === currentUserName || p === currentUserId);
             });
@@ -118184,13 +118188,34 @@ class GolferEventsManager {
             }
 
             if (selectedByPlayers.length > 0) {
-                const names = selectedByPlayers.map(r => r.playerName).join(', ');
-                partnerNotifEl.innerHTML = '<div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1px solid #86efac;border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:8px;">' +
-                    '<span style="font-size:20px;"><span class="material-symbols-outlined" style="font-size:inherit;vertical-align:middle;line-height:1;">handshake</span></span>' +
-                    '<div>' +
+                // v750: each picker gets Accept/Decline — consent lives on MY registration row
+                // (special_requests.partnerResponses). No response = grouped as before; a decline
+                // voids the link on every pairing surface. Buttons only render once I'm registered.
+                const _myReg = registrations.find(r => String(r.playerId) === String(currentUserId));
+                const _resp = (_myReg && _myReg.specialRequests && _myReg.specialRequests.partnerResponses) || {};
+                const _escP = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                const _btn = (pid, resp, solid, label) => '<button onclick="GolferEventsSystem.respondToPartnerPick(\'' + _escP(pid) + '\',\'' + resp + '\')" style="' +
+                    (solid ? 'font-size:11px;font-weight:700;border:none;color:#fff;background:' + (resp === 'accepted' ? '#16a34a' : '#dc2626') + ';'
+                           : 'font-size:10px;font-weight:600;border:1px solid ' + (resp === 'accepted' ? '#86efac;color:#059669' : '#fca5a5;color:#dc2626') + ';background:#fff;') +
+                    'border-radius:6px;padding:3px 10px;cursor:pointer;">' + label + '</button>';
+                const rows = selectedByPlayers.map(r => {
+                    const st = _resp[String(r.playerId)];
+                    let action = '';
+                    if (_myReg) {
+                        if (st === 'accepted') action = '<span style="font-size:10px;font-weight:700;color:#059669;">ACCEPTED</span>' + _btn(r.playerId, 'declined', false, 'Decline');
+                        else if (st === 'declined') action = '<span style="font-size:10px;font-weight:700;color:#dc2626;">DECLINED · not grouped</span>' + _btn(r.playerId, 'accepted', false, 'Accept');
+                        else action = _btn(r.playerId, 'accepted', true, 'Accept') + _btn(r.playerId, 'declined', true, 'Decline');
+                    }
+                    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;">' +
+                        '<span style="font-size:11px;color:#15803d;font-weight:600;">' + _escP(r.playerName) + '</span>' +
+                        '<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">' + action + '</span>' +
+                    '</div>';
+                }).join('');
+                partnerNotifEl.innerHTML = '<div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1px solid #86efac;border-radius:10px;padding:10px 12px;margin-bottom:8px;">' +
+                    '<div style="display:flex;align-items:center;gap:8px;">' +
+                        '<span style="font-size:20px;"><span class="material-symbols-outlined" style="font-size:inherit;vertical-align:middle;line-height:1;">handshake</span></span>' +
                         '<div style="font-size:12px;font-weight:700;color:#166534;">' + selectedByPlayers.length + ' player' + (selectedByPlayers.length > 1 ? 's' : '') + ' selected you as a partner</div>' +
-                        '<div style="font-size:11px;color:#15803d;">' + names + '</div>' +
-                    '</div>' +
+                    '</div>' + rows +
                 '</div>';
                 partnerNotifEl.style.display = 'block';
             } else {
@@ -119340,6 +119365,36 @@ class GolferEventsManager {
         this.rfv1RenderCaddy();
     }
 
+    // v750: consent write — the PICKED player accepts/declines a picker. Stored on MY registration
+    // row: special_requests.partnerResponses[pickerPlayerId] = 'accepted' | 'declined'. Fresh-read
+    // then merge (never clobber other special_requests keys), then re-render roster + banner.
+    async respondToPartnerPick(pickerId, response) {
+        try {
+            const uid = AppState.currentUser?.lineUserId || localStorage.getItem('line_user_id');
+            const evId = this.currentEvent && this.currentEvent.id;
+            if (!uid || !evId) return;
+            const { data: rows, error } = await window.SupabaseDB.client
+                .from('event_registrations')
+                .select('id, special_requests')
+                .eq('event_id', evId)
+                .eq('player_id', uid)
+                .limit(1);
+            if (error) throw error;
+            const row = rows && rows[0];
+            if (!row) { if (window.NotificationManager) window.NotificationManager.show('Register for this event first', 'error'); return; }
+            const sr = Object.assign({}, row.special_requests || {});
+            const pr = Object.assign({}, sr.partnerResponses || {});
+            pr[String(pickerId)] = response;
+            sr.partnerResponses = pr;
+            await window.SocietyGolfDB.updateRegistration(row.id, { specialRequests: sr });
+            if (window.NotificationManager) window.NotificationManager.show(response === 'accepted' ? 'Partner accepted' : 'Declined — you will not be grouped together', 'success');
+            this.loadRegisteredPlayers(evId);
+        } catch (e) {
+            console.warn('[GolferEvents] respondToPartnerPick failed', e);
+            if (window.NotificationManager) window.NotificationManager.show('Could not save — try again', 'error');
+        }
+    }
+
     populatePartnerPreferences() {
         const container = document.getElementById('partnerPrefsContainer');
         const registrations = this.currentEventRegistrations || [];
@@ -119387,10 +119442,31 @@ class GolferEventsManager {
             return;
         }
 
+        // v750: pre-check the players already picked on my existing registration. The submit
+        // collector reads only CHECKED boxes, so before this, EDITING a registration silently
+        // wiped partner_prefs. New registrations have no row yet → set stays empty → unchanged.
+        const myPicked = new Set();
+        try {
+            const mine = registrations.find(r => String(r.id) === String(this.editingRegistrationId)) ||
+                         registrations.find(r => String(r.playerId) === String(currentUserId));
+            ((mine && mine.partnerPrefs) || []).forEach(p => {
+                let id = null, nm = null;
+                if (p && typeof p === 'object') { id = p.playerId; nm = p.playerName || p.name; }
+                else if (p != null) {
+                    const s = String(p).trim();
+                    if (s.charAt(0) === '{') { try { const o = JSON.parse(s); id = o.playerId; nm = o.playerName || o.name; } catch (e) { return; } }
+                    else { id = s; nm = s; }
+                }
+                const hit = otherPlayers.find(x => String(x.id) === String(id) || String(x.playerId) === String(id) ||
+                    (nm && String(x.playerName || '').toLowerCase() === String(nm).toLowerCase()));
+                if (hit) myPicked.add(String(hit.id));
+            });
+        } catch (e) {}
+
         // SCV3G: tappable player chips (frame 2), not a checkbox list
         container.innerHTML = otherPlayers.map(reg => `
             <label class="scv3g-pch">
-                <input type="checkbox" class="partner-pref-checkbox" value="${reg.id}" data-name="${reg.playerName}">
+                <input type="checkbox" class="partner-pref-checkbox" value="${reg.id}" data-name="${reg.playerName}"${myPicked.has(String(reg.id)) ? ' checked' : ''}>
                 <span>${reg.playerName}</span>
                 ${reg.handicap !== null && reg.handicap !== undefined ? `<span class="h">${window.formatHandicapDisplay(reg.handicap)}</span>` : ''}
             </label>
@@ -129452,25 +129528,38 @@ window.GolfDivisions = {
 // a guest out of their host's unit. `breaks` = {playerId:1} session-only splits (no data writes).
 window.PlayTogetherUnits = {
     _norm: function(n){ return String(n||'').toLowerCase().replace(/\(.*?\)/g,' ').replace(/[^a-z ]/g,'').replace(/\s+/g,' ').trim(); },
-    targets: function(r, regs){
+    targets: function(r, regs, opts){
         var self=this, out=[];
         ((r && r.partnerPrefs) || []).forEach(function(p){
-            var id=null, nm=null;
-            if (p && typeof p==='object'){ id=p.playerId; nm=p.playerName||p.name; }
+            var id=null, nm=null, hadId=false;
+            if (p && typeof p==='object'){ id=p.playerId; nm=p.playerName||p.name; hadId=(id!=null&&id!==''&&String(id)!==String(nm)); }
             else if (p != null){
                 var s=String(p).trim(); if(!s) return;
-                if (s.charAt(0)==='{'){ try{ var o=JSON.parse(s); id=o.playerId; nm=o.playerName||o.name; }catch(e){ return; } }
+                if (s.charAt(0)==='{'){ try{ var o=JSON.parse(s); id=o.playerId; nm=o.playerName||o.name; hadId=(id!=null&&id!==''&&String(id)!==String(nm)); }catch(e){ return; } }
                 else { id=s; nm=s; }
             }
             var hit=null;
             if (id != null && id !== '') hit=(regs||[]).find(function(x){ return String(x.id)===String(id) || String(x.playerId)===String(id); });
-            if (!hit && nm){
+            // v750: a pick that carried an explicit id but no longer resolves is DEAD — its target
+            // unregistered (the reg row id was destroyed). Falling back to the stored name here is
+            // what resurrected stale pairings after re-registration (Greenwood/Bonner bug). Name
+            // matching stays ONLY for bare legacy entries that never had a distinct id.
+            if (!hit && nm && !hadId){
                 var key=self._norm(nm);
                 hit=(regs||[]).find(function(x){ return self._norm(x.playerName)===key || (window.samePersonName && samePersonName(x.playerName, nm)); });
             }
+            if (hit && !(opts && opts.ignoreConsent) && self._declined(hit, r)) return;
             if (hit && String(hit.playerId)!==String(r.playerId)) out.push(String(hit.playerId));
         });
         return out;
+    },
+    // v750 consent: the PICKED player can decline the PICKER — stored on the picked player's OWN
+    // row as special_requests.partnerResponses = { "<picker player_id>": "accepted"|"declined" }.
+    // A declined link is void for every pairing surface that resolves through this engine.
+    _declined: function(target, pickerReg){
+        var sr=(target && (target.specialRequests || target.special_requests)) || {};
+        var resp=sr.partnerResponses || {};
+        return resp[String(pickerReg && pickerReg.playerId)] === 'declined';
     },
     units: function(un, regs, breaks){
         var self=this, pool={}, ids=[]; breaks=breaks||{};
@@ -129482,7 +129571,7 @@ window.PlayTogetherUnits = {
             var r=pool[k];
             self.targets(r, regs).forEach(function(tid){ if(pool[tid]) uni(k, tid); });
             var sr=(r&&r.specialRequests)||{};
-            if (sr.sameGroup !== false){ var hid=String(sr.hostId||sr.host_id||''); if(hid && hid!==k && pool[hid]) uni(k, hid); }
+            if (sr.sameGroup !== false){ var hid=String(sr.hostId||sr.host_id||''); if(hid && hid!==k && pool[hid] && !self._declined(pool[hid], r)) uni(k, hid); }
         });
         var buckets={}, order=[];
         ids.forEach(function(k){ var root=find(k); if(!buckets[root]){ buckets[root]=[]; order.push(root); } buckets[root].push(pool[k]); });

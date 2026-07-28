@@ -127606,6 +127606,13 @@ window.OrgLiteRegistrations = {
                 }
             }
         } catch (e) { console.warn('[Payouts] template load', e); }
+        // SERIES ROUNDS (King of the Mountain etc. — Pete 2026-07-29): prize money is the promoter's
+        // (single 120k pool at the gala), so 2s / HIO / division winners all start UNCHECKED. The
+        // organizer can still tick anything on. Order-of-Merit points are untouched — they flow from
+        // the Scoring page's publish (event_results), not from this wizard.
+        var seriesRound = false;
+        try { seriesRound = !!(window.TeeSheet && await TeeSheet._loadSeries(eventId)); } catch (e) {}
+        if (seriesRound) { twos.enabled = false; hio.enabled = false; }
         // UNIFIED DIVISIONS: the HCP bands come from the EVENT (society_events.divisions — the single
         // source the Scoring page also reads/writes). Prize places layer on top from the template (by
         // name) or default. Organizer sets divisions once; both pages match.
@@ -127662,7 +127669,7 @@ window.OrgLiteRegistrations = {
                 if (!twos.holes[pid]) twos.holes[pid] = detected[pid].holes.join(', ');
                 if (detected[pid].name) detectedNames[pid] = detected[pid].name;
             });
-            if (twos.winners.length) twos.enabled = true;
+            if (twos.winners.length && !seriesRound) twos.enabled = true;
         } catch (e) { console.warn('[Payouts] auto-detect 2s', e); }
         // AUTO-POOL the aces (gross 1): same self-detect as the 2s, so the organizer never has to tick anyone.
         try {
@@ -127672,17 +127679,19 @@ window.OrgLiteRegistrations = {
                 if (!hio.holes[pid]) hio.holes[pid] = detectedAces[pid].holes.join(', ');
                 if (detectedAces[pid].name) detectedNames[pid] = detectedAces[pid].name;
             });
-            if (hio.winners.length) hio.enabled = true;
+            if (hio.winners.length && !seriesRound) hio.enabled = true;
         } catch (e) { console.warn('[Payouts] auto-detect aces', e); }
         // POINTS populate the prize/awards section (gambling law: awards are championship POINTS, not
         // money). Rebuild each division's place slots from society_events.point_allocation
         // (position → points), then AUTO-RANK the winners into them by the event's format.
         var placingFormat = 'stableford', placingUsesPoints = false;
         try {
-            var placings = await this._detectPlacings();
-            placingFormat = placings.format;
-            placingUsesPoints = this._applyPointsToPlaces(divisions, placings.pointAlloc);
-            this._fillPlacingsInto(divisions, this.regs, placings);
+            if (!seriesRound) {   // series: leave the winners UN-picked — OoM points rank the field, not this wizard
+                var placings = await this._detectPlacings();
+                placingFormat = placings.format;
+                placingUsesPoints = this._applyPointsToPlaces(divisions, placings.pointAlloc);
+                this._fillPlacingsInto(divisions, this.regs, placings);
+            }
         } catch (e) { console.warn('[Payouts] auto-fill placings', e); }
         this._payout = { eventId: eventId, societyId: societyId, divisions: divisions, twos: twos, hio: hio, saveTpl: false, _detectedNames: detectedNames, _placingFormat: placingFormat, _placingUsesPoints: placingUsesPoints };
         this._mountPayouts();

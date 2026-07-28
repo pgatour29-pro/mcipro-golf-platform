@@ -5208,6 +5208,29 @@
         body.theme-light #golferDashboard #scorecardStartSection .scv3-group #scorecardCourseSelect,
         body.theme-light #golferDashboard #scorecardStartSection .scv3-group #roundSocietySelect { color: #10151B !important; }
 
+        /* PGV1: Play Golf / Society Event tabs (sunlight rule: active = SOLID green + white) */
+        #golferDashboard #scorecardStartSection .scv3-rtabs {
+            display: flex !important; gap: 6px; margin: 0 0 14px;
+            background: rgba(255,255,255,0.045) !important; border: 1px solid rgba(255,255,255,0.08) !important;
+            border-radius: 16px !important; padding: 5px !important;
+        }
+        body.theme-light #golferDashboard #scorecardStartSection .scv3-rtabs { background:#ffffff !important; border-color:rgba(15,23,42,0.09) !important; box-shadow:0 6px 18px rgba(15,23,42,0.05) !important; }
+        #golferDashboard #scorecardStartSection .scv3-rtabs .scv3-rtab {
+            flex: 1 1 0; display: flex !important; align-items: center; justify-content: center; gap: 7px;
+            padding: 11px 6px !important; border-radius: 12px !important; border: none !important;
+            background: transparent !important; color: #9AA7B4 !important;
+            font-size: 14px !important; font-weight: 700 !important; cursor: pointer; min-width: 0;
+        }
+        #golferDashboard #scorecardStartSection .scv3-rtabs .scv3-rtab .material-symbols-outlined { font-size: 19px; }
+        body.theme-light #golferDashboard #scorecardStartSection .scv3-rtabs .scv3-rtab { color: #475569 !important; }
+        #golferDashboard #scorecardStartSection .scv3-rtabs .scv3-rtab.is-on,
+        body.theme-light #golferDashboard #scorecardStartSection .scv3-rtabs .scv3-rtab.is-on {
+            background: #16a34a !important; color: #ffffff !important;
+        }
+        /* Event row hidden on the Play Golf tab; kill the orphan divider above Course */
+        #scorecardStartSection #scSection_event.sc-hide { display: none !important; }
+        #scorecardStartSection .scv3-group > #scSection_event.sc-hide + .scv3-card { border-top: none !important; }
+
         /* EVENT select: an OBVIOUSLY highlighted, tappable pill in BOTH themes (Pete 2026-07-02).
            Green when a society event is chosen; neutral-but-clearly-tappable otherwise. */
         #golferDashboard #scorecardStartSection .scv3-group #scorecardEventSelect {
@@ -9033,6 +9056,8 @@
                 'scorecard.back9first': 'Back 9 First',
                 'scorecard.games': 'Games',
                 'scorecard.quickstart': 'Quick Start',
+                'scorecard.tab.play': 'Play Golf',
+                'scorecard.tab.society': 'Society Event',
                 'scorecard.stableford': 'Stableford',
                 'scorecard.strokeplay': 'Stroke Play',
                 'scorecard.matchplay': 'Match Play',
@@ -10876,6 +10901,8 @@
                 'scorecard.back9first': 'หลุม 10-18 ก่อน',
                 'scorecard.games': 'เกม',
                 'scorecard.quickstart': 'เริ่มด่วน',
+                'scorecard.tab.play': 'ออกรอบ',
+                'scorecard.tab.society': 'กิจกรรมสมาคม',
                 'scorecard.stableford': 'สเตเบิลฟอร์ด',
                 'scorecard.strokeplay': 'สโตรคเพลย์',
                 'scorecard.matchplay': 'แมตช์เพลย์',
@@ -12853,6 +12880,8 @@
                 'scorecard.back9first': '백 9 먼저',
                 'scorecard.games': '게임',
                 'scorecard.quickstart': '빠른 시작',
+                'scorecard.tab.play': '골프 치기',
+                'scorecard.tab.society': '소사이어티 이벤트',
                 'scorecard.stableford': '스테이블포드',
                 'scorecard.strokeplay': '스트로크 플레이',
                 'scorecard.matchplay': '매치 플레이',
@@ -14602,6 +14631,8 @@
                 'scorecard.back9first': 'バック9から',
                 'scorecard.games': 'ゲーム',
                 'scorecard.quickstart': 'クイックスタート',
+                'scorecard.tab.play': 'ラウンドする',
+                'scorecard.tab.society': 'ソサエティイベント',
                 'scorecard.stableford': 'ステーブルフォード',
                 'scorecard.strokeplay': 'ストロークプレー',
                 'scorecard.matchplay': 'マッチプレー',
@@ -49253,6 +49284,17 @@ Waitlist (${waitlist.length} people):`;
                             <span id="scReadyText">&mdash;</span>
                         </div>
 
+                        <!-- PGV1 round-type tabs: Play Golf rides the existing Practice path ('' event
+                             value) — same ScorecardStatus gate, same startRound(). Never a 2nd start path. -->
+                        <div id="scRoundTypeTabs" class="scv3-rtabs">
+                            <button id="scTabPlay" type="button" onclick="LiveScorecardManager.setRoundTab('play', true)" class="scv3-rtab">
+                                <span class="material-symbols-outlined">golf_course</span><span data-i18n="scorecard.tab.play">Play Golf</span>
+                            </button>
+                            <button id="scTabEvent" type="button" onclick="LiveScorecardManager.setRoundTab('event', true)" class="scv3-rtab is-on">
+                                <span class="material-symbols-outlined">trophy</span><span data-i18n="scorecard.tab.society">Society Event</span>
+                            </button>
+                        </div>
+
                         <!-- SCV3 course hero card (approved model) -->
                         <div id="scv3Hero" class="scv3-hero">
                             <div class="scv3-hero-flare"></div>
@@ -75437,6 +75479,45 @@ class LiveScorecardSystem {
     }
 
     // Called when event dropdown changes - auto-select matching society for handicaps
+    // PGV1: 'play' hides the event dropdown and rides the existing Practice path
+    // ('' select value → roundType practice/society-casual in startRound); 'event'
+    // shows the dropdown and applies any auto-select deferred while Play was active.
+    setRoundTab(mode, byUser) {
+        this.roundTabMode = (mode === 'play') ? 'play' : 'event';
+        if (byUser) this._roundTabUserSet = true;
+        const tabPlay = document.getElementById('scTabPlay');
+        const tabEvent = document.getElementById('scTabEvent');
+        if (tabPlay) tabPlay.classList.toggle('is-on', this.roundTabMode === 'play');
+        if (tabEvent) tabEvent.classList.toggle('is-on', this.roundTabMode === 'event');
+        const evSection = document.getElementById('scSection_event');
+        const select = document.getElementById('scorecardEventSelect');
+        if (this.roundTabMode === 'play') {
+            if (evSection) evSection.classList.add('sc-hide');
+            if (select && select.value !== '') {
+                // Leaving an event: drop its tee-sheet auto-added group mates (same
+                // prune prefillFromTeeSheet does), then back to the plain Practice value.
+                const prevAuto = this.players.filter(p => p.fromTeeSheet);
+                if (prevAuto.length) {
+                    this.players = this.players.filter(p => !p.fromTeeSheet);
+                    prevAuto.forEach(p => delete this.scoresCache[p.id]);
+                    this.renderPlayersList();
+                }
+                select.value = '';
+                select.dispatchEvent(new Event('change'));
+            }
+        } else {
+            if (evSection) evSection.classList.remove('sc-hide');
+            if (select && !select.value && this._pendingAutoSelectEventId) {
+                select.value = this._pendingAutoSelectEventId;
+                // Guard: option may not exist yet (events still loading) — value stays '' then.
+                if (select.value === this._pendingAutoSelectEventId) {
+                    select.dispatchEvent(new Event('change'));
+                }
+            }
+        }
+        if (window.ScorecardStatus) ScorecardStatus.update();
+    }
+
     onEventChanged() {
         const eventSelect = document.getElementById('scorecardEventSelect');
         const societySelect = document.getElementById('roundSocietySelect');
@@ -77747,9 +77828,19 @@ class LiveScorecardSystem {
 
         // Auto-select: prioritize registered today's event, then any today's event
         const autoSelectId = firstRegisteredTodayId || firstTodayEventId;
-        if (autoSelectId) {
-            select.value = autoSelectId;
-            select.dispatchEvent(new Event('change'));
+        // PGV1: registered-today golfers land on the Society Event tab (auto-select
+        // unchanged); everyone else lands on Play Golf with the auto-select DEFERRED
+        // until they tap Society Event — non-members were getting other societies'
+        // events pre-picked. A tab the user tapped themselves is never overridden.
+        this._pendingAutoSelectEventId = autoSelectId || null;
+        if (!this._roundTabUserSet) {
+            this.setRoundTab(firstRegisteredTodayId ? 'event' : 'play');
+        }
+        if (autoSelectId && this.roundTabMode === 'event') {
+            if (select.value !== autoSelectId) {
+                select.value = autoSelectId;
+                select.dispatchEvent(new Event('change'));
+            }
             console.log('[LiveScorecard] Auto-selected event:', autoSelectId, firstRegisteredTodayId ? '(registered)' : '(first today)');
             // Re-trigger course change for combo pickers after auto-select settles
             setTimeout(() => {

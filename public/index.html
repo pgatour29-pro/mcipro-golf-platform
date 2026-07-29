@@ -84671,6 +84671,9 @@ class LiveScorecardSystem {
             const shotAllocation = engine.allocHandicapShots(this.courseData?.holes || [], player.handicap);
             let front9Gross = 0, back9Gross = 0, front9Pts = 0, back9Pts = 0;
             let front9Count = 0, back9Count = 0;
+            // Par of holes actually SCORED — mid-round +/- compares against these, not the
+            // full nine (Pete 2026-07-29: "-27 after two holes" confused users)
+            let front9ParPlayed = 0, back9ParPlayed = 0;
 
             // Build hole rows
             let frontRows = '', backRows = '';
@@ -84731,11 +84734,13 @@ class LiveScorecardSystem {
                     front9Gross += scoreValue;
                     front9Pts += pts;
                     front9Count++;
+                    front9ParPlayed += par;
                 } else {
                     backRows += row;
                     back9Gross += scoreValue;
                     back9Pts += pts;
                     back9Count++;
+                    back9ParPlayed += par;
                 }
             }
 
@@ -84743,6 +84748,12 @@ class LiveScorecardSystem {
             const totalPts = front9Pts + back9Pts;
             const front9Par = this.courseData?.holes?.filter(h => (h.hole || h.hole_number) <= 9).reduce((s, h) => s + (h.par || 4), 0) || 36;
             const back9Par = this.courseData?.holes?.filter(h => (h.hole || h.hole_number) > 9).reduce((s, h) => s + (h.par || 4), 0) || 36;
+            // +/- vs par of holes PLAYED (Par column still shows the printed nine par)
+            const outDiff = front9Gross - front9ParPlayed;
+            const inDiff = back9Gross - back9ParPlayed;
+            const totDiff = totalGross - (front9ParPlayed + back9ParPlayed);
+            const fmtDiff = d => d === 0 ? 'E' : (d > 0 ? '+' + d : '' + d);
+            const diffClass = d => d > 0 ? 'text-red-600' : d < 0 ? 'text-blue-600' : '';
 
             const subtotalClass = 'py-1.5 px-2 text-center font-bold bg-gray-100';
 
@@ -84769,7 +84780,7 @@ class LiveScorecardSystem {
                             <td class="${subtotalClass}">${front9Par}</td>
                             <td class="${subtotalClass}"></td>
                             <td class="${subtotalClass}">${front9Gross}</td>
-                            <td class="${subtotalClass} ${front9Gross - front9Par > 0 ? 'text-red-600' : front9Gross - front9Par < 0 ? 'text-blue-600' : ''}">${front9Gross - front9Par === 0 ? 'E' : (front9Gross - front9Par > 0 ? '+' + (front9Gross - front9Par) : front9Gross - front9Par)}</td>
+                            <td class="${subtotalClass} ${diffClass(outDiff)}">${fmtDiff(outDiff)}</td>
                             ${isStableford ? `<td class="${subtotalClass} text-green-700">${front9Pts}</td>` : ''}
                         </tr>` : ''}
                         ${backRows}
@@ -84778,7 +84789,7 @@ class LiveScorecardSystem {
                             <td class="${subtotalClass}">${back9Par}</td>
                             <td class="${subtotalClass}"></td>
                             <td class="${subtotalClass}">${back9Gross}</td>
-                            <td class="${subtotalClass} ${back9Gross - back9Par > 0 ? 'text-red-600' : back9Gross - back9Par < 0 ? 'text-blue-600' : ''}">${back9Gross - back9Par === 0 ? 'E' : (back9Gross - back9Par > 0 ? '+' + (back9Gross - back9Par) : back9Gross - back9Par)}</td>
+                            <td class="${subtotalClass} ${diffClass(inDiff)}">${fmtDiff(inDiff)}</td>
                             ${isStableford ? `<td class="${subtotalClass} text-green-700">${back9Pts}</td>` : ''}
                         </tr>` : ''}
                         ${(front9Count + back9Count) > 0 ? `<tr class="border-t-2 border-gray-800 bg-yellow-50">
@@ -84786,7 +84797,7 @@ class LiveScorecardSystem {
                             <td class="${subtotalClass} bg-yellow-50">${front9Par + back9Par}</td>
                             <td class="${subtotalClass} bg-yellow-50"></td>
                             <td class="${subtotalClass} bg-yellow-50 text-lg">${totalGross}</td>
-                            <td class="${subtotalClass} bg-yellow-50 ${totalGross - (front9Par + back9Par) > 0 ? 'text-red-600' : totalGross - (front9Par + back9Par) < 0 ? 'text-blue-600' : ''}">${totalGross - (front9Par + back9Par) === 0 ? 'E' : (totalGross - (front9Par + back9Par) > 0 ? '+' + (totalGross - (front9Par + back9Par)) : totalGross - (front9Par + back9Par))}</td>
+                            <td class="${subtotalClass} bg-yellow-50 ${diffClass(totDiff)}">${fmtDiff(totDiff)}</td>
                             ${isStableford ? `<td class="${subtotalClass} bg-yellow-50 text-green-700 text-lg">${totalPts}</td>` : ''}
                         </tr>` : ''}
                     </tbody>

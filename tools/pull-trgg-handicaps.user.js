@@ -37,6 +37,10 @@
       name = String(name || '').trim();
       const num = toNum(val);
       if (!name || num == null || !/[a-zA-Z]{2,}/.test(name)) return;
+      // Section-header rows ("Division 1  17.0") are not people — they became phantom
+      // profiles on the 2026-07-28 pull. Only rows whose WHOLE name is a header word
+      // (+ optional number) are rejected, so real surnames can never hit this.
+      if (/^(division|flight|grade|section|class|overall|total|average|handicap|hcp|index|name|player)\s*\d*$/i.test(name)) return;
       if (num < -10 || num > 54) return;
       if (seen.has(name)) return; seen.add(name);
       out.push({ name, num, key: nameKey(name) });

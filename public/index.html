@@ -85245,7 +85245,15 @@ class LiveScorecardSystem {
                 clearTimeout(this.autoAdvanceTimeout);
                 this.autoAdvanceTimeout = setTimeout(() => {
                     this.autoAdvanceTimeout = null;
-                    this.nextHole();
+                    // SKIP GUARD (Greenwood 2026-07-29): a stale timer firing after the device has
+                    // already advanced (another timer or the realtime sync moved it) advances AGAIN
+                    // and silently skips a hole — hole 13 got skipped mid-round this way. Only
+                    // advance if we are still on the hole this save completed.
+                    if (this.currentHole === savingHole) {
+                        this.nextHole();
+                    } else {
+                        try { window.logClientError && window.logClientError('auto_advance_suppressed', { message: 'stale mid-rotation advance timer', extra: { savingHole: savingHole, currentHole: this.currentHole } }); } catch (e) {}
+                    }
                 }, 1000);
             }
         } else {
@@ -85284,7 +85292,13 @@ class LiveScorecardSystem {
                 clearTimeout(this.autoAdvanceTimeout);
                 this.autoAdvanceTimeout = setTimeout(() => {
                     this.autoAdvanceTimeout = null;
-                    this.nextHole();
+                    // SKIP GUARD (Greenwood 2026-07-29): same as the mid-rotation guard above —
+                    // never advance from a hole the device already left, or holes get skipped.
+                    if (this.currentHole === savingHole) {
+                        this.nextHole();
+                    } else {
+                        try { window.logClientError && window.logClientError('auto_advance_suppressed', { message: 'stale last-player advance timer', extra: { savingHole: savingHole, currentHole: this.currentHole } }); } catch (e) {}
+                    }
                 }, 1000);  // Full 1 second so user can clearly see last score
             }
         }
@@ -94258,10 +94272,14 @@ class LiveScorecardSystem {
                 if (!this._saving && this.currentScore === '' && this.currentHoleIndex < 17) {
                     const allDone = this.players.every(p => (this.selfScoring && this.selfScoring[p.id]) || this.getPlayerScore(p.id, this.currentHole));
                     if (allDone) {
+                        // SKIP GUARD (Greenwood 2026-07-29): pin the advance to the hole it was armed
+                        // on — if the device moves on before the timer fires, the timer is stale.
+                        const armedHole = this.currentHole;
                         clearTimeout(this.autoAdvanceTimeout);
                         this.autoAdvanceTimeout = setTimeout(() => {
                             this.autoAdvanceTimeout = null;
                             if (!this._saving && this.currentScore === '' && this.currentHoleIndex < 17 &&
+                                this.currentHole === armedHole &&
                                 this.players.every(p => (this.selfScoring && this.selfScoring[p.id]) || this.getPlayerScore(p.id, this.currentHole))) {
                                 this.nextHole();
                             }

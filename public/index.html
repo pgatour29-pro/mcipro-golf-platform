@@ -84637,19 +84637,35 @@ class LiveScorecardSystem {
             container.style.display = 'none';
             if (toggleText) toggleText.textContent = 'View Scorecard';
             if (toggleIcon) toggleIcon.textContent = 'expand_more';
+            this._scEdit = null; // abandon any open cell editor with the card
         }
     }
 
     renderLiveScorecard() {
         const container = document.getElementById('liveScorecardContainer');
         if (!container || !this.players || this.players.length === 0) return;
+        // TAP-TO-EDIT (Pete 2026-07-29): while a cell editor is open, background syncs must not
+        // re-render the card out from under the user's fingers.
+        if (this._scEdit) return;
 
         const engine = LiveScorecardSystem.GolfScoringEngine;
         const isStableford = this.scoringFormats.includes('stableford') || this.scoringFormats.includes('modifiedstableford');
         const isModified = this.scoringFormats.includes('modifiedstableford');
         const pointsMap = isModified ? engine.modifiedStablefordPoints : engine.defaultStableford;
 
-        let html = '';
+        // Holes the round has visited (holeOrder honors back-9/shotgun starts) plus any hole
+        // holding a score. An unscored visited hole renders as a tappable gap — a skipped hole
+        // (Greenwood 2026-07-29: hole 13) becomes visible and fixable right on the card.
+        const playedSet = new Set();
+        try {
+            const lastIdx = Math.max(this.latestHoleIndex ?? 0, this.currentHoleIndex ?? 0);
+            (this.holeOrder || []).slice(0, lastIdx + 1).forEach(h => playedSet.add(h));
+        } catch (e) {}
+        for (const p of this.players) {
+            Object.keys(this.scoresCache[p.id] || {}).forEach(h => playedSet.add(parseInt(h)));
+        }
+
+        let html = '<div class="text-[11px] text-gray-400 text-center mb-1">✎ Tap any score to edit it</div>';
 
         for (const player of this.players) {
             const shotAllocation = engine.allocHandicapShots(this.courseData?.holes || [], player.handicap);
@@ -84660,11 +84676,27 @@ class LiveScorecardSystem {
             let frontRows = '', backRows = '';
             for (let i = 1; i <= 18; i++) {
                 const scoreValue = this.scoresCache[player.id]?.[i];
-                if (typeof scoreValue !== 'number') continue;
+                const hasScore = typeof scoreValue === 'number';
+                if (!hasScore && !playedSet.has(i)) continue;
 
                 const hole = this.getHoleData(i);
                 const par = hole?.par || 4;
                 const si = hole?.stroke_index || i;
+
+                if (!hasScore) {
+                    // Visited but unscored (skipped/missed hole) — tappable gap, excluded from totals
+                    const gapRow = `<tr class="border-b border-gray-100">
+                        <td class="py-1.5 px-2 text-center font-bold text-gray-800">${i}</td>
+                        <td class="py-1.5 px-2 text-center text-gray-600">${par}</td>
+                        <td class="py-1.5 px-2 text-center text-gray-500 text-xs">${si}</td>
+                        <td class="py-1.5 px-2 text-center text-amber-500 font-bold" style="cursor:pointer;" onclick="LiveScorecardManager.beginScorecardEdit('${player.id}', ${i}, this)" title="Tap to enter score">—</td>
+                        <td class="py-1.5 px-2 text-center text-gray-400">·</td>
+                        ${isStableford ? '<td class="py-1.5 px-2 text-center text-gray-400">·</td>' : ''}
+                    </tr>`;
+                    if (i <= 9) frontRows += gapRow; else backRows += gapRow;
+                    continue;
+                }
+
                 const diff = scoreValue - par;
                 const shotsReceived = shotAllocation[i] || 0;
                 const netScore = scoreValue - shotsReceived;
@@ -84689,7 +84721,7 @@ class LiveScorecardSystem {
                     <td class="py-1.5 px-2 text-center font-bold text-gray-800">${i}</td>
                     <td class="py-1.5 px-2 text-center text-gray-600">${par}</td>
                     <td class="py-1.5 px-2 text-center text-gray-500 text-xs">${si}</td>
-                    <td class="py-1.5 px-2 text-center">${scoreHTML}</td>
+                    <td class="py-1.5 px-2 text-center" style="cursor:pointer;" onclick="LiveScorecardManager.beginScorecardEdit('${player.id}', ${i}, this)" title="Tap to edit">${scoreHTML}</td>
                     <td class="py-1.5 px-2 text-center font-semibold ${diffColor}">${diffStr}</td>
                     ${isStableford ? `<td class="py-1.5 px-2 text-center font-bold text-green-700">${pts}</td>` : ''}
                 </tr>`;
@@ -84763,6 +84795,109 @@ class LiveScorecardSystem {
         }
 
         container.innerHTML = html || '<p class="text-center text-gray-500 text-sm py-4">No scores entered yet</p>';
+    }
+
+    // ===== TAP-TO-EDIT ON THE LIVE SCORECARD (Pete 2026-07-29) =====
+    // Editing used to mean paging back hole-by-hole with the keypad. Any score cell on the
+    // View Scorecard is now tappable; the save rides the EXACT same path as keypad entry
+    // (scoresCache + queueScoreSave → SocietyGolfDB.saveScore upsert), so leaderboards, other
+    // group devices and Spectate Live all pick the change up through the existing realtime
+    // subscriptions. Edits NEVER move the current-hole pointer — no auto-advance from here.
+    _scEdit = null;
+
+    beginScorecardEdit(playerId, holeNum, cellEl) {
+        if (this._scEdit && this._scEdit.playerId === playerId && this._scEdit.hole === holeNum) return;
+        if (this._scEdit) { this.cancelScorecardEdit(); return; } // close a stray editor first
+        const player = this.players.find(p => p.id === playerId);
+        if (!player || !cellEl) return;
+        // Released self-scorer: their phone owns the card (same rule as keypad entry)
+        if (this.selfScoring && this.selfScoring[playerId]) {
+            const deviceOwner = window.Auth?.currentUserId || window.AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
+            if (String(playerId) !== String(deviceOwner)) {
+                window.alert((player.name || 'This player') + ' is keeping their own score on their phone.\n\nTap the 📱 badge on their card to take back control.');
+                return;
+            }
+        }
+        const existing = this.scoresCache[playerId]?.[holeNum];
+        const startVal = typeof existing === 'number' ? existing : (this.getHoleData(holeNum)?.par || 4);
+        this._scEdit = { playerId: playerId, hole: holeNum, value: startVal, prev: (typeof existing === 'number' ? existing : null) };
+        const btn = 'display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;font-weight:bold;font-size:15px;border:none;';
+        cellEl.innerHTML = `<div style="display:inline-flex;align-items:center;gap:4px;" onclick="event.stopPropagation()">
+            <button style="${btn}background:#e5e7eb;color:#374151;" onclick="LiveScorecardManager.scEditAdjust(-1)">−</button>
+            <span id="scEditVal" style="min-width:26px;font-weight:800;font-size:16px;color:#111827;">${startVal}</span>
+            <button style="${btn}background:#e5e7eb;color:#374151;" onclick="LiveScorecardManager.scEditAdjust(1)">+</button>
+            <button style="${btn}background:#22c55e;color:#fff;" onclick="LiveScorecardManager.saveScorecardEdit()">✓</button>
+            <button style="${btn}background:#fee2e2;color:#b91c1c;" onclick="LiveScorecardManager.cancelScorecardEdit()">✕</button>
+        </div>`;
+    }
+
+    scEditAdjust(delta) {
+        if (!this._scEdit) return;
+        this._scEdit.value = Math.min(15, Math.max(1, this._scEdit.value + delta));
+        const el = document.getElementById('scEditVal');
+        if (el) el.textContent = this._scEdit.value;
+    }
+
+    cancelScorecardEdit() {
+        this._scEdit = null;
+        this.renderLiveScorecard();
+    }
+
+    saveScorecardEdit() {
+        const ed = this._scEdit;
+        this._scEdit = null; // clear FIRST so no exit path can leave the card render-locked
+        if (!ed) return;
+        const score = ed.value;
+        if (typeof score !== 'number' || score < 1 || score > 15 || score === ed.prev) {
+            this.renderLiveScorecard();
+            return;
+        }
+        const holeData = this.getHoleData(ed.hole);
+        const par = holeData?.par || 4;
+        const strokeIndex = holeData?.stroke_index || holeData?.strokeIndex || ed.hole;
+
+        // Scramble scores are TEAM-grain — an edit applies to the whole team (mirrors keypad)
+        let targets;
+        if (this.scoringFormats.includes('scramble')) {
+            const t = this.scrambleConfig?.teams;
+            if (t) {
+                const teamIds = (t.teamA || []).includes(ed.playerId) ? t.teamA : ((t.teamB || []).includes(ed.playerId) ? t.teamB : [ed.playerId]);
+                targets = this.players.filter(p => teamIds.includes(p.id));
+            } else {
+                targets = this.players;
+            }
+        } else {
+            targets = this.players.filter(p => p.id === ed.playerId);
+        }
+
+        for (const player of targets) {
+            if (!this.scoresCache[player.id]) this.scoresCache[player.id] = {};
+            this.scoresCache[player.id][ed.hole] = score;
+            const scorecardId = this.scorecards?.[player.id];
+            // Same handicap resolution as keypad saves — DB stableford must match the summary
+            const playerHandicap = this.getGameHandicap ?
+                (this.getGameHandicap('stableford', player.id) || player.handicap) : player.handicap;
+            if (!scorecardId) {
+                console.warn('[LiveScorecard] ✎ edit cached only (no scorecard id):', player.name);
+            } else if (scorecardId.startsWith('local_')) {
+                const localScores = JSON.parse(localStorage.getItem(`scores_${scorecardId}`) || '{}');
+                localScores[ed.hole] = { hole_number: ed.hole, gross_score: score, par: par, stroke_index: strokeIndex, handicap: playerHandicap, recorded_at: new Date().toISOString() };
+                localStorage.setItem(`scores_${scorecardId}`, JSON.stringify(localScores));
+            } else {
+                this.queueScoreSave(scorecardId, ed.hole, score, par, strokeIndex, playerHandicap, player.name);
+            }
+        }
+
+        // Repaint every surface this device owns; realtime carries it to everyone else
+        this.renderLiveScorecard();
+        if (ed.hole === this.currentHole) this.renderHole();
+        this.updateCurrentRoundDisplay();
+        this.debouncedRefreshLeaderboard();
+        this.updatePublicPoolProgress(ed.hole).catch(() => {});
+        this.updateLastScoreTime();
+        this.debouncedSaveRoundState();
+        const pl = this.players.find(p => p.id === ed.playerId);
+        window.NotificationManager?.show(`H${ed.hole} · ${pl?.name || ''}: ${ed.prev == null ? '' : ed.prev + ' → '}${score}`, 'success');
     }
 
     calculateThailandStableford(grossScore, par, getsHandicapStroke) {

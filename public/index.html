@@ -74964,7 +74964,16 @@ class LiveScorecardSystem {
     restoreRoundState(state) {
         console.log('[LiveScorecard] 🔄 Restoring round state...');
 
-        this.players = state.players || [];
+        // Dedupe restored players by id — the prefill race (fixed v771) could append duplicate
+        // group mates to a live round, and the snapshot then carries them forever. Keep FIRST.
+        const _seenPids = new Set();
+        this.players = (state.players || []).filter(p => {
+            const k = String(p.lineUserId || p.id || '');
+            if (!k) return true;
+            if (_seenPids.has(k)) return false;
+            _seenPids.add(k);
+            return true;
+        });
         this.courseData = state.courseData;
         this.scoringFormats = state.scoringFormats || ['stableford'];
         this.gameConfigs = state.gameConfigs || {};
@@ -77588,6 +77597,11 @@ class LiveScorecardSystem {
         try {
             const uid = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
             if (!uid || !eventId || !window.SocietyGolfDB?.getPairings) return;
+            // NEVER prefill over a LIVE round (Green Valley 2026-07-30): with an active-round
+            // snapshot present, the setup screen is just a waypoint to Resume — this function's
+            // awaits can land AFTER restoreRoundState replaced this.players, pushing duplicate
+            // group mates into the running round (See-Hoe/Tom doubled on hole 18).
+            if (this.groupId || localStorage.getItem('mcipro_active_round')) return;
             // Same event re-selected and the group is still in the list — nothing to do
             if (this._prefillEventId === eventId && this.players.some(p => p.fromTeeSheet)) return;
 
@@ -77656,9 +77670,13 @@ class LiveScorecardSystem {
                 }
             } catch (e) { console.warn('[LiveScorecard] Prefill profile fetch failed (using pairing data):', e); }
             if (seq !== this._prefillSeq) return;
+            // Re-check AFTER the awaits: a round may have been resumed while we were loading —
+            // bail out, and never push anyone already in the (possibly replaced) players array.
+            if (this.groupId || localStorage.getItem('mcipro_active_round')) return;
+            const nowIn = new Set(this.players.map(p => String(p.lineUserId || p.id)));
 
             const room = Math.max(0, 7 - this.players.length);
-            mates.slice(0, room).forEach(m => {
+            mates.filter(m => !nowIn.has(String(m.playerId))).slice(0, room).forEach(m => {
                 const prof = profs.find(p => p.line_user_id === m.playerId);
                 const handicap = prof
                     ? (prof.handicap_index ?? prof.profile_data?.handicap ?? prof.profile_data?.golfInfo?.handicap ?? m.handicap ?? 0)

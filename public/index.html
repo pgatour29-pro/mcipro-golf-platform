@@ -75010,7 +75010,7 @@ class LiveScorecardSystem {
         // self-heal too (not just the live display).
         this.refreshCourseDataFromDB().then(() => {
             if (typeof this.recomputeScoresForCourseChange === 'function') return this.recomputeScoresForCourseChange();
-        }).catch(() => {});
+        }).then(() => this.refreshHandicapsFromDB()).catch(() => {});
 
         // Restore the match-play type checkboxes — every leaderboard render reads them LIVE,
         // and they reset to unchecked on an app reload (Pete's "no match play type selected").
@@ -75085,6 +75085,37 @@ class LiveScorecardSystem {
                 try { this.renderHole(); this.debouncedRefreshLeaderboard(); } catch (e) {}
             }
         } catch (e) { console.warn('[LiveScorecard] course refresh failed (non-fatal):', e); }
+    }
+
+    // LIVE-OPS FIX (2026-07-30, Britt 10.3→10.9): the saved round state also carries each
+    // player's HANDICAP from round start. A mid-round DB correction (scorecards.handicap) was
+    // invisible on a reopened device — recomputeScoresForCourseChange heals SAVED holes from
+    // the DB value, but this.players kept the stale handicap for the display and every FUTURE
+    // hole save (saveScore reads player.handicap). Re-pull this round's scorecard handicaps.
+    async refreshHandicapsFromDB() {
+        try {
+            const sb = window.SupabaseDB?.client;
+            if (!sb || !this.players?.length) return;
+            const ids = this.players.map(p => this.scorecards[p.id]).filter(Boolean);
+            if (!ids.length) return;
+            const { data } = await sb.from('scorecards').select('id, player_id, handicap').in('id', ids);
+            if (!data || !data.length) return;
+            const byCard = {};
+            data.forEach(c => { byCard[c.id] = c; });
+            let changed = 0;
+            this.players.forEach(p => {
+                const fresh = byCard[this.scorecards[p.id]];
+                if (fresh && fresh.handicap != null && Number(fresh.handicap) !== Number(p.handicap)) {
+                    console.log(`[LiveScorecard] 🔄 Handicap refreshed from DB: ${p.name || p.id} ${p.handicap} → ${fresh.handicap}`);
+                    p.handicap = Number(fresh.handicap);
+                    changed++;
+                }
+            });
+            if (changed) {
+                this.saveRoundState();   // snapshot carries the fresh value forward
+                try { this.renderHole(); this.debouncedRefreshLeaderboard(); } catch (e) {}
+            }
+        } catch (e) { console.warn('[LiveScorecard] handicap refresh failed (non-fatal):', e); }
     }
 
     // One-tap match-play recovery when the setup state was lost (renders in the empty leaderboard state)

@@ -6561,6 +6561,22 @@
             -webkit-overflow-scrolling:touch; scrollbar-width:none; }
         #golferEventsFilterBar .gefb-rail::-webkit-scrollbar { display:none; }
         #golferEventsFilterBar .gefb-rail > * { flex:0 0 auto; white-space:nowrap; }
+        /* Two short rails (chips / controls): inline side-by-side when they fit, stacked rows
+           on phones — each scrolls a SHORT distance instead of one endless hidden line. */
+        #golferEventsFilterBar .gefb-rails { display:flex; flex-wrap:wrap; align-items:center;
+            column-gap:12px; row-gap:7px; }
+        #golferEventsFilterBar .gefb-rails .gefb-rail { flex:0 1 auto; min-width:0; max-width:100%; }
+        /* Edge fades — .can-l/.can-r are toggled by _wireHscroll ONLY while more content hides
+           in that direction, so the cut-off itself becomes the "there's more" cue. */
+        #golferEventsFilterBar .gefb-fade { --fadeL:0px; --fadeR:0px;
+            -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 var(--fadeL),#000 calc(100% - var(--fadeR)),transparent 100%);
+            mask-image:linear-gradient(90deg,transparent 0,#000 var(--fadeL),#000 calc(100% - var(--fadeR)),transparent 100%); }
+        #golferEventsFilterBar .gefb-fade.can-l { --fadeL:26px; }
+        #golferEventsFilterBar .gefb-fade.can-r { --fadeR:26px; }
+        /* Gentle snap stops + no page-swipe interference while side-scrolling */
+        #golferEventsFilterBar .gefb-soc, #golferEventsFilterBar .gefb-rail {
+            scroll-snap-type:x proximity; overscroll-behavior-x:contain; scroll-padding-left:4px; }
+        #golferEventsFilterBar .gefb-soc > *, #golferEventsFilterBar .gefb-rail > * { scroll-snap-align:start; }
         #golferEventsFilterBar .gefb-div { width:1px; height:22px; background:var(--g-hair); margin:0 2px; }
         /* Selects as compact pills. font-size stays 16px (inherited rule — iOS focus-zoom guard);
            width is capped instead so the rail stays tight. */
@@ -48379,7 +48395,12 @@ Waitlist (${waitlist.length} people):`;
                             </span>
                         </div>
 
-                        <div class="gefb-rail">
+                        <!-- Two short rails instead of one endless scroll: chips / controls.
+                             Inline side-by-side when they fit (desktop), stacked rows on phones.
+                             Each rail edge-fades (gefb-fade, wired by _wireHscroll) when more
+                             content hides in that direction. -->
+                        <div class="gefb-rails">
+                        <div class="gefb-rail" id="gefbRailChips">
                             <button onclick="GolferEventsSystem.setQuickFilter('all')" id="golferEventsChipAll"
                                     class="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 border-2 border-green-500">
                                 All
@@ -48400,9 +48421,9 @@ Waitlist (${waitlist.length} people):`;
                                     class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 hover:bg-orange-50 hover:text-orange-700">
                                 <span class="material-symbols-outlined" style="font-size:inherit;vertical-align:middle;line-height:1;">assignment</span> Waitlist
                             </button>
+                        </div>
 
-                            <span class="gefb-div"></span>
-
+                        <div class="gefb-rail" id="gefbRailCtl">
                             <select id="societyEventDateFilter" onchange="GolferEventsSystem.applyFilters()"
                                     class="py-1 px-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
                                 <option value="upcoming">Upcoming</option>
@@ -48437,6 +48458,7 @@ Waitlist (${waitlist.length} people):`;
                             <button onclick="GolferEventsSystem.toggleDay(6)" id="dayFilterSat" class="w-7 h-7 rounded-full text-xs font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">S</button>
                             <button onclick="GolferEventsSystem.toggleDay(0)" id="dayFilterSun" class="w-7 h-7 rounded-full text-xs font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">S</button>
                         </div>
+                        </div><!-- /gefb-rails -->
 
                         <!-- Follow manager (opened from the tune tile in the logo strip) -->
                         <div id="societySelectorPanel" class="gefb-mng" style="display: none;">
@@ -116943,9 +116965,12 @@ class GolferEventsManager {
         const counts = this._socData.counts;
         const subscribed = this.subscribedSocieties || [];
         const names = Object.keys(counts);
-        // Subscribed societies first (even with 0 events), then the rest that have events, busiest first
-        const subs = names.filter(n => subscribed.includes(n)).sort((a, b) => a.localeCompare(b));
-        const rest = names.filter(n => !subscribed.includes(n) && counts[n] > 0)
+        // TRGG is PINNED as the first society tile (Pete 2026-07-30: permanently on the left).
+        // After it: subscribed societies (even with 0 events), then the rest w/ events, busiest first.
+        const TRGG_PIN = 'Travellers Rest Golf Group';
+        const pinned = names.filter(n => n === TRGG_PIN);
+        const subs = names.filter(n => n !== TRGG_PIN && subscribed.includes(n)).sort((a, b) => a.localeCompare(b));
+        const rest = names.filter(n => n !== TRGG_PIN && !subscribed.includes(n) && counts[n] > 0)
             .sort((a, b) => (counts[b] - counts[a]) || a.localeCompare(b));
 
         const tile = (value, label, inner, count) => `
@@ -116961,6 +116986,7 @@ class GolferEventsManager {
         };
 
         let html = tile('all', T('gefb.all', 'All'), '<span class="material-symbols-outlined">apps</span>', 0);
+        pinned.forEach(n => { html += tile(n, n, logoInner(n), counts[n]); });
         subs.forEach(n => { html += tile(n, n, logoInner(n), counts[n]); });
         rest.forEach(n => { html += tile(n, n, logoInner(n), counts[n]); });
         if (this._socData.privateCount > 0) {
@@ -116981,6 +117007,11 @@ class GolferEventsManager {
                 this.selectSocietyTile(v);
             });
         }
+
+        // Side-scroll affordances: edge fades + wheel support on the logo strip and both rails
+        this._wireHscroll(rail);
+        this._wireHscroll(document.getElementById('gefbRailChips'));
+        this._wireHscroll(document.getElementById('gefbRailCtl'));
     }
 
     selectSocietyTile(value) {
@@ -116990,6 +117021,42 @@ class GolferEventsManager {
         if (!select.value) select.value = 'all'; // value missing from options → fail back to All
         this.applyFilters();
         this.renderSocietyRail();
+    }
+
+    // Horizontal-scroll affordances for the GEFB rails: edge fades appear ONLY while more
+    // content hides in that direction, and a mouse wheel scrolls the rail sideways on desktop.
+    // Wired once per element; safe to re-call (re-syncs fade state after re-renders).
+    _wireHscroll(el) {
+        if (!el) return;
+        if (el.dataset.hswired) { this._updateHscroll(el); return; }
+        el.dataset.hswired = '1';
+        el.classList.add('gefb-fade');
+        const upd = () => this._updateHscroll(el);
+        el.addEventListener('scroll', upd, { passive: true });
+        window.addEventListener('resize', upd);
+        // ResizeObserver fires AFTER layout — window.resize alone can measure pre-reflow and
+        // leave a stale right-fade eating the last chip (seen going 390px → desktop width)
+        if (window.ResizeObserver) new ResizeObserver(upd).observe(el);
+        // The browse pane can be display:none when this first runs (widths read 0) —
+        // re-measure when the rail actually becomes visible
+        if (window.IntersectionObserver) {
+            new IntersectionObserver(entries => {
+                entries.forEach(en => { if (en.isIntersecting) upd(); });
+            }).observe(el);
+        }
+        el.addEventListener('wheel', (e) => {
+            if (el.scrollWidth <= el.clientWidth) return;
+            if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // trackpads already go sideways
+            el.scrollLeft += e.deltaY;
+            e.preventDefault();
+        }, { passive: false });
+        upd();
+    }
+
+    _updateHscroll(el) {
+        const max = el.scrollWidth - el.clientWidth;
+        el.classList.toggle('can-l', el.scrollLeft > 2);
+        el.classList.toggle('can-r', max > 2 && el.scrollLeft < max - 2);
     }
 
     filterEvents() {

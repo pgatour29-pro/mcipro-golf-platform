@@ -87553,10 +87553,20 @@ class LiveScorecardSystem {
             }
             console.log('[LiveScorecard] 📸 Cache snapshot at round completion:', cacheSnapshot);
 
-            // Prepare players with valid scores for parallel saving
+            // Prepare players with valid scores for parallel saving.
+            // DEDUPE by id (Green Valley 2026-07-30): ghost duplicate entries in this.players
+            // each queued a PARALLEL saveRoundToHistory — its duplicate check is a read-then-
+            // insert, so two simultaneous saves for the same golfer raced past it and wrote
+            // TWO rounds rows (double leaderboard entries). One save per unique id, always.
             const playersToSave = [];
+            const _queuedIds = new Set();
             for (const player of this.players) {
                 const playerId = player.lineUserId || player.id;
+                if (playerId && _queuedIds.has(String(playerId))) {
+                    console.log(`[LiveScorecard] Skipping duplicate entry for ${player.name} (${playerId})`);
+                    continue;
+                }
+                if (playerId) _queuedIds.add(String(playerId));
                 if (!playerId || playerId.trim() === '') {
                     console.log(`[LiveScorecard] Skipping ${player.name} - no player ID`);
                     continue;

@@ -130848,36 +130848,52 @@ window.TeeSheet = {
             return Array.isArray(s.round_event_ids) && s.round_event_ids.map(String).indexOf(idStr) !== -1;
         }) || null;
     },
+    // The COMPLETE field for a series build: this round's registrations + anyone already grouped
+    // + unassigned typed names (manualPool) + the whole series FIELD tray (suggestPool — every
+    // player entered in any round, already pruned of placed/dismissed). Deduped by id AND
+    // normalized name; '' ids never collide (name key carries those). Placing tray players into
+    // groups auto-registers them on this round via _saveGroups → _syncRegistrations.
+    _fieldSweep: function(){
+        var self = this, all = [], seen = {};
+        var mark = function(p){ if (p.playerId) seen['i'+String(p.playerId)] = 1;
+            var n = self._normName(p.playerName||''); if (n) seen['n'+n] = 1; };
+        var isSeen = function(p){ return (p.playerId && seen['i'+String(p.playerId)]) ||
+            (self._normName(p.playerName||'') && seen['n'+self._normName(p.playerName||'')]); };
+        var add = function(p){ if (isSeen(p)) return; mark(p);
+            all.push({ playerId: p.playerId, playerName: p.playerName, handicap: (p.handicap==null?null:p.handicap) }); };
+        this.regs.forEach(add);
+        this.groups.forEach(function(g){ (g.players||[]).forEach(add); });
+        this.manualPool.forEach(add);
+        this.suggestPool.forEach(add);
+        return all;
+    },
     // True RANDOM DRAW (series days 1-2 of King of the Mountain): Fisher-Yates shuffle of the
-    // field, ignoring Play-Together units — every draw is a fresh deal. Replaces current groups.
+    // ENTIRE field — registrations, grouped, typed names AND the series FIELD tray — ignoring
+    // Play-Together units. Every draw is a fresh deal; replaces current groups.
     autoGroupRandom: function(){
-        var self = this, size = this._groupSize || 4;
-        var all = this.regs.map(function(r){ return { playerId:r.playerId, playerName:r.playerName, handicap:r.handicap }; });
-        var seen = {}; all.forEach(function(p){ seen['i'+String(p.playerId)] = 1; if(p.playerName) seen['n'+self._normName(p.playerName)] = 1; });
-        this.groups.forEach(function(g){ (g.players||[]).forEach(function(p){
-            var k1='i'+String(p.playerId), k2='n'+self._normName(p.playerName||'');
-            if (!seen[k1] && !seen[k2]) { seen[k1]=1; seen[k2]=1; all.push(p); }
-        }); });
-        if (!all.length) { NotificationManager.show('No players on this round yet', 'warning'); return; }
-        if (!confirm('Random draw for ' + all.length + ' players — this replaces the current groups. Continue?')) return;
+        var size = this._groupSize || 4;
+        var all = this._fieldSweep();
+        if (!all.length) { window.NotificationManager.show('No players on this round yet', 'warning'); return; }
+        if (!confirm('Random draw for ' + all.length + ' players (whole field, including the list) — this replaces the current groups. Continue?')) return;
         for (var i = all.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = all[i]; all[i] = all[j]; all[j] = t; }
         var gs = []; for (var k = 0; k < all.length; k += size) gs.push({ players: all.slice(k, k + size), teeTime:'', teeFixed:false, startNine:null, secondNine:null });
         while (gs.length < 12) gs.push({ players: [], teeTime: '', teeFixed: false });
         this.groups = gs; this.manualPool = [];
         this._saveGroups(); this.render();
-        NotificationManager.show('Random draw complete — ' + all.length + ' players dealt', 'success');
+        window.NotificationManager.show('Random draw complete — ' + all.length + ' players dealt', 'success');
     },
     // Rebuild the groups from the series Order-of-Merit standings (sum of points_earned across the
-    // series' published rounds). Leaders can go out LAST (tournament convention) or FIRST.
+    // series' published rounds). Sweeps the ENTIRE field (incl. the FIELD tray), then a proper
+    // chooser asks: leaders tee off FIRST, or LAST in reverse order (tournament convention).
     autoGroupStandings: async function(){
         var s = this._series; if (!s) return;
-        var self = this, size = this._groupSize || 4;
+        var self = this;
         var ids = (s.round_event_ids || []).map(String);
         var res;
         try { res = await SupabaseDB.client.from('event_results').select('event_id,player_id,player_name,points_earned').in('event_id', ids); }
-        catch(e){ NotificationManager.show('Could not load series results', 'error'); return; }
+        catch(e){ window.NotificationManager.show('Could not load series results', 'error'); return; }
         var rows = (res && res.data) || [];
-        if (!rows.length) { NotificationManager.show('No published results yet for ' + (s.name||'this series'), 'warning'); return; }
+        if (!rows.length) { window.NotificationManager.show('No published results yet for ' + (s.name||'this series'), 'warning'); return; }
         var pts = {};
         rows.forEach(function(r){
             var keys = [];
@@ -130887,27 +130903,57 @@ window.TeeSheet = {
             keys.forEach(function(k){ pts[k] = (pts[k]||0) + v; });
         });
         var ptsOf = function(p){
-            if (p.playerId != null && pts['i'+String(p.playerId)] != null) return pts['i'+String(p.playerId)];
+            if (p.playerId && pts['i'+String(p.playerId)] != null) return pts['i'+String(p.playerId)];
             var n = self._normName(p.playerName);
             return (n && pts['n'+n] != null) ? pts['n'+n] : 0;
         };
-        // Today's field = this round's registrations (plus anyone already manually grouped).
-        var all = this.regs.map(function(r){ return { playerId:r.playerId, playerName:r.playerName, handicap:r.handicap }; });
-        var seen = {}; all.forEach(function(p){ seen['i'+String(p.playerId)] = 1; if(p.playerName) seen['n'+self._normName(p.playerName)] = 1; });
-        this.groups.forEach(function(g){ (g.players||[]).forEach(function(p){
-            var k1='i'+String(p.playerId), k2='n'+self._normName(p.playerName||'');
-            if (!seen[k1] && !seen[k2]) { seen[k1]=1; seen[k2]=1; all.push(p); }
-        }); });
-        if (!all.length) { NotificationManager.show('No players on this round yet', 'warning'); return; }
+        var all = this._fieldSweep();
+        if (!all.length) { window.NotificationManager.show('No players on this round yet', 'warning'); return; }
         all.sort(function(a,b){ return (ptsOf(b)-ptsOf(a)) || String(a.playerName||'').localeCompare(String(b.playerName||'')); });
-        var leadersLast = confirm((s.name||'Series') + ' standings loaded for ' + all.length + ' players.\n\nOK = leaders tee off LAST (final groups)\nCancel = leaders tee off FIRST');
-        var chunks = []; for (var i=0; i<all.length; i+=size) chunks.push(all.slice(i, i+size));
+        this._seedPending = { list: all, name: s.name || 'Series' };
+        this._seedShowChooser(all, ptsOf);
+    },
+    // Leaders-first / leaders-last chooser (replaces the old hidden confirm() — Pete wants a
+    // visible choice). Body-mounted fixed overlay so no transform ancestor can trap it.
+    _seedShowChooser: function(all, ptsOf){
+        var esc = function(x){ return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+        var old = document.getElementById('tsSeedPick'); if (old) old.remove();
+        var top3 = all.slice(0, 3).map(function(p, i){ return (i+1) + '. ' + (p.playerName||'?') + ' — ' + ptsOf(p) + ' pts'; }).join('<br>');
+        var btn = 'width:100%;display:flex;align-items:center;gap:10px;text-align:left;border:1.5px solid #d1d5db;background:#fff;border-radius:12px;padding:12px 14px;cursor:pointer;margin-top:8px;';
+        var m = document.createElement('div');
+        m.id = 'tsSeedPick';
+        m.style.cssText = 'position:fixed;inset:0;z-index:100060;background:rgba(10,13,16,.62);display:flex;align-items:center;justify-content:center;padding:16px;';
+        m.innerHTML =
+            '<div style="background:#fff;border-radius:16px;max-width:440px;width:100%;padding:18px;box-shadow:0 24px 60px rgba(0,0,0,.4);font-family:\'Instrument Sans\',sans-serif;">' +
+                '<div style="font-weight:700;font-size:15px;color:#10151B;">' + esc(this._seedPending.name) + ' — seed ' + all.length + ' players</div>' +
+                '<div style="font-size:11.5px;line-height:1.6;color:#5C6875;margin:6px 0 10px;">' + top3 + '</div>' +
+                '<button onclick="TeeSheet._seedApply(false)" style="' + btn + '">' +
+                    '<span class="material-symbols-outlined" style="color:#16a34a;">arrow_upward</span>' +
+                    '<span><b style="font-size:13px;color:#10151B;">LEADERS FIRST</b><br><span style="font-size:11px;color:#5C6875;">Top of the standings tee off in Group 1</span></span></button>' +
+                '<button onclick="TeeSheet._seedApply(true)" style="' + btn + '">' +
+                    '<span class="material-symbols-outlined" style="color:#16a34a;">arrow_downward</span>' +
+                    '<span><b style="font-size:13px;color:#10151B;">LEADERS LAST</b><br><span style="font-size:11px;color:#5C6875;">Reverse order — leaders go out in the final group</span></span></button>' +
+                '<button onclick="TeeSheet._seedCancel()" style="width:100%;border:0;background:none;color:#5C6875;font-size:12px;font-weight:600;padding:10px 0 2px;cursor:pointer;">Cancel</button>' +
+            '</div>';
+        m.addEventListener('click', function(e){ if (e.target === m) TeeSheet._seedCancel(); });
+        document.body.appendChild(m);
+    },
+    _seedApply: function(leadersLast){
+        var m = document.getElementById('tsSeedPick'); if (m) m.remove();
+        var pend = this._seedPending; this._seedPending = null;
+        if (!pend || !pend.list || !pend.list.length) return;
+        var size = this._groupSize || 4;
+        var chunks = []; for (var i = 0; i < pend.list.length; i += size) chunks.push(pend.list.slice(i, i + size));
         if (leadersLast) chunks.reverse();
-        var gs = chunks.map(function(c){ return { players:c, teeTime:'', teeFixed:false, startNine:null, secondNine:null }; });
+        var gs = chunks.map(function(c){ return { players: c, teeTime:'', teeFixed:false, startNine:null, secondNine:null }; });
         while (gs.length < 12) gs.push({ players: [], teeTime: '', teeFixed: false });
         this.groups = gs; this.manualPool = [];
         this._saveGroups(); this.render();
-        NotificationManager.show('Groups arranged by ' + (s.name||'series') + ' standings — leaders ' + (leadersLast?'last':'first'), 'success');
+        window.NotificationManager.show('Groups arranged by ' + pend.name + ' standings — leaders ' + (leadersLast ? 'last (reverse order)' : 'first'), 'success');
+    },
+    _seedCancel: function(){
+        var m = document.getElementById('tsSeedPick'); if (m) m.remove();
+        this._seedPending = null;
     },
     _loadRegulars: async function(ev){
         var self=this, evId=this.eventId;

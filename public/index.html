@@ -6573,10 +6573,17 @@
             mask-image:linear-gradient(90deg,transparent 0,#000 var(--fadeL),#000 calc(100% - var(--fadeR)),transparent 100%); }
         #golferEventsFilterBar .gefb-fade.can-l { --fadeL:26px; }
         #golferEventsFilterBar .gefb-fade.can-r { --fadeR:26px; }
-        /* Gentle snap stops + no page-swipe interference while side-scrolling */
-        #golferEventsFilterBar .gefb-soc, #golferEventsFilterBar .gefb-rail {
-            scroll-snap-type:x proximity; overscroll-behavior-x:contain; scroll-padding-left:4px; }
-        #golferEventsFilterBar .gefb-soc > *, #golferEventsFilterBar .gefb-rail > * { scroll-snap-align:start; }
+        /* Logo strip keeps gentle snap (uniform tiles — feels good). The control rails scroll
+           FREE: snap across mixed-width items (wide selects + small day dots) tugged the scroll
+           toward uneven stop points mid-swipe and felt notchy. No snap = native momentum only. */
+        #golferEventsFilterBar .gefb-soc, #golferEventsFilterBar .gefb-rail { overscroll-behavior-x:contain; }
+        #golferEventsFilterBar .gefb-soc { scroll-snap-type:x proximity; scroll-padding-left:4px; }
+        #golferEventsFilterBar .gefb-soc > * { scroll-snap-align:start; }
+        /* Tighter controls row = less distance to scroll at phone width */
+        #golferEventsFilterBar #gefbRailCtl { gap:5px; }
+        #golferEventsFilterBar #gefbRailCtl select { padding:4px 7px !important; }
+        #eventsViewBrowseContent [id^="dayFilter"] { width:26px !important; height:26px !important;
+            font-size:11px !important; padding:0 !important; flex:0 0 auto; }
         #golferEventsFilterBar .gefb-div { width:1px; height:22px; background:var(--g-hair); margin:0 2px; }
         /* Selects as compact pills. font-size stays 16px (inherited rule — iOS focus-zoom guard);
            width is capped instead so the rail stays tight. */
@@ -117047,7 +117054,7 @@ class GolferEventsManager {
         el.addEventListener('wheel', (e) => {
             if (el.scrollWidth <= el.clientWidth) return;
             if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // trackpads already go sideways
-            el.scrollLeft += e.deltaY;
+            el.scrollBy({ left: e.deltaY, behavior: 'smooth' }); // glide, not jump-per-notch
             e.preventDefault();
         }, { passive: false });
         upd();

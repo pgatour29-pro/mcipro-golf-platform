@@ -770,9 +770,10 @@ INSERT INTO course_holes (course_id, hole_number, tee_marker, par, stroke_index,
 
 -- burapha (nine_hole table; B-Belfry red column kept — site row corrupted)
 UPDATE nine_hole SET par=4, hcp=14, blue=361, white=334, yellow=301, red=277 WHERE course_nine_id=5 AND hole=1;
-UPDATE nine_hole SET par=4, hcp=8, blue=418, white=393, yellow=369, red=338 WHERE course_nine_id=5 AND hole=2;
+-- A holes 2/4 hcp: site prints them SWAPPED; physical club card (Pete, 2026-07-31) = A2:6, A4:8.
+UPDATE nine_hole SET par=4, hcp=6, blue=418, white=393, yellow=369, red=338 WHERE course_nine_id=5 AND hole=2;
 UPDATE nine_hole SET par=3, hcp=18, blue=171, white=131, yellow=131, red=108 WHERE course_nine_id=5 AND hole=3;
-UPDATE nine_hole SET par=4, hcp=6, blue=421, white=392, yellow=363, red=338 WHERE course_nine_id=5 AND hole=4;
+UPDATE nine_hole SET par=4, hcp=8, blue=421, white=392, yellow=363, red=338 WHERE course_nine_id=5 AND hole=4;
 UPDATE nine_hole SET par=5, hcp=12, blue=581, white=561, yellow=550, red=488 WHERE course_nine_id=5 AND hole=5;
 UPDATE nine_hole SET par=3, hcp=16, blue=198, white=178, yellow=176, red=150 WHERE course_nine_id=5 AND hole=6;
 UPDATE nine_hole SET par=5, hcp=10, blue=558, white=538, yellow=507, red=437 WHERE course_nine_id=5 AND hole=7;

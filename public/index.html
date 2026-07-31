@@ -105652,8 +105652,10 @@ const TRGGHandicapPaste = {
         // MANUAL-locked handicaps (human overrides / non-members set by hand — e.g. a walk-on who shares a
         // name with a member) must NOT be swept by the name-matched master import. Exclude them from matching
         // so the master value lands on the REAL member instead, and never overwrite or duplicate a locked person.
+        // Lock = MANUAL on the TRGG row ONLY; a MANUAL universal/anchor row must not block the master import
+        // (it silently froze Richard Moore at 12.3 while the master moved to 12.9, 2026-07-31).
         const lockedIds=new Set(); const lockedKeys=new Set();
-        try { const lr=await sb.from('society_handicaps').select('golfer_id').eq('calculation_method','MANUAL'); (lr.data||[]).forEach(x=>{ if(x.golfer_id) lockedIds.add(x.golfer_id); }); }
+        try { const lr=await sb.from('society_handicaps').select('golfer_id').eq('calculation_method','MANUAL').eq('society_id',SID); (lr.data||[]).forEach(x=>{ if(x.golfer_id) lockedIds.add(x.golfer_id); }); }
         catch(e){ console.warn('[TRGG Paste] locked-handicap load failed', e); }
         const byKey={}; profs.forEach(p=>{ const k=nameKey(p.name); if(!k) return; if(lockedIds.has(p.line_user_id)){ lockedKeys.add(k); return; } (byKey[k]=byKey[k]||[]).push(p); });
         const profById={}; profs.forEach(p=>{ profById[p.line_user_id]=p; });

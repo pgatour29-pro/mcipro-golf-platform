@@ -82,8 +82,10 @@
       }
       // MANUAL-locked handicaps (hand-set overrides / non-members that share a member's name) must not be
       // swept by the name match — exclude them so the master value lands on the real member, never on them.
+      // Lock = MANUAL on the TRGG row ONLY; a MANUAL universal/anchor row must not block the master import
+      // (it silently froze Richard Moore at 12.3 while the master moved to 12.9, 2026-07-31).
       const lockedIds = new Set(); const lockedKeys = new Set();
-      try { const lr = await rest('society_handicaps?select=golfer_id&calculation_method=eq.MANUAL'); if (lr.ok) (await lr.json()).forEach(x => { if (x.golfer_id) lockedIds.add(x.golfer_id); }); } catch (e) { console.warn('[TRGG pull] locked load failed', e); }
+      try { const lr = await rest(`society_handicaps?select=golfer_id&calculation_method=eq.MANUAL&society_id=eq.${SID}`); if (lr.ok) (await lr.json()).forEach(x => { if (x.golfer_id) lockedIds.add(x.golfer_id); }); } catch (e) { console.warn('[TRGG pull] locked load failed', e); }
       const byKey = {}; profs.forEach(p => { const k = nameKey(p.name); if (!k) return; if (lockedIds.has(p.line_user_id)) { lockedKeys.add(k); return; } (byKey[k] = byKey[k] || []).push(p); });
       const profById = {}; profs.forEach(p => profById[p.line_user_id] = p);
       const used = {}; let lockedSkipped = 0;

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Pull TRGG Handicaps → MyCaddiPro
 // @namespace    mycaddipro.trgg
-// @version      1.0
-// @description  Adds a button to the masterscore handicap list that scrapes it and pushes the handicaps into MyCaddiPro (same match + upsert as the in-app paste tool, including ADDING new names to the directory). Works on desktop AND Android.
+// @version      2.0
+// @description  Adds a button to the masterscore handicap list that runs the LATEST MyCaddiPro puller straight from mycaddipro.com (scrape + match + upsert, including adding new names). Works on desktop AND Android.
 // @match        https://www.masterscoreboard.co.uk/*
 // @match        https://masterscoreboard.co.uk/*
 // @run-at       document-idle
@@ -14,186 +14,23 @@
 // file → Save. Then open the masterscore handicap list; a green
 // "⛳ Update MyCaddiPro" button appears bottom-right — tap it.
 // Desktop is the same in any browser with Tampermonkey/Violentmonkey.
+//
+// v2.0: the button is a LOADER — it injects
+//   https://mycaddipro.com/tools/pull-trgg-handicaps.js
+// at click time, so this userscript NEVER goes stale (the old inlined copy ran
+// with a pre-v778 lock on 2026-07-31 and silently skipped players). You should
+// never need to update this file again; the confirm dialog shows the puller
+// version that actually ran.
 (function () {
   'use strict';
 
-  const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
-  const KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
-  const SID = '7c0e4b72-d925-44bc-afda-38259a7ba346'; // Travellers Rest Golf Group
-
-  const H = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };
-  const rest = (path, opts = {}) =>
-    fetch(SUPABASE_URL + '/rest/v1/' + path, { ...opts, headers: { ...H, ...(opts.headers || {}) } });
-  const nameKey = s => String(s == null ? '' : s).toLowerCase()
-    .replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9]+/g, ' ')
-    .trim().split(/\s+/).filter(Boolean).sort().join(' ');
-  const toNum = raw => { raw = String(raw).trim(); const neg = raw[0] === '+';
-    const n = parseFloat(raw.replace('+', '')); return isNaN(n) ? null : (neg ? -Math.abs(n) : n); };
-  const chunk = (a, n) => { const o = []; for (let i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o; };
-
-  function scrape() {
-    const out = [], seen = new Set();
-    const push = (name, val) => {
-      name = String(name || '').trim();
-      const num = toNum(val);
-      if (!name || num == null || !/[a-zA-Z]{2,}/.test(name)) return;
-      // Section-header rows ("Division 1  17.0") are not people — they became phantom
-      // profiles on the 2026-07-28 pull. Only rows whose WHOLE name is a header word
-      // (+ optional number) are rejected, so real surnames can never hit this.
-      if (/^(division|flight|grade|section|class|overall|total|average|handicap|hcp|index|name|player)\s*\d*$/i.test(name)) return;
-      if (num < -10 || num > 54) return;
-      if (seen.has(name)) return; seen.add(name);
-      out.push({ name, num, key: nameKey(name) });
+  function load() {
+    var s = document.createElement('script');
+    s.src = 'https://mycaddipro.com/tools/pull-trgg-handicaps.js?v=' + Date.now();
+    s.onerror = function () {
+      alert('Could not load the TRGG puller from mycaddipro.com — check the connection, or paste tools/pull-trgg-handicaps.js into the console instead.');
     };
-    document.querySelectorAll('tr').forEach(tr => {
-      const cells = [...tr.querySelectorAll('td')].map(td => td.textContent.replace(/ /g, ' ').trim()).filter(Boolean);
-      if (cells.length < 2) return;
-      for (let i = 1; i < cells.length; i++) {
-        if (/^[+\-]?\d+\.?\d*$/.test(cells[i])) { push(cells[i - 1] || cells[0], cells[i]); break; }
-      }
-    });
-    if (out.length === 0) {
-      document.body.innerText.split('\n').forEach(line => {
-        const m = line.trim().match(/^([A-Za-z][A-Za-z\s,.\-'()]+?)\s{2,}([+\-]?\d+\.?\d*)$/);
-        if (m) push(m[1], m[2]);
-      });
-    }
-    return out;
-  }
-
-  async function run(btn) {
-    const setBtn = t => { if (btn) btn.textContent = t; };
-    try {
-      const entries = scrape();
-      if (!entries.length) {
-        alert('Found 0 handicaps on this page.\n\nMake sure you are on the TRGG handicap LIST page (not the login/menu). If the list is clearly visible, send Pete/Claude a screenshot or a row of the page and the scraper can be tuned.');
-        return;
-      }
-      if (!confirm(`Scraped ${entries.length} players from masterscore.\n\n` +
-          entries.slice(0, 6).map(e => `  ${e.name} — ${e.num}`).join('\n') +
-          `\n  …\n\nApply these to MyCaddiPro now?`)) return;
-
-      setBtn('Loading players…');
-      let profs = [];
-      for (let off = 0; ; off += 1000) {
-        const r = await rest(`user_profiles?select=line_user_id,name,profile_data,handicap_index&limit=1000&offset=${off}`);
-        if (!r.ok) { alert('Could not load players: ' + r.status + ' ' + (await r.text())); return; }
-        const d = await r.json(); profs = profs.concat(d); if (d.length < 1000) break;
-      }
-      // MANUAL-locked handicaps (hand-set overrides / non-members that share a member's name) must not be
-      // swept by the name match — exclude them so the master value lands on the real member, never on them.
-      // Lock = MANUAL on the TRGG row ONLY; a MANUAL universal/anchor row must not block the master import
-      // (it silently froze Richard Moore at 12.3 while the master moved to 12.9, 2026-07-31).
-      const lockedIds = new Set(); const lockedKeys = new Set();
-      try { const lr = await rest(`society_handicaps?select=golfer_id&calculation_method=eq.MANUAL&society_id=eq.${SID}`); if (lr.ok) (await lr.json()).forEach(x => { if (x.golfer_id) lockedIds.add(x.golfer_id); }); } catch (e) { console.warn('[TRGG pull] locked load failed', e); }
-      const byKey = {}; profs.forEach(p => { const k = nameKey(p.name); if (!k) return; if (lockedIds.has(p.line_user_id)) { lockedKeys.add(k); return; } (byKey[k] = byKey[k] || []).push(p); });
-      const profById = {}; profs.forEach(p => profById[p.line_user_id] = p);
-      const used = {}; let lockedSkipped = 0;
-      const aliasMap = {};
-      try { const ar = await rest('trgg_handicap_alias?select=alias_key,golfer_id'); if (ar.ok) (await ar.json()).forEach(a => aliasMap[a.alias_key] = a.golfer_id); } catch (e) {}
-
-      // Exact raw-name pass FIRST: the master list can carry BOTH token orders of one name pair as
-      // two DIFFERENT golfers ("Jin, Yun Jong" AND "Jong, Jin Yun"). Order-independent matching
-      // alone crosses their handicaps or re-creates one every pull (daily dup loop, 2026-07-28).
-      const ordKey = s => String(s == null ? '' : s).toLowerCase()
-        .replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
-      const byOrd = {}; Object.keys(byKey).forEach(k => byKey[k].forEach(p => { const o = ordKey(p.name); if (o) (byOrd[o] = byOrd[o] || []).push(p); }));
-      const usedIds = new Set(); const exactPick = {};
-      for (const e of entries) { if (aliasMap[e.key]) continue; const cands = byOrd[ordKey(e.name)] || []; const p = cands.find(x => !usedIds.has(x.line_user_id)); if (p) { usedIds.add(p.line_user_id); exactPick[e.name] = p; } }
-      const profUpd = [], shRows = [], newbies = []; let matched = 0;
-      const stamp = new Date().toISOString();
-      for (const e of entries) {
-        let p = null;
-        const aliasId = aliasMap[e.key];
-        if (aliasId && profById[aliasId]) {
-          if (lockedIds.has(aliasId)) { lockedSkipped++; continue; }   // manual override — leave it alone
-          p = profById[aliasId];
-        } else {
-          p = exactPick[e.name] || null;
-          if (!p) { const list = byKey[e.key] || []; let i = used[e.key] || 0; while (i < list.length) { const c = list[i++]; if (!usedIds.has(c.line_user_id)) { p = c; break; } } used[e.key] = i; if (p) usedIds.add(p.line_user_id); }
-        }
-        if (!p) { if (lockedKeys.has(e.key)) { lockedSkipped++; continue; } newbies.push(e); continue; }
-        matched++;
-        const pd = Object.assign({}, p.profile_data || {}); pd.handicap = e.num;
-        const cur = p.handicap_index == null ? null : parseFloat(p.handicap_index);
-        if (cur !== e.num || (p.profile_data || {}).handicap !== e.num)
-          profUpd.push({ id: p.line_user_id, hcp: e.num, pd });
-        shRows.push({ golfer_id: p.line_user_id, society_id: SID, handicap_index: e.num, calculation_method: 'TRGG-masterscoreboard', last_calculated_at: stamp });
-      }
-
-      // NEW names → create them (confirm exactly who, first). Mirrors TRGGHandicapPaste:
-      // TRGG-HCP-… profile (→ TRGG Directory non-member) + society_members + handicap;
-      // a name uniquely matching an UNLINKED trgg_members row links that roster row instead.
-      let skippedNew = 0;
-      if (newbies.length && !confirm(`${newbies.length} NEW name(s) are not in MyCaddiPro yet:\n\n  ` +
-          newbies.slice(0, 15).map(x => `${x.name} — ${x.num}`).join('\n  ') + (newbies.length > 15 ? '\n  …' : '') +
-          `\n\nOK = ADD them (profile + TRGG membership + handicap; they appear in the TRGG Directory as non-members).\nCancel = skip adding, just update the matched players.`)) {
-        skippedNew = newbies.length; newbies.length = 0;
-      }
-      const newProf = [], newMem = [], memLink = [];
-      if (newbies.length) {
-        const memByKey = {};
-        try { const mr = await rest('trgg_members?select=id,full_name,matched_user_id'); if (mr.ok) (await mr.json()).forEach(m => { if (m.matched_user_id) return; const k = nameKey(m.full_name); if (k) (memByKey[k] = memByKey[k] || []).push(m); }); } catch (e) {}
-        let seq = 0; const ts = Date.now();
-        for (const e of newbies) {
-          const gid = 'TRGG-HCP-' + ts + '-' + (++seq);
-          newProf.push({ line_user_id: gid, name: e.name, display_name: e.name, role: 'golfer', handicap_index: e.num, trgg_handicap: e.num, profile_data: { handicap: e.num, is_manual_entry: true }, society_name: 'Travellers Rest Golf Group' });
-          newMem.push({ id: crypto.randomUUID(), society_id: SID, golfer_id: gid, role: 'member', status: 'active', joined_at: stamp });
-          shRows.push({ golfer_id: gid, society_id: SID, handicap_index: e.num, calculation_method: 'TRGG-masterscoreboard', last_calculated_at: stamp });
-          const rows = memByKey[e.key] || [];
-          if (rows.length === 1) memLink.push({ rowId: rows[0].id, gid });
-        }
-      }
-
-      setBtn(`Writing ${profUpd.length + newProf.length}…`);
-      let newErr = 0;
-      for (const c of chunk(newProf, 200)) {
-        const r = await rest('user_profiles', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(c) });
-        if (!r.ok) newErr += c.length;
-      }
-      for (const c of chunk(newMem, 200)) {
-        try { await rest('society_members', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(c) }); } catch (e) {}
-      }
-      let rosterLinked = 0;
-      for (const l of memLink) {
-        try {
-          const r = await rest(`trgg_members?id=eq.${l.rowId}&matched_user_id=is.null`, {
-            method: 'PATCH', headers: { Prefer: 'return=representation' }, body: JSON.stringify({ matched_user_id: l.gid })
-          });
-          if (r.ok && (await r.json()).length) rosterLinked++;
-        } catch (e) {}
-      }
-      let profErr = 0;
-      for (const c of chunk(profUpd, 25)) {
-        await Promise.all(c.map(async u => {
-          const r = await rest(`user_profiles?line_user_id=eq.${encodeURIComponent(u.id)}`, {
-            method: 'PATCH', headers: { Prefer: 'return=minimal' },
-            body: JSON.stringify({ handicap_index: u.hcp, trgg_handicap: u.hcp, profile_data: u.pd })
-          });
-          if (!r.ok) profErr++;
-        }));
-      }
-      let shErr = 0;
-      for (const c of chunk(shRows, 300)) {
-        const r = await rest('society_handicaps?on_conflict=golfer_id,society_id', {
-          method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(c)
-        });
-        if (!r.ok) shErr++;
-      }
-      let regSync = 0;
-      try { const r = await rest('rpc/sync_upcoming_trgg_reg_handicaps', { method: 'POST', body: '{}' }); if (r.ok) regSync = await r.json(); } catch (e) {}
-
-      alert(`TRGG handicaps updated ✅\n\n` +
-        `Scraped:   ${entries.length}\nMatched:   ${matched}\nProfiles updated: ${profUpd.length}${profErr ? ' (' + profErr + ' failed)' : ''}\n` +
-        (newProf.length ? `Added NEW: ${newProf.length - newErr}${newErr ? ' (' + newErr + ' FAILED)' : ''}${rosterLinked ? ', ' + rosterLinked + ' linked to their member record' : ''} → in the TRGG Directory as non-members:\n  ` + newbies.slice(0, 20).map(x => x.name).join(', ') + (newbies.length > 20 ? ' …' : '') + '\n' : '') +
-        (skippedNew ? `New names SKIPPED (you cancelled): ${skippedNew}\n` : '') +
-        `Society rows: ${shRows.length}${shErr ? ' (some errors)' : ''}\nUpcoming regs synced: ${regSync}\n` +
-        (!newProf.length && !skippedNew ? '\nEveryone matched.' : ''));
-    } catch (err) {
-      alert('Error: ' + (err && err.message ? err.message : err));
-    } finally {
-      setBtn('⛳ Update MyCaddiPro');
-    }
+    (document.body || document.documentElement).appendChild(s);
   }
 
   function addButton() {
@@ -204,7 +41,7 @@
     b.textContent = '⛳ Update MyCaddiPro';
     b.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:2147483647;background:#22c55e;color:#062b16;' +
       'font:700 15px/1 system-ui,Arial;border:none;border-radius:12px;padding:15px 18px;box-shadow:0 4px 14px rgba(0,0,0,.35);cursor:pointer';
-    b.addEventListener('click', () => run(b));
+    b.addEventListener('click', load);
     document.body.appendChild(b);
   }
 

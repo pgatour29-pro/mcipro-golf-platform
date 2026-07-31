@@ -1,9 +1,15 @@
 #!/usr/bin/env node
-/* Regenerates the bookmarklet variants from the ONE source file so they can't drift:
- *   pull-trgg-handicaps.js  →  pull-trgg-handicaps.bookmarklet.txt  (javascript: one-liner)
+/* Publishes the puller + regenerates the bookmarklet from the ONE source file:
+ *   pull-trgg-handicaps.js  →  public/tools/pull-trgg-handicaps.js  (deployed at
+ *                              https://mycaddipro.com/tools/pull-trgg-handicaps.js)
+ *                           →  pull-trgg-handicaps.bookmarklet.txt  (LOADER — injects
+ *                              the deployed URL, so the bookmark never goes stale)
  *                           →  install-bookmarklet.html             (drag-to-bar page)
  * Run after ANY edit to pull-trgg-handicaps.js:
- *   node tools/build-bookmarklet.js          (uses npx terser to strip comments/minify)
+ *   node tools/build-bookmarklet.js
+ * The bookmarklet/userscript stopped inlining the logic in v780: a stale inlined
+ * bookmarklet ran hours after the v778 lock fix and re-froze the MANUAL-locked
+ * players (2026-07-31). A loader always executes whatever is deployed.
  */
 const { execFileSync } = require('child_process');
 const fs = require('fs');
@@ -11,13 +17,21 @@ const path = require('path');
 
 const dir = __dirname;
 const src = path.join(dir, 'pull-trgg-handicaps.js');
-const min = execFileSync('npx', ['--yes', 'terser', src, '--format', 'comments=false'], { encoding: 'utf8' }).trim();
-if (!min.startsWith('(async') && !min.startsWith('(async()')) {
-  console.error('Unexpected terser output head:', min.slice(0, 60));
-  process.exit(1);
-}
-const bookmarklet = 'javascript:' + min;
-fs.writeFileSync(path.join(dir, 'pull-trgg-handicaps.bookmarklet.txt'), bookmarklet + '\n');
+
+// syntax-check the source before publishing it anywhere
+execFileSync(process.execPath, ['--check', src], { stdio: 'inherit' });
+
+const pubDir = path.join(dir, '..', 'public', 'tools');
+fs.mkdirSync(pubDir, { recursive: true });
+// read+write, not copyFileSync — the copyfile syscall EPERMs on WSL drvfs mounts
+fs.writeFileSync(path.join(pubDir, 'pull-trgg-handicaps.js'), fs.readFileSync(src));
+
+const loader = "javascript:(()=>{var s=document.createElement('script');" +
+  "s.src='https://mycaddipro.com/tools/pull-trgg-handicaps.js?v='+Date.now();" +
+  "s.onerror=()=>alert('Could not load the TRGG puller from mycaddipro.com \\u2014 " +
+  "check the connection, or paste tools/pull-trgg-handicaps.js into the console instead.');" +
+  "(document.body||document.documentElement).appendChild(s)})()";
+fs.writeFileSync(path.join(dir, 'pull-trgg-handicaps.bookmarklet.txt'), loader + '\n');
 
 const escAttr = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const html = `<!doctype html><meta charset="utf-8"><title>Install: Pull TRGG Handicaps</title>
@@ -31,7 +45,8 @@ ol{padding-left:20px}code{background:#f1f5f9;padding:1px 6px;border-radius:4px}.
 <li>Go to the masterscore <b>handicap list</b> page (logged in, past Cloudflare).</li>
 <li>Click the <b>Pull TRGG Handicaps</b> bookmark. Confirm the count &rarr; done. NEW names are added to the directory automatically (you get a confirm listing them first).</li>
 </ol>
-<p style="margin:28px 0"><a class="btn" href="${escAttr(bookmarklet)}">Pull TRGG Handicaps</a> &nbsp;&larr; drag me to the bookmarks bar</p>
+<p>The bookmark is a <b>loader</b> &mdash; it always runs the latest puller straight from mycaddipro.com, so you never need to re-drag it after an update. The confirm dialog shows the puller version.</p>
+<p style="margin:28px 0"><a class="btn" href="${escAttr(loader)}">Pull TRGG Handicaps</a> &nbsp;&larr; drag me to the bookmarks bar</p>
 `;
 fs.writeFileSync(path.join(dir, 'install-bookmarklet.html'), html);
-console.log('Built bookmarklet (' + bookmarklet.length + ' chars) + install-bookmarklet.html');
+console.log('Published public/tools/pull-trgg-handicaps.js + loader bookmarklet (' + loader.length + ' chars) + install-bookmarklet.html');

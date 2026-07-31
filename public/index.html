@@ -6699,6 +6699,11 @@
         .scv3g-btn.guest { background:transparent; border:1px solid var(--g-grnD); color:var(--g-grnD);
             display:inline-flex; align-items:center; gap:3px; }
         .scv3g-btn.guest .material-symbols-outlined { font-size:12px; }
+        /* Tap feedback — registration surfaces must visibly press the instant they're touched
+           (Pete 2026-07-31: "hard to tell if it's tapped"). Scale+dim on :active, no delay. */
+        .scv3g-btn:active, .scv3g-mini button:active, #eventDetailModal button:active,
+        #eventsViewMyEventsContent button:active, #playersListModal button:active {
+            transform: scale(.95); filter: brightness(.88); transition: transform .05s ease, filter .05s ease; }
         .scv3g-mini { display:flex; gap:4px; justify-content:flex-end; margin-top:6px; }
         .scv3g-mini button { border:1px solid var(--g-hair); background:transparent; color:var(--g-dim); border-radius:7px;
             width:24px; height:22px; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; }
@@ -118062,6 +118067,9 @@ class GolferEventsManager {
             if (ev.isUserRegistered) { this.openEventDetail(eventId); return; }
             const uid = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
             let wantT = true, wantC = true, name = '', hcp = null;
+            // Both lookups fire in PARALLEL up front — the tap must not wait on the network twice
+            // (Pete 2026-07-31: tap felt dead). The partner list streams into the open popup when it lands.
+            const regsP = window.SocietyGolfDB.getRegistrations(eventId).catch(e => { console.warn('[SCV3G] quickRegister partner list', e); return []; });
             try {
                 const { data } = await window.SupabaseDB.client.from('event_registrations')
                     .select('want_transport, want_competition, player_name, handicap')
@@ -118077,14 +118085,13 @@ class GolferEventsManager {
             this.editingRegistrationId = null;
             // Pete's rule: a one-tap register MUST first ask Direct vs Transport — never auto-register straight
             // through. The choice sets want_transport, which flows to the organizer registration + tee sheet.
-            // Pete (2026-07-24): partner picking belongs IN this flow, not behind Edit — load who's
-            // already on the list so the popup can offer "play with" picks before the transport choice.
-            let others = [];
-            try {
-                const regs = await window.SocietyGolfDB.getRegistrations(eventId);
-                others = (regs || []).filter(r => String(r.playerId) !== String(uid));
-            } catch (e) { console.warn('[SCV3G] quickRegister partner list', e); }
-            this._askTransport(ev, { eventId, name, hcp: parseFloat(hcp), wantC, others, myId: uid });
+            // Pete (2026-07-24): partner picking belongs IN this flow, not behind Edit — the popup opens NOW
+            // and the "play with" picks appear in it as soon as the roster fetch resolves.
+            this._askTransport(ev, { eventId, name, hcp: parseFloat(hcp), wantC, others: [], myId: uid });
+            regsP.then(regs => {
+                const others = (regs || []).filter(r => String(r.playerId) !== String(uid));
+                this._qrFillOthers(others, eventId);
+            });
         } catch (e) {
             console.error('[SCV3G] quickRegister', e);
             this.openEventDetail(eventId);
@@ -118135,30 +118142,11 @@ class GolferEventsManager {
         // Pete (2026-07-24): if players are already on the list, offer "play with" picks right here —
         // up to 3 on a normal event, ONE partner on a 2-man scramble (same semantics as the full form's
         // PLAY WITH card: partner_prefs for display/pairing hints, hostId lock for scramble teams).
-        const others = (ctx && ctx.others) || [];
+        // Chips render into #qrPickSlot — synchronously when ctx.others is already populated, or streamed
+        // in by _qrFillOthers when the roster fetch resolves AFTER the popup painted (Pete 2026-07-31:
+        // the popup must open on tap, never wait for the network).
         let s2 = false; try { s2 = !!this._isTwoManScrambleEvent(ev); } catch (e) {}
         if (ctx) ctx.s2 = s2;
-        let pool = others;
-        if (s2) { try { pool = this._scramble2Eligible(others, ctx.myId) || []; } catch (e) { pool = others; } }
-        const hcpTag = function (r) {
-            return (r.handicap !== null && r.handicap !== undefined && r.handicap !== '')
-                ? '<span class="h">' + window.formatHandicapDisplay(r.handicap) + '</span>' : '';
-        };
-        let pickHtml = '';
-        if (pool.length) {
-            const chips = pool.map(r => s2
-                ? '<label class="qr-pch"><input type="radio" name="qrS2Partner" value="' + esc(r.playerId) + '"><span>' + esc(r.playerName) + '</span>' + hcpTag(r) + '</label>'
-                : '<label class="qr-pch"><input type="checkbox" class="qr-pref" value="' + esc(r.id) + '" data-name="' + esc(r.playerName) + '" onchange="GolferEventsSystem._qrLimit(this)"><span>' + esc(r.playerName) + '</span>' + hcpTag(r) + '</label>'
-            ).join('');
-            pickHtml =
-                '<div style="padding:0 18px;">'
-                + '<div style="font-size:13.5px;font-weight:800;color:#0f172a;">' + esc(_lvT('qreg.playwith', 'Play with anyone?')) + '</div>'
-                + '<div style="font-size:11.5px;color:#64748b;margin:2px 0 8px;">' + esc(s2 ? _lvT('qreg.partner1.hint', 'Pick ONE partner to lock your 2-man team — or the organizer will pair you') : _lvT('qreg.playwith.hint', 'Tap up to 3 — or skip')) + '</div>'
-                + '<div style="display:flex;flex-wrap:wrap;gap:6px;max-height:168px;overflow-y:auto;padding-bottom:2px;">'
-                + (s2 ? '<label class="qr-pch"><input type="radio" name="qrS2Partner" value="" checked><span>' + esc(_lvT('qreg.partner1.none', 'No partner — organizer will pair me')) + '</span></label>' : '')
-                + chips
-                + '</div></div>';
-        }
         const el = document.createElement('div');
         el.id = 'scv3gTransportAsk';
         el.style.cssText = 'position:fixed;inset:0;z-index:100050;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;padding:20px;';
@@ -118168,14 +118156,12 @@ class GolferEventsManager {
             + '#scv3gTransportAsk .qr-pch:has(input:checked){background:#059669;border-color:#059669;color:#fff;}'
             + '#scv3gTransportAsk .qr-pch .h{font-size:10px;color:#64748b;font-weight:600;}'
             + '#scv3gTransportAsk .qr-pch:has(input:checked) .h{color:rgba(255,255,255,.85);}'
+            + '#scv3gTransportAsk .scv3g-tpick:active{transform:scale(.97);filter:brightness(.94);}'
             + '</style>'
             + '<div style="background:#fff;width:100%;max-width:380px;border-radius:18px;box-shadow:0 18px 50px rgba(0,0,0,.4);overflow:hidden;max-height:86vh;overflow-y:auto;">'
-            + (pickHtml
-                ? '<div style="padding:18px 18px 12px;"><div style="font-size:17px;font-weight:800;color:#0f172a;">' + esc(ev.name || ev.title || 'Event') + '</div></div>'
-                  + pickHtml
-                  + '<div style="padding:14px 18px 0;"><div style="font-size:13.5px;font-weight:800;color:#0f172a;">How are you getting there?</div></div>'
-                : '<div style="padding:18px 18px 4px;"><div style="font-size:17px;font-weight:800;color:#0f172a;">How are you getting there?</div>'
-                  + '<div style="font-size:12.5px;color:#64748b;margin-top:3px;">' + esc(ev.name || ev.title || 'Event') + '</div></div>')
+            + '<div style="padding:18px 18px 4px;"><div style="font-size:17px;font-weight:800;color:#0f172a;">' + esc(ev.name || ev.title || 'Event') + '</div></div>'
+            + '<div id="qrPickSlot" style="display:none;"></div>'
+            + '<div style="padding:8px 18px 0;"><div style="font-size:13.5px;font-weight:800;color:#0f172a;">How are you getting there?</div></div>'
             + '<div style="display:flex;flex-direction:column;gap:10px;padding:14px 18px 18px;">'
             + '<button onclick="GolferEventsSystem._pickTransport(false)" class="scv3g-tpick" style="display:flex;align-items:center;gap:12px;text-align:left;background:#fff;border:2px solid #e2e8f0;border-radius:14px;padding:14px;cursor:pointer;width:100%;">'
             +   '<span class="material-symbols-outlined" style="font-size:26px;color:#7c3aed;">directions_car</span>'
@@ -118187,6 +118173,37 @@ class GolferEventsManager {
             + '</div></div>';
         el.addEventListener('click', function (e) { if (e.target === el) GolferEventsSystem._closeTransportAsk(); });
         document.body.appendChild(el);
+        if (ctx && ctx.others && ctx.others.length) this._qrFillOthers(ctx.others, ctx.eventId);
+    }
+
+    // Late-render the "play with" chips into an already-open quick-register popup (the roster fetch
+    // resolves after the popup paints). No-ops if the popup closed or belongs to a different event.
+    _qrFillOthers(others, eventId) {
+        const ctx = this._pendingReg;
+        const slot = document.getElementById('qrPickSlot');
+        if (!ctx || !slot || String(ctx.eventId) !== String(eventId)) return;
+        ctx.others = others = others || [];
+        const s2 = !!ctx.s2;
+        let pool = others;
+        if (s2) { try { pool = this._scramble2Eligible(others, ctx.myId) || []; } catch (e) { pool = others; } }
+        if (!pool.length) return;
+        const esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+        const hcpTag = function (r) {
+            return (r.handicap !== null && r.handicap !== undefined && r.handicap !== '')
+                ? '<span class="h">' + window.formatHandicapDisplay(r.handicap) + '</span>' : '';
+        };
+        const chips = pool.map(r => s2
+            ? '<label class="qr-pch"><input type="radio" name="qrS2Partner" value="' + esc(r.playerId) + '"><span>' + esc(r.playerName) + '</span>' + hcpTag(r) + '</label>'
+            : '<label class="qr-pch"><input type="checkbox" class="qr-pref" value="' + esc(r.id) + '" data-name="' + esc(r.playerName) + '" onchange="GolferEventsSystem._qrLimit(this)"><span>' + esc(r.playerName) + '</span>' + hcpTag(r) + '</label>'
+        ).join('');
+        slot.style.cssText = 'padding:0 18px;';
+        slot.innerHTML =
+            '<div style="font-size:13.5px;font-weight:800;color:#0f172a;">' + esc(_lvT('qreg.playwith', 'Play with anyone?')) + '</div>'
+            + '<div style="font-size:11.5px;color:#64748b;margin:2px 0 8px;">' + esc(s2 ? _lvT('qreg.partner1.hint', 'Pick ONE partner to lock your 2-man team — or the organizer will pair you') : _lvT('qreg.playwith.hint', 'Tap up to 3 — or skip')) + '</div>'
+            + '<div style="display:flex;flex-wrap:wrap;gap:6px;max-height:168px;overflow-y:auto;padding-bottom:2px;">'
+            + (s2 ? '<label class="qr-pch"><input type="radio" name="qrS2Partner" value="" checked><span>' + esc(_lvT('qreg.partner1.none', 'No partner — organizer will pair me')) + '</span></label>' : '')
+            + chips
+            + '</div>';
     }
 
     _closeTransportAsk() {
@@ -118571,22 +118588,23 @@ class GolferEventsManager {
             document.getElementById('eventDetailNotesSection').style.display = 'none';
         }
 
-        // Load registered players and pairings in PARALLEL for speed (was running sequentially causing lag!)
-        await Promise.all([
-            this.loadRegisteredPlayers(eventId),
-            this.loadGolferPairing(eventId)
-        ]);
-
-        // Registered golfer tapped the card → go STRAIGHT to the group-pairings modal, skipping the detail
-        // page (Pete: no extra "View All Players" tap). Only when they're actually in this event's roster.
-        if (jumpToPairings && (this.currentEventRegistrations || []).some(r => r.playerId === AppState.currentUser?.lineUserId)) {
-            try { this.openPlayersModal(); return; } catch (e) { console.warn('[GolferEvents] jump to pairings', e); }
+        // Everything above painted from memory — show the modal NOW with a roster skeleton so the tap
+        // answers instantly (Pete 2026-07-31: dead air until every fetch finished). Roster, pairing and
+        // handicap prefill stream into the open modal below.
+        {
+            const pc = document.getElementById('regPlayerCount'); if (pc) pc.textContent = '…';
+            const plc = document.getElementById('registeredPlayersContent');
+            if (plc) plc.innerHTML = '<p class="text-gray-400 text-center py-4">• • •</p>';
+            if (!this.editingRegistrationId) { const rf = document.getElementById('registrationForm'); if (rf) rf.style.display = 'none'; }
+            if (!jumpToPairings) document.getElementById('eventDetailModal').style.display = 'flex';
         }
 
         // Pre-fill player name and handicap from profile
         if (AppState.currentUser?.name) {
             document.getElementById('regPlayerName').value = AppState.currentUser.name;
         }
+
+        const prefillHandicapP = (async () => {
 
         // Sign-up handicap = SOCIETY-FIRST (Pete 2026-07-27): a TRGG event must show the TRGG
         // society handicap (masterscoreboard), not the global/anchored index — same rule as the
@@ -118652,6 +118670,20 @@ class GolferEventsManager {
             const displayHandicap = handicap < 0 ? '+' + Math.abs(handicap) : handicap;
             document.getElementById('regHandicap').value = displayHandicap;
         }
+        })();
+
+        // Roster + pairing + handicap prefill in PARALLEL (the sequential round-trips were the lag).
+        await Promise.all([
+            this.loadRegisteredPlayers(eventId),
+            this.loadGolferPairing(eventId),
+            prefillHandicapP
+        ]);
+
+        // Registered golfer tapped the card → go STRAIGHT to the group-pairings modal, skipping the detail
+        // page (Pete: no extra "View All Players" tap). Only when they're actually in this event's roster.
+        if (jumpToPairings && (this.currentEventRegistrations || []).some(r => r.playerId === AppState.currentUser?.lineUserId)) {
+            try { this.openPlayersModal(); return; } catch (e) { console.warn('[GolferEvents] jump to pairings', e); }
+        }
 
         // Reset registration form (only if not in edit mode)
         if (!this.editingRegistrationId) {
@@ -118687,19 +118719,23 @@ class GolferEventsManager {
                     View/Edit Registration
                 `;
                 registerBtn.onclick = async () => {
-                    // Find and set the user's registration ID for edit mode
-                    const userId = AppState?.currentUser?.lineUserId;
-                    if (userId && this.currentEvent?.id) {
-                        const { data: reg } = await window.SupabaseDB.client
-                            .from('event_registrations')
-                            .select('id')
-                            .eq('event_id', this.currentEvent.id)
-                            .eq('player_id', userId)
-                            .maybeSingle();
+                    // Fast path: loadRegisteredPlayers already stashed my reg id — no round-trip on tap.
+                    if (this._myRegId) {
+                        this.editingRegistrationId = this._myRegId;
+                    } else {
+                        const userId = AppState?.currentUser?.lineUserId;
+                        if (userId && this.currentEvent?.id) {
+                            const { data: reg } = await window.SupabaseDB.client
+                                .from('event_registrations')
+                                .select('id')
+                                .eq('event_id', this.currentEvent.id)
+                                .eq('player_id', userId)
+                                .maybeSingle();
 
-                        if (reg?.id) {
-                            this.editingRegistrationId = reg.id;
-                            console.log('[GolferEvents] Set editingRegistrationId for existing registration:', reg.id);
+                            if (reg?.id) {
+                                this.editingRegistrationId = reg.id;
+                                console.log('[GolferEvents] Set editingRegistrationId for existing registration:', reg.id);
+                            }
                         }
                     }
                     this.showRegistrationForm();
@@ -121190,22 +121226,20 @@ class GolferEventsManager {
 
     async editRegistration(registrationId, eventId) {
         try {
-            // Load registration details
-            const { data: regData, error: regError } = await window.SupabaseDB.client
+            // Store registration ID for edit mode BEFORE the modal opens (its reset paths check it),
+            // and fetch the registration row IN PARALLEL with the modal open — the modal paints
+            // instantly and both network fetches overlap (Pete 2026-07-31: EDIT tap felt dead).
+            this.editingRegistrationId = registrationId;
+            const regRowP = window.SupabaseDB.client
                 .from('event_registrations')
                 .select('*')
                 .eq('id', registrationId)
                 .single();
+            const [{ data: regData, error: regError }] = await Promise.all([regRowP, this.openEventDetail(eventId)]);
 
             if (regError) throw regError;
 
             console.log('[GolferEventsSystem] Editing registration:', regData);
-
-            // Store registration ID for edit mode
-            this.editingRegistrationId = registrationId;
-
-            // Open the event detail modal with the event
-            await this.openEventDetail(eventId);
 
             // Pre-fill the form with existing registration data
             document.getElementById('regPlayerName').value = regData.player_name || '';
@@ -124587,6 +124621,18 @@ class GolferEventsManager {
 // Initialize global instance
 try {
     window.GolferEventsSystem = new GolferEventsManager();
+
+    // Haptic tick on registration-surface taps (Pete 2026-07-31: no feedback on tap). Android fires a
+    // short vibration; iOS Safari has no vibrate API and silently ignores it. Capture-phase pointerdown
+    // so it beats any stopPropagation in the handlers; passive — never blocks the tap itself.
+    document.addEventListener('pointerdown', function (e) {
+        try {
+            const t = e.target && e.target.closest && e.target.closest(
+                '#societyEventsGrid button, #eventDetailModal button, #scv3gTransportAsk button, ' +
+                '#scv3gTransportAsk .qr-pch, #eventsViewMyEventsContent button, #playersListModal button');
+            if (t && navigator.vibrate) navigator.vibrate(8);
+        } catch (_) {}
+    }, { passive: true, capture: true });
     console.log('[GolferEventsSystem] ✅ Initialized successfully');
 
     // CRITICAL: Set up badge subscription EARLY so it works before user opens Events view

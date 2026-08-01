@@ -119960,11 +119960,20 @@ class GolferEventsManager {
         document.getElementById('guestSgHint')?.remove();
         if (!this.editingRegistrationId || !this.currentEvent || !container) return;
         try {
-            const { data: guestRegs } = await window.SupabaseDB.client
+            // MY guests = rows stamped special_requests.hostId = me (any player_id shape —
+            // directory-resolved guests get real ids via _resolveGuestId, so LIKE 'GUEST-%'
+            // alone misses them and they could never be edited/deleted) + legacy GUEST-% rows.
+            const myId = AppState.currentUser?.lineUserId || AppState.currentUser?.userId || localStorage.getItem('line_user_id') || '';
+            const guestQ = () => window.SupabaseDB.client
                 .from('event_registrations')
                 .select('id, player_name, handicap, player_id, special_requests')
-                .eq('event_id', this.currentEvent.id)
-                .like('player_id', 'GUEST-%');
+                .eq('event_id', this.currentEvent.id);
+            const [legacyRes, mineRes] = await Promise.all([
+                guestQ().like('player_id', 'GUEST-%'),
+                myId ? guestQ().eq('special_requests->>hostId', myId).neq('id', this.editingRegistrationId) : Promise.resolve({ data: [] })
+            ]);
+            const seenIds = new Set();
+            const guestRegs = [...(legacyRes.data || []), ...(mineRes.data || [])].filter(g => !seenIds.has(g.id) && seenIds.add(g.id));
             if (guestRegs && guestRegs.length > 0) {
                 this._editGuestIds = guestRegs.map(g => g.id);
                 this._editGuestSR = {};
@@ -119976,6 +119985,9 @@ class GolferEventsManager {
                     const row = document.createElement('div');
                     row.className = 'guest-player-row flex flex-wrap items-center gap-2';
                     row.setAttribute('data-guest-id', g.id);
+                    // Directory-resolved guests keep their real id verbatim on re-save
+                    // (otherwise _resolveGuestId re-runs a name search on every edit)
+                    if (g.player_id && !String(g.player_id).startsWith('GUEST-')) row.setAttribute('data-line-user-id', g.player_id);
                     row.setAttribute('data-same-group', (g.special_requests && g.special_requests.sameGroup === false) ? '0' : '1');
                     row.innerHTML = `
                         <input type="text" value="${name}" placeholder="Guest name" class="guest-name flex-1 px-2 py-1.5 text-sm rounded-lg">
@@ -120815,12 +120827,28 @@ class GolferEventsManager {
                 const oldGuestIds = this._editGuestIds || [];
                 const newGuests = guestPlayers || [];
 
-                // Delete removed guests
+                // Delete removed guests — direct delete like deleteRegistration (RLS permits).
+                // NOT the unregister-event edge fn: it deletes WHERE player_id = caller's LINE id,
+                // which can never match a guest row → 404 and the guest silently survived.
+                const removedGuestPids = [];
                 for (const gid of oldGuestIds) {
                     const stillExists = document.querySelector(`[data-guest-id="${gid}"]`);
                     if (!stillExists) {
-                        await window.invokeEdgeDelete('unregister-event', { registration_id: gid });
+                        const { data: goneRows, error: goneErr } = await window.SupabaseDB.client
+                            .from('event_registrations')
+                            .delete()
+                            .eq('id', gid)
+                            .select('id, player_id');
+                        if (goneErr || !goneRows || goneRows.length === 0) {
+                            console.error('[GolferEvents] Guest delete failed:', gid, goneErr);
+                            throw new Error('Could not remove a guest. Please try again.');
+                        }
+                        removedGuestPids.push(goneRows[0].player_id);
                     }
+                }
+                // Pull deleted guests out of the saved tee groups (tee sheet / van list / scoring prefill read that snapshot)
+                if (removedGuestPids.length && window.SocietyGolfDB?.prunePlayersFromPairings) {
+                    try { await SocietyGolfDB.prunePlayersFromPairings(this.currentEvent.id, removedGuestPids); } catch (e) {}
                 }
 
                 // Update existing + add new guests

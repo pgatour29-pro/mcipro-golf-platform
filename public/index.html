@@ -29036,7 +29036,7 @@ Sent from Login Page`;
                     try {
                         const userId = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
                         const existingNums = new Set(this.allCaddies.map(c => c.caddy_number ? String(parseInt(c.caddy_number)) : '').filter(Boolean));
-                        const addCaddy = (num, name, course, rating, notes) => {
+                        const addCaddy = (num, name, course, rating, notes, photo) => {
                             const normalized = String(parseInt(num));
                             if (existingNums.has(normalized)) return;
                             existingNums.add(normalized);
@@ -29048,6 +29048,7 @@ Sent from Login Page`;
                                 is_active: true,
                                 rating: rating || 0,
                                 bio: notes || '',
+                                photo_url: photo || '',
                                 languages: [],
                                 _fromPool: true
                             });
@@ -29061,7 +29062,7 @@ Sent from Login Page`;
                         nbEntries.forEach(nb => {
                             if (!nb.caddy_number) return;
                             if (!courseMatch(nb.course_name)) return;
-                            addCaddy(nb.caddy_number, nb.caddy_name, nb.course_name, nb.rating, nb.notes);
+                            addCaddy(nb.caddy_number, nb.caddy_name, nb.course_name, nb.rating, nb.notes, nb.photo_url);
                         });
 
                         // From caddy bookings
@@ -29201,6 +29202,13 @@ Sent from Login Page`;
                 container.innerHTML = filtered.map(caddy => this.renderCaddyCard(caddy)).join('');
             },
 
+            // Shared avatar tile: caddy photo (tap = full-screen) or the fallback text/icon
+            _avHtml(photoUrl, fallback) {
+                return photoUrl
+                    ? `<div class="mcv1-av" style="padding:0;cursor:zoom-in;" onclick="CaddyNotebook.viewPhoto('${photoUrl}')"><img src="${photoUrl}" style="width:100%;height:100%;object-fit:cover;display:block;" alt=""></div>`
+                    : `<div class="mcv1-av">${fallback}</div>`;
+            },
+
             async renderHistory(regularsOnly = false) {
                 const container = document.getElementById('caddyCardsContainer');
                 if (!container) return;
@@ -29244,7 +29252,7 @@ Sent from Login Page`;
                     return `
                     <div class="mcv1-cc ${isFav ? 'fav' : ''}">
                         <div class="mcv1-ccrow">
-                            <div class="mcv1-av">#${h.number}</div>
+                            ${this._avHtml(nbEntry?.photo_url, '#' + h.number)}
                             <div class="flex-1 min-w-0">
                                 <div class="mcv1-nm"><span>${nbEntry && nbEntry.caddy_name ? nbEntry.caddy_name + ' · #' + h.number : 'Caddy #' + h.number}</span>${stars}</div>
                                 <div class="mcv1-sub">Used ${h.count}x${lastDate ? ' · Last ' + lastDate : ''}${coursesStr ? ' · ' + coursesStr : ''}</div>
@@ -29298,6 +29306,7 @@ Sent from Login Page`;
                             count: h?.count || 0,
                             lastDate: h?.lastDate || '',
                             rating: f.rating,
+                            photo: f.photo_url || '',
                         });
                     }
                 }
@@ -29341,7 +29350,7 @@ Sent from Login Page`;
                     return `
                     <div class="mcv1-cc fav">
                         <div class="mcv1-ccrow">
-                            <div class="mcv1-av">#${f.number}</div>
+                            ${this._avHtml(f.photo, '#' + f.number)}
                             <div class="flex-1 min-w-0">
                                 <div class="mcv1-nm"><span>Caddy #${f.number}${f.name ? ' — ' + f.name : ''}</span><span class="mcv1-stars">★</span></div>
                                 <div class="mcv1-sub">${courseName ? courseName : ''}${f.count > 0 ? (courseName ? ' · ' : '') + 'Used ' + f.count + 'x' : ''}</div>
@@ -29403,7 +29412,7 @@ Sent from Login Page`;
                     return `
                     <div class="mcv1-cc ${p.is_favorite ? 'fav' : ''}">
                         <div class="mcv1-ccrow">
-                            <div class="mcv1-av">${avatar}</div>
+                            ${this._avHtml(src.photo_url, avatar)}
                             <div class="flex-1 min-w-0">
                                 <div class="mcv1-nm"><span>${name}</span>${favBadge}</div>
                                 ${course ? '<div class="mcv1-sub"><span class="material-symbols-outlined">location_on</span>' + course + '</div>' : ''}
@@ -29512,9 +29521,9 @@ Sent from Login Page`;
                 return `
                     <div class="mcv1-cc ${isFavorite ? 'fav' : ''}">
                         <div class="mcv1-ccrow">
-                            <div class="mcv1-av">
+                            <div class="mcv1-av"${caddy.photo_url ? ` style="padding:0;cursor:zoom-in;" onclick="CaddyNotebook.viewPhoto('${caddy.photo_url}')"` : ''}>
                                 ${caddy.photo_url ?
-                                    `<img src="${caddy.photo_url}" alt="${caddy.name}">` :
+                                    `<img src="${caddy.photo_url}" style="width:100%;height:100%;object-fit:cover;display:block;" alt="${caddy.name}">` :
                                     (caddy.caddy_number ? '#' + caddy.caddy_number : '<span class="material-symbols-outlined" style="font-size:22px;">person</span>')
                                 }
                             </div>
@@ -43904,6 +43913,58 @@ Waitlist (${waitlist.length} people):`;
             _rating: 0,
             _entries: null,
             _photoFile: null,
+            _editingId: null,
+            _editingPhotoUrl: '',
+
+            // Load an existing entry into the Add Caddy form for editing (incl. photo add/change)
+            editEntry(id) {
+                const e = (this._entries || []).find(x => x.id === id);
+                if (!e) return;
+                this._editingId = id;
+                const set = (fid, v) => { const el = document.getElementById(fid); if (el) el.value = v || ''; };
+                set('notebookCaddyNumber', e.caddy_number);
+                set('notebookCaddyName', e.caddy_name);
+                set('notebookCaddyCourse', e.course_name);
+                set('notebookCaddyLanguage', e.language);
+                set('notebookCaddyTip', e.tip_amount);
+                set('notebookCaddyRecommendedBy', e.recommended_by);
+                set('notebookCaddyNotes', e.notes);
+                this._rating = e.rating || 0; this.setRating(this._rating);
+                this._photoFile = null;
+                this._editingPhotoUrl = e.photo_url || '';
+                const img = document.getElementById('notebookCaddyPhotoPreview');
+                const lbl = document.getElementById('notebookCaddyPhotoLbl');
+                if (this._editingPhotoUrl) {
+                    if (img) { img.src = this._editingPhotoUrl; img.style.display = 'block'; }
+                    if (lbl) lbl.textContent = 'Change Photo';
+                } else this.clearPhoto();
+                this._setEditMode(true);
+                document.querySelector('#caddyNotebookSection .mcv1-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            },
+
+            cancelEdit() {
+                this._editingId = null;
+                this._editingPhotoUrl = '';
+                ['notebookCaddyNumber','notebookCaddyName','notebookCaddyCourse','notebookCaddyNotes','notebookCaddyTip','notebookCaddyLanguage','notebookCaddyRecommendedBy'].forEach(id => {
+                    const el = document.getElementById(id); if (el) el.value = '';
+                });
+                this._rating = 0; this.setRating(0);
+                this.clearPhoto();
+                this._setEditMode(false);
+            },
+
+            _setEditMode(on) {
+                const btn = document.getElementById('notebookSaveBtn');
+                if (btn) btn.innerHTML = on
+                    ? '<span class="material-symbols-outlined">check</span>Update Caddy'
+                    : '<span class="material-symbols-outlined">add</span>Save to Notebook';
+                const c = document.getElementById('notebookCancelEdit');
+                if (c) c.style.display = on ? 'flex' : 'none';
+                const t = document.querySelector('#caddyNotebookSection .mcv1-ftitle');
+                if (t) t.innerHTML = on
+                    ? '<span class="material-symbols-outlined">edit</span>Edit Caddy'
+                    : '<span class="material-symbols-outlined">edit_note</span>Add Caddy';
+            },
 
             photoPicked(input) {
                 const f = input.files && input.files[0];
@@ -43917,6 +43978,7 @@ Waitlist (${waitlist.length} people):`;
 
             clearPhoto() {
                 this._photoFile = null;
+                this._editingPhotoUrl = '';   // in edit mode: tapping the preview removes the saved photo on Update
                 const inp = document.getElementById('notebookCaddyPhoto'); if (inp) inp.value = '';
                 const img = document.getElementById('notebookCaddyPhotoPreview');
                 if (img) { try { URL.revokeObjectURL(img.src); } catch(e) {} img.removeAttribute('src'); img.style.display = 'none'; }
@@ -44009,15 +44071,27 @@ Waitlist (${waitlist.length} people):`;
                     recommended_by: document.getElementById('notebookCaddyRecommendedBy')?.value?.trim() || '',
                 };
                 if (photoUrl) entry.photo_url = photoUrl;
+                else if (this._editingId) entry.photo_url = this._editingPhotoUrl || null;
+                const wasEdit = !!this._editingId;
                 try {
-                    await window.SupabaseDB.client.from('caddy_notebook').insert([entry]);
+                    if (wasEdit) {
+                        const { error } = await window.SupabaseDB.client.from('caddy_notebook')
+                            .update(entry).eq('id', this._editingId).eq('golfer_id', userId);
+                        if (error) throw error;
+                    } else {
+                        const { error } = await window.SupabaseDB.client.from('caddy_notebook').insert([entry]);
+                        if (error) throw error;
+                    }
                     this._entries = null;
+                    this._editingId = null;
+                    this._editingPhotoUrl = '';
                     ['notebookCaddyNumber','notebookCaddyName','notebookCaddyCourse','notebookCaddyNotes','notebookCaddyTip','notebookCaddyLanguage','notebookCaddyRecommendedBy'].forEach(id => {
                         const el = document.getElementById(id); if (el) el.value = '';
                     });
                     this._rating = 0; this.setRating(0);
                     this.clearPhoto();
-                    NotificationManager.show('Caddy saved to notebook!', 'success');
+                    this._setEditMode(false);
+                    NotificationManager.show(wasEdit ? 'Caddy updated!' : 'Caddy saved to notebook!', 'success');
                     await this.render();
                 } catch(e) { NotificationManager.show('Error saving: ' + e.message, 'error'); }
             },
@@ -44109,6 +44183,9 @@ Waitlist (${waitlist.length} people):`;
                                 <div class="mcv1-nm"><span>${label}</span>${stars}</div>
                                 ${e.course_name ? '<div class="mcv1-sub"><span class="material-symbols-outlined">location_on</span>' + e.course_name + '</div>' : ''}
                             </div>
+                            <button onclick="CaddyNotebook.editEntry('${e.id}')" class="mcv1-xbtn" title="Edit" style="color:var(--acc,#22c55e);">
+                                <span class="material-symbols-outlined" style="font-size:18px;">edit</span>
+                            </button>
                             <button onclick="CaddyNotebook.deleteEntry('${e.id}')" class="mcv1-xbtn">
                                 <span class="material-symbols-outlined" style="font-size:18px;">close</span>
                             </button>
@@ -52169,8 +52246,11 @@ Waitlist (${waitlist.length} people):`;
                             <span style="font-size:11px;color:var(--mut,#8B949E);">Optional</span>
                             <img id="notebookCaddyPhotoPreview" onclick="CaddyNotebook.clearPhoto()" title="Tap to remove" style="display:none;width:46px;height:46px;border-radius:12px;object-fit:cover;cursor:pointer;border:1px solid var(--line,#2A323C);" alt="Caddy photo preview">
                         </div>
-                        <button onclick="CaddyNotebook.addEntry()" class="mcv1-save">
+                        <button id="notebookSaveBtn" onclick="CaddyNotebook.addEntry()" class="mcv1-save">
                             <span class="material-symbols-outlined">add</span>Save to Notebook
+                        </button>
+                        <button id="notebookCancelEdit" onclick="CaddyNotebook.cancelEdit()" class="mcv1-save" style="display:none;background:#475569;margin-top:6px;">
+                            <span class="material-symbols-outlined">close</span>Cancel Edit
                         </button>
                     </div>
                     <div id="caddyNotebookEntries" class="mcv1-list">

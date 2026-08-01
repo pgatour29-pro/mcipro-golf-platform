@@ -118776,12 +118776,14 @@ class GolferEventsManager {
             box.innerHTML = '';
             const ev = this.currentEvent; const uid = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
             if (!ev || !uid || !window.SupabaseDB?.client) return;
-            const course = (ev.courseName || '').toLowerCase().replace(/[^a-z]/g, '');
+            // Normalize away generic suffixes so "Pattaya CC" matches "Pattaya Country Club"
+            const _cnorm = (s) => String(s || '').toLowerCase().replace(/country\s*club|golf\s*club|golf\s*course|golf|club|course|international|resort|\bcc\b/g, '').replace(/[^a-z]/g, '');
+            const course = _cnorm(ev.courseName);
             if (!course) return;
             const { data } = await window.SupabaseDB.client.from('caddy_notebook')
                 .select('caddy_number, caddy_name, course_name, times_used, photo_url').eq('golfer_id', uid).limit(50);
             const hits = (data || []).filter(nb => {
-                const c = (nb.course_name || '').toLowerCase().replace(/[^a-z]/g, '');
+                const c = _cnorm(nb.course_name);
                 return c && nb.caddy_number && (c.includes(course) || course.includes(c));
             }).slice(0, 2);
             box.innerHTML = hits.map(nb =>
@@ -120560,16 +120562,20 @@ class GolferEventsManager {
         setRow('regTransportFeeRow', 'regTransportFeeDisplay', wantTransport, transportFee);
         setRow('regCompetitionFeeRow', 'regCompetitionFeeDisplay', wantCompetition, competitionFee);
 
-        // Guests: one receipt line for the lot (each guest pays base + the selected extras;
-        // TRGG guests also carry the flat ฿100 non-member surcharge)
-        const guestCount = document.querySelectorAll('.guest-player-row').length;
+        // Guests: one receipt line for the lot (each guest pays base + the selected extras).
+        // TRGG: TRUE guests (no resolved real profile = no data-line-user-id on the row) also
+        // carry the flat ฿100 non-member surcharge; directory-picked members don't.
+        const guestRowEls = document.querySelectorAll('.guest-player-row');
+        const guestCount = guestRowEls.length;
         const _gTRGG = /trgg|travellers rest/i.test([this.currentEvent.societyName, this.currentEvent.organizerName, this.currentEvent.title, this.currentEvent.name].map(s => s || '').join(' ')) || this.currentEvent.societyId === '7c0e4b72-d925-44bc-afda-38259a7ba346';
-        const guestFeePerPlayer = baseFee + (wantTransport ? transportFee : 0) + (wantCompetition ? competitionFee : 0) + (_gTRGG ? 100 : 0);
+        const plainGuests = _gTRGG ? [...guestRowEls].filter(r => !r.getAttribute('data-line-user-id')).length : 0;
+        const guestFeePerPlayer = baseFee + (wantTransport ? transportFee : 0) + (wantCompetition ? competitionFee : 0);
+        const guestsTotal = guestFeePerPlayer * guestCount + plainGuests * 100;
         const guestRow = document.getElementById('regGuestFeeRow');
         if (guestRow) {
             if (guestCount > 0) {
                 guestRow.style.display = 'flex';
-                guestRow.innerHTML = `<span class="k"><span class="dot"></span><span>${L.rcptGuest} × ${guestCount}</span></span><span>+฿${(guestFeePerPlayer * guestCount).toLocaleString()}</span>`;
+                guestRow.innerHTML = `<span class="k"><span class="dot"></span><span>${L.rcptGuest} × ${guestCount}</span></span><span>+฿${guestsTotal.toLocaleString()}</span>`;
             } else {
                 guestRow.style.display = 'none';
             }
@@ -120580,7 +120586,7 @@ class GolferEventsManager {
         let total = baseFee;
         if (wantTransport) total += transportFee;
         if (wantCompetition) total += competitionFee;
-        total += guestFeePerPlayer * guestCount;
+        total += guestsTotal;
 
         document.getElementById('regTotalCost').textContent = `฿${total.toLocaleString()}`;
         const totLbl = document.getElementById('rfv1RcptTotal');

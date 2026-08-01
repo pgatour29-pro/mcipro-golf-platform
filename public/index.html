@@ -29202,11 +29202,45 @@ Sent from Login Page`;
                 container.innerHTML = filtered.map(caddy => this.renderCaddyCard(caddy)).join('');
             },
 
-            // Shared avatar tile: caddy photo (tap = full-screen) or the fallback text/icon
-            _avHtml(photoUrl, fallback) {
-                return photoUrl
-                    ? `<div class="mcv1-av" style="padding:0;cursor:zoom-in;" onclick="CaddyNotebook.viewPhoto('${photoUrl}')"><img src="${photoUrl}" style="width:100%;height:100%;object-fit:cover;display:block;" alt=""></div>`
-                    : `<div class="mcv1-av">${fallback}</div>`;
+            // Shared avatar tile: caddy photo (tap = full-screen) or the fallback text/icon.
+            // With a caddy number and no photo, tapping the tile opens the photo chooser directly
+            // (Pete: adding a photo must be one tap on the number — no form hunting on mobile).
+            _avHtml(photoUrl, fallback, qNum, qCourse) {
+                if (photoUrl) return `<div class="mcv1-av" style="padding:0;cursor:zoom-in;" onclick="CaddyNotebook.viewPhoto('${photoUrl}')"><img src="${photoUrl}" style="width:100%;height:100%;object-fit:cover;display:block;" alt=""></div>`;
+                if (qNum) return `<div class="mcv1-av" style="cursor:pointer;" title="Tap to add photo" onclick="CaddyOrganizerSystem.quickPhoto('${qNum}', '${String(qCourse || '').replace(/'/g, "\\'")}')">${fallback}</div>`;
+                return `<div class="mcv1-av">${fallback}</div>`;
+            },
+
+            // One-tap photo add from ANY caddy card: chooser → upload → saved on the caddy's
+            // notebook entry (created bare if the caddy isn't in the notebook yet — same
+            // number-match convention as openHistoryNote/toggleHistoryFavorite).
+            quickPhoto(caddyNumber, courseName) {
+                CaddyNotebook._pickPhoto(async (file) => {
+                    const userId = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
+                    if (!userId) return;
+                    NotificationManager.show('Uploading photo…', 'info', 2000);
+                    const url = await CaddyNotebook._uploadPhotoFile(file, userId);
+                    const entries = await CaddyNotebook.getEntries();
+                    const existing = entries.find(e => e.caddy_number && String(parseInt(e.caddy_number)) === String(parseInt(caddyNumber)));
+                    if (existing) {
+                        const { error } = await window.SupabaseDB.client.from('caddy_notebook')
+                            .update({ photo_url: url, updated_at: new Date().toISOString() })
+                            .eq('id', existing.id).eq('golfer_id', userId);
+                        if (error) throw error;
+                    } else {
+                        const { error } = await window.SupabaseDB.client.from('caddy_notebook').insert([{
+                            golfer_id: userId,
+                            caddy_number: String(parseInt(caddyNumber)),
+                            course_name: courseName || '',
+                            photo_url: url,
+                        }]);
+                        if (error) throw error;
+                    }
+                    CaddyNotebook._entries = null;
+                    NotificationManager.show('Photo added!', 'success');
+                    await this.loadCaddies();
+                    this.setFilter(this.currentFilter);
+                });
             },
 
             async renderHistory(regularsOnly = false) {
@@ -29252,7 +29286,7 @@ Sent from Login Page`;
                     return `
                     <div class="mcv1-cc ${isFav ? 'fav' : ''}">
                         <div class="mcv1-ccrow">
-                            ${this._avHtml(nbEntry?.photo_url, '#' + h.number)}
+                            ${this._avHtml(nbEntry?.photo_url, '#' + h.number, h.number, h.courses[0] || '')}
                             <div class="flex-1 min-w-0">
                                 <div class="mcv1-nm"><span>${nbEntry && nbEntry.caddy_name ? nbEntry.caddy_name + ' · #' + h.number : 'Caddy #' + h.number}</span>${stars}</div>
                                 <div class="mcv1-sub">Used ${h.count}x${lastDate ? ' · Last ' + lastDate : ''}${coursesStr ? ' · ' + coursesStr : ''}</div>
@@ -29350,7 +29384,7 @@ Sent from Login Page`;
                     return `
                     <div class="mcv1-cc fav">
                         <div class="mcv1-ccrow">
-                            ${this._avHtml(f.photo, '#' + f.number)}
+                            ${this._avHtml(f.photo, '#' + f.number, f.number, f.course || '')}
                             <div class="flex-1 min-w-0">
                                 <div class="mcv1-nm"><span>Caddy #${f.number}${f.name ? ' — ' + f.name : ''}</span><span class="mcv1-stars">★</span></div>
                                 <div class="mcv1-sub">${courseName ? courseName : ''}${f.count > 0 ? (courseName ? ' · ' : '') + 'Used ' + f.count + 'x' : ''}</div>
@@ -29412,7 +29446,7 @@ Sent from Login Page`;
                     return `
                     <div class="mcv1-cc ${p.is_favorite ? 'fav' : ''}">
                         <div class="mcv1-ccrow">
-                            ${this._avHtml(src.photo_url, avatar)}
+                            ${this._avHtml(src.photo_url, avatar, num, src.course_name || '')}
                             <div class="flex-1 min-w-0">
                                 <div class="mcv1-nm"><span>${name}</span>${favBadge}</div>
                                 ${course ? '<div class="mcv1-sub"><span class="material-symbols-outlined">location_on</span>' + course + '</div>' : ''}
@@ -29439,35 +29473,19 @@ Sent from Login Page`;
             },
 
             async openHistoryNote(caddyNumber, courseName) {
-                // Open notebook with pre-filled caddy number
+                // Route to the FULL notebook editor (photo, rating, notes, Update button)
+                // instead of the old native prompt() — the prompt had no photo support and
+                // no way to edit anything else on mobile.
                 const entries = await CaddyNotebook.getEntries();
                 const existing = entries.find(e => e.caddy_number && String(parseInt(e.caddy_number)) === String(parseInt(caddyNumber)));
-
+                this.setFilter('notebook');
                 if (existing) {
-                    // Edit existing - show a simple prompt for now
-                    const newNote = prompt(`Notes for Caddy #${caddyNumber}:`, existing.notes || '');
-                    if (newNote !== null) {
-                        await window.SupabaseDB.client.from('caddy_notebook')
-                            .update({ notes: newNote, updated_at: new Date().toISOString() })
-                            .eq('id', existing.id);
-                        CaddyNotebook._entries = null;
-                        this.renderHistory(this.currentFilter === 'regulars');
-                    }
+                    CaddyNotebook.editEntry(existing.id);
                 } else {
-                    // Create new notebook entry
-                    const note = prompt(`Add notes for Caddy #${caddyNumber}:`, '');
-                    if (note !== null) {
-                        const userId = AppState?.currentUser?.lineUserId;
-                        await window.SupabaseDB.client.from('caddy_notebook').insert([{
-                            golfer_id: userId,
-                            caddy_number: caddyNumber,
-                            course_name: courseName || '',
-                            notes: note,
-                        }]);
-                        CaddyNotebook._entries = null;
-                        NotificationManager.show(`Caddy #${caddyNumber} saved to notebook`, 'success');
-                        this.renderHistory(this.currentFilter === 'regulars');
-                    }
+                    CaddyNotebook.cancelEdit();
+                    const numEl = document.getElementById('notebookCaddyNumber'); if (numEl) numEl.value = caddyNumber;
+                    const cEl = document.getElementById('notebookCaddyCourse'); if (cEl) cEl.value = courseName || '';
+                    document.querySelector('#caddyNotebookSection .mcv1-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
             },
 
@@ -29521,12 +29539,7 @@ Sent from Login Page`;
                 return `
                     <div class="mcv1-cc ${isFavorite ? 'fav' : ''}">
                         <div class="mcv1-ccrow">
-                            <div class="mcv1-av"${caddy.photo_url ? ` style="padding:0;cursor:zoom-in;" onclick="CaddyNotebook.viewPhoto('${caddy.photo_url}')"` : ''}>
-                                ${caddy.photo_url ?
-                                    `<img src="${caddy.photo_url}" style="width:100%;height:100%;object-fit:cover;display:block;" alt="${caddy.name}">` :
-                                    (caddy.caddy_number ? '#' + caddy.caddy_number : '<span class="material-symbols-outlined" style="font-size:22px;">person</span>')
-                                }
-                            </div>
+                            ${this._avHtml(caddy.photo_url, caddy.caddy_number ? '#' + caddy.caddy_number : '<span class="material-symbols-outlined" style="font-size:22px;">person</span>', caddy.caddy_number || '', caddy.course_name || '')}
                             <div class="flex-1 min-w-0">
                                 <div class="mcv1-nm"><span>${caddy.name}</span>${numBadge}</div>
                                 <div class="mcv1-sub">
@@ -29673,12 +29686,23 @@ Sent from Login Page`;
                 }
             },
 
+            // fixed-in-transformed-ancestor trap: these modals live inside the tab markup and an
+            // ancestor creates a containing block, so their fixed inset-0 spans the DOCUMENT —
+            // backdrop darkens everything while the items-end sheet lands thousands of px below
+            // the viewport (invisible + unusable). Re-home to body once, like the mcv1 sheets.
+            _rehomeModal(id) {
+                const m = document.getElementById(id);
+                if (m && m.parentElement !== document.body) document.body.appendChild(m);
+                return m;
+            },
+
             openNoteModal(caddyId, caddyName) {
                 this.currentCaddyForNote = caddyId;
 
                 const pref = this.userPreferences.find(p => p.caddy_id === caddyId);
                 const noteText = pref ? pref.personal_notes || '' : '';
 
+                this._rehomeModal('caddyNoteModal');
                 document.getElementById('caddyNoteName').textContent = `Notes about ${caddyName}`;
                 document.getElementById('caddyNoteText').value = noteText;
                 document.getElementById('caddyNoteModal').classList.remove('hidden');
@@ -29755,6 +29779,7 @@ Sent from Login Page`;
                 }
                 document.getElementById('caddyBookNotes').value = '';
 
+                this._rehomeModal('caddyBookModal');
                 document.getElementById('caddyBookModal').classList.remove('hidden');
             },
 
@@ -44008,6 +44033,55 @@ Waitlist (${waitlist.length} people):`;
                 document.body.appendChild(ov);
             },
 
+            // One-tap photo pick: opens the camera/gallery chooser, hands the file to cb
+            _pickPhoto(cb) {
+                let inp = document.getElementById('caddyQuickPhotoInput');
+                if (!inp) {
+                    inp = document.createElement('input');
+                    inp.type = 'file'; inp.accept = 'image/*'; inp.id = 'caddyQuickPhotoInput';
+                    inp.style.display = 'none';
+                    document.body.appendChild(inp);
+                }
+                inp.value = '';
+                inp.onchange = async () => {
+                    const f = inp.files && inp.files[0];
+                    if (!f) return;
+                    try { await cb(f); }
+                    catch(e) {
+                        console.error('[CaddyPhoto] Quick add failed:', e);
+                        NotificationManager.show('Photo upload failed', 'error');
+                    }
+                };
+                inp.click();
+            },
+
+            async _uploadPhotoFile(file, userId) {
+                const blob = await this._shrinkPhoto(file);
+                const path = `notebook/${userId}_${Date.now()}.jpg`;
+                const { error } = await window.SupabaseDB.client.storage
+                    .from('caddy_photos').upload(path, blob, { cacheControl: '3600', upsert: false, contentType: 'image/jpeg' });
+                if (error) throw error;
+                const { data } = window.SupabaseDB.client.storage.from('caddy_photos').getPublicUrl(path);
+                return data?.publicUrl || '';
+            },
+
+            // Tap a photo-less avatar on a NOTEBOOK card → chooser → photo saved to that entry
+            quickPhotoForEntry(id) {
+                this._pickPhoto(async (file) => {
+                    const userId = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
+                    if (!userId) return;
+                    NotificationManager.show('Uploading photo…', 'info', 2000);
+                    const url = await this._uploadPhotoFile(file, userId);
+                    const { error } = await window.SupabaseDB.client.from('caddy_notebook')
+                        .update({ photo_url: url, updated_at: new Date().toISOString() })
+                        .eq('id', id).eq('golfer_id', userId);
+                    if (error) throw error;
+                    this._entries = null;
+                    NotificationManager.show('Photo added!', 'success');
+                    await this.render();
+                });
+            },
+
             setRating(n) {
                 this._rating = n;
                 document.querySelectorAll('#notebookRatingStars .nb-star').forEach(s => {
@@ -44047,13 +44121,7 @@ Waitlist (${waitlist.length} people):`;
                 let photoUrl = '';
                 if (this._photoFile) {
                     try {
-                        const blob = await this._shrinkPhoto(this._photoFile);
-                        const path = `notebook/${userId}_${Date.now()}.jpg`;
-                        const { error: upErr } = await window.SupabaseDB.client.storage
-                            .from('caddy_photos').upload(path, blob, { cacheControl: '3600', upsert: false, contentType: 'image/jpeg' });
-                        if (upErr) throw upErr;
-                        const { data: urlData } = window.SupabaseDB.client.storage.from('caddy_photos').getPublicUrl(path);
-                        photoUrl = urlData?.publicUrl || '';
+                        photoUrl = await this._uploadPhotoFile(this._photoFile, userId);
                     } catch(e) {
                         console.error('[CaddyNotebook] Photo upload failed:', e);
                         NotificationManager.show('Photo upload failed — saving caddy without photo', 'warning');
@@ -44174,7 +44242,7 @@ Waitlist (${waitlist.length} people):`;
                     const label = e.caddy_name ? (num ? num + ' — ' + e.caddy_name : e.caddy_name) : (num ? 'Caddy ' + num : 'Unknown');
                     const av = e.photo_url
                         ? `<div class="mcv1-av" style="padding:0;cursor:zoom-in;" onclick="CaddyNotebook.viewPhoto('${e.photo_url}')"><img src="${e.photo_url}" style="width:100%;height:100%;object-fit:cover;display:block;" alt=""></div>`
-                        : `<div class="mcv1-av">${num || '?'}</div>`;
+                        : `<div class="mcv1-av" style="cursor:pointer;" title="Tap to add photo" onclick="CaddyNotebook.quickPhotoForEntry('${e.id}')">${num || '?'}</div>`;
                     return `
                     <div class="mcv1-cc ${e.rating === 5 ? 'fav' : ''}">
                         <div class="mcv1-ccrow">
@@ -115853,6 +115921,8 @@ const PinSheetManager = {
             return;
         }
 
+        // fixed-in-transformed-ancestor trap (same as caddyNoteModal) — re-home to body
+        if (modal.parentElement !== document.body) document.body.appendChild(modal);
         modal.classList.remove('hidden');
 
         // Update modal header

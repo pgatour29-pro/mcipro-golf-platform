@@ -43804,12 +43804,25 @@ Waitlist (${waitlist.length} people):`;
                     groups[c.course].push(c);
                 });
 
+                // Notebook photos: number → photo_url, shown on the pick pills
+                let nbPhotos = {};
+                try {
+                    (await CaddyNotebook.getEntries()).forEach(en => {
+                        if (en.caddy_number && en.photo_url) {
+                            const k = String(parseInt(en.caddy_number));
+                            if (!nbPhotos[k]) nbPhotos[k] = en.photo_url;
+                        }
+                    });
+                } catch (e) {}
+
                 const renderPill = (c, hideCourse) => {
                     const nameLabel = c.name ? ` ${c.name}` : '';
                     const courseLabel = (!hideCourse && c.course) ? `<span class="cl">${c.course}</span>` : '';
                     const courseAttr = String(c.course || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+                    const ph = nbPhotos[String(parseInt(c.number))];
+                    const phImg = ph ? `<img src="${ph}" style="width:22px;height:22px;border-radius:7px;object-fit:cover;vertical-align:middle;margin-right:3px;" alt="">` : '';
                     return `<button onclick="BookedCaddiesView.assignFromPicker('${eventId}','${c.number}','${courseAttr}')" class="mcv1-shpill ${c.isFav ? 'fav' : ''} active:scale-95 transition-transform">
-                        ${c.isFav ? micon('star') : ''} #${c.number}${nameLabel} ${courseLabel}
+                        ${phImg}${c.isFav ? micon('star') : ''} #${c.number}${nameLabel} ${courseLabel}
                     </button>`;
                 };
 
@@ -72756,6 +72769,14 @@ class SocietyGolfSupabase {
             totalFee += competitionFee;
         }
 
+        // A fresh GUEST-* id is by definition NOT a society member — TRGG's flat ฿100
+        // non-member surcharge applies at creation, and the nonMember flag is stamped so
+        // every organizer surface (registrations table, payment slip, tee-sheet sweep)
+        // agrees. Roster/expired verdicts for real profiles stay with the organizer
+        // sweeps (TRGGMembership) — never guessed here.
+        const _rpIsGuest = String(playerData.playerId || '').startsWith('GUEST-');
+        if (_rpIsTRGG && _rpIsGuest) totalFee += 100;
+
         console.log('[SocietyGolf] Calculated total_fee:', {
             player: playerData.name,
             isMember,
@@ -72809,7 +72830,9 @@ class SocietyGolfSupabase {
                 caddy_numbers: playerData.caddyNumbers || '',
                 // hostId (set for guests a registrant adds) links the guest to its host so tee sheet /
                 // registration / golfer card group them together. Insert-only — never clobbers on update.
-                special_requests: playerData.specialRequests || {}
+                special_requests: (_rpIsTRGG && _rpIsGuest)
+                    ? Object.assign({}, playerData.specialRequests || {}, { nonMember: true })
+                    : (playerData.specialRequests || {})
             }])
             .select()
             .single();
@@ -118756,13 +118779,13 @@ class GolferEventsManager {
             const course = (ev.courseName || '').toLowerCase().replace(/[^a-z]/g, '');
             if (!course) return;
             const { data } = await window.SupabaseDB.client.from('caddy_notebook')
-                .select('caddy_number, caddy_name, course_name, times_used').eq('golfer_id', uid).limit(50);
+                .select('caddy_number, caddy_name, course_name, times_used, photo_url').eq('golfer_id', uid).limit(50);
             const hits = (data || []).filter(nb => {
                 const c = (nb.course_name || '').toLowerCase().replace(/[^a-z]/g, '');
                 return c && nb.caddy_number && (c.includes(course) || course.includes(c));
             }).slice(0, 2);
             box.innerHTML = hits.map(nb =>
-                `<div class="scv3g-sug" onclick="document.getElementById('regCaddyNumbers').value='${String(nb.caddy_number).replace(/'/g, '')}'; GolferEventsSystem.rfv1RenderCaddy();">★ ${nb.caddy_name ? String(nb.caddy_name).toUpperCase() + ' ' : ''}#${nb.caddy_number} — YOUR CADDY AT ${(nb.course_name || '').toUpperCase()}${nb.times_used ? ' (USED ' + nb.times_used + '×)' : ''}</div>`
+                `<div class="scv3g-sug" onclick="document.getElementById('regCaddyNumbers').value='${String(nb.caddy_number).replace(/'/g, '')}'; GolferEventsSystem.rfv1RenderCaddy();">${nb.photo_url ? `<img src="${nb.photo_url}" style="width:22px;height:22px;border-radius:7px;object-fit:cover;vertical-align:middle;margin-right:4px;" alt="">` : ''}★ ${nb.caddy_name ? String(nb.caddy_name).toUpperCase() + ' ' : ''}#${nb.caddy_number} — YOUR CADDY AT ${(nb.course_name || '').toUpperCase()}${nb.times_used ? ' (USED ' + nb.times_used + '×)' : ''}</div>`
             ).join('');
         } catch (e) { console.warn('[SCV3G] caddy suggestion', e); }
     }
@@ -120537,9 +120560,11 @@ class GolferEventsManager {
         setRow('regTransportFeeRow', 'regTransportFeeDisplay', wantTransport, transportFee);
         setRow('regCompetitionFeeRow', 'regCompetitionFeeDisplay', wantCompetition, competitionFee);
 
-        // Guests: one receipt line for the lot (each guest pays base + the selected extras)
+        // Guests: one receipt line for the lot (each guest pays base + the selected extras;
+        // TRGG guests also carry the flat ฿100 non-member surcharge)
         const guestCount = document.querySelectorAll('.guest-player-row').length;
-        const guestFeePerPlayer = baseFee + (wantTransport ? transportFee : 0) + (wantCompetition ? competitionFee : 0);
+        const _gTRGG = /trgg|travellers rest/i.test([this.currentEvent.societyName, this.currentEvent.organizerName, this.currentEvent.title, this.currentEvent.name].map(s => s || '').join(' ')) || this.currentEvent.societyId === '7c0e4b72-d925-44bc-afda-38259a7ba346';
+        const guestFeePerPlayer = baseFee + (wantTransport ? transportFee : 0) + (wantCompetition ? competitionFee : 0) + (_gTRGG ? 100 : 0);
         const guestRow = document.getElementById('regGuestFeeRow');
         if (guestRow) {
             if (guestCount > 0) {
@@ -120609,6 +120634,27 @@ class GolferEventsManager {
             `<span class="pill">#${esc(n)} <button type="button" class="x" onclick="GolferEventsSystem.rfv1RemoveCaddy(${i})">✕</button></span>`
         ).join('') +
         `<button type="button" class="add" onclick="GolferEventsSystem.rfv1AddCaddy()"><span class="material-symbols-outlined" style="font-size:14px;">add</span>${esc(L.caddyAdd)}</button>`;
+        this._rfv1CaddyPhotos();
+    }
+    // Decorate the caddy pills with notebook photos (async fill; no photo = pill unchanged)
+    async _rfv1CaddyPhotos() {
+        try {
+            const wrap = document.getElementById('rfv1CaddyPills'); if (!wrap) return;
+            const entries = (typeof CaddyNotebook !== 'undefined') ? await CaddyNotebook.getEntries() : [];
+            const map = {};
+            entries.forEach(en => {
+                if (en.caddy_number && en.photo_url) {
+                    const k = String(parseInt(en.caddy_number));
+                    if (!map[k]) map[k] = en.photo_url;
+                }
+            });
+            wrap.querySelectorAll('.pill').forEach(p => {
+                if (p.querySelector('img')) return;
+                const m = (p.textContent || '').match(/#\s*(\d+)/);
+                const url = m && map[String(parseInt(m[1]))];
+                if (url) p.insertAdjacentHTML('afterbegin', '<img src="' + url + '" style="width:20px;height:20px;border-radius:6px;object-fit:cover;margin-right:4px;vertical-align:middle;" alt="">');
+            });
+        } catch (e) {}
     }
     rfv1AddCaddy() {
         const wrap = document.getElementById('rfv1CaddyPills');

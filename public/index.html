@@ -42990,7 +42990,7 @@ Waitlist (${waitlist.length} people):`;
                             // (Pete 2026-07-30 ×2: blank OR assigned — never the registration form,
                             // never 20 courses). The rest of the card still opens the event.
                             '<div class="gdb-nr-stat" onclick="event.stopPropagation(); GolferCubeInfo.openCaddiesForNextRound()"><span class="k">Caddy</span>' +
-                                (caddy ? '<span class="v">' + caddy + '</span>' : '<span class="v" style="color:#22c55e;">+</span>') +
+                                (caddy ? '<span class="v" id="gdbNrCaddyV">' + caddy + '</span>' : '<span class="v" style="color:#22c55e;">+</span>') +
                             '</div>' +
                           '</div>' +
                           '<div class="gdb-nr-meta">' +
@@ -43002,6 +43002,29 @@ Waitlist (${waitlist.length} people):`;
                         '</div>';
                     this.loadWeather();
                     this._fillPlayingCount(e.id);
+                    this._fillCaddyPhoto(caddy);
+                } catch (e) {}
+            },
+
+            // Booked caddy's notebook photo → shown beside the number in the Next Round card
+            // (fills in async like weather/playing-count; no photo saved = number only, as before)
+            async _fillCaddyPhoto(caddyNumbers) {
+                try {
+                    if (!caddyNumbers) return;
+                    const first = String(caddyNumbers).split(/[,\s;/|.:-]+/).map(s => s.replace(/\D/g, '')).filter(Boolean)[0];
+                    if (!first) return;
+                    const uid = (window.AppState && AppState.currentUser && AppState.currentUser.lineUserId) || localStorage.getItem('line_user_id');
+                    const sb = window.SupabaseDB && window.SupabaseDB.client;
+                    if (!uid || !sb) return;
+                    const { data } = await sb.from('caddy_notebook')
+                        .select('caddy_number, photo_url')
+                        .eq('golfer_id', uid)
+                        .not('photo_url', 'is', null);
+                    const hit = (data || []).find(en => en.caddy_number && String(parseInt(en.caddy_number)) === String(parseInt(first)) && en.photo_url);
+                    if (!hit) return;
+                    const el = document.getElementById('gdbNrCaddyV');
+                    if (!el) return;
+                    el.innerHTML = '<img src="' + hit.photo_url + '" style="width:28px;height:28px;border-radius:8px;object-fit:cover;display:inline-block;vertical-align:middle;margin-right:6px;" alt="">' + caddyNumbers;
                 } catch (e) {}
             },
 
@@ -43622,6 +43645,17 @@ Waitlist (${waitlist.length} people):`;
                     // Build caddy pool from all registrations for picker
                     await this.buildCaddyPool(userId, data);
 
+                    // Notebook photos for the assigned-caddy tiles (number → photo_url)
+                    let nbPhotoByNum = {};
+                    try {
+                        (await CaddyNotebook.getEntries()).forEach(en => {
+                            if (en.caddy_number && en.photo_url) {
+                                const k = String(parseInt(en.caddy_number));
+                                if (!nbPhotoByNum[k]) nbPhotoByNum[k] = en.photo_url;
+                            }
+                        });
+                    } catch (e) {}
+
                     container.innerHTML = upcoming.map(r => {
                         const evt = r.society_events || {};
                         const date = evt.event_date ? new Date(evt.event_date + 'T00:00:00') : null;
@@ -43631,10 +43665,16 @@ Waitlist (${waitlist.length} people):`;
                         const caddyNums = hasCaddy ? r.caddy_numbers.trim() : '';
 
                         if (hasCaddy) {
-                            // Show assigned caddy with change/remove
+                            // Show assigned caddy with change/remove — photo tile when the
+                            // notebook has one for this number, number tile otherwise
+                            const firstNum = caddyNums.split(/[,\-.\s:;/|]+/)[0].replace(/\D/g, '');
+                            const bkPhoto = nbPhotoByNum[String(parseInt(firstNum))] || '';
+                            const bkTile = bkPhoto
+                                ? `<div class="mcv1-bknum" style="overflow:hidden;padding:0;cursor:zoom-in;" onclick="CaddyNotebook.viewPhoto('${bkPhoto}')"><img src="${bkPhoto}" style="width:100%;height:100%;object-fit:cover;display:block;" alt=""></div>`
+                                : `<div class="mcv1-bknum"><span class="n">#${firstNum}</span><span class="k">CADDY</span></div>`;
                             return `
                             <div class="mcv1-bk">
-                                <div class="mcv1-bknum"><span class="n">#${caddyNums.split(/[,\-.\s:;/|]+/)[0].replace(/\D/g,'')}</span><span class="k">CADDY</span></div>
+                                ${bkTile}
                                 <div class="mcv1-bkinfo">
                                     <div class="mcv1-bkev">${evt.title || 'Event'}</div>
                                     <div class="mcv1-bkmeta">#${caddyNums}${evt.course_name ? ' · ' + evt.course_name : ''}</div>

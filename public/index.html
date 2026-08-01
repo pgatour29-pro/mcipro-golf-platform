@@ -43903,6 +43903,48 @@ Waitlist (${waitlist.length} people):`;
         const CaddyNotebook = {
             _rating: 0,
             _entries: null,
+            _photoFile: null,
+
+            photoPicked(input) {
+                const f = input.files && input.files[0];
+                if (!f) return;
+                this._photoFile = f;
+                const img = document.getElementById('notebookCaddyPhotoPreview');
+                const lbl = document.getElementById('notebookCaddyPhotoLbl');
+                if (img) { img.src = URL.createObjectURL(f); img.style.display = 'block'; }
+                if (lbl) lbl.textContent = 'Change Photo';
+            },
+
+            clearPhoto() {
+                this._photoFile = null;
+                const inp = document.getElementById('notebookCaddyPhoto'); if (inp) inp.value = '';
+                const img = document.getElementById('notebookCaddyPhotoPreview');
+                if (img) { try { URL.revokeObjectURL(img.src); } catch(e) {} img.removeAttribute('src'); img.style.display = 'none'; }
+                const lbl = document.getElementById('notebookCaddyPhotoLbl'); if (lbl) lbl.textContent = 'Add Photo';
+            },
+
+            // Phone camera shots are 3-8MB; the bucket policy caps uploads at 2MB —
+            // downscale to max 900px JPEG before upload. Falls back to the original file.
+            async _shrinkPhoto(file) {
+                try {
+                    const bmp = await createImageBitmap(file);
+                    const scale = Math.min(1, 900 / Math.max(bmp.width, bmp.height));
+                    const w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
+                    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.82));
+                    return blob || file;
+                } catch(e) { return file; }
+            },
+
+            viewPhoto(url) {
+                const ov = document.createElement('div');
+                ov.style.cssText = 'position:fixed;inset:0;z-index:100060;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out;';
+                ov.innerHTML = '<img src="' + url + '" style="max-width:100%;max-height:100%;border-radius:14px;" alt="">';
+                ov.onclick = () => ov.remove();
+                document.body.appendChild(ov);
+            },
 
             setRating(n) {
                 this._rating = n;
@@ -43933,11 +43975,28 @@ Waitlist (${waitlist.length} people):`;
             },
 
             async addEntry() {
-                const userId = AppState?.currentUser?.lineUserId;
+                const userId = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
                 if (!userId) { NotificationManager.show('Please log in first', 'warning'); return; }
                 const number = document.getElementById('notebookCaddyNumber')?.value?.trim() || '';
                 const name = document.getElementById('notebookCaddyName')?.value?.trim() || '';
                 if (!number && !name) { NotificationManager.show('Please enter a caddy number or name', 'warning'); return; }
+
+                // Upload the picked photo (if any) first — failure never blocks the save
+                let photoUrl = '';
+                if (this._photoFile) {
+                    try {
+                        const blob = await this._shrinkPhoto(this._photoFile);
+                        const path = `notebook/${userId}_${Date.now()}.jpg`;
+                        const { error: upErr } = await window.SupabaseDB.client.storage
+                            .from('caddy_photos').upload(path, blob, { cacheControl: '3600', upsert: false, contentType: 'image/jpeg' });
+                        if (upErr) throw upErr;
+                        const { data: urlData } = window.SupabaseDB.client.storage.from('caddy_photos').getPublicUrl(path);
+                        photoUrl = urlData?.publicUrl || '';
+                    } catch(e) {
+                        console.error('[CaddyNotebook] Photo upload failed:', e);
+                        NotificationManager.show('Photo upload failed — saving caddy without photo', 'warning');
+                    }
+                }
 
                 const entry = {
                     golfer_id: userId,
@@ -43949,6 +44008,7 @@ Waitlist (${waitlist.length} people):`;
                     language: document.getElementById('notebookCaddyLanguage')?.value?.trim() || '',
                     recommended_by: document.getElementById('notebookCaddyRecommendedBy')?.value?.trim() || '',
                 };
+                if (photoUrl) entry.photo_url = photoUrl;
                 try {
                     await window.SupabaseDB.client.from('caddy_notebook').insert([entry]);
                     this._entries = null;
@@ -43956,6 +44016,7 @@ Waitlist (${waitlist.length} people):`;
                         const el = document.getElementById(id); if (el) el.value = '';
                     });
                     this._rating = 0; this.setRating(0);
+                    this.clearPhoto();
                     NotificationManager.show('Caddy saved to notebook!', 'success');
                     await this.render();
                 } catch(e) { NotificationManager.show('Error saving: ' + e.message, 'error'); }
@@ -44037,10 +44098,13 @@ Waitlist (${waitlist.length} people):`;
                     const stars = e.rating ? '<span class="mcv1-stars">' + '★'.repeat(e.rating) + '</span>' : '';
                     const num = e.caddy_number ? '#' + e.caddy_number : '';
                     const label = e.caddy_name ? (num ? num + ' — ' + e.caddy_name : e.caddy_name) : (num ? 'Caddy ' + num : 'Unknown');
+                    const av = e.photo_url
+                        ? `<div class="mcv1-av" style="padding:0;cursor:zoom-in;" onclick="CaddyNotebook.viewPhoto('${e.photo_url}')"><img src="${e.photo_url}" style="width:100%;height:100%;object-fit:cover;display:block;" alt=""></div>`
+                        : `<div class="mcv1-av">${num || '?'}</div>`;
                     return `
                     <div class="mcv1-cc ${e.rating === 5 ? 'fav' : ''}">
                         <div class="mcv1-ccrow">
-                            <div class="mcv1-av">${num || '?'}</div>
+                            ${av}
                             <div class="flex-1 min-w-0">
                                 <div class="mcv1-nm"><span>${label}</span>${stars}</div>
                                 ${e.course_name ? '<div class="mcv1-sub"><span class="material-symbols-outlined">location_on</span>' + e.course_name + '</div>' : ''}
@@ -52096,6 +52160,14 @@ Waitlist (${waitlist.length} people):`;
                         <div class="mcv1-frow" style="grid-template-columns:1fr 1fr;">
                             <input type="text" id="notebookCaddyRecommendedBy" placeholder="Recommended by" class="mcv1-in">
                             <input type="text" id="notebookCaddyNotes" placeholder="Notes" class="mcv1-in">
+                        </div>
+                        <div class="mcv1-frow" style="grid-template-columns:auto 1fr auto;align-items:center;">
+                            <input type="file" id="notebookCaddyPhoto" accept="image/*" style="display:none;" onchange="CaddyNotebook.photoPicked(this)">
+                            <button type="button" onclick="document.getElementById('notebookCaddyPhoto').click()" class="mcv1-in" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;width:auto;">
+                                <span class="material-symbols-outlined" style="font-size:16px;">photo_camera</span><span id="notebookCaddyPhotoLbl">Add Photo</span>
+                            </button>
+                            <span style="font-size:11px;color:var(--mut,#8B949E);">Optional</span>
+                            <img id="notebookCaddyPhotoPreview" onclick="CaddyNotebook.clearPhoto()" title="Tap to remove" style="display:none;width:46px;height:46px;border-radius:12px;object-fit:cover;cursor:pointer;border:1px solid var(--line,#2A323C);" alt="Caddy photo preview">
                         </div>
                         <button onclick="CaddyNotebook.addEntry()" class="mcv1-save">
                             <span class="material-symbols-outlined">add</span>Save to Notebook

@@ -118785,7 +118785,7 @@ class GolferEventsManager {
             const hits = (data || []).filter(nb => {
                 const c = _cnorm(nb.course_name);
                 return c && nb.caddy_number && (c.includes(course) || course.includes(c));
-            }).slice(0, 2);
+            }).sort((a, b) => ((b.photo_url ? 1 : 0) - (a.photo_url ? 1 : 0)) || ((b.times_used || 0) - (a.times_used || 0))).slice(0, 3);
             box.innerHTML = hits.map(nb =>
                 `<div class="scv3g-sug" onclick="document.getElementById('regCaddyNumbers').value='${String(nb.caddy_number).replace(/'/g, '')}'; GolferEventsSystem.rfv1RenderCaddy();">${nb.photo_url ? `<img src="${nb.photo_url}" style="width:22px;height:22px;border-radius:7px;object-fit:cover;vertical-align:middle;margin-right:4px;" alt="">` : ''}★ ${nb.caddy_name ? String(nb.caddy_name).toUpperCase() + ' ' : ''}#${nb.caddy_number} — YOUR CADDY AT ${(nb.course_name || '').toUpperCase()}${nb.times_used ? ' (USED ' + nb.times_used + '×)' : ''}</div>`
             ).join('');
@@ -120641,6 +120641,8 @@ class GolferEventsManager {
         ).join('') +
         `<button type="button" class="add" onclick="GolferEventsSystem.rfv1AddCaddy()"><span class="material-symbols-outlined" style="font-size:14px;">add</span>${esc(L.caddyAdd)}</button>`;
         this._rfv1CaddyPhotos();
+        // Form re-renders can wipe the YOUR CADDY suggestion box — re-create if missing
+        if (!document.getElementById('scv3gCaddySug')) { try { this._fillCaddySuggestion(); } catch (e) {} }
     }
     // Decorate the caddy pills with notebook photos (async fill; no photo = pill unchanged)
     async _rfv1CaddyPhotos() {

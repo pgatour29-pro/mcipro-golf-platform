@@ -131,6 +131,7 @@
                 if (data) { name = name || data.name; holes = data.total_holes || 18; par = data.par || 72; }
             } catch (e) { }
             MD.course = { id, name: name || id, holes: holes, par: par, stem: MD.stemOf(name || id) };
+            MD._caddyPhotos = null; MD._caddyPhotosP = null;   // photo map is course-scoped
             localStorage.setItem('mgr_course_v1', JSON.stringify(MD.course));
             if (persist && uid()) {
                 try { await db().from('user_profiles').update({ managed_course_id: id, managed_course_name: MD.course.name }).eq('line_user_id', uid()); } catch (e) { }
@@ -1434,7 +1435,7 @@
             html += `<h4 class="text-sm font-bold text-gray-900 mb-1.5 mt-3">${esc(tbl.title)}</h4>
               <div class="overflow-x-auto border border-gray-200 rounded-xl mb-2">
               <table class="w-full text-xs"><thead><tr class="bg-gray-50">${tbl.cols.map(c => `<th class="text-left p-2 font-semibold text-gray-600 whitespace-nowrap">${esc(c)}</th>`).join('')}</tr></thead>
-              <tbody>${tbl.rows.length ? tbl.rows.map((r, i) => `<tr class="${i % 2 ? 'bg-gray-50' : 'bg-white'}">${r.map(c => `<td class="p-2 text-gray-700">${esc(String(c == null ? '' : c))}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${tbl.cols.length}" class="p-4 text-center text-gray-400">${esc(tr('mgr.nodata', 'No data in this period'))}</td></tr>`}</tbody></table></div>`;
+              <tbody>${tbl.rows.length ? tbl.rows.map((r, i) => `<tr class="${i % 2 ? 'bg-gray-50' : 'bg-white'}">${r.map(c => `<td class="p-2 text-gray-700">${(c && typeof c === 'object' && c.html != null) ? c.html : esc(String(c == null ? '' : c))}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${tbl.cols.length}" class="p-4 text-center text-gray-400">${esc(tr('mgr.nodata', 'No data in this period'))}</td></tr>`}</tbody></table></div>`;
         });
         return html;
     };
@@ -1463,7 +1464,7 @@
         if (!lr) return;
         const rows = [];
         (lr.data.kpis || []).forEach(k => rows.push([k.label, k.value]));
-        (lr.data.tables || []).forEach(tbl => { rows.push([]); rows.push([tbl.title]); rows.push(tbl.cols); tbl.rows.forEach(r => rows.push(r)); });
+        (lr.data.tables || []).forEach(tbl => { rows.push([]); rows.push([tbl.title]); rows.push(tbl.cols); tbl.rows.forEach(r => rows.push(r.map(c => (c && typeof c === 'object' && c.text != null) ? c.text : c))); });
         MD.downloadCSV((MD.course.name + '-' + lr.def.id + '-' + lr.from).replace(/[^a-z0-9-]/gi, '_') + '.csv', rows);
     };
     MD.printReport = function () {
@@ -1476,18 +1477,76 @@
         w.document.close();
     };
 
+    // ---- caddy photos (a caddy number is never shown without their photo) ----
+    // caddy_bookings stores the caddie as free text ("Caddy #15") and leaves caddy_id
+    // NULL on every one of those rows, so photos resolve by NUMBER, not by id.
+    // Sources: caddy_profiles (course roster) then caddy_notebook (golfer-uploaded —
+    // what My Caddies renders, and today the only table holding real photos).
+    // A row whose course matches this course beats a bare number match.
+    MD._caddyPhotos = null;
+    MD._caddyPhotosP = null;
+    MD.caddyNumOf = function (name) {
+        const m = /#\s*(\d+)/.exec(String(name == null ? '' : name));
+        return m ? String(parseInt(m[1], 10)) : '';
+    };
+    MD.loadCaddyPhotos = function () {
+        if (MD._caddyPhotos) return Promise.resolve(MD._caddyPhotos);
+        if (MD._caddyPhotosP) return MD._caddyPhotosP;
+        MD._caddyPhotosP = (async () => {
+            const map = {};        // '15' -> photo url
+            const onCourse = {};   // numbers resolved from a row belonging to THIS course
+            const stem = (MD.course && MD.course.stem) || [];
+            const courseHit = (name) => {
+                const n = String(name || '').toLowerCase();
+                return !!stem.length && stem.every(tok => n.indexOf(tok) >= 0);
+            };
+            const numOf = (v) => { const s = String(v == null ? '' : v).trim(); return /^\d+$/.test(s) ? String(parseInt(s, 10)) : ''; };
+            const put = (num, url, hit) => {
+                if (!num || !url) return;
+                if (map[num] && onCourse[num] && !hit) return;   // keep the course-matched photo
+                map[num] = url;
+                if (hit) onCourse[num] = true;
+            };
+            try {
+                const [pf, nb] = await Promise.all([
+                    db().from('caddy_profiles').select('caddy_number,course_id,course_name,photo_url').not('photo_url', 'is', null).limit(2000),
+                    db().from('caddy_notebook').select('caddy_number,course_name,photo_url').not('photo_url', 'is', null).limit(2000)
+                ]);
+                (pf.data || []).forEach(r => put(numOf(r.caddy_number), r.photo_url, (r.course_id && r.course_id === MD.course.id) || courseHit(r.course_name)));
+                (nb.data || []).forEach(r => put(numOf(r.caddy_number), r.photo_url, courseHit(r.course_name)));
+            } catch (e) { console.warn('[MD] caddy photos', e); }
+            MD._caddyPhotos = map;
+            return map;
+        })();
+        return MD._caddyPhotosP;
+    };
+    // small round avatar; inline display is mandatory (Tailwind preflight makes img block)
+    MD.caddyImg = function (name, photos, px) {
+        const url = photos && photos[MD.caddyNumOf(name)];
+        if (!url) return '';
+        const s = px || 17;
+        return '<img src="' + esc(url) + '" alt="" onerror="this.style.display=\'none\'" style="display:inline-block;width:' + s + 'px;height:' + s + 'px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px;">';
+    };
+    // report-table cell: plain string when there is no photo, {text,html} when there is
+    MD.caddyCell = function (name, photos) {
+        const raw = name == null ? '' : String(name);
+        const img = MD.caddyImg(raw, photos);
+        return img ? { text: raw, html: img + esc(raw) } : raw;
+    };
+
     // ---- report generators ----
     MD.rpt_daily_ops = async function (from, to) {
         const dayISO = new Date(from + 'T00:00:00').toISOString();
         const dayEnd = new Date(from + 'T23:59:59').toISOString();
-        const [cards, events, caddyB, food, alerts, conds, wo] = await Promise.all([
+        const [cards, events, caddyB, food, alerts, conds, wo, photos] = await Promise.all([
             MD.scorecardsSince(dayISO).then(cs => cs.filter(c => c.created_at <= dayEnd)),
             MD.eventsFor(from, from),
             db().from('caddy_bookings').select('id,course_id,caddie_name,golfer_name,status,payment_amount').eq('booking_date', from).or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(500),
             MD.orNameFilters(db().from('food_orders').select('id,order_number,customer_name,total,status,created_at'), 'course_name').gte('created_at', dayISO).lte('created_at', dayEnd).limit(500),
             db().from('emergency_alerts').select('id,type,message,user_name,status,created_at').gte('created_at', dayISO).lte('created_at', dayEnd).limit(100),
             MD.orNameFilters(db().from('course_conditions').select('rating,comment,user_name,created_at'), 'course_name').gte('created_at', dayISO).lte('created_at', dayEnd).limit(100),
-            db().from('course_work_orders').select('title,status,priority,assigned_to,created_at').eq('course_id', MD.course.id).gte('created_at', dayISO).lte('created_at', dayEnd).limit(100)
+            db().from('course_work_orders').select('title,status,priority,assigned_to,created_at').eq('course_id', MD.course.id).gte('created_at', dayISO).lte('created_at', dayEnd).limit(100),
+            MD.loadCaddyPhotos()
         ]);
         const regs = events.length ? await MD.regCountsFor(events.map(e => e.id)) : {};
         const caddyRows = (caddyB.data || []).filter(b => b.status !== 'cancelled' && (!b.course_id || b.course_id === MD.course.id));
@@ -1506,7 +1565,7 @@
             tables: [
                 { title: tr('mgr.rpt.eventstoday', 'Society events'), cols: ['Event', 'Organizer', 'Tee-off', 'Registered'], rows: events.map(e => [e.title, e.organizer_name || '', (e.start_time || '').slice(0, 5), (regs[e.id] || 0) + (e.max_participants ? '/' + e.max_participants : '')]) },
                 { title: tr('mgr.rpt.roundlist', 'Rounds'), cols: ['Player', 'Society', 'Started', 'Status'], rows: cards.slice(0, 100).map(c => [c.player_name || '', c.society_name || '', c.started_at ? hhmm(c.started_at) : '', c.completed_at ? 'Completed' : 'On course']) },
-                { title: tr('mgr.rpt.caddylist', 'Caddy bookings'), cols: ['Caddie', 'Golfer', 'Status', 'Amount'], rows: caddyRows.map(b => [b.caddie_name || '', b.golfer_name || '', b.status || '', b.payment_amount ? fmtB(b.payment_amount) : '']) },
+                { title: tr('mgr.rpt.caddylist', 'Caddy bookings'), cols: ['Caddie', 'Golfer', 'Status', 'Amount'], rows: caddyRows.map(b => [MD.caddyCell(b.caddie_name || '', photos), b.golfer_name || '', b.status || '', b.payment_amount ? fmtB(b.payment_amount) : '']) },
                 { title: tr('mgr.rpt.incidents', 'Incidents'), cols: ['Type', 'Message', 'By', 'Status', 'Time'], rows: (alerts.data || []).map(a => [a.type || '', a.message || '', a.user_name || '', a.status || '', hhmm(a.created_at)]) },
                 { title: tr('mgr.rpt.condposts', 'Condition reports'), cols: ['Rating', 'Comment', 'By', 'Time'], rows: (conds.data || []).map(c => [(c.rating || '') + '★', c.comment || '', c.user_name || '', hhmm(c.created_at)]) },
                 { title: tr('mgr.rpt.newwo', 'New work orders'), cols: ['Title', 'Priority', 'Status', 'Assigned'], rows: (wo.data || []).map(x => [x.title, x.priority, x.status, x.assigned_to || '']) }
@@ -1559,9 +1618,12 @@
         };
     };
     MD.rpt_caddy = async function (from, to) {
-        const { data } = await db().from('caddy_bookings').select('course_id,caddie_name,golfer_name,booking_date,status,payment_amount,payment_status')
-            .gte('booking_date', from).lte('booking_date', to)
-            .or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(1000);
+        const [{ data }, photos] = await Promise.all([
+            db().from('caddy_bookings').select('course_id,caddie_name,golfer_name,booking_date,status,payment_amount,payment_status')
+                .gte('booking_date', from).lte('booking_date', to)
+                .or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(1000),
+            MD.loadCaddyPhotos()
+        ]);
         const rows = (data || []).filter(b => !b.course_id || b.course_id === MD.course.id);
         const byCaddie = {};
         rows.filter(b => b.status !== 'cancelled').forEach(b => {
@@ -1578,8 +1640,8 @@
                 { label: tr('mgr.caddies', 'Caddies used'), value: Object.keys(byCaddie).length }
             ],
             tables: [
-                { title: tr('mgr.rpt.bycaddie', 'By caddie'), cols: ['Caddie', 'Bookings', 'Paid', 'Amount'], rows: Object.entries(byCaddie).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => [k, v.n, v.paid, fmtB(v.amt)]) },
-                { title: tr('mgr.rpt.bookinglist', 'Booking detail'), cols: ['Date', 'Caddie', 'Golfer', 'Status', 'Amount'], rows: rows.slice(0, 300).map(b => [b.booking_date, b.caddie_name || '', b.golfer_name || '', b.status || '', b.payment_amount ? fmtB(b.payment_amount) : '']) }
+                { title: tr('mgr.rpt.bycaddie', 'By caddie'), cols: ['Caddie', 'Bookings', 'Paid', 'Amount'], rows: Object.entries(byCaddie).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => [MD.caddyCell(k, photos), v.n, v.paid, fmtB(v.amt)]) },
+                { title: tr('mgr.rpt.bookinglist', 'Booking detail'), cols: ['Date', 'Caddie', 'Golfer', 'Status', 'Amount'], rows: rows.slice(0, 300).map(b => [b.booking_date, MD.caddyCell(b.caddie_name || '', photos), b.golfer_name || '', b.status || '', b.payment_amount ? fmtB(b.payment_amount) : '']) }
             ]
         };
     };
@@ -2241,12 +2303,13 @@
             const isWeekend = (dow === 0 || dow === 6);
             const gfRate = Number(isWeekend ? (MD.pricing.greenFeeWeekend || MD.pricing.greenFeeWeekday) : MD.pricing.greenFeeWeekday) || 0;
 
-            const [rounds, caddy, food, pro, saved] = await Promise.all([
+            const [rounds, caddy, food, pro, saved, photos] = await Promise.all([
                 db().from('scorecards').select('id').eq('course_id', MD.course.id).gte('created_at', startISO).lt('created_at', endISO).limit(1000),
                 db().from('caddy_bookings').select('payment_amount,payment_status,payment_method,status,caddie_name,golfer_name').eq('booking_date', date).or('course_id.eq.' + MD.course.id + ',course_name.ilike.%' + MD.course.stem.join('%') + '%').limit(1000),
                 MD.orNameFilters(db().from('food_orders').select('total,status,created_at'), 'course_name').gte('created_at', startISO).lt('created_at', endISO).limit(1000),
                 db().from('proshop_sales').select('total,payment_method').eq('course_id', MD.course.id).gte('created_at', startISO).lt('created_at', endISO).limit(1000),
-                db().from('cash_reconciliation').select('*').eq('course_id', MD.course.id).eq('biz_date', date).maybeSingle()
+                db().from('cash_reconciliation').select('*').eq('course_id', MD.course.id).eq('biz_date', date).maybeSingle(),
+                MD.loadCaddyPhotos()
             ]);
             if (seq !== MD._seq.cash) return;
 
@@ -2356,7 +2419,7 @@
                   ${unpaidRows.length ? unpaidRows.slice(0, 20).map(b => `
                     <div class="flex items-center gap-2.5 p-2 rounded-lg border border-gray-100 mb-2">
                       <span class="w-1.5 h-8 rounded bg-red-400"></span>
-                      <div class="flex-1 min-w-0"><div class="font-semibold text-[12.5px] truncate text-gray-800">${esc(b.golfer_name || tr('mgr.cash.caddybk', 'Caddy booking'))}</div><div class="text-[11px] text-gray-500 truncate">${esc(b.caddie_name || '')} · ${esc(b.payment_status || 'unpaid')}</div></div>
+                      <div class="flex-1 min-w-0"><div class="font-semibold text-[12.5px] truncate text-gray-800">${esc(b.golfer_name || tr('mgr.cash.caddybk', 'Caddy booking'))}</div><div class="text-[11px] text-gray-500 truncate">${MD.caddyImg(b.caddie_name || '', photos, 16)}${esc(b.caddie_name || '')} · ${esc(b.payment_status || 'unpaid')}</div></div>
                       <span class="font-bold mgr-num text-[13px] text-gray-900">${fmtB(b.payment_amount)}</span>
                     </div>`).join('') : `<p class="text-xs text-gray-400 py-6 text-center">${esc(tr('mgr.cash.nounpaid', 'Everything settled for this day'))}</p>`}
                   ${unpaidRows.length ? `<div class="mt-2 pt-3 border-t border-gray-200 flex items-center justify-between"><span class="text-[12px] font-semibold text-gray-500">${esc(tr('mgr.cash.totout', 'Total outstanding'))}</span><span class="font-extrabold mgr-num text-red-600">${fmtB(unpaidTotal)}</span></div>` : ''}

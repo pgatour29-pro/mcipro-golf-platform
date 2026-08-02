@@ -35931,6 +35931,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 groupedBookings.sort((a, b) => new Date(a.teeTime) - new Date(b.teeTime));
 
                 container.innerHTML = groupedBookings.map(group => this.createGroupedScheduleItem(group)).join('');
+                // GLOBAL RULE: caddy names/numbers on schedule cards get the caddy's photo.
+                if (window._caddyChipDecorate) window._caddyChipDecorate(container, 16);
             },
 
             createGroupedScheduleItem(group) {
@@ -36012,10 +36014,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Combine Caddies and Waitlist
                 let caddyInfo = [];
                 if (group.caddies.length > 0) {
-                    caddyInfo.push(...group.caddies.map(c => c.caddieName || c.golferName));
+                    caddyInfo.push(...group.caddies.map(c => { const nm = c.caddieName || c.golferName; return `<span data-caddy-photo-num="${String(nm || '').replace(/"/g, '')}">${nm}</span>`; }));
                 }
                 if (group.waitlists.length > 0) {
-                    caddyInfo.push(...group.waitlists.map(w => `${w.caddieName || w.golferName} (waitlist)`));
+                    caddyInfo.push(...group.waitlists.map(w => { const nm = w.caddieName || w.golferName; return `<span data-caddy-photo-num="${String(nm || '').replace(/"/g, '')}">${nm} (waitlist)</span>`; }));
                 }
                 const caddiesHtml = caddyInfo.length > 0
                     ? `<div class="text-sm"><span class="font-medium text-gray-700">Caddy:</span> ${caddyInfo.join(', ')}</div>`
@@ -43253,17 +43255,19 @@ Waitlist (${waitlist.length} people):`;
                 }
             },
 
-            displayStandaloneBookings(bookings) {
+            async displayStandaloneBookings(bookings) {
                 // Update the unified My Caddies card on overview
                 const newContainer = document.getElementById('upcomingCaddyBookingsContent');
                 if (newContainer) {
+                    // Notebook photo fallback when the caddy profile has no photo (GLOBAL photo rule).
+                    const nbMap = window._caddyPhotoMap ? await window._caddyPhotoMap() : {};
                     newContainer.innerHTML = bookings.map(b => {
                         const date = new Date(b.booking_date);
                         const dateStr = date.toLocaleDateString(_lvLocale(), { weekday: 'short', day: '2-digit', month: 'short' }).replace(/,/g, '').toUpperCase();
                         const timeStr = b.tee_time ? b.tee_time.substring(0, 5) : '';
                         const caddyNumber = b.caddy_number || b.caddy_profiles?.caddy_number || '';
                         const caddyName = b.caddy_name || b.caddy_profiles?.name || '';
-                        const caddyPhoto = b.caddy_profiles?.photo_url || '';
+                        const caddyPhoto = b.caddy_profiles?.photo_url || nbMap[window._lvFirstNum(String(caddyNumber))] || '';
                         const ok = b.status === 'confirmed';
 
                         return `
@@ -43336,10 +43340,12 @@ Waitlist (${waitlist.length} people):`;
                 }
             },
 
-            displayEventCaddyBookings(registrations) {
+            async displayEventCaddyBookings(registrations) {
                 const container = document.getElementById('upcomingCaddyBookingsContent');
                 if (!container) return;
 
+                // GLOBAL RULE: the number never shows without the photo (notebook bare-number match).
+                const nbMap = window._caddyPhotoMap ? await window._caddyPhotoMap() : {};
                 container.innerHTML = registrations.map(r => {
                     const evt = r.society_events || {};
                     const date = evt.event_date ? new Date(evt.event_date + 'T00:00:00') : null;
@@ -43348,10 +43354,11 @@ Waitlist (${waitlist.length} people):`;
                     const title = evt.title || 'Event';
                     const course = evt.course_name || '';
                     const caddyNums = r.caddy_numbers || '';
+                    const caddyPhoto = nbMap[window._lvFirstNum(caddyNums)] || '';
 
                     return `
                         <div class="gdb-cd-row">
-                            <div class="gdb-cd-av"><span class="material-symbols-outlined">person</span></div>
+                            <div class="gdb-cd-av">${caddyPhoto ? `<img src="${caddyPhoto}" alt="">` : '<span class="material-symbols-outlined">person</span>'}</div>
                             <div class="gdb-cd-info">
                                 <div class="gdb-cd-num">#${caddyNums}</div>
                                 <div class="gdb-cd-sub">${title}${course ? ' · ' + course : ''}</div>
@@ -43405,6 +43412,11 @@ Waitlist (${waitlist.length} people):`;
                 if (savedDiv && numbersEl) {
                     numbersEl.textContent = numbers;
                     savedDiv.classList.remove('hidden');
+                    // GLOBAL RULE: photo rides with the number (async fill; no photo → unchanged).
+                    if (window._caddyPhotoMap) window._caddyPhotoMap().then(m => {
+                        const u = m[window._lvFirstNum(numbers)];
+                        if (u && numbersEl.textContent === numbers) numbersEl.insertAdjacentHTML('afterbegin', window._lvCaddyImg(u, 20));
+                    }).catch(() => {});
                 }
             },
 
@@ -43955,14 +43967,17 @@ Waitlist (${waitlist.length} people):`;
                 picker.onclick = (e) => { if (e.target === picker) { picker.remove(); document.body.style.overflow = ''; } };
                 document.body.style.overflow = 'hidden';
 
+                // GLOBAL RULE: numbers carry photos — sheet header + per-event "Currently" rows.
+                const nbMap = window._caddyPhotoMap ? await window._caddyPhotoMap() : {};
                 const label = caddyName ? '#' + caddyNum + ' — ' + caddyName : '#' + caddyNum;
+                const labelImg = window._lvCaddyImg(nbMap[window._lvFirstNum(caddyNum)], 24);
                 let eventsHtml = '';
                 upcoming.forEach(r => {
                     const evt = r.society_events || {};
                     const date = evt.event_date ? new Date(evt.event_date + 'T00:00:00') : null;
                     const dateStr = date ? date.toLocaleDateString(_lvLocale(), { weekday: 'short', month: 'short', day: 'numeric' }) : '';
                     const hasCaddy = r.caddy_numbers && r.caddy_numbers.trim();
-                    const currentHtml = hasCaddy ? '<div class="cur">Currently: #' + r.caddy_numbers.trim() + '</div>' : '';
+                    const currentHtml = hasCaddy ? '<div class="cur">Currently: ' + window._lvCaddyImg(nbMap[window._lvFirstNum(r.caddy_numbers)], 16) + '#' + r.caddy_numbers.trim() + '</div>' : '';
                     const actionText = hasCaddy ? 'Replace' : 'Assign';
                     eventsHtml += '<button onclick="BookedCaddiesView.assignFromPicker(\'' + r.event_id + '\',\'' + caddyNum + '\')" class="mcv1-shev ' + (hasCaddy ? '' : 'open') + ' active:scale-95 transition-transform">'
                         + '<div class="flex-1 min-w-0">'
@@ -43976,7 +43991,7 @@ Waitlist (${waitlist.length} people):`;
 
                 picker.innerHTML = '<div class="mcv1-sheet">'
                     + '<div class="mcv1-sheet-head">'
-                    + '<h3>Assign ' + label + ' to Event</h3>'
+                    + '<h3>Assign ' + labelImg + label + ' to Event</h3>'
                     + '<button onclick="document.getElementById(\'mobileCaddyPicker\').remove();document.body.style.overflow=\'\'" class="mcv1-sheet-x"><span class="material-symbols-outlined">close</span></button>'
                     + '</div>'
                     + '<div style="overflow-y:scroll;-webkit-overflow-scrolling:touch;max-height:calc(75vh - 70px);padding:16px;overscroll-behavior:contain;">'
@@ -106931,7 +106946,7 @@ const CourseAdminSystem = {
             return `
                 <tr class="hover:bg-gray-50">
                     <td class="px-4 py-3 text-sm font-medium text-gray-900">${caddy.id.slice(0,6)}</td>
-                    <td class="px-4 py-3 text-sm text-gray-900">${caddy.name}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${caddy.photo_url ? `<img src="${caddy.photo_url}" style="display:inline-block;width:24px;height:24px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px;" onerror="this.style.display='none'" alt="">` : ''}${caddy.name}</td>
                     <td class="px-4 py-3 text-sm text-gray-900">
                         <div class="flex items-center gap-1">
                             <span class="material-symbols-outlined text-yellow-500" style="font-size: 16px;">star</span>
@@ -106973,7 +106988,7 @@ const CourseAdminSystem = {
                         <div class="text-xs text-gray-600">${booking.tee_time || 'No time'}</div>
                     </td>
                     <td class="px-4 py-3 text-sm text-gray-900">
-                        ${booking.caddy_profiles?.name || 'Unknown'} (#${booking.caddy_profiles?.caddy_number || '?'})
+                        ${booking.caddy_profiles?.photo_url ? `<img src="${booking.caddy_profiles.photo_url}" style="display:inline-block;width:22px;height:22px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px;" onerror="this.style.display='none'" alt="">` : ''}${booking.caddy_profiles?.name || 'Unknown'} (#${booking.caddy_profiles?.caddy_number || '?'})
                     </td>
                     <td class="px-4 py-3 text-sm text-gray-900">${booking.golfer_name || 'Walk-in'}</td>
                     <td class="px-4 py-3 text-sm text-gray-600">${booking.holes || 18} holes</td>
@@ -107078,7 +107093,7 @@ const CourseAdminSystem = {
                         ${new Date(request.requested_date).toLocaleDateString()}
                     </td>
                     <td class="px-4 py-3 text-sm text-gray-900">
-                        ${request.caddies?.name || 'Any'} ${request.caddies?.caddy_number ? `(#${request.caddies.caddy_number})` : ''}
+                        ${request.caddies?.photo_url ? `<img src="${request.caddies.photo_url}" style="display:inline-block;width:22px;height:22px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px;" onerror="this.style.display='none'" alt="">` : ''}${request.caddies?.name || 'Any'} ${request.caddies?.caddy_number ? `(#${request.caddies.caddy_number})` : ''}
                     </td>
                     <td class="px-4 py-3 text-sm text-gray-900">${request.golfer_name || 'Unknown'}</td>
                     <td class="px-4 py-3 text-sm text-gray-600">
@@ -107389,7 +107404,7 @@ const CourseAdminSystem = {
                                 </div>
                                 <div>
                                     <span class="text-gray-600">Number:</span>
-                                    <span class="font-medium text-gray-900 ml-2">#${booking.caddy_profiles?.caddy_number || '?'}</span>
+                                    <span class="font-medium text-gray-900 ml-2">${booking.caddy_profiles?.photo_url ? `<img src="${booking.caddy_profiles.photo_url}" style="display:inline-block;width:24px;height:24px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px;" onerror="this.style.display='none'" alt="">` : ''}#${booking.caddy_profiles?.caddy_number || '?'}</span>
                                 </div>
                             </div>
                         </div>
@@ -109025,7 +109040,7 @@ const GolferCaddyBooking = {
                         <div class="flex items-center justify-between">
                             <div>
                                 <h2 class="text-2xl font-bold mb-1">Book Caddy</h2>
-                                <p class="text-emerald-100">${caddy.name} (#${caddy.id.slice(0,6)})</p>
+                                <p class="text-emerald-100">${caddy.photo_url ? `<img src="${caddy.photo_url}" style="display:inline-block;width:28px;height:28px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:7px;border:2px solid rgba(255,255,255,.6);" onerror="this.style.display='none'" alt="">` : ''}${caddy.name} (#${caddy.id.slice(0,6)})</p>
                             </div>
                             <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-emerald-100">
                                 <span class="material-symbols-outlined">close</span>
@@ -109532,7 +109547,7 @@ const GolferCaddyBooking = {
                         <div class="flex items-center justify-between">
                             <div>
                                 <h2 class="text-2xl font-bold mb-1">Join Waitlist</h2>
-                                <p class="text-orange-100">${caddy.name} (#${caddy.id.slice(0,6)})</p>
+                                <p class="text-orange-100">${caddy.photo_url ? `<img src="${caddy.photo_url}" style="display:inline-block;width:28px;height:28px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:7px;border:2px solid rgba(255,255,255,.6);" onerror="this.style.display='none'" alt="">` : ''}${caddy.name} (#${caddy.id.slice(0,6)})</p>
                             </div>
                             <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-orange-100">
                                 <span class="material-symbols-outlined">close</span>
@@ -119432,7 +119447,7 @@ class GolferEventsManager {
                 const totalDisplay = _totalNum > 0 ? `฿${_totalNum.toLocaleString()}` : '';
 
                 const hcp = (reg.handicap !== null && reg.handicap !== undefined) ? `<span class="ed-hcp">HCP ${window.formatHandicapDisplay(reg.handicap)}</span>` : '';
-                const caddy = reg.caddyNumbers ? `<span class="ed-hcp" style="color:#0f766e;background:#ccfbf1;">${micon('sports_golf')} ${reg.caddyNumbers}</span>` : '';
+                const caddy = reg.caddyNumbers ? `<span class="ed-hcp" data-caddy-photo-num="${String(reg.caddyNumbers).replace(/"/g, '&quot;')}" style="color:#0f766e;background:#ccfbf1;">${micon('sports_golf')} ${reg.caddyNumbers}</span>` : '';
                 return `
                 <div class="ed-prow">
                     <span class="ed-pnum">${index + 1}</span>
@@ -119454,6 +119469,8 @@ class GolferEventsManager {
             const previewCount = 3;
             const preview = registrations.slice(0, previewCount);
             playerContent.innerHTML = preview.map((reg, i) => renderPlayerRow(reg, i)).join('');
+            // GLOBAL RULE: caddy-number chips get the caddy's photo (async, notebook match).
+            if (window._caddyChipDecorate) window._caddyChipDecorate(playerContent, 18);
 
             // Always show expand button if 2+ players
             const expandBtn = document.getElementById('expandPlayersBtn');
@@ -127523,6 +127540,36 @@ window._lvCaddyPhotos = async function(sb, lineId){
 };
 window._lvFirstNum = function(s){ var m=String(s||'').match(/\d{1,4}/); return m?String(parseInt(m[0])):''; };
 window._lvCaddyImg = function(url,size){ return url?'<img src="'+url+'" style="display:inline-block;width:'+size+'px;height:'+size+'px;border-radius:'+Math.max(5,Math.round(size*0.28))+'px;object-fit:cover;vertical-align:middle;margin-right:7px;" alt="">':''; };
+// GLOBAL RULE (Pete 2026-08-02): a caddy number never renders without the caddy's photo.
+// _caddyPhotoMap = 120s-cached notebook bare-number→photo_url map for the logged-in golfer.
+// _caddyChipDecorate = post-render pass for surfaces that build chips synchronously: mark the
+// chip with data-caddy-photo-num="<numbers>" and call this on the container after innerHTML
+// lands — the notebook photo is prepended where one exists; no photo → chip unchanged.
+window._caddyPhotoMap = async function(){
+  try{
+    var now = Date.now(), c = window.__cadPhotoCache;
+    if (c && (now - c.t) < 120000) return c.map;
+    var lineId = (window.AppState && AppState.currentUser && AppState.currentUser.lineUserId) || window.currentUserId || localStorage.getItem('line_user_id');
+    if (!lineId || !window.SupabaseDB || !window.SupabaseDB.client) return {};
+    var map = await window._lvCaddyPhotos(window.SupabaseDB.client, lineId);
+    window.__cadPhotoCache = { t: now, map: map };
+    return map;
+  }catch(e){ return {}; }
+};
+window._caddyChipDecorate = async function(root, size){
+  try{
+    root = typeof root === 'string' ? document.querySelector(root) : root;
+    if (!root) return;
+    var chips = root.querySelectorAll('[data-caddy-photo-num]:not([data-caddy-photo-done])');
+    if (!chips.length) return;
+    var map = await window._caddyPhotoMap();
+    chips.forEach(function(el){
+      el.setAttribute('data-caddy-photo-done','1');
+      var url = map[window._lvFirstNum(el.getAttribute('data-caddy-photo-num'))];
+      if (url) el.insertAdjacentHTML('afterbegin', window._lvCaddyImg(url, size || 18));
+    });
+  }catch(e){}
+};
 window.assignCaddyForEvent = async function(eventId){
   var body=document.getElementById('scheduleModalBody'); if(!body) return;
   body.innerHTML='<div style="color:#e2e8f0;padding:14px;text-align:center;">'+_lvT('lightview.loadingcaddies','Loading caddies…')+'</div>';

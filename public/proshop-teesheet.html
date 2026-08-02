@@ -3446,6 +3446,7 @@
           rating: c.rating || 4.5,
           language: Array.isArray(c.languages) ? c.languages.join('/') : (c.languages || 'TH/EN'),
           status: c.availability === 'booked' ? 'busy' : 'available',
+          photoUrl: c.photoUrl || c.photo_url || c.photo || '',
           homeClub: c.homeClub
         }));
       },
@@ -3765,6 +3766,17 @@
 
     // ==================== CADDY DATA ====================
     let allCaddies = [];
+
+    // Inline round caddy photo shown beside every caddy number. Returns '' (bare-number fallback) when no photo.
+    function caddyPhotoImg(photoUrl, size) {
+      if (!photoUrl) return '';
+      return `<img src="${photoUrl}" alt="" onerror="this.style.display='none'" style="display:inline-block;width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:3px;flex:none;">`;
+    }
+    function caddyPhotoByNumber(number, size) {
+      if (!number) return '';
+      const c = allCaddies.find(x => String(x.number) === String(number));
+      return caddyPhotoImg(c && (c.photoUrl || c.photo_url || c.photo), size);
+    }
 
     // Map tee sheet course ID to database course name
     const courseIdToDbName = {
@@ -4944,11 +4956,15 @@
 
             // Caddy label: regular = first golfer's caddy; society = how many caddies booked
             let caddyLabel = '';
+            let caddyPhoto = '';
             if (isSociety) {
               const withCaddy = golfers.filter(g => g.caddyName || g.caddyNumber).length;
               if (withCaddy) caddyLabel = String(withCaddy);
             } else if (golfers[0]) {
-              if (golfers[0].caddyNumber) caddyLabel = 'C' + golfers[0].caddyNumber;
+              if (golfers[0].caddyNumber) {
+                caddyLabel = 'C' + golfers[0].caddyNumber;
+                caddyPhoto = caddyPhotoByNumber(golfers[0].caddyNumber, 14);
+              }
               else if (golfers[0].caddyName) caddyLabel = golfers[0].caddyName;
             }
 
@@ -4967,7 +4983,7 @@
             const grpChip = gCount > 1 ? `<span class="pill-grp">+${gCount - 1}</span>` : '';
             const seqTag = (b.groupId && b.groupTotal > 1) ? `<span style="opacity:.6;font-size:10px;font-weight:700;">${b.groupIndex + 1}/${b.groupTotal}</span> ` : '';
             let metaHtml = `<span class="m">${TS_ICON.ppl}${gCount || 1}</span>`;
-            if (caddyLabel) metaHtml += `<span class="m">${TS_ICON.caddy}${caddyLabel}</span>`;
+            if (caddyLabel) metaHtml += `<span class="m">${TS_ICON.caddy}${caddyPhoto}${caddyLabel}</span>`;
             let tag = '';
             if (typeClass === 'vip') tag = 'VIP';
             else if (typeClass === 'society') tag = 'SOC';
@@ -5287,7 +5303,7 @@
           const bookedBadge = isUnavailable ? `<span class="caddy-booked-badge">${badgeText}</span>` : '';
           // Show local name based on current language
           const displayName = (currentLang !== 'en' && caddy.localName) ? `${caddy.localName} (${caddy.name})` : caddy.name;
-          opt.innerHTML = `<span class="caddy-option-name">#${caddy.number} ${displayName}${bookedBadge}</span>
+          opt.innerHTML = `${caddyPhotoImg(caddy.photoUrl || caddy.photo_url || caddy.photo, 20)}<span class="caddy-option-name">#${caddy.number} ${displayName}${bookedBadge}</span>
             <span class="caddy-option-rating">${stars} ${caddy.rating}</span>
             <div class="caddy-option-info">${caddy.language}</div>`;
 
@@ -5665,7 +5681,7 @@
         card.dataset.slotIdx = slotIdx;
 
         const golferNames = slot.golfers.filter(g => g.name).map(g => g.name).join(', ');
-        const caddyNums = slot.golfers.filter(g => g.caddyNumber).map(g => `C${g.caddyNumber}`).join(', ');
+        const caddyNums = slot.golfers.filter(g => g.caddyNumber).map(g => `${caddyPhotoByNumber(g.caddyNumber, 14)}C${g.caddyNumber}`).join(', ');
         const summary = golferNames || t('noGolfers');
 
         card.innerHTML = `
@@ -5826,7 +5842,7 @@
           const bookedBadge = isBooked ? `<span class="caddy-booked-badge">${t('booked')}</span>` : '';
           // Show local name based on current language
           const displayName = (currentLang !== 'en' && caddy.localName) ? `${caddy.localName} (${caddy.name})` : caddy.name;
-          opt.innerHTML = `<span class="caddy-option-name">#${caddy.number} ${displayName}${bookedBadge}</span>
+          opt.innerHTML = `${caddyPhotoImg(caddy.photoUrl || caddy.photo_url || caddy.photo, 20)}<span class="caddy-option-name">#${caddy.number} ${displayName}${bookedBadge}</span>
             <span class="caddy-option-rating">${stars} ${caddy.rating}</span>
             <div class="caddy-option-info">${caddy.language}</div>`;
 
@@ -5862,7 +5878,7 @@
       if (!card) return;
 
       const golferNames = slot.golfers.filter(g => g.name).map(g => g.name).join(', ');
-      const caddyNums = slot.golfers.filter(g => g.caddyNumber).map(g => `C${g.caddyNumber}`).join(', ');
+      const caddyNums = slot.golfers.filter(g => g.caddyNumber).map(g => `${caddyPhotoByNumber(g.caddyNumber, 14)}C${g.caddyNumber}`).join(', ');
       const summary = golferNames || t('noGolfers');
 
       const summaryEl = card.querySelector('.slot-summary');

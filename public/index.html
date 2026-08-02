@@ -9487,6 +9487,8 @@
                 'scorecard.groupn': 'Group {n}',
                 'scorecard.scoringfor': 'Scoring for {x} of {y} players',
                 'scorecard.scoretoggle': 'Score this player',
+                'scorecard.checkall': 'Check all',
+                'scorecard.uncheckall': 'Uncheck all',
                 'scorecard.trackstats': 'Track Stats (FW/GIR/Putts)',
                 'scorecard.startround': 'Start Round',
                 'scorecard.endround': 'End Round',
@@ -11345,6 +11347,8 @@
                 'scorecard.groupn': 'กลุ่ม {n}',
                 'scorecard.scoringfor': 'จดสกอร์ให้ {x} จาก {y} คน',
                 'scorecard.scoretoggle': 'จดสกอร์ให้ผู้เล่นนี้',
+                'scorecard.checkall': 'เลือกทั้งหมด',
+                'scorecard.uncheckall': 'ยกเลิกทั้งหมด',
                 'scorecard.trackstats': 'ติดตามสถิติ (FW/GIR/พัตต์)',
                 'scorecard.startround': 'เริ่มรอบ',
                 'scorecard.endround': 'จบรอบ',
@@ -13337,6 +13341,8 @@
                 'scorecard.groupn': '{n}조',
                 'scorecard.scoringfor': '{y}명 중 {x}명 기록',
                 'scorecard.scoretoggle': '이 플레이어 스코어 기록',
+                'scorecard.checkall': '전체 선택',
+                'scorecard.uncheckall': '전체 해제',
                 'scorecard.trackstats': '통계 추적 (FW/GIR/퍼트)',
                 'scorecard.startround': '라운드 시작',
                 'scorecard.endround': '라운드 종료',
@@ -15101,6 +15107,8 @@
                 'scorecard.groupn': '第{n}組',
                 'scorecard.scoringfor': '{y}人中{x}人を記録',
                 'scorecard.scoretoggle': 'このプレーヤーを記録',
+                'scorecard.checkall': '全員選択',
+                'scorecard.uncheckall': '全員解除',
                 'scorecard.trackstats': '統計追跡（FW/GIR/パット）',
                 'scorecard.startround': 'ラウンド開始',
                 'scorecard.endround': 'ラウンド終了',
@@ -77255,6 +77263,30 @@ class LiveScorecardSystem {
         this.renderPlayersList();
     }
 
+    // ⛳ Master toggle for the tee-sheet scoring checks: one tap clears every check (or restores
+    // them all), then the per-player boxes fine-tune. Scramble: own pair can never be dismissed —
+    // this device IS that pair's card (same rule as togglePlayerScoring).
+    toggleAllScoring() {
+        const ts = this.players.filter(p => p.fromTeeSheet);
+        if (!ts.length) return;
+        const on = !ts.some(p => p.scoringEnabled !== false);
+        ts.forEach(p => { p.scoringEnabled = on; });
+        try {
+            if (!on && this.teeSheetGroup && this._isScramble2EventById(this._prefillEventId)) {
+                let teams = (Array.isArray(this.teeSheetGroup.teams) && this.teeSheetGroup.teams.length)
+                    ? this.teeSheetGroup.teams.map(t => t.map(String)) : [];
+                if (!teams.length) { for (let k = 0; k + 1 < ts.length; k += 2) teams.push([String(ts[k].lineUserId || ts[k].id), String(ts[k + 1].lineUserId || ts[k + 1].id)]); }
+                const uid = String(AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id') || '');
+                const own = teams.find(t => t.includes(uid));
+                if (own) {
+                    ts.forEach(p => { if (own.includes(String(p.lineUserId || p.id))) p.scoringEnabled = true; });
+                    window.NotificationManager?.show('Your scramble partner shares your card — this device scores your pair', 'info');
+                }
+            }
+        } catch (e) { console.warn('[LiveScorecard] toggleAllScoring scramble guard', e); }
+        this.renderPlayersList();
+    }
+
     async loadEvents() {
         // Load events for event selector (7 days past to 30 days future)
         if (!window.SocietyGolfDB || !window.SocietyGolfDB.getAllPublicEvents) {
@@ -78798,11 +78830,17 @@ class LiveScorecardSystem {
             // 2-Man Scramble: a last-second "Swap group" — pick a team from another not-yet-started group
             // to play with if the on-course grouping changed. Local re-point only (no pairing rewrites).
             const canSwap = Array.isArray(g.teams) && g.teams.length > 0 && this._isScramble2EventById(this._prefillEventId);
+            // Master check toggle: any box on → offer "Uncheck all"; all off → "Check all"
+            const tsAnyOn = this.players.some(p => p.fromTeeSheet && p.scoringEnabled !== false);
+            const allBtn = `<button onclick="LiveScorecardManager.toggleAllScoring()" class="flex items-center gap-1" style="flex:none;font-size:10px;font-weight:800;color:#15803d;background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:3px 8px;cursor:pointer;"><span class="material-symbols-outlined" style="font-size:13px;">${tsAnyOn ? 'remove_done' : 'done_all'}</span>${tsAnyOn ? tt('scorecard.uncheckall', 'Uncheck all') : tt('scorecard.checkall', 'Check all')}</button>`;
             teeTagHtml = `
             <div class="flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded mb-0.5" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.35);">
                 <span class="flex items-center gap-1.5" style="min-width:0;"><span class="material-symbols-outlined" style="font-size:15px;color:#16a34a;">golf_course</span>
                 <span class="text-[11px] font-bold" style="color:#15803d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${tt('scorecard.fromteesheet', 'From tee sheet')} · ${groupLabel}${g.teeTime ? ' · ' + g.teeTime : ''}</span></span>
+                <span class="flex items-center gap-1" style="flex:none;">
+                ${allBtn}
                 ${canSwap ? `<button onclick="LiveScorecardManager._openGroupSwap()" class="flex items-center gap-1" style="flex:none;font-size:10px;font-weight:800;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;padding:3px 8px;cursor:pointer;"><span class="material-symbols-outlined" style="font-size:13px;">swap_horiz</span>Swap group</button>` : ''}
+                </span>
             </div>`;
         }
 
@@ -81570,14 +81608,15 @@ class LiveScorecardSystem {
         // is not keeping score for them
         const dismissed = this.players.filter(p => p.scoringEnabled === false);
         if (dismissed.length) {
+            // Every check off → refuse BEFORE mutating, or the whole group gets wiped from the list
+            if (dismissed.length === this.players.length) {
+                window.NotificationManager?.show('Check at least one player to score', 'error');
+                return;
+            }
             this.players = this.players.filter(p => p.scoringEnabled !== false);
             dismissed.forEach(p => { delete this.scoresCache[p.id]; });
             this.renderPlayersList();
             console.log('[LiveScorecard] ⛳ Dismissed at start:', dismissed.map(p => p.name).join(', '));
-            if (this.players.length === 0) {
-                window.NotificationManager?.show('Add at least one player', 'error');
-                return;
-            }
         }
 
         // Show loading indicator

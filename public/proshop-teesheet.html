@@ -2788,6 +2788,7 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="golfer-avatar.js"></script>
   <script>
   (function() {
     'use strict';
@@ -2798,6 +2799,7 @@
     let supabaseClient = null;
     try {
       supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      window.__golferAvSb = supabaseClient;
       console.log('[TeeSheet] Supabase client initialized');
     } catch (e) {
       console.warn('[TeeSheet] Supabase init failed:', e);
@@ -3999,7 +4001,7 @@
         const opt = document.createElement('div');
         opt.className = 'caddy-option';
         opt.innerHTML = `
-          <span class="caddy-option-name">${user.name}</span>
+          <span class="caddy-option-name" data-golfer-av="${String(user.id || '').replace(/"/g, '&quot;')}" data-golfer-av-nm="${String(user.name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${user.name}</span>
           ${user.email ? `<span class="caddy-option-detail">${user.email}</span>` : ''}
         `;
         opt.addEventListener('mousedown', e => {
@@ -4010,6 +4012,8 @@
         });
         dropdown.appendChild(opt);
       });
+      // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+      if (window._golferChipDecorate) window._golferChipDecorate(dropdown, 18);
     }
 
     // Get caddies from parent CaddySystem OR database, filtered by selected course
@@ -4990,7 +4994,7 @@
             else if (typeClass === 'tournament') tag = 'EVENT';
 
             pillsHtml += `<div class="pill ${typeClass} ${groupClass}" data-id="${b.id}" data-group-id="${b.groupId || ''}" data-event-id="${b.eventId || ''}" data-society-id="${b.societyId || ''}" draggable="true">
-              <div class="pill-av">${tsInitials(displayName)}</div>
+              <div class="pill-av" data-golfer-face="${(golfers[0] && golfers[0].odoo_id) || ''}">${tsInitials(displayName)}</div>
               <div class="pill-body">
                 <div class="pill-name">${seqTag}${displayName}${grpChip}</div>
                 <div class="pill-info">${metaHtml}</div>
@@ -5005,6 +5009,8 @@
         bodyHtml += rowHtml;
       }
       el.gridBody.innerHTML = bodyHtml;
+      // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+      if (window._golferFaceFill) window._golferFaceFill(el.gridBody);
 
       // --- Revamp: header cards with per-tee fill bars ---
       let headHtml = `<div class="grid-header-cell time-header">${t('time')}</div>`;

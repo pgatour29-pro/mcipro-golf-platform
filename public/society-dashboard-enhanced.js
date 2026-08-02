@@ -322,8 +322,8 @@ class SocietyDashboardEnhanced {
         const container = document.getElementById(containerId);
         if (!container || !movers.length) return;
 
-        const climbers = movers.filter(m => m.rank_change > 0).slice(0, 5);
-        const fallers = movers.filter(m => m.rank_change < 0).slice(0, 5);
+        const climbers = movers.filter(m => m.position_change > 0).slice(0, 5);
+        const fallers = movers.filter(m => m.position_change < 0).slice(0, 5);
 
         container.innerHTML = `
             <div class="grid md:grid-cols-2 gap-4">
@@ -337,8 +337,8 @@ class SocietyDashboardEnhanced {
                         <div class="space-y-2">
                             ${climbers.map(p => `
                                 <div class="flex items-center justify-between py-2">
-                                    <span class="font-medium">${p.player_name}</span>
-                                    <span class="text-emerald-600 font-bold">↑${p.rank_change}</span>
+                                    <span class="font-medium" data-golfer-av="${p.golfer_id || ''}" data-golfer-av-nm="${String(p.golfer_name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${p.golfer_name}</span>
+                                    <span class="text-emerald-600 font-bold">↑${p.position_change}</span>
                                 </div>
                             `).join('')}
                         </div>
@@ -355,8 +355,8 @@ class SocietyDashboardEnhanced {
                         <div class="space-y-2">
                             ${fallers.map(p => `
                                 <div class="flex items-center justify-between py-2">
-                                    <span class="font-medium">${p.player_name}</span>
-                                    <span class="text-red-600 font-bold">↓${Math.abs(p.rank_change)}</span>
+                                    <span class="font-medium" data-golfer-av="${p.golfer_id || ''}" data-golfer-av-nm="${String(p.golfer_name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${p.golfer_name}</span>
+                                    <span class="text-red-600 font-bold">↓${Math.abs(p.position_change)}</span>
                                 </div>
                             `).join('')}
                         </div>
@@ -364,6 +364,9 @@ class SocietyDashboardEnhanced {
                 </div>
             </div>
         `;
+
+        // GLOBAL RULE: golfer names get their LINE avatar (initials stay when none).
+        if (window._golferChipDecorate) window._golferChipDecorate(container, 18);
     }
 
     // =========================================================================
@@ -516,7 +519,7 @@ class SocietyDashboardEnhanced {
 
                     return `
                         <div class="p-4 flex items-center gap-3">
-                            <div class="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold">
+                            <div data-golfer-face="${member.golfer_id || ''}" class="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold">
                                 ${name[0].toUpperCase()}
                             </div>
                             <div class="flex-1">
@@ -531,6 +534,9 @@ class SocietyDashboardEnhanced {
                 }).join('')}
             </div>
         `;
+
+        // GLOBAL RULE: golfer names get their LINE avatar (initials stay when none).
+        if (window._golferFaceFill) window._golferFaceFill(container);
     }
 
     filterMembers(query) {

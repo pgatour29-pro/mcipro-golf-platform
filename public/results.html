@@ -161,10 +161,12 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="golfer-avatar.js"></script>
     <script>
         const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
         const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        window.__golferAvSb = sb;
 
         // Embedded inside the app's Event Results tab? (see index.html golfer-results pane)
         const EMBED = new URLSearchParams(location.search).get('embed') === '1';
@@ -895,7 +897,7 @@
                 return '<div class="podium mb-3">' + orderPods.map(r => `
                     <div class="pod-card ${cls[r.position]||''}" style="${r.position===1?'transform:translateY(-6px);':''}">
                         <div class="pod-medal">${medal(r.position)}</div>
-                        <div class="pod-name">${esc(r.player_name||'Player')}</div>
+                        <div class="pod-name" data-golfer-av="${esc(r.golfer_id||'')}" data-golfer-av-nm="${esc(r.player_name||'Player')}" data-golfer-av-sz="18">${esc(r.player_name||'Player')}</div>
                         <div class="pod-score">${esc(scoreLabel(r, d.scoreType))}</div>
                         ${r.points_earned ? `<div class="pod-sub">+${esc(r.points_earned)} ${esc(rt('poyPts'))}</div>` : ''}
                     </div>`).join('') + '</div>';
@@ -909,7 +911,7 @@
                 html += list.map(r => `
                     <div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);">
                         <span style="width:34px;text-align:center;font-weight:800;font-size:${r.position<=3?'17px':'13.5px'};color:${r.position<=3?'var(--gold)':'var(--sub)'};">${medal(r.position)}</span>
-                        <div style="flex:1;min-width:0;font-weight:600;font-size:14px;">${esc(r.player_name||'Player')}</div>
+                        <div style="flex:1;min-width:0;font-weight:600;font-size:14px;" data-golfer-av="${esc(r.golfer_id||'')}" data-golfer-av-nm="${esc(r.player_name||'Player')}" data-golfer-av-sz="18">${esc(r.player_name||'Player')}</div>
                         <div style="text-align:right;">
                             <div style="font-weight:800;color:var(--green);font-size:14.5px;">${esc(scoreLabel(r, d.scoreType))}</div>
                             ${r.points_earned ? `<div style="font-size:10px;color:var(--sub);">+${esc(r.points_earned)} ${esc(rt('poyPts'))}</div>` : ''}
@@ -917,6 +919,8 @@
                     </div>`).join('');
             });
             el.innerHTML = html || `<div class="sub text-sm text-center py-8">${esc(rt('notPublished'))}</div>`;
+            // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+            if (window._golferChipDecorate) window._golferChipDecorate(el, 20);
         }
 
         // --- Full Results tab ---
@@ -944,7 +948,7 @@
                         <td>
                             <span class="${hasHoles ? 'player-btn' : ''}" ${hasHoles ? `data-player-id="${pid}"` : ''}>
                                 ${hasHoles ? `<span class="msym expand-icon" id="icon-${pid}">expand_more</span>` : ''}
-                                <span>${esc(en.player_name)}</span>
+                                <span data-golfer-av="${esc(en.player_id||'')}" data-golfer-av-nm="${esc(en.player_name)}" data-golfer-av-sz="18">${esc(en.player_name)}</span>
                                 ${twosCount ? `<span style="font-size:9.5px;font-weight:800;color:var(--green);border:1px solid var(--green);border-radius:999px;padding:0 6px;">2s ×${twosCount}</span>` : ''}
                             </span>
                         </td>
@@ -993,6 +997,8 @@
                 ${teamHtml}
                 ${(teamHtml && !scrambleOnly) ? `<div class="px-4 pt-3 pb-1" style="font-size:11px;font-weight:800;color:var(--sub);text-transform:uppercase;">${esc(rt('individual'))}</div>` : ''}
                 ${scrambleOnly ? '' : `<div class="px-3 pt-2 pb-1 sub" style="font-size:11px;">${esc(rt('tapHint'))}</div>${boards}`}`;
+            // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+            if (window._golferChipDecorate) window._golferChipDecorate(el, 18);
             restoreExpandedState();
         }
 
@@ -1099,7 +1105,7 @@
                     <div class="two-row">
                         <div class="two-hole"><div class="h">${t.hole}</div><div class="p">${esc(rt('par'))} ${t.par||''}</div></div>
                         <div style="flex:1;min-width:0;">
-                            <div style="font-weight:700;font-size:14px;">${esc(t.player_name)}</div>
+                            <div style="font-weight:700;font-size:14px;" data-golfer-av="${esc(t.player_id||'')}" data-golfer-av-nm="${esc(t.player_name)}" data-golfer-av-sz="18">${esc(t.player_name)}</div>
                             <div class="sub" style="font-size:11px;">${esc(rt('hole'))} ${t.hole}${t.si ? ' · '+esc(rt('si'))+' '+esc(t.si) : ''}</div>
                         </div>
                         <span style="font-size:20px;font-weight:800;color:var(--green);">2</span>
@@ -1109,7 +1115,7 @@
                     html += d.officialTwos.map(w => `
                         <div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line);">
                             <span class="msym" style="font-size:18px;color:var(--gold);">verified</span>
-                            <div style="flex:1;font-weight:600;font-size:13.5px;">${esc(w.player_name||'Player')}</div>
+                            <div style="flex:1;font-weight:600;font-size:13.5px;" data-golfer-av="${esc(w.player_id||'')}" data-golfer-av-nm="${esc(w.player_name||'Player')}" data-golfer-av-sz="18">${esc(w.player_name||'Player')}</div>
                             <div class="sub" style="font-size:11.5px;">${esc(w.notes||w.label||'')}</div>
                         </div>`).join('');
                 }
@@ -1126,6 +1132,8 @@
                 </div>
                 <div id="season2sBody"><div class="sub text-sm p-3 text-center">${esc(rt('loading'))}</div></div>`;
             el.innerHTML = html;
+            // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+            if (window._golferChipDecorate) window._golferChipDecorate(el, 18);
             el.querySelectorAll('.s2y-chip').forEach(b => b.onclick = () => renderSeason2s(parseInt(b.getAttribute('data-y'), 10)));
             const defYear = state.season2sYear ||
                 (d.event.event_date ? parseInt(String(d.event.event_date).slice(0, 4), 10) : new Date().getFullYear());
@@ -1203,12 +1211,14 @@
                         return `<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);">
                             <span style="width:30px;text-align:center;font-weight:800;font-size:${rank <= 3 ? '16px' : '13px'};color:${rank <= 3 ? 'var(--gold)' : 'var(--sub)'};">${rank <= 3 ? medal(rank) : rank}</span>
                             <div style="flex:1;min-width:0;">
-                                <div style="font-weight:600;font-size:14px;">${esc(p.player_name)}</div>
+                                <div style="font-weight:600;font-size:14px;" data-golfer-av="${esc(p.player_id||'')}" data-golfer-av-nm="${esc(p.player_name)}" data-golfer-av-sz="18">${esc(p.player_name)}</div>
                                 <div class="sub" style="font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(subLine)}</div>
                             </div>
                             <span style="font-size:15px;font-weight:800;color:var(--green);white-space:nowrap;">2s ×${p.twos.length}</span>
                         </div>`;
                     }).join('');
+                // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+                if (window._golferChipDecorate) window._golferChipDecorate(body, 18);
             } catch(e){
                 console.warn('[Results] season 2s', e);
                 if (body.isConnected) body.innerHTML = `<div class="sub text-sm text-center py-6">${esc(rt('errLoad'))}</div>`;
@@ -1237,7 +1247,7 @@
                     <div class="two-row">
                         <div class="two-hole ace-hole"><div class="h">${a.hole}</div><div class="p">${esc(rt('par'))} ${a.par||''}</div></div>
                         <div style="flex:1;min-width:0;">
-                            <div style="font-weight:700;font-size:14px;">${esc(a.player_name)}</div>
+                            <div style="font-weight:700;font-size:14px;" data-golfer-av="${esc(a.player_id||'')}" data-golfer-av-nm="${esc(a.player_name)}" data-golfer-av-sz="18">${esc(a.player_name)}</div>
                             <div class="sub" style="font-size:11px;">${esc(rt('hole'))} ${a.hole}${a.si ? ' · '+esc(rt('si'))+' '+esc(a.si) : ''}</div>
                         </div>
                         <span style="font-size:20px;font-weight:800;color:var(--gold);">1</span>
@@ -1247,7 +1257,7 @@
                     html += d.officialAces.map(w => `
                         <div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line);">
                             <span class="msym" style="font-size:18px;color:var(--gold);">verified</span>
-                            <div style="flex:1;font-weight:600;font-size:13.5px;">${esc(w.player_name||'Player')}</div>
+                            <div style="flex:1;font-weight:600;font-size:13.5px;" data-golfer-av="${esc(w.player_id||'')}" data-golfer-av-nm="${esc(w.player_name||'Player')}" data-golfer-av-sz="18">${esc(w.player_name||'Player')}</div>
                             <div class="sub" style="font-size:11.5px;">${esc(w.notes||w.label||'')}</div>
                         </div>`).join('');
                 }
@@ -1263,6 +1273,8 @@
                 </div>
                 <div id="season1sBody"><div class="sub text-sm p-3 text-center">${esc(rt('loading'))}</div></div>`;
             el.innerHTML = html;
+            // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+            if (window._golferChipDecorate) window._golferChipDecorate(el, 18);
             el.querySelectorAll('.s1y-chip').forEach(b => b.onclick = () => { const v = b.getAttribute('data-y'); renderSeason1s(v==='all'?'all':parseInt(v,10)); });
             // Aces are rare — default the race to All-time so there's always something to see.
             renderSeason1s(state.season1sYear || 'all');
@@ -1341,12 +1353,14 @@
                         return `<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);">
                             <span style="width:30px;text-align:center;font-weight:800;font-size:${rank <= 3 ? '16px' : '13px'};color:${rank <= 3 ? 'var(--gold)' : 'var(--sub)'};">${rank <= 3 ? medal(rank) : rank}</span>
                             <div style="flex:1;min-width:0;">
-                                <div style="font-weight:600;font-size:14px;">${esc(p.player_name)}</div>
+                                <div style="font-weight:600;font-size:14px;" data-golfer-av="${esc(p.player_id||'')}" data-golfer-av-nm="${esc(p.player_name)}" data-golfer-av-sz="18">${esc(p.player_name)}</div>
                                 <div class="sub" style="font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(subLine)}</div>
                             </div>
                             <span style="font-size:15px;font-weight:800;color:var(--gold);white-space:nowrap;">⛳ ×${p.aces.length}</span>
                         </div>`;
                     }).join('');
+                // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+                if (window._golferChipDecorate) window._golferChipDecorate(body, 18);
             } catch(e){
                 console.warn('[Results] season aces', e);
                 if (body.isConnected) body.innerHTML = `<div class="sub text-sm text-center py-6">${esc(rt('errLoad'))}</div>`;
@@ -1373,7 +1387,7 @@
                             const f9T = f9.filter(p=>p!==null).reduce((a,b)=>a+b,0);
                             const b9T = b9.filter(p=>p!==null).reduce((a,b)=>a+b,0);
                             const cell = p => `<td class="text-center" style="color:var(--green);font-weight:600;">${p!==null?p:'-'}</td>`;
-                            const memberLine = tm.members.map(m => `<span>${esc(m.name)} <b style="color:var(--green);">${m.pts}</b></span>`).join('<span class="sub"> · </span>');
+                            const memberLine = tm.members.map(m => `<span data-golfer-av="${esc(m.id||'')}" data-golfer-av-nm="${esc(m.name)}" data-golfer-av-sz="16">${esc(m.name)} <b style="color:var(--green);">${m.pts}</b></span>`).join('<span class="sub"> · </span>');
                             return `<div style="border-bottom:1px solid var(--line);padding:8px 0;" class="${showPlaces && i===0?'winner-row':''}">
                                 <div class="flex items-center justify-between mb-1 px-1">
                                     <div class="flex items-center gap-2" style="min-width:0;">
@@ -1432,12 +1446,12 @@
                             const leader = m.up>0 ? m.a : (m.up<0 ? m.b : null);
                             const status = m.up===0 ? rt('allSquare') : (esc(leader.name)+' '+Math.abs(m.up)+' '+rt('up'));
                             return `<div class="flex items-center justify-between" style="border-bottom:1px solid var(--line);padding:8px 4px;font-size:13px;">
-                                <span style="${m.up>0?'font-weight:800;color:var(--green);':''}">${esc(m.a.name)}</span>
+                                <span style="${m.up>0?'font-weight:800;color:var(--green);':''}" data-golfer-av="${esc(m.a.id||'')}" data-golfer-av-nm="${esc(m.a.name)}" data-golfer-av-sz="18">${esc(m.a.name)}</span>
                                 <span class="text-center px-2">
                                     <span style="font-weight:800;">${status}</span>
                                     <span class="sub block" style="font-size:10.5px;">${m.thru>=18 ? esc(rt('finalWord')) : esc(rt('thru'))+' '+m.thru}</span>
                                 </span>
-                                <span style="${m.up<0?'font-weight:800;color:var(--green);':''}">${esc(m.b.name)}</span>
+                                <span style="${m.up<0?'font-weight:800;color:var(--green);':''}" data-golfer-av="${esc(m.b.id||'')}" data-golfer-av-nm="${esc(m.b.name)}" data-golfer-av-sz="18">${esc(m.b.name)}</span>
                             </div>`;
                         }).join('')}
                     </div>`;

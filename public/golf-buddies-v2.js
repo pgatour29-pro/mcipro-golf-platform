@@ -385,7 +385,7 @@ window.GolfBuddiesSystem = {
         var live=this._roundActive();
         var meta='<span class="hcp">HCP '+this._bdEsc(hcp)+'</span><span class="dot"></span><span class="played">'+x+' round'+(x===1?'':'s')+'</span>'+(last?'<span class="dot"></span><span>'+this._bdEsc(last)+'</span>':'');
         return '<div class="bd-brow">'+
-            '<div class="bd-av '+this._bdAvClass(i)+'">'+this._bdEsc(this._bdInitial(name))+'</div>'+
+            '<div class="bd-av '+this._bdAvClass(i)+'" data-golfer-face="'+this._bdEsc(buddy.buddy_id||'')+'">'+this._bdEsc(this._bdInitial(name))+'</div>'+
             '<div class="bd-info"><div class="bd-nm">'+this._bdEsc(name)+'</div><div class="bd-meta">'+meta+'</div></div>'+
             '<div class="bd-act">'+
                 '<button class="bd-round-btn'+(live?' live':'')+'" onclick="GolfBuddiesSystem.quickAddBuddy(\''+buddy.buddy_id+'\')" title="Add to current round"><span class="micon">golf_course</span>'+_bt('buddies.toround', 'To round')+'</button>'+
@@ -397,6 +397,8 @@ window.GolfBuddiesSystem = {
         var list=document.getElementById('bdBuddyList'); if(!list) return;
         var arr=this._bdSortBuddies();
         list.innerHTML=arr.map((b,i)=>this._bdBuddyRow(b,i)).join('');
+        // GLOBAL RULE: golfer names get their LINE avatar (initials stay when none).
+        if (window._golferFaceFill) window._golferFaceFill(list);
     },
     _renderBuddiesTab(){
         var pane=document.getElementById('bdPane-buddies'); if(!pane) return;
@@ -442,12 +444,14 @@ window.GolfBuddiesSystem = {
             }catch(e){}
         }
         pane.innerHTML=head+groups.map((g,gi)=>this._bdGroupCard(g,gi,nmeMap)).join('');
+        // GLOBAL RULE: golfer names get their LINE avatar (initials stay when none).
+        if (window._golferFaceFill) window._golferFaceFill(pane);
     },
     _bdGroupCard(g, gi, nameMap){
         var members=g.member_ids||[];
         var count=members.length;
         var shown=members.slice(0,5);
-        var avs=shown.map((id,i)=>'<div class="sm '+this._bdAvClass(gi+i)+'">'+this._bdEsc(this._bdInitial(nameMap[id]||'?'))+'</div>').join('');
+        var avs=shown.map((id,i)=>'<div class="sm '+this._bdAvClass(gi+i)+'" data-golfer-face="'+this._bdEsc(id||'')+'">'+this._bdEsc(this._bdInitial(nameMap[id]||'?'))+'</div>').join('');
         if(count>5) avs+='<div class="sm more">+'+(count-5)+'</div>';
         return '<div class="bd-gcard">'+
             '<div class="bd-gcard-top">'+
@@ -482,7 +486,7 @@ window.GolfBuddiesSystem = {
         // go straight into the round; buddying is optional (icon) so one-off partners
         // never clog the buddies list (Pete, 2026-07-09).
         return '<div class="bd-brow">'+
-            '<div class="bd-av '+this._bdAvClass(i)+'">'+this._bdEsc(this._bdInitial(name))+'</div>'+
+            '<div class="bd-av '+this._bdAvClass(i)+'" data-golfer-face="'+this._bdEsc(id||'')+'">'+this._bdEsc(this._bdInitial(name))+'</div>'+
             '<div class="bd-info"><div class="bd-nm">'+this._bdEsc(name)+'</div><div class="bd-meta">'+meta+'</div></div>'+
             '<div class="bd-act">'+
                 '<button class="bd-round-btn'+(live?' live':'')+'" onclick="GolfBuddiesSystem.quickAddBuddy(\''+id+'\')" title="Add to current round"><span class="micon">golf_course</span>'+_bt('buddies.toround', 'To round')+'</button>'+
@@ -500,6 +504,8 @@ window.GolfBuddiesSystem = {
         }
         this._bdDiscIdx=0;
         list.innerHTML=sg.map(s=>this._bdDiscoverRow(s.buddy_id, s.buddy_name||'Unknown', this._bdHcp(s.handicap), 'played '+(s.times_played||0)+'x'+(s.last_played?' · '+this._bdShortDate(s.last_played):''))).join('');
+        // GLOBAL RULE: golfer names get their LINE avatar (initials stay when none).
+        if (window._golferFaceFill) window._golferFaceFill(list);
     },
 
     /* ---------- refresh hooks (called after add/remove/group changes) ---------- */
@@ -1109,6 +1115,8 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
                 return this._bdDiscoverRow(p.line_user_id, p.name || 'Unknown', hcp, '');
             }).join('');
             results.innerHTML = '<div class="bd-sec-title"><span class="micon">search</span>Search results</div><div class="bd-group">' + rows + '</div>';
+            // GLOBAL RULE: golfer names get their LINE avatar (initials stay when none).
+            if (window._golferFaceFill) window._golferFaceFill(results);
 
         } catch (error) {
             console.error('[Buddies] Search exception:', error);
@@ -1492,7 +1500,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
             return `
                 <div class="flex items-center justify-between p-2 bg-white border border-gray-200 rounded-lg mb-2">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white font-bold text-sm">
+                        <div data-golfer-face="${memberId || ''}" class="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-white font-bold text-sm">
                             ${name.charAt(0).toUpperCase()}
                         </div>
                         <div>
@@ -1509,6 +1517,8 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
         }).join('');
 
         container.innerHTML = html;
+        // GLOBAL RULE: golfer names get their LINE avatar (initials stay when none).
+        if (window._golferFaceFill) window._golferFaceFill(container);
 
         if (countSpan) {
             countSpan.textContent = `(${this.selectedGroupMembers.length} selected)`;
@@ -1542,7 +1552,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
                 return `
                     <span class="inline-flex items-center gap-1 px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-xs">
                         <span class="material-symbols-outlined text-xs">check</span>
-                        ${name}
+                        <span data-golfer-av="${buddy.buddy_id || ''}" data-golfer-av-nm="${String(name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="16">${name}</span>
                     </span>
                 `;
             }
@@ -1551,12 +1561,14 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
                 <button onclick="GolfBuddiesSystem.addGroupMember('${buddy.buddy_id}')"
                         class="inline-flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-300 rounded-full text-xs hover:bg-gray-50 hover:border-green-500">
                     <span class="material-symbols-outlined text-xs">add</span>
-                    ${name}
+                    <span data-golfer-av="${buddy.buddy_id || ''}" data-golfer-av-nm="${String(name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="16">${name}</span>
                 </button>
             `;
         }).join('');
 
         container.innerHTML = html;
+        // GLOBAL RULE: golfer names get their LINE avatar (initials stay when none).
+        if (window._golferChipDecorate) window._golferChipDecorate(container, 16);
     },
 
     /**
@@ -1620,7 +1632,7 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
                 return `
                     <div class="flex items-center justify-between p-2 bg-white border border-gray-200 rounded-lg mb-1 hover:border-green-400">
                         <div class="flex items-center gap-2">
-                            <div class="w-7 h-7 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center text-white font-bold text-xs">
+                            <div data-golfer-face="${player.line_user_id || ''}" class="w-7 h-7 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center text-white font-bold text-xs">
                                 ${name.charAt(0).toUpperCase()}
                             </div>
                             <div>
@@ -1637,6 +1649,8 @@ body.theme-light #budModalV5 .bd-seg button.on{ box-shadow:inset 0 0 0 1px var(-
             }).join('');
 
             container.innerHTML = html;
+            // GLOBAL RULE: golfer names get their LINE avatar (initials stay when none).
+            if (window._golferFaceFill) window._golferFaceFill(container);
 
         } catch (error) {
             console.error('[Buddies] Search error:', error);

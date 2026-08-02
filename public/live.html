@@ -198,12 +198,14 @@
 
     <!-- Supabase Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="golfer-avatar.js"></script>
     <script>
         // Supabase configuration
         const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
 
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        window.__golferAvSb = supabaseClient;
 
         // State
         let allEvents = [];
@@ -604,6 +606,8 @@
                 }
 
                 container.innerHTML = html;
+                // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+                if (window._golferChipDecorate) window._golferChipDecorate(container, 18);
                 document.getElementById('lastUpdate').textContent = `Viewing archived event`;
 
                 // Restore expanded state
@@ -700,6 +704,8 @@
                 }
 
                 container.innerHTML = html;
+                // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+                if (window._golferChipDecorate) window._golferChipDecorate(container, 18);
 
                 // Restore expanded state after DOM update
                 setTimeout(restoreExpandedState, 50);
@@ -1118,7 +1124,7 @@
                             const f9T = f9.filter(p => p !== null).reduce((a, b) => a + b, 0);
                             const b9T = b9.filter(p => p !== null).reduce((a, b) => a + b, 0);
                             const ptCell = p => `<td class="text-center text-green-600 font-semibold">${p !== null ? p : '-'}</td>`;
-                            const memberLine = tm.members.map(m => `<span class="text-gray-700">${escTeamHtml(m.name)} <b class="text-green-600">${m.pts}</b></span>`).join('<span class="text-gray-300"> · </span>');
+                            const memberLine = tm.members.map(m => `<span class="text-gray-700" data-golfer-av="${escTeamHtml(m.id || '').replace(/"/g, '&quot;')}" data-golfer-av-nm="${escTeamHtml(m.name).replace(/"/g, '&quot;')}" data-golfer-av-sz="16">${escTeamHtml(m.name)} <b class="text-green-600">${m.pts}</b></span>`).join('<span class="text-gray-300"> · </span>');
                             return `<div class="border-b border-gray-200 py-2 ${i === 0 ? 'winner-row' : ''}">
                                 <div class="flex items-center justify-between mb-1">
                                     <div class="flex items-center gap-2">
@@ -1187,12 +1193,12 @@
                             const leader = m.up > 0 ? m.a : (m.up < 0 ? m.b : null);
                             const status = m.up === 0 ? 'All Square' : `${escTeamHtml(leader.name)} ${Math.abs(m.up)} UP`;
                             return `<div class="flex items-center justify-between border-b border-gray-100 py-2 text-sm">
-                                <span class="${m.up > 0 ? 'font-bold text-blue-700' : 'text-gray-700'}">${escTeamHtml(m.a.name)}</span>
+                                <span class="${m.up > 0 ? 'font-bold text-blue-700' : 'text-gray-700'}" data-golfer-av="${escTeamHtml(m.a.id || '').replace(/"/g, '&quot;')}" data-golfer-av-nm="${escTeamHtml(m.a.name).replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${escTeamHtml(m.a.name)}</span>
                                 <span class="text-center px-2">
                                     <span class="font-bold ${m.up === 0 ? 'text-gray-600' : 'text-blue-700'}">${status}</span>
                                     <span class="text-gray-400 text-xs block">${m.thru >= 18 ? 'Final' : 'thru ' + m.thru}</span>
                                 </span>
-                                <span class="${m.up < 0 ? 'font-bold text-blue-700' : 'text-gray-700'}">${escTeamHtml(m.b.name)}</span>
+                                <span class="${m.up < 0 ? 'font-bold text-blue-700' : 'text-gray-700'}" data-golfer-av="${escTeamHtml(m.b.id || '').replace(/"/g, '&quot;')}" data-golfer-av-nm="${escTeamHtml(m.b.name).replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${escTeamHtml(m.b.name)}</span>
                             </div>`;
                         }).join('')}
                     </div>`;
@@ -1259,7 +1265,7 @@
                                         </td>
                                         <td class="p-3">
                                             <div class="flex items-center gap-2">
-                                                <span class="player-name font-medium text-gray-900">${player.player_name}</span>
+                                                <span class="player-name font-medium text-gray-900" data-golfer-av="${escTeamHtml(player.player_id || '').replace(/"/g, '&quot;')}" data-golfer-av-nm="${escTeamHtml(player.player_name).replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${player.player_name}</span>
                                                 <span class="material-symbols-outlined expand-icon text-gray-400 text-sm" id="icon-${player.player_id}">expand_more</span>
                                             </div>
                                         </td>
@@ -1515,7 +1521,7 @@
                             <td class="py-3 px-4">
                                 <span class="player-name flex items-center gap-1" data-player-id="${playerId}" style="cursor:pointer;">
                                     <span class="material-symbols-outlined text-sm expand-icon" id="icon-${playerId}">expand_more</span>
-                                    ${entry.player_name}
+                                    <span data-golfer-av="${escTeamHtml(entry.player_id || '').replace(/"/g, '&quot;')}" data-golfer-av-nm="${escTeamHtml(entry.player_name).replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${entry.player_name}</span>
                                     ${isLeader ? '<span class="ml-2">🏆</span>' : ''}
                                 </span>
                             </td>
@@ -1532,7 +1538,7 @@
                             <td class="py-3 px-4">
                                 <span class="player-name flex items-center gap-1" data-player-id="${playerId}" style="cursor:pointer;">
                                     <span class="material-symbols-outlined text-sm expand-icon" id="icon-${playerId}">expand_more</span>
-                                    ${entry.player_name}
+                                    <span data-golfer-av="${escTeamHtml(entry.player_id || '').replace(/"/g, '&quot;')}" data-golfer-av-nm="${escTeamHtml(entry.player_name).replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${entry.player_name}</span>
                                     ${isLeader ? '<span class="ml-2">🏆</span>' : ''}
                                 </span>
                             </td>
@@ -1586,7 +1592,7 @@
                         <td class="py-3 px-3">
                             <span class="player-name flex items-center gap-1" data-player-id="${playerId}" style="cursor:pointer;">
                                 <span class="material-symbols-outlined text-sm expand-icon" id="icon-${playerId}">expand_more</span>
-                                ${entry.player_name}
+                                <span data-golfer-av="${escTeamHtml(entry.player_id || '').replace(/"/g, '&quot;')}" data-golfer-av-nm="${escTeamHtml(entry.player_name).replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${entry.player_name}</span>
                             </span>
                         </td>
                         <td class="py-3 px-3 text-center ${wonF9 ? 'bg-blue-200 font-bold' : ''}">${entry.front9_stableford || '-'}</td>

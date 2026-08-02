@@ -17383,7 +17383,7 @@
                         return {
                             name: (tm.playerNames && tm.playerNames.join(' · ')) || members.map(m => m.name).join(' · ') || 'Team',
                             total, thru, teamHolePts,
-                            members: members.map(m => ({ name: m.name, pts: m.pts, isMe: m.id === currentPlayerId })),
+                            members: members.map(m => ({ id: m.id, name: m.name, pts: m.pts, isMe: m.id === currentPlayerId })),
                             hasMe: tm.playerIds.includes(currentPlayerId)
                         };
                     }).filter(tm => tm.members.length)   // pairings cover ALL groups — hide teams with no scorecards yet
@@ -17399,7 +17399,7 @@
                             const f9T = f9.filter(p => p !== null).reduce((a, b) => a + b, 0);
                             const b9T = b9.filter(p => p !== null).reduce((a, b) => a + b, 0);
                             const ptCell = (p) => `<td style="text-align:center;color:#059669;font-weight:600;">${p !== null ? p : '-'}</td>`;
-                            const memberLine = tm.members.map(m => `<span style="${m.isMe ? 'font-weight:700;' : ''}color:#334155;">${m.name} <b style="color:#059669;">${m.pts}</b></span>`).join('<span style="color:#cbd5e1;"> · </span>');
+                            const memberLine = tm.members.map(m => `<span style="${m.isMe ? 'font-weight:700;' : ''}color:#334155;" data-golfer-av="${m.id || ''}" data-golfer-av-nm="${String(m.name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="16">${m.name} <b style="color:#059669;">${m.pts}</b></span>`).join('<span style="color:#cbd5e1;"> · </span>');
                             return `<div style="${bg}border-bottom:1px solid #e2e8f0;padding:8px 4px;">
                                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
                                     <div style="display:flex;align-items:center;gap:6px;">
@@ -17419,6 +17419,8 @@
                                 </div>
                             </div>`;
                         }).join('') + '<p style="text-align:center;color:#9ca3af;font-size:10px;margin-top:8px;">Auto-updates on score entry</p>';
+                    // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+                    if (window._golferChipDecorate) window._golferChipDecorate(content, 16);
                     return;
                 }
 
@@ -17446,7 +17448,7 @@
                         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
                             <div style="display:flex;align-items:center;gap:6px;">
                                 <span style="${bold}font-size:14px;">${medal}</span>
-                                <span style="${bold}color:#0f172a;font-size:13px;">${isMe ? '<span class="material-symbols-outlined" style="font-size:inherit;vertical-align:middle;line-height:1;">arrow_forward</span> ' : ''}${r.name}</span>
+                                <span style="${bold}color:#0f172a;font-size:13px;" data-golfer-av="${r.id || ''}" data-golfer-av-nm="${String(r.name || '').replace(/"/g, '&quot;')}">${isMe ? '<span class="material-symbols-outlined" style="font-size:inherit;vertical-align:middle;line-height:1;">arrow_forward</span> ' : ''}${r.name}</span>
                                 <span style="color:#9ca3af;font-size:10px;">Thru ${r.thru}</span>
                             </div>
                             <div style="display:flex;align-items:center;gap:8px;">
@@ -17463,6 +17465,8 @@
                         </div>
                     </div>`;
                 }).join('') + '<p style="text-align:center;color:#9ca3af;font-size:10px;margin-top:8px;">Auto-updates on score entry</p>';
+                // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+                if (window._golferChipDecorate) window._golferChipDecorate(content, 22);
             } catch (e) {
                 console.error('[LiveLeaderboard] Error:', e);
                 content.innerHTML = '<p style="text-align:center;color:#dc2626;padding:20px;">Error loading leaderboard</p>';
@@ -33298,7 +33302,7 @@ document.addEventListener('DOMContentLoaded', function() {
             },
 
             async handlePhotoUpload(input, previewId) {
-                const file = input.files[0];
+                let file = input.files[0];
                 if (!file) return;
 
                 // Validate file type
@@ -38662,7 +38666,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     const lbGrid = document.getElementById('leaderboardGrid');
                     if (cachedLb) {
                         content.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;flex-shrink:0;white-space:nowrap;color:#fbbf24;font-weight:700;font-size:12px;">' + micon('sports_golf') + ' Showing last recorded leaderboard</span>';
-                        if (lbGrid) lbGrid.innerHTML = cachedLb;
+                        if (lbGrid) {
+                            lbGrid.innerHTML = cachedLb;
+                            // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+                            if (window._golferChipDecorate) window._golferChipDecorate(lbGrid, 18);
+                        }
                     } else {
                         content.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;flex-shrink:0;white-space:nowrap;color:#fbbf24;font-weight:700;font-size:12px;">' + micon('sports_golf') + ' No rounds yet this year — get out there!</span>';
                         if (lbGrid) lbGrid.innerHTML = '<div class="col-span-full text-center py-8"><p class="text-gray-400 text-sm">No rounds recorded yet this year</p><p class="text-yellow-500 text-xs mt-2">Play your first round to start climbing the leaderboard!</p></div>';
@@ -39215,9 +39223,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                     // double-quotes were breaking the onclick and leaking raw HTML.
                                     const plainName = (isScrambleTeam ? (r.scramble_config.teamName || 'Team') : name).replace(/\\/g,'\\\\').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,"\\'");
                                     const nameClick = r.golfer_id ? `style="cursor:pointer;text-decoration:underline;text-decoration-color:rgba(255,255,255,0.3);text-underline-offset:2px;" onclick="event.stopPropagation();PlayerScorecardViewer.openPlayerProfile('${r.golfer_id}','${plainName}')"` : '';
+                                    // GLOBAL RULE: golfer names get their LINE avatar (skip team rows — no single face).
+                                    const avAttrs = (!isScrambleTeam && r.golfer_id) ? ` data-golfer-av="${r.golfer_id}" data-golfer-av-nm="${String(name).replace(/"/g, '&quot;')}" data-golfer-av-sz="18"` : '';
                                     allRows += `<div class="lb-row">
                                         <span class="lb-rank ${rankClass}">${medal}</span>
-                                        <span class="lb-name" ${nameClick}>${displayName}</span>
+                                        <span class="lb-name" ${nameClick}${avAttrs}>${displayName}</span>
                                         <span class="lb-val">${scoreLabel}</span>
                                     </div>`;
                                     courseRank++;
@@ -39255,7 +39265,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             const rankClass = i === 0 ? 'lb-rank-1' : i === 1 ? 'lb-rank-2' : i === 2 ? 'lb-rank-3' : '';
                             const medal = i === 0 ? micon('military_tech', 'text-yellow-500') : i === 1 ? micon('military_tech', 'text-gray-400') : i === 2 ? micon('military_tech', 'text-amber-700') : (i + 1);
                             const eNameArg = (e.name||'').replace(/\\/g,'\\\\').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,"\\'");
-                            const nameHtml = e.pid ? `<span class="lb-name" style="cursor:pointer;text-decoration:underline;text-decoration-color:rgba(255,255,255,0.3);text-underline-offset:2px;" onclick="event.stopPropagation();PlayerScorecardViewer.openPlayerProfile('${e.pid}','${eNameArg}')">${e.name}</span>` : `<span class="lb-name">${e.name}</span>`;
+                            const nameHtml = e.pid ? `<span class="lb-name" data-golfer-av="${e.pid}" data-golfer-av-nm="${eNameArg}" data-golfer-av-sz="18" style="cursor:pointer;text-decoration:underline;text-decoration-color:rgba(255,255,255,0.3);text-underline-offset:2px;" onclick="event.stopPropagation();PlayerScorecardViewer.openPlayerProfile('${e.pid}','${eNameArg}')">${e.name}</span>` : `<span class="lb-name">${e.name}</span>`;
                             return `<div class="lb-row">
                                 <span class="lb-rank ${rankClass}">${medal}</span>
                                 ${nameHtml}
@@ -39337,6 +39347,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     } catch(e) { console.warn('[WITB] Error loading equipment data:', e); }
 
                     lbGrid.innerHTML = todayCard + specialCard + witbCard + categoryCards;
+                    // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+                    if (window._golferChipDecorate) window._golferChipDecorate(lbGrid, 18);
                     // Cache leaderboard so it persists when no fresh rounds are available
                     try { localStorage.setItem('mcipro_last_leaderboard', todayCard + specialCard + witbCard + categoryCards); } catch(e) {}
                 }
@@ -50414,15 +50426,18 @@ Waitlist (${waitlist.length} people):`;
                                     return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '?';
                                 };
                                 const avHtml = players.slice(0, 4).map((p, i) =>
-                                    '<span class="scv3-av' + (i === 0 ? ' me' : '') + '">' + initialsOf(p.name) + '</span>').join('');
+                                    '<span class="scv3-av' + (i === 0 ? ' me' : '') + '" data-golfer-face="' + (p.lineUserId || p.id || '') + '">' + initialsOf(p.name) + '</span>').join('');
                                 const heroAvs = document.getElementById('scv3HeroAvs');
                                 if (heroAvs) heroAvs.innerHTML = avHtml || '<span class="scv3-av me">?</span>';
+                                // GLOBAL RULE: golfer avatars get the LINE photo (initials stay when none).
+                                if (heroAvs && window._golferFaceFill) window._golferFaceFill(heroAvs);
                                 const chipRow = document.getElementById('scv3PlayerChips');
                                 if (chipRow) {
                                     if (playerCount > 0) {
                                         chipRow.style.display = 'flex';
                                         const avEl = document.getElementById('scv3PchipAvs');
                                         if (avEl) avEl.innerHTML = avHtml;
+                                        if (avEl && window._golferFaceFill) window._golferFaceFill(avEl);
                                         const nmEl = document.getElementById('scv3PchipName');
                                         if (nmEl) nmEl.textContent = (players[0]?.name || '') + (playerCount > 1 ? ' +' + (playerCount - 1) : '');
                                         const hcEl = document.getElementById('scv3PchipHcps');
@@ -82646,7 +82661,7 @@ class LiveScorecardSystem {
                         ${isSelf ? '<span class="scv3-pc-tag self">📱 SELF</span>' : (isActive ? '<span class="scv3-pc-tag">SCORING</span>' : '')}
                         <button class="scv3-pc-selfbtn${isSelf ? ' on' : ''}" title="${isSelf ? 'Take back scoring for this player' : 'This player keeps their own score on their phone'}" onclick="event.stopPropagation();LiveScorecardManager.toggleSelfScoring('${p.id}')">📱</button>
                         <span class="scv3-pc-pos">${posBadge}</span>
-                        <div class="scv3-pc-av">${initials.toUpperCase()}</div>
+                        <div class="scv3-pc-av" data-golfer-face="${p.lineUserId || p.id || ''}">${initials.toUpperCase()}</div>
                         <div class="sc-player-name" title="${p.name}">${firstName}</div>
                         <div class="scv3-pc-hcp">${hcpNum !== null ? 'HCP ' + hcpNum : '&nbsp;'}</div>
                         <div class="sc-player-score${score ? '' : ' is-empty'}">${score || '–'}</div>
@@ -82654,6 +82669,8 @@ class LiveScorecardSystem {
                     </div>
                 `;
             }).join('');
+            // GLOBAL RULE: golfer card avatars get the LINE photo (initials stay when none).
+            if (window._golferFaceFill) window._golferFaceFill(grid);
             console.log('[LiveScorecard] ✅ Grid rendered, innerHTML length:', grid.innerHTML.length);
             } catch (renderErr) {
                 console.error('[LiveScorecard] ❌ Error rendering player cards:', renderErr);
@@ -90647,6 +90664,9 @@ class LiveScorecardSystem {
                 if (waltzHtml && _lbSeq === this._lbSeq) content.insertAdjacentHTML('afterbegin', waltzHtml);
             }
 
+            // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+            if (window._golferChipDecorate) window._golferChipDecorate(content, 20);
+
             console.log('[LiveScorecard] refreshLeaderboard: Successfully updated');
         } catch (error) {
             console.error('[LiveScorecard] refreshLeaderboard error:', error);
@@ -90939,7 +90959,7 @@ class LiveScorecardSystem {
                                         <tr class="border-b border-gray-200 ${teamBg}">
                                             <td class="py-2 px-2 font-bold">${index + 1}</td>
                                             <td class="py-2 px-2 text-center">${teamBadge}</td>
-                                            <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
+                                            <td class="py-2 px-2"><span data-golfer-av="${entry.player_id || ''}" data-golfer-av-nm="${String(entry.player_name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="20">${entry.player_name || 'Unknown'}</span></td>
                                             <td class="py-2 px-2">${thru}</td>
                                             <td class="py-2 px-2 text-center">${formatMatchStatus(front9, matchData.front9ClosedOn, 9)}</td>
                                             <td class="py-2 px-2 text-center">${formatMatchStatus(back9, matchData.back9ClosedOn, 18)}</td>
@@ -90952,7 +90972,7 @@ class LiveScorecardSystem {
                                         <tr class="border-b border-gray-200 ${isTeamMode ? teamBg : statusBg}">
                                             <td class="py-2 px-2 font-bold">${index + 1}</td>
                                             ${isTeamMode ? `<td class="py-2 px-2 text-center">${teamBadge}</td>` : ''}
-                                            <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
+                                            <td class="py-2 px-2"><span data-golfer-av="${entry.player_id || ''}" data-golfer-av-nm="${String(entry.player_name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="20">${entry.player_name || 'Unknown'}</span></td>
                                             <td class="py-2 px-2">${thru}</td>
                                             <td class="py-2 px-2 text-center text-green-700 font-semibold">${matchData.holesUp || 0}</td>
                                             ${!isTeamMode ? `<td class="py-2 px-2 text-center text-gray-600">${matchData.holesHalved || 0}</td>` : ''}
@@ -91900,7 +91920,7 @@ class LiveScorecardSystem {
                                         return `
                                             <tr class="border-b border-gray-200 ${pointsWon > 0 ? 'bg-orange-50' : ''}">
                                                 <td class="py-2 px-2 font-bold">${index + 1}</td>
-                                                <td class="py-2 px-2">${entry.player_name || 'Unknown'}${hcpBadge}</td>
+                                                <td class="py-2 px-2"><span data-golfer-av="${entry.player_id || ''}" data-golfer-av-nm="${String(entry.player_name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="20">${entry.player_name || 'Unknown'}</span>${hcpBadge}</td>
                                                 <td class="py-2 px-2">${thru}</td>
                                                 <td class="py-2 px-2 text-center font-semibold text-blue-700">${front9}</td>
                                                 <td class="py-2 px-2 text-center font-semibold text-green-700">${back9}</td>
@@ -92231,7 +92251,7 @@ class LiveScorecardSystem {
                                             return `
                                                 <tr class="border-b border-gray-200 ${rowBg}">
                                                     <td class="py-2 px-2 font-bold">${index + 1}</td>
-                                                    <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
+                                                    <td class="py-2 px-2"><span data-golfer-av="${entry.player_id || ''}" data-golfer-av-nm="${String(entry.player_name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="20">${entry.player_name || 'Unknown'}</span></td>
                                                     <td class="py-2 px-2">${thru}</td>
                                                     <td class="py-2 px-2 text-center text-green-700 font-semibold">${indivData.holesUp || 0}</td>
                                                     <td class="py-2 px-2 text-center text-gray-600">${indivData.holesHalved || 0}</td>
@@ -92326,7 +92346,7 @@ class LiveScorecardSystem {
                                             return `
                                                 <tr class="border-b border-gray-200 ${rowBg}">
                                                     <td class="py-2 px-2 font-bold">${index + 1}</td>
-                                                    <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
+                                                    <td class="py-2 px-2"><span data-golfer-av="${entry.player_id || ''}" data-golfer-av-nm="${String(entry.player_name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="20">${entry.player_name || 'Unknown'}</span></td>
                                                     <td class="py-2 px-2">${thru}</td>
                                                     <td class="py-2 px-2 text-center text-green-700 font-semibold">${rrData.totalHolesWon || 0}</td>
                                                     <td class="py-2 px-2 text-center text-gray-600">${rrData.totalHolesHalved || 0}</td>
@@ -92496,7 +92516,7 @@ class LiveScorecardSystem {
                                                 return `
                                                     <tr class="border-b border-gray-200 ${teamBg}">
                                                         <td class="py-2 px-2">${teamBadge}</td>
-                                                        <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
+                                                        <td class="py-2 px-2"><span data-golfer-av="${entry.player_id || ''}" data-golfer-av-nm="${String(entry.player_name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="20">${entry.player_name || 'Unknown'}</span></td>
                                                         <td class="py-2 px-2">${thru}</td>
                                                         <td class="py-2 px-2 text-center text-green-700 font-semibold">${matchData.matchesWon || 0}</td>
                                                         <td class="py-2 px-2 text-center text-red-700 font-semibold">${matchData.matchesLost || 0}</td>
@@ -92640,7 +92660,7 @@ class LiveScorecardSystem {
                                             return `
                                                 <tr class="border-b border-gray-200 ${teamBg}">
                                                     <td class="py-2 px-2">${teamBadge}</td>
-                                                    <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
+                                                    <td class="py-2 px-2"><span data-golfer-av="${entry.player_id || ''}" data-golfer-av-nm="${String(entry.player_name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="20">${entry.player_name || 'Unknown'}</span></td>
                                                     <td class="py-2 px-2">${thru}</td>
                                                     <td class="py-2 px-2 text-center">${formatScore(matchData.front9 || 0)}</td>
                                                     <td class="py-2 px-2 text-center">${formatScore(matchData.back9 || 0)}</td>
@@ -92793,7 +92813,7 @@ class LiveScorecardSystem {
                                     return `
                                         <tr class="border-b border-gray-200">
                                             <td class="py-2 px-2 font-bold">${index + 1}</td>
-                                            <td class="py-2 px-2">${entry.player_name || 'Unknown'}${hcpBadge}</td>
+                                            <td class="py-2 px-2"><span data-golfer-av="${entry.player_id || ''}" data-golfer-av-nm="${String(entry.player_name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="20">${entry.player_name || 'Unknown'}</span>${hcpBadge}</td>
                                             <td class="py-2 px-2">${thru}</td>
                                             <td class="py-2 px-2 font-bold text-lg text-center">${displayScore}</td>
                                             <td class="py-2 px-2 font-bold text-lg text-center bg-blue-50">${netDisplay}</td>
@@ -92932,7 +92952,7 @@ class LiveScorecardSystem {
                         ${leaderboard.map((entry, index) => `
                             <tr class="border-b border-gray-200">
                                 <td class="py-2 px-2 font-bold">${entry.position || (index + 1)}</td>
-                                <td class="py-2 px-2">${entry.player_name || 'Unknown'}</td>
+                                <td class="py-2 px-2"><span data-golfer-av="${entry.player_id || ''}" data-golfer-av-nm="${String(entry.player_name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="20">${entry.player_name || 'Unknown'}</span></td>
                                 <td class="py-2 px-2">${entry.thru || '-'}</td>
                                 <td class="py-2 px-2 text-center">${entry.total_gross || 0}</td>
                                 <td class="py-2 px-2 text-center bg-blue-50">${entry.total_net || 0}</td>
@@ -99561,7 +99581,7 @@ This action cannot be undone.`);
         tbody.innerHTML = waitlist.map((w, idx) => `
             <tr class="border-t">
                 <td class="px-4 py-2 font-bold text-sky-600">#${idx + 1}</td>
-                <td class="px-4 py-2">${w.playerName}</td>
+                <td class="px-4 py-2"><span data-golfer-av="${w.playerId || ''}" data-golfer-av-nm="${String(w.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="20">${w.playerName}</span></td>
                 <td class="px-4 py-2">${window.formatHandicapDisplay(w.handicap)}</td>
                 <td class="px-4 py-2 text-xs text-gray-600">${new Date(w.createdAt).toLocaleString()}</td>
                 <td class="px-4 py-2 text-center">
@@ -99571,6 +99591,8 @@ This action cannot be undone.`);
                 </td>
             </tr>
         `).join('');
+        // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+        if (window._golferChipDecorate) window._golferChipDecorate(tbody, 20);
     }
 
     // Inline "search the directory to ADD" under the roster search box. The box used to ONLY filter
@@ -101081,7 +101103,7 @@ This action cannot be undone.`);
                                 return `
                                     <div onclick="SocietyOrganizerSystem.togglePlayerForPairing(${JSON.stringify(player).replace(/"/g, '&quot;')})"
                                          class="flex items-center justify-between px-2 py-1.5 border-2 rounded cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-green-50 border-green-500' : 'border-gray-200'}">
-                                        <span class="text-xs font-medium text-gray-900 truncate">${player.playerName}</span>
+                                        <span class="text-xs font-medium text-gray-900 truncate" data-golfer-av="${player.playerId || player.id || ''}" data-golfer-av-nm="${String(player.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${player.playerName}</span>
                                         <span class="text-[10px] text-gray-600 ml-1 shrink-0">${window.formatHandicapDisplay(player.handicap)}</span>
                                         ${isSelected ? '<span class="material-symbols-outlined text-green-600 text-xs ml-1">check_circle</span>' : ''}
                                     </div>
@@ -101089,6 +101111,7 @@ This action cannot be undone.`);
                             }).join('')}
                         </div>
                     `;
+                    if (window._golferChipDecorate) window._golferChipDecorate(container, 18);
                 } else {
                     // Auto mode - show players as read-only list
                     container.innerHTML = `
@@ -101099,13 +101122,14 @@ This action cannot be undone.`);
                             ${this.currentPairings.players.map(player => {
                                 return `
                                     <div class="flex items-center justify-between px-2 py-1.5 border-2 border-gray-200 rounded bg-white">
-                                        <span class="text-xs font-medium text-gray-900 truncate">${player.playerName}</span>
+                                        <span class="text-xs font-medium text-gray-900 truncate" data-golfer-av="${player.playerId || player.id || ''}" data-golfer-av-nm="${String(player.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${player.playerName}</span>
                                         <span class="text-[10px] text-gray-600 ml-1 shrink-0">${window.formatHandicapDisplay(player.handicap)}</span>
                                     </div>
                                 `;
                             }).join('')}
                         </div>
                     `;
+                    if (window._golferChipDecorate) window._golferChipDecorate(container, 18);
                 }
             } else {
                 // No players at all - show empty state
@@ -101162,7 +101186,7 @@ This action cannot be undone.`);
                                 <div class="flex items-center justify-between bg-gray-50 rounded px-2 py-1 cursor-move" draggable="true" ondragstart="SocietyOrganizerSystem.pairingDragStart(event, '${player.id}')">
                                     <div class="flex items-center gap-1.5">
                                         <span class="text-[10px] font-bold text-gray-500">#${playerIndex + 1}</span>
-                                        <span class="text-xs font-medium text-gray-900 truncate">${player.playerName}</span>${_divBadgeHtml(player)}
+                                        <span class="text-xs font-medium text-gray-900 truncate" data-golfer-av="${player.playerId || player.id || ''}" data-golfer-av-nm="${String(player.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${player.playerName}</span>${_divBadgeHtml(player)}
                                     </div>
                                     <div class="flex items-center gap-1 shrink-0">
                                         <span class="text-[11px] text-gray-600">${window.formatHandicapDisplay(player.handicap)}</span>
@@ -101190,7 +101214,7 @@ This action cannot be undone.`);
                                 <div draggable="true" ondragstart="SocietyOrganizerSystem.pairingDragStart(event, '${player.id}')"
                                      onclick="SocietyOrganizerSystem.togglePlayerForPairing(${JSON.stringify(player).replace(/"/g, '&quot;')})"
                                      class="flex items-center justify-between px-2 py-1.5 border-2 rounded cursor-move hover:bg-amber-100 ${isSelected ? 'bg-green-50 border-green-500' : 'border-amber-200'}">
-                                    <span class="text-xs font-medium text-gray-900 truncate">${player.playerName}</span>${_divBadgeHtml(player)}
+                                    <span class="text-xs font-medium text-gray-900 truncate" data-golfer-av="${player.playerId || player.id || ''}" data-golfer-av-nm="${String(player.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${player.playerName}</span>${_divBadgeHtml(player)}
                                     <span class="text-[10px] text-gray-600 ml-1 shrink-0">${window.formatHandicapDisplay(player.handicap)}</span>
                                     ${isSelected ? '<span class="material-symbols-outlined text-green-600 text-xs ml-1">check_circle</span>' : ''}
                                 </div>
@@ -101201,6 +101225,8 @@ This action cannot be undone.`);
                 </div>
             ` : ''}
         `;
+        // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+        if (window._golferChipDecorate) window._golferChipDecorate(container, 18);
     }
 
     render2ManScramblePairings() {
@@ -109455,7 +109481,7 @@ const MessagesSystem = {
             container.innerHTML = sortedConvos.map((c, i) => {
                 const profile = profileMap[c.partnerId] || {};
                 const name = profile.name || 'Unknown';
-                const avatar = profile.profile_data?.pictureUrl || '';
+                const avatar = profile.profile_data?.linePictureUrl || profile.profile_data?.pictureUrl || '';
                 const initials = name.split(/\s+/).map(w => w.charAt(0)).join('').slice(0, 2).toUpperCase() || '?';
                 const lastMsg = c.lastMessage.message_text;
                 const timeAgo = this.formatTimeAgo(c.lastMessage.created_at);
@@ -109506,7 +109532,7 @@ const MessagesSystem = {
             .single();
 
         const avEl = document.getElementById('conv-avatar');
-        avEl.src = profile?.profile_data?.pictureUrl || '';
+        avEl.src = profile?.profile_data?.linePictureUrl || profile?.profile_data?.pictureUrl || '';
         avEl.style.display = '';
         document.getElementById('conv-name').textContent = profile?.name || 'Unknown';
         document.getElementById('conv-subtitle').textContent = 'Direct Message';
@@ -110127,8 +110153,8 @@ const MessagesSystem = {
                 } else {
                     resultsContainer.innerHTML = profiles.map(p => `
                         <div class="flex items-center p-2 hover:bg-gray-50 cursor-pointer"
-                             onclick="MessagesSystem.selectRecipient('${p.line_user_id}', '${this.escapeHtml(p.name)}', '${p.profile_data?.pictureUrl || ''}')">
-                            <img src="${p.profile_data?.pictureUrl || ''}" class="w-8 h-8 rounded-full mr-2 bg-gray-200"
+                             onclick="MessagesSystem.selectRecipient('${p.line_user_id}', '${this.escapeHtml(p.name)}', '${p.profile_data?.linePictureUrl || p.profile_data?.pictureUrl || ''}')">
+                            <img src="${p.profile_data?.linePictureUrl || p.profile_data?.pictureUrl || ''}" class="w-8 h-8 rounded-full mr-2 bg-gray-200"
                                  onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/></svg>'">
                             <span class="font-medium">${this.escapeHtml(p.name)}</span>
                         </div>
@@ -110758,7 +110784,7 @@ const MessagesSystem = {
 
         resultsContainer.innerHTML = available.slice(0, 30).map(p => {
             const name = p.name || p.profile_data?.displayName || 'Unknown';
-            const avatar = p.profile_data?.pictureUrl || `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2240%22>${(name)[0].toUpperCase()}</text></svg>`;
+            const avatar = p.profile_data?.linePictureUrl || p.profile_data?.pictureUrl || `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2240%22>${(name)[0].toUpperCase()}</text></svg>`;
             return `
                 <div onclick="MessagesSystem.addGroupMember('${p.line_user_id}', '${this.escapeHtml(name)}')"
                      class="flex items-center p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0">
@@ -117991,7 +118017,7 @@ class GolferEventsManager {
                     <span class="ed-pnum">${index + 1}</span>
                     <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-2 flex-wrap">
-                            <span class="ed-pname">${reg.playerName}</span>
+                            <span class="ed-pname" data-golfer-av="${reg.playerId || ''}" data-golfer-av-nm="${String(reg.playerName || '').replace(/"/g, '&quot;')}">${reg.playerName}</span>
                             ${hcp}${caddy}
                         </div>
                         ${feeItems.length > 0 ? `<div class="ed-pfee">${feeItems.join(' + ')}${feeItems.length > 1 ? ` = <b>${totalDisplay}</b>` : ''}</div>` : ''}
@@ -118009,6 +118035,8 @@ class GolferEventsManager {
             playerContent.innerHTML = preview.map((reg, i) => renderPlayerRow(reg, i)).join('');
             // GLOBAL RULE: caddy-number chips get the caddy's photo (async, notebook match).
             if (window._caddyChipDecorate) window._caddyChipDecorate(playerContent, 18);
+            // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+            if (window._golferChipDecorate) window._golferChipDecorate(playerContent, 20);
 
             // Always show expand button if 2+ players
             const expandBtn = document.getElementById('expandPlayersBtn');
@@ -118191,6 +118219,8 @@ class GolferEventsManager {
         listEl.innerHTML = hasOrgPairings
             ? this._renderOrgPairingGroups(orgGroups, regs, event, currentUserId)
             : this._renderPreferenceGroups(regs, event, currentUserId);
+        // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+        if (window._golferChipDecorate) window._golferChipDecorate(listEl, 20);
     }
 
     // One player row used by the organizer-pairings view.
@@ -118244,7 +118274,7 @@ class GolferEventsManager {
             '<div style="display:flex;align-items:center;gap:8px;">' +
                 '<div style="width:8px;height:8px;background:' + (dotColor || '#9ca3b8') + ';border-radius:50%;flex-shrink:0;"></div>' +
                 '<div>' +
-                    '<div style="font-size:13px;font-weight:600;color:#111827;">' + (reg.playerName || '') + youTag + (nameBadgeHtml || '') + (window.MembershipService ? MembershipService.iconHtml(reg.playerId, reg.playerName, { isTRGG: /trgg|travellers/i.test((event && (event.name || event.title)) || ''), societyId: null }) : '') + '</div>' +
+                    '<div style="font-size:13px;font-weight:600;color:#111827;" data-golfer-av="' + (reg.playerId || '') + '" data-golfer-av-nm="' + String(reg.playerName || '').replace(/"/g, '&quot;') + '">' + (reg.playerName || '') + youTag + (nameBadgeHtml || '') + (window.MembershipService ? MembershipService.iconHtml(reg.playerId, reg.playerName, { isTRGG: /trgg|travellers/i.test((event && (event.name || event.title)) || ''), societyId: null }) : '') + '</div>' +
                     '<div style="font-size:11px;color:#9ca3b8;">' + hcpStr + vanHtml + compHtml + '</div>' +
                 '</div>' +
             '</div>' +
@@ -121351,7 +121381,7 @@ class GolferEventsManager {
                                 ${rank <= 3 ? [micon('military_tech', 'text-yellow-500'),micon('military_tech', 'text-gray-400'),micon('military_tech', 'text-amber-700')][rank-1] : rank}
                             </div>
                             <div class="flex-1 min-w-0">
-                                <div class="text-sm font-medium ${isCurrentPlayer ? 'text-green-700' : 'text-gray-900'} truncate">${player.player_name}${isCurrentPlayer ? ' (You)' : ''}</div>
+                                <div class="text-sm font-medium ${isCurrentPlayer ? 'text-green-700' : 'text-gray-900'} truncate" data-golfer-av="${player.player_id || ''}" data-golfer-av-nm="${String(player.player_name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="20">${player.player_name}${isCurrentPlayer ? ' (You)' : ''}</div>
                                 <div class="text-[10px] text-gray-400">${player.events_played} events · ${player.wins > 0 ? player.wins + ' wins · ' : ''}Best #${player.best_finish === 999 ? '-' : player.best_finish}</div>
                             </div>
                             <div class="text-right flex-shrink-0">
@@ -121361,6 +121391,8 @@ class GolferEventsManager {
                         </div>
                     `;
                 }).join('');
+                // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+                if (window._golferChipDecorate) window._golferChipDecorate(tableBody, 20);
             }
 
             // Render player's event history
@@ -124367,7 +124399,7 @@ const GolferEventRegManager = {
                                 <div class="pairing-player bg-white rounded px-2 py-1 text-xs flex justify-between items-center border"
                                      draggable="${!isLocked}" data-player-id="${p.playerId}"
                                      ondragstart="GolferEventRegManager.onDragStart(event, '${p.playerId}')">
-                                    <span class="${textColor}">${p.playerName} (${hcp})</span>${(reg && GolferEventRegManager._onTransport(reg)) ? ('<span title="On the van" style="font-size:9px;font-weight:700;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;color:#2563eb;background:#dbeafe;"><span class="material-symbols-outlined" style="font-size:11px;vertical-align:-2px;">airport_shuttle</span> '+((reg.specialRequests&&reg.specialRequests.van&&reg.specialRequests.van!=='own')?('VAN '+reg.specialRequests.van):(_vanMap&&_vanMap[p.playerId]?('VAN '+_vanMap[p.playerId]):'VAN'))+'</span>') : '<span title="Own transport / direct" style="font-size:9px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;">DIRECT</span>'}
+                                    <span class="${textColor}" data-golfer-av="${p.playerId}" data-golfer-av-nm="${String(p.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${p.playerName} (${hcp})</span>${(reg && GolferEventRegManager._onTransport(reg)) ? ('<span title="On the van" style="font-size:9px;font-weight:700;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;color:#2563eb;background:#dbeafe;"><span class="material-symbols-outlined" style="font-size:11px;vertical-align:-2px;">airport_shuttle</span> '+((reg.specialRequests&&reg.specialRequests.van&&reg.specialRequests.van!=='own')?('VAN '+reg.specialRequests.van):(_vanMap&&_vanMap[p.playerId]?('VAN '+_vanMap[p.playerId]):'VAN'))+'</span>') : '<span title="Own transport / direct" style="font-size:9px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;">DIRECT</span>'}
                                     ${!isLocked ? `<button onclick="GolferEventRegManager.removeFromGroup(${groupNum}, '${p.playerId}')" class="text-red-500 hover:text-red-700">×</button>` : ''}
                                 </div>
                             `}).join('')}
@@ -124421,6 +124453,8 @@ const GolferEventRegManager = {
                 </div>
             `;
         }
+        // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+        if (window._golferChipDecorate) window._golferChipDecorate(container, 18);
     },
 
     // One unassigned row (yellow chip) — shared by the singles grid and the PTU unit blocks.
@@ -124434,7 +124468,7 @@ const GolferEventRegManager = {
                             <div class="pairing-player bg-yellow-50 rounded px-2 py-1 text-xs flex justify-between items-center border border-yellow-200"
                                  draggable="true" data-player-id="${p.playerId}"
                                  ondragstart="GolferEventRegManager.onDragStart(event, '${p.playerId}')">
-                                <span class="${textColor}">${p.playerName} (${hcp})</span>${(reg && GolferEventRegManager._onTransport(reg)) ? ('<span title="On the van" style="font-size:9px;font-weight:700;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;color:#2563eb;background:#dbeafe;"><span class="material-symbols-outlined" style="font-size:11px;vertical-align:-2px;">airport_shuttle</span> '+((reg.specialRequests&&reg.specialRequests.van&&reg.specialRequests.van!=='own')?('VAN '+reg.specialRequests.van):(_vanMap&&_vanMap[p.playerId]?('VAN '+_vanMap[p.playerId]):'VAN'))+'</span>') : '<span title="Own transport / direct" style="font-size:9px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;">DIRECT</span>'}
+                                <span class="${textColor}" data-golfer-av="${p.playerId}" data-golfer-av-nm="${String(p.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${p.playerName} (${hcp})</span>${(reg && GolferEventRegManager._onTransport(reg)) ? ('<span title="On the van" style="font-size:9px;font-weight:700;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;color:#2563eb;background:#dbeafe;"><span class="material-symbols-outlined" style="font-size:11px;vertical-align:-2px;">airport_shuttle</span> '+((reg.specialRequests&&reg.specialRequests.van&&reg.specialRequests.van!=='own')?('VAN '+reg.specialRequests.van):(_vanMap&&_vanMap[p.playerId]?('VAN '+_vanMap[p.playerId]):'VAN'))+'</span>') : '<span title="Own transport / direct" style="font-size:9px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;">DIRECT</span>'}
                             </div>
                         `;
     },
@@ -125343,7 +125377,7 @@ async function viewSocietyLeaderboard(organizerId, societyName, seasonYear, divi
                                                 </div>
                                             </td>
                                             <td class="py-3 px-4">
-                                                <div class="font-medium ${isCurrentUser ? 'text-green-700 font-bold' : 'text-gray-900'}">
+                                                <div class="font-medium ${isCurrentUser ? 'text-green-700 font-bold' : 'text-gray-900'}" data-golfer-av="${player.player_id || ''}" data-golfer-av-nm="${String(player.player_name || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="22">
                                                     ${player.player_name}
                                                     ${isCurrentUser ? '<span class="ml-2 text-xs bg-green-600 text-white px-2 py-1 rounded">You</span>' : ''}
                                                 </div>
@@ -125379,6 +125413,8 @@ async function viewSocietyLeaderboard(organizerId, societyName, seasonYear, divi
 
         // Add modal to page
         document.body.insertAdjacentHTML('beforeend', modalContent);
+        // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+        if (window._golferChipDecorate) window._golferChipDecorate(document.body.lastElementChild, 22);
 
     } catch (error) {
         console.error('[viewSocietyLeaderboard] Error:', error);
@@ -126105,6 +126141,83 @@ window._caddyChipDecorate = async function(root, size){
       el.setAttribute('data-caddy-photo-done','1');
       var url = map[window._lvFirstNum(el.getAttribute('data-caddy-photo-num'))];
       if (url) el.insertAdjacentHTML('afterbegin', window._lvCaddyImg(url, size || 18));
+    });
+  }catch(e){}
+};
+// GLOBAL RULE (Pete 2026-08-02): a golfer's name never renders without a face — the LINE
+// avatar (user_profiles.profile_data.linePictureUrl) when the profile has one, a green
+// initials disc otherwise. Golfers are CIRCLES; caddies stay rounded squares.
+// _golferPhotoMap(ids) = session-persistent id→url cache ('' = known-none), chunked fetch.
+// _golferAvHtml(id,name,size,map) = sync builder for templates that already awaited the map.
+// _golferChipDecorate(root,size) = post-render pass over [data-golfer-av] name spans; the
+// span's data-golfer-av holds the player id, optional data-golfer-av-nm the display name
+// (falls back to textContent), optional data-golfer-av-sz a per-chip size override.
+// _golferFaceFill(root) = fills block avatars ([data-golfer-face]) with the photo, keeping
+// the initials text when there is none. All fail soft — no photo path ever breaks a render.
+window.__golferAvCache = window.__golferAvCache || {};
+window._golferPhotoMap = async function(ids){
+  var cache = window.__golferAvCache;
+  try{
+    var sb = window.SupabaseDB && window.SupabaseDB.client;
+    if (!sb) return cache;
+    var need = [];
+    (ids||[]).forEach(function(id){ id=String(id||'').trim(); if(id && cache[id]===undefined && need.indexOf(id)<0) need.push(id); });
+    for (var i=0; i<need.length; i+=200){
+      var chunk = need.slice(i, i+200);
+      var r = await sb.from('user_profiles').select('line_user_id, profile_data').in('line_user_id', chunk);
+      (r.data||[]).forEach(function(p){ cache[p.line_user_id] = (p.profile_data && p.profile_data.linePictureUrl) || ''; });
+      chunk.forEach(function(id){ if(cache[id]===undefined) cache[id]=''; });
+    }
+  }catch(e){}
+  return cache;
+};
+window._golferInitials = function(name){
+  var p = String(name||'').trim().split(/\s+/);
+  return (((p[0]||'')[0]||'')+((p[1]||'')[0]||'')).toUpperCase() || '?';
+};
+window._golferInitialsDisc = function(name, size){
+  size = size || 20;
+  return '<span style="display:inline-flex;align-items:center;justify-content:center;width:'+size+'px;height:'+size+'px;border-radius:50%;background:#d1fae5;color:#065f46;font-weight:700;font-size:'+Math.max(8,Math.round(size*0.42))+'px;vertical-align:middle;margin-right:6px;flex:none;pointer-events:none;">'+window._golferInitials(name)+'</span>';
+};
+window._gavErr = function(img){
+  try{ img.outerHTML = window._golferInitialsDisc(img.getAttribute('data-gav-nm')||'', parseInt(img.getAttribute('data-gav-sz'))||20); }catch(e){}
+};
+window._golferAvHtml = function(id, name, size, map){
+  size = size || 20;
+  var url = (map || window.__golferAvCache)[String(id||'').trim()];
+  if (url) return '<img src="'+String(url).replace(/"/g,'&quot;')+'" data-gav-nm="'+String(name||'').replace(/"/g,'&quot;')+'" data-gav-sz="'+size+'" onerror="window._gavErr(this)" draggable="false" style="display:inline-block;width:'+size+'px;height:'+size+'px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px;flex:none;pointer-events:none;" alt="">';
+  return window._golferInitialsDisc(name, size);
+};
+window._golferChipDecorate = async function(root, size){
+  try{
+    root = typeof root === 'string' ? document.querySelector(root) : root;
+    if (!root) return;
+    var chips = root.querySelectorAll('[data-golfer-av]:not([data-golfer-av-done])');
+    if (!chips.length) return;
+    var ids = []; chips.forEach(function(el){ ids.push(el.getAttribute('data-golfer-av')); });
+    var map = await window._golferPhotoMap(ids);
+    chips.forEach(function(el){
+      if (el.getAttribute('data-golfer-av-done')) return;
+      el.setAttribute('data-golfer-av-done','1');
+      var nm = el.getAttribute('data-golfer-av-nm') || (el.textContent||'').trim();
+      var sz = parseInt(el.getAttribute('data-golfer-av-sz')) || size || 20;
+      el.insertAdjacentHTML('afterbegin', window._golferAvHtml(el.getAttribute('data-golfer-av'), nm, sz, map));
+    });
+  }catch(e){}
+};
+window._golferFaceFill = async function(root){
+  try{
+    root = typeof root === 'string' ? document.querySelector(root) : root;
+    if (!root) return;
+    var faces = root.querySelectorAll('[data-golfer-face]:not([data-golfer-face-done])');
+    if (!faces.length) return;
+    var ids = []; faces.forEach(function(el){ ids.push(el.getAttribute('data-golfer-face')); });
+    var map = await window._golferPhotoMap(ids);
+    faces.forEach(function(el){
+      if (el.getAttribute('data-golfer-face-done')) return;
+      el.setAttribute('data-golfer-face-done','1');
+      var url = map[String(el.getAttribute('data-golfer-face')||'').trim()];
+      if (url) el.innerHTML = '<img src="'+String(url).replace(/"/g,'&quot;')+'" onerror="this.remove()" draggable="false" style="display:block;width:100%;height:100%;border-radius:inherit;object-fit:cover;pointer-events:none;" alt="">';
     });
   }catch(e){}
 };
@@ -130267,7 +130380,7 @@ window.TeeSheet = {
     // One unassigned SINGLE chip (factored out of render so the pool + singles list share it).
     _poolChip: function(r){
         var self=this, man=self._isManual(r.playerId), hc=self._hcp(r.handicap);
-        return '<span onpointerdown="TeeSheet.pdown(event,\''+r.playerId+'\')" class="ts2-pchip">'+self._esc(r.playerName)+(hc?'<span class="h">'+hc+'</span>':'')+
+        return '<span onpointerdown="TeeSheet.pdown(event,\''+r.playerId+'\')" class="ts2-pchip" data-golfer-av="'+self._esc(r.playerId)+'" data-golfer-av-nm="'+self._esc(r.playerName)+'" data-golfer-av-sz="18">'+self._esc(r.playerName)+(hc?'<span class="h">'+hc+'</span>':'')+
             (self.groups.length ? '<select onchange="TeeSheet.addPlayer(this.value,\''+r.playerId+'\')" title="Add to group"><option value="">＋</option>'+self.groups.map(function(g,i){ return '<option value="'+i+'">G'+(i+1)+'</option>'; }).join('')+'</select>' : '')+
             (man ? '<button onclick="TeeSheet.deleteManual(\''+r.playerId+'\')" title="Remove this name" class="mx">×</button>' : '<button onclick="TeeSheet.removeFromEvent(\''+r.playerId+'\')" title="Remove from event" class="mx">×</button>')+
         '</span>';
@@ -130277,9 +130390,9 @@ window.TeeSheet = {
     _teamChip: function(pair){
         var self=this, a=pair[0], b=pair[1], ha=self._hcp(a.handicap), hb=self._hcp(b.handicap);
         return '<span onpointerdown="TeeSheet.pdown(event,\''+a.playerId+'\')" class="ts2-pchip ts2-teamchip" title="Locked pair — drag moves both">'+
-            '<span class="tm">'+self._esc(a.playerName)+(ha?'<span class="h">'+ha+'</span>':'')+'</span>'+
+            '<span class="tm" data-golfer-av="'+self._esc(a.playerId)+'" data-golfer-av-nm="'+self._esc(a.playerName)+'" data-golfer-av-sz="16">'+self._esc(a.playerName)+(ha?'<span class="h">'+ha+'</span>':'')+'</span>'+
             '<span class="tx">＋</span>'+
-            '<span class="tm">'+self._esc(b.playerName)+(hb?'<span class="h">'+hb+'</span>':'')+'</span>'+
+            '<span class="tm" data-golfer-av="'+self._esc(b.playerId)+'" data-golfer-av-nm="'+self._esc(b.playerName)+'" data-golfer-av-sz="16">'+self._esc(b.playerName)+(hb?'<span class="h">'+hb+'</span>':'')+'</span>'+
             '<span class="tb">TEAM</span>'+
             (self.groups.length ? '<select onchange="TeeSheet.addPlayer(this.value,\''+a.playerId+'\')" title="Add team to a group"><option value="">＋</option>'+self.groups.map(function(g,i){ return '<option value="'+i+'">G'+(i+1)+'</option>'; }).join('')+'</select>' : '')+
             '<button onclick="TeeSheet.unlinkTeam(\''+a.playerId+'\',\''+b.playerId+'\')" title="Break this pair back into singles" class="mx">✕</button>'+
@@ -130341,7 +130454,7 @@ window.TeeSheet = {
     // moves everyone, ×N badge shows the size, ✕ splits it back into singles.
     _unitChip: function(members){
         var self=this, a=members[0];
-        var rows=members.map(function(m){ var h=self._hcp(m.handicap); return '<span class="um">'+self._esc(m.playerName)+(h?'<span class="h">'+h+'</span>':'')+'</span>'; }).join('<span class="tx">＋</span>');
+        var rows=members.map(function(m){ var h=self._hcp(m.handicap); return '<span class="um" data-golfer-av="'+self._esc(m.playerId)+'" data-golfer-av-nm="'+self._esc(m.playerName)+'" data-golfer-av-sz="16">'+self._esc(m.playerName)+(h?'<span class="h">'+h+'</span>':'')+'</span>'; }).join('<span class="tx">＋</span>');
         return '<span onpointerdown="TeeSheet.pdown(event,\''+a.playerId+'\')" class="ts2-pchip ts2-teamchip ts2-unitchip" title="'+t('ts2.unittip')+'">'+
             rows+
             '<span class="tb">×'+members.length+'</span>'+
@@ -130985,7 +131098,7 @@ window.TeeSheet = {
                     var lp=''; if(s._last){ var lm=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(s._last)); if(lm) lp=MOS[parseInt(lm[2],10)-1]+' '+parseInt(lm[3],10); }
                     var tip='PLAYED '+(s._played||0)+' OF LAST '+win+(lp?(' · LAST '+lp):'');
                     var sel=self._sugFindSel(s.playerId); var bc=sel?self._sugBatchColor(sel.b):'';
-                    return '<span onpointerdown="TeeSheet.pdown(event,\''+s.playerId+'\')" onclick="TeeSheet.toggleSelSuggest(\''+s.playerId+'\')" class="ts2-rchip'+(sel?' sel':'')+'"'+(sel?' style="--bc:'+bc+';--bg:'+bc+'22;"':'')+'>'+
+                    return '<span onpointerdown="TeeSheet.pdown(event,\''+s.playerId+'\')" onclick="TeeSheet.toggleSelSuggest(\''+s.playerId+'\')" class="ts2-rchip'+(sel?' sel':'')+'"'+(sel?' style="--bc:'+bc+';--bg:'+bc+'22;"':'')+' data-golfer-av="'+self._esc(s.playerId)+'" data-golfer-av-nm="'+self._esc(s.playerName)+'" data-golfer-av-sz="18">'+
                         (sel?'<span class="bn">'+(sel.b+1)+'</span>':'')+self._nameSplit(s.playerName)+self._memBadge(s.playerId, s.playerName)+(hc?'<span class="h">'+hc+'</span>':'')+(s._days?'<span class="d">'+self._esc(s._days)+'</span>':'')+
                         (self.groups.length ? '<select onclick="event.stopPropagation()" onchange="TeeSheet.addPlayer(this.value,\''+s.playerId+'\')" title="Add to group"><option value="">＋</option>'+self.groups.map(function(g,i){ return '<option value="'+i+'">G'+(i+1)+'</option>'; }).join('')+'</select>' : '')+
                         '<button onclick="event.stopPropagation();TeeSheet.dismissSuggest(\''+s.playerId+'\')" title="Not playing today" class="mx">×</button>'+
@@ -131031,7 +131144,7 @@ window.TeeSheet = {
                         rows += '<div class="ts2-slot"'+(_tm?' style="box-shadow:inset 3px 0 0 '+(_tm==='A'?'#3b82f6':'#f97316')+'"':'')+'>'+
                             '<span class="n"'+(_tm?' style="color:'+(_tm==='A'?'#3b82f6':'#f97316')+';font-weight:800;" title="Team '+_tm+'"':'')+'>'+(sl+1)+'</span>'+
                             '<span class="ts2-who" onpointerdown="TeeSheet.pdown(event,\''+p.playerId+'\')">'+
-                                '<span class="nm">'+self._esc(p.playerName)+'</span>'+
+                                '<span class="nm" data-golfer-av="'+self._esc(p.playerId)+'" data-golfer-av-nm="'+self._esc(p.playerName)+'" data-golfer-av-sz="20">'+self._esc(p.playerName)+'</span>'+
                                 '<span style="flex-shrink:0;display:inline-flex;gap:1px;align-items:center;">'+self._divBadge(p.playerId, p.handicap)+(window.TRGGMembership?TRGGMembership.badgeCompact(p.playerId,p.playerName,self._isTRGGEvent()):'')+'</span>'+
                             '</span>'+
                             '<span class="ts2-hcpc">'+(hc||'')+'</span>'+
@@ -131071,6 +131184,8 @@ window.TeeSheet = {
         }
 
         body.innerHTML = hero + tools + '<div class="ts2-layout"><div class="ts2-side">'+side+'</div><div class="ts2-main">'+main+'</div></div>';
+        // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+        if (window._golferChipDecorate) window._golferChipDecorate(body, 20);
         // Keep the cursor in the inline slot input across ASYNC re-renders (save → registration sync → live
         // reload). Without this the input is rebuilt after the pick and the caret vanishes, forcing a re-click.
         if(this._slotEditGroup != null){
@@ -133219,7 +133334,7 @@ const RegistrationsManager = {
         return `
                 <tr class="border-t hover:bg-gray-100 ${rowClass}" data-reg-id="${reg.id}">
                     <td data-label="#" class="px-3 py-2 text-gray-600">${idx + 1}</td>
-                    <td data-label="Name" class="px-3 py-2 font-medium">${reg.playerName}${opts.showMembership ? this._membershipBadge(reg) : (window.MembershipService ? MembershipService.iconHtml(reg.playerId, reg.playerName, this._mbCtx()) : '')}</td>
+                    <td data-label="Name" class="px-3 py-2 font-medium"><span data-golfer-av="${reg.playerId || ''}" data-golfer-av-nm="${String(reg.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="22">${reg.playerName}</span>${opts.showMembership ? this._membershipBadge(reg) : (window.MembershipService ? MembershipService.iconHtml(reg.playerId, reg.playerName, this._mbCtx()) : '')}</td>
                     <td data-label="HCP" class="px-3 py-2 text-center">${hcpCell}</td>
                     <td data-label="Req" class="px-3 py-2">
                         <button onclick="RegistrationsManager.editSpecialRequests('${reg.id}')" class="text-gray-600 hover:text-gray-900" title="Edit special requests">
@@ -133278,7 +133393,7 @@ const RegistrationsManager = {
             if (this.filterText && (this._dirResults || []).length) {
                 html += '<div class="scv3r-stitle">DIRECTORY · TAP TO ADD</div>' + this._dirResults.map(p =>
                     '<div class="scv3r-crow" onclick="RegistrationsManager.addDirect(\'' + esc(String(p.player_id)).replace(/'/g, '&#39;') + '\')">' +
-                        '<div style="min-width:0;"><div class="nm">' + esc(p.player_name) + '</div>' +
+                        '<div style="min-width:0;"><div class="nm" data-golfer-av="' + esc(String(p.player_id)) + '" data-golfer-av-nm="' + esc(p.player_name) + '" data-golfer-av-sz="20">' + esc(p.player_name) + '</div>' +
                         '<div class="s">' + [p.handicap != null ? 'HCP ' + esc(p.handicap) : '', p.home_course ? esc(p.home_course) : ''].filter(Boolean).join(' · ') + '</div></div>' +
                         '<button class="scv3r-take" style="margin-left:auto;" onclick="event.stopPropagation();RegistrationsManager.addDirect(\'' + esc(String(p.player_id)).replace(/'/g, '&#39;') + '\')">ADD</button>' +
                     '</div>').join('');
@@ -133287,6 +133402,8 @@ const RegistrationsManager = {
                     '<span class="material-symbols-outlined">person_add</span> Add "' + esc(this.filterText) + '" to this event</button></div>';
             }
             main.innerHTML = html;
+            // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+            if (window._golferChipDecorate) window._golferChipDecorate(main, 24);
         }
         this._renderFilterChips();
         const showing = document.getElementById('scv3rShowing');
@@ -133297,6 +133414,7 @@ const RegistrationsManager = {
             prev.innerHTML = (!regs.length)
                 ? '<tr><td colspan="7" class="py-10 text-center text-gray-400">No registrations yet</td></tr>'
                 : regs.map((reg, idx) => this._playerRowHtml(reg, idx, { editableHcp: true, showMembership: true })).join('');
+            if (window._golferChipDecorate) window._golferChipDecorate(prev, 22);
             this._renderPreviewSummary();
         }
     },
@@ -133360,7 +133478,7 @@ const RegistrationsManager = {
         const owedPill = owedW > 0 ? '<button class="scv3r-owedpill" onclick="event.stopPropagation();RegistrationsManager.settleFor(\'' + esc(reg.playerId) + '\')"><span class="material-symbols-outlined">emoji_events</span>฿' + owedW.toLocaleString() + ' ' + t('orgreg2.owed') + '</button>' : '';
         return '<div class="scv3r-pc' + (here ? ' here' : '') + (part ? ' part' : '') + '" data-reg-id="' + reg.id + '" data-idx="' + idx + '" onclick="RegistrationsManager.openPlayerSheet(\'' + reg.id + '\')">' +
             '<div class="pc-name">' +
-                '<div class="scv3r-pname"><span class="nm">' + esc(reg.playerName) + '</span>' + mbIcon + '</div>' +
+                '<div class="scv3r-pname"><span class="nm" data-golfer-av="' + esc(reg.playerId) + '" data-golfer-av-nm="' + esc(reg.playerName) + '" data-golfer-av-sz="24">' + esc(reg.playerName) + '</span>' + mbIcon + '</div>' +
                 '<div class="scv3r-psub">HCP ' + esc(hcp) + (mbTxt ? ' · ' + mbTxt : '') + (reqIcons ? ' ' + reqIcons : '') + '</div>' +
             '</div>' +
             '<div class="pc-hcp">' + esc(hcp) + '</div>' +
@@ -133485,17 +133603,19 @@ const RegistrationsManager = {
                 const sub = part ? ('PARTIAL · PAID ' + k(r.amountPaid))
                     : [r.wantTransport ? 'VAN' : 'DIRECT', (r.specialRequests || {}).nonMember ? '+฿100' : ''].filter(Boolean).join(' · ');
                 return '<div class="scv3r-crow' + (part ? ' part' : '') + '"><div style="min-width:0;">' +
-                    '<div class="nm">' + esc(r.playerName) + (window.MembershipService ? MembershipService.iconHtml(r.playerId, r.playerName, RegistrationsManager._mbCtx()) : '') + '</div>' +
+                    '<div class="nm" data-golfer-av="' + esc(r.playerId) + '" data-golfer-av-nm="' + esc(r.playerName) + '" data-golfer-av-sz="22">' + esc(r.playerName) + (window.MembershipService ? MembershipService.iconHtml(r.playerId, r.playerName, RegistrationsManager._mbCtx()) : '') + '</div>' +
                     '<div class="s">' + sub + '</div></div>' +
                     '<div class="fee">' + k(u.owe) + '</div>' +
                     '<button class="scv3r-take" onclick="RegistrationsManager.openPaymentSlipFor(\'' + r.id + '\')">TAKE ฿</button></div>';
             }).join('') : '<div class="scv3r-empty-line">Everyone has paid</div>') +
             (owedPl.length ? '<div class="scv3r-stitle">WINNINGS OWED</div>' + owedPl.map(r =>
-                '<div class="scv3r-crow"><div style="min-width:0;"><div class="nm">' + esc(r.playerName) + '</div><div class="s">FROM PUBLISHED RESULTS</div></div>' +
+                '<div class="scv3r-crow"><div style="min-width:0;"><div class="nm" data-golfer-av="' + esc(r.playerId) + '" data-golfer-av-nm="' + esc(r.playerName) + '" data-golfer-av-sz="22">' + esc(r.playerName) + '</div><div class="s">FROM PUBLISHED RESULTS</div></div>' +
                 '<div class="fee a">' + k(this._owedTot(r.playerId)) + '</div>' +
                 '<button class="scv3r-take ghost" onclick="RegistrationsManager.settleFor(\'' + esc(r.playerId) + '\')">SETTLE</button></div>').join('') : '') +
             '<button class="scv3r-cta" onclick="RegistrationsManager.openPayoutsFor()"><span class="material-symbols-outlined">emoji_events</span> Prizes &amp; Payouts</button>' +
             '<button class="scv3r-cta ghost" onclick="RegistrationsManager.openFeeSettingsFor()">Event Fees</button>';
+        // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+        if (window._golferChipDecorate) window._golferChipDecorate(el, 22);
     },
 
     // Winnings owed to roster players (player-scoped, same rule as the event-day register).
@@ -133586,7 +133706,7 @@ const RegistrationsManager = {
             '<span class="ck"><span class="material-symbols-outlined">check</span></span></button>';
         card.innerHTML =
             '<div class="grab"></div>' +
-            '<div class="scv3r-sh-h"><div style="min-width:0;"><div class="nm">' + esc(reg.playerName) + ' ' + mbIcon + '</div>' +
+            '<div class="scv3r-sh-h"><div style="min-width:0;"><div class="nm" data-golfer-av="' + esc(reg.playerId) + '" data-golfer-av-nm="' + esc(reg.playerName) + '" data-golfer-av-sz="26">' + esc(reg.playerName) + ' ' + mbIcon + '</div>' +
             '<div class="sub">' + [mbTxt, regAt ? 'REG ' + regAt : ''].filter(Boolean).join(' · ') + '</div></div>' +
             '<button class="scv3r-sh-x" onclick="RegistrationsManager.closePlayerSheet()"><span class="material-symbols-outlined">close</span></button></div>' +
             '<div class="scv3r-sh-grid">' +
@@ -133613,6 +133733,8 @@ const RegistrationsManager = {
                 '<button class="scv3r-sec-btn" onclick="RegistrationsManager.closePlayerSheet();RegistrationsManager.editSpecialRequests(\'' + reg.id + '\')"><span class="material-symbols-outlined">description</span> REQUESTS</button>' +
                 '<button class="scv3r-sec-btn danger" onclick="RegistrationsManager.closePlayerSheet();RegistrationsManager.removePlayer(\'' + reg.id + '\')"><span class="material-symbols-outlined">person_remove</span> REMOVE</button>' +
             '</div>';
+        // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+        if (window._golferChipDecorate) window._golferChipDecorate(card, 26);
     },
 
     // ================= end SCV3R cockpit =================
@@ -133813,11 +133935,13 @@ const RegistrationsManager = {
             const hcp = window.formatHandicapDisplay ? window.formatHandicapDisplay(w.handicap) : Math.round(w.handicap);
             return '<div class="scv3r-wlrow">' +
                 '<span class="pos">' + (w.position || idx + 1) + '</span>' +
-                '<div class="mid"><div class="nm">' + esc(w.playerName) + '</div><div class="s">HCP ' + esc(hcp) + ' · REQ ' + esc(requestedDate).toUpperCase() + '</div></div>' +
+                '<div class="mid"><div class="nm" data-golfer-av="' + esc(w.playerId || '') + '" data-golfer-av-nm="' + esc(w.playerName) + '" data-golfer-av-sz="20">' + esc(w.playerName) + '</div><div class="s">HCP ' + esc(hcp) + ' · REQ ' + esc(requestedDate).toUpperCase() + '</div></div>' +
                 '<button class="scv3r-promote" onclick="RegistrationsManager.promoteFromWaitlist(\'' + w.id + '\')">PROMOTE</button>' +
                 '<button class="scv3r-wlx" onclick="RegistrationsManager.removeFromWaitlist(\'' + w.id + '\')" title="Remove from waitlist"><span class="material-symbols-outlined">close</span></button>' +
             '</div>';
         }).join('');
+        // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+        if (window._golferChipDecorate) window._golferChipDecorate(tbody, 20);
     },
 
     toggleWaitlist() {
@@ -133912,7 +134036,7 @@ const RegistrationsManager = {
                             <div class="pairing-player bg-white rounded px-2 py-1 text-xs flex justify-between items-center border"
                                  data-player-id="${p.playerId}"
                                  ${!isLocked ? `onpointerdown="RegistrationsManager.pdown(event, '${p.playerId}')"` : ''}>
-                                <span class="${textColor}">${p.playerName} (${hcp})</span>${(reg && GolferEventRegManager._onTransport(reg)) ? ('<span title="On the van" style="font-size:9px;font-weight:700;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;color:#2563eb;background:#dbeafe;"><span class="material-symbols-outlined" style="font-size:11px;vertical-align:-2px;">airport_shuttle</span> '+((reg.specialRequests&&reg.specialRequests.van&&reg.specialRequests.van!=='own')?('VAN '+reg.specialRequests.van):(_vanMap&&_vanMap[p.playerId]?('VAN '+_vanMap[p.playerId]):'VAN'))+'</span>') : '<span title="Own transport / direct" style="font-size:9px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;">DIRECT</span>'}
+                                <span class="${textColor}" data-golfer-av="${p.playerId}" data-golfer-av-nm="${String(p.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${p.playerName} (${hcp})</span>${(reg && GolferEventRegManager._onTransport(reg)) ? ('<span title="On the van" style="font-size:9px;font-weight:700;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;color:#2563eb;background:#dbeafe;"><span class="material-symbols-outlined" style="font-size:11px;vertical-align:-2px;">airport_shuttle</span> '+((reg.specialRequests&&reg.specialRequests.van&&reg.specialRequests.van!=='own')?('VAN '+reg.specialRequests.van):(_vanMap&&_vanMap[p.playerId]?('VAN '+_vanMap[p.playerId]):'VAN'))+'</span>') : '<span title="Own transport / direct" style="font-size:9px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;">DIRECT</span>'}
                                 ${!isLocked ? `<button onclick="RegistrationsManager.removeFromGroup(${groupNum}, '${p.playerId}')" class="text-red-500 hover:text-red-700">×</button>` : ''}
                             </div>
                         `}).join('')}
@@ -133967,6 +134091,8 @@ const RegistrationsManager = {
                 </div>
             `;
         }
+        // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+        if (window._golferChipDecorate) window._golferChipDecorate(container, 18);
     },
 
     // One unassigned row (yellow chip) — shared by the singles grid and the PTU unit blocks.
@@ -133980,7 +134106,7 @@ const RegistrationsManager = {
                             <div class="pairing-player bg-yellow-50 rounded px-2 py-1 text-xs flex justify-between items-center border border-yellow-200"
                                  data-player-id="${p.playerId}"
                                  onpointerdown="RegistrationsManager.pdown(event, '${p.playerId}')">
-                                <span class="${textColor}">${p.playerName} (${hcp})</span>${(reg && GolferEventRegManager._onTransport(reg)) ? ('<span title="On the van" style="font-size:9px;font-weight:700;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;color:#2563eb;background:#dbeafe;"><span class="material-symbols-outlined" style="font-size:11px;vertical-align:-2px;">airport_shuttle</span> '+((reg.specialRequests&&reg.specialRequests.van&&reg.specialRequests.van!=='own')?('VAN '+reg.specialRequests.van):(_vanMap&&_vanMap[p.playerId]?('VAN '+_vanMap[p.playerId]):'VAN'))+'</span>') : '<span title="Own transport / direct" style="font-size:9px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;">DIRECT</span>'}
+                                <span class="${textColor}" data-golfer-av="${p.playerId}" data-golfer-av-nm="${String(p.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${p.playerName} (${hcp})</span>${(reg && GolferEventRegManager._onTransport(reg)) ? ('<span title="On the van" style="font-size:9px;font-weight:700;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;color:#2563eb;background:#dbeafe;"><span class="material-symbols-outlined" style="font-size:11px;vertical-align:-2px;">airport_shuttle</span> '+((reg.specialRequests&&reg.specialRequests.van&&reg.specialRequests.van!=='own')?('VAN '+reg.specialRequests.van):(_vanMap&&_vanMap[p.playerId]?('VAN '+_vanMap[p.playerId]):'VAN'))+'</span>') : '<span title="Own transport / direct" style="font-size:9px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:4px;padding:1px 5px;margin-left:5px;white-space:nowrap;">DIRECT</span>'}
                             </div>
                         `;
     },
@@ -135332,7 +135458,12 @@ const RegistrationsManager = {
                     const idx = parseInt(row.getAttribute('data-idx')) || 0;
                     const tmp = document.createElement('div');
                     tmp.innerHTML = this._playerCardHtml(reg, idx);
-                    if (tmp.firstElementChild) row.replaceWith(tmp.firstElementChild);
+                    if (tmp.firstElementChild) {
+                        const fresh = tmp.firstElementChild;
+                        row.replaceWith(fresh);
+                        // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+                        if (window._golferChipDecorate) window._golferChipDecorate(fresh, 24);
+                    }
                 }
                 return;
             }
@@ -138764,11 +138895,14 @@ class OrganizerScoringSystem {
         // If no divisions configured, render single leaderboard
         if (!divisions || divisions.length === 0) {
             tbody.innerHTML = this.renderSingleLeaderboard(this.leaderboardData);
+            // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+            if (window._golferChipDecorate) window._golferChipDecorate(tbody, 22);
             return;
         }
 
         // Render division-based leaderboards
         tbody.innerHTML = this.renderDivisionLeaderboards(this.leaderboardData, divisions);
+        if (window._golferChipDecorate) window._golferChipDecorate(tbody, 22);
     }
 
     renderSingleLeaderboard(data) {
@@ -138837,7 +138971,7 @@ class OrganizerScoringSystem {
             return `
                 <tr class="border-b border-gray-200 hover:bg-gray-50${notStarted ? ' opacity-60' : ''}${isWinner ? ' bg-amber-50' : ''}">
                     <td class="py-2 px-3 font-bold">${isWinner ? '🏆 ' : ''}${position}</td>
-                    <td class="py-2 px-3">${this.getPlayerName(round.golfer_id, round)}${this._twosChip(round.golfer_id)}${this._acesChip(round.golfer_id)}</td>
+                    <td class="py-2 px-3"><span data-golfer-av="${round.golfer_id || ''}" data-golfer-av-nm="${String(this.getPlayerName(round.golfer_id, round) || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="22">${this.getPlayerName(round.golfer_id, round)}</span>${this._twosChip(round.golfer_id)}${this._acesChip(round.golfer_id)}</td>
                     <td class="py-2 px-3">${window.formatHandicapDisplay(round.handicap_used || 0)}</td>
                     <td class="py-2 px-3">${round.total_gross || '-'}</td>
                     <td class="py-2 px-3">${netScore}</td>
@@ -138939,7 +139073,7 @@ class OrganizerScoringSystem {
                 html += `
                     <tr class="border-b border-gray-200 hover:bg-gray-50${notStarted ? ' opacity-60' : ''}${isWinner ? ' bg-amber-50' : ''}">
                         <td class="py-2 px-3 font-bold">${isWinner ? '🏆 ' : ''}${position}</td>
-                        <td class="py-2 px-3">${this.getPlayerName(round.golfer_id, round)}${this._twosChip(round.golfer_id)}${this._acesChip(round.golfer_id)}</td>
+                        <td class="py-2 px-3"><span data-golfer-av="${round.golfer_id || ''}" data-golfer-av-nm="${String(this.getPlayerName(round.golfer_id, round) || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="22">${this.getPlayerName(round.golfer_id, round)}</span>${this._twosChip(round.golfer_id)}${this._acesChip(round.golfer_id)}</td>
                         <td class="py-2 px-3">${window.formatHandicapDisplay(round.handicap_used || 0)}</td>
                         <td class="py-2 px-3">${round.total_gross || '-'}</td>
                         <td class="py-2 px-3">${netScore}</td>

@@ -56,7 +56,7 @@ if (window.SocietyOrganizerSystem) {
             return `
                 <tr class="border-t hover:bg-gray-50">
                     <td class="px-4 py-2">
-                        <div class="font-medium">${reg.playerName}</div>
+                        <div class="font-medium"><span data-golfer-av="${reg.playerId || ''}" data-golfer-av-nm="${String(reg.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="20">${reg.playerName}</span></div>
                         <div class="text-xs text-gray-500 mt-1">${paymentBadge}</div>
                     </td>
                     <td class="px-4 py-2">${Math.round(reg.handicap)}</td>
@@ -74,6 +74,9 @@ if (window.SocietyOrganizerSystem) {
                 </tr>
             `;
         }).join('');
+
+        // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+        if (window._golferChipDecorate) window._golferChipDecorate(tbody, 20);
     };
 
     // Update event card to include payment tracking button

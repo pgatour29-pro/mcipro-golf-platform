@@ -580,6 +580,9 @@ class TimeWindowedLeaderboards {
         `;
 
         container.innerHTML = html;
+
+        // GLOBAL RULE: golfer avatars get the LINE photo (initials stay when none).
+        if (window._golferFaceFill) window._golferFaceFill(container);
     }
 
     // Render podium card for top 3
@@ -612,7 +615,7 @@ class TimeWindowedLeaderboards {
                         <div class="text-2xl md:text-3xl mb-1">${style.icon}</div>
 
                         <!-- Player Avatar -->
-                        <div class="mx-auto w-12 h-12 md:w-14 md:h-14 rounded-full bg-white/30 flex items-center justify-center text-white font-bold text-xl md:text-2xl shadow-inner mb-2">
+                        <div data-golfer-face="${player.player_id || ''}" class="mx-auto w-12 h-12 md:w-14 md:h-14 rounded-full bg-white/30 flex items-center justify-center text-white font-bold text-xl md:text-2xl shadow-inner mb-2">
                             ${(player.player_name || 'U')[0].toUpperCase()}
                         </div>
 
@@ -654,7 +657,7 @@ class TimeWindowedLeaderboards {
                 </div>
 
                 <!-- Avatar -->
-                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white font-bold shadow-sm flex-shrink-0">
+                <div data-golfer-face="${player.player_id || ''}" class="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white font-bold shadow-sm flex-shrink-0">
                     ${(player.player_name || 'U')[0].toUpperCase()}
                 </div>
 

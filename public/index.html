@@ -72781,12 +72781,13 @@ class SocietyGolfSupabase {
             totalFee += competitionFee;
         }
 
-        // A fresh GUEST-* id is by definition NOT a society member — TRGG's flat ฿100
-        // non-member surcharge applies at creation, and the nonMember flag is stamped so
-        // every organizer surface (registrations table, payment slip, tee-sheet sweep)
-        // agrees. Roster/expired verdicts for real profiles stay with the organizer
-        // sweeps (TRGGMembership) — never guessed here.
-        const _rpIsGuest = String(playerData.playerId || '').startsWith('GUEST-');
+        // A GUEST-* or MANUAL-* id (fresh guest / walk-on / manually created profile) is by
+        // definition NOT a society member — TRGG's flat ฿100 non-member surcharge applies at
+        // creation, and the nonMember flag is stamped so every organizer surface (registrations
+        // table, payment slip, tee-sheet sweep) agrees. Roster/expired verdicts for real
+        // directory profiles (U-*/TRGG-*) stay with the organizer sweeps (TRGGMembership) —
+        // never guessed here.
+        const _rpIsGuest = /^(GUEST|MANUAL)-/i.test(String(playerData.playerId || ''));
         if (_rpIsTRGG && _rpIsGuest) totalFee += 100;
 
         console.log('[SocietyGolf] Calculated total_fee:', {
@@ -121010,6 +121011,26 @@ class GolferEventsManager {
         return 'GUEST-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
     }
 
+    // Pete's rule (2026-08-02, Pon at Pattaya CC): a player added from someone's account joins that
+    // account's group IMMEDIATELY — even when the tee sheet already has saved groups. Runs the same
+    // BookingGroups.ensureGroups the organizer surfaces use (late-add path appends to the host's
+    // group while seats remain) and persists, so tee sheet / players modal / scoring prefill all
+    // agree without waiting for an organizer to open the tee sheet. Only touches an EXISTING saved
+    // sheet — first materialization stays with the organizer-load flow.
+    async _ensureBookingPlacement(eventId) {
+        try {
+            if (!window.BookingGroups || !window.SocietyGolfDB) return;
+            const pairing = await window.SocietyGolfDB.getPairings(eventId);
+            if (!pairing || !Array.isArray(pairing.groups)) return;
+            const hasPlayers = pairing.groups.some(g => ((g && g.players) || []).length > 0);
+            if (!hasPlayers) return;
+            const regs = await window.SocietyGolfDB.getRegistrations(eventId);
+            if (window.BookingGroups.ensureGroups(pairing.groups, regs, pairing.groupSize)) {
+                await window.SocietyGolfDB.savePairings(eventId, pairing);
+            }
+        } catch (e) { console.warn('[GolferEvents] booking placement', e); }
+    }
+
     async submitRegistration() {
         const playerName = document.getElementById('regPlayerName').value.trim();
         const handicapInput = document.getElementById('regHandicap').value.trim();
@@ -121218,6 +121239,8 @@ class GolferEventsManager {
                     }
                 }
                 this._editGuestIds = null;
+                // Late add onto an already-saved tee sheet → put the new guests in the host's group NOW.
+                await this._ensureBookingPlacement(this.currentEvent.id);
 
                 NotificationManager.show(`Registration updated successfully! Changes saved for ${this.currentEvent.name}`, 'success', 3000);
 
@@ -121393,6 +121416,8 @@ class GolferEventsManager {
                             specialRequests: Object.assign({ sameGroup: guest.sameGroup !== false }, _hostId ? { hostId: _hostId } : {})
                         });
                     }
+                    // Late add onto an already-saved tee sheet → put the party in the host's group NOW.
+                    if (guestPlayers.length) await this._ensureBookingPlacement(this.currentEvent.id);
 
                     let confirmMsg = `Successfully registered for ${this.currentEvent.name}!`;
                     if (guestPlayers.length > 0) {
@@ -131038,9 +131063,12 @@ window.BookingGroups = {
         return out;
     },
     // Ensure each booking is ONE group in `groups` (array of {players:[{playerId,playerName,handicap}], ...}).
-    // Only places a booking when it has never been materialized (no group carries its bookingHost
-    // marker) AND none of its members are already grouped — so the organizer can rearrange freely afterward
-    // without it snapping back. PLACEMENT GOES DOWN THE LINE (Pete 2026-07-09): the booking party fills the
+    // Whole-party placement only runs when the booking has never been materialized (no group carries its
+    // bookingHost marker) AND none of its members are already grouped — so the organizer can rearrange freely
+    // afterward without it snapping back. LATE ADDS (Pete 2026-08-02): when part of the booking is already on
+    // the sheet, players added from the host's account afterwards APPEND to the group holding the host (or a
+    // placed mate) while seats remain — already-assigned players are never moved; a full group leaves the
+    // newcomer in the pool. PLACEMENT GOES DOWN THE LINE (Pete 2026-07-09): the booking party fills the
     // FIRST group with enough free seats — group 1, then 2, … — and only creates a NEW group at the end when
     // no existing group can take the whole party. Mutates `groups` in place; returns true if it changed anything.
     ensureGroups: function(groups, regs, groupSize){
@@ -131056,12 +131084,33 @@ window.BookingGroups = {
         });
         var changed = false;
         bookings.forEach(function(b){
+            var missing = b.memberIds.filter(function(id){ return !grouped[String(id)] && byId[String(id)]; });
+            if (!missing.length) return;
+            var placedIds = b.memberIds.filter(function(id){ return grouped[String(id)]; });
+            if (placedIds.length) {
+                var anchor = grouped[String(b.hostId)] ? String(b.hostId) : String(placedIds[0]);
+                var gIdx = -1;
+                for (var ai = 0; ai < groups.length && gIdx < 0; ai++) {
+                    if ((groups[ai].players||[]).some(function(p){ return String(p.playerId||p.id) === anchor; })) gIdx = ai;
+                }
+                if (gIdx < 0) return;
+                var room = size - (groups[gIdx].players||[]).length;
+                if (room <= 0) return;
+                var add = missing.slice(0, room).map(function(id){
+                    var r = byId[String(id)];
+                    return { playerId: r.playerId, playerName: r.playerName, handicap: r.handicap };
+                });
+                groups[gIdx].players = (groups[gIdx].players||[]).concat(add);
+                if (!groups[gIdx].bookingHost) groups[gIdx].bookingHost = String(b.hostId);
+                add.forEach(function(p){ grouped[String(p.playerId)] = true; });
+                changed = true;
+                return;
+            }
             if (hasBooking[String(b.hostId)]) return;
-            if (b.memberIds.some(function(id){ return grouped[String(id)]; })) return;
-            var players = b.memberIds.map(function(id){
+            var players = missing.map(function(id){
                 var r = byId[String(id)];
-                return r ? { playerId: r.playerId, playerName: r.playerName, handicap: r.handicap } : null;
-            }).filter(Boolean);
+                return { playerId: r.playerId, playerName: r.playerName, handicap: r.handicap };
+            });
             if (players.length < 2) return;
             // Down the line: first group with room for the whole party keeps booking-mates together.
             var placed = false;

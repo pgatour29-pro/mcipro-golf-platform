@@ -311,7 +311,7 @@ class GlobalPlayerDirectory {
                 <div class="bg-white rounded-xl shadow p-4 hover:shadow-md transition-shadow cursor-pointer"
                      onclick="globalPlayerDirectory.showPlayerProfile('${player.player_id}')">
                     <div class="flex items-center gap-3">
-                        <div class="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-bold text-lg">
+                        <div data-golfer-face="${player.player_id || ''}" class="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white font-bold text-lg">
                             ${(player.player_name || 'U')[0].toUpperCase()}
                         </div>
                         <div class="flex-1 min-w-0">
@@ -355,6 +355,8 @@ class GlobalPlayerDirectory {
         }
 
         container.innerHTML = html;
+        // GLOBAL RULE: golfer avatars get the LINE photo (initials stay when none).
+        if (window._golferFaceFill) window._golferFaceFill(container);
     }
 
     nextPage() {
@@ -434,7 +436,7 @@ class GlobalPlayerDirectory {
                         <i class="material-symbols-outlined">close</i>
                     </button>
                     <div class="flex items-center gap-4">
-                        <div class="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center text-3xl font-bold">
+                        <div data-golfer-face="${playerId || ''}" class="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center text-3xl font-bold">
                             ${(profile.player_name || 'U')[0].toUpperCase()}
                         </div>
                         <div>
@@ -575,6 +577,8 @@ class GlobalPlayerDirectory {
         `;
 
         document.body.appendChild(modal);
+        // GLOBAL RULE: golfer avatars get the LINE photo (initials stay when none).
+        if (window._golferFaceFill) window._golferFaceFill(modal);
     }
 
     async addToBuddies(playerId) {
@@ -761,7 +765,7 @@ window.globalPlayerDirectory.performSearchUI = async function(query = null, appe
             <div class="bg-white rounded-xl shadow p-4 hover:shadow-md transition-shadow cursor-pointer"
                  onclick="window.globalPlayerDirectory.showPlayerProfile('${player.player_id}')">
                 <div class="flex items-center gap-3">
-                    <div class="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-bold text-lg">
+                    <div data-golfer-face="${player.player_id || ''}" class="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-bold text-lg">
                         ${(player.player_name || 'U')[0].toUpperCase()}
                     </div>
                     <div class="flex-1 min-w-0">
@@ -778,6 +782,8 @@ window.globalPlayerDirectory.performSearchUI = async function(query = null, appe
     });
 
     container.innerHTML = html;
+    // GLOBAL RULE: golfer avatars get the LINE photo (initials stay when none).
+    if (window._golferFaceFill) window._golferFaceFill(container);
 
     if (countEl) {
         countEl.textContent = `${this.moreOffset + players.length} players shown`;

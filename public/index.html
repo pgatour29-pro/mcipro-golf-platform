@@ -67874,9 +67874,11 @@ Waitlist (${waitlist.length} people):`;
                 }
                 body.innerHTML = '<div class="scv3c-sub">SELECT YOUR GOLFER</div>' + players.map(p =>
                     '<div class="cgc-dir" onclick="CaddyGolferCard.startAssignment(\'' + this._esc(p.player_id) + '\', \'' + this._esc(p.player_name).replace(/'/g, '&#39;') + '\')">' +
-                        '<span class="n">' + this._esc(p.player_name) + '</span>' +
+                        '<span class="n" data-golfer-av="' + this._esc(p.player_id) + '" data-golfer-av-nm="' + this._esc(p.player_name) + '" data-golfer-av-sz="20">' + this._esc(p.player_name) + '</span>' +
                         '<span class="d">' + (p.handicap ? 'HCP ' + this._esc(p.handicap) : '') + (p.home_course ? ' · ' + this._esc(p.home_course) : '') + '</span>' +
                     '</div>').join('');
+                // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
+                if (window._golferChipDecorate) window._golferChipDecorate(body, 20);
             },
 
             // Start the day's assignment for a golfer (walk-on). If their round is
@@ -97242,7 +97244,7 @@ class SocietyOrganizerManager {
                     <tr class="hover:bg-gray-50 bg-blue-50">
                         <td colspan="5" class="px-6 py-4">
                             <div class="flex items-center gap-3">
-                                <div class="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                <div class="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center" data-golfer-face="${nonMember.golfer_id || ''}">
                                     <span class="material-symbols-outlined text-blue-600 text-sm">person_add</span>
                                 </div>
                                 <div class="flex-grow">
@@ -97261,6 +97263,8 @@ class SocietyOrganizerManager {
                     </tr>
                 `;
             }).join('');
+            // GLOBAL RULE: golfer avatars get the LINE photo (initials stay when none).
+            if (window._golferFaceFill) window._golferFaceFill(tbody);
             return;
         }
 
@@ -97282,8 +97286,8 @@ class SocietyOrganizerManager {
                 <tr class="hover:bg-gray-50">
                     <td colspan="7" class="px-3 py-2">
                         <div class="flex items-center gap-3" onclick="PlayerScorecardViewer.openPlayerProfile('${member.golfer_id}', '${escapedName}')" style="cursor:pointer;">
-                            <div class="flex-shrink-0 w-9 h-9 bg-green-100 rounded-full flex items-center justify-center">
-                                <span class="material-symbols-outlined text-green-600" style="font-size:16px;">person</span>
+                            <div class="flex-shrink-0 w-9 h-9 bg-green-100 rounded-full flex items-center justify-center" data-golfer-face="${member.golfer_id || ''}">
+                                <span class="text-green-700 font-bold" style="font-size:12px;">${window._golferInitials ? window._golferInitials(member.playerName) : ''}</span>
                             </div>
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2">
@@ -97306,6 +97310,8 @@ class SocietyOrganizerManager {
                 </tr>
             `;
         }).join('');
+        // GLOBAL RULE: golfer avatars get the LINE photo (initials stay when none).
+        if (window._golferFaceFill) window._golferFaceFill(tbody);
     }
 
     updatePlayerDirectoryStats() {

@@ -386,6 +386,7 @@
     <!-- Defer heavy scripts until needed -->
     <!-- REMOVED: hole-by-hole-leaderboard-enhancement.js causes mobile stack overflow -->
     <script src="golf-buddies-v2.js?v=16" defer></script>
+    <script src="food-fgv1.js?v=1" defer></script>
     <script src="content-moderation.js?v=1" defer></script>
 
     <style>
@@ -5893,217 +5894,461 @@
         #conversation-view .scv3msg-send .material-symbols-outlined { font-size:19px; }
 
         /* ================================================================
-           SCV3F — Food & Drinks order status (real pipeline) + Kitchen Queue.
-           Dark default + body.theme-light, same language as SCV3H/MSG.
+           FGV1 — Food & Drinks, the Grab way (2026-08-02).
+           Storefront + menu + item sheet + basket + tracking (#golfer-food,
+           #golfer-status) and the 3-tab kitchen dashboard (#kitchenQueueOverlay).
+           Dark default + body.theme-light, same language as SCV3H/MSG/MKPV1.
+           Logic lives in food-fgv1.js; art = FGV1 sprite (fg*) at body level.
            ================================================================ */
-        #golfer-status {
-            background: radial-gradient(120% 22% at 50% 0%, rgba(34,197,94,0.07), transparent 60%), #0A0D10;
-            border-radius: 24px; padding: 16px 14px 22px;
+        .fgv-scope{
+            --fcard:rgba(255,255,255,.045); --fhair:rgba(255,255,255,.09); --fglass2:rgba(255,255,255,.08);
+            --ftxt:#F2F5F7; --fsub:#8C96A1; --ffaint:#59636E;
+            --fgreen:#4ade80; --fgreendim:rgba(34,197,94,.15);
+            --famber:#fbbf24; --famberdim:rgba(251,191,36,.14);
+            --fred:#fb7185; --freddim:rgba(248,113,113,.14);
+            --fshadow:none;
+            color:var(--ftxt); font-family:'Instrument Sans',-apple-system,sans-serif;
         }
-        body.theme-light #golfer-status {
-            background: radial-gradient(120% 22% at 50% 0%, rgba(22,163,74,0.06), transparent 60%), #F2F4F6;
+        body.theme-light .fgv-scope{
+            --fcard:#ffffff; --fhair:rgba(15,23,42,.08); --fglass2:#f1f4f6;
+            --ftxt:#10151B; --fsub:#5B6672; --ffaint:#98A3AE;
+            --fgreen:#16a34a; --fgreendim:rgba(22,163,74,.13);
+            --famber:#b45309; --famberdim:rgba(180,83,9,.12);
+            --fred:#dc2626; --freddim:rgba(220,38,38,.10);
+            --fshadow:0 1px 3px rgba(15,23,42,.05);
         }
-        #golfer-status .scv3f-head { display:flex; align-items:flex-end; justify-content:space-between; margin:4px 2px 14px; }
-        #golfer-status .scv3f-ovl { font:600 10px/1 'JetBrains Mono',monospace; letter-spacing:.2em; color:#4ade80; text-transform:uppercase; margin-bottom:8px; }
-        #golfer-status .scv3f-h1 { font:600 28px/1 'Instrument Sans',Inter,sans-serif; letter-spacing:-.02em; color:#F2F5F7; }
-        #golfer-status .scv3f-hbtns { display:flex; gap:8px; flex:0 0 auto; }
-        #golfer-status .scv3f-new { height:42px; padding:0 16px; border:none; border-radius:15px; cursor:pointer;
-            background:linear-gradient(180deg,#34d873,#15803d); color:#fff; font:700 13px/1 'Instrument Sans',sans-serif;
-            display:flex; align-items:center; gap:6px; box-shadow:0 0 24px rgba(34,197,94,.28), inset 0 1px 0 rgba(255,255,255,.28); }
-        #golfer-status .scv3f-new .material-symbols-outlined { font-size:16px; }
-        body.theme-light #golfer-status .scv3f-h1 { color:#10151B; }
-        body.theme-light #golfer-status .scv3f-ovl { color:#16a34a; }
-        #golfer-status .scv3f-st { display:flex; align-items:center; gap:8px; font:600 10px/1 'JetBrains Mono',monospace; letter-spacing:.18em; color:#59636E; margin:16px 4px 8px; text-transform:uppercase; }
-        #golfer-status #activeOrdersBadge, #golfer-status #orderHistoryBadge { display:none !important; }
-        #golfer-status .scv3f-stc { color:#4ade80; letter-spacing:.1em; }
-        #golfer-status .scv3f-clear { margin-left:auto; background:none; border:none; cursor:pointer; font:600 9px/1 'JetBrains Mono',monospace; letter-spacing:.12em; color:#fb7185; }
-        #golfer-status .scv3f-empty { text-align:center; padding:26px 0; font:500 12px/1.5 'Instrument Sans',sans-serif; color:#59636E;
-            background:rgba(255,255,255,.03); border:1px dashed rgba(255,255,255,.1); border-radius:16px; }
-        body.theme-light #golfer-status .scv3f-empty { background:rgba(15,23,42,.02); border-color:rgba(15,23,42,.12); }
-        /* order cards */
-        #golfer-status .scv3f-order { background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:13px 14px; margin-bottom:8px; cursor:pointer; }
-        #golfer-status .scv3f-order.live { border-color:rgba(74,222,128,.35); }
-        body.theme-light #golfer-status .scv3f-order { background:#fff; border-color:rgba(15,23,42,.08); }
-        body.theme-light #golfer-status .scv3f-order.live { border-color:rgba(22,163,74,.4); }
-        #golfer-status .scv3f-otop { display:flex; align-items:center; gap:8px; }
-        #golfer-status .scv3f-ochip { font:700 8.5px/1 'JetBrains Mono',monospace; letter-spacing:.1em; border-radius:999px; padding:5px 9px; }
-        #golfer-status .scv3f-ochip.ok { color:#4ade80; border:1px solid rgba(74,222,128,.35); }
-        #golfer-status .scv3f-ochip.warn { color:#fbbf24; border:1px solid rgba(251,191,36,.35); }
-        #golfer-status .scv3f-ochip.mut { color:#8C96A1; border:1px solid rgba(255,255,255,.12); }
-        #golfer-status .scv3f-ochip.bad { color:#fb7185; border:1px solid rgba(251,113,133,.35); }
-        body.theme-light #golfer-status .scv3f-ochip.ok { color:#16a34a; border-color:rgba(22,163,74,.4); }
-        body.theme-light #golfer-status .scv3f-ochip.warn { color:#b45309; border-color:rgba(180,83,9,.35); }
-        body.theme-light #golfer-status .scv3f-ochip.mut { color:#5B6672; border-color:rgba(15,23,42,.15); }
-        #golfer-status .scv3f-onum { font:500 9px/1 'JetBrains Mono',monospace; color:#59636E; letter-spacing:.06em; }
-        #golfer-status .scv3f-ototal { margin-left:auto; font:300 20px/1 'Outfit',sans-serif; color:#F2F5F7; }
-        body.theme-light #golfer-status .scv3f-ototal { color:#10151B; }
-        #golfer-status .scv3f-oitems { font:400 12.5px/1.5 'Instrument Sans',sans-serif; color:#C6CDD4; margin-top:8px; }
-        body.theme-light #golfer-status .scv3f-oitems { color:#374151; }
-        #golfer-status .scv3f-onote { font:500 9.5px/1.5 'JetBrains Mono',monospace; letter-spacing:.06em; color:#4ade80; margin-top:4px; text-transform:uppercase; }
-        body.theme-light #golfer-status .scv3f-onote { color:#16a34a; }
-        #golfer-status .scv3f-steps { display:flex; gap:4px; margin-top:10px; }
-        #golfer-status .scv3f-steps i { flex:1; height:5px; border-radius:999px; background:rgba(255,255,255,.09); }
-        #golfer-status .scv3f-steps i.done { background:#22c55e; }
-        #golfer-status .scv3f-steps i.now { background:#fbbf24; animation:scv3fpulse 1.2s ease-in-out infinite; }
-        @keyframes scv3fpulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
-        body.theme-light #golfer-status .scv3f-steps i { background:rgba(15,23,42,.1); }
-        #golfer-status .scv3f-ofoot { display:flex; align-items:center; justify-content:space-between; margin-top:10px; }
-        #golfer-status .scv3f-ofoot span { font:500 9px/1 'JetBrains Mono',monospace; color:#59636E; letter-spacing:.06em; text-transform:uppercase; }
-        #golfer-status .scv3f-ofoot button { background:none; border:none; cursor:pointer; font:700 9.5px/1 'JetBrains Mono',monospace; letter-spacing:.1em; color:#4ade80; }
-        #golfer-status .scv3f-ofoot button.re { border:1px solid rgba(74,222,128,.35); border-radius:999px; padding:7px 11px; }
-        body.theme-light #golfer-status .scv3f-ofoot button { color:#16a34a; }
-        body.theme-light #golfer-status .scv3f-ofoot button.re { border-color:rgba(22,163,74,.4); }
-        #golfer-status .scv3f-actions { display:flex; gap:8px; margin-top:18px; }
-        #golfer-status .scv3f-cta { flex:1; height:52px; border-radius:16px; border:none; cursor:pointer;
-            background:linear-gradient(180deg,#34d873,#15803d); color:#fff; font:700 14px/1 'Instrument Sans',sans-serif;
-            box-shadow:0 0 24px rgba(34,197,94,.28), inset 0 1px 0 rgba(255,255,255,.28);
-            display:flex; align-items:center; justify-content:center; gap:8px; }
-        #golfer-status .scv3f-cta .material-symbols-outlined { font-size:18px; }
-        #golfer-status .scv3f-ghost { height:52px; padding:0 18px; border-radius:16px; cursor:pointer;
-            background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.12); color:#F2F5F7;
-            font:600 13px/1 'Instrument Sans',sans-serif; display:flex; align-items:center; gap:6px; }
-        #golfer-status .scv3f-ghost .material-symbols-outlined { font-size:16px; color:#4ade80; }
-        body.theme-light #golfer-status .scv3f-ghost { background:#fff; border-color:rgba(15,23,42,.12); color:#10151B; }
-        /* ===== kitchen queue overlay (staff, dark always — back-of-house) ===== */
-        #kitchenQueueOverlay { position:fixed; inset:0; z-index:11200; display:none; flex-direction:column;
-            background:radial-gradient(120% 14% at 50% 0%, rgba(34,197,94,.07), transparent 60%), #0A0D10;
-            color:#C6CDD4; font-family:'Instrument Sans',sans-serif; padding:16px 14px; }
-        #kitchenQueueOverlay .kq-head { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:14px; }
-        #kitchenQueueOverlay .kq-ovl { font:600 10px/1 'JetBrains Mono',monospace; letter-spacing:.2em; color:#4ade80; margin-bottom:8px; }
-        #kitchenQueueOverlay .kq-h1 { font:600 28px/1 'Instrument Sans',sans-serif; letter-spacing:-.02em; color:#F2F5F7; }
-        #kitchenQueueOverlay .kq-x { width:42px; height:42px; border-radius:15px; cursor:pointer;
-            background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); color:#C6CDD4;
-            display:flex; align-items:center; justify-content:center; }
-        #kitchenQueueOverlay .kq-list { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch;
-            display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:10px; align-content:start; }
-        #kitchenQueueOverlay .kq-empty { grid-column:1/-1; text-align:center; padding:40px 0; font:500 13px/1 'Instrument Sans',sans-serif; color:#59636E; }
-        #kitchenQueueOverlay .kq-done-h { grid-column:1/-1; font:600 10px/1 'JetBrains Mono',monospace; letter-spacing:.18em; color:#59636E; margin:10px 4px 0; }
-        #kitchenQueueOverlay .kq-card { background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:14px; }
-        #kitchenQueueOverlay .kq-card.s-confirmed { border-color:rgba(74,222,128,.45); }
-        #kitchenQueueOverlay .kq-card.s-preparing { border-color:rgba(251,191,36,.45); }
-        #kitchenQueueOverlay .kq-card.s-ready { border-color:rgba(96,165,250,.45); }
-        #kitchenQueueOverlay .kq-top { display:flex; align-items:center; gap:8px; }
-        #kitchenQueueOverlay .kq-chip { font:700 8.5px/1 'JetBrains Mono',monospace; letter-spacing:.1em; border-radius:999px; padding:5px 9px; border:1px solid rgba(255,255,255,.15); color:#8C96A1; }
-        #kitchenQueueOverlay .kq-chip.s-confirmed { color:#4ade80; border-color:rgba(74,222,128,.4); }
-        #kitchenQueueOverlay .kq-chip.s-preparing { color:#fbbf24; border-color:rgba(251,191,36,.4); }
-        #kitchenQueueOverlay .kq-chip.s-ready { color:#60a5fa; border-color:rgba(96,165,250,.4); }
-        #kitchenQueueOverlay .kq-num { font:500 9px/1 'JetBrains Mono',monospace; color:#59636E; }
-        #kitchenQueueOverlay .kq-age { margin-left:auto; font:700 11px/1 'JetBrains Mono',monospace; color:#fbbf24; }
-        #kitchenQueueOverlay .kq-who { font:600 13px/1.4 'Instrument Sans',sans-serif; color:#F2F5F7; margin-top:8px; }
-        #kitchenQueueOverlay .kq-items { margin-top:6px; }
-        #kitchenQueueOverlay .kq-item { font:400 13px/1.7 'Instrument Sans',sans-serif; color:#C6CDD4; }
-        #kitchenQueueOverlay .kq-item b { color:#4ade80; font-weight:700; }
-        #kitchenQueueOverlay .kq-foot { display:flex; align-items:center; justify-content:space-between; margin-top:10px; }
-        #kitchenQueueOverlay .kq-total { font:300 20px/1 'Outfit',sans-serif; color:#F2F5F7; }
-        #kitchenQueueOverlay .kq-adv { height:42px; padding:0 16px; border:none; border-radius:13px; cursor:pointer;
-            font:700 11px/1 'JetBrains Mono',monospace; letter-spacing:.08em; color:#fff;
-            background:linear-gradient(180deg,#34d873,#15803d); box-shadow:0 0 18px rgba(34,197,94,.25); }
-        #kitchenQueueOverlay .kq-adv.s-preparing { background:linear-gradient(180deg,#fbbf24,#b45309); box-shadow:0 0 18px rgba(251,191,36,.25); }
-        #kitchenQueueOverlay .kq-adv.s-ready { background:linear-gradient(180deg,#60a5fa,#1d4ed8); box-shadow:0 0 18px rgba(96,165,250,.25); }
-
-        /* ================================================================
-           SCV3FM — Food MENU + cart (same language; pairs with SCV3F status)
-           ================================================================ */
-        #golfer-food {
+        #golfer-food{
             background: radial-gradient(120% 22% at 50% 0%, rgba(34,197,94,0.07), transparent 60%), #0A0D10;
             border-radius: 24px; padding: 16px 14px 90px;
         }
-        body.theme-light #golfer-food {
+        body.theme-light #golfer-food{
             background: radial-gradient(120% 22% at 50% 0%, rgba(22,163,74,0.06), transparent 60%), #F2F4F6;
         }
-        #golfer-food .scv3fm-head { display:flex; align-items:flex-end; justify-content:space-between; margin:4px 2px 14px; }
-        #golfer-food .scv3fm-ovl { font:600 10px/1 'JetBrains Mono',monospace; letter-spacing:.2em; color:#4ade80; text-transform:uppercase; margin-bottom:8px; }
-        #golfer-food .scv3fm-h1 { font:600 28px/1 'Instrument Sans',Inter,sans-serif; letter-spacing:-.02em; color:#F2F5F7; }
-        #golfer-food .scv3fm-hbtns { display:flex; gap:8px; flex:0 0 auto; }
-        #golfer-food .scv3fm-status { height:42px; padding:0 14px; border-radius:15px; cursor:pointer;
-            background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.12); color:#F2F5F7;
-            font:600 12.5px/1 'Instrument Sans',sans-serif; display:flex; align-items:center; gap:6px; }
-        #golfer-food .scv3fm-status .material-symbols-outlined { font-size:16px; color:#4ade80; }
-        body.theme-light #golfer-food .scv3fm-h1 { color:#10151B; }
-        body.theme-light #golfer-food .scv3fm-ovl { color:#16a34a; }
-        body.theme-light #golfer-food .scv3fm-status { background:#fff; border-color:rgba(15,23,42,.12); color:#10151B; }
-        #golfer-food .scv3fm-chips { display:flex; gap:7px; margin-bottom:14px; overflow-x:auto; padding-bottom:2px; }
-        #golfer-food .scv3fm-chip { height:38px; padding:0 14px; flex:0 0 auto; border-radius:13px; cursor:pointer;
-            background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.08); color:#8C96A1;
-            font:600 12px/1 'Instrument Sans',sans-serif; }
-        #golfer-food .scv3fm-chip.on { background:#16a34a; border-color:#16a34a; color:#fff; font-weight:700; }
-        body.theme-light #golfer-food .scv3fm-chip { background:#fff; border-color:rgba(15,23,42,.09); color:#5B6672; }
-        body.theme-light #golfer-food .scv3fm-chip.on { background:#16a34a; border-color:#16a34a; color:#fff; }
-        /* menu item cards */
-        #golfer-food .scv3fm-grid { display:grid; grid-template-columns:1fr; gap:8px; }
-        @media (min-width:768px) { #golfer-food .scv3fm-grid { grid-template-columns:1fr 1fr; } }
-        #golfer-food .scv3fm-item { display:flex; gap:12px; align-items:center; cursor:pointer;
-            background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:10px; }
-        #golfer-food .scv3fm-item.na { opacity:.45; }
-        body.theme-light #golfer-food .scv3fm-item { background:#fff; border-color:rgba(15,23,42,.08); }
-        #golfer-food .scv3fm-item .im { position:relative; width:64px; height:64px; flex:0 0 64px; border-radius:14px; overflow:hidden; background:rgba(255,255,255,.05); }
-        #golfer-food .scv3fm-item .im img { width:100%; height:100%; object-fit:cover; }
-        #golfer-food .scv3fm-item .hot { position:absolute; top:4px; left:4px; font:700 7px/1 'JetBrains Mono',monospace; letter-spacing:.08em; color:#fff; background:#f59e0b; border-radius:999px; padding:3px 6px; }
-        #golfer-food .scv3fm-item .soldout { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font:700 8px/1 'JetBrains Mono',monospace; color:#fff; background:rgba(0,0,0,.55); }
-        #golfer-food .scv3fm-item .mn { flex:1; min-width:0; }
-        #golfer-food .scv3fm-item .nm { font:600 14px/1.25 'Instrument Sans',sans-serif; color:#F2F5F7; }
-        body.theme-light #golfer-food .scv3fm-item .nm { color:#10151B; }
-        #golfer-food .scv3fm-item .ds { font:400 11.5px/1.4 'Instrument Sans',sans-serif; color:#8C96A1; margin-top:3px;
-            display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; }
-        #golfer-food .scv3fm-item .pt { font:500 8.5px/1 'JetBrains Mono',monospace; letter-spacing:.1em; color:#59636E; }
-        #golfer-food .scv3fm-item .ft { margin-top:5px; }
-        #golfer-food .scv3fm-item .pr { display:flex; flex-direction:column; align-items:flex-end; gap:7px; flex:0 0 auto; }
-        #golfer-food .scv3fm-item .p { font:300 18px/1 'Outfit',sans-serif; color:#F2F5F7; }
-        body.theme-light #golfer-food .scv3fm-item .p { color:#10151B; }
-        #golfer-food .scv3fm-item .add { width:34px; height:34px; border:none; border-radius:12px; cursor:pointer;
-            background:linear-gradient(180deg,#34d873,#15803d); color:#fff; font:600 18px/1 'Instrument Sans',sans-serif;
-            box-shadow:0 0 14px rgba(34,197,94,.25), inset 0 1px 0 rgba(255,255,255,.28); }
-        /* cart */
-        #golfer-food .scv3fm-cart { background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:14px; margin-top:14px; }
-        body.theme-light #golfer-food .scv3fm-cart { background:#fff; border-color:rgba(15,23,42,.08); }
-        #golfer-food .scv3fm-cart-h { display:flex; align-items:center; justify-content:space-between;
-            font:600 10px/1 'JetBrains Mono',monospace; letter-spacing:.18em; color:#59636E; text-transform:uppercase; margin-bottom:10px; }
-        #golfer-food .scv3fm-cart-n { min-width:20px; height:20px; border-radius:999px; background:#16a34a; color:#fff;
-            font:700 10px/20px 'JetBrains Mono',monospace; text-align:center; padding:0 6px; }
-        #golfer-food .scv3fm-cart-empty { text-align:center; padding:18px 0; font:500 12px/1.5 'Instrument Sans',sans-serif; color:#59636E; }
-        #golfer-food .scv3fm-crow { display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid rgba(255,255,255,.06); }
-        #golfer-food .scv3fm-crow:first-child { border-top:none; }
-        body.theme-light #golfer-food .scv3fm-crow { border-top-color:rgba(15,23,42,.06); }
-        #golfer-food .scv3fm-crow .ci { flex:1; min-width:0; }
-        #golfer-food .scv3fm-crow .cn { font:600 13px/1.3 'Instrument Sans',sans-serif; color:#F2F5F7; }
-        body.theme-light #golfer-food .scv3fm-crow .cn { color:#10151B; }
-        #golfer-food .scv3fm-crow .cp { font:500 9px/1 'JetBrains Mono',monospace; color:#59636E; margin-top:3px; }
-        #golfer-food .scv3fm-crow .cq { display:flex; align-items:center; gap:8px; }
-        #golfer-food .scv3fm-crow .cq button { width:28px; height:28px; border-radius:10px; cursor:pointer;
-            background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); color:#F2F5F7; font:600 15px/1 'Instrument Sans',sans-serif; }
-        #golfer-food .scv3fm-crow .cq button.plus { background:linear-gradient(180deg,#34d873,#15803d); border:none; color:#fff; }
-        body.theme-light #golfer-food .scv3fm-crow .cq button { background:#F4F6F8; border-color:rgba(15,23,42,.12); color:#10151B; }
-        body.theme-light #golfer-food .scv3fm-crow .cq button.plus { background:linear-gradient(180deg,#34d873,#15803d); color:#fff; }
-        #golfer-food .scv3fm-crow .cq span { font:600 13px/1 'JetBrains Mono',monospace; color:#F2F5F7; min-width:16px; text-align:center; }
-        body.theme-light #golfer-food .scv3fm-crow .cq span { color:#10151B; }
-        #golfer-food .scv3fm-crow .ct { font:600 13px/1 'JetBrains Mono',monospace; color:#C6CDD4; min-width:52px; text-align:right; }
-        body.theme-light #golfer-food .scv3fm-crow .ct { color:#374151; }
-        #golfer-food .scv3fm-tot { border-top:1px solid rgba(255,255,255,.08); margin-top:10px; padding-top:10px; }
-        body.theme-light #golfer-food .scv3fm-tot { border-top-color:rgba(15,23,42,.08); }
-        #golfer-food .scv3fm-tot .r { display:flex; justify-content:space-between; align-items:center; padding:3px 0;
-            font:500 9.5px/1.6 'JetBrains Mono',monospace; letter-spacing:.1em; color:#8C96A1; }
-        #golfer-food .scv3fm-tot .r.big { padding-top:8px; }
-        #golfer-food .scv3fm-tot .r.big span:first-child { color:#F2F5F7; font-weight:700; }
-        #golfer-food .scv3fm-tot .r.big span:last-child { font:300 24px/1 'Outfit',sans-serif; color:#4ade80; letter-spacing:0; }
-        body.theme-light #golfer-food .scv3fm-tot .r.big span:first-child { color:#10151B; }
-        body.theme-light #golfer-food .scv3fm-tot .r.big span:last-child { color:#16a34a; }
-        #golfer-food .scv3fm-place { width:100%; height:52px; border-radius:16px; border:none; cursor:pointer; margin-top:10px;
-            background:linear-gradient(180deg,#34d873,#15803d); color:#fff; font:700 14px/1 'Instrument Sans',sans-serif;
-            box-shadow:0 0 24px rgba(34,197,94,.28), inset 0 1px 0 rgba(255,255,255,.28);
-            display:flex; align-items:center; justify-content:center; gap:8px; }
-        #golfer-food .scv3fm-place:disabled { opacity:.35; box-shadow:none; cursor:default; }
-        #golfer-food .scv3fm-place .material-symbols-outlined { font-size:18px; }
-        /* mobile cart bar */
-        #golfer-food .scv3fm-cartbar { position:fixed; left:14px; right:14px; bottom:calc(14px + env(safe-area-inset-bottom, 0px));
-            z-index:9000; height:54px; border:none; border-radius:16px; cursor:pointer;
+        #golfer-status{
+            background: radial-gradient(120% 22% at 50% 0%, rgba(34,197,94,0.07), transparent 60%), #0A0D10;
+            border-radius: 24px; padding: 16px 14px 22px;
+        }
+        body.theme-light #golfer-status{
+            background: radial-gradient(120% 22% at 50% 0%, rgba(22,163,74,0.06), transparent 60%), #F2F4F6;
+        }
+
+        /* ---- head ---- */
+        .fgv-head{ display:flex; align-items:center; gap:10px; margin-bottom:4px; }
+        .fgv-ovl{ font:600 10px/1 'JetBrains Mono',monospace; letter-spacing:.18em; text-transform:uppercase; color:var(--ffaint);
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .fgv-h1{ font-size:22px; font-weight:700; letter-spacing:-.02em; color:var(--ftxt); margin-top:4px; }
+        .fgv-hbtns{ margin-left:auto; display:flex; gap:8px; align-items:center; flex:0 0 auto; }
+        .fgv-stbtn{ display:flex; align-items:center; gap:6px; height:38px; padding:0 13px; border-radius:13px; border:1px solid var(--fhair);
+            background:var(--fcard); color:var(--ftxt); font:700 12px/1 'Instrument Sans',sans-serif; cursor:pointer; }
+        .fgv-stbtn .material-symbols-outlined{ font-size:17px; color:var(--fgreen); }
+        .fgv-bkt{ position:relative; width:38px; height:38px; border-radius:13px; border:1px solid var(--fhair); background:var(--fcard);
+            display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--fsub); }
+        .fgv-bkt .material-symbols-outlined{ font-size:19px; }
+        .fgv-bkt .n{ position:absolute; top:-5px; right:-5px; min-width:17px; height:17px; border-radius:999px; background:#ef4444; color:#fff;
+            font:700 9.5px/17px 'JetBrains Mono',monospace; text-align:center; padding:0 4px; box-shadow:0 2px 6px rgba(239,68,68,.45);
+            display:flex; align-items:center; justify-content:center; }
+
+        /* ---- shared bits ---- */
+        .fgv-chips{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+        .fgv-scope .chip{ font:600 9.5px/1 'JetBrains Mono',monospace; letter-spacing:.08em; padding:5px 9px; border-radius:999px; text-transform:uppercase; }
+        .fgv-scope .chip.g{ background:var(--fgreendim); color:var(--fgreen); }
+        .fgv-scope .chip.a{ background:var(--famberdim); color:var(--famber); }
+        .fgv-scope .chip.b{ background:var(--freddim); color:var(--fred); }
+        .fgv-scope .chip.n{ background:var(--fcard); border:1px solid var(--fhair); color:var(--fsub); }
+        .fgv-scope .money{ font:300 22px/1 'Outfit',sans-serif; letter-spacing:-.01em; font-variant-numeric:tabular-nums; }
+        .fgv-search{ display:flex; align-items:center; gap:8px; margin-top:12px; height:42px; border-radius:14px; padding:0 13px;
+            background:var(--fcard); border:1px solid var(--fhair); box-shadow:var(--fshadow); }
+        .fgv-search .material-symbols-outlined{ font-size:17px; color:var(--ffaint); }
+        .fgv-search input{ flex:1; min-width:0; background:none; border:0; outline:none; color:var(--ftxt); font-size:13px; font-family:inherit; }
+        .fgv-search input::placeholder{ color:var(--ffaint); }
+        .fgv-sec{ margin-top:18px; margin-bottom:9px; display:flex; align-items:baseline; justify-content:space-between; }
+        .fgv-sec .t{ font:600 10.5px/1 'JetBrains Mono',monospace; letter-spacing:.16em; text-transform:uppercase; color:var(--fsub); }
+        .fgv-sec .all{ font-size:11px; font-weight:600; color:var(--fgreen); cursor:pointer; }
+        .fgv-empty{ text-align:center; color:var(--ffaint); font-size:13px; padding:32px 10px; }
+        .fgv-back{ font:600 12px/1 'Instrument Sans',sans-serif; color:var(--fsub); cursor:pointer; padding:6px 0 2px; margin-top:6px; }
+
+        /* art tile: glass on dark sheet, poster wash on light (CPV1 recipe) */
+        .fgv-art{ position:relative; border-radius:14px; overflow:hidden; width:62px; height:62px; flex:0 0 auto;
+            background:var(--fcard); border:1px solid var(--fhair); }
+        body.theme-light .fgv-art{ background:linear-gradient(130deg,var(--w1,#e2e7ec) 0%,var(--w2,#f5f7f9) 55%,#ffffff 130%);
+            border-color:rgba(22,35,46,.08); }
+        .fgv-art svg{ position:absolute; inset:0; margin:auto; width:52px; height:52px; transform:rotate(-5deg);
+            filter:drop-shadow(0 6px 8px rgba(22,35,46,.22)); }
+
+        /* ---- home: order again ---- */
+        .fgv-again{ display:flex; align-items:center; gap:11px; border-radius:16px; padding:11px 12px;
+            background:var(--fcard); border:1px solid var(--fhair); box-shadow:var(--fshadow); }
+        .fgv-again .fgv-art{ width:46px; height:46px; }
+        .fgv-again .fgv-art svg{ width:38px; height:38px; }
+        .fgv-again .tx{ min-width:0; flex:1; }
+        .fgv-again .wh{ font:600 9px/1 'JetBrains Mono',monospace; letter-spacing:.12em; color:var(--ffaint); text-transform:uppercase; }
+        .fgv-again .it{ font-size:12.5px; font-weight:600; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .fgv-again .pr{ font-size:11.5px; color:var(--fsub); margin-top:1px; }
+        .fgv-scope .readd{ flex:0 0 auto; border:0; border-radius:11px; padding:9px 12px; cursor:pointer;
+            background:var(--fgreendim); color:var(--fgreen); font:700 10px/1 'JetBrains Mono',monospace; letter-spacing:.08em; }
+
+        /* ---- home: favorites ---- */
+        .fgv-favrow{ display:flex; gap:9px; overflow-x:auto; padding-bottom:4px; -webkit-overflow-scrolling:touch; }
+        .fgv-fav{ flex:0 0 72px; text-align:center; cursor:pointer; }
+        .fgv-fav .fgv-art{ width:64px; height:64px; border-radius:18px; margin:0 auto; }
+        .fgv-fav .fgv-art svg{ width:48px; height:48px; }
+        .fgv-fav .fh{ position:absolute; top:4px; right:4px; width:15px; height:15px; z-index:2; }
+        .fgv-fav .fh svg{ position:static; width:15px; height:15px; fill:#f43f5e; transform:none; filter:none; }
+        .fgv-fav .nm{ font-size:10px; font-weight:600; margin-top:5px; color:var(--ftxt); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .fgv-fav .pr{ font:600 9.5px/1 'JetBrains Mono',monospace; color:var(--fsub); margin-top:2px; }
+
+        /* ---- home: category poster cubes ---- */
+        .fgv-catgrid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        .fgv-cat{ position:relative; border-radius:18px; min-height:88px; padding:12px 12px 30px; text-align:left; cursor:pointer; overflow:hidden;
+            background:var(--fcard); border:1px solid var(--fhair); }
+        body.theme-light .fgv-cat{ background:linear-gradient(130deg,var(--w1) 0%,var(--w2) 55%,#ffffff 130%); border-color:rgba(22,35,46,.08); }
+        .fgv-cat h3{ font-size:13.5px; font-weight:700; letter-spacing:-.01em; color:var(--ftxt); position:relative; z-index:2; max-width:70%; }
+        body.theme-light .fgv-cat h3{ color:#152430; }
+        .fgv-cat .n{ position:absolute; left:12px; bottom:10px; z-index:2; font:600 9px/1 'JetBrains Mono',monospace; letter-spacing:.1em;
+            background:var(--fglass2); color:var(--fsub); padding:4px 8px; border-radius:999px; }
+        body.theme-light .fgv-cat .n{ background:rgba(255,255,255,.78); color:#33475c; box-shadow:0 1px 3px rgba(22,35,46,.12); }
+        .fgv-cat .a{ position:absolute; right:-10px; bottom:-12px; width:64px; height:64px; transform:rotate(-5deg); z-index:1;
+            filter:drop-shadow(0 8px 10px rgba(22,35,46,.25)); pointer-events:none; }
+        .fgv-cat .a svg{ width:100%; height:100%; display:block; }
+        @media (min-width:768px){ .fgv-catgrid{ grid-template-columns:repeat(3,1fr); } }
+
+        /* ---- item cards ---- */
+        .fgv-item{ display:flex; align-items:center; gap:11px; border-radius:18px; padding:9px 10px; margin-top:9px; position:relative;
+            background:var(--fcard); border:1px solid var(--fhair); box-shadow:var(--fshadow); }
+        .fgv-item .hot{ position:absolute; top:-1px; left:-1px; font:700 8px/1 'JetBrains Mono',monospace; letter-spacing:.08em;
+            background:#ef4444; color:#fff; padding:3px 7px; border-radius:14px 0 10px 0; z-index:2; }
+        .fgv-item .fgv-tap{ cursor:pointer; }
+        .fgv-item .mn{ flex:1; min-width:0; cursor:pointer; }
+        .fgv-item .nm{ font-size:13px; font-weight:700; letter-spacing:-.01em; display:flex; align-items:center; gap:6px; }
+        .fgv-item .ds{ font-size:11px; color:var(--fsub); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .fgv-item .ft{ display:flex; gap:6px; margin-top:5px; align-items:center; }
+        .fgv-scope .pt{ font:600 8.5px/1 'JetBrains Mono',monospace; letter-spacing:.06em; color:var(--famber); background:var(--famberdim);
+            padding:3px 6px; border-radius:6px; }
+        .fgv-scope .so{ font:700 8px/1 'JetBrains Mono',monospace; letter-spacing:.1em; color:var(--fred); background:var(--freddim);
+            padding:3px 7px; border-radius:6px; }
+        .fgv-item .side{ display:flex; flex-direction:column; align-items:flex-end; gap:7px; flex:0 0 auto; }
+        .fgv-item .bt2{ display:flex; gap:6px; }
+        .fgv-item .p{ font:300 16px/1 'Outfit',sans-serif; font-variant-numeric:tabular-nums; }
+        .fgv-scope .addb{ width:30px; height:30px; border:0; border-radius:10px; cursor:pointer; color:#fff; font-size:16px; font-weight:700; line-height:1;
+            background:linear-gradient(180deg,#34d873,#15803d); box-shadow:0 0 12px rgba(34,197,94,.3), inset 0 1px 0 rgba(255,255,255,.28); }
+        .fgv-item.na{ opacity:.55; }
+        .fgv-item.na .addb{ background:var(--fcard); border:1px solid var(--fhair); color:var(--ffaint); box-shadow:none; cursor:default; }
+        .fgv-hrt{ width:30px; height:30px; border-radius:10px; border:1px solid var(--fhair); background:var(--fcard); cursor:pointer;
+            display:flex; align-items:center; justify-content:center; padding:0; }
+        .fgv-hrt svg{ width:15px; height:15px; fill:none; stroke:var(--ffaint); stroke-width:2; }
+        .fgv-hrt.on svg{ fill:#f43f5e; stroke:#f43f5e; }
+        @media (min-width:900px){ #fgvMenuList{ display:grid; grid-template-columns:1fr 1fr; gap:0 12px; } }
+
+        /* ---- menu chips ---- */
+        .fgv-catchips{ display:flex; gap:6px; margin-top:11px; overflow-x:auto; padding-bottom:2px; -webkit-overflow-scrolling:touch; }
+        .fgv-scope .cchip{ flex:0 0 auto; font:600 10px/1 'JetBrains Mono',monospace; letter-spacing:.06em; text-transform:uppercase;
+            padding:8px 11px; border-radius:11px; background:var(--fcard); border:1px solid var(--fhair); color:var(--fsub); cursor:pointer; }
+        .fgv-scope .cchip.on{ background:var(--fgreendim); border-color:transparent; color:var(--fgreen); font-weight:700; }
+
+        /* ---- item sheet ---- */
+        .fgv-hero{ position:relative; border-radius:20px; height:190px; overflow:hidden; margin-top:10px;
+            background:linear-gradient(130deg,var(--fglass2),var(--fcard)); border:1px solid var(--fhair); }
+        body.theme-light .fgv-hero{ background:linear-gradient(130deg,var(--w1) 0%,var(--w2) 55%,#ffffff 130%); border-color:rgba(22,35,46,.08); }
+        .fgv-hero > svg{ position:absolute; inset:0; margin:auto; width:150px; height:150px; transform:rotate(-5deg);
+            filter:drop-shadow(0 14px 18px rgba(22,35,46,.28)); }
+        .fgv-hero > img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+        .fgv-hero .fgv-hrt{ position:absolute; top:10px; right:10px; z-index:2; }
+        .fgv-hero .dots{ position:absolute; bottom:10px; left:0; right:0; display:flex; justify-content:center; gap:5px; z-index:2; }
+        .fgv-hero .dots i{ width:6px; height:6px; border-radius:99px; background:#fff; opacity:.35; }
+        body.theme-light .fgv-hero .dots i{ background:#152430; opacity:.25; }
+        .fgv-hero .dots i.on{ opacity:.95; width:16px; }
+        .fgv-thumbs{ display:flex; gap:7px; margin-top:8px; align-items:center; }
+        .fgv-thumbs .th{ width:56px; height:56px; border-radius:13px; border:1px solid var(--fhair); background:var(--fcard);
+            position:relative; overflow:hidden; cursor:pointer; flex:0 0 auto; }
+        .fgv-thumbs .th.on{ border:2px solid var(--fgreen); }
+        .fgv-thumbs .th svg{ position:absolute; inset:0; margin:auto; width:40px; height:40px; transform:rotate(-5deg); }
+        .fgv-thumbs .th img{ width:100%; height:100%; object-fit:cover; }
+        .fgv-thumbs .th.photo{ display:flex; align-items:center; justify-content:center; color:var(--ffaint); cursor:default; }
+        .fgv-thumbs .th.photo svg{ position:static; transform:none; width:17px; height:17px; }
+        .fgv-thumbs .note{ font-size:10px; color:var(--ffaint); line-height:1.35; padding-left:2px; }
+        .fgv-ttl{ display:flex; align-items:baseline; gap:10px; margin-top:13px; }
+        .fgv-ttl h3{ font-size:19px; font-weight:700; letter-spacing:-.02em; }
+        .fgv-ttl .money{ margin-left:auto; font-size:24px; }
+        .fgv-desc{ font-size:12.5px; color:var(--fsub); margin-top:6px; line-height:1.5; }
+        .fgv-mod{ margin-top:14px; }
+        .fgv-mod .mt{ font:600 10px/1 'JetBrains Mono',monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--fsub); margin-bottom:8px; }
+        .fgv-scope .segf{ display:flex; border:1px solid var(--fhair); border-radius:12px; overflow:hidden; background:var(--fcard); }
+        .fgv-scope .segf button{ flex:1; padding:10px 4px; border:0; background:transparent; color:var(--fsub); font-size:11.5px; font-weight:600;
+            cursor:pointer; font-family:inherit; }
+        .fgv-scope .segf button.on{ background:var(--fgreendim); color:var(--fgreen); font-weight:700; }
+        .fgv-scope .segf.pay{ margin-top:2px; }
+        .fgv-addon{ display:flex; align-items:center; gap:10px; padding:10px 2px; border-bottom:1px solid var(--fhair); font-size:12.5px; cursor:pointer; }
+        .fgv-addon:last-child{ border-bottom:0; }
+        .fgv-addon .bx{ width:18px; height:18px; border-radius:6px; border:1.5px solid var(--fhair); flex:0 0 auto;
+            display:flex; align-items:center; justify-content:center; }
+        .fgv-addon.on .bx{ background:var(--fgreen); border-color:var(--fgreen); }
+        .fgv-addon .pp{ margin-left:auto; font:600 11px/1 'JetBrains Mono',monospace; color:var(--fsub); }
+        .fgv-note{ display:block; width:100%; margin-top:12px; border:1px dashed var(--fhair); border-radius:12px; padding:11px 12px;
+            font-size:12px; color:var(--ftxt); background:var(--fcard); outline:none; font-family:inherit; }
+        .fgv-note::placeholder{ color:var(--ffaint); }
+        .fgv-addbar{ display:flex; gap:10px; margin-top:15px; align-items:stretch; }
+        .fgv-scope .stp{ display:inline-flex; align-items:center; border:1px solid var(--fhair); border-radius:11px; background:var(--fcard); overflow:hidden; }
+        .fgv-scope .stp button{ width:30px; height:30px; border:0; background:transparent; color:var(--fgreen); font-size:15px; font-weight:700;
+            cursor:pointer; line-height:1; }
+        .fgv-scope .stp b{ min-width:20px; text-align:center; font:600 12px/1 'JetBrains Mono',monospace; color:var(--ftxt); }
+        .fgv-addbar .stp{ border-radius:16px; }
+        .fgv-addbar .stp button{ width:38px; height:50px; font-size:18px; }
+
+        /* ---- CTAs ---- */
+        .fgv-cta{ display:flex; align-items:center; justify-content:center; gap:8px; height:52px; border-radius:16px; border:0; flex:1;
+            background:linear-gradient(180deg,#34d873,#15803d); color:#fff; cursor:pointer; font:700 14px/1 'Instrument Sans',sans-serif;
+            box-shadow:0 0 24px rgba(34,197,94,.28), inset 0 1px 0 rgba(255,255,255,.28); }
+        .fgv-cta.big{ width:100%; margin-top:12px; }
+        .fgv-cta[disabled]{ opacity:.55; cursor:default; box-shadow:none; }
+        .fgv-cta .material-symbols-outlined{ font-size:18px; }
+        .fgv-ghost{ display:flex; align-items:center; justify-content:center; gap:7px; height:52px; padding:0 18px; border-radius:16px;
+            border:1px solid var(--fhair); background:var(--fcard); color:var(--ftxt); font:700 13px/1 'Instrument Sans',sans-serif; cursor:pointer; }
+        .fgv-ghost .material-symbols-outlined{ font-size:17px; color:var(--fgreen); }
+        .fgv-actions{ display:flex; gap:9px; margin-top:18px; }
+
+        /* ---- basket ---- */
+        .fgv-bh{ font-size:18px; font-weight:700; letter-spacing:-.01em; margin-top:10px; display:flex; align-items:baseline; gap:8px; }
+        .fgv-bh span{ font:600 10px/1 'JetBrains Mono',monospace; color:var(--fsub); letter-spacing:.1em; text-transform:uppercase; }
+        .fgv-brow{ display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--fhair); }
+        .fgv-brow .fgv-art{ width:46px; height:46px; }
+        .fgv-brow .fgv-art svg{ width:38px; height:38px; }
+        .fgv-brow .tx{ flex:1; min-width:0; }
+        .fgv-brow .nm{ font-size:13px; font-weight:700; }
+        .fgv-brow .md{ font-size:10.5px; color:var(--fsub); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .fgv-brow .r{ display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex:0 0 auto; }
+        .fgv-brow .p{ font:300 15px/1 'Outfit',sans-serif; font-variant-numeric:tabular-nums; }
+        .fgv-dlv{ display:flex; flex-direction:column; gap:8px; }
+        .fgv-dcard{ display:flex; align-items:center; gap:11px; border-radius:15px; padding:11px 12px; cursor:pointer;
+            background:var(--fcard); border:1.5px solid var(--fhair); }
+        .fgv-dcard.on{ border-color:var(--fgreen); background:var(--fgreendim); }
+        .fgv-dcard .ic{ width:34px; height:34px; border-radius:11px; background:var(--fglass2); border:1px solid var(--fhair);
+            display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+        .fgv-dcard .ic .material-symbols-outlined{ font-size:17px; color:var(--fsub); }
+        .fgv-dcard.on .ic .material-symbols-outlined{ color:var(--fgreen); }
+        .fgv-dcard .tx{ flex:1; min-width:0; }
+        .fgv-dcard .t{ font-size:12.5px; font-weight:700; }
+        .fgv-dcard .s{ font-size:10.5px; color:var(--fsub); margin-top:1px; }
+        .fgv-dcard .fee{ margin-left:auto; font:600 10.5px/1 'JetBrains Mono',monospace; color:var(--fsub); flex:0 0 auto; }
+        .fgv-dcard .auto{ font:700 8px/1 'JetBrains Mono',monospace; letter-spacing:.08em; background:var(--fgreen); color:#fff;
+            padding:3px 6px; border-radius:6px; margin-left:6px; vertical-align:2px; }
+        .fgv-hole{ width:64px; padding:5px 7px; border-radius:8px; border:1px solid var(--fhair); background:var(--fcard); color:var(--ftxt);
+            font:600 11px/1 'JetBrains Mono',monospace; outline:none; margin-right:5px; }
+        .fgv-tot{ margin-top:14px; border-top:1px solid var(--fhair); padding-top:11px; display:flex; flex-direction:column; gap:7px; }
+        .fgv-tot .r{ display:flex; font-size:12.5px; color:var(--fsub); }
+        .fgv-tot .r b{ margin-left:auto; font-weight:600; color:var(--ftxt); font-variant-numeric:tabular-nums; }
+        .fgv-tot .r.big{ align-items:baseline; color:var(--ftxt); font-weight:700; font-size:14px; margin-top:3px; }
+        .fgv-tot .r.big .money{ font-size:26px; }
+        .fgv-instant{ margin-top:10px; font-size:10.5px; color:var(--ffaint); text-align:center; }
+        .fgv-instant b{ color:var(--fsub); }
+
+        /* ---- floating basket pill ---- */
+        .fgv-pill{ position:sticky; bottom:14px; margin-top:14px; display:flex; align-items:center; gap:10px; height:50px; border-radius:16px;
+            padding:0 15px; cursor:pointer; border:0; width:100%; z-index:5;
             background:linear-gradient(180deg,#34d873,#15803d); color:#fff;
-            box-shadow:0 8px 28px rgba(34,197,94,.35), inset 0 1px 0 rgba(255,255,255,.28);
-            display:flex; align-items:center; gap:10px; padding:0 16px; }
-        #golfer-food .scv3fm-cartbar .material-symbols-outlined { font-size:19px; }
-        #golfer-food .scv3fm-cartbar .n { min-width:22px; height:22px; border-radius:999px; background:rgba(255,255,255,.25);
+            box-shadow:0 8px 28px rgba(34,197,94,.35), inset 0 1px 0 rgba(255,255,255,.28); }
+        .fgv-pill .n{ min-width:22px; height:22px; border-radius:999px; background:rgba(255,255,255,.25);
             font:700 11px/22px 'JetBrains Mono',monospace; text-align:center; padding:0 6px; }
-        #golfer-food .scv3fm-cartbar .lbl { font:700 12.5px/1 'Instrument Sans',sans-serif; letter-spacing:.02em; }
-        #golfer-food .scv3fm-cartbar .tt { margin-left:auto; font:300 20px/1 'Outfit',sans-serif; }
+        .fgv-pill .lbl{ font:700 13.5px/1 'Instrument Sans',sans-serif; }
+        .fgv-pill .tt{ margin-left:auto; font:300 20px/1 'Outfit',sans-serif; }
+
+        /* ---- status: order rows ---- */
+        .fgv-orow{ display:flex; align-items:center; gap:10px; border-radius:18px; padding:11px 12px; margin-top:9px; cursor:pointer;
+            background:var(--fcard); border:1px solid var(--fhair); box-shadow:var(--fshadow); }
+        .fgv-orow .tx{ flex:1; min-width:0; }
+        .fgv-orow .r1{ display:flex; align-items:center; gap:7px; }
+        .fgv-scope .ochip{ font:700 8px/1 'JetBrains Mono',monospace; letter-spacing:.1em; padding:4px 7px; border-radius:6px; }
+        .fgv-scope .ochip.ok{ background:var(--fgreendim); color:var(--fgreen); }
+        .fgv-scope .ochip.warn{ background:var(--famberdim); color:var(--famber); }
+        .fgv-scope .ochip.mut{ background:var(--fglass2); color:var(--fsub); }
+        .fgv-scope .ochip.bad{ background:var(--freddim); color:var(--fred); }
+        .fgv-orow .no{ font:700 11px/1 'JetBrains Mono',monospace; }
+        .fgv-orow .tm{ font:600 9.5px/1 'JetBrains Mono',monospace; color:var(--ffaint); }
+        .fgv-orow .its{ font-size:11.5px; color:var(--fsub); margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .fgv-orow .rr{ display:flex; flex-direction:column; align-items:flex-end; gap:5px; flex:0 0 auto; }
+        .fgv-orow .rr .money{ font-size:16px; }
+        .fgv-orow .lnk{ font:700 9.5px/1 'JetBrains Mono',monospace; color:var(--fgreen); letter-spacing:.06em; }
+        .fgv-clear{ font:700 9.5px/1 'JetBrains Mono',monospace; letter-spacing:.08em; color:var(--ffaint); background:none; border:0; cursor:pointer; }
+
+        /* ---- tracking card ---- */
+        .fgv-track{ border-radius:20px; padding:14px 13px 13px; margin-top:9px; background:var(--fcard); border:1px solid var(--fhair); box-shadow:var(--fshadow); }
+        .fgv-track .ovl2{ font:600 9.5px/1 'JetBrains Mono',monospace; letter-spacing:.14em; color:var(--ffaint); text-transform:uppercase; text-align:center; }
+        .fgv-track .eta{ font:300 26px/1.15 'Outfit',sans-serif; text-align:center; margin-top:8px; letter-spacing:-.01em; }
+        .fgv-map{ position:relative; width:344px; max-width:100%; margin:12px auto 0; border-radius:16px; overflow:hidden;
+            border:1px solid var(--fhair); background:linear-gradient(160deg,#101a12,#0c1410); }
+        body.theme-light .fgv-map{ background:linear-gradient(160deg,#e6f0e4,#f2f6ef); }
+        .fgv-map svg{ display:block; width:100%; height:auto; }
+        .fgv-map .mapt{ font-family:'JetBrains Mono',monospace; font-size:8.5px; letter-spacing:1.5px; fill:#6f8f6f; }
+        .fgv-runner{ position:absolute; top:0; left:0; width:26px; height:26px; margin:-13px 0 0 -13px; border-radius:999px;
+            background:linear-gradient(180deg,#34d873,#15803d); border:2.5px solid #fff;
+            box-shadow:0 4px 12px rgba(21,128,61,.5); display:flex; align-items:center; justify-content:center;
+            offset-path:path('M46 128 C 120 138, 128 62, 200 54 S 296 60, 306 44'); offset-distance:8%;
+            transition:offset-distance 1.2s ease; }
+        .fgv-runner svg{ width:13px; height:13px; }
+        @media (prefers-reduced-motion: no-preference){
+            .fgv-runner.go{ animation:fgvRun 9s ease-in-out infinite alternate; }
+            @keyframes fgvRun{ from{ offset-distance:45%; } to{ offset-distance:85%; } }
+        }
+        .fgv-tline{ margin-top:14px; display:flex; flex-direction:column; }
+        .fgv-tline .tstep{ display:flex; gap:12px; position:relative; padding-bottom:15px; }
+        .fgv-tline .tstep::before{ content:''; position:absolute; left:8px; top:20px; bottom:-2px; width:2px; background:var(--fhair); }
+        .fgv-tline .tstep:last-child{ padding-bottom:0; }
+        .fgv-tline .tstep:last-child::before{ display:none; }
+        .fgv-tline .d{ position:relative; width:18px; height:18px; border-radius:999px; flex:0 0 auto; margin-top:1px;
+            background:var(--fgreen); display:flex; align-items:center; justify-content:center; }
+        .fgv-tline .d svg{ width:10px; height:10px; }
+        .fgv-tline .tstep.todo .d{ background:transparent; border:2px solid var(--fhair); }
+        .fgv-tline .tx{ flex:1; min-width:0; }
+        .fgv-tline .tt{ font-size:12.5px; font-weight:700; }
+        .fgv-tline .tstep.todo .tt{ color:var(--ffaint); font-weight:600; }
+        .fgv-tline .ts{ font-size:11px; color:var(--fsub); margin-top:1px; }
+        .fgv-tline .tm{ margin-left:auto; font:600 10px/1 'JetBrains Mono',monospace; color:var(--ffaint); padding-top:3px; flex:0 0 auto; }
+        .fgv-tbtns{ display:flex; gap:9px; margin-top:13px; }
+        .fgv-scope .tbtn{ flex:1; height:42px; border-radius:13px; border:1px solid var(--fhair); background:var(--fcard); color:var(--ftxt);
+            font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:7px; }
+        .fgv-scope .tbtn .material-symbols-outlined{ font-size:16px; color:var(--fgreen); }
+        .fgv-scope .tbtn.bad .material-symbols-outlined{ color:var(--fred); }
+        .fgv-osum{ margin-top:12px; border-radius:14px; border:1px solid var(--fhair); background:var(--fglass2); padding:10px 12px;
+            display:flex; align-items:center; gap:8px; font-size:12px; color:var(--fsub); }
+        .fgv-osum b{ color:var(--ftxt); }
+        .fgv-osum .money{ margin-left:auto; font-size:16px; color:var(--ftxt); }
+
+        /* ================================================================
+           FGV1 kitchen dashboard — #kitchen hash. Always dark (tablet at the pass).
+           ================================================================ */
+        html.fgv-kq-open{ overflow:hidden; }
+        #kitchenQueueOverlay{ position:fixed; inset:0; z-index:11200; display:none; overflow:auto;
+            background:radial-gradient(120% 18% at 50% 0%, rgba(34,197,94,.08), transparent 60%), #0A0D10;
+            font-family:'Instrument Sans',-apple-system,sans-serif; color:#F2F5F7; -webkit-font-smoothing:antialiased; }
+        .fgv-ksheet{ max-width:1180px; margin:0 auto; padding:18px 16px 40px; }
+        .fgv-ksheet .khead{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+        .fgv-ksheet .kovl{ font:600 10px/1 'JetBrains Mono',monospace; letter-spacing:.18em; color:#59636E; text-transform:uppercase; }
+        .fgv-ksheet .khead h3{ font-size:19px; font-weight:700; margin-top:4px; }
+        .fgv-ksheet .ktabs{ margin-left:auto; display:flex; gap:8px; }
+        .fgv-ksheet .kt{ font:600 10px/1 'JetBrains Mono',monospace; letter-spacing:.1em; padding:10px 14px; border-radius:11px; cursor:pointer;
+            background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:#8C96A1; }
+        .fgv-ksheet .kt.on{ background:rgba(34,197,94,.15); border-color:transparent; color:#4ade80; font-weight:700; }
+        .fgv-ksheet .kx{ width:38px; height:38px; border-radius:11px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.05);
+            color:#8C96A1; font-size:15px; cursor:pointer; }
+        .klanes{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:16px; }
+        .klane .lt{ display:flex; align-items:center; gap:7px; font:700 10px/1 'JetBrains Mono',monospace; letter-spacing:.14em; margin-bottom:9px; }
+        .klane .lt i{ width:8px; height:8px; border-radius:99px; }
+        .klane .lt .c{ margin-left:auto; color:#59636E; letter-spacing:0; }
+        .klane.new .lt{ color:#fb7185; } .klane.new .lt i{ background:#fb7185; }
+        .klane.prep .lt{ color:#fbbf24; } .klane.prep .lt i{ background:#fbbf24; }
+        .klane.ready .lt{ color:#4ade80; } .klane.ready .lt i{ background:#4ade80; }
+        .kq-card{ border-radius:16px; background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.09); padding:11px 12px; margin-bottom:10px; }
+        .kq-card .r1{ display:flex; align-items:center; gap:8px; }
+        .kq-card .no{ font:700 11px/1 'JetBrains Mono',monospace; }
+        .kq-card .age{ margin-left:auto; font:600 10px/1 'JetBrains Mono',monospace; color:#8C96A1; }
+        .kq-card .kst + .age, .krow .kst + .kpr{ margin-left:0; }
+        .kq-card .age.warn{ color:#fbbf24; }
+        .kst{ font:700 7.5px/1 'JetBrains Mono',monospace; letter-spacing:.08em; padding:3px 6px; border-radius:6px; flex:0 0 auto; }
+        .kst.kit{ background:rgba(251,191,36,.12); color:#fbbf24; }
+        .kst.bar{ background:rgba(96,165,250,.15); color:#93c5fd; }
+        .kst.des{ background:rgba(244,114,182,.15); color:#f9a8d4; }
+        .kq-card .kst{ margin-left:auto; }
+        .kq-card .kst ~ .kst{ margin-left:0; }
+        .kq-card .where{ font-size:10.5px; color:#4ade80; margin-top:5px; font-weight:600; }
+        .kq-card .its{ margin-top:6px; font-size:11.5px; color:#C6CDD4; line-height:1.55; }
+        .kq-card .its b{ color:#F2F5F7; font-weight:700; }
+        .kq-card .its .md{ color:#8C96A1; }
+        .kq-card .kq-total{ margin-top:7px; font:300 15px/1 'Outfit',sans-serif; color:#F2F5F7; }
+        .kq-card .krun{ display:flex; gap:7px; margin-top:8px; }
+        .kq-card .krun input{ flex:1; min-width:0; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:9px;
+            padding:8px 10px; font-size:11.5px; color:#F2F5F7; outline:none; font-family:inherit; }
+        .kq-card .krchip{ display:inline-flex; align-items:center; gap:5px; margin-top:7px; font:600 9px/1 'JetBrains Mono',monospace;
+            letter-spacing:.06em; color:#4ade80; background:rgba(34,197,94,.12); padding:4px 8px; border-radius:999px; }
+        .kadv{ margin-top:9px; width:100%; height:36px; border-radius:11px; border:0; cursor:pointer;
+            font:700 10px/1 'JetBrains Mono',monospace; letter-spacing:.1em; }
+        .kadv.s-confirmed{ background:rgba(251,113,133,.15); color:#fb7185; }
+        .kadv.s-preparing, .kadv.s-cooking{ background:rgba(251,191,36,.14); color:#fbbf24; }
+        .kadv.s-ready, .kadv.s-out_for_delivery{ background:linear-gradient(180deg,#34d873,#15803d); color:#fff; }
+        .kempty{ color:#59636E; font-size:12px; padding:14px 4px; }
+        .kdone{ margin-top:16px; }
+        .kdone .lt2{ font:700 9.5px/1 'JetBrains Mono',monospace; letter-spacing:.14em; color:#59636E; margin-bottom:8px; }
+        .kdone .kdrow{ display:inline-block; font:600 10.5px/1 'JetBrains Mono',monospace; color:#8C96A1;
+            background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.08); border-radius:9px; padding:7px 10px; margin:0 6px 6px 0; }
+        /* menu manager */
+        .kmm-top{ display:flex; align-items:center; gap:10px; margin-top:14px; flex-wrap:wrap; }
+        .kchips{ display:flex; gap:6px; flex-wrap:wrap; flex:1; }
+        .kchips .kc{ font:600 9px/1 'JetBrains Mono',monospace; letter-spacing:.06em; padding:6px 9px; border-radius:9px;
+            background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:#8C96A1; }
+        .kchips .kc.on{ background:rgba(34,197,94,.15); border-color:transparent; color:#4ade80; }
+        .knew{ border:0; border-radius:11px; padding:0 14px; height:36px; cursor:pointer; flex:0 0 auto;
+            background:linear-gradient(180deg,#34d873,#15803d); color:#fff; font:700 10px/1 'JetBrains Mono',monospace;
+            letter-spacing:.08em; box-shadow:0 0 14px rgba(34,197,94,.3); }
+        .kadmin{ display:flex; gap:13px; margin-top:13px; align-items:flex-start; }
+        .klist{ flex:1; min-width:0; }
+        .krow{ display:flex; align-items:center; gap:9px; border-radius:14px; background:rgba(255,255,255,.045);
+            border:1px solid rgba(255,255,255,.09); padding:8px 10px; margin-bottom:8px; cursor:pointer; }
+        .krow.sel{ border-color:rgba(74,222,128,.5); }
+        .krow.off{ opacity:.55; }
+        .krow .fgv-art{ width:38px; height:38px; background:linear-gradient(130deg,var(--w1,#e2e7ec) 0%,var(--w2,#f5f7f9) 55%,#ffffff 130%);
+            border-color:rgba(22,35,46,.08); }
+        .krow .fgv-art svg{ width:30px; height:30px; }
+        .krow .mid{ flex:1; min-width:0; }
+        .krow .knm{ font-size:12px; font-weight:700; color:#F2F5F7; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .krow .kds{ font-size:9.5px; color:#59636E; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .krow .kpr{ font:600 11px/1 'JetBrains Mono',monospace; color:#F2F5F7; background:rgba(255,255,255,.06);
+            border:1px solid rgba(255,255,255,.12); padding:6px 8px; border-radius:8px; flex:0 0 auto; }
+        .krow .kmeta{ font:600 8.5px/1 'JetBrains Mono',monospace; color:#59636E; flex:0 0 auto; }
+        .ktgl{ width:34px; height:20px; border-radius:99px; background:rgba(255,255,255,.12); position:relative; flex:0 0 auto; cursor:pointer; border:0; padding:0; }
+        .ktgl::after{ content:''; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:99px; background:#fff; transition:left .15s; }
+        .ktgl.on{ background:#16a34a; }
+        .ktgl.on::after{ left:16px; }
+        .kdrawer{ width:290px; flex:0 0 auto; border-radius:16px; background:rgba(255,255,255,.055); border:1px solid rgba(255,255,255,.1); padding:13px 13px 15px; }
+        .kd-t{ font:700 9px/1 'JetBrains Mono',monospace; letter-spacing:.16em; color:#4ade80; }
+        .kf{ margin-top:10px; flex:1; min-width:0; }
+        .kf .l{ font:600 8px/1 'JetBrains Mono',monospace; letter-spacing:.12em; color:#59636E; margin-bottom:5px; text-transform:uppercase; }
+        .kf .v, .kf input.v{ display:block; width:100%; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:9px;
+            padding:9px 10px; font-size:12px; color:#F2F5F7; font-weight:600; outline:none; font-family:inherit; }
+        .kf2{ display:flex; gap:8px; }
+        .kseg{ display:flex; gap:5px; flex-wrap:wrap; }
+        .kseg span{ flex:1; min-width:52px; text-align:center; font:600 8.5px/1 'JetBrains Mono',monospace; padding:8px 0; border-radius:8px;
+            background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:#8C96A1; cursor:pointer; }
+        .kseg span.on{ background:rgba(34,197,94,.15); border-color:transparent; color:#4ade80; }
+        .kartpick{ display:flex; gap:6px; flex-wrap:wrap; }
+        .kartpick span{ width:44px; height:44px; border-radius:11px; border:1px solid rgba(255,255,255,.12); cursor:pointer;
+            background:linear-gradient(130deg,var(--w1,#e2e7ec) 0%,var(--w2,#f5f7f9) 55%,#ffffff 130%);
+            display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
+        .kartpick span.on{ border:2px solid #4ade80; }
+        .kartpick svg{ width:34px; height:34px; transform:rotate(-5deg); }
+        .ksave{ margin-top:12px; width:100%; height:40px; border-radius:12px; border:0; cursor:pointer;
+            background:linear-gradient(180deg,#34d873,#15803d); color:#fff; font:700 11.5px/1 'Instrument Sans',sans-serif;
+            box-shadow:0 0 14px rgba(34,197,94,.3); }
+        .kdel2{ margin-top:10px; text-align:center; font:600 9px/1 'JetBrains Mono',monospace; letter-spacing:.08em; color:#fb7185; cursor:pointer; }
+        .kdel2.mut{ color:#59636E; }
+        /* alerts */
+        .kb3{ display:grid; grid-template-columns:1fr 1fr 1.05fr; gap:12px; margin-top:16px; }
+        .kb3 .bt{ display:flex; align-items:center; gap:7px; font:700 10px/1 'JetBrains Mono',monospace; letter-spacing:.14em; margin-bottom:9px; color:#8C96A1; }
+        .kb3 .bt i{ width:8px; height:8px; border-radius:99px; background:#4ade80; }
+        .kb3 .bt i.am{ background:#fbbf24; }
+        .kb3 .bt i.bl{ background:#93c5fd; }
+        .kalert{ display:flex; gap:9px; border-radius:13px; background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.09);
+            padding:9px 11px; margin-bottom:8px; align-items:flex-start; }
+        .kalert.warn{ border-color:rgba(251,191,36,.35); }
+        .kalert .ic2{ font-size:13px; line-height:1.3; }
+        .kalert .tx{ flex:1; min-width:0; }
+        .kalert .t1{ font-size:11px; font-weight:700; color:#F2F5F7; }
+        .kalert .t2{ font-size:9.5px; color:#8C96A1; margin-top:2px; }
+        .kalert .tm2{ margin-left:auto; font:600 8.5px/1 'JetBrains Mono',monospace; color:#59636E; flex:0 0 auto; padding-top:2px; }
+        .knbox{ border-radius:16px; background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.09); padding:5px 12px; }
+        .knset{ display:flex; align-items:center; gap:9px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,.07); }
+        .knset:last-child{ border-bottom:0; }
+        .knset .t1{ font-size:11px; font-weight:600; color:#F2F5F7; }
+        .knset .t2{ font-size:9px; color:#59636E; margin-top:1px; }
+        .knset .ktgl, .knset .kstep, .knset .kphone{ margin-left:auto; }
+        .kstep{ display:inline-flex; align-items:center; border:1px solid rgba(255,255,255,.12); border-radius:10px; overflow:hidden; }
+        .kstep button{ width:28px; height:28px; border:0; background:transparent; color:#4ade80; font-size:14px; cursor:pointer; }
+        .kstep b{ min-width:26px; text-align:center; font:600 11px/1 'JetBrains Mono',monospace; color:#F2F5F7; }
+        .kphone{ width:130px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:9px;
+            padding:8px 9px; font-size:11px; color:#F2F5F7; outline:none; font-family:inherit; }
+        @media (max-width:900px){
+            .klanes{ grid-template-columns:1fr; }
+            .kb3{ grid-template-columns:1fr; }
+            .kadmin{ flex-direction:column-reverse; }
+            .kdrawer{ width:100%; }
+        }
 
         /* ================================================================
            SCV3C — Caddie dashboard overview (real wiring + realtime).
@@ -30826,1436 +31071,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // ===== GOLFER DASHBOARD FUNCTIONS =====
 
-        // Enhanced Food Ordering System
-        let foodCart = [];
-        let currentFoodCategory = 'all';
-        let activeOrderId = null;
+        // FGV1 (2026-08-02): food ordering + basket + checkout moved to food-fgv1.js
 
-        const FoodOrderingSystem = {
-            // Comprehensive Menu Database
-            menuItems: {
-                // Appetizers & Starters
-                1: { name: 'Caesar Salad', price: 280, category: 'appetizers', image: 'https://images.unsplash.com/photo-1546793665-c74683f339c1?w=400&h=300&fit=crop', description: 'Fresh romaine lettuce with parmesan and croutons', prepTime: 10, available: true, popular: true },
-                2: { name: 'Shrimp Cocktail', price: 420, category: 'appetizers', image: 'https://images.unsplash.com/photo-1565680018434-b513d5e5fd47?w=400&h=300&fit=crop', description: 'Premium shrimp with cocktail sauce', prepTime: 5, available: true, popular: false },
-                3: { name: 'Tom Yum Soup', price: 240, category: 'appetizers', image: 'https://images.unsplash.com/photo-1613844237701-8f3664fc2eff?w=400&h=300&fit=crop', description: 'Authentic Thai hot and sour soup', prepTime: 15, available: true, popular: true },
-                4: { name: 'Spring Rolls', price: 180, category: 'appetizers', image: 'images/appetizers/springrolls.jpg', description: 'Fresh vegetables wrapped in rice paper', prepTime: 8, available: true, popular: false },
-                5: { name: 'Chicken Satay', price: 320, category: 'appetizers', image: 'images/appetizers/chickensatay.jpg', description: 'Grilled chicken skewers with peanut sauce', prepTime: 12, available: true, popular: true },
-
-                // Main Courses
-                6: { name: 'Wagyu Steak', price: 1680, category: 'mains', image: 'https://images.unsplash.com/photo-1600891964092-4316c288032e?w=400&h=300&fit=crop', description: 'Premium A5 Wagyu beef with vegetables', prepTime: 25, available: true, popular: true },
-                7: { name: 'Grilled Salmon', price: 680, category: 'mains', image: 'https://images.unsplash.com/photo-1485921325833-c519f76c4927?w=400&h=300&fit=crop', description: 'Norwegian salmon with lemon butter sauce', prepTime: 18, available: true, popular: true },
-                8: { name: 'Club Sandwich', price: 380, category: 'mains', image: 'https://images.unsplash.com/photo-1619096252214-ef06c45683e3?w=400&h=300&fit=crop', description: 'Triple-deck sandwich with fries', prepTime: 12, available: true, popular: false },
-                9: { name: 'Thai Green Curry', price: 320, category: 'mains', image: 'https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=400&h=300&fit=crop', description: 'Authentic green curry with jasmine rice', prepTime: 20, available: true, popular: true },
-                10: { name: 'Pad Thai', price: 280, category: 'mains', image: 'https://images.unsplash.com/photo-1559314809-0d155014e29e?w=400&h=300&fit=crop', description: 'Classic stir-fried rice noodles', prepTime: 15, available: true, popular: true },
-                11: { name: 'Fish & Chips', price: 420, category: 'mains', image: 'images/main courses/fish&chips.jpg', description: 'Beer-battered fish with crispy fries', prepTime: 16, available: true, popular: false },
-                12: { name: 'Massaman Curry', price: 340, category: 'mains', image: 'https://images.unsplash.com/photo-1631452180519-c014fe946bc7?w=400&h=300&fit=crop', description: 'Rich Thai curry with potatoes', prepTime: 22, available: true, popular: false },
-
-                // Beverages
-                13: { name: 'Fresh Orange Juice', price: 120, category: 'beverages', image: 'https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=400&h=300&fit=crop', description: 'Freshly squeezed orange juice', prepTime: 3, available: true, popular: true },
-                14: { name: 'Premium Coffee', price: 150, category: 'beverages', image: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400&h=300&fit=crop', description: 'Arabica coffee beans', prepTime: 5, available: true, popular: true },
-                15: { name: 'Sparkling Water', price: 80, category: 'beverages', image: 'https://images.unsplash.com/photo-1548839140-29a749e1cf4d?w=400&h=300&fit=crop', description: 'San Pellegrino sparkling water', prepTime: 1, available: true, popular: false },
-                16: { name: 'House Wine', price: 280, category: 'beverages', image: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=400&h=300&fit=crop', description: 'Selection of red or white wine', prepTime: 2, available: true, popular: false },
-                17: { name: 'Thai Iced Tea', price: 100, category: 'beverages', image: 'https://images.unsplash.com/photo-1571934811356-5cc061b6821f?w=400&h=300&fit=crop', description: 'Traditional Thai tea with condensed milk', prepTime: 4, available: true, popular: true },
-                18: { name: 'Coconut Water', price: 90, category: 'beverages', image: 'images/beverages/coconutwater.jpg', description: 'Fresh young coconut water', prepTime: 2, available: true, popular: true },
-                19: { name: 'Heineken Small', price: 120, category: 'beverages', image: 'images/beverages/heinekenbeer.jpg', description: 'Premium Dutch beer (330ml)', prepTime: 1, available: true, popular: true },
-                20: { name: 'Heineken Large', price: 180, category: 'beverages', image: 'images/beverages/heinekenbeer.jpg', description: 'Premium Dutch beer (640ml)', prepTime: 1, available: true, popular: true },
-                21: { name: 'Chang Beer Small', price: 100, category: 'beverages', image: 'images/beverages/changbeer.jpg', description: 'Local Thai beer (330ml)', prepTime: 1, available: true, popular: false },
-                22: { name: 'Chang Beer Large', price: 150, category: 'beverages', image: 'images/beverages/changbeer.jpg', description: 'Local Thai beer (640ml)', prepTime: 1, available: true, popular: false },
-                23: { name: 'Singha Beer Small', price: 110, category: 'beverages', image: 'images/beverages/singhabeer.jpg', description: 'Classic Thai beer (330ml)', prepTime: 1, available: true, popular: false },
-                24: { name: 'Singha Beer Large', price: 160, category: 'beverages', image: 'images/beverages/singhabeer.jpg', description: 'Classic Thai beer (640ml)', prepTime: 1, available: true, popular: false },
-                25: { name: 'Smoothie Bowl', price: 220, category: 'beverages', image: 'images/beverages/smoothiebowl.jpg', description: 'Tropical fruit smoothie', prepTime: 6, available: true, popular: false },
-
-                // Desserts
-                26: { name: 'Mango Sticky Rice', price: 180, category: 'desserts', image: 'images/Desserts/mangostickyrice.jpg', description: 'Traditional Thai dessert', prepTime: 8, available: true, popular: true },
-                27: { name: 'Chocolate Cake', price: 240, category: 'desserts', image: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=300&fit=crop', description: 'Rich dark chocolate cake', prepTime: 5, available: true, popular: true },
-                28: { name: 'Ice Cream Selection', price: 120, category: 'desserts', image: 'https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=400&h=300&fit=crop', description: 'Vanilla, chocolate, or strawberry', prepTime: 3, available: true, popular: false },
-                29: { name: 'Fruit Platter', price: 200, category: 'desserts', image: 'https://images.unsplash.com/photo-1564093497595-593b96d80180?w=400&h=300&fit=crop', description: 'Seasonal fresh fruits', prepTime: 6, available: true, popular: false },
-
-                // Snacks & Light Bites
-                30: { name: 'Chicken Wings', price: 280, category: 'snacks', image: 'images/snacks/chickenwings.jpg', description: 'Buffalo or BBQ style wings', prepTime: 15, available: true, popular: true },
-                31: { name: 'Nachos Supreme', price: 320, category: 'snacks', image: 'https://images.unsplash.com/photo-1513456852971-30c0b8199d4d?w=400&h=300&fit=crop', description: 'Loaded nachos with cheese and jalapeños', prepTime: 10, available: true, popular: false },
-                32: { name: 'Golf Course Mix', price: 150, category: 'snacks', image: 'https://images.unsplash.com/photo-1599599810769-bcde5a160d32?w=400&h=300&fit=crop', description: 'Premium nuts and dried fruits', prepTime: 1, available: true, popular: false },
-                33: { name: 'Energy Bar', price: 80, category: 'snacks', image: 'images/snacks/energybar.jpg', description: 'Protein and energy bar', prepTime: 1, available: true, popular: false }
-            },
-
-            categories: {
-                all: { name: 'All Items', icon: micon('restaurant') },
-                appetizers: { name: 'Appetizers', icon: micon('lunch_dining') },
-                mains: { name: 'Main Courses', icon: micon('restaurant') },
-                beverages: { name: 'Beverages', icon: micon('local_cafe') },
-                desserts: { name: 'Desserts', icon: micon('cake') },
-                snacks: { name: 'Snacks', icon: micon('fastfood') }
-            },
-
-            orderHistory: JSON.parse(localStorage.getItem('mcipro_food_orders') || 'null') || [],
-
-            deliveryOptions: {
-                'course-delivery': {
-                    name: 'Course Delivery',
-                    fee: 50,
-                    time: '20-30 min',
-                    icon: micon('directions_car'),
-                    description: 'Delivered to your location on the course',
-                    baseTime: 5
-                },
-                'clubhouse-pickup': {
-                    name: 'Clubhouse Pickup',
-                    fee: 0,
-                    time: '15-20 min',
-                    icon: micon('business'),
-                    description: 'Ready for pickup at the clubhouse',
-                    baseTime: 0
-                },
-                'cart-service': {
-                    name: 'Cart Service',
-                    fee: 30,
-                    time: '25-35 min',
-                    icon: micon('shopping_cart'),
-                    description: 'Brought to you by golf cart',
-                    baseTime: 10
-                },
-                'restaurant-dining': {
-                    name: 'Restaurant Dining',
-                    fee: 0,
-                    time: 'Reserve table after round',
-                    icon: micon('restaurant'),
-                    description: 'Dine in our restaurant with reserved table',
-                    baseTime: 0,
-                    requiresReservation: true
-                },
-                'post-round-ready': {
-                    name: 'Post-Round Ready',
-                    fee: 0,
-                    time: 'Ready when you finish',
-                    icon: '⏰',
-                    description: 'Food ready when you complete your round',
-                    baseTime: 0,
-                    requiresTimeEstimate: true
-                }
-            }
-        };
-
-        // Enhanced Food Cart Functions
-        function addToFoodCart(itemId) {
-            const item = FoodOrderingSystem.menuItems[itemId];
-            if (!item || !item.available) {
-                NotificationManager.show('Item is currently unavailable', 'error');
-                return;
-            }
-
-            const existingItem = foodCart.find(cartItem => cartItem.id === itemId);
-
-            if (existingItem) {
-                existingItem.quantity += 1;
-            } else {
-                foodCart.push({
-                    id: itemId,
-                    name: item.name,
-                    price: item.price,
-                    image: item.image,
-                    description: item.description,
-                    prepTime: item.prepTime,
-                    quantity: 1
-                });
-            }
-
-            updateFoodCartDisplay();
-            NotificationManager.show(`${item.name} added to cart`, 'success');
-        }
-
-        function removeFromFoodCart(itemId) {
-            foodCart = foodCart.filter(item => item.id !== itemId);
-            updateFoodCartDisplay();
-            NotificationManager.show('Item removed from cart', 'info');
-        }
-
-        function updateFoodCartQuantity(itemId, change) {
-            const item = foodCart.find(cartItem => cartItem.id === itemId);
-            if (item) {
-                item.quantity += change;
-                if (item.quantity <= 0) {
-                    removeFromFoodCart(itemId);
-                } else {
-                    updateFoodCartDisplay();
-                }
-            }
-        }
-
-        function updateFoodCartDisplay() {
-            const cartContainer = document.getElementById('foodCartContainer');
-            const cartItemCount = document.getElementById('cartItemCount');
-            const cartSubtotal = document.getElementById('cartSubtotal');
-            const serviceCharge = document.getElementById('serviceCharge');
-            const cartTotal = document.getElementById('cartTotal');
-            const placeOrderBtn = document.getElementById('placeOrderBtn');
-
-            if (!cartContainer) return;
-
-            let subtotal = 0;
-            let itemCount = 0;
-
-            if (foodCart.length === 0) {
-                cartContainer.innerHTML = '<p class="scv3fm-cart-empty">Cart empty — tap + on anything above</p>';
-            } else {
-                cartContainer.innerHTML = '';
-
-                foodCart.forEach(item => {
-                    const itemTotal = item.price * item.quantity;
-                    subtotal += itemTotal;
-                    itemCount += item.quantity;
-
-                    const cartItem = document.createElement('div');
-                    cartItem.className = 'scv3fm-crow';
-                    cartItem.innerHTML = `
-                        <div class="ci">
-                            <div class="cn">${item.name}</div>
-                            <div class="cp">฿${item.price} each</div>
-                        </div>
-                        <div class="cq">
-                            <button onclick="updateFoodCartQuantity(${item.id}, -1)">−</button>
-                            <span>${item.quantity}</span>
-                            <button class="plus" onclick="updateFoodCartQuantity(${item.id}, 1)">+</button>
-                        </div>
-                        <div class="ct">฿${itemTotal}</div>
-                    `;
-                    cartContainer.appendChild(cartItem);
-                });
-            }
-
-            const serviceChargeAmount = Math.round(subtotal * 0.1);
-            const total = subtotal + serviceChargeAmount;
-
-            if (cartItemCount) cartItemCount.textContent = itemCount;
-            if (cartSubtotal) cartSubtotal.textContent = `฿${subtotal}`;
-            if (serviceCharge) serviceCharge.textContent = `฿${serviceChargeAmount}`;
-            if (cartTotal) cartTotal.textContent = `฿${total}`;
-
-            // Update floating cart button
-            const floatingBtn = document.getElementById('floatingCartBtn');
-            const floatingBadge = document.getElementById('floatingCartBadge');
-            if (floatingBtn) {
-                floatingBtn.style.display = itemCount > 0 ? 'flex' : 'none';
-            }
-            if (floatingBadge) {
-                floatingBadge.textContent = itemCount;
-            }
-            const floatingTotal = document.getElementById('floatingCartTotal');
-            if (floatingTotal) floatingTotal.textContent = `฿${total}`;
-
-            if (placeOrderBtn) {
-                placeOrderBtn.disabled = foodCart.length === 0;
-                if (foodCart.length === 0) {
-                    placeOrderBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                } else {
-                    placeOrderBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                }
-            }
-        }
-
-        function placeOrder() {
-            if (foodCart.length === 0) {
-                NotificationManager.show('Your cart is empty', 'error');
-                return;
-            }
-
-            // Show delivery options modal
-            showDeliveryOptionsModal();
-        }
-
-        function filterFoodMenu(category) {
-            currentFoodCategory = category;
-            renderFoodMenu();
-
-            // Update category chips (SCV3FM: solid green active — sunlight rule)
-            document.querySelectorAll('.food-category-btn').forEach(btn => {
-                btn.classList.toggle('on', btn.dataset.category === category);
-            });
-        }
-
-        function renderFoodMenu() {
-            const menuContainer = document.getElementById('foodMenuItems');
-            if (!menuContainer) return;
-
-            const items = Object.entries(FoodOrderingSystem.menuItems)
-                .filter(([id, item]) => currentFoodCategory === 'all' || item.category === currentFoodCategory)
-                .sort(([a, itemA], [b, itemB]) => {
-                    // Sort popular items first, then by price
-                    if (itemA.popular && !itemB.popular) return -1;
-                    if (!itemA.popular && itemB.popular) return 1;
-                    return itemA.price - itemB.price;
-                });
-
-            menuContainer.innerHTML = items.map(([id, item]) => `
-                <div class="scv3fm-item${!item.available ? ' na' : ''}" onclick="${item.available ? `addToFoodCart(${id})` : ''}">
-                    <div class="im">
-                        <img src="${item.image}" alt="${item.name}" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&h=200&fit=crop'">
-                        ${item.popular ? '<span class="hot">HOT</span>' : ''}
-                        ${!item.available ? '<span class="soldout">SOLD OUT</span>' : ''}
-                    </div>
-                    <div class="mn">
-                        <div class="nm">${item.name}</div>
-                        <div class="ds">${item.description}</div>
-                        <div class="ft"><span class="pt">${item.prepTime} MIN</span></div>
-                    </div>
-                    <div class="pr">
-                        <div class="p">฿${item.price.toLocaleString()}</div>
-                        <button onclick="event.stopPropagation(); addToFoodCart(${id})" class="add" ${!item.available ? 'disabled' : ''}>+</button>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function showDeliveryOptionsModal() {
-            const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
-            modal.innerHTML = `
-                <div class="bg-white rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
-                    <div class="text-center mb-6">
-                        <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <span class="material-symbols-outlined text-2xl text-green-600">restaurant</span>
-                        </div>
-                        <h3 class="text-xl font-bold text-gray-900 mb-2">Choose Your Dining Option</h3>
-                        <p class="text-sm text-gray-600">Select how you'd like to receive your order</p>
-                    </div>
-                    <div class="space-y-3">
-                        ${Object.entries(FoodOrderingSystem.deliveryOptions).map(([key, option]) => `
-                            <div class="delivery-option p-4 border-2 border-gray-200 rounded-xl cursor-pointer hover:border-green-500 hover:bg-green-50 transition-all"
-                                 onclick="selectDeliveryOption('${key}')">
-                                <div class="flex items-start justify-between">
-                                    <div class="flex items-start space-x-3">
-                                        <span class="text-2xl">${option.icon}</span>
-                                        <div class="flex-1">
-                                            <h5 class="font-bold text-gray-900">${option.name}</h5>
-                                            <p class="text-sm text-gray-600 mb-1">${option.description}</p>
-                                            <div class="flex items-center space-x-2">
-                                                <span class="material-symbols-outlined text-sm text-blue-600">schedule</span>
-                                                <span class="text-sm text-blue-600 font-medium">${option.time}</span>
-                                            </div>
-                                            ${option.requiresReservation ? `
-                                                <div class="mt-2 px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full inline-block">
-                                                    Table reservation required
-                                                </div>
-                                            ` : ''}
-                                            ${option.requiresTimeEstimate ? `
-                                                <div class="mt-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full inline-block">
-                                                    Round completion time needed
-                                                </div>
-                                            ` : ''}
-                                        </div>
-                                    </div>
-                                    <div class="text-right">
-                                        <span class="text-lg font-bold ${option.fee > 0 ? 'text-orange-600' : 'text-green-600'}">
-                                            ${option.fee > 0 ? `+฿${option.fee}` : 'FREE'}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                    <div class="flex space-x-3 mt-6">
-                        <button onclick="closeDeliveryModal()" class="btn-secondary flex-1">Cancel</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-            window.currentDeliveryModal = modal;
-        }
-
-        function selectDeliveryOption(optionKey) {
-            console.log('selectDeliveryOption called with:', optionKey);
-            const option = FoodOrderingSystem.deliveryOptions[optionKey];
-
-            if (!option) {
-                console.error('Option not found:', optionKey);
-                NotificationManager.show('Invalid delivery option selected', 'error');
-                return;
-            }
-
-            console.log('Selected option:', option);
-
-            try {
-                if (option.requiresReservation) {
-                    console.log('Showing table reservation modal');
-                    closeDeliveryModal();
-                    showTableReservationModal(optionKey, option);
-                } else if (option.requiresTimeEstimate) {
-                    console.log('Showing round time modal');
-                    closeDeliveryModal();
-                    showRoundTimeModal(optionKey, option);
-                } else {
-                    console.log('Processing direct order');
-                    closeDeliveryModal();
-                    confirmFoodOrder(optionKey, option);
-                }
-            } catch (error) {
-                console.error('Error in selectDeliveryOption:', error);
-                closeDeliveryModal();
-                NotificationManager.show('Error processing selection. Please try again.', 'error');
-            }
-        }
-
-        function showTableReservationModal(optionKey, option) {
-            const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
-            modal.innerHTML = `
-                <div class="bg-white rounded-2xl p-6 max-w-md w-full">
-                    <div class="text-center mb-6">
-                        <div class="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <span class="material-symbols-outlined text-2xl text-orange-600">table_restaurant</span>
-                        </div>
-                        <h3 class="text-xl font-bold text-gray-900">Reserve Your Table</h3>
-                        <p class="text-sm text-gray-600 mt-2">Select your preferred dining time after your round</p>
-                    </div>
-
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Estimated Round Completion</label>
-                            <select id="roundCompletionTime" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500">
-                                <option value="">Select estimated time</option>
-                                <option value="12:00">12:00 PM</option>
-                                <option value="12:30">12:30 PM</option>
-                                <option value="13:00">1:00 PM</option>
-                                <option value="13:30">1:30 PM</option>
-                                <option value="14:00">2:00 PM</option>
-                                <option value="14:30">2:30 PM</option>
-                                <option value="15:00">3:00 PM</option>
-                                <option value="15:30">3:30 PM</option>
-                                <option value="16:00">4:00 PM</option>
-                                <option value="16:30">4:30 PM</option>
-                                <option value="17:00">5:00 PM</option>
-                                <option value="17:30">5:30 PM</option>
-                                <option value="18:00">6:00 PM</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Party Size</label>
-                            <select id="partySize" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500">
-                                <option value="1">1 person</option>
-                                <option value="2" selected>2 people</option>
-                                <option value="3">3 people</option>
-                                <option value="4">4 people</option>
-                                <option value="5">5 people</option>
-                                <option value="6">6 people</option>
-                                <option value="8">8 people</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Seating Preference</label>
-                            <select id="seatingPreference" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500">
-                                <option value="indoor">Indoor dining</option>
-                                <option value="outdoor">Outdoor terrace</option>
-                                <option value="private">Private dining room</option>
-                                <option value="bar">Bar seating</option>
-                            </select>
-                        </div>
-
-                        <div class="bg-green-50 rounded-lg p-4">
-                            <div class="flex items-center space-x-2 text-green-800">
-                                <span class="material-symbols-outlined text-sm">info</span>
-                                <span class="text-sm font-medium">Your food will be prepared fresh upon your arrival</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="flex space-x-3 mt-6">
-                        <button onclick="closeTableReservationModal()" class="btn-secondary flex-1">Back</button>
-                        <button onclick="confirmTableReservation('${optionKey}')" class="btn-primary flex-1">
-                            Reserve Table
-                        </button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-            window.currentTableReservationModal = modal;
-        }
-
-        function showRoundTimeModal(optionKey, option) {
-            const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
-            modal.innerHTML = `
-                <div class="bg-white rounded-2xl p-6 max-w-md w-full">
-                    <div class="text-center mb-6">
-                        <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <span class="material-symbols-outlined text-2xl text-blue-600">schedule</span>
-                        </div>
-                        <h3 class="text-xl font-bold text-gray-900">When Will You Finish?</h3>
-                        <p class="text-sm text-gray-600 mt-2">Help us time your order perfectly</p>
-                    </div>
-
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Expected Completion Time</label>
-                            <select id="expectedCompletionTime" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
-                                <option value="">Select estimated time</option>
-                                <option value="30">30 minutes</option>
-                                <option value="45">45 minutes</option>
-                                <option value="60">1 hour</option>
-                                <option value="75">1 hour 15 minutes</option>
-                                <option value="90">1 hour 30 minutes</option>
-                                <option value="105">1 hour 45 minutes</option>
-                                <option value="120">2 hours</option>
-                                <option value="135">2 hours 15 minutes</option>
-                                <option value="150">2 hours 30 minutes</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Current Hole</label>
-                            <select id="currentHole" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
-                                <option value="1">Hole 1</option>
-                                <option value="2">Hole 2</option>
-                                <option value="3">Hole 3</option>
-                                <option value="4">Hole 4</option>
-                                <option value="5">Hole 5</option>
-                                <option value="6">Hole 6</option>
-                                <option value="7">Hole 7</option>
-                                <option value="8">Hole 8</option>
-                                <option value="9">Hole 9</option>
-                                <option value="10">Hole 10</option>
-                                <option value="11">Hole 11</option>
-                                <option value="12">Hole 12</option>
-                                <option value="13">Hole 13</option>
-                                <option value="14">Hole 14</option>
-                                <option value="15">Hole 15</option>
-                                <option value="16">Hole 16</option>
-                                <option value="17">Hole 17</option>
-                                <option value="18">Hole 18</option>
-                            </select>
-                        </div>
-
-                        <div class="bg-blue-50 rounded-lg p-4">
-                            <div class="flex items-center space-x-2 text-blue-800">
-                                <span class="material-symbols-outlined text-sm">timer</span>
-                                <span class="text-sm font-medium">Your food will be ready when you arrive</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="flex space-x-3 mt-6">
-                        <button onclick="closeRoundTimeModal()" class="btn-secondary flex-1">Back</button>
-                        <button onclick="confirmRoundTiming('${optionKey}')" class="btn-primary flex-1">
-                            Confirm Timing
-                        </button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-            window.currentRoundTimeModal = modal;
-        }
-
-        function confirmTableReservation(optionKey) {
-            console.log('confirmTableReservation called for:', optionKey);
-
-            const completionTime = document.getElementById('roundCompletionTime').value;
-            const partySize = document.getElementById('partySize').value;
-            const seatingPreference = document.getElementById('seatingPreference').value;
-
-            console.log('Reservation details:', { completionTime, partySize, seatingPreference });
-
-            if (!completionTime) {
-                NotificationManager.show('Please select your estimated completion time', 'error');
-                return;
-            }
-
-            try {
-                const option = FoodOrderingSystem.deliveryOptions[optionKey];
-                const enhancedOption = {
-                    ...option,
-                    reservationDetails: {
-                        time: completionTime,
-                        partySize: parseInt(partySize),
-                        seating: seatingPreference,
-                        tableNumber: `T${Math.floor(Math.random() * 20) + 1}`
-                    }
-                };
-
-                console.log('Enhanced option for reservation:', enhancedOption);
-                closeTableReservationModal();
-                confirmFoodOrder(optionKey, enhancedOption);
-            } catch (error) {
-                console.error('Error in confirmTableReservation:', error);
-                closeTableReservationModal();
-                NotificationManager.show('Error processing reservation. Please try again.', 'error');
-            }
-        }
-
-        function confirmRoundTiming(optionKey) {
-            console.log('confirmRoundTiming called for:', optionKey);
-
-            const completionTime = document.getElementById('expectedCompletionTime').value;
-            const currentHole = document.getElementById('currentHole').value;
-
-            console.log('Round timing details:', { completionTime, currentHole });
-
-            if (!completionTime || !currentHole) {
-                NotificationManager.show('Please select both completion time and current hole', 'error');
-                return;
-            }
-
-            try {
-                const option = FoodOrderingSystem.deliveryOptions[optionKey];
-                const enhancedOption = {
-                    ...option,
-                    timingDetails: {
-                        estimatedMinutes: parseInt(completionTime),
-                        currentHole: parseInt(currentHole),
-                        readyTime: new Date(Date.now() + parseInt(completionTime) * 60000)
-                    }
-                };
-
-                console.log('Enhanced option for timing:', enhancedOption);
-                closeRoundTimeModal();
-                confirmFoodOrder(optionKey, enhancedOption);
-            } catch (error) {
-                console.error('Error in confirmRoundTiming:', error);
-                closeRoundTimeModal();
-                NotificationManager.show('Error processing timing. Please try again.', 'error');
-            }
-        }
-
-        function closeTableReservationModal() {
-            if (window.currentTableReservationModal) {
-                document.body.removeChild(window.currentTableReservationModal);
-                window.currentTableReservationModal = null;
-            }
-        }
-
-        function closeRoundTimeModal() {
-            if (window.currentRoundTimeModal) {
-                document.body.removeChild(window.currentRoundTimeModal);
-                window.currentRoundTimeModal = null;
-            }
-        }
-
-        function closeDeliveryModal() {
-            if (window.currentDeliveryModal) {
-                document.body.removeChild(window.currentDeliveryModal);
-                window.currentDeliveryModal = null;
-            }
-        }
-
-        function confirmFoodOrder(deliveryType, deliveryOption) {
-            console.log('confirmFoodOrder called with:', { deliveryType, deliveryOption });
-            LoadingManager.show('Processing your order...');
-
-            try {
-                setTimeout(async () => {
-                    try {
-                        console.log('Processing order, cart:', foodCart);
-
-                        const subtotal = foodCart.reduce((total, item) => total + (item.price * item.quantity), 0);
-                        const serviceCharge = Math.round(subtotal * 0.1);
-                        const deliveryFee = deliveryOption.fee || 0;
-                        const total = subtotal + serviceCharge + deliveryFee;
-
-                        const orderId = 'FO' + Date.now().toString().slice(-6);
-                        const orderTime = new Date();
-
-                        // Create comprehensive order object
-                        const orderDetails = {
-                            id: orderId,
-                            orderTime: orderTime.toISOString(),
-                            customerName: AppState.currentUser?.name || 'Guest',
-                            customerType: AppState.currentUser?.role || 'guest',
-                            tableNumber: getTableNumber(),
-                            items: foodCart.map(item => ({
-                                name: item.name,
-                                quantity: item.quantity,
-                                unitPrice: item.price,
-                                totalPrice: item.price * item.quantity,
-                                image: item.image,
-                                prepTime: item.prepTime || 15
-                            })),
-                            subtotal: subtotal,
-                            serviceCharge: serviceCharge,
-                            deliveryFee: deliveryFee,
-                            total: total,
-                            status: 'confirmed',
-                            deliveryType: deliveryType,
-                            deliveryOption: deliveryOption,
-                            estimatedTime: calculateEstimatedTime(foodCart, deliveryOption),
-                            progress: {
-                                confirmed: { time: orderTime.toISOString(), completed: true },
-                                preparing: { time: null, completed: false },
-                                cooking: { time: null, completed: false },
-                                ready: { time: null, completed: false },
-                                delivered: { time: null, completed: false }
-                            },
-                            paymentMethod: 'Room Charge'
-                        };
-
-                        // Initialize order history if needed
-                        if (!FoodOrderingSystem.orderHistory) {
-                            FoodOrderingSystem.orderHistory = [];
-                        }
-
-                        // Add to order history and persist
-                        FoodOrderingSystem.orderHistory.unshift(orderDetails);
-                        localStorage.setItem('mcipro_food_orders', JSON.stringify(FoodOrderingSystem.orderHistory));
-
-                        // REAL pipeline: write the order to the kitchen queue (Supabase).
-                        // localStorage is the offline mirror; the DB row is what staff see.
-                        try {
-                            const sb = window.SupabaseDB && window.SupabaseDB.client;
-                            if (sb) {
-                                const mgr = window.liveScorecardInstance || window.LiveScorecardManager;
-                                let note = deliveryOption?.name || deliveryType || '';
-                                if (mgr && mgr.groupId && mgr.currentHole) note += ' · On course — hole ' + mgr.currentHole;
-                                orderDetails.deliveryNote = note;
-                                const { data: dbOrder, error: dbErr } = await sb.from('food_orders').insert({
-                                    order_number: orderId,
-                                    golfer_id: AppState.currentUser?.lineUserId || null,
-                                    customer_name: orderDetails.customerName,
-                                    items: orderDetails.items,
-                                    subtotal: subtotal,
-                                    service_charge: serviceCharge,
-                                    delivery_fee: deliveryFee,
-                                    total: total,
-                                    status: 'confirmed',
-                                    delivery_type: deliveryType,
-                                    delivery_note: note,
-                                    course_name: (mgr && (mgr.courseName || (mgr.courseData && mgr.courseData.name))) || null,
-                                    status_times: { confirmed: orderTime.toISOString() }
-                                }).select().single();
-                                if (dbErr) console.warn('[FoodOrders] DB insert failed:', dbErr);
-                                if (dbOrder) {
-                                    orderDetails.dbId = dbOrder.id;
-                                    localStorage.setItem('mcipro_food_orders', JSON.stringify(FoodOrderingSystem.orderHistory));
-                                }
-                                subscribeFoodOrders();
-                            }
-                        } catch (dbEx) { console.warn('[FoodOrders] DB insert error:', dbEx); }
-
-                        console.log('Order created:', orderDetails);
-
-                        // Show receipt and start order tracking
-                        try {
-                            console.log('Showing order receipt...');
-                            showOrderReceipt(orderDetails);
-                            // Real orders get status from the kitchen via realtime;
-                            // the simulated timer ladder only runs as an OFFLINE fallback.
-                            if (!orderDetails.dbId) startOrderTracking(orderId);
-                        } catch (receiptError) {
-                            console.error('Error showing receipt or starting tracking:', receiptError);
-                            // Still continue with clearing cart and hiding loader
-                            NotificationManager.show(`Order ${orderId} placed successfully! Total: ฿${orderDetails.total}`, 'success');
-                        }
-
-                        // Clear cart
-                        foodCart = [];
-                        updateFoodCartDisplay();
-                        LoadingManager.hide();
-
-                        // Update status tab if it exists
-                        setTimeout(() => {
-                            updateOrderStatusTab();
-                        }, 100);
-
-                        console.log('Order processing completed successfully');
-                    } catch (innerError) {
-                        console.error('Error in order processing:', innerError);
-                        LoadingManager.hide();
-                        NotificationManager.show('Error processing order. Please try again.', 'error');
-                    }
-                }, 2000);
-            } catch (error) {
-                console.error('Error in confirmFoodOrder:', error);
-                LoadingManager.hide();
-                NotificationManager.show('Error processing order. Please try again.', 'error');
-            }
-        }
-
-        function getTableNumber() {
-            try {
-                // Generate table number based on user or location
-                if (AppState.currentUser && AppState.currentUser.role === 'golfer') {
-                    return 'Table ' + (Math.floor(Math.random() * 20) + 1);
-                }
-                return 'Mobile Order';
-            } catch (error) {
-                console.error('Error generating table number:', error);
-                return 'Table ' + (Math.floor(Math.random() * 20) + 1);
-            }
-        }
-
-        function calculateEstimatedTime(cartItems, deliveryOption) {
-            try {
-                if (!cartItems || cartItems.length === 0) {
-                    console.log('No cart items, using default time');
-                    return 20; // Default 20 minutes
-                }
-
-                const prepTimes = cartItems.map(item => item.prepTime || 15);
-                const maxPrepTime = Math.max(...prepTimes);
-                const baseTime = maxPrepTime + (deliveryOption.baseTime || 0);
-                const estimatedTime = baseTime + Math.floor(Math.random() * 10);
-
-                console.log('Calculated estimated time:', {
-                    cartItems: cartItems.length,
-                    maxPrepTime,
-                    baseTime: deliveryOption.baseTime || 0,
-                    estimatedTime
-                });
-
-                return estimatedTime;
-            } catch (error) {
-                console.error('Error calculating estimated time:', error);
-                return 25; // Fallback time
-            }
-        }
-
-        function showOrderReceipt(order) {
-            // Close any existing modals first
-            closeReceiptModal();
-
-            const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
-            modal.onclick = (e) => {
-                if (e.target === modal) closeReceiptModal();
-            };
-            modal.innerHTML = `
-                <div class="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
-                    <!-- Receipt Header -->
-                    <div class="bg-gradient-to-r from-green-500 to-green-600 text-white p-6 rounded-t-2xl relative">
-                        <button onclick="closeReceiptModal()" class="absolute top-4 right-4 text-white hover:text-gray-200 w-8 h-8 flex items-center justify-center rounded-full hover:bg-white hover:bg-opacity-20">
-                            <span class="material-symbols-outlined">close</span>
-                        </button>
-                        <div class="text-center">
-                            <div class="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-3">
-                                <span class="material-symbols-outlined text-2xl">receipt</span>
-                            </div>
-                            <h3 class="text-xl font-bold">Order Receipt</h3>
-                            <p class="text-green-100">Order #${order.id}</p>
-                        </div>
-                    </div>
-
-                    <!-- Receipt Body -->
-                    <div class="p-6">
-                        <!-- Order Details -->
-                        <div class="mb-6">
-                            <div class="flex justify-between items-center mb-2">
-                                <span class="text-gray-600">Customer:</span>
-                                <span class="font-semibold">${order.customerName}</span>
-                            </div>
-                            <div class="flex justify-between items-center mb-2">
-                                <span class="text-gray-600">Table:</span>
-                                <span class="font-semibold">${order.tableNumber}</span>
-                            </div>
-                            <div class="flex justify-between items-center mb-2">
-                                <span class="text-gray-600">Date & Time:</span>
-                                <span class="font-semibold">${new Date(order.orderTime).toLocaleString()}</span>
-                            </div>
-                            <div class="flex justify-between items-center mb-4">
-                                <span class="text-gray-600">Delivery:</span>
-                                <span class="font-semibold">${order.deliveryOption.name}</span>
-                            </div>
-                        </div>
-
-                        <!-- Order Items -->
-                        <div class="border-t border-b py-4 mb-4">
-                            <h4 class="font-bold text-gray-900 mb-3">Order Items</h4>
-                            <div class="space-y-2">
-                                ${order.items.map(item => `
-                                    <div class="flex items-center justify-between">
-                                        <div class="flex items-center space-x-3">
-                                            <img src="${item.image}" alt="${item.name}" class="w-10 h-10 rounded object-cover" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=100&h=100&fit=crop'">
-                                            <span class="font-medium">${item.name}</span>
-                                            <span class="text-gray-500">×${item.quantity}</span>
-                                        </div>
-                                        <span class="font-semibold">฿${item.totalPrice}</span>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-
-                        <!-- Order Summary -->
-                        <div class="space-y-2 mb-6">
-                            <div class="flex justify-between">
-                                <span class="text-gray-600">Subtotal:</span>
-                                <span class="font-semibold">฿${order.subtotal}</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-gray-600">Service Charge (10%):</span>
-                                <span class="font-semibold">฿${order.serviceCharge}</span>
-                            </div>
-                            ${order.deliveryFee > 0 ? `
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">Delivery Fee:</span>
-                                    <span class="font-semibold">฿${order.deliveryFee}</span>
-                                </div>
-                            ` : ''}
-                            <div class="flex justify-between text-lg font-bold border-t pt-2">
-                                <span>Total Amount:</span>
-                                <span class="text-green-600">฿${order.total}</span>
-                            </div>
-                        </div>
-
-                        <!-- Estimated Time -->
-                        <div class="bg-blue-50 rounded-lg p-4 mb-6">
-                            <div class="flex items-center space-x-2 mb-2">
-                                <span class="material-symbols-outlined text-blue-600">schedule</span>
-                                <span class="font-semibold text-blue-800">Estimated Preparation Time</span>
-                            </div>
-                            <p class="text-blue-700 font-bold text-lg">${order.estimatedTime} minutes</p>
-                            <p class="text-blue-600 text-sm">${order.deliveryOption.time}</p>
-                        </div>
-
-                        <!-- Action Buttons -->
-                        <div class="space-y-3">
-                            <button onclick="trackOrder('${order.id}')" class="w-full btn-primary">
-                                <span class="material-symbols-outlined text-sm mr-2">track_changes</span>
-                                Track Order Status
-                            </button>
-                            <button onclick="printReceipt('${order.id}')" class="w-full btn-secondary">
-                                <span class="material-symbols-outlined text-sm mr-2">print</span>
-                                Print Receipt
-                            </button>
-                            <button onclick="closeReceiptModal()" class="w-full btn-outline">
-                                Close
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-
-            // Add ESC key handler
-            const handleEscKey = (e) => {
-                if (e.key === 'Escape') {
-                    closeReceiptModal();
-                    document.removeEventListener('keydown', handleEscKey);
-                }
-            };
-            document.addEventListener('keydown', handleEscKey);
-
-            document.body.appendChild(modal);
-            window.currentReceiptModal = modal;
-
-            console.log('Order receipt modal opened');
-        }
-
-        function closeReceiptModal() {
-            try {
-                // Find and remove modal by class name as backup
-                const modals = document.querySelectorAll('.fixed.inset-0');
-                modals.forEach(modal => {
-                    if (modal.innerHTML.includes('Order Receipt') || modal.innerHTML.includes('receipt')) {
-                        modal.remove();
-                    }
-                });
-
-                // Also use the window reference if it exists
-                if (window.currentReceiptModal) {
-                    if (window.currentReceiptModal.parentNode) {
-                        window.currentReceiptModal.parentNode.removeChild(window.currentReceiptModal);
-                    }
-                    window.currentReceiptModal = null;
-                }
-
-                console.log('Receipt modal closed successfully');
-            } catch (error) {
-                console.error('Error closing receipt modal:', error);
-                // Force remove any receipt modals
-                document.querySelectorAll('[class*="fixed"][class*="inset-0"]').forEach(el => {
-                    if (el.innerHTML.includes('Order Receipt')) {
-                        el.remove();
-                    }
-                });
-            }
-        }
-
-        // Emergency modal closer - can be called from console
-        window.forceCloseAllModals = function() {
-            console.log('Force closing all modals...');
-
-            // Remove all fixed positioned elements that look like modals
-            const possibleModals = document.querySelectorAll('.fixed');
-            possibleModals.forEach(el => {
-                if (el.classList.contains('inset-0') ||
-                    el.style.position === 'fixed' ||
-                    el.innerHTML.includes('modal') ||
-                    el.innerHTML.includes('Modal') ||
-                    el.innerHTML.includes('Order Receipt')) {
-                    console.log('Removing modal:', el);
-                    el.remove();
-                }
-            });
-
-            // Clear modal references
-            window.currentReceiptModal = null;
-            window.currentTrackingModal = null;
-            window.currentOrderHistoryModal = null;
-
-            console.log('All modals force closed');
-        };
-
-        function startOrderTracking(orderId) {
-            // Simulate order progress
-            const order = FoodOrderingSystem.orderHistory.find(o => o.id === orderId);
-            if (!order) return;
-
-            // Start preparing after 2 minutes
-            setTimeout(() => {
-                order.status = 'preparing';
-                order.progress.preparing = { time: new Date().toISOString(), completed: true };
-                NotificationManager.show(`Order ${orderId}: Kitchen has started preparing your order`, 'info');
-                updateOrderTrackingUI(orderId);
-            }, 2 * 60 * 1000);
-
-            // Start cooking after 5 minutes
-            setTimeout(() => {
-                order.status = 'cooking';
-                order.progress.cooking = { time: new Date().toISOString(), completed: true };
-                NotificationManager.show(`Order ${orderId}: Your order is now being cooked`, 'info');
-                updateOrderTrackingUI(orderId);
-            }, 5 * 60 * 1000);
-
-            // Ready after estimated time
-            setTimeout(() => {
-                order.status = 'ready';
-                order.progress.ready = { time: new Date().toISOString(), completed: true };
-                NotificationManager.show(`Order ${orderId}: Your order is ready for ${order.deliveryType}!`, 'success');
-                updateOrderTrackingUI(orderId);
-            }, order.estimatedTime * 60 * 1000);
-
-            // Delivered/Complete after additional time
-            setTimeout(() => {
-                order.status = 'delivered';
-                order.progress.delivered = { time: new Date().toISOString(), completed: true };
-                NotificationManager.show(`Order ${orderId}: Order completed! Enjoy your meal!`, 'success');
-                updateOrderTrackingUI(orderId);
-            }, (order.estimatedTime + 5) * 60 * 1000);
-        }
-
-        function trackOrder(orderId) {
-            closeReceiptModal();
-            const order = FoodOrderingSystem.orderHistory.find(o => o.id === orderId);
-            if (!order) {
-                NotificationManager.show('Order not found', 'error');
-                return;
-            }
-
-            showOrderTrackingModal(order);
-        }
-
-        function showOrderTrackingModal(order) {
-            const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
-
-            const progressSteps = [
-                { key: 'confirmed', label: 'Order Confirmed', icon: 'check_circle' },
-                { key: 'preparing', label: 'Preparing', icon: 'restaurant' },
-                { key: 'cooking', label: 'Cooking', icon: 'local_fire_department' },
-                { key: 'ready', label: 'Ready', icon: 'done_all' },
-                { key: 'delivered', label: 'Delivered', icon: 'delivery_dining' }
-            ];
-
-            modal.innerHTML = `
-                <div class="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-                    <!-- Header -->
-                    <div class="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-6 rounded-t-2xl">
-                        <div class="text-center">
-                            <div class="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-3">
-                                <span class="material-symbols-outlined text-2xl">track_changes</span>
-                            </div>
-                            <h3 class="text-xl font-bold">Track Your Order</h3>
-                            <p class="text-blue-100">Order #${order.id}</p>
-                        </div>
-                    </div>
-
-                    <!-- Order Details -->
-                    <div class="p-6">
-                        <div class="bg-gray-50 rounded-lg p-4 mb-6">
-                            <h4 class="font-bold text-gray-900 mb-1">Order Summary</h4>
-                            <div class="text-sm text-gray-600 space-y-1">
-                                <p><strong>Customer:</strong> ${order.customerName}</p>
-                                <p><strong>Table:</strong> ${order.tableNumber}</p>
-                                <p><strong>Total:</strong> <span class="font-bold text-green-600">฿${order.total}</span></p>
-                                <p><strong>Estimated Time:</strong> ${order.estimatedTime} minutes</p>
-                            </div>
-                        </div>
-
-                        <!-- Progress Tracking -->
-                        <div class="mb-6">
-                            <h4 class="font-bold text-gray-900 mb-4">Order Progress</h4>
-                            <div class="space-y-4">
-                                ${progressSteps.map((step, index) => {
-                                    const isCompleted = order.progress[step.key].completed;
-                                    const isActive = !isCompleted &&
-                                        (index === 0 || order.progress[progressSteps[index - 1].key].completed);
-                                    const time = order.progress[step.key].time;
-
-                                    return `
-                                        <div class="flex items-center space-x-4 ${isCompleted ? 'text-green-600' : isActive ? 'text-blue-600' : 'text-gray-400'}">
-                                            <div class="w-10 h-10 rounded-full flex items-center justify-center ${
-                                                isCompleted ? 'bg-green-100' : isActive ? 'bg-blue-100 animate-pulse' : 'bg-gray-100'
-                                            }">
-                                                <span class="material-symbols-outlined text-lg">${step.icon}</span>
-                                            </div>
-                                            <div class="flex-1">
-                                                <p class="font-semibold">${step.label}</p>
-                                                ${time ? `<p class="text-xs opacity-70">${new Date(time).toLocaleTimeString()}</p>` :
-                                                  isActive ? '<p class="text-xs opacity-70">In progress...</p>' :
-                                                  '<p class="text-xs opacity-70">Pending</p>'}
-                                            </div>
-                                            ${isCompleted ? '<span class="material-symbols-outlined text-green-500">check</span>' : ''}
-                                        </div>
-                                    `;
-                                }).join('')}
-                            </div>
-                        </div>
-
-                        <!-- Estimated Completion -->
-                        ${order.status !== 'delivered' ? `
-                            <div class="bg-orange-50 rounded-lg p-4 mb-6">
-                                <div class="flex items-center space-x-2 mb-2">
-                                    <span class="material-symbols-outlined text-orange-600">schedule</span>
-                                    <span class="font-semibold text-orange-800">Estimated Completion</span>
-                                </div>
-                                <p class="text-orange-700 font-bold">${getRemainingTime(order)} remaining</p>
-                            </div>
-                        ` : `
-                            <div class="bg-green-50 rounded-lg p-4 mb-6">
-                                <div class="flex items-center space-x-2 mb-2">
-                                    <span class="material-symbols-outlined text-green-600">check_circle</span>
-                                    <span class="font-semibold text-green-800">Order Complete</span>
-                                </div>
-                                <p class="text-green-700">Enjoy your meal!</p>
-                            </div>
-                        `}
-
-                        <!-- Order Items -->
-                        <div class="border-t pt-4">
-                            <h4 class="font-bold text-gray-900 mb-3">Your Items</h4>
-                            <div class="space-y-2">
-                                ${order.items.map(item => `
-                                    <div class="flex items-center justify-between py-2">
-                                        <div class="flex items-center space-x-3">
-                                            <img src="${item.image}" alt="${item.name}" class="w-8 h-8 rounded object-cover" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=100&h=100&fit=crop'">
-                                            <span class="font-medium text-sm">${item.name}</span>
-                                            <span class="text-gray-500 text-sm">×${item.quantity}</span>
-                                        </div>
-                                        <span class="font-semibold text-sm">฿${item.totalPrice}</span>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-
-                        <!-- Action Buttons -->
-                        <div class="mt-6 space-y-3">
-                            <button onclick="refreshOrderStatus('${order.id}')" class="w-full btn-primary">
-                                <span class="material-symbols-outlined text-sm mr-2">refresh</span>
-                                Refresh Status
-                            </button>
-                            <button onclick="viewOrderHistory()" class="w-full btn-secondary">
-                                <span class="material-symbols-outlined text-sm mr-2">history</span>
-                                View Order History
-                            </button>
-                            <button onclick="closeTrackingModal()" class="w-full btn-outline">
-                                Close
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-
-            document.body.appendChild(modal);
-            window.currentTrackingModal = modal;
-
-            // Auto-refresh every 30 seconds
-            window.trackingInterval = setInterval(() => {
-                refreshOrderStatus(order.id, false);
-            }, 30000);
-        }
-
-        function getRemainingTime(order) {
-            const orderTime = new Date(order.orderTime);
-            const estimatedCompletionTime = new Date(orderTime.getTime() + order.estimatedTime * 60000);
-            const now = new Date();
-            const remainingMs = estimatedCompletionTime - now;
-
-            if (remainingMs <= 0) return "Any moment now";
-
-            const remainingMinutes = Math.ceil(remainingMs / 60000);
-            return `${remainingMinutes} minute${remainingMinutes !== 1 ? 's' : ''}`;
-        }
-
-        function refreshOrderStatus(orderId, showNotification = true) {
-            const order = FoodOrderingSystem.orderHistory.find(o => o.id === orderId);
-            if (!order) return;
-
-            if (showNotification) {
-                NotificationManager.show('Refreshing order status...', 'info');
-            }
-
-            // If tracking modal is open, refresh it
-            if (window.currentTrackingModal) {
-                closeTrackingModal();
-                setTimeout(() => showOrderTrackingModal(order), 0);
-            }
-        }
-
-        // Refresh all active order statuses
-        function refreshAllOrderStatuses() {
-            const activeOrders = FoodOrderingSystem.orderHistory.filter(o =>
-                o.status !== 'delivered' && o.status !== 'cancelled'
-            );
-
-            if (activeOrders.length === 0) {
-                NotificationManager.show('No active orders to refresh', 'info');
-                return;
-            }
-
-            NotificationManager.show(`Refreshing ${activeOrders.length} order(s)...`, 'info');
-
-            // Refresh each active order
-            activeOrders.forEach(order => {
-                refreshOrderStatus(order.id, false);
-            });
-
-            // If there's a current tracking modal, refresh it
-            if (window.currentTrackingModal) {
-                const mostRecent = activeOrders[activeOrders.length - 1];
-                closeTrackingModal();
-                setTimeout(() => showOrderTrackingModal(mostRecent), 100);
-            }
-
-            // Update UI
-            setTimeout(() => {
-                NotificationManager.show('Order statuses updated!', 'success');
-            }, 500);
-        }
-
-        function closeTrackingModal() {
-            if (window.currentTrackingModal) {
-                document.body.removeChild(window.currentTrackingModal);
-                window.currentTrackingModal = null;
-            }
-            if (window.trackingInterval) {
-                clearInterval(window.trackingInterval);
-                window.trackingInterval = null;
-            }
-        }
-
-        function updateOrderTrackingUI(orderId) {
-            // Update any tracking UI if visible
-            if (window.currentTrackingModal) {
-                const order = FoodOrderingSystem.orderHistory.find(o => o.id === orderId);
-                if (order) {
-                    refreshOrderStatus(orderId, false);
-                }
-            }
-
-            // Always update the status tab when order tracking changes
-            setTimeout(() => {
-                updateOrderStatusTab();
-            }, 100);
-        }
-
-        function printReceipt(orderId) {
-            const order = FoodOrderingSystem.orderHistory.find(o => o.id === orderId);
-            if (!order) return;
-
-            // Create printable receipt
-            const printWindow = window.open('', '_blank');
-            printWindow.document.write(`
-                <html>
-                <head>
-                    <title>Receipt - Order #${order.id}</title>
-                    <style>
-                        body { font-family: 'Courier New', monospace; max-width: 300px; margin: 0 auto; padding: 20px; }
-                        .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; }
-                        .line-item { display: flex; justify-content: space-between; margin: 5px 0; }
-                        .total { border-top: 1px solid #000; padding-top: 10px; margin-top: 10px; font-weight: bold; }
-                        .footer { text-align: center; margin-top: 20px; font-size: 12px; }
-                    </style>
-                </head>
-                <body>
-                    <div class="header">
-                        <h2>MciPro Golf Course</h2>
-                        <p>Order Receipt</p>
-                        <p>Order #${order.id}</p>
-                        <p>${new Date(order.orderTime).toLocaleString()}</p>
-                    </div>
-
-                    <div class="line-item">
-                        <span>Customer:</span>
-                        <span>${order.customerName}</span>
-                    </div>
-                    <div class="line-item">
-                        <span>Table:</span>
-                        <span>${order.tableNumber}</span>
-                    </div>
-                    <hr>
-
-                    ${order.items.map(item => `
-                        <div class="line-item">
-                            <span>${item.name} x${item.quantity}</span>
-                            <span>฿${item.totalPrice}</span>
-                        </div>
-                    `).join('')}
-
-                    <div class="total">
-                        <div class="line-item">
-                            <span>Subtotal:</span>
-                            <span>฿${order.subtotal}</span>
-                        </div>
-                        <div class="line-item">
-                            <span>Service Charge:</span>
-                            <span>฿${order.serviceCharge}</span>
-                        </div>
-                        ${order.deliveryFee > 0 ? `
-                            <div class="line-item">
-                                <span>Delivery Fee:</span>
-                                <span>฿${order.deliveryFee}</span>
-                            </div>
-                        ` : ''}
-                        <div class="line-item" style="font-size: 18px;">
-                            <span>TOTAL:</span>
-                            <span>฿${order.total}</span>
-                        </div>
-                    </div>
-
-                    <div class="footer">
-                        <p>Thank you for dining with us!</p>
-                        <p>MciPro Golf Course Restaurant</p>
-                        <p>Est. completion: ${order.estimatedTime} minutes</p>
-                    </div>
-                </body>
-                </html>
-            `);
-            printWindow.document.close();
-            printWindow.print();
-        }
-
-        function viewOrderHistory() {
-            closeTrackingModal();
-            showOrderHistoryModal();
-        }
-
-        function showOrderHistoryModal() {
-            const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
-            modal.innerHTML = `
-                <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-                    <!-- Header -->
-                    <div class="bg-gradient-to-r from-teal-500 to-teal-600 text-white p-6 flex-shrink-0">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <h3 class="text-xl font-bold">Order History</h3>
-                                <p class="text-teal-100">Your recent food orders</p>
-                            </div>
-                            <button onclick="closeOrderHistoryModal()" class="text-white hover:text-teal-200">
-                                <span class="material-symbols-outlined">close</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Order History List -->
-                    <div class="flex-1 overflow-y-auto p-6">
-                        ${FoodOrderingSystem.orderHistory.length > 0 ? `
-                            <div class="space-y-4">
-                                ${FoodOrderingSystem.orderHistory.map(order => `
-                                    <div class="border rounded-lg p-4 hover:shadow-md transition-shadow">
-                                        <div class="flex items-center justify-between mb-3">
-                                            <div>
-                                                <h4 class="font-bold text-gray-900">Order #${order.id}</h4>
-                                                <p class="text-sm text-gray-600">${new Date(order.orderTime).toLocaleString()}</p>
-                                            </div>
-                                            <div class="text-right">
-                                                <span class="text-lg font-bold text-green-600">฿${order.total}</span>
-                                                <div class="mt-1">
-                                                    <span class="px-2 py-1 text-xs rounded-full ${getStatusBadgeClass(order.status)}">
-                                                        ${order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div class="text-sm text-gray-600 mb-3">
-                                            <p><strong>Items:</strong> ${order.items.map(item => `${item.name} (×${item.quantity})`).join(', ')}</p>
-                                            <p><strong>Delivery:</strong> ${order.deliveryOption.name}</p>
-                                        </div>
-
-                                        <div class="flex space-x-2">
-                                            <button onclick="trackOrder('${order.id}')" class="btn-sm btn-primary">
-                                                <span class="material-symbols-outlined text-sm mr-1">track_changes</span>
-                                                Track
-                                            </button>
-                                            <button onclick="printReceipt('${order.id}')" class="btn-sm btn-secondary">
-                                                <span class="material-symbols-outlined text-sm mr-1">print</span>
-                                                Receipt
-                                            </button>
-                                        </div>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        ` : `
-                            <div class="text-center py-12 text-gray-500">
-                                <span class="material-symbols-outlined text-6xl mb-4 block">restaurant</span>
-                                <p class="text-lg mb-2">No orders yet</p>
-                                <p class="text-sm">Your food orders will appear here</p>
-                            </div>
-                        `}
-                    </div>
-                </div>
-            `;
-
-            document.body.appendChild(modal);
-            window.currentOrderHistoryModal = modal;
-        }
-
-        function getStatusBadgeClass(status) {
-            const classes = {
-                'confirmed': 'bg-blue-100 text-blue-800',
-                'preparing': 'bg-yellow-100 text-yellow-800',
-                'cooking': 'bg-orange-100 text-orange-800',
-                'ready': 'bg-green-100 text-green-800',
-                'delivered': 'bg-gray-100 text-gray-800'
-            };
-            return classes[status] || 'bg-gray-100 text-gray-800';
-        }
-
-        // Alias for order status tab compatibility
-        function getStatusClass(status) {
-            return getStatusBadgeClass(status);
-        }
-
-        function closeOrderHistoryModal() {
-            if (window.currentOrderHistoryModal) {
-                document.body.removeChild(window.currentOrderHistoryModal);
-                window.currentOrderHistoryModal = null;
-            }
-        }
-
-        function showOrderHistory() {
-            const historyContainer = document.getElementById('orderHistoryContainer');
-            if (!historyContainer) return;
-
-            historyContainer.innerHTML = FoodOrderingSystem.orderHistory.map(order => `
-                <div class="order-history-item p-4 border border-gray-200 rounded-xl">
-                    <div class="flex justify-between items-start mb-2">
-                        <div>
-                            <h5 class="font-bold text-gray-900">Order ${order.id}</h5>
-                            <p class="text-sm text-gray-600">${order.date}</p>
-                        </div>
-                        <span class="order-status ${order.status === 'delivered' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'} px-2 py-1 rounded-full text-xs font-medium">
-                            ${order.status}
-                        </span>
-                    </div>
-                    <div class="text-sm text-gray-600 mb-2">
-                        ${order.items.join(', ')}
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="font-bold text-primary-600">฿${order.total.toLocaleString()}</span>
-                        ${order.status === 'preparing' ? '<button class="btn-secondary text-xs px-3 py-1">Track Order</button>' : ''}
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        // Golf Course Database for Caddy Promotions
+                // Golf Course Database for Caddy Promotions
         const GolfCourseDatabase = {
             courses: [
                 {
@@ -32322,449 +31140,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         };
 
-        // ===== ORDER STATUS TAB FUNCTIONS =====
+        // FGV1 (2026-08-02): order status, tracking + kitchen dashboard moved to food-fgv1.js
 
-        // ===== REAL food-order pipeline (golfer side): DB is truth, realtime status =====
-        let _foodOrdersChan = null;
-        let _foodOrdersSynced = false;
-        function subscribeFoodOrders() {
-            try {
-                const sb = window.SupabaseDB && window.SupabaseDB.client;
-                const me = AppState.currentUser?.lineUserId;
-                if (!sb || !me || _foodOrdersChan) return;
-                _foodOrdersChan = sb.channel('food_orders_' + me)
-                    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'food_orders', filter: 'golfer_id=eq.' + me }, function () {
-                        syncFoodOrdersFromDB();
-                    })
-                    .subscribe();
-            } catch (e) { console.warn('[FoodOrders] subscribe error:', e); }
-        }
-        async function syncFoodOrdersFromDB() {
-            try {
-                const sb = window.SupabaseDB && window.SupabaseDB.client;
-                const me = AppState.currentUser?.lineUserId;
-                if (!sb || !me) return;
-                const { data: rows } = await sb.from('food_orders').select('*')
-                    .eq('golfer_id', me).order('created_at', { ascending: false }).limit(20);
-                if (!rows || !rows.length) return;
-                if (!FoodOrderingSystem.orderHistory) FoodOrderingSystem.orderHistory = [];
-                rows.forEach(r => {
-                    const stTimes = r.status_times || {};
-                    const prog = {};
-                    ['confirmed', 'preparing', 'cooking', 'ready', 'delivered'].forEach(k => {
-                        prog[k] = { time: stTimes[k] || null, completed: !!stTimes[k] };
-                    });
-                    // kitchen taps confirmed→preparing→ready→delivered; fold 'cooking' into ready
-                    if (stTimes.ready) prog.cooking.completed = true;
-                    let o = FoodOrderingSystem.orderHistory.find(x => x.id === r.order_number);
-                    if (!o) {
-                        o = {
-                            id: r.order_number, dbId: r.id, orderTime: r.created_at,
-                            customerName: r.customer_name, items: r.items || [],
-                            subtotal: +r.subtotal, serviceCharge: +r.service_charge,
-                            deliveryFee: +r.delivery_fee, total: +r.total,
-                            status: r.status, deliveryType: r.delivery_type,
-                            deliveryNote: r.delivery_note, estimatedTime: 20,
-                            progress: prog, paymentMethod: 'Pay on delivery'
-                        };
-                        FoodOrderingSystem.orderHistory.push(o);
-                    } else {
-                        o.dbId = r.id; o.status = r.status; o.progress = prog;
-                        o.deliveryNote = r.delivery_note;
-                    }
-                });
-                FoodOrderingSystem.orderHistory.sort((a, b) => new Date(b.orderTime) - new Date(a.orderTime));
-                localStorage.setItem('mcipro_food_orders', JSON.stringify(FoodOrderingSystem.orderHistory));
-                updateOrderStatusTab();
-            } catch (e) { console.warn('[FoodOrders] sync error:', e); }
-        }
-
-        function updateOrderStatusTab() {
-            const activeOrdersList = document.getElementById('activeOrdersList');
-            const orderHistoryList = document.getElementById('orderHistoryList');
-            const activeOrdersCount = document.getElementById('activeOrdersCount');
-
-            if (!FoodOrderingSystem.orderHistory) {
-                FoodOrderingSystem.orderHistory = [];
-            }
-
-            // First open: pull server truth + go live (re-renders when data lands)
-            if (!_foodOrdersSynced) {
-                _foodOrdersSynced = true;
-                syncFoodOrdersFromDB();
-                subscribeFoodOrders();
-            }
-
-            // Filter active orders (not delivered)
-            const activeOrders = FoodOrderingSystem.orderHistory.filter(order =>
-                order.status !== 'delivered' && order.status !== 'cancelled'
-            );
-
-            // Update active orders count
-            if (activeOrdersCount) {
-                activeOrdersCount.textContent = `${activeOrders.length} active order${activeOrders.length !== 1 ? 's' : ''}`;
-            }
-
-            // Update badges
-            const activeOrdersBadge = document.getElementById('activeOrdersBadge');
-            const orderStatusTabBadge = document.getElementById('orderStatusTabBadge');
-
-            if (activeOrdersBadge) {
-                if (activeOrders.length > 0) {
-                    activeOrdersBadge.textContent = activeOrders.length;
-                    activeOrdersBadge.style.display = 'inline';
-                } else {
-                    activeOrdersBadge.style.display = 'none';
-                }
-            }
-
-            if (orderStatusTabBadge) {
-                if (activeOrders.length > 0) {
-                    orderStatusTabBadge.textContent = activeOrders.length;
-                    orderStatusTabBadge.style.display = 'flex';
-                } else {
-                    orderStatusTabBadge.style.display = 'none';
-                }
-            }
-
-            // Update active orders list
-            if (activeOrdersList) {
-                if (activeOrders.length === 0) {
-                    activeOrdersList.innerHTML = `<div class="scv3f-empty">No active orders — hungry? Tap Order below</div>`;
-                } else {
-                    activeOrdersList.innerHTML = activeOrders.map(order => createOrderCard(order, true)).join('');
-                }
-            }
-
-            // Update order history (last 10 orders)
-            if (orderHistoryList) {
-                const recentHistory = FoodOrderingSystem.orderHistory.slice(0, 10);
-                if (recentHistory.length === 0) {
-                    orderHistoryList.innerHTML = `<div class="scv3f-empty">No order history</div>`;
-                } else {
-                    orderHistoryList.innerHTML = recentHistory.map(order => createOrderCard(order, false)).join('');
-                }
-
-                // Update order history badge
-                const orderHistoryBadge = document.getElementById('orderHistoryBadge');
-                if (orderHistoryBadge) {
-                    if (recentHistory.length > 0) {
-                        orderHistoryBadge.textContent = recentHistory.length;
-                        orderHistoryBadge.style.display = 'inline';
-                    } else {
-                        orderHistoryBadge.style.display = 'none';
-                    }
-                }
-            }
-        }
-
-        function createOrderCard(order, isActive) {
-            const statusColor = getStatusClass(order.status);
-            const progress = getOrderProgress(order);
-            const status = order.status || 'pending';
-            const itemCount = (order.items || []).reduce((sum, i) => sum + (i.quantity || 1), 0);
-            const timeStr = order.orderTime ? new Date(order.orderTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
-            const dateStr = order.orderTime ? new Date(order.orderTime).toLocaleDateString([], {month:'short', day:'numeric'}) : 'Recent';
-
-            // SCV3F status chips — labels come from the i18n dict (food.status.*)
-            const statusMap = {
-                confirmed: { cls: 'ok' },
-                preparing: { cls: 'warn' },
-                cooking:   { cls: 'warn' },
-                ready:     { cls: 'ok' },
-                delivered: { cls: 'mut' },
-                pending:   { cls: 'warn' },
-                cancelled: { cls: 'bad' }
-            };
-            const st = statusMap[status] || statusMap.pending;
-            st.label = t('food.status.' + (statusMap[status] ? status : 'pending'));
-            const itemsLine = (order.items || []).slice(0, 3).map(i => `${i.quantity > 1 ? i.quantity + '× ' : ''}${i.name}`).join(' · ')
-                + ((order.items || []).length > 3 ? ` · +${order.items.length - 3}` : '');
-
-            return `
-                <div class="scv3f-order${isActive ? ' live' : ''}" onclick="showOrderDetails('${order.id}')">
-                    <div class="scv3f-otop">
-                        <span class="scv3f-ochip ${st.cls}">${st.label}</span>
-                        <span class="scv3f-onum">#${order.id}</span>
-                        <span class="scv3f-ototal">฿${order.total || 0}</span>
-                    </div>
-                    <div class="scv3f-oitems">${itemsLine || itemCount + ' ' + t('food.items')}</div>
-                    ${order.deliveryNote ? `<div class="scv3f-onote">${order.deliveryNote}</div>` : ''}
-                    ${isActive ? `
-                    <div class="scv3f-steps">
-                        ${['confirmed','preparing','cooking','ready','delivered'].map(step => {
-                            const done = order.progress?.[step]?.completed;
-                            const current = status === step;
-                            return `<i class="${done ? 'done' : current ? 'now' : ''}"></i>`;
-                        }).join('')}
-                    </div>
-                    <div class="scv3f-ofoot">
-                        <span>${dateStr} ${timeStr}</span>
-                        <button onclick="event.stopPropagation(); trackOrder('${order.id}')">${t('food.track')}</button>
-                    </div>
-                    ` : `
-                    <div class="scv3f-ofoot">
-                        <span>${dateStr} ${timeStr}</span>
-                        <button class="re" onclick="event.stopPropagation(); reorderItems('${order.id}')">${t('food.reorder')}</button>
-                    </div>
-                    `}
-                </div>
-            `;
-        }
-
-        function reorderItems(orderId) {
-            const order = (FoodOrderingSystem.orderHistory || []).find(o => o.id === orderId);
-            if (!order || !order.items || order.items.length === 0) {
-                NotificationManager.show('No items to reorder', 'error');
-                return;
-            }
-
-            // Switch to food tab
-            showGolferTab('food', null);
-
-            // Wait for tab to render, then add items to cart
-            setTimeout(() => {
-                let added = 0;
-                order.items.forEach(item => {
-                    // Find matching menu item by name
-                    const menuEntry = Object.entries(FoodOrderingSystem.menuItems || {}).find(([id, m]) => 
-                        m.name === item.name && m.available
-                    );
-                    if (menuEntry) {
-                        const [menuId] = menuEntry;
-                        for (let i = 0; i < (item.quantity || 1); i++) {
-                            addToFoodCart(parseInt(menuId));
-                        }
-                        added++;
-                    }
-                });
-
-                if (added > 0) {
-                    NotificationManager.show(`Added ${added} item${added > 1 ? 's' : ''} to cart from previous order`, 'success');
-                } else {
-                    NotificationManager.show('Items no longer available', 'error');
-                }
-            }, 300);
-        }
-
-        function getOrderProgress(order) {
-            if (!order.progress) return 0;
-
-            const stages = ['confirmed', 'preparing', 'cooking', 'ready', 'delivered'];
-            let completed = 0;
-
-            stages.forEach(stage => {
-                if (order.progress[stage]?.completed) {
-                    completed++;
-                }
-            });
-
-            return Math.round((completed / stages.length) * 100);
-        }
-
-        function showOrderDetails(orderId) {
-            const order = FoodOrderingSystem.orderHistory.find(o => o.id === orderId);
-            if (!order) return;
-
-            // Show the existing order receipt modal
-            showOrderReceipt(order);
-        }
-
-        function trackOrder(orderId) {
-            const order = FoodOrderingSystem.orderHistory.find(o => o.id === orderId);
-            if (!order) return;
-
-            // Show the existing order tracking UI
-            showOrderReceipt(order);
-
-            // Automatically scroll to tracking section
-            setTimeout(() => {
-                const trackingElement = document.querySelector('.order-tracking-status');
-                if (trackingElement) {
-                    trackingElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-            }, 300);
-        }
-
-        function clearOrderHistory() {
-            if (confirm('Clear all order history?')) {
-                FoodOrderingSystem.orderHistory = [];
-                localStorage.setItem('mcipro_food_orders', JSON.stringify([]));
-                updateOrderStatusTab();
-                NotificationManager.show('Order history cleared', 'info');
-            }
-        }
-
-        // ===== KITCHEN QUEUE (staff view) — real orders, realtime, tap to advance =====
-        // Open from any logged-in session with #kitchen in the URL (tablet friendly)
-        // or via KitchenQueue.open() from the manager dashboard.
-        window.KitchenQueue = {
-            chan: null, rows: [],
-            NEXT: { confirmed: 'preparing', preparing: 'ready', ready: 'delivered' },
-            open() {
-                let el = document.getElementById('kitchenQueueOverlay');
-                if (!el) {
-                    el = document.createElement('div');
-                    el.id = 'kitchenQueueOverlay';
-                    document.body.appendChild(el);
-                }
-                // Rebuilt on every open so the header follows the current language
-                el.innerHTML = '<div class="kq-head">' +
-                    '<div><div class="kq-ovl">' + t('kitchen.overline') + '</div><div class="kq-h1">' + t('kitchen.orders') + '</div></div>' +
-                    '<button class="kq-x" onclick="KitchenQueue.close()"><span class="material-symbols-outlined">close</span></button>' +
-                    '</div><div id="kqList" class="kq-list"><div class="kq-empty">' + t('kitchen.waiting') + '</div></div>';
-                el.style.display = 'flex';
-                this.load();
-                this.subscribe();
-            },
-            close() {
-                const el = document.getElementById('kitchenQueueOverlay');
-                if (el) el.style.display = 'none';
-                this.unsubscribe();
-            },
-            async load() {
-                try {
-                    const sb = window.SupabaseDB && window.SupabaseDB.client;
-                    if (!sb) return;
-                    const since = new Date(Date.now() - 12 * 3600 * 1000).toISOString();
-                    const { data: rows } = await sb.from('food_orders').select('*')
-                        .gte('created_at', since).order('created_at', { ascending: true });
-                    this.rows = rows || [];
-                    this.render();
-                } catch (e) { console.warn('[KitchenQueue] load error:', e); }
-            },
-            subscribe() {
-                try {
-                    const sb = window.SupabaseDB && window.SupabaseDB.client;
-                    if (!sb) return;
-                    this.unsubscribe();
-                    const self = this;
-                    this.chan = sb.channel('kitchen_queue')
-                        .on('postgres_changes', { event: '*', schema: 'public', table: 'food_orders' }, function () { self.load(); })
-                        .subscribe();
-                } catch (e) { console.warn('[KitchenQueue] subscribe error:', e); }
-            },
-            unsubscribe() {
-                try {
-                    const sb = window.SupabaseDB && window.SupabaseDB.client;
-                    if (sb && this.chan) sb.removeChannel(this.chan);
-                } catch (e) {}
-                this.chan = null;
-            },
-            async advance(id) {
-                try {
-                    const sb = window.SupabaseDB && window.SupabaseDB.client;
-                    const row = this.rows.find(r => r.id === id);
-                    if (!sb || !row) return;
-                    const next = this.NEXT[row.status];
-                    if (!next) return;
-                    const times = Object.assign({}, row.status_times || {});
-                    times[next] = new Date().toISOString();
-                    await sb.from('food_orders')
-                        .update({ status: next, status_times: times, updated_at: new Date().toISOString() })
-                        .eq('id', id);
-                    this.load();
-                } catch (e) { console.warn('[KitchenQueue] advance error:', e); }
-            },
-            _esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); },
-            render() {
-                const list = document.getElementById('kqList');
-                if (!list) return;
-                const active = this.rows.filter(r => r.status !== 'delivered' && r.status !== 'cancelled');
-                const done = this.rows.filter(r => r.status === 'delivered' || r.status === 'cancelled');
-                if (!this.rows.length) {
-                    list.innerHTML = '<div class="kq-empty">' + t('kitchen.waiting') + '</div>';
-                    return;
-                }
-                const age = (t) => {
-                    const m = Math.max(0, Math.round((Date.now() - new Date(t).getTime()) / 60000));
-                    return m < 60 ? m + 'm' : Math.floor(m / 60) + 'h ' + (m % 60) + 'm';
-                };
-                const card = (r) => {
-                    const items = (r.items || []).map(i => '<div class="kq-item"><b>' + (i.quantity || 1) + '×</b> ' + this._esc(i.name) + '</div>').join('');
-                    const btn = this.NEXT[r.status]
-                        ? '<button class="kq-adv s-' + r.status + '" onclick="KitchenQueue.advance(\'' + r.id + '\')">' + t('kitchen.btn.' + r.status) + '</button>'
-                        : '';
-                    const stKey = 'food.status.' + r.status;
-                    const stLabel = (translations[currentLanguage] && translations[currentLanguage][stKey]) ? t(stKey) : this._esc(r.status).toUpperCase();
-                    return '<div class="kq-card s-' + r.status + '">' +
-                        '<div class="kq-top"><span class="kq-chip s-' + r.status + '">' + stLabel + '</span>' +
-                        '<span class="kq-num">#' + this._esc(r.order_number) + '</span><span class="kq-age">' + age(r.created_at) + '</span></div>' +
-                        '<div class="kq-who">' + this._esc(r.customer_name || t('food.guest')) + (r.delivery_note ? ' · ' + this._esc(r.delivery_note) : '') + '</div>' +
-                        '<div class="kq-items">' + items + '</div>' +
-                        '<div class="kq-foot"><span class="kq-total">฿' + (r.total || 0) + '</span>' + btn + '</div></div>';
-                };
-                list.innerHTML = active.map(c => card.call(this, c)).join('')
-                    + (done.length ? '<div class="kq-done-h">' + t('kitchen.completedtoday') + ' · ' + done.length + '</div>' + done.slice(-6).reverse().map(c => card.call(this, c)).join('') : '');
-            }
-        };
-        // Tablet entry: open the queue when the URL carries #kitchen
-        window.addEventListener('hashchange', function () { if (location.hash === '#kitchen') KitchenQueue.open(); });
-        setTimeout(function () { try { if (location.hash === '#kitchen') KitchenQueue.open(); } catch (e) {} }, 4000);
-
-        function contactKitchen() {
-            const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-            modal.innerHTML = `
-                <div class="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
-                    <h3 class="text-xl font-bold text-gray-900 mb-4">${t('kitchen.contact')}</h3>
-                    <div class="space-y-4">
-                        <div class="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                            <div class="flex items-center space-x-3">
-                                <span class="material-symbols-outlined text-orange-600">restaurant</span>
-                                <div>
-                                    <p class="font-semibold text-orange-800">${t('kitchen.directline')}</p>
-                                    <p class="text-orange-700">+66-2-555-0101</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                            <div class="flex items-center space-x-3">
-                                <span class="material-symbols-outlined text-blue-600">headset_mic</span>
-                                <div>
-                                    <p class="font-semibold text-blue-800">${t('kitchen.manager')}</p>
-                                    <p class="text-blue-700">+66-2-555-0102</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-                            <div class="flex items-center space-x-3">
-                                <span class="material-symbols-outlined text-green-600">chat</span>
-                                <div>
-                                    <p class="font-semibold text-green-800">Send Message</p>
-                                    <button onclick="openKitchenChat()" class="text-green-700 hover:text-green-800 text-sm underline">
-                                        Chat with kitchen staff
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="flex space-x-3 mt-6">
-                        <button onclick="this.closest('.fixed').remove()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium">
-                            Close
-                        </button>
-                    </div>
-                </div>
-            `;
-
-            document.body.appendChild(modal);
-        }
-
-        function openKitchenChat() {
-            // Close contact modal
-            document.querySelector('.fixed.inset-0').remove();
-
-            // Switch to chat and open kitchen room
-            showGolferTab('overview', event);
-            setTimeout(() => {
-                window.openProfessionalChat();
-            }, 500);
-        }
-
-        // ===== GLOBAL PERFORMANCE CACHE MANAGER =====
+                // ===== GLOBAL PERFORMANCE CACHE MANAGER =====
         // Ultra-fast caching system for all dashboards and modules
         const GlobalCacheManager = {
             cache: {},
@@ -44950,6 +43328,171 @@ Waitlist (${waitlist.length} people):`;
                       <circle cx="74" cy="26" r="3.6" fill="#8a5c14"/>
                     </g>
                   </symbol>
+
+                  <!-- FGV1 food sprite (2026-08-02) — dish art for menu_items.art; same defs technique as cu* -->
+                  <filter id="fB2" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2"/></filter>
+                  <filter id="fB3" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="3"/></filter>
+                  <radialGradient id="gBunTop" cx=".38" cy=".28" r="1.05"><stop offset="0" stop-color="#FBDF9A"/><stop offset=".55" stop-color="#F2B95C"/><stop offset="1" stop-color="#DE9A3E"/></radialGradient>
+                  <linearGradient id="gGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F7CE6B"/><stop offset="1" stop-color="#E2A03F"/></linearGradient>
+                  <linearGradient id="gRed" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F1685A"/><stop offset="1" stop-color="#D23F35"/></linearGradient>
+                  <linearGradient id="gGreen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8BD98B"/><stop offset="1" stop-color="#3F9E52"/></linearGradient>
+                  <linearGradient id="gAmberG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F8C64F"/><stop offset="1" stop-color="#DE8F1F"/></linearGradient>
+                  <linearGradient id="gCream" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF7E6"/><stop offset="1" stop-color="#EFD9AC"/></linearGradient>
+                  <linearGradient id="gPlate2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4f7fa"/><stop offset="1" stop-color="#c9d4df"/></linearGradient>
+                  <linearGradient id="gBrown" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9C6B3F"/><stop offset="1" stop-color="#67411F"/></linearGradient>
+                  <linearGradient id="gCoffee" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#C08A57"/><stop offset="1" stop-color="#7B4F2E"/></linearGradient>
+                  <linearGradient id="gBowlB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6FA1DC"/><stop offset="1" stop-color="#3D6396"/></linearGradient>
+                  <linearGradient id="gPink" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFCBD5"/><stop offset="1" stop-color="#F28FA4"/></linearGradient>
+                  <linearGradient id="gTeal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7FD8CE"/><stop offset="1" stop-color="#2FA79A"/></linearGradient>
+                  <linearGradient id="gMango" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFC94F"/><stop offset="1" stop-color="#F09427"/></linearGradient>
+                  <linearGradient id="gGlassC" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".9"/><stop offset="1" stop-color="#c9d6e2" stop-opacity=".65"/></linearGradient>
+                  <symbol id="fgBurger" viewBox="0 0 96 96">
+                  <ellipse cx="48" cy="85" rx="28" ry="5" fill="#12202c" opacity=".16" filter="url(#fB3)"/>
+                  <path d="M24 66h48v3a8 8 0 0 1-8 8H32a8 8 0 0 1-8-8z" fill="url(#gGold)"/>
+                  <rect x="22" y="58" width="52" height="9" rx="4.5" fill="url(#gBrown)"/>
+                  <path d="M23 54h50l-4 7-7-4-8 5-8-5-8 5-8-4-4 3z" fill="#F3B229"/>
+                  <path d="M21 51h54c1 2 0 4-3 5-2 3-6 3-8 0-2 3-6 3-8 0-2 3-6 3-8 0-2 3-6 3-8 0-2 3-6 3-8 0-3-1-4-3-3-5z" fill="url(#gGreen)"/>
+                  <path d="M20 50a28 21 0 0 1 56 0v1H20z" fill="url(#gBunTop)"/>
+                  <path d="M28 42c2-6 7-10 12-12" stroke="#fff" stroke-width="4.5" opacity=".55" stroke-linecap="round" filter="url(#fB2)" fill="none"/>
+                  <ellipse cx="38" cy="37" rx="2.4" ry="1.5" fill="#FFF3D6" opacity=".9" transform="rotate(-14 38 37)"/>
+                  <ellipse cx="49" cy="33" rx="2.4" ry="1.5" fill="#FFF3D6" opacity=".9"/>
+                  <ellipse cx="60" cy="37" rx="2.4" ry="1.5" fill="#FFF3D6" opacity=".9" transform="rotate(14 60 37)"/>
+                  <ellipse cx="43" cy="44" rx="2.2" ry="1.4" fill="#FFF3D6" opacity=".85" transform="rotate(-8 43 44)"/>
+                  <ellipse cx="56" cy="44" rx="2.2" ry="1.4" fill="#FFF3D6" opacity=".85" transform="rotate(8 56 44)"/>
+                  </symbol>
+                  <symbol id="fgNoodles" viewBox="0 0 96 96">
+                  <ellipse cx="48" cy="85" rx="28" ry="5" fill="#12202c" opacity=".16" filter="url(#fB3)"/>
+                  <path d="M74 12L52 36" stroke="#8B5A2B" stroke-width="2.6" stroke-linecap="round"/>
+                  <path d="M80 18L58 40" stroke="#A06934" stroke-width="2.6" stroke-linecap="round"/>
+                  <path d="M52 36c-6 2-10 6-11 12M58 40c-7 1-11 5-12 10M55 38c-8 3-12 7-13 12" stroke="#F3E0B0" stroke-width="3.4" stroke-linecap="round" fill="none"/>
+                  <ellipse cx="48" cy="50" rx="30" ry="6.5" fill="#2E4E74"/>
+                  <ellipse cx="48" cy="49.4" rx="25" ry="4.8" fill="url(#gCream)"/>
+                  <path d="M30 47c4 2 8-1 12 1s8-1 12 1 8-1 12 0" stroke="#E8C87E" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+                  <circle cx="36" cy="47.5" r="2.1" fill="#F1685A"/><circle cx="58" cy="48.5" r="2.1" fill="#3F9E52"/>
+                  <path d="M18 52h60c-1 15-12 24-30 24S19 67 18 52z" fill="url(#gBowlB)"/>
+                  <path d="M25 58c1 7 5 12 10 15" stroke="#fff" stroke-width="4.5" opacity=".4" stroke-linecap="round" filter="url(#fB2)" fill="none"/>
+                  </symbol>
+                  <symbol id="fgBeer" viewBox="0 0 96 96">
+                  <ellipse cx="48" cy="85" rx="26" ry="5" fill="#12202c" opacity=".16" filter="url(#fB3)"/>
+                  <path d="M62 44h5a8 8 0 0 1 8 8v4a8 8 0 0 1-8 8h-5v-6h4a3 3 0 0 0 3-3v-2a3 3 0 0 0-3-3h-4z" fill="#D7E4EE"/>
+                  <rect x="28" y="34" width="34" height="44" rx="6" fill="url(#gAmberG)"/>
+                  <rect x="28" y="34" width="34" height="44" rx="6" fill="none" stroke="#C77E19" stroke-opacity=".4"/>
+                  <path d="M34 42v28" stroke="#fff" stroke-width="4.5" opacity=".5" stroke-linecap="round" filter="url(#fB2)"/>
+                  <circle cx="42" cy="60" r="1.6" fill="#fff" opacity=".65"/><circle cx="50" cy="52" r="1.3" fill="#fff" opacity=".6"/>
+                  <circle cx="55" cy="66" r="1.6" fill="#fff" opacity=".6"/><circle cx="46" cy="70" r="1.2" fill="#fff" opacity=".55"/>
+                  <circle cx="34" cy="31" r="7" fill="#FFF9EE"/><circle cx="45" cy="27" r="9" fill="#FFFDF7"/><circle cx="57" cy="31" r="7" fill="#FFF9EE"/>
+                  <path d="M60 36v7a3.5 3.5 0 0 1-7 0" fill="#FFF9EE"/>
+                  </symbol>
+                  <symbol id="fgCoffee" viewBox="0 0 96 96">
+                  <ellipse cx="48" cy="85" rx="22" ry="4.5" fill="#12202c" opacity=".16" filter="url(#fB3)"/>
+                  <rect x="50" y="12" width="5" height="28" rx="2.5" fill="#3F9E52" transform="rotate(9 52 26)"/>
+                  <path d="M33 28h30l-3.4 48a6 6 0 0 1-6 5.6h-11.2a6 6 0 0 1-6-5.6z" fill="url(#gGlassC)" stroke="#B8C7D4" stroke-width="1.2"/>
+                  <path d="M35.8 46h24.4l-2.4 30a5 5 0 0 1-5 4.6h-9.6a5 5 0 0 1-5-4.6z" fill="url(#gCoffee)"/>
+                  <path d="M35 36h26l-.7 8H35.7z" fill="url(#gCream)"/>
+                  <rect x="39" y="52" width="8" height="8" rx="2" fill="#fff" opacity=".4" transform="rotate(-12 43 56)"/>
+                  <rect x="50" y="62" width="7" height="7" rx="2" fill="#fff" opacity=".35" transform="rotate(14 53 65)"/>
+                  <path d="M39 50l-1.6 26" stroke="#fff" stroke-width="3.5" opacity=".45" stroke-linecap="round" filter="url(#fB2)"/>
+                  </symbol>
+                  <symbol id="fgFries" viewBox="0 0 96 96">
+                  <ellipse cx="48" cy="85" rx="25" ry="5" fill="#12202c" opacity=".16" filter="url(#fB3)"/>
+                  <rect x="34" y="24" width="6" height="30" rx="3" fill="url(#gGold)" transform="rotate(-8 37 39)"/>
+                  <rect x="43" y="19" width="6" height="32" rx="3" fill="url(#gGold)"/>
+                  <rect x="52" y="22" width="6" height="30" rx="3" fill="url(#gGold)" transform="rotate(7 55 37)"/>
+                  <rect x="60" y="28" width="6" height="26" rx="3" fill="url(#gGold)" transform="rotate(14 63 41)"/>
+                  <rect x="28" y="30" width="6" height="26" rx="3" fill="url(#gGold)" transform="rotate(-16 31 43)"/>
+                  <path d="M28 46l5 32h30l5-32z" fill="url(#gRed)"/>
+                  <path d="M28 46l5 32h30l5-32z" fill="none" stroke="#B22F27" stroke-opacity=".35"/>
+                  <path d="M33 52c1 8 2 15 3 20" stroke="#fff" stroke-width="4" opacity=".4" stroke-linecap="round" filter="url(#fB2)" fill="none"/>
+                  <ellipse cx="48" cy="61" rx="7.5" ry="8.5" fill="#fff" opacity=".85"/>
+                  <path d="M45 61c1.5-3 4.5-3 6 0-1.5 3-4.5 3-6 0z" fill="#D23F35"/>
+                  </symbol>
+                  <symbol id="fgSundae" viewBox="0 0 96 96">
+                  <ellipse cx="48" cy="85" rx="22" ry="4.5" fill="#12202c" opacity=".16" filter="url(#fB3)"/>
+                  <ellipse cx="48" cy="79" rx="14" ry="3.5" fill="url(#gPlate2)"/>
+                  <rect x="45" y="62" width="6" height="16" rx="3" fill="url(#gGlassC)"/>
+                  <path d="M27 42h42c-1 12-10 21-21 21S28 54 27 42z" fill="url(#gGlassC)" stroke="#B8C7D4" stroke-width="1.2"/>
+                  <circle cx="37" cy="37" r="9.5" fill="url(#gPink)"/>
+                  <circle cx="59" cy="37" r="9.5" fill="url(#gCream)"/>
+                  <circle cx="48" cy="29" r="10.5" fill="#B07A4E"/>
+                  <path d="M42 25c2-2 5-3 8-2" stroke="#fff" stroke-width="3.5" opacity=".5" stroke-linecap="round" filter="url(#fB2)" fill="none"/>
+                  <path d="M48 16c2-3 5-4 7-3" stroke="#3F9E52" stroke-width="2" stroke-linecap="round" fill="none"/>
+                  <circle cx="48" cy="17" r="4.2" fill="url(#gRed)"/>
+                  </symbol>
+                  <symbol id="fgSalad" viewBox="0 0 96 96">
+                  <ellipse cx="48" cy="85" rx="28" ry="5" fill="#12202c" opacity=".16" filter="url(#fB3)"/>
+                  <circle cx="34" cy="42" r="8" fill="url(#gGreen)"/><circle cx="48" cy="38" r="9" fill="#9FDE8F"/>
+                  <circle cx="62" cy="42" r="8" fill="url(#gGreen)"/><circle cx="41" cy="45" r="6" fill="#6FBE68"/><circle cx="55" cy="46" r="6" fill="#8BD98B"/>
+                  <circle cx="44" cy="40" r="3.6" fill="url(#gRed)"/><circle cx="58" cy="38" r="3.6" fill="url(#gRed)"/>
+                  <path d="M32 36c3-3 7-4 10-3M52 32c4-2 8-1 10 1" stroke="#B07CC6" stroke-width="2" stroke-linecap="round" fill="none" opacity=".8"/>
+                  <path d="M20 46h56c-1 15-12 26-28 26S21 61 20 46z" fill="url(#gPlate2)"/>
+                  <path d="M20 46h56" stroke="#8f9aa8" opacity=".5"/>
+                  <path d="M27 53c2 7 6 12 11 15" stroke="#fff" stroke-width="4.5" opacity=".55" stroke-linecap="round" filter="url(#fB2)" fill="none"/>
+                  </symbol>
+                  <symbol id="fgClub" viewBox="0 0 96 96">
+                  <ellipse cx="48" cy="85" rx="28" ry="5" fill="#12202c" opacity=".16" filter="url(#fB3)"/>
+                  <path d="M48 18v26" stroke="#8B5A2B" stroke-width="2" stroke-linecap="round"/>
+                  <circle cx="48" cy="16" r="4" fill="#6FBE68"/>
+                  <rect x="26" y="66" width="44" height="10" rx="5" fill="url(#gCream)" stroke="#D9A85F" stroke-opacity=".6"/>
+                  <path d="M27 60h42c1 2-1 5-3 5-2 2-5 2-7 0-2 2-5 2-7 0-2 2-5 2-7 0-2 2-5 2-7 0-2 2-5 2-7 0-3 0-5-3-4-5z" fill="url(#gGreen)"/>
+                  <rect x="28" y="54" width="40" height="7" rx="3.5" fill="#F2A2B0"/>
+                  <path d="M27 47h42l-3 6-6-3-7 4-7-4-7 4-6-3z" fill="#F3B229"/>
+                  <path d="M26 48a22 14 0 0 1 44 0z" fill="url(#gCream)" stroke="#D9A85F" stroke-opacity=".6"/>
+                  <path d="M32 42c2-3 5-5 8-6" stroke="#fff" stroke-width="3.5" opacity=".7" stroke-linecap="round" filter="url(#fB2)" fill="none"/>
+                  </symbol>
+                  <symbol id="fgCurry" viewBox="0 0 96 96">
+                  <ellipse cx="48" cy="85" rx="28" ry="5" fill="#12202c" opacity=".16" filter="url(#fB3)"/>
+                  <path d="M40 22c-2 4 2 6 0 10M50 18c-2 4 2 6 0 10" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity=".6" filter="url(#fB2)" fill="none"/>
+                  <ellipse cx="48" cy="46" rx="28" ry="6" fill="#DCE5ED"/>
+                  <ellipse cx="48" cy="45.4" rx="23.5" ry="4.6" fill="url(#gGreen)"/>
+                  <circle cx="38" cy="44.5" r="2" fill="#F1685A"/><circle cx="56" cy="45.5" r="2" fill="#F1685A"/>
+                  <ellipse cx="47" cy="43.8" rx="4" ry="2" fill="#FFF7E6" opacity=".8"/>
+                  <path d="M20 48h56c-1 15-12 26-28 26S21 63 20 48z" fill="url(#gPlate2)"/>
+                  <path d="M27 55c2 7 6 12 11 15" stroke="#fff" stroke-width="4.5" opacity=".55" stroke-linecap="round" filter="url(#fB2)" fill="none"/>
+                  </symbol>
+                  <symbol id="fgMango" viewBox="0 0 96 96">
+                  <ellipse cx="48" cy="84" rx="30" ry="5.5" fill="#12202c" opacity=".16" filter="url(#fB3)"/>
+                  <ellipse cx="48" cy="74" rx="30" ry="7.5" fill="url(#gPlate2)"/>
+                  <path d="M46 70a13 10 0 0 1 26-1c0 3-6 5-13 5s-13-1-13-4z" fill="url(#gCream)"/>
+                  <ellipse cx="59" cy="63" rx="9" ry="5" fill="#FFF9EE"/>
+                  <rect x="20" y="58" width="24" height="11" rx="5.5" fill="url(#gMango)" transform="rotate(-14 32 63)"/>
+                  <rect x="24" y="64" width="24" height="11" rx="5.5" fill="url(#gMango)" transform="rotate(-2 36 69)"/>
+                  <path d="M26 58c3-2 7-3 10-2" stroke="#fff" stroke-width="3" opacity=".55" stroke-linecap="round" filter="url(#fB2)" fill="none"/>
+                  <circle cx="62" cy="56" r="2.4" fill="#3F9E52"/>
+                  </symbol>
+                  <symbol id="fgSpring" viewBox="0 0 96 96">
+                  <ellipse cx="48" cy="85" rx="28" ry="5" fill="#12202c" opacity=".16" filter="url(#fB3)"/>
+                  <circle cx="70" cy="66" r="9" fill="url(#gRed)"/>
+                  <ellipse cx="70" cy="63.5" rx="6.5" ry="2.6" fill="#F9DAD6"/>
+                  <rect x="20" y="56" width="30" height="10" rx="5" fill="url(#gGold)" transform="rotate(-16 35 61)"/>
+                  <rect x="26" y="62" width="30" height="10" rx="5" fill="url(#gGold)" transform="rotate(-4 41 67)"/>
+                  <rect x="24" y="46" width="30" height="10" rx="5" fill="url(#gAmberG)" transform="rotate(-26 39 51)"/>
+                  <path d="M28 52c3-4 7-6 10-7" stroke="#fff" stroke-width="3" opacity=".55" stroke-linecap="round" filter="url(#fB2)" fill="none"/>
+                  </symbol>
+                  <symbol id="fgHotdog" viewBox="0 0 96 96">
+                  <ellipse cx="48" cy="83" rx="30" ry="5.5" fill="#12202c" opacity=".16" filter="url(#fB3)"/>
+                  <rect x="20" y="40" width="56" height="17" rx="8.5" fill="url(#gBunTop)"/>
+                  <path d="M16 50c0-5 4-8 9-8h46c5 0 9 3 9 8s-4 8-9 8H25c-5 0-9-3-9-8z" fill="#C3563F"/>
+                  <path d="M24 50c6-3 10 3 16 0s10 3 16 0 10 3 16 0" stroke="#F3C019" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+                  <path d="M20 56h56v4a10 10 0 0 1-10 10H30a10 10 0 0 1-10-10z" fill="url(#gGold)"/>
+                  <path d="M27 46c3-2 7-3 10-3" stroke="#fff" stroke-width="3.5" opacity=".6" stroke-linecap="round" filter="url(#fB2)" fill="none"/>
+                  </symbol>
+                  <symbol id="fgFish" viewBox="0 0 96 96">
+                  <ellipse cx="48" cy="84" rx="30" ry="5.5" fill="#12202c" opacity=".16" filter="url(#fB3)"/>
+                  <ellipse cx="48" cy="73" rx="31" ry="7.5" fill="url(#gPlate2)"/>
+                  <path d="M22 58c0-9 10-14 24-14s26 6 26 15c0 6-11 9-24 9s-26-4-26-10z" fill="url(#gGold)"/>
+                  <path d="M32 52c4-2 9-3 14-3M40 60c5 0 10 0 14-1" stroke="#C9862F" stroke-width="2" stroke-linecap="round" opacity=".55" fill="none"/>
+                  <path d="M28 52c3-3 7-4 10-5" stroke="#fff" stroke-width="3.5" opacity=".6" stroke-linecap="round" filter="url(#fB2)" fill="none"/>
+                  <circle cx="72" cy="52" r="7.5" fill="#FBE58A" stroke="#E8C33C"/>
+                  <path d="M72 46v12M66.5 49l11 6M77.5 49l-11 6" stroke="#fff" stroke-width="1.4" opacity=".9"/>
+                  </symbol>
+                  <symbol id="fgBottle" viewBox="0 0 96 96">
+                  <ellipse cx="48" cy="85" rx="18" ry="4" fill="#12202c" opacity=".16" filter="url(#fB3)"/>
+                  <rect x="41" y="14" width="14" height="9" rx="2.5" fill="#2E6E66"/>
+                  <path d="M38 30c0-4 4-7 10-7s10 3 10 7v38a8 8 0 0 1-8 8h-4a8 8 0 0 1-8-8z" fill="url(#gTeal)"/>
+                  <rect x="38" y="44" width="20" height="14" fill="#fff" opacity=".92"/>
+                  <path d="M40 51h16" stroke="#2FA79A" stroke-width="3" stroke-linecap="round"/>
+                  <path d="M42 32v34" stroke="#fff" stroke-width="3.5" opacity=".5" stroke-linecap="round" filter="url(#fB2)"/>
+                  </symbol>
                 </defs>
                 </svg>
     <!-- Service Worker Registration for Performance Caching -->
@@ -46954,7 +45497,6 @@ Waitlist (${waitlist.length} people):`;
                     <button onclick="showGolferTab('food', event)" class="card-hover metric-card cube-poster text-center group relative light-hide order-3" style="--p1:#f6e7d4;--p2:#fdf7ef">
                         <span id="foodBadge" class="absolute top-1 right-1 text-[9px] font-bold text-white bg-red-500 min-w-[18px] h-[18px] flex items-center justify-center rounded-full shadow-md z-10" style="display:none;">0</span>
                         <span id="ordersBadge" class="absolute top-1 left-1 text-[9px] font-bold text-white bg-red-500 min-w-[18px] h-[18px] flex items-center justify-center rounded-full shadow-md z-10" style="display:none;">0</span>
-                        <span class="absolute top-1 right-1 text-[9px] md:text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded z-[2]">Coming Soon</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuCloche"/></svg></div>
                         <h3 class="text-sm md:text-base font-bold text-gray-900 mb-1" data-i18n="golfer.foodorders">Food & Orders</h3>
                         <p class="text-xs md:text-sm text-gray-600 hidden sm:block" data-i18n="golfer.food.desc">Course dining & beverages</p>
@@ -48014,119 +46556,49 @@ Waitlist (${waitlist.length} people):`;
                 </div>
             </div>
 
-            <!-- Enhanced Food Ordering Tab -->
-            <div id="golfer-food" class="tab-content relative">
-                <!-- SCV3FM head -->
-                <div class="scv3fm-head">
+            <!-- FGV1 — Food & Drinks (Grab-style storefront; logic in food-fgv1.js) -->
+            <div id="golfer-food" class="tab-content relative fgv-scope">
+                <div class="fgv-head">
                     <div style="min-width:0;">
-                        <div class="scv3fm-ovl">CLUBHOUSE MENU</div>
-                        <h2 class="scv3fm-h1">Order</h2>
+                        <div class="fgv-ovl" id="fgvKitchenOvl">THE KITCHEN</div>
+                        <h2 class="fgv-h1">Food &amp; Drinks</h2>
                     </div>
-                    <div class="scv3fm-hbtns">
+                    <div class="fgv-hbtns">
                         <button data-theme-toggle onclick="ThemeMode.toggle()" class="scv3msg-iconbtn" title="Toggle Light / Dark theme">
                             <span class="material-symbols-outlined theme-toggle-icon">light_mode</span>
                         </button>
-                        <button onclick="showGolferTab('status', event)" class="scv3fm-status">
+                        <button onclick="showGolferTab('status', event)" class="fgv-stbtn">
                             <span class="material-symbols-outlined">receipt_long</span><span>Status</span>
+                        </button>
+                        <button onclick="FoodFGV1.openBasket()" class="fgv-bkt" aria-label="Basket">
+                            <span class="material-symbols-outlined">shopping_basket</span>
+                            <span id="fgvBktCount" class="n" style="display:none;">0</span>
                         </button>
                     </div>
                 </div>
-
-                <!-- Category chips -->
-                <div class="scv3fm-chips">
-                    <button onclick="filterFoodMenu('all')" class="food-category-btn scv3fm-chip on" data-category="all">All</button>
-                    <button onclick="filterFoodMenu('appetizers')" class="food-category-btn scv3fm-chip" data-category="appetizers">Starters</button>
-                    <button onclick="filterFoodMenu('mains')" class="food-category-btn scv3fm-chip" data-category="mains">Mains</button>
-                    <button onclick="filterFoodMenu('beverages')" class="food-category-btn scv3fm-chip" data-category="beverages">Drinks</button>
-                    <button onclick="filterFoodMenu('desserts')" class="food-category-btn scv3fm-chip" data-category="desserts">Desserts</button>
-                    <button onclick="filterFoodMenu('snacks')" class="food-category-btn scv3fm-chip" data-category="snacks">Snacks</button>
-                </div>
-
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-8">
-                    <!-- Dynamic Menu Items Container -->
-                    <div class="lg:col-span-2">
-                        <div id="foodMenuItems" class="scv3fm-grid"></div>
-                    </div>
-
-                    <!-- Cart -->
-                    <div class="lg:col-span-1" id="foodCartSidebar">
-                        <div class="lg:sticky lg:top-8">
-                            <div class="scv3fm-cart">
-                                <div class="scv3fm-cart-h">
-                                    <span>Your Order</span>
-                                    <span id="cartItemCount" class="scv3fm-cart-n">0</span>
-                                </div>
-                                <div id="foodCartContainer" class="scv3fm-cart-list">
-                                    <p class="scv3fm-cart-empty">Cart empty</p>
-                                </div>
-
-                                <div class="scv3fm-tot">
-                                    <div class="r"><span>SUBTOTAL</span><span id="cartSubtotal">฿0</span></div>
-                                    <div class="r"><span>SERVICE 10%</span><span id="serviceCharge">฿0</span></div>
-                                    <div class="r big"><span>TOTAL</span><span id="cartTotal">฿0</span></div>
-
-                                    <button onclick="placeOrder()" id="placeOrderBtn" class="scv3fm-place" disabled>
-                                        <span class="material-symbols-outlined">shopping_cart_checkout</span>
-                                        <span data-i18n="golfer.food.order">Place Order</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Mobile cart bar (shows when cart has items; jumps to cart) -->
-                <button onclick="document.getElementById('foodCartSidebar').scrollIntoView({behavior:'smooth'})" id="floatingCartBtn" class="lg:hidden scv3fm-cartbar" style="display:none;">
-                    <span class="material-symbols-outlined">shopping_cart</span>
-                    <span id="floatingCartBadge" class="n">0</span>
-                    <span class="lbl">VIEW CART</span>
-                    <span id="floatingCartTotal" class="tt">฿0</span>
+                <div id="fgvRoot"></div>
+                <button id="fgvPill" class="fgv-pill" style="display:none;" onclick="FoodFGV1.openBasket()">
+                    <span class="n" id="fgvPillN">0</span><span class="lbl">View basket</span><span class="tt" id="fgvPillT">฿0</span>
                 </button>
             </div>
 
-            <!-- Order Status Tab (SCV3F — real pipeline, realtime status; Refresh removed) -->
-            <div id="golfer-status" class="tab-content">
-                <div class="scv3f-head">
+            <!-- FGV1 — Order tracking (live; logic in food-fgv1.js) -->
+            <div id="golfer-status" class="tab-content fgv-scope">
+                <div class="fgv-head">
                     <div style="min-width:0;">
-                        <div class="scv3f-ovl" id="scv3fOverline">ORDER STATUS · LIVE</div>
-                        <h2 class="scv3f-h1">Food &amp; Drinks</h2>
+                        <div class="fgv-ovl">ORDER TRACKING · LIVE</div>
+                        <h2 class="fgv-h1">Your Orders</h2>
                     </div>
-                    <div class="scv3f-hbtns">
+                    <div class="fgv-hbtns">
                         <button data-theme-toggle onclick="ThemeMode.toggle()" class="scv3msg-iconbtn" title="Toggle Light / Dark theme">
                             <span class="material-symbols-outlined theme-toggle-icon">light_mode</span>
                         </button>
-                        <button onclick="showGolferTab('food', event)" class="scv3f-new">
+                        <button onclick="showGolferTab('food', event)" class="fgv-stbtn">
                             <span class="material-symbols-outlined">restaurant</span><span>Order</span>
                         </button>
                     </div>
                 </div>
-
-                <!-- Active Orders -->
-                <div class="scv3f-st">Active <span id="activeOrdersCount" class="scv3f-stc">0 active</span>
-                    <span id="activeOrdersBadge" style="display:none;"></span>
-                </div>
-                <div id="activeOrdersList" class="scv3f-list">
-                    <div class="scv3f-empty">No active orders</div>
-                </div>
-
-                <!-- Order History -->
-                <div class="scv3f-st">Recent
-                    <span id="orderHistoryBadge" style="display:none;"></span>
-                    <button onclick="clearOrderHistory()" class="scv3f-clear">CLEAR</button>
-                </div>
-                <div id="orderHistoryList" class="scv3f-list">
-                    <div class="scv3f-empty">No order history</div>
-                </div>
-
-                <!-- Quick Actions -->
-                <div class="scv3f-actions">
-                    <button onclick="showGolferTab('food', event)" class="scv3f-cta">
-                        <span class="material-symbols-outlined">restaurant</span> Order Food &amp; Drinks
-                    </button>
-                    <button onclick="contactKitchen()" class="scv3f-ghost">
-                        <span class="material-symbols-outlined">call</span> Kitchen
-                    </button>
-                </div>
+                <div id="fgvStatusRoot"></div>
             </div>
 
             <!-- 19th Hole Marketplace Tab -->

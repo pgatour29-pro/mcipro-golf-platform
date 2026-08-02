@@ -653,6 +653,7 @@
             }
             ov.style.display = 'block';
             document.documentElement.classList.add('fgv-kq-open');
+            try { if (window.ThemeMode && ThemeMode.apply) ThemeMode.apply(); } catch (e) { }
             await Promise.all([this.load(), loadMenu(), loadSettings()]);
             this.subscribe(); subscribeMenu();
             this.renderShell();
@@ -706,6 +707,8 @@
                 + '<div class="ktabs">'
                 + ['queue', 'menu', 'alerts'].map(t => '<button class="kt' + (this.tab === t ? ' on' : '') + '" onclick="KitchenQueue.setTab(\'' + t + '\')">' + t.toUpperCase() + '</button>').join('')
                 + '</div>'
+                + '<button class="kx" data-theme-toggle onclick="ThemeMode.toggle()" title="Toggle Light / Dark theme" aria-label="Theme">'
+                + '<span class="material-symbols-outlined theme-toggle-icon" style="font-size:17px;vertical-align:middle;">light_mode</span></button>'
                 + '<button class="kx" onclick="KitchenQueue.close()" aria-label="Close">✕</button></div>'
                 + '<div id="kqBody"></div></div>';
             this.renderBody();
@@ -1000,8 +1003,10 @@
     window.viewOrderHistory = window.showOrderHistory = function () { try { showGolferTab('status', null); } catch (e) { } };
 
     window.addEventListener('hashchange', function () { if (location.hash === '#kitchen') K.open(); });
+    /* login/boot code strips the hash later — remember it from script load time */
+    const KQ_BOOT = location.hash === '#kitchen';
     function boot() {
-        if (location.hash === '#kitchen') setTimeout(() => K.open(), 800);
+        if (KQ_BOOT || location.hash === '#kitchen') { setTimeout(() => K.open(), 1200); setTimeout(() => { if (!document.getElementById('kitchenQueueOverlay')) K.open(); }, 4000); }
         if (document.getElementById('fgvRoot')) render();
         if (document.getElementById('fgvStatusRoot')) renderStatus();
         updatePill();

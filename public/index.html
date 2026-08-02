@@ -52569,24 +52569,33 @@ Waitlist (${waitlist.length} people):`;
                         // notebook caddies never used in an event. The notebook is the source of truth for
                         // a caddy's course; event registrations only supplement (usage count + extras).
                         const caddyMap = {}; // "num|normCourse" -> { number, course, name, notes, count, lastDate, isFavorite }
-                        const addCaddy = (numRaw, name, courseRaw, fav, note, dateAdded) => {
+                        const addCaddy = (numRaw, name, courseRaw, fav, note, dateAdded, photo) => {
                             const num = String(parseInt(numRaw));
                             if (!num || num === 'NaN') return null;
                             const course = this.normalizeCourse(courseRaw || '') || 'Other';
                             const key = num + '|' + course;
-                            if (!caddyMap[key]) caddyMap[key] = { number: num, course, name: '', notes: '', count: 0, lastDate: '', isFavorite: false, dateAdded: '' };
+                            if (!caddyMap[key]) caddyMap[key] = { number: num, course, name: '', notes: '', count: 0, lastDate: '', isFavorite: false, dateAdded: '', photo: '' };
                             const c = caddyMap[key];
                             if (name && !c.name) c.name = name;
                             if (note && !c.notes) c.notes = note;
                             if (fav) c.isFavorite = true;
                             if (dateAdded && !c.dateAdded) c.dateAdded = dateAdded;
+                            if (photo && !c.photo) c.photo = photo;
                             return c;
                         };
+
+                        // Bare-number → photo map (notebook is the photo source) for the event pills,
+                        // which carry no course context. Same convention as every other photo surface.
+                        this._photoByNum = {};
+                        for (const e of entries) {
+                            const k = e.caddy_number ? String(parseInt(e.caddy_number)) : '';
+                            if (e.photo_url && k && k !== 'NaN' && !this._photoByNum[k]) this._photoByNum[k] = e.photo_url;
+                        }
 
                         // 1) Notebook = the golfer's saved caddies (authoritative course). ALWAYS shown.
                         for (const e of entries) {
                             if (!e.caddy_number) continue;
-                            addCaddy(e.caddy_number, e.caddy_name || '', e.course_name || '', e.rating === 5, e.notes || '', e.created_at || '');
+                            addCaddy(e.caddy_number, e.caddy_name || '', e.course_name || '', e.rating === 5, e.notes || '', e.created_at || '', e.photo_url || '');
                         }
 
                         // A number SAVED in the notebook wins — event sign-ups must NOT re-add the same
@@ -52617,7 +52626,8 @@ Waitlist (${waitlist.length} people):`;
                             lastDate: c.lastDate,
                             isFavorite: c.isFavorite,
                             notes: c.notes,
-                            dateAdded: c.dateAdded
+                            dateAdded: c.dateAdded,
+                            photo: c.photo || ''
                         })).sort((a, b) => b.count - a.count);
 
                         this.render();
@@ -52674,7 +52684,7 @@ Waitlist (${waitlist.length} people):`;
                         const time = (evt.start_time || '').substring(0, 5);
                         const course = this.normalizeCourse(evt.course_name || '');
                         const caddyNums = (ev.caddy_numbers || '').trim();
-                        const assignedPills = caddyNums ? caddyNums.split(/[,\-.\s:;/|]+/).map(n => n.trim().replace(/\D/g, '')).filter(n => n).map(n => `<span class="mcv1-evpill" onpointerdown="CaddyDragDrop.pdown(event,'${parseInt(n)}','${ev.id}')" onclick="CaddyDragDrop.unassignCaddy('${ev.id}','${parseInt(n)}')" title="Drag out or click to remove">#${parseInt(n)} ✕</span>`).join(' ') : '<span class="mcv1-noass">No caddy assigned</span>';
+                        const assignedPills = caddyNums ? caddyNums.split(/[,\-.\s:;/|]+/).map(n => n.trim().replace(/\D/g, '')).filter(n => n).map(n => { const pn = String(parseInt(n)); const pu = (this._photoByNum || {})[pn] || ''; const pi = pu ? `<img src="${pu}" style="display:inline-block;width:18px;height:18px;border-radius:5px;object-fit:cover;vertical-align:middle;margin-right:4px;" alt="">` : ''; return `<span class="mcv1-evpill" onpointerdown="CaddyDragDrop.pdown(event,'${pn}','${ev.id}')" onclick="CaddyDragDrop.unassignCaddy('${ev.id}','${pn}')" title="Drag out or click to remove">${pi}#${pn} ✕</span>`; }).join(' ') : '<span class="mcv1-noass">No caddy assigned</span>';
                         return `<div class="mcv1-ev" id="ddEvent_${ev.id}">
                             <div class="t">${evt.title || 'Event'}</div>
                             <div class="m">${course} · ${date} ${time}</div>
@@ -52741,6 +52751,8 @@ Waitlist (${waitlist.length} people):`;
                     const nameLabel = caddy.name ? ` ${caddy.name}` : '';
                     const countBadge = caddy.count > 1 ? `<span style="margin-left:3px;opacity:.8;">×${caddy.count}</span>` : '';
                     const courseArg = String(caddy.course || '').replace(/'/g, "\\'");
+                    const photoUrl = caddy.photo || (this._photoByNum || {})[caddy.number] || '';
+                    const photoImg = photoUrl ? `<img src="${photoUrl}" style="display:inline-block;width:22px;height:22px;border-radius:6px;object-fit:cover;vertical-align:middle;margin-right:5px;flex-shrink:0;" alt="">` : '';
                     // Date the caddy was added (created_at) — shown UNDER the number as a reference mark
                     let dateLabel = '';
                     if (caddy.dateAdded) { const d = new Date(caddy.dateAdded); if (!isNaN(d.getTime())) dateLabel = d.toLocaleDateString(_lvLocale(), { day: '2-digit', month: 'short', year: '2-digit' }); }
@@ -52748,7 +52760,7 @@ Waitlist (${waitlist.length} people):`;
                     return `<div class="mcv1-pill ${caddy.isFavorite ? 'fav' : ''}"
                         onpointerdown="CaddyDragDrop.pdown(event,'${caddy.number}','')"
                         title="${caddy.course} • Added ${dateLabel || '—'} • Used ${caddy.count}x${caddy.lastDate ? ' • Last: ' + caddy.lastDate : ''}">
-                        <span class="inline-flex items-center">${star}<span>#${caddy.number}</span>${nameLabel}${countBadge}<span onclick="event.stopPropagation();CaddyDragDrop.removeCaddy('${caddy.number}','${courseArg}')" class="x" title="Remove">✕</span></span>
+                        <span class="inline-flex items-center">${photoImg}${star}<span>#${caddy.number}</span>${nameLabel}${countBadge}<span onclick="event.stopPropagation();CaddyDragDrop.removeCaddy('${caddy.number}','${courseArg}')" class="x" title="Remove">✕</span></span>
                         ${dateLabel ? `<span class="pdate">${dateLabel}</span>` : ''}
                     </div>`;
                 },

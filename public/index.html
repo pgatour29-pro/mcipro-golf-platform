@@ -26751,6 +26751,22 @@
             } catch (e) { console.warn('[CaddyReg] course load failed:', e); }
         }
 
+        // Caddy numbers are per-course (every course has its own #15) — the same
+        // number can sit on several caddy_profiles rows. Pick the ONE row a claim
+        // may bind to: the registered course's row, or the only row there is.
+        // Ambiguous = null (caller creates a fresh row instead of guessing).
+        window._caddyClaimPick = function(rows, courseId) {
+            const pool = rows || [];
+            if (!pool.length) return null;
+            const scoped = courseId ? pool.filter(r => r.course_id === courseId || !r.course_id) : pool;
+            if (scoped.length === 1) return scoped[0];
+            if (courseId) {
+                const exact = scoped.filter(r => r.course_id === courseId);
+                if (exact.length === 1) return exact[0];
+            }
+            return null;
+        };
+
         // Live roster match: as they type their number, tell them whether the
         // course already has them in the system (and link on save if so)
         let _regCaddyMatchT = null;
@@ -26770,16 +26786,22 @@
                     // exact first, then ends-with (courses prefix letters, e.g. THG001);
                     // REAL roster only — mock/demo caddies are never matchable
                     let { data: rows } = await sb.from('caddy_profiles')
-                        .select('id, name, course_name, user_id')
+                        .select('id, name, course_name, course_id, user_id')
                         .ilike('caddy_number', num).eq('is_mock', false).limit(5);
                     if (!rows || !rows.length) {
                         const alt = await sb.from('caddy_profiles')
-                            .select('id, name, course_name, user_id')
+                            .select('id, name, course_name, course_id, user_id')
                             .ilike('caddy_number', '%' + num).eq('is_mock', false).limit(5);
                         rows = alt.data || [];
                     }
-                    const free = (rows || []).find(r => !r.user_id);
-                    const taken = (rows || []).find(r => r.user_id);
+                    // scope to the selected home course — #183 at Bangpra is a
+                    // different person than #183 at Pattaya CC
+                    const selCourse = document.getElementById('regCaddyCourse')?.value || '';
+                    const scoped = selCourse
+                        ? (rows || []).filter(r => r.course_id === selCourse || !r.course_id)
+                        : (rows || []);
+                    const free = scoped.find(r => !r.user_id);
+                    const taken = scoped.find(r => r.user_id);
                     if (free) {
                         out.textContent = t('careg.found') + (free.name || '#' + num) + (free.course_name ? ' · ' + free.course_name : '') + t('careg.foundlink');
                         out.className = 'text-xs text-green-600 font-medium mt-1';
@@ -26814,22 +26836,24 @@
                 const name = `${profileData.firstName || ''} ${profileData.lastName || ''}`.trim() || 'Caddy';
 
                 if (num) {
-                    // exact match first; else a SINGLE unambiguous ends-with match
-                    // (letter-prefixed rosters like THG001) — never guess between two,
-                    // and never claim a mock/demo row
+                    // exact match first; else ends-with (letter-prefixed rosters like
+                    // THG001) — never claim a mock/demo row. Numbers are per-course:
+                    // the registered course's row wins; ambiguous or wrong-course
+                    // matches fall through to a fresh row rather than guessing.
                     let { data: rows } = await sb.from('caddy_profiles')
-                        .select('id').ilike('caddy_number', num).is('user_id', null).eq('is_mock', false).limit(2);
+                        .select('id, course_id').ilike('caddy_number', num).is('user_id', null).eq('is_mock', false).limit(5);
                     if (!rows || !rows.length) {
                         const alt = await sb.from('caddy_profiles')
-                            .select('id').ilike('caddy_number', '%' + num).is('user_id', null).eq('is_mock', false).limit(2);
-                        rows = (alt.data && alt.data.length === 1) ? alt.data : [];
+                            .select('id, course_id').ilike('caddy_number', '%' + num).is('user_id', null).eq('is_mock', false).limit(5);
+                        rows = alt.data || [];
                     }
-                    if (rows && rows.length === 1) {
+                    const pick = window._caddyClaimPick(rows, courseId);
+                    if (pick) {
                         await sb.from('caddy_profiles').update({
                             user_id: uid, is_active: true,
                             languages: profileData.roleSpecific?.languages || null
-                        }).eq('id', rows[0].id);
-                        console.log('[CaddyReg] Claimed existing caddy profile', rows[0].id);
+                        }).eq('id', pick.id);
+                        console.log('[CaddyReg] Claimed existing caddy profile', pick.id);
                         return;
                     }
                 }
@@ -67470,9 +67494,15 @@ Waitlist (${waitlist.length} people):`;
                         || u?.profileData?.roleSpecific?.caddyNumber || u?.profileData?.caddy_number
                         || u?.profileData?.personalInfo?.caddyNumber || null;
                     if (num) {
-                        const { data: byNum } = await sb.from('caddy_profiles')
+                        // numbers repeat across courses (two unclaimed #183s would make
+                        // maybeSingle() error out) — fetch candidates and course-scope
+                        const home = u?.profileData?.roleSpecific?.homeClub || u?.profileData?.homeClub || null;
+                        const { data: cands } = await sb.from('caddy_profiles')
                             .select('id, caddy_number, course_id, rating, total_reviews, total_rounds, name, user_id')
-                            .eq('caddy_number', String(num)).is('user_id', null).eq('is_mock', false).maybeSingle();
+                            .eq('caddy_number', String(num)).is('user_id', null).eq('is_mock', false).limit(5);
+                        const byNum = window._caddyClaimPick
+                            ? window._caddyClaimPick(cands, home)
+                            : ((cands && cands.length === 1) ? cands[0] : null);
                         if (byNum) {
                             await sb.from('caddy_profiles').update({ user_id: userId }).eq('id', byNum.id);
                             p = byNum;

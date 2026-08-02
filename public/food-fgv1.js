@@ -70,7 +70,7 @@
         items: [], media: {}, favs: new Set(), orders: [],
         basket: JSON.parse(localStorage.getItem('fgv1_basket') || '[]'),
         prefs: JSON.parse(localStorage.getItem('fgv1_prefs') || '{}'),   // {deliver, pay, hole}
-        view: 'home', cat: null, search: '', itemOpen: null, galIdx: 0,
+        view: 'home', stack: [], cat: null, search: '', itemOpen: null, galIdx: 0,
         sheetSel: { spice: null, addons: [], qty: 1, note: '' },
         settings: null, menuLoaded: false, ordersLoaded: false,
         trackOpen: null, _menuChan: null, _ordChan: null
@@ -471,23 +471,44 @@
             + '<span class="money">' + baht(o.total) + '</span></div></div>';
     }
 
+    /* Internal back stack — home/menu are waypoints, item/basket are leaves.
+       dashboardGoBack() steps through this before popping the tab. */
+    function setView(next) {
+        if (S.view !== next && (S.view === 'home' || S.view === 'menu')) {
+            S.stack.push(S.view);
+            if (S.stack.length > 10) S.stack.shift();
+        }
+        S.view = next;
+    }
+
     /* ---------------- golfer: actions ---------------- */
     const API = {
+        canBack() { return S.view !== 'home' || S.stack.length > 0; },
+        back() {
+            let prev = null;
+            while (S.stack.length && (prev = S.stack.pop()) === S.view) prev = null;
+            if (!prev) prev = S.view !== 'home' ? 'home' : null;
+            if (!prev) return false;
+            S.view = prev;
+            if (prev !== 'item') S.itemOpen = null;
+            render();
+            return true;
+        },
         go(view, cat, search) {
-            S.view = view || 'home';
+            setView(view || 'home');
             if (cat !== undefined) S.cat = cat;
             if (search !== undefined && search !== null) S.search = search;
             if (view !== 'item') { S.itemOpen = null; }
             render();
             try { document.getElementById('golfer-food').scrollIntoView({ block: 'start' }); } catch (e) { }
         },
-        openCat(c) { S.cat = c; S.view = 'menu'; render(); },
+        openCat(c) { S.cat = c; setView('menu'); render(); },
         openItem(id) {
             const it = item(id);
             if (!it) return;
             S.itemOpen = id; S.galIdx = 0;
             S.sheetSel = { spice: Array.isArray(it.spice_levels) && it.spice_levels.length ? it.spice_levels[Math.min(1, it.spice_levels.length - 1)] : null, addons: [], qty: 1, note: '' };
-            S.view = 'item'; render();
+            setView('item'); render();
         },
         gal(i) { S.galIdx = i; render(); },
         setSpice(sp) { S.sheetSel.spice = sp; render(); },
@@ -527,7 +548,7 @@
             if (b.qty <= 0) S.basket.splice(i, 1);
             saveBasket(); render();
         },
-        openBasket() { S.view = 'basket'; render(); },
+        openBasket() { setView('basket'); render(); },
         setDeliver(d) { S.prefs.deliver = d; savePrefs(); render(); },
         setPay(p) { S.prefs.pay = p; savePrefs(); render(); },
         setHole(v) { S.prefs.hole = v; savePrefs(); },
@@ -581,7 +602,7 @@
                 S.orders.unshift(data); S.trackOpen = data.order_number;
                 subscribeFoodOrders();
                 notify('Order #' + data.order_number + ' placed — ' + baht(tot), 'success');
-                S.view = 'home';
+                S.view = 'home'; S.stack = [];
                 render(); renderStatus(); updateCubeBadges();
                 try { showGolferTab('status', null); } catch (e) { }
             } catch (e) {

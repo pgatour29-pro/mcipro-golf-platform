@@ -386,7 +386,7 @@
     <!-- Defer heavy scripts until needed -->
     <!-- REMOVED: hole-by-hole-leaderboard-enhancement.js causes mobile stack overflow -->
     <script src="golf-buddies-v2.js?v=16" defer></script>
-    <script src="food-fgv1.js?v=2" defer></script>
+    <script src="food-fgv1.js?v=3" defer></script>
     <script src="content-moderation.js?v=1" defer></script>
 
     <style>
@@ -27653,6 +27653,19 @@ Sent from Login Page`;
 
         // Dashboard back button — go to previous page/tab
         function dashboardGoBack() {
+            // FGV1 (v801): kitchen overlay sits above everything — back closes it first.
+            const _kq = document.getElementById('kitchenQueueOverlay');
+            if (_kq && _kq.style.display === 'block') {
+                try { KitchenQueue.close(); } catch (e) {}
+                return;
+            }
+            // FGV1 (v801): the food tab has internal views (home → menu → item/basket).
+            // Step back through them before popping the tab, same pattern as the
+            // inline-display overlay intercepts below.
+            const _food = document.getElementById('golfer-food');
+            if (_food && _food.classList.contains('active') && window.FoodFGV1 && FoodFGV1.canBack && FoodFGV1.canBack()) {
+                try { if (FoodFGV1.back()) return; } catch (e) {}
+            }
             // Event Day Mode is shown via inline display:block — it bypasses the .active screen
             // system, so the normal back logic below doesn't recognize it and falls through to
             // NavHistory, which popped the organizer out to the LOGIN page. Intercept here: if

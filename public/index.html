@@ -131369,10 +131369,35 @@ window.TeeSheet = {
             g.players.push(pObj); this._saveGroups(); return;
         }
         var idx=parseInt(t);
-        if(!isNaN(idx) && this.groups[idx]){ this.groups[idx].players.push(pObj); this._saveGroups(); return; }
+        if(!isNaN(idx) && this.groups[idx]){
+            // Target group already full → spill to the next group with a blank space (forward, then
+            // wrap) instead of overfilling; the ADD TO selector follows. All-full → start a new group.
+            var sz=this._groupSize||4;
+            if((this.groups[idx].players||[]).length>=sz){
+                var nx=this._nextOpenGroup(idx);
+                if(nx==null){ this.groups.push({ players:[], teeTime:this.eventTee }); nx=this.groups.length-1; }
+                this._targetGroup=nx; idx=nx;
+            }
+            this.groups[idx].players.push(pObj); this._saveGroups(); return;
+        }
         this.manualPool.push(pObj);
     },
     setTarget: function(v){ this._targetGroup = (v==='auto'||v==='pool') ? v : parseInt(v); },
+    // Next group index (after fromIdx, wrapping) that still has a blank space; null when the sheet is full.
+    _nextOpenGroup: function(fromIdx){
+        var size=this._groupSize||4, n=this.groups.length;
+        for(var k=1;k<=n;k++){ var i=((parseInt(fromIdx)||0)+k)%n; if(((this.groups[i]||{}).players||[]).length<size) return i; }
+        return null;
+    },
+    // After a slot-mode add: if that 4-ball is now complete, hop the edit cursor to the next group
+    // with a blank space so rapid entry keeps flowing (Pete 2026-08-03). Sheet full → exit edit mode.
+    _slotAdvance: function(gi){
+        gi=parseInt(gi);
+        if(((this.groups[gi]||{}).players||[]).length < (this._groupSize||4)) return;
+        var nx=this._nextOpenGroup(gi);
+        if(nx==null){ this._slotEditGroup=null; }
+        else { this._slotEditGroup=nx; this._targetGroup=nx; if(this._srch) this._srch.groupIdx=nx; }
+    },
     deleteManual: function(pid){ this.manualPool=this.manualPool.filter(function(m){ return String(m.playerId)!==String(pid); }); this.render(); },
     // Remove a REGISTERED player from the event entirely (deletes their registration) straight from the
     // unassigned pool — no trip to the registrations page. Paper/manual names fall back to deleteManual.
@@ -131500,7 +131525,7 @@ window.TeeSheet = {
         if(this._srch.active>=this._srch.list.length) this._srch.active=this._srch.list.length-1;
         // Fresh blank input for the next slot — _slotDraft would otherwise re-render the previous
         // player's typed letters into it (the other pick paths _slotPick/_slotEnter already clear it).
-        if(mode==='slot'){ this._slotEditGroup=gi; this._slotDraft=''; }
+        if(mode==='slot'){ this._slotEditGroup=gi; this._slotDraft=''; this._slotAdvance(gi); }
         this.render();
         if(this._srch.list.length){ this._renderSearchPanel(); } else { this._closeSearch(); }
         if(mode==='slot'){ var si=document.getElementById('ts2SlotInput'); if(si) si.focus(); }
@@ -131549,6 +131574,7 @@ window.TeeSheet = {
         var taken=false; this.regs.forEach(function(r){ if(String(r.playerId)===String(p.id)) taken=true; }); this.manualPool.forEach(function(m){ if(String(m.playerId)===String(p.id)) taken=true; }); this.groups.forEach(function(g){ (g.players||[]).forEach(function(x){ if(String(x.playerId)===String(p.id)) taken=true; }); });
         if(!taken){ this._routePlayer({ playerId:p.id, playerName:p.name||'Unknown', handicap:(p.handicap==null?null:p.handicap), _added:true }); }
         this._slotEditGroup=groupIdx; this._slotSuggest=[]; this._slotDraft='';   // stay in edit mode → next open spot becomes the input
+        this._slotAdvance(groupIdx);   // group complete → cursor hops to the next blank space
         this.render();
         setTimeout(function(){ var el=document.getElementById('ts2SlotInput'); if(el) el.focus(); }, 0);
     },
@@ -131571,6 +131597,7 @@ window.TeeSheet = {
         var pid=pObj.playerId, taken=false; this.groups.forEach(function(g){ (g.players||[]).forEach(function(x){ if(String(x.playerId)===String(pid)) taken=true; }); });
         if(!taken){ this._routePlayer(pObj); }
         this._slotEditGroup=groupIdx; this._slotSuggest=[]; this._slotDraft='';
+        this._slotAdvance(groupIdx);   // group complete → cursor hops to the next blank space
         this.render();
         setTimeout(function(){ var el2=document.getElementById('ts2SlotInput'); if(el2) el2.focus(); }, 0);
     },

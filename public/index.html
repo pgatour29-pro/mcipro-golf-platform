@@ -83915,26 +83915,33 @@ class LiveScorecardSystem {
             var total = this.getPlayerTotal(p.id);
             var pos = positionMap[p.id] || '-';
 
-            // Update score number
+            // Update score number — is-empty must track the score or the ghost CSS
+            // (#cbd5e1/!important light, #59636E dark) keeps the digit invisible until
+            // the next full renderHole. Inline colors must stay CLEAR: theme CSS owns
+            // the color, and a forced #0f172a is unreadable on the dark-theme card.
             var scoreEl = card.querySelector('.sc-player-score');
             if (scoreEl) {
                 scoreEl.textContent = pScore || '–';
-                scoreEl.style.color = pScore ? '#0f172a' : 'rgba(100,116,139,0.55)';
-                scoreEl.style.textShadow = pScore ? '0 0 3px rgba(255,255,255,0.95), 0 0 6px rgba(255,255,255,0.55)' : 'none';
+                scoreEl.classList.toggle('is-empty', !pScore);
+                scoreEl.style.color = '';
+                scoreEl.style.textShadow = '';
             }
 
-            // Update total
-            var totalEl = card.querySelector('.sc-player-total');
-            if (totalEl) {
-                totalEl.innerHTML = total !== 0 ? '<span style="color:rgba(255,255,255,0.9);font-weight:600;font-size:9px;">(' + (total > 0 && isStableford ? '+' : '') + total + ')</span>' : '';
+            // Update points line (same content renderHole emits into .scv3-pc-pts)
+            var ptsEl = card.querySelector('.scv3-pc-pts');
+            if (ptsEl) {
+                ptsEl.innerHTML = total !== 0 ? ((total > 0 && isStableford ? '+' : '') + total + ' PTS') : '&nbsp;';
             }
 
-            // Update position badge
-            var badgeEl = card.querySelector('span[style*="border-radius:50%"]');
-            if (badgeEl) {
-                badgeEl.textContent = pos;
-                var badgeColors = { 1: 'background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#422006;box-shadow:0 0 6px rgba(251,191,36,0.5);', 2: 'background:linear-gradient(135deg,#e2e8f0,#94a3b8);color:#1e293b;box-shadow:0 0 6px rgba(148,163,184,0.4);', 3: 'background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 0 6px rgba(217,119,6,0.4);' };
-                badgeEl.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;font-size:9px;font-weight:700;line-height:1;flex-shrink:0;' + (badgeColors[pos] || 'background:rgba(255,255,255,0.25);color:#ffffff;');
+            // Update position badge — solid fills + ordinal text, mirroring renderHole
+            // (gradient badges were rejected: washed out in sunlight, Pete 2026-07-09)
+            var posEl = card.querySelector('.scv3-pc-pos');
+            if (posEl) {
+                var ordinals = { 1: '1ST', 2: '2ND', 3: '3RD' };
+                var posLabel = typeof pos === 'number' ? (ordinals[pos] || pos + 'TH') : pos;
+                var solidBadgeColors = { 1: 'background:#facc15;color:#1c1400;', 2: 'background:#e5e7eb;color:#111827;', 3: 'background:#fb923c;color:#301000;' };
+                var badgeStyle = solidBadgeColors[pos] || 'background:#3f4c5c;color:#ffffff;';
+                posEl.innerHTML = '<span style="display:inline-flex;align-items:center;justify-content:center;height:16px;padding:0 6px;border-radius:9px;font-size:9px;font-weight:800;letter-spacing:0.04em;line-height:1;flex-shrink:0;border:1px solid rgba(0,0,0,0.3);box-shadow:0 1px 3px rgba(0,0,0,0.45);' + badgeStyle + '">' + posLabel + '</span>';
             }
         }
     }

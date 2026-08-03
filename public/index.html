@@ -7763,7 +7763,7 @@
                     'mountain_shadow': 'Mountain Shadow Golf Club',
                     'pattana': 'Pattana Golf Club & Resort',
                     'pattavia': 'Pattavia Century Golf Club',
-                    'pattaya_county': 'Pattaya CC',
+                    'pattaya_county': 'Pattaya Country Club',
                     'phoenix': 'Phoenix Gold Golf & Country Club',
                     'laem_chabang': 'Laem Chabang International CC',
                     'pleasant_valley': 'Pleasant Valley Country Club',
@@ -96438,202 +96438,152 @@ document.addEventListener('DOMContentLoaded', async function() {
         },
 
         createModal() {
-            const html = `
-            <div id="roundPostScoreModal" class="fixed inset-0 bg-black/50 z-[9999] flex items-end sm:items-center justify-center" style="display:none" onclick="if(event.target===this)RoundPostScore.closeModal()">
-                <div class="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl">
-                    <!-- Header -->
-                    <div class="bg-gradient-to-r from-green-600 to-green-700 text-white px-4 py-3 flex items-center justify-between flex-shrink-0">
-                        <div class="flex items-center gap-2">
-                            <span class="material-symbols-outlined">edit_note</span>
-                            <h2 class="text-base font-bold">Post Score</h2>
-                        </div>
-                        <button onclick="RoundPostScore.closeModal()" class="text-white/80 hover:text-white p-1">
-                            <span class="material-symbols-outlined">close</span>
-                        </button>
+            // RPSV2 (v813): fully self-contained styles — NO Tailwind classes for structure.
+            // The PWA can load index.html from SW cache while cdn.tailwindcss.com fails
+            // (cross-origin, not SW-cached); Tailwind-classed modals then render as an
+            // unpositioned horizontal strip with the submit button off-screen. Everything
+            // this modal needs ships in the scoped <style> below. Keep all element ids —
+            // init/updateCalcs/submit target them.
+            const holeCells = (from, to, prefix, cls) => {
+                let out = '';
+                for (let i = from; i <= to; i++) out += `<td id="${prefix}${i}" class="${cls}">-</td>`;
+                return out;
+            };
+            const scoreCells = (from, to) => {
+                let out = '';
+                for (let i = from; i <= to; i++) out += `<td><input type="number" id="rps${i}" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(${i},this)"></td>`;
+                return out;
+            };
+            const headCells = (from, to) => {
+                let out = '';
+                for (let i = from; i <= to; i++) out += `<th>${i}</th>`;
+                return out;
+            };
+            const nineTable = (title, titleColor, from, to, sumTh, parSum, grossSum, netSum, ptsSum, accent) => `
+                <div class="rpsv2-nine">
+                    <div class="rpsv2-ninehead" style="color:${titleColor}">${title}</div>
+                    <div class="rpsv2-scroll">
+                        <table class="rpsv2-t">
+                            <thead><tr style="background:${accent}">
+                                <th>Hole</th>${headCells(from, to)}<th class="rpsv2-sum">${sumTh}</th>
+                            </tr></thead>
+                            <tbody>
+                                <tr><td class="rpsv2-rl">Par</td>${holeCells(from, to, 'rpP', 'rpsv2-par')}<td id="${parSum}" class="rpsv2-sum">-</td></tr>
+                                <tr><td class="rpsv2-rl rpsv2-si">SI</td>${holeCells(from, to, 'rpS', 'rpsv2-sicell')}<td class="rpsv2-sum"></td></tr>
+                                <tr><td class="rpsv2-rl rpsv2-sc">Score</td>${scoreCells(from, to)}<td id="${grossSum}" class="rpsv2-sum rpsv2-bold">-</td></tr>
+                                <tr><td class="rpsv2-rl rpsv2-net">Net</td>${holeCells(from, to, 'rpN', 'rpsv2-netcell')}<td id="${netSum}" class="rpsv2-sum rpsv2-netsum">-</td></tr>
+                                <tr><td class="rpsv2-rl rpsv2-pts">Pts</td>${holeCells(from, to, 'rpT', 'rpsv2-ptscell')}<td id="${ptsSum}" class="rpsv2-sum rpsv2-ptssum">-</td></tr>
+                            </tbody>
+                        </table>
                     </div>
-
-                    <!-- Body -->
-                    <div class="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-                        <!-- Course -->
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Course</label>
-                            <select id="rpsCourseSel" class="w-full rounded-lg border px-2 py-2 text-sm" onchange="RoundPostScore.onCourseChanged()"></select>
-                            <p class="text-[10px] text-amber-700 mt-1">Can't find your course? <button onclick="OCRCourseCreator.openModal()" class="font-semibold underline">Quick Add</button></p>
-                        </div>
-
-                        <!-- Date + Format row -->
-                        <div class="grid grid-cols-2 gap-2">
+                </div>`;
+            const html = `
+            <div id="roundPostScoreModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:99999" onclick="if(event.target===this)RoundPostScore.closeModal()">
+                <style>
+                #roundPostScoreModal{align-items:flex-end;justify-content:center}
+                #roundPostScoreModal .hidden{display:none!important}
+                #roundPostScoreModal .rpsv2-card{background:#fff;width:100%;max-height:92vh;max-height:92dvh;border-radius:18px 18px 0 0;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 -8px 40px rgba(0,0,0,0.3)}
+                @media(min-width:640px){#roundPostScoreModal{align-items:center}#roundPostScoreModal .rpsv2-card{max-width:520px;border-radius:18px}}
+                #roundPostScoreModal .rpsv2-head{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+                #roundPostScoreModal .rpsv2-head h2{margin:0;font-size:16px;font-weight:800;display:flex;align-items:center;gap:8px}
+                #roundPostScoreModal .rpsv2-x{background:none;border:none;color:rgba(255,255,255,0.85);padding:4px;cursor:pointer;line-height:1}
+                #roundPostScoreModal .rpsv2-body{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px 16px}
+                #roundPostScoreModal .rpsv2-lbl{display:block;font-size:12px;font-weight:600;color:#374151;margin:10px 0 4px}
+                #roundPostScoreModal .rpsv2-in{width:100%;border:1px solid #d1d5db;border-radius:8px;padding:9px 10px;font-size:14px;color:#111827;background:#fff;box-sizing:border-box;-webkit-appearance:none;appearance:none;min-height:40px}
+                #roundPostScoreModal select.rpsv2-in{background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='2' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+                #roundPostScoreModal .rpsv2-two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+                #roundPostScoreModal .rpsv2-hint{font-size:11px;color:#b45309;margin:4px 0 0}
+                #roundPostScoreModal .rpsv2-hint button{background:none;border:none;color:#b45309;font-weight:700;text-decoration:underline;font-size:11px;padding:0;cursor:pointer}
+                #roundPostScoreModal .rpsv2-nine{margin-top:12px}
+                #roundPostScoreModal .rpsv2-ninehead{font-size:12px;font-weight:800;margin-bottom:4px}
+                #roundPostScoreModal .rpsv2-scroll{overflow-x:auto;margin:0 -16px;padding:0 16px}
+                #roundPostScoreModal .rpsv2-t{width:100%;min-width:360px;border-collapse:collapse;font-size:11px;color:#111827}
+                #roundPostScoreModal .rpsv2-t th,#roundPostScoreModal .rpsv2-t td{padding:3px 1px;text-align:center;font-weight:400}
+                #roundPostScoreModal .rpsv2-t thead th{font-weight:700;padding:5px 1px}
+                #roundPostScoreModal .rpsv2-t th:first-child,#roundPostScoreModal .rpsv2-t td:first-child{text-align:left;width:36px;padding-left:2px;white-space:nowrap}
+                #roundPostScoreModal .rpsv2-t input{width:100%;min-width:28px;text-align:center;border:1px solid #cbd5e1;border-radius:5px;padding:5px 0;font-size:14px;font-weight:600;color:#111827;background:#fff;box-sizing:border-box;-moz-appearance:textfield}
+                #roundPostScoreModal .rpsv2-t input::-webkit-outer-spin-button,#roundPostScoreModal .rpsv2-t input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+                #roundPostScoreModal .rpsv2-rl{font-weight:600;color:#6b7280}
+                #roundPostScoreModal .rpsv2-si{color:#94a3b8}
+                #roundPostScoreModal .rpsv2-sc{color:#111827}
+                #roundPostScoreModal .rpsv2-net{color:#2563eb}
+                #roundPostScoreModal .rpsv2-pts{color:#b45309}
+                #roundPostScoreModal .rpsv2-par{color:#6b7280}
+                #roundPostScoreModal .rpsv2-sicell{color:#94a3b8}
+                #roundPostScoreModal .rpsv2-netcell{color:#2563eb}
+                #roundPostScoreModal .rpsv2-ptscell{color:#b45309}
+                #roundPostScoreModal .rpsv2-sum{font-weight:800;background:#f1f5f9;min-width:26px}
+                #roundPostScoreModal .rpsv2-bold{font-weight:800}
+                #roundPostScoreModal .rpsv2-netsum{color:#1d4ed8}
+                #roundPostScoreModal .rpsv2-ptssum{color:#b45309}
+                #roundPostScoreModal .rpsv2-totals{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-top:12px;display:grid;grid-template-columns:1fr 1fr 1fr;text-align:center;gap:8px}
+                #roundPostScoreModal .rpsv2-totals p{margin:0}
+                #roundPostScoreModal .rpsv2-tlabel{font-size:10px;color:#64748b}
+                #roundPostScoreModal .rpsv2-tval{font-size:19px;font-weight:800;color:#111827}
+                #roundPostScoreModal .rpsv2-empty{text-align:center;padding:26px 0;color:#94a3b8;font-size:13px}
+                #roundPostScoreModal .rpsv2-foot{background:linear-gradient(135deg,#16a34a,#15803d);padding:10px 16px calc(12px + env(safe-area-inset-bottom));flex-shrink:0;box-shadow:0 -4px 20px rgba(0,0,0,0.15)}
+                #roundPostScoreModal .rpsv2-footsum{display:flex;justify-content:space-between;color:rgba(255,255,255,0.9);font-size:12px;margin:0 2px 8px}
+                #roundPostScoreModal .rpsv2-sub{width:100%;padding:14px;background:#fff;color:#15803d;border:none;border-radius:12px;font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,0.2)}
+                #roundPostScoreModal .rpsv2-sub:active{transform:scale(0.97)}
+                </style>
+                <div class="rpsv2-card">
+                    <div class="rpsv2-head">
+                        <h2><span class="material-symbols-outlined">edit_note</span>Post Score</h2>
+                        <button class="rpsv2-x" onclick="RoundPostScore.closeModal()"><span class="material-symbols-outlined">close</span></button>
+                    </div>
+                    <div class="rpsv2-body">
+                        <label class="rpsv2-lbl" style="margin-top:0">Course</label>
+                        <select id="rpsCourseSel" class="rpsv2-in" onchange="RoundPostScore.onCourseChanged()"></select>
+                        <p class="rpsv2-hint">Can't find your course? <button onclick="OCRCourseCreator.openModal()">Quick Add</button></p>
+                        <div class="rpsv2-two">
                             <div>
-                                <label class="block text-xs font-medium text-gray-700 mb-1">Date</label>
-                                <input type="date" id="rpsDate" class="w-full rounded-lg border px-2 py-2 text-sm">
+                                <label class="rpsv2-lbl">Date</label>
+                                <input type="date" id="rpsDate" class="rpsv2-in">
                             </div>
                             <div>
-                                <label class="block text-xs font-medium text-gray-700 mb-1">Format</label>
-                                <select id="rpsFormat" class="w-full rounded-lg border px-2 py-2 text-sm">
+                                <label class="rpsv2-lbl">Format</label>
+                                <select id="rpsFormat" class="rpsv2-in">
                                     <option value="stableford" data-i18n="organizer.event.format.stableford">Stableford</option>
                                     <option value="strokeplay">Stroke Play</option>
                                 </select>
                             </div>
                         </div>
-
-                        <!-- Tee + Handicap row -->
-                        <div class="grid grid-cols-2 gap-2">
+                        <div class="rpsv2-two">
                             <div>
-                                <label class="block text-xs font-medium text-gray-700 mb-1">Tee</label>
-                                <select id="rpsTee" class="w-full rounded-lg border px-2 py-2 text-sm" onchange="RoundPostScore.onCourseChanged()">
-                                    <option value="white"><span class="material-symbols-outlined" style="font-size:inherit;vertical-align:middle;line-height:1;">circle</span> White</option>
+                                <label class="rpsv2-lbl">Tee</label>
+                                <select id="rpsTee" class="rpsv2-in" onchange="RoundPostScore.onCourseChanged()">
+                                    <option value="white">White</option>
                                     <option value="yellow">Yellow</option>
                                     <option value="red">Red</option>
-                                    <option value="blue"><span class="material-symbols-outlined text-blue-500" style="font-size:inherit;vertical-align:middle;line-height:1;">circle</span> Blue</option>
+                                    <option value="blue">Blue</option>
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-xs font-medium text-gray-700 mb-1">Handicap</label>
-                                <input type="number" id="rpsHandicap" class="w-full rounded-lg border px-2 py-2 text-sm" min="0" max="54" step="0.1" oninput="RoundPostScore.updateCalcs()">
+                                <label class="rpsv2-lbl">Handicap</label>
+                                <input type="number" id="rpsHandicap" class="rpsv2-in" min="0" max="54" step="0.1" oninput="RoundPostScore.updateCalcs()">
                             </div>
                         </div>
-
-                        <!-- Score Grid -->
                         <div id="rpsGrid" class="hidden">
-                            <!-- Front 9 -->
-                            <div class="mb-2">
-                                <div class="text-xs font-bold text-green-700 mb-1">Front 9</div>
-                                <div class="overflow-x-auto -mx-4 px-4">
-                                    <table class="w-full text-[11px] border-collapse min-w-[340px]">
-                                        <thead><tr class="bg-green-50">
-                                            <th class="px-1 py-1 text-left w-10">Hole</th>
-                                            <th class="px-0.5 py-1 text-center">1</th><th class="px-0.5 py-1 text-center">2</th><th class="px-0.5 py-1 text-center">3</th>
-                                            <th class="px-0.5 py-1 text-center">4</th><th class="px-0.5 py-1 text-center">5</th><th class="px-0.5 py-1 text-center">6</th>
-                                            <th class="px-0.5 py-1 text-center">7</th><th class="px-0.5 py-1 text-center">8</th><th class="px-0.5 py-1 text-center">9</th>
-                                            <th class="px-1 py-1 text-center font-bold bg-green-100">Out</th>
-                                        </tr></thead>
-                                        <tbody>
-                                            <tr><td class="px-1 py-0.5 text-gray-500">Par</td>
-                                                <td id="rpP1" class="text-center text-gray-400">-</td><td id="rpP2" class="text-center text-gray-400">-</td><td id="rpP3" class="text-center text-gray-400">-</td>
-                                                <td id="rpP4" class="text-center text-gray-400">-</td><td id="rpP5" class="text-center text-gray-400">-</td><td id="rpP6" class="text-center text-gray-400">-</td>
-                                                <td id="rpP7" class="text-center text-gray-400">-</td><td id="rpP8" class="text-center text-gray-400">-</td><td id="rpP9" class="text-center text-gray-400">-</td>
-                                                <td id="rpPO" class="text-center font-bold bg-green-50">-</td>
-                                            </tr>
-                                            <tr><td class="px-1 py-0.5 text-gray-400">SI</td>
-                                                <td id="rpS1" class="text-center text-gray-300">-</td><td id="rpS2" class="text-center text-gray-300">-</td><td id="rpS3" class="text-center text-gray-300">-</td>
-                                                <td id="rpS4" class="text-center text-gray-300">-</td><td id="rpS5" class="text-center text-gray-300">-</td><td id="rpS6" class="text-center text-gray-300">-</td>
-                                                <td id="rpS7" class="text-center text-gray-300">-</td><td id="rpS8" class="text-center text-gray-300">-</td><td id="rpS9" class="text-center text-gray-300">-</td>
-                                                <td class="bg-green-50"></td>
-                                            </tr>
-                                            <tr class="bg-white"><td class="px-1 py-0.5 font-semibold">Score</td>
-                                                <td class="px-0.5"><input type="number" id="rps1" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(1,this)"></td>
-                                                <td class="px-0.5"><input type="number" id="rps2" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(2,this)"></td>
-                                                <td class="px-0.5"><input type="number" id="rps3" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(3,this)"></td>
-                                                <td class="px-0.5"><input type="number" id="rps4" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(4,this)"></td>
-                                                <td class="px-0.5"><input type="number" id="rps5" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(5,this)"></td>
-                                                <td class="px-0.5"><input type="number" id="rps6" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(6,this)"></td>
-                                                <td class="px-0.5"><input type="number" id="rps7" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(7,this)"></td>
-                                                <td class="px-0.5"><input type="number" id="rps8" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(8,this)"></td>
-                                                <td class="px-0.5"><input type="number" id="rps9" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(9,this)"></td>
-                                                <td id="rpsGO" class="text-center font-bold bg-green-50">-</td>
-                                            </tr>
-                                            <tr><td class="px-1 py-0.5 text-blue-600">Net</td>
-                                                <td id="rpN1" class="text-center text-blue-500">-</td><td id="rpN2" class="text-center text-blue-500">-</td><td id="rpN3" class="text-center text-blue-500">-</td>
-                                                <td id="rpN4" class="text-center text-blue-500">-</td><td id="rpN5" class="text-center text-blue-500">-</td><td id="rpN6" class="text-center text-blue-500">-</td>
-                                                <td id="rpN7" class="text-center text-blue-500">-</td><td id="rpN8" class="text-center text-blue-500">-</td><td id="rpN9" class="text-center text-blue-500">-</td>
-                                                <td id="rpNO" class="text-center font-bold text-blue-700 bg-green-50">-</td>
-                                            </tr>
-                                            <tr><td class="px-1 py-0.5 text-amber-600">Pts</td>
-                                                <td id="rpT1" class="text-center text-amber-500">-</td><td id="rpT2" class="text-center text-amber-500">-</td><td id="rpT3" class="text-center text-amber-500">-</td>
-                                                <td id="rpT4" class="text-center text-amber-500">-</td><td id="rpT5" class="text-center text-amber-500">-</td><td id="rpT6" class="text-center text-amber-500">-</td>
-                                                <td id="rpT7" class="text-center text-amber-500">-</td><td id="rpT8" class="text-center text-amber-500">-</td><td id="rpT9" class="text-center text-amber-500">-</td>
-                                                <td id="rpTO" class="text-center font-bold text-amber-700 bg-green-50">-</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            <!-- Back 9 -->
-                            <div class="mb-2">
-                                <div class="text-xs font-bold text-orange-700 mb-1">Back 9</div>
-                                <div class="overflow-x-auto -mx-4 px-4">
-                                    <table class="w-full text-[11px] border-collapse min-w-[340px]">
-                                        <thead><tr class="bg-orange-50">
-                                            <th class="px-1 py-1 text-left w-10">Hole</th>
-                                            <th class="px-0.5 py-1 text-center">10</th><th class="px-0.5 py-1 text-center">11</th><th class="px-0.5 py-1 text-center">12</th>
-                                            <th class="px-0.5 py-1 text-center">13</th><th class="px-0.5 py-1 text-center">14</th><th class="px-0.5 py-1 text-center">15</th>
-                                            <th class="px-0.5 py-1 text-center">16</th><th class="px-0.5 py-1 text-center">17</th><th class="px-0.5 py-1 text-center">18</th>
-                                            <th class="px-1 py-1 text-center font-bold bg-orange-100">In</th>
-                                        </tr></thead>
-                                        <tbody>
-                                            <tr><td class="px-1 py-0.5 text-gray-500">Par</td>
-                                                <td id="rpP10" class="text-center text-gray-400">-</td><td id="rpP11" class="text-center text-gray-400">-</td><td id="rpP12" class="text-center text-gray-400">-</td>
-                                                <td id="rpP13" class="text-center text-gray-400">-</td><td id="rpP14" class="text-center text-gray-400">-</td><td id="rpP15" class="text-center text-gray-400">-</td>
-                                                <td id="rpP16" class="text-center text-gray-400">-</td><td id="rpP17" class="text-center text-gray-400">-</td><td id="rpP18" class="text-center text-gray-400">-</td>
-                                                <td id="rpPI" class="text-center font-bold bg-orange-50">-</td>
-                                            </tr>
-                                            <tr><td class="px-1 py-0.5 text-gray-400">SI</td>
-                                                <td id="rpS10" class="text-center text-gray-300">-</td><td id="rpS11" class="text-center text-gray-300">-</td><td id="rpS12" class="text-center text-gray-300">-</td>
-                                                <td id="rpS13" class="text-center text-gray-300">-</td><td id="rpS14" class="text-center text-gray-300">-</td><td id="rpS15" class="text-center text-gray-300">-</td>
-                                                <td id="rpS16" class="text-center text-gray-300">-</td><td id="rpS17" class="text-center text-gray-300">-</td><td id="rpS18" class="text-center text-gray-300">-</td>
-                                                <td class="bg-orange-50"></td>
-                                            </tr>
-                                            <tr class="bg-white"><td class="px-1 py-0.5 font-semibold">Score</td>
-                                                <td class="px-0.5"><input type="number" id="rps10" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(10,this)"></td>
-                                                <td class="px-0.5"><input type="number" id="rps11" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(11,this)"></td>
-                                                <td class="px-0.5"><input type="number" id="rps12" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(12,this)"></td>
-                                                <td class="px-0.5"><input type="number" id="rps13" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(13,this)"></td>
-                                                <td class="px-0.5"><input type="number" id="rps14" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(14,this)"></td>
-                                                <td class="px-0.5"><input type="number" id="rps15" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(15,this)"></td>
-                                                <td class="px-0.5"><input type="number" id="rps16" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(16,this)"></td>
-                                                <td class="px-0.5"><input type="number" id="rps17" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(17,this)"></td>
-                                                <td class="px-0.5"><input type="number" id="rps18" class="w-full text-center border rounded text-sm py-0.5" min="1" max="15" inputmode="numeric" oninput="RoundPostScore.handleScoreInput(18,this)"></td>
-                                                <td id="rpsGI" class="text-center font-bold bg-orange-50">-</td>
-                                            </tr>
-                                            <tr><td class="px-1 py-0.5 text-blue-600">Net</td>
-                                                <td id="rpN10" class="text-center text-blue-500">-</td><td id="rpN11" class="text-center text-blue-500">-</td><td id="rpN12" class="text-center text-blue-500">-</td>
-                                                <td id="rpN13" class="text-center text-blue-500">-</td><td id="rpN14" class="text-center text-blue-500">-</td><td id="rpN15" class="text-center text-blue-500">-</td>
-                                                <td id="rpN16" class="text-center text-blue-500">-</td><td id="rpN17" class="text-center text-blue-500">-</td><td id="rpN18" class="text-center text-blue-500">-</td>
-                                                <td id="rpNI" class="text-center font-bold text-blue-700 bg-orange-50">-</td>
-                                            </tr>
-                                            <tr><td class="px-1 py-0.5 text-amber-600">Pts</td>
-                                                <td id="rpT10" class="text-center text-amber-500">-</td><td id="rpT11" class="text-center text-amber-500">-</td><td id="rpT12" class="text-center text-amber-500">-</td>
-                                                <td id="rpT13" class="text-center text-amber-500">-</td><td id="rpT14" class="text-center text-amber-500">-</td><td id="rpT15" class="text-center text-amber-500">-</td>
-                                                <td id="rpT16" class="text-center text-amber-500">-</td><td id="rpT17" class="text-center text-amber-500">-</td><td id="rpT18" class="text-center text-amber-500">-</td>
-                                                <td id="rpTI" class="text-center font-bold text-amber-700 bg-orange-50">-</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            <!-- Totals -->
-                            <div class="bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg p-3">
-                                <div class="grid grid-cols-3 gap-3 text-center">
-                                    <div>
-                                        <p class="text-[10px] text-gray-500">Gross</p>
-                                        <p id="rpsTG" class="text-lg font-bold text-gray-900">-</p>
-                                    </div>
-                                    <div>
-                                        <p class="text-[10px] text-gray-500">Net</p>
-                                        <p id="rpsTN" class="text-lg font-bold text-blue-700">-</p>
-                                    </div>
-                                    <div>
-                                        <p class="text-[10px] text-gray-500">Stableford</p>
-                                        <p id="rpsTP" class="text-lg font-bold text-amber-600">-</p>
-                                    </div>
-                                </div>
+                            ${nineTable('Front 9', '#15803d', 1, 9, 'Out', 'rpPO', 'rpsGO', 'rpNO', 'rpTO', '#f0fdf4')}
+                            ${nineTable('Back 9', '#c2410c', 10, 18, 'In', 'rpPI', 'rpsGI', 'rpNI', 'rpTI', '#fff7ed')}
+                            <div class="rpsv2-totals">
+                                <div><p class="rpsv2-tlabel">Gross</p><p id="rpsTG" class="rpsv2-tval">-</p></div>
+                                <div><p class="rpsv2-tlabel">Net</p><p id="rpsTN" class="rpsv2-tval" style="color:#1d4ed8">-</p></div>
+                                <div><p class="rpsv2-tlabel">Stableford</p><p id="rpsTP" class="rpsv2-tval" style="color:#b45309">-</p></div>
                             </div>
                         </div>
-                        <!-- Empty state -->
-                        <div id="rpsEmpty" class="text-center py-6 text-gray-400">
-                            <span class="material-symbols-outlined text-3xl mb-1">scoreboard</span>
-                            <p class="text-sm">Select a course to enter scores</p>
+                        <div id="rpsEmpty" class="rpsv2-empty">
+                            <span class="material-symbols-outlined" style="font-size:30px;display:block;margin-bottom:4px">scoreboard</span>
+                            <p style="margin:0">Select a course to enter scores</p>
                         </div>
                     </div>
-
-                    <!-- Footer -->
-                    <div class="px-4 py-3 border-t flex-shrink-0" style="background: linear-gradient(135deg, #16a34a, #15803d); box-shadow: 0 -4px 20px rgba(0,0,0,0.15);">
-                        <div id="rpsSubmitSummary" class="flex justify-between text-white text-xs mb-2 px-1 opacity-80">
+                    <div class="rpsv2-foot">
+                        <div id="rpsSubmitSummary" class="rpsv2-footsum">
                             <span>Gross: <b id="rpsFootGross">-</b></span>
                             <span>Net: <b id="rpsFootNet">-</b></span>
                             <span>Stableford: <b id="rpsFootPts">-</b></span>
                         </div>
-                        <button onclick="RoundPostScore.submit()" class="w-full py-3.5 bg-white text-green-700 rounded-xl font-bold text-base flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-transform">
+                        <button class="rpsv2-sub" onclick="RoundPostScore.submit()">
                             <span class="material-symbols-outlined">check_circle</span>
                             Submit Scorecard
                         </button>
@@ -96816,7 +96766,10 @@ document.addEventListener('DOMContentLoaded', async function() {
                 LoadingManager.show('Saving...');
                 const user = window.AppState?.currentUser;
                 const scId = `rps_${Date.now()}_${Math.random().toString(36).substr(2,9)}`;
-                const cName = document.getElementById('rpsCourseSel').selectedOptions[0]?.textContent || courseId;
+                // Canonical full course name — dropdown labels are short ("Pattaya CC") and
+                // community surfaces group rounds by course_name string, so drift splits boards.
+                const cName = (window.scorecardProfileLoader?.getCourseDisplayName?.(courseId))
+                    || document.getElementById('rpsCourseSel').selectedOptions[0]?.textContent || courseId;
                 const tG = scores.reduce((s,h)=>s+h.gross_score,0);
                 const tN = scores.reduce((s,h)=>s+h.net_score,0);
                 const tS = scores.reduce((s,h)=>s+h.stableford,0);
@@ -96826,7 +96779,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     id:scId, player_id:user?.lineUserId||user?.uniqueId||'anonymous', player_name:user?.name||user?.displayName||'Unknown',
                     handicap, playing_handicap:Math.round(handicap), course_id:courseId, course_name:cName, tee_marker:tee,
                     scoring_format:format, status:'completed', started_at:pd.toISOString(), completed_at:pd.toISOString(),
-                    total_gross:tG, total_net:tN, total_stableford:tS
+                    total_gross:tG, total_net:tN
                 });
                 if (e1) throw e1;
                 const { error: e2 } = await window.SupabaseDB.client.from('scores').insert(
@@ -96834,14 +96787,17 @@ document.addEventListener('DOMContentLoaded', async function() {
                 );
                 if (e2) throw e2;
                 // Also save to rounds table for round history display
-                await window.SupabaseDB.client.from('rounds').insert({
+                const { error: e3 } = await window.SupabaseDB.client.from('rounds').insert({
                     golfer_id: user?.lineUserId||user?.uniqueId||'anonymous',
+                    player_name: user?.name||user?.displayName||null,
                     course_name: cName, course_id: courseId, tee_marker: tee,
-                    total_gross: tG, holes: scores.length > 9 ? 18 : 9,
-                    played_at: pd.toISOString(), completed_at: pd.toISOString(),
+                    total_gross: tG, total_net: tN, total_stableford: tS,
+                    holes_played: scores.length > 9 ? 18 : 9, status: 'completed',
+                    played_at: pd.toISOString(), started_at: pd.toISOString(), completed_at: pd.toISOString(),
                     notes: `Posted via Round History. Net: ${tN}, Stableford: ${tS}`,
                     type: 'practice', handicap_used: handicap
-                }).catch(()=>{});
+                });
+                if (e3) console.warn('[RoundPostScore] rounds insert failed:', e3.message);
                 LoadingManager.hide();
                 NotificationManager.show(`Score saved! Gross: ${tG} | Net: ${tN} | Stableford: ${tS}`, 'success');
                 this.closeModal();

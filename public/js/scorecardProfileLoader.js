@@ -203,7 +203,7 @@ class ScorecardProfileLoader {
             'mountain_shadow': 'Mountain Shadow Golf Club',
             'pattana': 'Pattana Golf Club & Resort',
             'pattavia': 'Pattavia Century Golf Club',
-            'pattaya_county': 'Pattaya County Club',
+            'pattaya_county': 'Pattaya Country Club',
             'phoenix': 'Phoenix Golf',
             'pleasant_valley': 'Pleasant Valley Golf Club',
             'plutaluang': 'Plutaluang Navy Golf Course',

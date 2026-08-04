@@ -7112,6 +7112,7 @@
         #eventDetailModal .scv3g-pch:has(input:checked) { background:var(--g-grnD); border-color:var(--g-grnD); color:#fff; }
         #eventDetailModal .scv3g-pch .h { font:500 9px/1 'JetBrains Mono',monospace; color:var(--g-dim); }
         #eventDetailModal .scv3g-pch:has(input:checked) .h { color:rgba(255,255,255,.8); }
+        #eventDetailModal .scv3g-pch.is-grp { opacity:.45; pointer-events:none; }
         #eventDetailModal .scv3g-sug { border:1px solid rgba(74,222,128,.35); background:rgba(74,222,128,.08); border-radius:10px;
             padding:8px 10px; font:600 10px/1.4 'JetBrains Mono',monospace; color:var(--g-grn); margin-top:6px; cursor:pointer; }
         #eventDetailModal .guest-player-row { background:transparent !important; }
@@ -9279,6 +9280,7 @@
                 'qreg.partner1.hint': 'Pick ONE partner to lock your 2-man team — or the organizer will pair you',
                 'qreg.partner1.none': 'No partner — organizer will pair me',
                 'qreg.max3': 'Up to 3 players',
+                'qreg.ingroup': 'In group',
                 'registration.totalcost': 'Total Cost',
                 'registration.basefee': 'Base Fee (Green + Cart + Caddy)',
                 'registration.submit': 'Submit Registration',
@@ -10239,6 +10241,7 @@
                 'qreg.partner1.hint': 'เลือกคู่ 1 คนเพื่อล็อกทีม 2 คน — หรือให้ผู้จัดจับคู่ให้',
                 'qreg.partner1.none': 'ยังไม่มีคู่ — ให้ผู้จัดจับคู่',
                 'qreg.max3': 'เลือกได้สูงสุด 3 คน',
+                'qreg.ingroup': 'จัดกลุ่มแล้ว',
                 'registration.basefee': 'ค่าธรรมเนียมพื้นฐาน (กรีนฟี + รถกอล์ฟ + แคดดี้)',
                 'weather.title': 'สภาพอากาศ',
                 'weather.humidity': 'ความชื้น',
@@ -13113,6 +13116,7 @@
                 'qreg.partner1.hint': '한 명을 골라 2인 팀을 확정 — 안 고르면 주최자가 배정합니다',
                 'qreg.partner1.none': '파트너 없음 — 주최자가 배정',
                 'qreg.max3': '최대 3명까지',
+                'qreg.ingroup': '조 배정됨',
                 'registration.totalcost': '총 비용',
                 'registration.basefee': '기본비 (그린피 + 카트 + 캐디)',
                 'registration.submit': '등록 제출',
@@ -14001,6 +14005,7 @@
                 'qreg.partner1.hint': 'パートナーを1人選んで2人チームを確定 — 未選択なら主催者が組みます',
                 'qreg.partner1.none': 'パートナーなし — 主催者にお任せ',
                 'qreg.max3': '最大3人まで',
+                'qreg.ingroup': '組分け済み',
                 'registration.basefee': '基本料金（グリーン + カート + キャディ）',
                 'weather.title': '天気',
                 'weather.humidity': '湿度',
@@ -117147,6 +117152,8 @@ class GolferEventsManager {
             // Both lookups fire in PARALLEL up front — the tap must not wait on the network twice
             // (Pete 2026-07-31: tap felt dead). The partner list streams into the open popup when it lands.
             const regsP = window.SocietyGolfDB.getRegistrations(eventId).catch(e => { console.warn('[SCV3G] quickRegister partner list', e); return []; });
+            // Tee-sheet pairings ride along so already-grouped players render grayed out in the picker.
+            const pairsP = (window.SocietyGolfDB.getPairings ? window.SocietyGolfDB.getPairings(eventId) : Promise.resolve(null)).catch(() => null);
             try {
                 const { data } = await window.SupabaseDB.client.from('event_registrations')
                     .select('want_transport, want_competition, player_name, handicap')
@@ -117165,9 +117172,9 @@ class GolferEventsManager {
             // Pete (2026-07-24): partner picking belongs IN this flow, not behind Edit — the popup opens NOW
             // and the "play with" picks appear in it as soon as the roster fetch resolves.
             this._askTransport(ev, { eventId, name, hcp: parseFloat(hcp), wantC, others: [], myId: uid });
-            regsP.then(regs => {
+            Promise.all([regsP, pairsP]).then(([regs, pairing]) => {
                 const others = (regs || []).filter(r => String(r.playerId) !== String(uid));
-                this._qrFillOthers(others, eventId);
+                this._qrFillOthers(others, eventId, pairing);
             });
         } catch (e) {
             console.error('[SCV3G] quickRegister', e);
@@ -117233,6 +117240,7 @@ class GolferEventsManager {
             + '#scv3gTransportAsk .qr-pch:has(input:checked){background:#059669;border-color:#059669;color:#fff;}'
             + '#scv3gTransportAsk .qr-pch .h{font-size:10px;color:#64748b;font-weight:600;}'
             + '#scv3gTransportAsk .qr-pch:has(input:checked) .h{color:rgba(255,255,255,.85);}'
+            + '#scv3gTransportAsk .qr-pch.is-grp{opacity:.45;pointer-events:none;}'
             + '#scv3gTransportAsk .scv3g-tpick:active{transform:scale(.97);filter:brightness(.94);}'
             + '</style>'
             + '<div style="background:#fff;width:100%;max-width:380px;border-radius:18px;box-shadow:0 18px 50px rgba(0,0,0,.4);overflow:hidden;max-height:86vh;overflow-y:auto;">'
@@ -117255,24 +117263,28 @@ class GolferEventsManager {
 
     // Late-render the "play with" chips into an already-open quick-register popup (the roster fetch
     // resolves after the popup paints). No-ops if the popup closed or belongs to a different event.
-    _qrFillOthers(others, eventId) {
+    _qrFillOthers(others, eventId, pairing) {
         const ctx = this._pendingReg;
         const slot = document.getElementById('qrPickSlot');
         if (!ctx || !slot || String(ctx.eventId) !== String(eventId)) return;
         ctx.others = others = others || [];
+        if (pairing !== undefined) ctx.pairing = pairing;
         const s2 = !!ctx.s2;
         let pool = others;
         if (s2) { try { pool = this._scramble2Eligible(others, ctx.myId) || []; } catch (e) { pool = others; } }
         if (!pool.length) return;
+        const assigned = this._partnerAssignedIds(ctx.pairing || null);
         const esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
         const hcpTag = function (r) {
             return (r.handicap !== null && r.handicap !== undefined && r.handicap !== '')
                 ? '<span class="h">' + window.formatHandicapDisplay(r.handicap) + '</span>' : '';
         };
-        const chips = pool.map(r => s2
-            ? '<label class="qr-pch"><input type="radio" name="qrS2Partner" value="' + esc(r.playerId) + '"><span data-golfer-av="' + esc(r.playerId) + '" data-golfer-av-nm="' + esc(r.playerName) + '" data-golfer-av-sz="18">' + esc(r.playerName) + '</span>' + hcpTag(r) + '</label>'
-            : '<label class="qr-pch"><input type="checkbox" class="qr-pref" value="' + esc(r.id) + '" data-name="' + esc(r.playerName) + '" onchange="GolferEventsSystem._qrLimit(this)"><span data-golfer-av="' + esc(r.playerId) + '" data-golfer-av-nm="' + esc(r.playerName) + '" data-golfer-av-sz="18">' + esc(r.playerName) + '</span>' + hcpTag(r) + '</label>'
-        ).join('');
+        const inGrpTag = '<span class="h">' + esc(_lvT('qreg.ingroup', 'In group')) + '</span>';
+        const chips = pool.map(r => {
+            if (s2) return '<label class="qr-pch"><input type="radio" name="qrS2Partner" value="' + esc(r.playerId) + '"><span data-golfer-av="' + esc(r.playerId) + '" data-golfer-av-nm="' + esc(r.playerName) + '" data-golfer-av-sz="18">' + esc(r.playerName) + '</span>' + hcpTag(r) + '</label>';
+            const grouped = assigned.has(String(r.playerId)) || assigned.has(String(r.id));
+            return '<label class="qr-pch' + (grouped ? ' is-grp' : '') + '"><input type="checkbox" class="qr-pref" value="' + esc(r.id) + '" data-name="' + esc(r.playerName) + '"' + (grouped ? ' disabled' : ' onchange="GolferEventsSystem._qrLimit(this)"') + '><span data-golfer-av="' + esc(r.playerId) + '" data-golfer-av-nm="' + esc(r.playerName) + '" data-golfer-av-sz="18">' + esc(r.playerName) + '</span>' + hcpTag(r) + (grouped ? inGrpTag : '') + '</label>';
+        }).join('');
         slot.style.cssText = 'padding:0 18px;';
         slot.innerHTML =
             '<div style="font-size:13.5px;font-weight:800;color:#0f172a;">' + esc(_lvT('qreg.playwith', 'Play with anyone?')) + '</div>'
@@ -118683,15 +118695,19 @@ class GolferEventsManager {
         var caddyNumbers = currentReg ? (currentReg.caddyNumbers || '') : '';
         var partnerPrefs = currentReg ? (currentReg.partnerPrefs || []) : [];
 
-        // Build partner checkboxes from other registered players
+        // Build partner checkboxes from other registered players; already-grouped players are
+        // grayed out — a pref pick can't move someone the tee sheet has already placed.
         var partnerOptions = '';
+        var assigned = this._partnerAssignedIds();
+        var inGrpTag = _lvT('qreg.ingroup', 'In group');
         regs.forEach(function(r) {
             if (r.playerId === currentUserId) return;
-            var checked = partnerPrefs.includes(r.playerName) ? 'checked' : '';
-            partnerOptions += '<label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f3f4f6;cursor:pointer;">' +
-                '<input type="checkbox" class="partner-pref-checkbox" value="' + r.playerName + '" ' + checked + ' style="width:18px;height:18px;accent-color:#059669;">' +
+            var grouped = assigned.has(String(r.playerId)) || assigned.has(String(r.id));
+            var checked = (!grouped && partnerPrefs.includes(r.playerName)) ? 'checked' : '';
+            partnerOptions += '<label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f3f4f6;cursor:pointer;' + (grouped ? 'opacity:.45;pointer-events:none;' : '') + '">' +
+                '<input type="checkbox" class="partner-pref-checkbox" value="' + r.playerName + '" ' + checked + (grouped ? ' disabled' : '') + ' style="width:18px;height:18px;accent-color:#059669;">' +
                 '<span style="font-size:13px;color:#374151;" data-golfer-av="' + String(r.playerId || '').replace(/"/g, '&quot;') + '" data-golfer-av-nm="' + String(r.playerName || '').replace(/"/g, '&quot;') + '" data-golfer-av-sz="18">' + r.playerName + '</span>' +
-                '<span style="font-size:11px;color:#9ca3b8;margin-left:auto;">HCP: ' + (r.handicap != null ? window.formatHandicapDisplay(r.handicap) : '-') + '</span>' +
+                '<span style="font-size:11px;color:#9ca3b8;margin-left:auto;">' + (grouped ? inGrpTag : 'HCP: ' + (r.handicap != null ? window.formatHandicapDisplay(r.handicap) : '-')) + '</span>' +
             '</label>';
         });
 
@@ -119396,6 +119412,30 @@ class GolferEventsManager {
         }
     }
 
+    // Once the organizer's tee sheet has a player placed in a SAVED group, a partner pick can no
+    // longer move them (units/prefs act on the way IN only) — so every partner picker grays them
+    // out (Pete 2026-08-04). Shape-tolerant per the dual pairing UIs: groups may be
+    // [{players:[{playerId,…}]}] or [[{id,…}]]; member ids live in playerId or id, and candidates
+    // match on either reg.playerId or reg.id (dual-id trap). Pass a pairing explicitly (quick-reg
+    // fetches its own); no arg = this.currentEventPairings (detail modal / players modal context).
+    _partnerAssignedIds(pairing) {
+        const set = new Set();
+        try {
+            const p = (pairing === undefined) ? this.currentEventPairings : pairing;
+            const groups = p && p.groups;
+            if (!Array.isArray(groups)) return set;
+            groups.forEach(g => {
+                const members = Array.isArray(g) ? g : ((g && Array.isArray(g.players)) ? g.players : []);
+                members.forEach(m => {
+                    if (!m) return;
+                    if (m.playerId != null && m.playerId !== '') set.add(String(m.playerId));
+                    if (m.id != null && m.id !== '') set.add(String(m.id));
+                });
+            });
+        } catch (e) {}
+        return set;
+    }
+
     populatePartnerPreferences() {
         const container = document.getElementById('partnerPrefsContainer');
         const registrations = this.currentEventRegistrations || [];
@@ -119466,14 +119506,21 @@ class GolferEventsManager {
             });
         } catch (e) {}
 
-        // SCV3G: tappable player chips (frame 2), not a checkbox list
-        container.innerHTML = otherPlayers.map(reg => `
-            <label class="scv3g-pch">
-                <input type="checkbox" class="partner-pref-checkbox" value="${reg.id}" data-name="${reg.playerName}"${myPicked.has(String(reg.id)) ? ' checked' : ''}>
+        // SCV3G: tappable player chips (frame 2), not a checkbox list. Players already placed in a
+        // saved tee-sheet group are grayed out — picking them would do nothing.
+        const assigned = this._partnerAssignedIds();
+        const inGrpTag = _lvT('qreg.ingroup', 'In group');
+        container.innerHTML = otherPlayers.map(reg => {
+            const grouped = assigned.has(String(reg.playerId)) || assigned.has(String(reg.id));
+            return `
+            <label class="scv3g-pch${grouped ? ' is-grp' : ''}">
+                <input type="checkbox" class="partner-pref-checkbox" value="${reg.id}" data-name="${reg.playerName}"${grouped ? ' disabled' : (myPicked.has(String(reg.id)) ? ' checked' : '')}>
                 <span data-golfer-av="${reg.playerId || ''}" data-golfer-av-nm="${String(reg.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${reg.playerName}</span>
                 ${reg.handicap !== null && reg.handicap !== undefined ? `<span class="h">${window.formatHandicapDisplay(reg.handicap)}</span>` : ''}
+                ${grouped ? `<span class="h">${inGrpTag}</span>` : ''}
             </label>
-        `).join('');
+        `;
+        }).join('');
         // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
         if (window._golferChipDecorate) window._golferChipDecorate(container, 18);
         try { this._fillCaddySuggestion(); } catch (e) {}

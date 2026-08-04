@@ -29391,14 +29391,17 @@ Sent from Login Page`;
 
                         // From caddy bookings
                         if (userId && window.SupabaseDB?.client) {
+                            // caddy_bookings has no caddy_number/caddy_name columns — only
+                            // caddie_name (free text); the number is regexed out of it.
                             const { data: bookings } = await window.SupabaseDB.client
                                 .from('caddy_bookings')
-                                .select('caddy_number, caddy_name, course_name')
+                                .select('caddie_name, course_name')
                                 .eq('golfer_id', userId);
                             (bookings || []).forEach(b => {
-                                if (!b.caddy_number) return;
+                                const bNum = window._lvFirstNum ? window._lvFirstNum(b.caddie_name) : String(b.caddie_name || '').replace(/\D/g, '');
+                                if (!bNum) return;
                                 if (!courseMatch(b.course_name)) return;
-                                addCaddy(b.caddy_number, b.caddy_name, b.course_name);
+                                addCaddy(bNum, b.caddie_name, b.course_name);
                             });
 
                             // From event registrations with caddy numbers
@@ -41699,7 +41702,7 @@ Waitlist (${waitlist.length} people):`;
                     const today = new Date().toISOString().split('T')[0];
                     const { data, error } = await window.SupabaseDB.client
                         .from('caddy_bookings')
-                        .select('id, booking_date, tee_time, course_name, status, caddy_number, caddy_name, caddy_id, caddy_profiles:caddy_id (name, photo_url, caddy_number)')
+                        .select('id, booking_date, tee_time, course_name, status, caddie_name, caddy_id, caddy_profiles:caddy_id (name, photo_url, caddy_number)')
                         .eq('golfer_id', userId)
                         .gte('booking_date', today)
                         .in('status', ['pending', 'confirmed'])
@@ -41733,8 +41736,8 @@ Waitlist (${waitlist.length} people):`;
                         const date = new Date(b.booking_date);
                         const dateStr = date.toLocaleDateString(_lvLocale(), { weekday: 'short', day: '2-digit', month: 'short' }).replace(/,/g, '').toUpperCase();
                         const timeStr = b.tee_time ? b.tee_time.substring(0, 5) : '';
-                        const caddyNumber = b.caddy_number || b.caddy_profiles?.caddy_number || '';
-                        const caddyName = b.caddy_name || b.caddy_profiles?.name || '';
+                        const caddyNumber = b.caddy_profiles?.caddy_number || (window._lvFirstNum ? window._lvFirstNum(b.caddie_name) : '') || '';
+                        const caddyName = b.caddy_profiles?.name || b.caddie_name || '';
                         const caddyPhoto = b.caddy_profiles?.photo_url || nbMap[window._lvFirstNum(String(caddyNumber))] || '';
                         const ok = b.status === 'confirmed';
 
@@ -107246,10 +107249,51 @@ const GolferCaddyBooking = {
             this.allCaddies = data || [];
             console.log(`[GolferCaddyBooking] Loaded ${this.allCaddies.length} caddies`);
 
+            // A photo saved in My Caddies must follow the caddy into this roster: claimed
+            // caddy_profiles rows never mirror later notebook edits, so fill missing photos
+            // from the golfer's own notebook. Match number+course — a bare-number match
+            // would paste another course's same-numbered caddy onto this roster.
+            // Own try: a merge failure must never wipe the loaded roster.
+            try {
+                if (this.allCaddies.some(c => !c.photo_url)) {
+                    const nb = await this._nbPhotoRows();
+                    if (nb.length) this.allCaddies.forEach(c => {
+                        if (!c.photo_url) {
+                            const u = this._nbPhotoFor(c.caddy_number, c.course_name, nb);
+                            if (u) c.photo_url = u;
+                        }
+                    });
+                }
+            } catch (e) { console.warn('[GolferCaddyBooking] notebook photo merge skipped:', e); }
+
         } catch (error) {
             console.error('[GolferCaddyBooking] Error loading caddies:', error);
             this.allCaddies = [];
         }
+    },
+
+    // Logged-in golfer's caddy_notebook photo rows (number, course, url), 120s-cached.
+    async _nbPhotoRows() {
+        try {
+            const uid = AppState.currentUser?.lineUserId || window.currentUserId || localStorage.getItem('line_user_id');
+            if (!uid || !window.SupabaseDB?.client) return [];
+            const now = Date.now();
+            if (this.__nbPhotos && (now - this.__nbPhotos.t) < 120000) return this.__nbPhotos.rows;
+            const { data } = await window.SupabaseDB.client
+                .from('caddy_notebook')
+                .select('caddy_number, course_name, photo_url')
+                .eq('golfer_id', uid)
+                .not('photo_url', 'is', null);
+            this.__nbPhotos = { t: now, rows: data || [] };
+            return this.__nbPhotos.rows;
+        } catch (e) { return []; }
+    },
+
+    _nbPhotoFor(num, course, rows) {
+        const n = String(parseInt(num));
+        if (!n || n === 'NaN') return '';
+        const hit = (rows || []).find(r => String(parseInt(r.caddy_number)) === n && _courseMatch(r.course_name, course));
+        return hit ? (hit.photo_url || '') : '';
     },
 
     async loadMyBookings() {
@@ -107263,6 +107307,7 @@ const GolferCaddyBooking = {
                     *,
                     caddy_profiles:caddy_id (
                         name,
+                        caddy_number,
                         photo_url
                     )
                 `)
@@ -107274,6 +107319,20 @@ const GolferCaddyBooking = {
 
             this.myBookings = data || [];
             console.log(`[GolferCaddyBooking] Loaded ${this.myBookings.length} active bookings`);
+
+            // Same My-Caddies fallback as the roster: booked caddies keep their notebook photo.
+            // Own try: a merge failure must never wipe the loaded bookings.
+            try {
+                if (this.myBookings.some(b => b.caddy_profiles && !b.caddy_profiles.photo_url)) {
+                    const nb = await this._nbPhotoRows();
+                    if (nb.length) this.myBookings.forEach(b => {
+                        if (b.caddy_profiles && !b.caddy_profiles.photo_url) {
+                            const u = this._nbPhotoFor(b.caddy_profiles.caddy_number, b.course_name, nb);
+                            if (u) b.caddy_profiles.photo_url = u;
+                        }
+                    });
+                }
+            } catch (e) { console.warn('[GolferCaddyBooking] notebook photo merge skipped:', e); }
 
         } catch (error) {
             console.error('[GolferCaddyBooking] Error loading bookings:', error);
@@ -107527,9 +107586,12 @@ const GolferCaddyBooking = {
                     <div class="p-6">
                         <!-- Photo and Basic Info -->
                         <div class="flex flex-col md:flex-row gap-6 mb-6">
-                            <div class="w-full md:w-48 h-48 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <div class="w-full md:w-48 h-64 md:h-48 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
                                 ${caddy.photo_url ? `
-                                    <img src="${caddy.photo_url}" alt="${caddy.name}" class="w-full h-full object-cover rounded-lg">
+                                    <img src="${caddy.photo_url}" alt="${caddy.name}" class="w-full h-full object-contain rounded-lg" style="cursor:zoom-in"
+                                         onclick="CaddyNotebook.viewPhoto(this.src)"
+                                         onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='';">
+                                    <span class="material-symbols-outlined text-6xl text-emerald-600" style="display:none">person</span>
                                 ` : `
                                     <span class="material-symbols-outlined text-6xl text-emerald-600">person</span>
                                 `}
@@ -107538,7 +107600,7 @@ const GolferCaddyBooking = {
                                 <div class="flex items-start justify-between mb-3">
                                     <div>
                                         <h3 class="text-2xl font-bold text-gray-900">${caddy.name}</h3>
-                                        <p class="text-gray-600">Caddy #${caddy.id.slice(0,6)}</p>
+                                        <p class="text-gray-600">Caddy #${caddy.caddy_number || caddy.id.slice(0,6)}</p>
                                     </div>
                                     <span class="px-3 py-1 rounded-full text-sm font-medium ${isAvailable ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
                                         ${isAvailable ? '✓ Available' : '✗ Booked'}
@@ -107672,7 +107734,7 @@ const GolferCaddyBooking = {
                         <div class="flex items-center justify-between">
                             <div>
                                 <h2 class="text-2xl font-bold mb-1">Book Caddy</h2>
-                                <p class="text-emerald-100">${caddy.photo_url ? `<img src="${caddy.photo_url}" style="display:inline-block;width:28px;height:28px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:7px;border:2px solid rgba(255,255,255,.6);" onerror="this.style.display='none'" alt="">` : ''}${caddy.name} (#${caddy.id.slice(0,6)})</p>
+                                <p class="text-emerald-100">${caddy.photo_url ? `<img src="${caddy.photo_url}" style="display:inline-block;width:28px;height:28px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:7px;border:2px solid rgba(255,255,255,.6);cursor:zoom-in;" onclick="CaddyNotebook.viewPhoto(this.src)" onerror="this.style.display='none'" alt="">` : ''}${caddy.name} (#${caddy.caddy_number || caddy.id.slice(0,6)})</p>
                             </div>
                             <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-emerald-100">
                                 <span class="material-symbols-outlined">close</span>
@@ -108179,7 +108241,7 @@ const GolferCaddyBooking = {
                         <div class="flex items-center justify-between">
                             <div>
                                 <h2 class="text-2xl font-bold mb-1">Join Waitlist</h2>
-                                <p class="text-orange-100">${caddy.photo_url ? `<img src="${caddy.photo_url}" style="display:inline-block;width:28px;height:28px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:7px;border:2px solid rgba(255,255,255,.6);" onerror="this.style.display='none'" alt="">` : ''}${caddy.name} (#${caddy.id.slice(0,6)})</p>
+                                <p class="text-orange-100">${caddy.photo_url ? `<img src="${caddy.photo_url}" style="display:inline-block;width:28px;height:28px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:7px;border:2px solid rgba(255,255,255,.6);cursor:zoom-in;" onclick="CaddyNotebook.viewPhoto(this.src)" onerror="this.style.display='none'" alt="">` : ''}${caddy.name} (#${caddy.caddy_number || caddy.id.slice(0,6)})</p>
                             </div>
                             <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-orange-100">
                                 <span class="material-symbols-outlined">close</span>
@@ -108384,7 +108446,10 @@ const GolferCaddyBooking = {
                             <div class="flex items-center gap-4 mb-3">
                                 <div class="w-16 h-16 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
                                     ${booking.caddy_profiles?.photo_url ? `
-                                        <img src="${booking.caddy_profiles.photo_url}" alt="${booking.caddy_profiles?.name}" class="w-full h-full object-cover rounded-lg">
+                                        <img src="${booking.caddy_profiles.photo_url}" alt="${booking.caddy_profiles?.name}" class="w-full h-full object-cover rounded-lg" style="cursor:zoom-in"
+                                             onclick="CaddyNotebook.viewPhoto(this.src)"
+                                             onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='';">
+                                        <span class="material-symbols-outlined text-3xl text-emerald-600" style="display:none">person</span>
                                     ` : `
                                         <span class="material-symbols-outlined text-3xl text-emerald-600">person</span>
                                     `}
@@ -108463,7 +108528,7 @@ const GolferCaddyBooking = {
                 <div class="p-6 border-b border-gray-100">
                     <div class="flex items-center gap-4">
                         ${caddy.photo_url ?
-                            `<img src="${caddy.photo_url}" class="w-16 h-16 rounded-full object-cover ring-4 ring-emerald-100" alt="${caddy.name}">` :
+                            `<img src="${caddy.photo_url}" class="w-16 h-16 rounded-full object-cover ring-4 ring-emerald-100" style="cursor:zoom-in" onclick="CaddyNotebook.viewPhoto(this.src)" onerror="this.style.display='none'" alt="${caddy.name}">` :
                             '<div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center ring-4 ring-emerald-100"><span class="material-symbols-outlined text-gray-400 text-2xl">person</span></div>'
                         }
                         <div>
@@ -126381,7 +126446,7 @@ window.assignCaddyForEvent = async function(eventId){
     var nbPhoto={};
     try{ var nb=await sb.from('caddy_notebook').select('caddy_number, caddy_name, course_name, rating, photo_url').eq('golfer_id', lineId); (nb.data||[]).forEach(function(r){ var pk=String(parseInt(r.caddy_number)); if(r.photo_url&&pk&&pk!=='NaN'&&!nbPhoto[pk]) nbPhoto[pk]=r.photo_url; if(r.caddy_number && match(r.course_name)) addCaddy(r.caddy_number, r.caddy_name, r.rating===5); }); }catch(e){ console.warn('[AssignCaddy] notebook',e); }
     // 3. Golfer's caddy bookings
-    try{ var bk=await sb.from('caddy_bookings').select('caddy_number, caddy_name, course_name').eq('golfer_id', lineId); (bk.data||[]).forEach(function(b){ if(b.caddy_number && match(b.course_name)) addCaddy(b.caddy_number, b.caddy_name); }); }catch(e){ console.warn('[AssignCaddy] bookings',e); }
+    try{ var bk=await sb.from('caddy_bookings').select('caddie_name, course_name').eq('golfer_id', lineId); (bk.data||[]).forEach(function(b){ var bn=window._lvFirstNum(b.caddie_name); if(bn && match(b.course_name)) addCaddy(bn, b.caddie_name); }); }catch(e){ console.warn('[AssignCaddy] bookings',e); }
     // 4. Caddies from the golfer's past event registrations at this course
     try{ var rg=await sb.from('event_registrations').select('caddy_numbers, society_events(course_name)').eq('player_id', lineId).not('caddy_numbers','is',null); (rg.data||[]).forEach(function(r){ var cn=(r.society_events&&r.society_events.course_name)||''; if(!r.caddy_numbers||!match(cn))return; String(r.caddy_numbers).split(/[,\-.\s:;/|]+/).forEach(function(x){ var num=(x||'').replace(/\D/g,''); if(num&&num.length<=4) addCaddy(num,''); }); }); }catch(e){ console.warn('[AssignCaddy] regs',e); }
     var caddies=Object.keys(byNum).map(function(k){return byNum[k];});

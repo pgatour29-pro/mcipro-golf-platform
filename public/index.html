@@ -29541,6 +29541,21 @@ Sent from Login Page`;
             // One-tap photo add from ANY caddy card: chooser → upload → saved on the caddy's
             // notebook entry (created bare if the caddy isn't in the notebook yet — same
             // number-match convention as openHistoryNote/toggleHistoryFavorite).
+            // Find the notebook row for a caddy the user tapped on a card. STRICT rule: a caddy
+            // number is a per-course identity, so when the tapped card has a course we only match
+            // rows at that course (normalized, substring-tolerant) — plus legacy course-less rows,
+            // which are course-agnostic. A bare-number match across courses edits the WRONG PERSON.
+            _nbFind(entries, caddyNumber, courseName) {
+                const num = String(parseInt(caddyNumber));
+                const nc = c => this.normalizeCourse(c || '').toLowerCase().trim();
+                const want = nc(courseName);
+                const sameNum = (entries || []).filter(e => e.caddy_number && String(parseInt(e.caddy_number)) === num);
+                if (!want) return sameNum[0] || null;   // no course context on the tapped surface
+                return sameNum.find(e => { const c = nc(e.course_name); return c && (c === want || c.includes(want) || want.includes(c)); })
+                    || sameNum.find(e => !nc(e.course_name))
+                    || null;
+            },
+
             quickPhoto(caddyNumber, courseName) {
                 CaddyNotebook._pickPhoto(async (file) => {
                     const userId = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
@@ -29548,7 +29563,7 @@ Sent from Login Page`;
                     NotificationManager.show('Uploading photo…', 'info', 2000);
                     const url = await CaddyNotebook._uploadPhotoFile(file, userId);
                     const entries = await CaddyNotebook.getEntries();
-                    const existing = entries.find(e => e.caddy_number && String(parseInt(e.caddy_number)) === String(parseInt(caddyNumber)));
+                    const existing = this._nbFind(entries, caddyNumber, courseName);
                     if (existing) {
                         const { error } = await window.SupabaseDB.client.from('caddy_notebook')
                             .update({ photo_url: url, updated_at: new Date().toISOString() })
@@ -29591,20 +29606,22 @@ Sent from Login Page`;
                 this.showEmpty(false);
                 // Check notebook entries for notes on these caddies
                 const notebookEntries = await CaddyNotebook.getEntries();
-                const notebookByNum = {};   // fallback: number only
-                const notebookByKey = {};   // exact: number + course
+                // STRICT number+course keying ONLY. The old number-only fallback painted a notebook
+                // caddy's name/stars/photo onto SAME-NUMBERED cards at OTHER courses (Nim #177 Green
+                // Valley showing up as "Nim" under St Andrews) — a different person entirely.
+                const notebookByKey = {};   // exact: number + normalized course
                 notebookEntries.forEach(e => {
                     if (!e.caddy_number) return;
                     const num = String(parseInt(e.caddy_number));
-                    notebookByNum[num] = notebookByNum[num] || e;
                     notebookByKey[num + '@@' + this.normalizeCourse(e.course_name || '').toLowerCase().trim()] = e;
                 });
 
                 container.innerHTML = history.map(h => {
                     const lastDate = h.lastDate ? new Date(h.lastDate).toLocaleDateString(_lvLocale(), { month: 'short', day: 'numeric' }) : '';
                     const coursesStr = h.courses.map(c => c.replace(/golf|club|country|course|international|resort/gi, '').trim().split(' ').slice(0,2).join(' ')).join(', ');
+                    const rawCourse = (h.courses[0] || '').replace(/'/g, "\\'");
                     const regularBadge = h.isRegular ? '<span class="mcv1-tag grn">Regular</span>' : '';
-                    const nbEntry = notebookByKey[h.number + '@@' + this.normalizeCourse(h.courses[0] || '').toLowerCase().trim()] || notebookByNum[h.number];
+                    const nbEntry = notebookByKey[h.number + '@@' + this.normalizeCourse(h.courses[0] || '').toLowerCase().trim()];
                     const hasNote = nbEntry && nbEntry.notes;
                     const notePreview = hasNote ? `<div class="mcv1-note">"${nbEntry.notes}"</div>` : '';
                     const stars = nbEntry?.rating ? '<span class="mcv1-stars">' + '★'.repeat(nbEntry.rating) + '</span>' : '';
@@ -29623,10 +29640,10 @@ Sent from Login Page`;
                         </div>
                         ${notePreview}
                         <div class="mcv1-act">
-                            <button onclick="CaddyOrganizerSystem.openHistoryNote('${h.number}', '${coursesStr.replace(/'/g, "\\'")}')" class="mcv1-btn">
+                            <button onclick="CaddyOrganizerSystem.openHistoryNote('${h.number}', '${rawCourse}')" class="mcv1-btn">
                                 <span class="material-symbols-outlined">edit_note</span>${hasNote ? 'Edit Note' : 'Add Note'}
                             </button>
-                            <button onclick="CaddyOrganizerSystem.toggleHistoryFavorite('${h.number}')" class="mcv1-btn amb">
+                            <button onclick="CaddyOrganizerSystem.toggleHistoryFavorite('${h.number}', '${rawCourse}')" class="mcv1-btn amb">
                                 <span class="material-symbols-outlined">star</span>Favorite
                             </button>
                         </div>
@@ -29648,8 +29665,10 @@ Sent from Login Page`;
 
                 // Merge: notebook favorites + history data for those caddies
                 const history = this.caddyHistory || [];
-                const historyByNum = {};
-                history.forEach(h => { historyByNum[h.number] = h; });
+                // Usage merged by number + COURSE — a favorite's "Used Nx" must count only rounds
+                // at HER course, not any same-numbered caddy elsewhere.
+                const historyByKey = {};
+                history.forEach(h => { historyByKey[h.number + '@@' + this.normalizeCourse(h.courses[0] || '').toLowerCase().trim()] = h; });
 
                 // Build combined list from notebook favorites AND user_caddy_preferences
                 const favList = [];
@@ -29658,7 +29677,7 @@ Sent from Login Page`;
                     const num = f.caddy_number ? String(parseInt(f.caddy_number)) : '';
                     if (num && !seen.has(num)) {
                         seen.add(num);
-                        const h = historyByNum[num];
+                        const h = historyByKey[num + '@@' + this.normalizeCourse(f.course_name || '').toLowerCase().trim()];
                         favList.push({
                             number: num,
                             name: f.caddy_name || '',
@@ -29804,7 +29823,7 @@ Sent from Login Page`;
                 // instead of the old native prompt() — the prompt had no photo support and
                 // no way to edit anything else on mobile.
                 const entries = await CaddyNotebook.getEntries();
-                const existing = entries.find(e => e.caddy_number && String(parseInt(e.caddy_number)) === String(parseInt(caddyNumber)));
+                const existing = this._nbFind(entries, caddyNumber, courseName);
                 this.setFilter('notebook');
                 if (existing) {
                     CaddyNotebook.editEntry(existing.id);
@@ -29816,10 +29835,12 @@ Sent from Login Page`;
                 }
             },
 
-            async toggleHistoryFavorite(caddyNumber) {
-                // Save to notebook as favorite
+            async toggleHistoryFavorite(caddyNumber, courseName) {
+                // Save to notebook as favorite — matched by number + COURSE (the tapped card's
+                // course), never bare number: favoriting the St Andrews #177 card must not flip
+                // the rating on the Green Valley #177's row.
                 const entries = await CaddyNotebook.getEntries();
-                const existing = entries.find(e => e.caddy_number && String(parseInt(e.caddy_number)) === String(parseInt(caddyNumber)));
+                const existing = this._nbFind(entries, caddyNumber, courseName);
                 const userId = AppState?.currentUser?.lineUserId;
 
                 if (existing) {
@@ -29831,12 +29852,11 @@ Sent from Login Page`;
                     CaddyNotebook._entries = null;
                     NotificationManager.show(newRating ? `Caddy #${caddyNumber} favorited ${micon('star')}` : `Caddy #${caddyNumber} unfavorited`, 'success');
                 } else {
-                    // Create with 5-star rating
-                    const history = this.caddyHistory.find(h => h.number === caddyNumber);
+                    // Create with 5-star rating, under the tapped card's course
                     await window.SupabaseDB.client.from('caddy_notebook').insert([{
                         golfer_id: userId,
                         caddy_number: caddyNumber,
-                        course_name: history?.courses?.[0] || '',
+                        course_name: courseName || '',
                         rating: 5,
                     }]);
                     CaddyNotebook._entries = null;
@@ -42347,17 +42367,14 @@ Waitlist (${waitlist.length} people):`;
                 document.body.appendChild(picker);
             },
 
-            async assignFromPicker(eventId, caddyNum, caddyCourse) {
+            async assignFromPicker(eventId, caddyNum, caddyCourse, evCourseOverride) {
                 // Caddy numbers are per-course identities: #15 at Pattaya CC is NOT #15 at St Andrews.
-                // Block silent cross-course assignment (this is how Jin's 15 ended up on other courses).
-                const evCourse = this._pickerEventCourse || '';
-                const norm = v => String(v || '').toLowerCase().replace(/[^a-z]/g, '');
-                if (caddyCourse && evCourse && norm(caddyCourse) && norm(evCourse) &&
-                    norm(caddyCourse) !== norm(evCourse) &&
-                    !norm(evCourse).includes(norm(caddyCourse)) && !norm(caddyCourse).includes(norm(evCourse))) {
-                    const ok = confirm('#' + caddyNum + ' is your caddy at ' + caddyCourse + '.\nThis event is at ' + evCourse + ' — #' + caddyNum + ' there is a DIFFERENT caddy.\n\nAssign #' + caddyNum + ' for this event anyway?');
-                    if (!ok) return;
-                }
+                // Block silent cross-course assignment (this is how Jin's 15 — and later Nim's 177 —
+                // ended up on other courses). evCourseOverride comes from callers that know the
+                // TARGET event's course (openPickerForNotebook lists many events, each its own course;
+                // _pickerEventCourse only ever holds the single openPicker target).
+                const evCourse = evCourseOverride || this._pickerEventCourse || '';
+                if (!window._caddyCourseGuard(caddyNum, caddyCourse, evCourse)) return;
                 document.getElementById('mobileCaddyPicker')?.remove();
                 document.body.style.overflow = '';
                 try {
@@ -42406,7 +42423,10 @@ Waitlist (${waitlist.length} people):`;
                 }
             },
 
-            async openPickerForNotebook(caddyNum, caddyName) {
+            async openPickerForNotebook(caddyNum, caddyName, caddyCourse) {
+                // caddyCourse = the notebook caddy's home course. Every event row below passes it
+                // (plus that event's own course) into assignFromPicker so the cross-course guard
+                // fires — this sheet is how Green Valley #177/#363 got written onto St Andrews regs.
                 document.getElementById('mobileCaddyPicker')?.remove();
                 const userId = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
                 if (!userId || !window.SupabaseDB?.client) return;
@@ -42440,7 +42460,9 @@ Waitlist (${waitlist.length} people):`;
 
                 // GLOBAL RULE: numbers carry photos — sheet header + per-event "Currently" rows.
                 const nbMap = window._caddyPhotoMap ? await window._caddyPhotoMap() : {};
-                const label = caddyName ? '#' + caddyNum + ' — ' + caddyName : '#' + caddyNum;
+                const escAttr = s => String(s || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                const label = (caddyName ? '#' + caddyNum + ' — ' + caddyName : '#' + caddyNum)
+                    + (caddyCourse ? ' <span style="font-weight:400;color:#98A2AD;">(' + escAttr(caddyCourse) + ')</span>' : '');
                 const labelImg = window._lvCaddyImg(nbMap[window._lvFirstNum(caddyNum)], 24);
                 let eventsHtml = '';
                 upcoming.forEach(r => {
@@ -42450,7 +42472,7 @@ Waitlist (${waitlist.length} people):`;
                     const hasCaddy = r.caddy_numbers && r.caddy_numbers.trim();
                     const currentHtml = hasCaddy ? '<div class="cur">Currently: ' + window._lvCaddyImg(nbMap[window._lvFirstNum(r.caddy_numbers)], 16) + '#' + r.caddy_numbers.trim() + '</div>' : '';
                     const actionText = hasCaddy ? 'Replace' : 'Assign';
-                    eventsHtml += '<button onclick="BookedCaddiesView.assignFromPicker(\'' + r.event_id + '\',\'' + caddyNum + '\')" class="mcv1-shev ' + (hasCaddy ? '' : 'open') + ' active:scale-95 transition-transform">'
+                    eventsHtml += '<button onclick="BookedCaddiesView.assignFromPicker(\'' + r.event_id + '\',\'' + caddyNum + '\',\'' + escAttr(caddyCourse) + '\',\'' + escAttr(evt.course_name) + '\')" class="mcv1-shev ' + (hasCaddy ? '' : 'open') + ' active:scale-95 transition-transform">'
                         + '<div class="flex-1 min-w-0">'
                         + '<div class="t">' + (evt.title || 'Event') + '</div>'
                         + '<div class="m">' + (evt.course_name || '') + ' · ' + dateStr + '</div>'
@@ -42655,6 +42677,16 @@ Waitlist (${waitlist.length} people):`;
                 const number = document.getElementById('notebookCaddyNumber')?.value?.trim() || '';
                 const name = document.getElementById('notebookCaddyName')?.value?.trim() || '';
                 if (!number && !name) { NotificationManager.show('Please enter a caddy number or name', 'warning'); return; }
+                // Course is REQUIRED: a caddy number only means something AT a course. A course-less
+                // row can't be told apart from same-numbered caddies elsewhere and shows up as a
+                // duplicate "no course" card (the Ja #72 incident, 2026-08-06).
+                const courseSel = document.getElementById('notebookCaddyCourse');
+                if (!courseSel?.value?.trim()) {
+                    if (courseSel) courseSel.style.borderColor = '#ef4444';
+                    NotificationManager.show('Pick the course — caddy numbers repeat across courses', 'warning');
+                    return;
+                }
+                if (courseSel) courseSel.style.borderColor = '';
 
                 // Upload the picked photo (if any) first — failure never blocks the save
                 let photoUrl = '';
@@ -42730,8 +42762,9 @@ Waitlist (${waitlist.length} people):`;
                     NotificationManager.show('No caddy number saved — add a number to book', 'warning');
                     return;
                 }
-                // Open the assign picker pre-filled with this caddy's number
-                BookedCaddiesView.openPickerForNotebook(caddyNum, entry.caddy_name || '');
+                // Open the assign picker pre-filled with this caddy's number + HOME COURSE
+                // (the course is what arms the cross-course guard in assignFromPicker)
+                BookedCaddiesView.openPickerForNotebook(caddyNum, entry.caddy_name || '', entry.course_name || '');
             },
 
             async migrateFromLocalStorage() {
@@ -51341,7 +51374,7 @@ Waitlist (${waitlist.length} people):`;
                     if (caddy.dateAdded) { const d = new Date(caddy.dateAdded); if (!isNaN(d.getTime())) dateLabel = d.toLocaleDateString(_lvLocale(), { day: '2-digit', month: 'short', year: '2-digit' }); }
                     // ✕ is ALWAYS visible (was hover-only → looked like some caddies had no remove button)
                     return `<div class="mcv1-pill ${caddy.isFavorite ? 'fav' : ''}"
-                        onpointerdown="CaddyDragDrop.pdown(event,'${caddy.number}','')"
+                        onpointerdown="CaddyDragDrop.pdown(event,'${caddy.number}','','${courseArg}')"
                         title="${caddy.course} • Added ${dateLabel || '—'} • Used ${caddy.count}x${caddy.lastDate ? ' • Last: ' + caddy.lastDate : ''}">
                         <span class="inline-flex items-center">${photoImg}${star}<span>#${caddy.number}</span>${nameLabel}${countBadge}<span onclick="event.stopPropagation();CaddyDragDrop.removeCaddy('${caddy.number}','${courseArg}')" class="x" title="Remove">✕</span></span>
                         ${dateLabel ? `<span class="pdate">${dateLabel}</span>` : ''}
@@ -51354,12 +51387,12 @@ Waitlist (${waitlist.length} people):`;
                 // each frame; drops call _assignToEvent/_dropToZone (the old drop logic, event-free).
                 // Mouse/pen only — touch never had HTML5 drag here either (taps unchanged).
                 _pd: null,
-                pdown(e, num, fromEvent) {
+                pdown(e, num, fromEvent, caddyCourse) {
                     if (e.pointerType === 'touch') return;
                     if (e.pointerType === 'mouse' && e.button !== 0) return;
                     if (e.target && e.target.closest && e.target.closest('select,button,input,.x')) return;
                     const pill = e.currentTarget;
-                    this._pd = { num: String(num), fromEvent: fromEvent || '', pill, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, on: false, ghost: null, hover: null, hoverKind: null, raf: 0 };
+                    this._pd = { num: String(num), fromEvent: fromEvent || '', course: caddyCourse || '', pill, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, on: false, ghost: null, hover: null, hoverKind: null, raf: 0 };
                     this._pdMove = (ev) => this._pmove(ev);
                     this._pdUp = (ev) => this._pup(ev);
                     document.addEventListener('pointermove', this._pdMove);
@@ -51446,8 +51479,8 @@ Waitlist (${waitlist.length} people):`;
                     document.addEventListener('click', swallow, true);
                     setTimeout(() => document.removeEventListener('click', swallow, true), 350);
                     if (e.type === 'pointercancel' || !hov) return;
-                    if (kind === 'chip') this._assignToEvent(d.num, d.fromEvent, hov.getAttribute('data-reg'));
-                    else if (kind === 'event') this._assignToEvent(d.num, d.fromEvent, hov.id.substring('ddEvent_'.length));
+                    if (kind === 'chip') this._assignToEvent(d.num, d.fromEvent, hov.getAttribute('data-reg'), d.course);
+                    else if (kind === 'event') this._assignToEvent(d.num, d.fromEvent, hov.id.substring('ddEvent_'.length), d.course);
                     else if (kind === 'fav') this._dropToZone(d.num, d.fromEvent, 'favorites');
                     else if (kind === 'all') this._dropToZone(d.num, d.fromEvent, 'all');
                 },
@@ -51627,10 +51660,21 @@ Waitlist (${waitlist.length} people):`;
                     NotificationManager.show(`Caddy #${caddyNum} removed from ${reg.society_events?.title || 'event'}`, 'success');
                 },
 
-                async _assignToEvent(num, fromEvent, regId) {
+                async _assignToEvent(num, fromEvent, regId, caddyCourse) {
                     if (!num || !regId) return;
                     const reg = this.upcomingEvents.find(e => e.id === regId);
                     if (!reg) return;
+
+                    // Cross-course guard (same rule as assignFromPicker): the dragged pill's course
+                    // must match the target event's course, or the user explicitly confirms.
+                    // A drag FROM another event carries that source event's course.
+                    let srcCourse = caddyCourse || '';
+                    if (!srcCourse && fromEvent) {
+                        const srcReg = this.upcomingEvents.find(e => e.id === fromEvent);
+                        srcCourse = srcReg?.society_events?.course_name || '';
+                    }
+                    const targetCourse = reg.society_events?.course_name || '';
+                    if (!window._caddyCourseGuard(num, srcCourse, targetCourse)) return;
 
                     // Append caddy number to existing
                     const existing = (reg.caddy_numbers || '').trim();
@@ -126264,6 +126308,18 @@ window._lvCaddyPhotos = async function(sb, lineId){
 };
 window._lvFirstNum = function(s){ var m=String(s||'').match(/\d{1,4}/); return m?String(parseInt(m[0])):''; };
 window._lvCaddyImg = function(url,size){ return url?'<img src="'+url+'" style="display:inline-block;width:'+size+'px;height:'+size+'px;border-radius:'+Math.max(5,Math.round(size*0.28))+'px;object-fit:cover;vertical-align:middle;margin-right:7px;" alt="">':''; };
+// HARD RULE: a caddy number is a PER-COURSE identity — #177 at Green Valley is a different
+// person than #177 at St Andrews. EVERY path that writes a caddy number onto an event
+// registration must pass through this guard. Returns true = proceed, false = user declined.
+// Unknown/blank courses and same-course (suffix-insensitive) assigns pass silently.
+window._caddyCourseGuard = function(caddyNum, caddyCourse, evCourse){
+  var norm = function(v){ return String(v||'').toLowerCase()
+    .replace(/country\s*club|golf\s*club|golf\s*course|golf|club|course|international|resort|\bcc\b/g,'')
+    .replace(/[^a-z]/g,''); };
+  var a = norm(caddyCourse), b = norm(evCourse);
+  if (!a || !b || a === b || a.indexOf(b) !== -1 || b.indexOf(a) !== -1) return true;
+  return confirm('#' + caddyNum + ' is your caddy at ' + caddyCourse + '.\nThis event is at ' + evCourse + ' — #' + caddyNum + ' there is a DIFFERENT caddy.\n\nAssign #' + caddyNum + ' for this event anyway?');
+};
 // GLOBAL RULE (Pete 2026-08-02): a caddy number never renders without the caddy's photo.
 // _caddyPhotoMap = 120s-cached notebook bare-number→photo_url map for the logged-in golfer.
 // _caddyChipDecorate = post-render pass for surfaces that build chips synchronously: mark the

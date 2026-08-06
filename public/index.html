@@ -143177,7 +143177,7 @@ window.PaperCardEntry = {
                 arr.forEach(function(p){ if (p) self.groupOf[String(p.playerId || p.id)] = 'G' + (i + 1); });
             });
         } catch(e) {}
-        this.courseData = await OSS.loadCourseData();
+        this.courseData = await this._loadCourse();
         this.scores = {}; this.cur = 0; this.startNine = 1; this.sheetOpen = false; this.count = 0;
         this._dirHits = []; this._search = '';
         this._mount(); this.render();
@@ -143294,7 +143294,21 @@ window.PaperCardEntry = {
     teeChange: async function(v){
         var q = document.getElementById('qseTeeMarker'); if (q) q.value = v;
         var OSS = window.OrganizerScoringSystem; OSS._qseCourseCache = null;
-        this.courseData = await OSS.loadCourseData(); this.render();
+        this.courseData = await this._loadCourse(); this.render();
+    },
+    // QSE's loadCourseData is tee-aware but its name-resolver is weak — TRGG event course
+    // names carry noise ("GREEN VALLEY FREE FOOD FRIDAY") it can't match, and it silently
+    // returns a par-4/sequential-SI PLACEHOLDER. Detect that (SI exactly 1..18) and fall
+    // back to loadEditCourseDataRaw, whose TOKEN matcher resolves noisy names + stitches
+    // 9-hole nines. Real course SI is never perfectly sequential.
+    _loadCourse: async function(){
+        var OSS = window.OrganizerScoringSystem;
+        var seq = function(d){ return !d || !d.holes || d.holes.length !== 18 || d.holes.every(function(h, i){ return (h.handicap || 0) === i + 1; }); };
+        var d = null;
+        try { d = await OSS.loadCourseData(); } catch(e){}
+        if (!seq(d)) return d;
+        try { var raw = await OSS.loadEditCourseDataRaw(); if (!seq(raw)) return raw; } catch(e){}
+        return d || { holes: Array.from({ length: 18 }, function(_, i){ return { hole_number: i + 1, par: 4, handicap: i + 1 }; }) };
     },
 
     tap: function(n){

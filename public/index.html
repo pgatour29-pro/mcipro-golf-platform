@@ -143363,9 +143363,15 @@ window.PaperCardEntry = {
         var prevCourse = LS.courseData, prevCombo = LS.comboNines;
         try {
             if (fe) fe.value = this.nineF; if (be) be.value = this.nineB;
+            // Try the selected tee first, then WHITE — several nine-record venues (e.g. the
+            // Phoenix nines) only store white-tee rows, and an empty tee set = null courseData.
             var tee = (document.getElementById('pceTee') || {}).value || 'white';
-            await LS[cfg.fn](tee);
-            var cd = LS.courseData;
+            var cd = null, tees = tee === 'white' ? ['white'] : [tee, 'white'];
+            for (var ti = 0; ti < tees.length && !(cd && cd.holes && cd.holes.length); ti++) {
+                LS.courseData = null;
+                await LS[cfg.fn](tees[ti]);
+                cd = LS.courseData;
+            }
             if (!cd || !cd.holes || !cd.holes.length) { this.courseData = null; this.comboName = null; window.NotificationManager.show(_lvT('pce.toast.combofail','Could not load that nine combination'), 'error'); return; }
             var holes = cd.holes.slice().sort(function(a, b){ return (a.hole_number || a.number || 0) - (b.hole_number || b.number || 0); });
             this.courseData = {

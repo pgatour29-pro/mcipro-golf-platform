@@ -5,46 +5,90 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>TRGG Player of the Year 2026</title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #0a0f1a, #1a1a2e); color: #e2e8f0; min-height: 100vh; }
-        .gold { color: #fbbf24; }
-        .silver { color: #94a3b8; }
-        .bronze { color: #d97706; }
+        /* Theme variables — dark values in :root, .theme-light overrides (same convention as
+           results.html, shared localStorage key mcipro_colorTheme). LIGHT is the default:
+           body ships with class="theme-light" so first paint is light, applyTheme() only
+           switches to dark when the user chose it. Embed mode is always light (app canvas). */
+        :root {
+            --bg: linear-gradient(135deg, #0a0f1a, #1a1a2e);
+            --ink:#f1f5f9; --sub:#94a3b8; --faint:#64748b;
+            --card:rgba(255,255,255,0.04); --card2:rgba(255,255,255,0.05);
+            --line:rgba(255,255,255,0.08); --line2:rgba(255,255,255,0.1);
+            --hover:rgba(255,255,255,0.05);
+            --green:#22c55e; --good:#22c55e; --bad:#ef4444; --info:#3b82f6;
+            --gold-ink:#fbbf24; --silver-ink:#94a3b8; --bronze-ink:#d97706;
+            --pod1-bg:linear-gradient(135deg, rgba(251,191,36,0.2), rgba(245,158,11,0.1)); --pod1-bd:rgba(251,191,36,0.4);
+            --pod2-bg:linear-gradient(135deg, rgba(148,163,184,0.2), rgba(100,116,139,0.1)); --pod2-bd:rgba(148,163,184,0.3);
+            --pod3-bg:linear-gradient(135deg, rgba(217,119,6,0.2), rgba(180,83,9,0.1));      --pod3-bd:rgba(217,119,6,0.3);
+            --badge-bg:rgba(255,255,255,0.1); --badge-ink:#94a3b8;
+            --pill-high-bg:rgba(34,197,94,0.2);  --pill-high-ink:#86efac;
+            --pill-mid-bg:rgba(59,130,246,0.15); --pill-mid-ink:#93c5fd;
+            --pill-low-bg:rgba(239,68,68,0.15);  --pill-low-ink:#fca5a5;
+            --input-bg:rgba(255,255,255,0.08); --input-bd:rgba(255,255,255,0.15);
+        }
+        body.theme-light {
+            --bg:#f1f5f9;
+            --ink:#0f172a; --sub:#475569; --faint:#64748b;
+            --card:#ffffff; --card2:#f8fafc;
+            --line:#e2e8f0; --line2:#e2e8f0;
+            --hover:#f1f5f9;
+            --green:#16a34a; --good:#16a34a; --bad:#dc2626; --info:#2563eb;
+            --gold-ink:#d97706; --silver-ink:#64748b; --bronze-ink:#b45309;
+            --pod1-bg:linear-gradient(135deg, rgba(251,191,36,0.22), rgba(245,158,11,0.08)); --pod1-bd:rgba(245,158,11,0.45);
+            --pod2-bg:linear-gradient(135deg, rgba(100,116,139,0.14), rgba(100,116,139,0.05)); --pod2-bd:rgba(100,116,139,0.35);
+            --pod3-bg:linear-gradient(135deg, rgba(217,119,6,0.16), rgba(180,83,9,0.06));     --pod3-bd:rgba(217,119,6,0.4);
+            --badge-bg:#e2e8f0; --badge-ink:#475569;
+            --pill-high-bg:#dcfce7; --pill-high-ink:#15803d;
+            --pill-mid-bg:#dbeafe; --pill-mid-ink:#1d4ed8;
+            --pill-low-bg:#fee2e2; --pill-low-ink:#b91c1c;
+            --input-bg:#ffffff; --input-bd:#cbd5e1;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--ink); min-height: 100vh; }
+        .msym { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; display:inline-block; line-height:1; vertical-align:middle; }
+        .icon-btn { width:36px; height:36px; border:1px solid var(--line2); background:var(--card); color:var(--sub); border-radius:10px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+        .gold { color: var(--gold-ink); }
+        .silver { color: var(--silver-ink); }
+        .bronze { color: var(--bronze-ink); }
         .podium-card { border-radius: 16px; padding: 16px; text-align: center; position: relative; overflow: hidden; }
-        .podium-1 { background: linear-gradient(135deg, rgba(251,191,36,0.2), rgba(245,158,11,0.1)); border: 2px solid rgba(251,191,36,0.4); }
-        .podium-2 { background: linear-gradient(135deg, rgba(148,163,184,0.2), rgba(100,116,139,0.1)); border: 2px solid rgba(148,163,184,0.3); }
-        .podium-3 { background: linear-gradient(135deg, rgba(217,119,6,0.2), rgba(180,83,9,0.1)); border: 2px solid rgba(217,119,6,0.3); }
-        .player-row { display: flex; align-items: center; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); transition: background 0.2s; }
-        .player-row:hover { background: rgba(255,255,255,0.05); }
-        .pos-badge { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+        .podium-1 { background: var(--pod1-bg); border: 2px solid var(--pod1-bd); }
+        .podium-2 { background: var(--pod2-bg); border: 2px solid var(--pod2-bd); }
+        .podium-3 { background: var(--pod3-bg); border: 2px solid var(--pod3-bd); }
+        .player-row { display: flex; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); transition: background 0.2s; cursor: pointer; }
+        .player-row:hover { background: var(--hover); }
+        .pos-badge { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; font-size: 12px; font-weight: 700; flex-shrink: 0; background: var(--badge-bg); color: var(--badge-ink); }
         .score-pill { display: inline-block; padding: 2px 6px; border-radius: 6px; font-size: 11px; font-weight: 600; margin: 1px; }
-        .score-pill.high { background: rgba(34,197,94,0.2); color: #86efac; }
-        .score-pill.mid { background: rgba(59,130,246,0.15); color: #93c5fd; }
-        .score-pill.low { background: rgba(239,68,68,0.15); color: #fca5a5; }
-        .expand-btn { background: none; border: none; color: #22d3ee; cursor: pointer; font-size: 12px; padding: 4px 8px; }
-        .detail-panel { display: none; padding: 8px 12px 12px 40px; background: rgba(255,255,255,0.03); }
+        .score-pill.high { background: var(--pill-high-bg); color: var(--pill-high-ink); }
+        .score-pill.mid { background: var(--pill-mid-bg); color: var(--pill-mid-ink); }
+        .score-pill.low { background: var(--pill-low-bg); color: var(--pill-low-ink); }
+        .detail-panel { display: none; padding: 8px 12px 12px 40px; background: var(--card2); }
         .detail-panel.open { display: block; }
-        .search-input { width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #e2e8f0; font-size: 14px; outline: none; }
-        .search-input:focus { border-color: #22c55e; }
-        .stat-box { text-align: center; padding: 8px; border-radius: 10px; background: rgba(255,255,255,0.05); }
-        .stat-val { font-size: 20px; font-weight: 700; color: #ffffff; }
-        .stat-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; }
-        .back-btn { display: inline-flex; align-items: center; gap: 4px; color: #22c55e; font-size: 13px; font-weight: 600; cursor: pointer; padding: 8px 0; text-decoration: none; }
-        /* Embed mode (?embed=1): rendered inside the app's POY tab as a dark sheet — height
-           fits content (no forced viewport height) and the app page does the scrolling. */
+        .search-input { width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--input-bd); background: var(--input-bg); color: var(--ink); font-size: 14px; outline: none; }
+        .search-input:focus { border-color: var(--green); }
+        .search-input::placeholder { color: var(--faint); }
+        .stat-box { text-align: center; padding: 8px; border-radius: 10px; background: var(--card2); border: 1px solid var(--line); }
+        .stat-val { font-size: 20px; font-weight: 700; color: var(--ink); }
+        .stat-label { font-size: 10px; color: var(--faint); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; }
+        /* Embed mode (?embed=1): rendered inside the app's POY tab — height fits content
+           (no forced viewport height) and the app page does the scrolling. */
         body.embed { min-height: 0; border-radius: 16px; }
+        body.embed .icon-btn[data-theme-toggle] { display: none; }
     </style>
 </head>
-<body>
-    <div style="max-width: 600px; margin: 0 auto; padding: 12px;">
+<body class="theme-light">
+    <div style="max-width: 600px; margin: 0 auto; padding: 12px; position: relative;">
+        <!-- Theme toggle (hidden in embed — the app canvas is always light) -->
+        <button class="icon-btn" data-theme-toggle onclick="toggleTheme()" title="Theme" style="position:absolute; top:12px; right:12px;">
+            <span class="msym theme-toggle-icon" style="font-size:20px;">dark_mode</span>
+        </button>
+
         <!-- Header -->
         <div style="text-align:center; margin: 8px 0 16px;">
             <div style="font-size: 36px; margin-bottom: 4px;">🏆</div>
-            <h1 style="font-size: 22px; font-weight: 800; color: #ffffff; margin-bottom: 2px;">Player of the Year</h1>
-            <div style="font-size: 13px; color: #94a3b8;">Travellers Rest Golf Group — 2026</div>
-            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">Best 20 Stableford rounds · Updated live</div>
+            <h1 style="font-size: 22px; font-weight: 800; color: var(--ink); margin-bottom: 2px;">Player of the Year</h1>
+            <div style="font-size: 13px; color: var(--sub);">Travellers Rest Golf Group — 2026</div>
+            <div style="font-size: 11px; color: var(--faint); margin-top: 4px;">Best 20 Stableford rounds · Updated live</div>
         </div>
 
         <!-- Top 3 Podium -->
@@ -59,12 +103,12 @@
         </div>
 
         <!-- Leaderboard Table -->
-        <div id="leaderboard" style="background: rgba(255,255,255,0.04); border-radius: 14px; border: 1px solid rgba(255,255,255,0.08); overflow: hidden;">
-            <div style="padding: 12px; text-align: center; color: #64748b;">Loading...</div>
+        <div id="leaderboard" style="background: var(--card); border-radius: 14px; border: 1px solid var(--line2); overflow: hidden;">
+            <div style="padding: 12px; text-align: center; color: var(--faint);">Loading...</div>
         </div>
 
         <!-- Footer -->
-        <div style="text-align: center; padding: 20px 0; color: #475569; font-size: 11px;">
+        <div style="text-align: center; padding: 20px 0; color: var(--faint); font-size: 11px;">
             Data from masterscoreboard.co.uk · MyCaddiPro
         </div>
     </div>
@@ -87,6 +131,23 @@
         setInterval(_postH, 1200);
     }
 
+    // ---------- Theme (shares mcipro_colorTheme with the app; LIGHT default, dark optional) ----------
+    function applyTheme() {
+        let t = 'light';
+        if (EMBED) t = 'light'; // app tab canvas is always light — match it
+        else try { const v = localStorage.getItem('mcipro_colorTheme'); if (v === 'light' || v === 'dark') t = v; } catch(e){}
+        document.body.classList.toggle('theme-light', t === 'light');
+        document.querySelectorAll('[data-theme-toggle] .theme-toggle-icon').forEach(ic => { ic.textContent = t === 'light' ? 'dark_mode' : 'light_mode'; });
+    }
+    function toggleTheme() {
+        let t = 'light';
+        try { const v = localStorage.getItem('mcipro_colorTheme'); if (v === 'light' || v === 'dark') t = v; } catch(e){}
+        const next = t === 'light' ? 'dark' : 'light';
+        try { localStorage.setItem('mcipro_colorTheme', next); } catch(e){}
+        applyTheme();
+    }
+    applyTheme();
+
     async function loadPOY() {
         const sb = window.SupabaseDB?.client;
         if (!sb) { setTimeout(loadPOY, 500); return; }
@@ -97,7 +158,7 @@
             .order('pos', { ascending: true });
 
         if (error) {
-            document.getElementById('leaderboard').innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;">Error loading data</div>';
+            document.getElementById('leaderboard').innerHTML = '<div style="padding:20px;text-align:center;color:var(--bad);">Error loading data</div>';
             console.error(error);
             return;
         }
@@ -121,11 +182,11 @@
                 ${top3.map((p, i) => `
                     <div class="podium-card ${classes[i]}">
                         <div style="font-size:28px;margin-bottom:4px;">${medals[i]}</div>
-                        <div style="font-size:13px;font-weight:700;color:#ffffff;margin-bottom:2px;">${p.display_name.split(',')[0]}</div>
-                        <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">${p.display_name.split(',')[1]?.trim() || ''}</div>
+                        <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px;">${p.display_name.split(',')[0]}</div>
+                        <div style="font-size:11px;color:var(--sub);margin-bottom:6px;">${p.display_name.split(',')[1]?.trim() || ''}</div>
                         <div class="${colors[i]}" style="font-size:28px;font-weight:800;">${p.pts}</div>
-                        <div style="font-size:10px;color:#94a3b8;">pts · ${p.total_rounds} rnds</div>
-                        <div style="font-size:10px;color:#64748b;margin-top:4px;">Best: ${p.best_score} · Avg: ${p.avg_score}</div>
+                        <div style="font-size:10px;color:var(--sub);">pts · ${p.total_rounds} rnds</div>
+                        <div style="font-size:10px;color:var(--faint);margin-top:4px;">Best: ${p.best_score} · Avg: ${p.avg_score}</div>
                     </div>
                 `).join('')}
             </div>
@@ -164,7 +225,7 @@
     let poyShowAll = false;
     function renderLeaderboard(players) {
         if (players.length === 0) {
-            document.getElementById('leaderboard').innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;">No players found</div>';
+            document.getElementById('leaderboard').innerHTML = '<div style="padding:20px;text-align:center;color:var(--faint);">No players found</div>';
             return;
         }
 
@@ -180,7 +241,7 @@
 
         // Header
         let html = `
-            <div style="display:flex;align-items:center;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.1);font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">
+            <div style="display:flex;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line2);font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:0.5px;">
                 <span style="width:28px;text-align:center;">#</span>
                 <span style="flex:1;padding-left:8px;">Player</span>
                 <span style="width:50px;text-align:center;">Pts</span>
@@ -192,35 +253,35 @@
         list.forEach((p, idx) => {
             const posStyle = p.pos <= 3
                 ? `background:${p.pos === 1 ? 'linear-gradient(135deg,#fbbf24,#f59e0b)' : p.pos === 2 ? 'linear-gradient(135deg,#e2e8f0,#94a3b8)' : 'linear-gradient(135deg,#f59e0b,#d97706)'};color:${p.pos === 2 ? '#1e293b' : '#422006'};`
-                : 'background:rgba(255,255,255,0.1);color:#94a3b8;';
+                : '';
 
             html += `
                 <div class="player-row" onclick="toggleDetail('detail-${idx}')">
                     <span class="pos-badge" style="${posStyle}">${p.pos}</span>
                     <div style="flex:1;padding-left:8px;min-width:0;">
-                        <div style="font-size:13px;font-weight:600;color:#ffffff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.display_name}</div>
-                        <div style="font-size:10px;color:#64748b;">Best: ${p.best_score}</div>
+                        <div style="font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.display_name}</div>
+                        <div style="font-size:10px;color:var(--faint);">Best: ${p.best_score}</div>
                     </div>
-                    <span style="width:50px;text-align:center;font-size:15px;font-weight:700;color:#22c55e;">${p.pts}</span>
-                    <span style="width:40px;text-align:center;font-size:12px;color:#94a3b8;">${p.total_rounds}</span>
-                    <span style="width:35px;text-align:center;font-size:12px;color:#94a3b8;">${p.avg_score}</span>
+                    <span style="width:50px;text-align:center;font-size:15px;font-weight:700;color:var(--green);">${p.pts}</span>
+                    <span style="width:40px;text-align:center;font-size:12px;color:var(--sub);">${p.total_rounds}</span>
+                    <span style="width:35px;text-align:center;font-size:12px;color:var(--sub);">${p.avg_score}</span>
                 </div>
                 <div id="detail-${idx}" class="detail-panel">
-                    <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">Top ${p.rounds} scores counted (of ${p.total_rounds} played)</div>
+                    <div style="font-size:11px;color:var(--sub);margin-bottom:6px;">Top ${p.rounds} scores counted${p.total_rounds > p.rounds ? ` (of ${p.total_rounds} played)` : ''}</div>
                     <div style="display:flex;flex-wrap:wrap;gap:3px;">
                         ${(p.scores || []).map(s => `<span class="score-pill ${getScoreClass(s)}">${s}</span>`).join('')}
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px;">
-                        <div style="font-size:10px;color:#64748b;">Best: <span style="color:#22c55e;font-weight:600;">${p.best_score}</span></div>
-                        <div style="font-size:10px;color:#64748b;">Worst: <span style="color:#ef4444;font-weight:600;">${p.worst_score}</span></div>
-                        <div style="font-size:10px;color:#64748b;">Avg: <span style="color:#3b82f6;font-weight:600;">${p.avg_score}</span></div>
+                        <div style="font-size:10px;color:var(--faint);">Best: <span style="color:var(--good);font-weight:600;">${p.best_score}</span></div>
+                        <div style="font-size:10px;color:var(--faint);">Worst: <span style="color:var(--bad);font-weight:600;">${p.worst_score}</span></div>
+                        <div style="font-size:10px;color:var(--faint);">Avg: <span style="color:var(--info);font-weight:600;">${p.avg_score}</span></div>
                     </div>
                 </div>
             `;
         });
 
         if (capped) {
-            html += `<button onclick="poyExpandAll()" style="display:block;width:100%;padding:13px;background:none;border:none;border-top:1px solid rgba(255,255,255,0.1);color:#22c55e;font-size:13px;font-weight:700;cursor:pointer;">Show all ${players.length} players</button>`;
+            html += `<button onclick="poyExpandAll()" style="display:block;width:100%;padding:13px;background:none;border:none;border-top:1px solid var(--line2);color:var(--green);font-size:13px;font-weight:700;cursor:pointer;">Show all ${players.length} players</button>`;
         }
 
         document.getElementById('leaderboard').innerHTML = html;

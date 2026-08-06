@@ -47475,7 +47475,7 @@ Waitlist (${waitlist.length} people):`;
             </div>
 
             <!-- POY — in-app section, same no-page-leap embed pattern as Event Results.
-                 poy.html stays shareable standalone; ?embed=1 renders it as a dark sheet here. -->
+                 poy.html stays shareable standalone; ?embed=1 always renders light (app canvas). -->
             <div id="golfer-poy" class="tab-content">
                 <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
                     <button onclick="showGolferTab('overview', event)" style="border:1px solid #e2e8f0;background:#fff;color:#64748b;border-radius:10px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;" title="Back">
@@ -105070,7 +105070,7 @@ function showTRGGPOYUpdateModal() {
                     <h2 style="color:#f59e0b;font-size:18px;font-weight:700;"><span class="material-symbols-outlined" style="font-size:inherit;vertical-align:middle;line-height:1;">emoji_events</span> Update POY Data</h2>
                     <button onclick="document.getElementById('trggPOYUpdateModal').style.display='none'" style="background:none;border:none;color:#94a3b8;font-size:24px;cursor:pointer;">×</button>
                 </div>
-                <p style="color:#94a3b8;font-size:12px;margin-bottom:12px;">Paste the masterscoreboard POY data. Format per line:<br><code style="color:#22d3ee;">Pos  Name  Pts  Rounds  Score1,Score2,...</code><br>Or tab-separated: <code style="color:#22d3ee;">Pos  Name  Pts  Rounds</code></p>
+                <p style="color:#94a3b8;font-size:12px;margin-bottom:12px;">Paste the masterscoreboard POY data (full list). Format per line:<br><code style="color:#22d3ee;">Pos  Name  Pts  Rounds  Score1,Score2,...</code><br>Or tab-separated: <code style="color:#22d3ee;">Pos  Name  Pts  Rounds</code><br>Each paste REPLACES a player's stored scores with the pasted snapshot.</p>
                 <textarea id="trggPOYPasteBox" rows="10" style="width:100%;background:#0f172a;color:#e2e8f0;border:1px solid #475569;border-radius:10px;padding:10px;font-size:12px;font-family:monospace;resize:vertical;" placeholder="Paste POY leaderboard data here..."></textarea>
                 <div style="display:flex;gap:8px;margin-top:12px;align-items:center;">
                     <button onclick="TRGGPOYUpdate.process()" style="padding:10px 24px;background:#f59e0b;color:#0f172a;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">Update POY</button>
@@ -105133,76 +105133,27 @@ const TRGGPOYUpdate = {
             return;
         }
 
-        statusEl.textContent = `Processing ${players.length} players...`;
+        statusEl.textContent = `Applying snapshot (${players.length} players)...`;
         statusEl.style.color = '#f59e0b';
 
         try {
             const sb = window.SupabaseDB?.client;
             if (!sb) throw new Error('Database not ready');
 
-            let matched = 0, created = 0, roundsAdded = 0, notFound = [];
+            // One atomic RPC: each paste is a SNAPSHOT of every player's current counting
+            // scores, so it must REPLACE that player's rounds (anon has no DELETE under RLS —
+            // the replace happens inside the SECURITY DEFINER function, which also stores the
+            // official rounds-played count and refreshes the cache). Appending client-side is
+            // how six pastes stacked into double-counted points.
+            const { data: result, error } = await sb.rpc('trgg_poy_apply_snapshot', {
+                snapshot: players.map(p => ({ name: p.name, pts: p.pts, rounds: p.rounds, scores: p.scores }))
+            });
+            if (error) throw error;
 
-            for (const p of players) {
-                // Find existing player by name
-                const { data: existing } = await sb
-                    .from('trgg_players')
-                    .select('id')
-                    .eq('display_name', p.name)
-                    .maybeSingle();
-
-                let playerId;
-                if (existing) {
-                    playerId = existing.id;
-                    matched++;
-                } else {
-                    // Create new player
-                    const nameParts = p.name.split(',');
-                    const { data: newPlayer, error } = await sb
-                        .from('trgg_players')
-                        .insert({
-                            display_name: p.name,
-                            last_name: nameParts[0]?.trim(),
-                            first_name: nameParts[1]?.trim()
-                        })
-                        .select('id')
-                        .single();
-                    if (error || !newPlayer) { notFound.push(p.name); continue; }
-                    playerId = newPlayer.id;
-                    created++;
-                }
-
-                // If scores provided, insert new rounds (upsert pattern — old rounds stay, new ones added)
-                if (p.scores.length > 0) {
-                    const roundRows = p.scores.map(s => ({
-                        player_id: playerId,
-                        round_date: '2026-01-01',
-                        stableford: s
-                    }));
-                    var insertResult = await sb.from('trgg_rounds').insert(roundRows);
-                    if (insertResult.error) {
-                        console.error('[TRGG] Insert rounds failed:', insertResult.error);
-                        notFound.push(p.name + ' (insert failed)');
-                        continue;
-                    }
-                    roundsAdded += p.scores.length;
-                }
-            }
-
-            // Refresh the cache table
-            statusEl.textContent = 'Refreshing cache...';
-            try {
-                const { error: rpcErr } = await sb.rpc('refresh_trgg_poy_cache');
-                if (rpcErr) console.warn('[POY] Cache refresh RPC error:', rpcErr.message);
-                else console.log('[POY] Cache refreshed successfully');
-            } catch (e) {
-                console.log('[POY] Cache refresh failed, manual refresh needed:', e.message);
-            }
-
-            statusEl.textContent = `Done! ${matched} matched, ${created} new, ${roundsAdded} rounds. ${notFound.length > 0 ? notFound.length + ' errors' : ''}`;
+            const r = result || {};
+            statusEl.textContent = `Done! ${r.matched || 0} matched, ${r.created || 0} new, ${r.rounds || 0} scores applied.`;
             statusEl.style.color = '#059669';
-            NotificationManager.show(`POY updated: ${matched + created} players, ${roundsAdded} rounds`, 'success');
-
-            if (notFound.length > 0) console.log('[POY] Errors:', notFound);
+            window.NotificationManager.show(`POY updated: ${(r.matched || 0) + (r.created || 0)} players, ${r.rounds || 0} scores`, 'success');
         } catch (err) {
             console.error('[POY Update] Error:', err);
             statusEl.textContent = 'Error: ' + err.message;

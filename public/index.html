@@ -9691,6 +9691,9 @@
                 'pce.pick': 'select',
                 'pce.pick.nines': 'SELECT THE NINES PLAYED — scores locked until then',
                 'pce.toast.combofail': 'Could not load that nine combination',
+                'pce.saveround': 'SAVE ROUND',
+                'pce.resave': 'RE-SAVE ROUND',
+                'pce.around': 'a round',
                 'pce.genericcard': 'COURSE CARD NOT MATCHED — generic par-4 card, net/points approximate',
                 'pce.kbd.adv': 'score → auto-advance',
                 'pce.kbd.ten': 'digit = 1 / 10-15',
@@ -11589,6 +11592,9 @@
                 'pce.pick': 'เลือก',
                 'pce.pick.nines': 'เลือกคอร์ส 9 หลุมที่เล่นก่อน — จึงจะกรอกสกอร์ได้',
                 'pce.toast.combofail': 'โหลดชุดคอร์ส 9 หลุมไม่สำเร็จ',
+                'pce.saveround': 'บันทึกรอบ',
+                'pce.resave': 'บันทึกรอบใหม่',
+                'pce.around': 'รอบหนึ่ง',
                 'pce.genericcard': 'ไม่พบสกอร์การ์ดของสนาม — ใช้การ์ดพาร์ 4 ทั่วไป เน็ต/แต้มเป็นค่าประมาณ',
                 'pce.kbd.adv': 'สกอร์ → เลื่อนอัตโนมัติ',
                 'pce.kbd.ten': 'ตัวเลข = 1 / 10-15',
@@ -13094,6 +13100,9 @@
                 'pce.pick': '선택',
                 'pce.pick.nines': '플레이한 9홀 코스를 선택하세요 — 선택 전에는 입력 불가',
                 'pce.toast.combofail': '해당 9홀 조합을 불러올 수 없습니다',
+                'pce.saveround': '라운드 저장',
+                'pce.resave': '라운드 재저장',
+                'pce.around': '라운드',
                 'pce.genericcard': '코스 카드를 찾을 수 없음 — 일반 파4 카드 사용, 네트/포인트는 근사치',
                 'pce.kbd.adv': '스코어 → 자동 이동',
                 'pce.kbd.ten': '숫자 = 1 / 10-15',
@@ -15417,6 +15426,9 @@
                 'pce.pick': '選択',
                 'pce.pick.nines': 'プレーした9ホールを選択 — 選択するまで入力できません',
                 'pce.toast.combofail': 'その9ホールの組み合わせを読み込めませんでした',
+                'pce.saveround': 'ラウンド保存',
+                'pce.resave': 'ラウンド再保存',
+                'pce.around': 'ラウンド',
                 'pce.genericcard': 'コースカード未検出 — 汎用パー4カード使用、ネット/ポイントは概算',
                 'pce.kbd.adv': 'スコア → 自動送り',
                 'pce.kbd.ten': '数字 = 1 / 10-15',
@@ -142616,10 +142628,16 @@ class OrganizerScoringSystem {
                 ${_nineMissing ? `<div class="mb-3 px-3 py-2 rounded-lg bg-red-50 border-2 border-red-300 text-red-700 text-sm font-bold">⚠ ${this._qseEsc(_lvT('pce.pick.nines','SELECT THE NINES PLAYED — scores locked until then'))}</div>` : ''}
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="font-bold text-lg">${this._qseEsc(_lvT('qse.hbh.title.fmt', '{name} - Hole-by-Hole Scorecard').replace('{name}', player.player_name))}</h3>
-                    <button onclick="window.OrganizerScoringSystem.toggleHoleByHole('${playerId}')"
-                            class="text-gray-500 hover:text-gray-700">
-                        <span class="material-symbols-outlined">close</span>
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button id="qse-save-${playerId}" onclick="window.OrganizerScoringSystem.qseSavePlayerRound('${playerId}')"
+                                class="px-4 py-1.5 ${player.hasExistingRound ? 'bg-amber-500 hover:bg-amber-600' : 'bg-green-600 hover:bg-green-700'} text-white rounded-lg font-bold text-sm">
+                            ${player.hasExistingRound ? this._qseEsc(_lvT('pce.resave','RE-SAVE ROUND')) : this._qseEsc(_lvT('pce.saveround','SAVE ROUND'))}
+                        </button>
+                        <button onclick="window.OrganizerScoringSystem.toggleHoleByHole('${playerId}')"
+                                class="text-gray-500 hover:text-gray-700">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Front 9 -->
@@ -142786,6 +142804,16 @@ class OrganizerScoringSystem {
 
         // Update totals
         this.updateHoleTotals(playerId);
+
+        // AUTO-SAVE (Pete 2026-08-06): the 18th hole completes the card — save the round right
+        // there, no extra button hunt. Only for players with no round yet (replacing an existing
+        // round stays behind the SAVE button's confirm).
+        try {
+            const hs = this.qseScores[playerId].holes || {};
+            let n = 0; for (let i = 1; i <= 18; i++) if (hs[i]) n++;
+            const pl = this.qsePlayersData.find(p => p.player_id === playerId);
+            if (n === 18 && pl && !pl.hasExistingRound) this.qseSavePlayerRound(playerId, true);
+        } catch (e) {}
     }
 
     // Focus the score box for a given hole (1-18) within a player's scorecard.
@@ -142863,6 +142891,80 @@ class OrganizerScoringSystem {
         if (stablefordInput) stablefordInput.value = totalStableford > 0 ? totalStableford : '';
 
         this.updateScoreEntryStats();
+    }
+
+    // Per-player SAVE for the hole-by-hole grid (Pete 2026-08-06: "after the last score is put
+    // in why isn't it saving and calculating"). Fires automatically when the 18th hole is typed
+    // for a player with no round yet, and via the grid's SAVE button (which also replaces).
+    // Writes the SAME shape as Paper Cards / _persistHoleScores — the old bulk saveAllScores
+    // wrote round_holes.score, a column that doesn't exist, so hole detail silently vanished.
+    async qseSavePlayerRound(playerId, auto) {
+        if (!this._qseSaving) this._qseSaving = {};
+        if (this._qseSaving[playerId]) return;
+        const player = (this.qsePlayersData || []).find(p => p.player_id === playerId);
+        if (!player) return;
+        const holes = (this.qseScores[playerId] || {}).holes || {};
+        let filled = 0; for (let i = 1; i <= 18; i++) if (holes[i]) filled++;
+        if (!filled) { window.NotificationManager.show(_lvT('pce.toast.noscores','No scores on the card yet'), 'warning'); return; }
+        if (!auto && filled < 18 && !confirm(_lvT('pce.confirm.partial','Only {n} of 18 holes filled — save anyway?').replace('{n}', filled))) return;
+        if (player.hasExistingRound && !confirm(_lvT('pce.confirm.replace','{name} already has {g} posted. Replace with this card?').replace('{name}', player.player_name).replace('{g}', _lvT('pce.around','a round')))) return;
+        this._qseSaving[playerId] = true;
+        try {
+            const sb = window.SupabaseDB.client;
+            const courseData = await this.loadCourseData();
+            const hcp = window.toPlayingHandicap(player.handicap);
+            let totalGross = 0, totalNet = 0, totalPts = 0, holesN = 0; const holeRows = [];
+            for (let h = 1; h <= 18; h++) {
+                const s = holes[h] ? parseInt(holes[h]) : null; if (!s) continue;
+                const m = courseData.holes[h - 1] || { par: 4, handicap: h };
+                const strokes = this.calcShotsOnHole(hcp, m.handicap || h);
+                const net = s - strokes;
+                const pts = this.calcStablefordPts(s, m.par || 4, hcp, m.handicap || h);
+                holeRows.push({ hole_number: h, par: m.par || 4, stroke_index: m.handicap || h, gross_score: s, net_score: net, stableford_points: pts });
+                totalGross += s; totalNet += net; totalPts += pts; holesN++;
+            }
+            const ev = this.qseEventData || {};
+            const combo = (this._eventCombo && this._eventCombo.eventId === String(ev.id)) ? this._eventCombo : null;
+            const teeRaw = document.getElementById('qseTeeMarker')?.value || 'white';
+            const tee = String(teeRaw).toLowerCase().trim().split(/[\s(]/)[0] || 'white';
+            let roundId = null;
+            if (player.hasExistingRound) {
+                const ex = await sb.from('rounds').select('id').eq('society_event_id', ev.id).eq('golfer_id', playerId).order('played_at', { ascending: false }).limit(1);
+                if (ex.data && ex.data.length) roundId = ex.data[0].id;
+            }
+            if (roundId) {
+                await sb.from('round_holes').delete().eq('round_id', roundId);
+                const up = await sb.from('rounds').update({ total_gross: totalGross, total_net: totalNet, total_stableford: totalPts, holes_played: holesN, handicap_used: player.handicap, tee_marker: tee }).eq('id', roundId).select('id');
+                if (up.error) throw up.error;
+            } else {
+                const evd = ev.event_date ? new Date(ev.event_date + 'T07:00:00') : new Date();
+                const ins = await sb.from('rounds').insert({
+                    golfer_id: playerId, player_name: player.player_name || null,
+                    course_id: (combo && combo.comboId) || ev.course_id || null,
+                    course_name: (combo && combo.name) || ev.course_name || ev.courseName || 'Unknown Course',
+                    type: 'society', society_event_id: ev.id, organizer_id: ev.organizer_id || null,
+                    played_at: evd.toISOString(), started_at: evd.toISOString(),
+                    completed_at: new Date().toISOString(), status: 'completed',
+                    total_gross: totalGross, total_net: totalNet, total_stableford: totalPts,
+                    holes_played: holesN, handicap_used: player.handicap, tee_marker: tee,
+                    course_rating: 72.0, slope_rating: 113
+                }).select('id').single();
+                if (ins.error) throw ins.error;
+                roundId = ins.data.id;
+            }
+            if (holeRows.length) {
+                const hr = await sb.from('round_holes').insert(holeRows.map(r => Object.assign({ round_id: roundId }, r)));
+                if (hr.error) throw hr.error;
+            }
+            player.hasExistingRound = true;
+            window.NotificationManager.show('✓ ' + _lvT('pce.toast.saved','Saved — {name} · {g} (net {n} · {p} pts)').replace('{name}', player.player_name).replace('{g}', totalGross).replace('{n}', totalNet).replace('{p}', totalPts), 'success', 3500);
+            const btn = document.getElementById('qse-save-' + playerId);
+            if (btn) { btn.textContent = '✓ ' + _lvT('pce.postedok','POSTED ✓'); btn.classList.remove('bg-green-600','hover:bg-green-700'); btn.classList.add('bg-gray-400'); }
+            try { this.refreshScores && this.refreshScores(); } catch (e) {}
+        } catch (e) {
+            console.error('[QSE] save round', e);
+            window.NotificationManager.show(_lvT('pce.toast.savefail','Save failed — card kept, try again'), 'error');
+        } finally { this._qseSaving[playerId] = false; }
     }
 
     // ===== EVENT NINE-COMBINATION — GLOBAL SYNC (Pete 2026-08-06) =====
@@ -143172,6 +143274,7 @@ class OrganizerScoringSystem {
                         completed_at: new Date().toISOString(),
                         status: 'completed',
                         total_gross: parseInt(scores.gross) || null,
+                        total_net: (parseInt(scores.gross) || null) != null ? parseInt(scores.gross) - Math.round(window.toPlayingHandicap(player.handicap) || 0) : null,
                         total_stableford: scores.stableford !== '' ? parseInt(scores.stableford) : null,
                         handicap_used: player.handicap,
                         tee_marker: teeMarker,
@@ -143203,12 +143306,17 @@ class OrganizerScoringSystem {
                             // Get course data for pars and handicaps
                             const courseData = await this.loadCourseData();
 
-                            // Prepare hole records
+                            // Prepare hole records — SAME column shape as _persistHoleScores /
+                            // qseSavePlayerRound. The old insert wrote `score` (a column that
+                            // doesn't exist) + SI into handicap_strokes, so every hole-detail
+                            // insert silently failed and rounds saved totals-only.
+                            const _phcp = window.toPlayingHandicap(player.handicap);
                             const holeRecords = [];
                             for (let holeNum = 1; holeNum <= 18; holeNum++) {
                                 const score = holeScores[holeNum];
                                 if (score) {
                                     const holeData = courseData.holes[holeNum - 1] || { par: 4, handicap: holeNum };
+                                    const _strokes = this.calcShotsOnHole(_phcp, holeData.handicap || holeNum);
                                     const stablefordPoints = this.calculateStablefordPoints(
                                         score,
                                         holeData.par,
@@ -143220,9 +143328,10 @@ class OrganizerScoringSystem {
                                         round_id: round.id,
                                         hole_number: holeNum,
                                         par: holeData.par,
-                                        score: parseInt(score),
-                                        stableford_points: stablefordPoints,
-                                        handicap_strokes: holeData.handicap
+                                        stroke_index: holeData.handicap || holeNum,
+                                        gross_score: parseInt(score),
+                                        net_score: parseInt(score) - _strokes,
+                                        stableford_points: stablefordPoints
                                     });
                                 }
                             }

@@ -140180,7 +140180,8 @@ class OrganizerScoringSystem {
 
             const courseData = await this.loadEditCourseData();
             this._hbhCourse = courseData;   // shared with the inline-edit handlers
-            this._hbhScores = {};           // roundId -> {hole: gross} live buffer for inline entry
+            this._hbhScores = {};           // rowKey -> {hole: gross} live buffer for inline entry
+            this._hbhRows = {};             // rowKey -> leaderboard row (unscored rows have null ids)
             // 2-MAN SCRAMBLE: the grid is ONE editable row per TEAM (a pair shares one card) —
             // the row is keyed by a representative round id and _hbhSaveRow mirrors every save
             // to the teammate's card with that player's own stroke allocation (v709 parity).
@@ -140242,8 +140243,15 @@ class OrganizerScoringSystem {
                 const _teamHcp = this._hbhTeamHcp[round.id];   // set only on scramble team rows
                 const playerName = this._hbhTeamName[round.id] || this.getPlayerName(round.golfer_id, round);
                 const handicap = (_teamHcp != null) ? _teamHcp : window.toPlayingHandicap(round.handicap_used);
-                const safeId = String(round.id).replace(/[^a-zA-Z0-9_-]/g, '_');
-                this._hbhScores[round.id] = {};   // seed the inline-edit buffer for this row
+                // UNSCORED players have round.id = null — EVERY such row used to render the SAME
+                // 'hbh_null_*' element ids, so typing hole 1 in any of them jumped focus into the
+                // FIRST null row (a different player) and their score buffers collided on one key.
+                // rowKey is unique per row; _hbhRows maps it back to the row object for saves.
+                const rowKey = round.id != null ? String(round.id) : ('pending_' + String(round.golfer_id));
+                if (!this._hbhRows) this._hbhRows = {};
+                this._hbhRows[rowKey] = round;
+                const safeId = rowKey.replace(/[^a-zA-Z0-9_-]/g, '_');
+                this._hbhScores[rowKey] = {};   // seed the inline-edit buffer for this row
                 let outTotal = 0, inTotal = 0;
                 let recalculatedStableford = 0;  // RECALCULATE using correct SI!
 
@@ -140257,7 +140265,7 @@ class OrganizerScoringSystem {
                     const si = courseData.holes[h - 1]?.handicap || h;
                     const score = (holeData && holeData.gross_score) ? holeData.gross_score : null;
                     if (score) {
-                        this._hbhScores[round.id][h] = score;
+                        this._hbhScores[rowKey][h] = score;
                         if (h <= 9) outTotal += score; else inTotal += score;
                         recalculatedStableford += this.calcStablefordPts(score, par, handicap, si);
                     }
@@ -140266,8 +140274,8 @@ class OrganizerScoringSystem {
                     const bgClass = this._hbhCellClass(score, par);
                     html += `<td id="hbhtd_${safeId}_${h}" class="p-0 text-center border-l border-gray-200 ${bgClass}">
                         <input id="hbh_${safeId}_${h}" value="${score || ''}" inputmode="numeric" maxlength="2" autocomplete="off"
-                            oninput="window.OrganizerScoringSystem.hbhCellInput('${round.id}',${h},this.value)"
-                            onblur="window.OrganizerScoringSystem.hbhCellBlur('${round.id}')"
+                            oninput="window.OrganizerScoringSystem.hbhCellInput('${rowKey}',${h},this.value)"
+                            onblur="window.OrganizerScoringSystem.hbhCellBlur('${rowKey}')"
                             class="w-full text-center bg-transparent outline-none focus:ring-2 focus:ring-orange-400 focus:bg-white/90"
                             style="min-width:30px;padding:5px 2px;color:inherit;font-weight:inherit;">
                     </td>`;
@@ -140357,10 +140365,16 @@ class OrganizerScoringSystem {
         }
     }
 
+    // Resolve a hole-by-hole row key back to its leaderboard row. Unscored players have
+    // round.id = null, so their key is 'pending_<golfer_id>' — the _hbhRows map (built at
+    // render) is the only reliable way back to the object.
+    _hbhRound(rid) {
+        return (this._hbhRows && this._hbhRows[rid]) || (this.leaderboardData || []).find(r => String(r.id) === String(rid));
+    }
     // Live-recompute one row's OUT / IN / TOT / PTS from the in-memory buffer.
     // Scramble team rows (in _hbhTeamHcp) show team NET (gross − team hcp) in the PTS slot.
     _hbhRecalcRow(rid) {
-        const round = (this.leaderboardData || []).find(r => r.id === rid);
+        const round = this._hbhRound(rid);
         if (!round) return;
         const handicap = window.toPlayingHandicap(round.handicap_used);
         const scores = this._hbhScores[rid] || {};
@@ -140400,10 +140414,37 @@ class OrganizerScoringSystem {
     // Scramble team rows mirror the SAME gross to the teammate's card (via _hbhTeamLinks) —
     // _persistHoleScores computes each player's own strokes/net/pts from their handicap_used,
     // keeping the pair's cards identical-gross and byte-compatible with v709/live scoring.
+    // Unscored player (round.id null): CREATE their round first so _persistHoleScores has a
+    // real id to write against — same insert shape as qseSavePlayerRound / Paper Cards,
+    // including the event's synced nine-combination course id + name.
+    async _hbhEnsureRound(round) {
+        if (round.id != null) return round.id;
+        const ev = this.allEvents.find(e => e.id === this.currentEventId) || {};
+        const combo = (this._eventCombo && this._eventCombo.eventId === String(this.currentEventId)) ? this._eventCombo : null;
+        const evd = ev.event_date ? new Date(ev.event_date + 'T07:00:00') : new Date();
+        const teeRaw = document.getElementById('qseTeeMarker')?.value || 'white';
+        const { data, error } = await window.SupabaseDB.client.from('rounds').insert({
+            golfer_id: round.golfer_id, player_name: round.player_name || this.getPlayerName(round.golfer_id, round) || null,
+            course_id: (combo && combo.comboId) || ev.course_id || null,
+            course_name: (combo && combo.name) || ev.course_name || ev.courseName || 'Unknown Course',
+            type: 'society', society_event_id: this.currentEventId, organizer_id: ev.organizer_id || null,
+            played_at: evd.toISOString(), started_at: evd.toISOString(),
+            completed_at: new Date().toISOString(), status: 'completed',
+            total_gross: null, total_net: null, total_stableford: 0, holes_played: 0,
+            handicap_used: round.handicap_used != null ? round.handicap_used : 0,
+            tee_marker: String(teeRaw).toLowerCase().trim().split(/[\s(]/)[0] || 'white',
+            course_rating: 72.0, slope_rating: 113
+        }).select('id').single();
+        if (error) throw error;
+        round.id = data.id;
+        round._notStarted = false;
+        return round.id;
+    }
     async _hbhSaveRow(rid) {
-        const round = (this.leaderboardData || []).find(r => r.id === rid);
+        const round = this._hbhRound(rid);
         if (!round) return;
         try {
+            if (round.id == null) await this._hbhEnsureRound(round);
             const scores = this._hbhScores[rid] || {};
             const apply = async (r) => {
                 const t = await this._persistHoleScores(r, scores);

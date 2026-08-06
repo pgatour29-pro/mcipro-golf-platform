@@ -42307,22 +42307,16 @@ Waitlist (${waitlist.length} people):`;
                     groups[c.course].push(c);
                 });
 
-                // Notebook photos: number → photo_url, shown on the pick pills
-                let nbPhotos = {};
-                try {
-                    (await CaddyNotebook.getEntries()).forEach(en => {
-                        if (en.caddy_number && en.photo_url) {
-                            const k = String(parseInt(en.caddy_number));
-                            if (!nbPhotos[k]) nbPhotos[k] = en.photo_url;
-                        }
-                    });
-                } catch (e) {}
+                // Notebook photos on the pick pills — matched by number + the PILL's course
+                // (bare-number lookup put one course's caddy face on another course's number)
+                let nbPhotoRows = [];
+                try { nbPhotoRows = await CaddyNotebook.getEntries(); } catch (e) {}
 
                 const renderPill = (c, hideCourse) => {
                     const nameLabel = c.name ? ` ${c.name}` : '';
                     const courseLabel = (!hideCourse && c.course) ? `<span class="cl">${c.course}</span>` : '';
                     const courseAttr = String(c.course || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
-                    const ph = nbPhotos[String(parseInt(c.number))];
+                    const ph = window._nbPhotoPick(nbPhotoRows, c.number, c.course);
                     const phImg = ph ? `<img src="${ph}" style="width:22px;height:22px;border-radius:7px;object-fit:cover;vertical-align:middle;margin-right:3px;" alt="">` : '';
                     return `<button onclick="BookedCaddiesView.assignFromPicker('${eventId}','${c.number}','${courseAttr}')" class="mcv1-shpill ${c.isFav ? 'fav' : ''} active:scale-95 transition-transform">
                         ${phImg}${c.isFav ? micon('star') : ''} #${c.number}${nameLabel} ${courseLabel}
@@ -42459,18 +42453,21 @@ Waitlist (${waitlist.length} people):`;
                 document.body.style.overflow = 'hidden';
 
                 // GLOBAL RULE: numbers carry photos — sheet header + per-event "Currently" rows.
-                const nbMap = window._caddyPhotoMap ? await window._caddyPhotoMap() : {};
+                // Photos matched by number + COURSE (header = the caddy's home course; Currently
+                // rows = that event's course), never bare number.
+                let nbRows = [];
+                try { nbRows = await CaddyNotebook.getEntries(); } catch (e) {}
                 const escAttr = s => String(s || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
                 const label = (caddyName ? '#' + caddyNum + ' — ' + caddyName : '#' + caddyNum)
                     + (caddyCourse ? ' <span style="font-weight:400;color:#98A2AD;">(' + escAttr(caddyCourse) + ')</span>' : '');
-                const labelImg = window._lvCaddyImg(nbMap[window._lvFirstNum(caddyNum)], 24);
+                const labelImg = window._lvCaddyImg(window._nbPhotoPick(nbRows, caddyNum, caddyCourse || ''), 24);
                 let eventsHtml = '';
                 upcoming.forEach(r => {
                     const evt = r.society_events || {};
                     const date = evt.event_date ? new Date(evt.event_date + 'T00:00:00') : null;
                     const dateStr = date ? date.toLocaleDateString(_lvLocale(), { weekday: 'short', month: 'short', day: 'numeric' }) : '';
                     const hasCaddy = r.caddy_numbers && r.caddy_numbers.trim();
-                    const currentHtml = hasCaddy ? '<div class="cur">Currently: ' + window._lvCaddyImg(nbMap[window._lvFirstNum(r.caddy_numbers)], 16) + '#' + r.caddy_numbers.trim() + '</div>' : '';
+                    const currentHtml = hasCaddy ? '<div class="cur">Currently: ' + window._lvCaddyImg(window._nbPhotoPick(nbRows, window._lvFirstNum(r.caddy_numbers), evt.course_name || ''), 16) + '#' + r.caddy_numbers.trim() + '</div>' : '';
                     const actionText = hasCaddy ? 'Replace' : 'Assign';
                     eventsHtml += '<button onclick="BookedCaddiesView.assignFromPicker(\'' + r.event_id + '\',\'' + caddyNum + '\',\'' + escAttr(caddyCourse) + '\',\'' + escAttr(evt.course_name) + '\')" class="mcv1-shev ' + (hasCaddy ? '' : 'open') + ' active:scale-95 transition-transform">'
                         + '<div class="flex-1 min-w-0">'
@@ -51200,13 +51197,10 @@ Waitlist (${waitlist.length} people):`;
                             return c;
                         };
 
-                        // Bare-number → photo map (notebook is the photo source) for the event pills,
-                        // which carry no course context. Same convention as every other photo surface.
-                        this._photoByNum = {};
-                        for (const e of entries) {
-                            const k = e.caddy_number ? String(parseInt(e.caddy_number)) : '';
-                            if (e.photo_url && k && k !== 'NaN' && !this._photoByNum[k]) this._photoByNum[k] = e.photo_url;
-                        }
+                        // Notebook rows kept for COURSE-AWARE photo lookup (_nbPhotoPick). The old
+                        // bare-number map painted Pumz's (Plutaluang #183) face on Pattaya's #183 chip.
+                        // Event pills DO have course context — the event's own course.
+                        this._nbEntries = entries;
 
                         // 1) Notebook = the golfer's saved caddies (authoritative course). ALWAYS shown.
                         for (const e of entries) {
@@ -51300,7 +51294,7 @@ Waitlist (${waitlist.length} people):`;
                         const time = (evt.start_time || '').substring(0, 5);
                         const course = this.normalizeCourse(evt.course_name || '');
                         const caddyNums = (ev.caddy_numbers || '').trim();
-                        const assignedPills = caddyNums ? caddyNums.split(/[,\-.\s:;/|]+/).map(n => n.trim().replace(/\D/g, '')).filter(n => n).map(n => { const pn = String(parseInt(n)); const pu = (this._photoByNum || {})[pn] || ''; const pi = pu ? `<img src="${pu}" style="display:inline-block;width:18px;height:18px;border-radius:5px;object-fit:cover;vertical-align:middle;margin-right:4px;" alt="">` : ''; return `<span class="mcv1-evpill" onpointerdown="CaddyDragDrop.pdown(event,'${pn}','${ev.id}')" onclick="CaddyDragDrop.unassignCaddy('${ev.id}','${pn}')" title="Drag out or click to remove">${pi}#${pn} ✕</span>`; }).join(' ') : '<span class="mcv1-noass">No caddy assigned</span>';
+                        const assignedPills = caddyNums ? caddyNums.split(/[,\-.\s:;/|]+/).map(n => n.trim().replace(/\D/g, '')).filter(n => n).map(n => { const pn = String(parseInt(n)); const pu = window._nbPhotoPick(this._nbEntries, pn, ev.society_events?.course_name || ''); const pi = pu ? `<img src="${pu}" style="display:inline-block;width:18px;height:18px;border-radius:5px;object-fit:cover;vertical-align:middle;margin-right:4px;" alt="">` : ''; return `<span class="mcv1-evpill" onpointerdown="CaddyDragDrop.pdown(event,'${pn}','${ev.id}')" onclick="CaddyDragDrop.unassignCaddy('${ev.id}','${pn}')" title="Drag out or click to remove">${pi}#${pn} ✕</span>`; }).join(' ') : '<span class="mcv1-noass">No caddy assigned</span>';
                         return `<div class="mcv1-ev" id="ddEvent_${ev.id}">
                             <div class="t">${evt.title || 'Event'}</div>
                             <div class="m">${course} · ${date} ${time}</div>
@@ -51367,7 +51361,7 @@ Waitlist (${waitlist.length} people):`;
                     const nameLabel = caddy.name ? ` ${caddy.name}` : '';
                     const countBadge = caddy.count > 1 ? `<span style="margin-left:3px;opacity:.8;">×${caddy.count}</span>` : '';
                     const courseArg = String(caddy.course || '').replace(/'/g, "\\'");
-                    const photoUrl = caddy.photo || (this._photoByNum || {})[caddy.number] || '';
+                    const photoUrl = caddy.photo || window._nbPhotoPick(this._nbEntries, caddy.number, caddy.course);
                     const photoImg = photoUrl ? `<img src="${photoUrl}" style="display:inline-block;width:22px;height:22px;border-radius:6px;object-fit:cover;vertical-align:middle;margin-right:5px;flex-shrink:0;" alt="">` : '';
                     // Date the caddy was added (created_at) — shown UNDER the number as a reference mark
                     let dateLabel = '';
@@ -119390,22 +119384,18 @@ class GolferEventsManager {
         // Form re-renders can wipe the YOUR CADDY suggestion box — re-create if missing
         if (!document.getElementById('scv3gCaddySug')) { try { this._fillCaddySuggestion(); } catch (e) {} }
     }
-    // Decorate the caddy pills with notebook photos (async fill; no photo = pill unchanged)
+    // Decorate the caddy pills with notebook photos (async fill; no photo = pill unchanged).
+    // Matched by number + THIS EVENT's course — a bare-number match would show a same-numbered
+    // caddy from a different course on this event's pill.
     async _rfv1CaddyPhotos() {
         try {
             const wrap = document.getElementById('rfv1CaddyPills'); if (!wrap) return;
             const entries = (typeof CaddyNotebook !== 'undefined') ? await CaddyNotebook.getEntries() : [];
-            const map = {};
-            entries.forEach(en => {
-                if (en.caddy_number && en.photo_url) {
-                    const k = String(parseInt(en.caddy_number));
-                    if (!map[k]) map[k] = en.photo_url;
-                }
-            });
+            const evCourse = this.currentEvent?.courseName || '';
             wrap.querySelectorAll('.pill').forEach(p => {
                 if (p.querySelector('img')) return;
                 const m = (p.textContent || '').match(/#\s*(\d+)/);
-                const url = m && map[String(parseInt(m[1]))];
+                const url = m && window._nbPhotoPick(entries, m[1], evCourse);
                 if (url) p.insertAdjacentHTML('afterbegin', '<img src="' + url + '" style="width:20px;height:20px;border-radius:6px;object-fit:cover;margin-right:4px;vertical-align:middle;" alt="">');
             });
         } catch (e) {}
@@ -126319,6 +126309,25 @@ window._caddyCourseGuard = function(caddyNum, caddyCourse, evCourse){
   var a = norm(caddyCourse), b = norm(evCourse);
   if (!a || !b || a === b || a.indexOf(b) !== -1 || b.indexOf(a) !== -1) return true;
   return confirm('#' + caddyNum + ' is your caddy at ' + caddyCourse + '.\nThis event is at ' + evCourse + ' — #' + caddyNum + ' there is a DIFFERENT caddy.\n\nAssign #' + caddyNum + ' for this event anyway?');
+};
+// Course-aware photo pick from notebook rows. A bare-number photo map puts caddy A's FACE on
+// caddy B's number at another course (Pumz #183 Plutaluang rendering on Pattaya's #183 chip).
+// Rules: with course context, only a row at that course (suffix-tolerant) — or a legacy
+// course-less row — may supply the photo. Without course context, only if the number is
+// unambiguous (a single photo'd row).
+window._nbPhotoPick = function(entries, num, course){
+  var n = String(parseInt(num)); if (!n || n === 'NaN') return '';
+  var norm = function(v){ return String(v||'').toLowerCase()
+    .replace(/country\s*club|golf\s*club|golf\s*course|golf|club|course|international|resort|\bcc\b/g,'')
+    .replace(/[^a-z]/g,''); };
+  var rows = (entries || []).filter(function(e){ return e && e.caddy_number && e.photo_url && String(parseInt(e.caddy_number)) === n; });
+  if (!rows.length) return '';
+  var want = norm(course);
+  if (!want) return rows.length === 1 ? rows[0].photo_url : '';
+  var hit = rows.find(function(e){ var c = norm(e.course_name); return c && (c === want || c.indexOf(want) !== -1 || want.indexOf(c) !== -1); });
+  if (hit) return hit.photo_url;
+  var bare = rows.find(function(e){ return !norm(e.course_name); });
+  return bare ? bare.photo_url : '';
 };
 // GLOBAL RULE (Pete 2026-08-02): a caddy number never renders without the caddy's photo.
 // _caddyPhotoMap = 120s-cached notebook bare-number→photo_url map for the logged-in golfer.

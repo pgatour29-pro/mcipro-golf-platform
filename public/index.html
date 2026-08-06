@@ -9686,6 +9686,11 @@
                 'pce.score': 'SCORE',
                 'pce.starts1': 'STARTS 1st TEE',
                 'pce.starts10': 'STARTS 10th TEE',
+                'pce.front': 'FRONT 9',
+                'pce.back': 'BACK 9',
+                'pce.pick': 'select',
+                'pce.pick.nines': 'SELECT THE NINES PLAYED — scores locked until then',
+                'pce.toast.combofail': 'Could not load that nine combination',
                 'pce.kbd.adv': 'score → auto-advance',
                 'pce.kbd.ten': 'digit = 1 / 10-15',
                 'pce.kbd.move': 'move',
@@ -11578,6 +11583,11 @@
                 'pce.score': 'สกอร์',
                 'pce.starts1': 'เริ่มหลุม 1',
                 'pce.starts10': 'เริ่มหลุม 10',
+                'pce.front': '9 หลุมแรก',
+                'pce.back': '9 หลุมหลัง',
+                'pce.pick': 'เลือก',
+                'pce.pick.nines': 'เลือกคอร์ส 9 หลุมที่เล่นก่อน — จึงจะกรอกสกอร์ได้',
+                'pce.toast.combofail': 'โหลดชุดคอร์ส 9 หลุมไม่สำเร็จ',
                 'pce.kbd.adv': 'สกอร์ → เลื่อนอัตโนมัติ',
                 'pce.kbd.ten': 'ตัวเลข = 1 / 10-15',
                 'pce.kbd.move': 'เลื่อน',
@@ -13077,6 +13087,11 @@
                 'pce.score': '스코어',
                 'pce.starts1': '1번 홀 스타트',
                 'pce.starts10': '10번 홀 스타트',
+                'pce.front': '전반 9홀',
+                'pce.back': '후반 9홀',
+                'pce.pick': '선택',
+                'pce.pick.nines': '플레이한 9홀 코스를 선택하세요 — 선택 전에는 입력 불가',
+                'pce.toast.combofail': '해당 9홀 조합을 불러올 수 없습니다',
                 'pce.kbd.adv': '스코어 → 자동 이동',
                 'pce.kbd.ten': '숫자 = 1 / 10-15',
                 'pce.kbd.move': '이동',
@@ -15394,6 +15409,11 @@
                 'pce.score': 'スコア',
                 'pce.starts1': '1番スタート',
                 'pce.starts10': '10番スタート',
+                'pce.front': 'アウト9',
+                'pce.back': 'イン9',
+                'pce.pick': '選択',
+                'pce.pick.nines': 'プレーした9ホールを選択 — 選択するまで入力できません',
+                'pce.toast.combofail': 'その9ホールの組み合わせを読み込めませんでした',
                 'pce.kbd.adv': 'スコア → 自動送り',
                 'pce.kbd.ten': '数字 = 1 / 10-15',
                 'pce.kbd.move': '移動',
@@ -143143,7 +143163,7 @@ window.OrganizerScoringSystem = new OrganizerScoringSystem();
 window.PaperCardEntry = {
     players: [], scores: {}, cur: 0, startNine: 1, sheetOpen: false, saving: false,
     courseData: null, groupOf: {}, posted: {}, count: 0, _dirHits: [], _dirSeq: 0,
-    _oneTimer: null, _keyBound: null,
+    _oneTimer: null, _keyBound: null, nineSel: null, nineF: '', nineB: '', comboName: null,
     _esc: function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
 
     open: async function(){
@@ -143177,7 +143197,11 @@ window.PaperCardEntry = {
                 arr.forEach(function(p){ if (p) self.groupOf[String(p.playerId || p.id)] = 'G' + (i + 1); });
             });
         } catch(e) {}
-        this.courseData = await this._loadCourse();
+        // Multi-nine venue (Phoenix, Burapha, Khao Kheow, …): we CANNOT know which nines were
+        // played — the organizer must pick both before any score can be typed. Standard 18-hole
+        // course: load the card directly.
+        this.nineSel = this._nineVenue(); this.nineF = ''; this.nineB = ''; this.comboName = null;
+        this.courseData = this.nineSel ? null : await this._loadCourse();
         this.scores = {}; this.cur = 0; this.startNine = 1; this.sheetOpen = false; this.count = 0;
         this._dirHits = []; this._search = '';
         this._mount(); this.render();
@@ -143284,7 +143308,7 @@ window.PaperCardEntry = {
 
     _order: function(){ var o = []; if (this.startNine === 10) { for (var h = 10; h <= 18; h++) o.push(h); for (var h2 = 1; h2 <= 9; h2++) o.push(h2); } else { for (var h3 = 1; h3 <= 18; h3++) o.push(h3); } return o; },
     _curHole: function(){ return this._order()[Math.min(this.cur, 17)]; },
-    _holeMeta: function(h){ return (this.courseData && this.courseData.holes && this.courseData.holes[h-1]) || { par: 4, handicap: h }; },
+    _holeMeta: function(h){ if (this.nineSel && !this.courseData) return { par: '—', handicap: '—' }; return (this.courseData && this.courseData.holes && this.courseData.holes[h-1]) || { par: 4, handicap: h }; },
     _filled: function(){ var n = 0; for (var h = 1; h <= 18; h++) if (this.scores[h]) n++; return n; },
     _tots: function(){ var out = 0, inn = 0; for (var h = 1; h <= 9; h++) out += (this.scores[h] || 0); for (var h2 = 10; h2 <= 18; h2++) inn += (this.scores[h2] || 0); return { out: out, inn: inn, tot: out + inn }; },
     _postedCount: function(){ var self = this, n = 0; (this.players || []).forEach(function(p){ if (self.posted[String(p.player_id)]) n++; }); return n; },
@@ -143294,7 +143318,83 @@ window.PaperCardEntry = {
     teeChange: async function(v){
         var q = document.getElementById('qseTeeMarker'); if (q) q.value = v;
         var OSS = window.OrganizerScoringSystem; OSS._qseCourseCache = null;
-        this.courseData = await this._loadCourse(); this.render();
+        if (this.nineSel) { if (this.nineF && this.nineB) await this._loadCombo(); }
+        else { this.courseData = await this._loadCourse(); }
+        this.render();
+    },
+    // Multi-nine venue detection — mirrors Live Scoring's per-venue combination pickers.
+    // The hidden round-setup selects (always in the DOM) provide the nine OPTIONS, and the
+    // matching LiveScorecardManager.load*Combination() does the load + SI interleave, so the
+    // paper card uses EXACTLY the data a live-scored round would.
+    _nineVenue: function(){
+        var s = String((this.event && (this.event.course_name || this.event.courseName || '')) + ' ' + (this.event && this.event.title || '')).toLowerCase();
+        var V = [
+            { re: /phoenix/,            f: 'phoenixFront9',      b: 'phoenixBack9',      fn: 'loadPhoenixCombination' },
+            { re: /burapha/,            f: 'buraphaFront9',      b: 'buraphaBack9',      fn: 'loadBuraphaCombination' },
+            { re: /plutaluang|thai navy/, f: 'plutaluangFront9', b: 'plutaluangBack9',   fn: 'loadPlutaluangCombination' },
+            { re: /khao\s*kheow/,       f: 'khaoKheowFront9',    b: 'khaoKheowBack9',    fn: 'loadKhaoKheowCombination' },
+            { re: /greenwood/,          f: 'greenwoodFront9',    b: 'greenwoodBack9',    fn: 'loadGreenwoodCombination' },
+            { re: /laem\s*chabang/,     f: 'laemChabangFront9',  b: 'laemChabangBack9',  fn: 'loadLaemChabangCombination' },
+            { re: /plantation/,         f: 'plantationFront9',   b: 'plantationBack9',   fn: 'loadPlantationCombination' },
+            { re: /highlands/,          f: 'highlandsFront9',    b: 'highlandsBack9',    fn: 'loadHighlandsCombination' },
+            { re: /alpine/,             f: 'alpineFront9',       b: 'alpineBack9',       fn: 'loadAlpineCombination' },
+            { re: /pattana(?!via)/,     f: 'pattanaFront9',      b: 'pattanaBack9',      fn: 'loadPattanaNineCombination' },
+            { re: /black\s*mountain/,   f: 'blackMountainFront9',b: 'blackMountainBack9',fn: 'loadBlackMountainCombination' },
+            { re: /springfield/,        f: 'springfieldFront9',  b: 'springfieldBack9',  fn: 'loadSpringfieldCombination' },
+            { re: /majestic/,           f: 'majesticFront9',     b: 'majesticBack9',     fn: 'loadMajesticCombination' },
+            { re: /lake\s*view|lakeview/, f: 'lakeviewFront9',   b: 'lakeviewBack9',     fn: 'loadLakeviewCombination' }
+        ];
+        for (var i = 0; i < V.length; i++) { if (V[i].re.test(s)) { var el = document.getElementById(V[i].f); if (el && window.LiveScorecardManager && typeof LiveScorecardManager[V[i].fn] === 'function') return V[i]; } }
+        return null;
+    },
+    _nineOptions: function(selId, chosen, other){
+        var src = document.getElementById(selId);
+        var out = '<option value="">— ' + this._esc(_lvT('pce.pick','select')) + ' —</option>';
+        if (src) { for (var i = 0; i < src.options.length; i++) { var o = src.options[i]; if (!o.value) continue; out += '<option value="' + this._esc(o.value) + '"' + (o.value === chosen ? ' selected' : '') + (o.value === other ? ' disabled' : '') + '>' + this._esc(o.textContent.trim()) + '</option>'; } }
+        return out;
+    },
+    setNineF: async function(v){ this.nineF = v; if (v && v === this.nineB) this.nineB = ''; if (this.nineF && this.nineB) { await this._loadCombo(); } else { this.courseData = null; } this.render(); },
+    setNineB: async function(v){ this.nineB = v; if (this.nineF && this.nineB) { await this._loadCombo(); } else { this.courseData = null; } this.render(); },
+    _loadCombo: async function(){
+        var LS = window.LiveScorecardManager, cfg = this.nineSel;
+        if (!LS || !cfg) return;
+        var fe = document.getElementById(cfg.f), be = document.getElementById(cfg.b);
+        var prevF = fe ? fe.value : '', prevB = be ? be.value : '';
+        var prevCourse = LS.courseData, prevCombo = LS.comboNines;
+        try {
+            if (fe) fe.value = this.nineF; if (be) be.value = this.nineB;
+            var tee = (document.getElementById('pceTee') || {}).value || 'white';
+            await LS[cfg.fn](tee);
+            var cd = LS.courseData;
+            if (!cd || !cd.holes || !cd.holes.length) { this.courseData = null; this.comboName = null; window.NotificationManager.show(_lvT('pce.toast.combofail','Could not load that nine combination'), 'error'); return; }
+            var holes = cd.holes.slice().sort(function(a, b){ return (a.hole_number || a.number || 0) - (b.hole_number || b.number || 0); });
+            this.courseData = {
+                comboId: cd.id || null, comboName: cd.name || null,
+                holes: holes.map(function(h, i){ return { hole_number: i + 1, par: h.par || 4, handicap: (h.stroke_index != null ? h.stroke_index : (h.handicap != null ? h.handicap : i + 1)) }; })
+            };
+            this.comboName = cd.name || null;
+        } catch(e) { console.error('[PCE] combo load', e); this.courseData = null; window.NotificationManager.show(_lvT('pce.toast.combofail','Could not load that nine combination'), 'error'); }
+        finally {
+            if (fe) fe.value = prevF; if (be) be.value = prevB;
+            LS.courseData = prevCourse; LS.comboNines = prevCombo;
+        }
+    },
+    _nineBarHTML: function(){
+        if (!this.nineSel) {
+            return '<div class="pce-ninetabs">'+
+                '<div class="pce-ntab' + (this.startNine === 1 ? ' on' : '') + '" onclick="PaperCardEntry.setNine(1)">' + this._esc(_lvT('pce.starts1','STARTS 1st TEE')) + '</div>'+
+                '<div class="pce-ntab' + (this.startNine === 10 ? ' on' : '') + '" onclick="PaperCardEntry.setNine(10)">' + this._esc(_lvT('pce.starts10','STARTS 10th TEE')) + '</div></div>';
+        }
+        var ready = !!this.courseData;
+        return '<div class="pce-ninetabs" style="align-items:center;flex-wrap:wrap;gap:8px;">'+
+            '<span style="font:800 11px/1 \'JetBrains Mono\',monospace;color:#0f172a;">' + this._esc(_lvT('pce.front','FRONT 9')) + '</span>'+
+            '<select class="pce-tee" onchange="PaperCardEntry.setNineF(this.value)">' + this._nineOptions(this.nineSel.f, this.nineF, this.nineB) + '</select>'+
+            '<span style="font:800 11px/1 \'JetBrains Mono\',monospace;color:#0f172a;">' + this._esc(_lvT('pce.back','BACK 9')) + '</span>'+
+            '<select class="pce-tee" onchange="PaperCardEntry.setNineB(this.value)">' + this._nineOptions(this.nineSel.b, this.nineB, this.nineF) + '</select>'+
+            (ready
+                ? '<span style="font:800 10px/1 \'JetBrains Mono\',monospace;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:999px;padding:5px 9px;">' + this._esc(this.comboName || '') + '</span>'
+                : '<span style="font:800 10.5px/1.3 \'JetBrains Mono\',monospace;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:999px;padding:6px 10px;">⚠ ' + this._esc(_lvT('pce.pick.nines','SELECT THE NINES PLAYED — scores locked until then')) + '</span>')+
+            '</div>';
     },
     // QSE's loadCourseData is tee-aware but its name-resolver is weak — TRGG event course
     // names carry noise ("GREEN VALLEY FREE FOOD FRIDAY") it can't match, and it silently
@@ -143312,6 +143412,7 @@ window.PaperCardEntry = {
     },
 
     tap: function(n){
+        if (this.nineSel && !this.courseData) { window.NotificationManager.show(_lvT('pce.pick.nines','SELECT THE NINES PLAYED — scores locked until then'), 'warning'); return; }
         var h = this._curHole();
         this.scores[h] = n;
         if (this.cur < 17) { this.cur++; this.render(); }
@@ -143383,15 +143484,13 @@ window.PaperCardEntry = {
         var row = function(from){
             var hs = []; for (var h = from; h < from + 9; h++) hs.push(h);
             var out = '<tr><th class="sec">' + self._esc(_lvT('pce.hole','HOLE')) + '</th>' + hs.map(function(h){ return '<th>' + h + '</th>'; }).join('') + '<th>' + (from === 1 ? 'OUT' : 'IN / TOT') + '</th></tr>';
-            out += '<tr><td class="lbl">PAR</td>' + hs.map(function(h){ return '<td>' + self._holeMeta(h).par + '</td>'; }).join('') + '<td class="tot">' + hs.reduce(function(a, h){ return a + (self._holeMeta(h).par || 0); }, 0) + '</td></tr>';
+            out += '<tr><td class="lbl">PAR</td>' + hs.map(function(h){ return '<td>' + self._holeMeta(h).par + '</td>'; }).join('') + '<td class="tot">' + (self.courseData ? hs.reduce(function(a, h){ return a + (parseInt(self._holeMeta(h).par) || 0); }, 0) : '—') + '</td></tr>';
             out += '<tr><td class="lbl">S.I.</td>' + hs.map(function(h){ return '<td>' + (self._holeMeta(h).handicap || '') + '</td>'; }).join('') + '<td class="tot">—</td></tr>';
             var totCell = from === 1 ? ('<td class="tot" style="font-size:15px;">' + (t.out || '') + '</td>') : ('<td class="grand">' + (t.inn || 0) + ' / ' + (t.tot || 0) + '</td>');
             out += '<tr><td class="lbl">' + self._esc(_lvT('pce.score','SCORE')) + '</td>' + hs.map(function(h){ return '<td style="padding:4px 2px;">' + self._cellHTML(h) + '</td>'; }).join('') + totCell + '</tr>';
             return out;
         };
-        return '<div class="pce-ninetabs">'+
-            '<div class="pce-ntab' + (this.startNine === 1 ? ' on' : '') + '" onclick="PaperCardEntry.setNine(1)">' + this._esc(_lvT('pce.starts1','STARTS 1st TEE')) + '</div>'+
-            '<div class="pce-ntab' + (this.startNine === 10 ? ' on' : '') + '" onclick="PaperCardEntry.setNine(10)">' + this._esc(_lvT('pce.starts10','STARTS 10th TEE')) + '</div></div>'+
+        return this._nineBarHTML()+
             '<table class="pce-sc">' + row(1) + row(10) + '</table>'+
             '<div class="pce-kbd">'+
                 '<span><kbd>2</kbd>–<kbd>9</kbd> ' + this._esc(_lvT('pce.kbd.adv','score → auto-advance')) + '</span>'+
@@ -143405,13 +143504,11 @@ window.PaperCardEntry = {
         var self = this, t = this._tots();
         var col = function(from, cap){
             var rows = ''; for (var h = from; h < from + 9; h++) { var m = self._holeMeta(h); rows += '<div class="pce-hrow"><span class="h">' + h + '</span><span class="p">P' + m.par + '·S' + (m.handicap || '') + '</span>' + self._cellHTML(h) + '</div>'; }
-            var parSum = 0; for (var h2 = from; h2 < from + 9; h2++) parSum += (self._holeMeta(h2).par || 0);
-            return '<div class="pce-col9"><div class="pce-cap"><span>' + cap + '</span><span>PAR ' + parSum + '</span></div>' + rows + '</div>';
+            var parSum = 0; for (var h2 = from; h2 < from + 9; h2++) parSum += (parseInt(self._holeMeta(h2).par) || 0);
+            return '<div class="pce-col9"><div class="pce-cap"><span>' + cap + '</span><span>PAR ' + (self.courseData ? parSum : '—') + '</span></div>' + rows + '</div>';
         };
         var filled = this._filled();
-        return '<div class="pce-ninetabs">'+
-            '<div class="pce-ntab' + (this.startNine === 1 ? ' on' : '') + '" onclick="PaperCardEntry.setNine(1)">' + this._esc(_lvT('pce.starts1','STARTS 1st TEE')) + '</div>'+
-            '<div class="pce-ntab' + (this.startNine === 10 ? ' on' : '') + '" onclick="PaperCardEntry.setNine(10)">' + this._esc(_lvT('pce.starts10','STARTS 10th TEE')) + '</div></div>'+
+        return this._nineBarHTML()+
             '<div class="pce-cols">' + col(1, 'OUT') + col(10, 'IN') + '</div>'+
             '<div class="pce-tots"><div class="pce-tot"><div class="k">OUT</div><div class="v">' + (t.out || 0) + '</div></div><div class="pce-tot"><div class="k">IN</div><div class="v">' + (t.inn || 0) + '</div></div><div class="pce-tot g"><div class="k">TOTAL</div><div class="v">' + (t.tot || 0) + '</div></div></div>'+
             '<div class="pce-pad pce-mobonly">'+
@@ -143555,8 +143652,8 @@ window.PaperCardEntry = {
                 var evd = this.event.event_date ? new Date(this.event.event_date + 'T07:00:00') : new Date();
                 var ins = await sb.from('rounds').insert({
                     golfer_id: playerId, player_name: p.player_name || null,
-                    course_id: this.event.course_id || null,
-                    course_name: this.event.course_name || this.event.courseName || 'Unknown Course',
+                    course_id: (this.courseData && this.courseData.comboId) || this.event.course_id || null,
+                    course_name: this.comboName || this.event.course_name || this.event.courseName || 'Unknown Course',
                     type: 'society', society_event_id: this.event.id,
                     organizer_id: this.event.organizer_id || null,
                     played_at: evd.toISOString(), started_at: evd.toISOString(),

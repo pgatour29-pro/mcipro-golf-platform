@@ -101250,8 +101250,18 @@ This action cannot be undone.`);
             : ((window.GolfDivisions && GolfDivisions.isDivisionEvent(_ev, _socName)) ? GolfDivisions.build((this.currentPairings.players || []).map(p => p.handicap), GolfDivisions.COUNT) : []);
         const _trueHcp = (p) => { const key = String(p.playerId != null ? p.playerId : p.id); const r = (this.currentPairings.players || []).find(x => String(x.playerId) === key || String(x.id) === key); return r ? r.handicap : p.handicap; };
         const _divBadgeHtml = (p) => (window.GolfDivisions && _divisions.length) ? GolfDivisions.badge(GolfDivisions.indexFor(_trueHcp(p), _divisions)) : '';
-        // NEW badge — late registrants auto-slotted after the sheet was built (players[].lateAt, v822).
-        const _newChipHtml = (p) => (p && p.lateAt) ? '<span style="flex-shrink:0;background:#16a34a;color:#fff;font:800 8px/1 \'JetBrains Mono\',monospace;letter-spacing:.06em;border-radius:5px;padding:2px 4px;margin-left:3px;" title="Signed up after the tee sheet was built">NEW</span>' : '';
+        // NEW badge — registered after the sheet was built (special_requests.lateReg, v824;
+        // players[].lateAt kept for legacy v822-stamped rows).
+        const _newChipHtml = (p) => {
+            let late = p && p.lateAt;
+            if (!late && p) {
+                const key = String(p.playerId != null ? p.playerId : p.id);
+                const r = (this.currentPairings.players || []).find(x => String(x.playerId) === key || String(x.id) === key);
+                const sr = (r && (r.specialRequests || r.special_requests)) || {};
+                late = sr.lateReg;
+            }
+            return late ? '<span style="flex-shrink:0;background:#16a34a;color:#fff;font:800 8px/1 \'JetBrains Mono\',monospace;letter-spacing:.06em;border-radius:5px;padding:2px 4px;margin-left:3px;" title="Signed up after the tee sheet was built">NEW</span>' : '';
+        };
 
         // Available pool = players NOT in any group. Registrations key on playerId while group entries
         // normalize to id=playerId — match on BOTH id and playerId or grouped players leak into the pool.
@@ -101316,7 +101326,7 @@ This action cannot be undone.`);
                                 <div draggable="true" ondragstart="SocietyOrganizerSystem.pairingDragStart(event, '${player.id}')"
                                      onclick="SocietyOrganizerSystem.togglePlayerForPairing(${JSON.stringify(player).replace(/"/g, '&quot;')})"
                                      class="flex items-center justify-between px-2 py-1.5 border-2 rounded cursor-move hover:bg-amber-100 ${isSelected ? 'bg-green-50 border-green-500' : 'border-amber-200'}">
-                                    <span class="text-xs font-medium text-gray-900 truncate" data-golfer-av="${player.playerId || player.id || ''}" data-golfer-av-nm="${String(player.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${player.playerName}</span>${_divBadgeHtml(player)}
+                                    <span class="text-xs font-medium text-gray-900 truncate" data-golfer-av="${player.playerId || player.id || ''}" data-golfer-av-nm="${String(player.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${player.playerName}</span>${_divBadgeHtml(player)}${_newChipHtml(player)}
                                     <span class="text-[10px] text-gray-600 ml-1 shrink-0">${window.formatHandicapDisplay(player.handicap)}</span>
                                     ${isSelected ? '<span class="material-symbols-outlined text-green-600 text-xs ml-1">check_circle</span>' : ''}
                                 </div>
@@ -119779,36 +119789,36 @@ class GolferEventsManager {
         return 'GUEST-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
     }
 
-    // Pete's rule (2026-08-02, Pon at Pattaya CC): a player added from someone's account joins that
-    // account's group IMMEDIATELY — even when the tee sheet already has saved groups. Runs the same
-    // BookingGroups.ensureGroups the organizer surfaces use (late-add path appends to the host's
-    // group while seats remain) and persists, so tee sheet / players modal / scoring prefill all
-    // agree without waiting for an organizer to open the tee sheet. Only touches an EXISTING saved
-    // sheet — first materialization stays with the organizer-load flow.
+    // Pete's rule (2026-08-06, SUPERSEDES the v822 auto-slot AND the v802 late booking-append):
+    // once the organizer's tee sheet EXISTS, NOBODY auto-places — new registrants (solo, guests,
+    // booking parties) land in the UNASSIGNED pool tagged special_requests.lateReg, so the
+    // organizer sees exactly who signed up and places them + transport themselves. Booking mates
+    // still travel as a drag-unit from the pool. First materialization (organizer-load cascade)
+    // is untouched — pre-sheet registrations carry no tag and group as before.
     async _ensureBookingPlacement(eventId, newRegIds) {
         try {
-            if (!window.SocietyGolfDB) return;
+            if (!window.SocietyGolfDB || !window.SupabaseDB || !newRegIds || !newRegIds.length) return;
             const pairing = await window.SocietyGolfDB.getPairings(eventId);
             if (!pairing || !Array.isArray(pairing.groups)) return;
             const hasPlayers = pairing.groups.some(g => ((g && g.players) || []).length > 0);
             if (!hasPlayers) return;
-            const regs = await window.SocietyGolfDB.getRegistrations(eventId);
-            const changedBooking = window.BookingGroups
-                ? window.BookingGroups.ensureGroups(pairing.groups, regs, pairing.groupSize) : false;
-            // AUTO-SLOT (Pete 2026-08-06): the registrant themselves (and any guests) take the first
-            // open seat — or start a new group — the moment they register onto a live sheet. SKIPPED
-            // on 2-man scrambles: team seats there are POSITIONAL (slots 1+2 / 3+4) and a solo drop
-            // could split a team; the organizer places scramble players.
-            let changedSolo = false;
-            let isS2 = false;
-            try { isS2 = !!(this.currentEvent && this._isTwoManScrambleEvent && this._isTwoManScrambleEvent(this.currentEvent)); } catch (e) {}
-            if (!isS2 && window.AutoSlotLateRegs && newRegIds && newRegIds.length) {
-                changedSolo = window.AutoSlotLateRegs(pairing, regs, newRegIds);
+            const iso = new Date().toISOString();
+            for (const rid of newRegIds.filter(Boolean)) {
+                // merge-don't-clobber special_requests (hostId/sameGroup/van/payment live here too)
+                const { data: rows } = await window.SupabaseDB.client
+                    .from('event_registrations')
+                    .select('id, special_requests')
+                    .eq('event_id', eventId)
+                    .eq('player_id', rid);
+                for (const row of (rows || [])) {
+                    const sr = Object.assign({}, row.special_requests || {}, { lateReg: iso });
+                    await window.SupabaseDB.client
+                        .from('event_registrations')
+                        .update({ special_requests: sr })
+                        .eq('id', row.id);
+                }
             }
-            if (changedBooking || changedSolo) {
-                await window.SocietyGolfDB.savePairings(eventId, pairing);
-            }
-        } catch (e) { console.warn('[GolferEvents] booking placement', e); }
+        } catch (e) { console.warn('[GolferEvents] late-reg tag', e); }
     }
 
     async submitRegistration() {
@@ -130021,6 +130031,10 @@ window.BookingGroups = {
         var bookings = this.detect(regs);
         if (!bookings.length) return false;
         var byId = {}; regs.forEach(function(r){ byId[String(r.playerId)] = r; });
+        // Pete's rule (2026-08-06): players who registered AFTER the sheet was built
+        // (special_requests.lateReg) are NEVER auto-placed — they stay in the unassigned
+        // pool until the organizer seats them. Pre-sheet regs carry no tag → cascade as before.
+        var isLate = function(id){ var r = byId[String(id)]; var sr = (r && (r.specialRequests || r.special_requests)) || {}; return !!sr.lateReg; };
         var grouped = {}, hasBooking = {};
         groups.forEach(function(g){
             (g.players||[]).forEach(function(p){ grouped[String(p.playerId||p.id)] = true; });
@@ -130028,7 +130042,7 @@ window.BookingGroups = {
         });
         var changed = false;
         bookings.forEach(function(b){
-            var missing = b.memberIds.filter(function(id){ return !grouped[String(id)] && byId[String(id)]; });
+            var missing = b.memberIds.filter(function(id){ return !grouped[String(id)] && byId[String(id)] && !isLate(id); });
             if (!missing.length) return;
             var placedIds = b.memberIds.filter(function(id){ return grouped[String(id)]; });
             if (placedIds.length) {
@@ -130075,59 +130089,8 @@ window.BookingGroups = {
     }
 };
 
-// AUTO-SLOT LATE REGISTRATIONS (Pete 2026-08-06): once the organizer's tee sheet EXISTS, anyone
-// who registers after that places themselves — their host's/partner's group first, else the first
-// group with an open seat, else a NEW group at the bottom. Only the rows named in regIds are
-// placed (players an organizer deliberately left in the pool STAY in the pool); already-placed
-// players never move. Tolerates both saved group shapes (array / {players}). True on change.
-window.AutoSlotLateRegs = function(pairing, regs, regIds){
-    try {
-        if (!pairing || !Array.isArray(pairing.groups) || !Array.isArray(regs) || !regIds || !regIds.length) return false;
-        var groups = pairing.groups;
-        var size = parseInt(pairing.groupSize) || 4;
-        var plist = function(g){ return Array.isArray(g) ? g : ((g && g.players) || []); };
-        var placed = {};
-        groups.forEach(function(g){ plist(g).forEach(function(p){
-            if (p && p.playerId != null) placed[String(p.playerId)] = true;
-            if (p && p.id != null) placed[String(p.id)] = true;
-        }); });
-        var groupOf = function(pid){
-            for (var i = 0; i < groups.length; i++) {
-                if (plist(groups[i]).some(function(p){ return p && String(p.playerId || p.id) === String(pid); })) return i;
-            }
-            return -1;
-        };
-        var changed = false;
-        regIds.filter(Boolean).forEach(function(rid){
-            var reg = regs.find(function(r){ return String(r.playerId) === String(rid) || String(r.id) === String(rid); });
-            if (!reg || placed[String(reg.playerId)] || placed[String(reg.id)]) return;
-            // 1) their people first: host account's group, then picked partners' groups (consent-aware)
-            var want = [];
-            var sr = reg.specialRequests || {};
-            if (sr.hostId && sr.sameGroup !== false) want.push(String(sr.hostId));
-            if (window.PlayTogetherUnits) { try { want = want.concat(PlayTogetherUnits.targets(reg, regs) || []); } catch (e) {} }
-            var gIdx = -1;
-            for (var w = 0; w < want.length && gIdx < 0; w++) {
-                var gi = groupOf(want[w]);
-                if (gi >= 0 && plist(groups[gi]).length < size) gIdx = gi;
-            }
-            // 2) first group with an open seat (array order — the organizer's own ordering)
-            if (gIdx < 0) { for (var i = 0; i < groups.length; i++) { if (plist(groups[i]).length < size) { gIdx = i; break; } } }
-            // lateAt ⇒ the organizer's tee sheet shows a NEW badge — they signed up AFTER the
-            // sheet was built (Pete 2026-08-06: "no surprises").
-            var po = { playerId: reg.playerId, playerName: reg.playerName, handicap: reg.handicap, lateAt: new Date().toISOString() };
-            if (gIdx >= 0) {
-                if (Array.isArray(groups[gIdx])) groups[gIdx].push(po);
-                else groups[gIdx].players = plist(groups[gIdx]).concat([po]);
-            } else {
-                groups.push({ players: [po], teeTime: '', teeFixed: false });
-            }
-            placed[String(reg.playerId)] = true; if (reg.id != null) placed[String(reg.id)] = true;
-            changed = true;
-        });
-        return changed;
-    } catch (e) { console.warn('[AutoSlot]', e); return false; }
-};
+// (v824: AutoSlotLateRegs removed — Pete reversed the v822 auto-slot. Late registrants are now
+// TAGGED (special_requests.lateReg) and stay in the UNASSIGNED pool for the organizer to place.)
 
 // ===== TEE SHEET (Groups & Transport) — organizer page: registered players → build groups → set transport
 // PER PLAYER (Van 1-15 / Own=direct / Special) → printable + LINE-shareable sheet. Opens from the "Tee Sheet"
@@ -130143,8 +130106,17 @@ window.TeeSheet = {
     // NEW badge (Pete 2026-08-06): players auto-slotted AFTER the sheet was built carry
     // players[].lateAt — the organizer sees at a glance who just signed up (no surprises).
     _newBadge: function(p){
-        if (!p || !p.lateAt) return '';
-        var t=''; try { t=new Date(p.lateAt).toLocaleString(_lvLocale(), {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){}
+        if (!p) return '';
+        // v824: primary signal is the REGISTRATION tag (special_requests.lateReg — stamped when
+        // someone registers after the sheet exists); players[].lateAt kept for legacy stamped rows.
+        var late = p.lateAt || null;
+        if (!late && p.playerId != null) {
+            var r = (this.regs || []).find(function(x){ return String(x.playerId) === String(p.playerId); });
+            var sr = (r && (r.specialRequests || r.special_requests)) || {};
+            late = sr.lateReg || null;
+        }
+        if (!late) return '';
+        var t=''; try { t=new Date(late).toLocaleString(_lvLocale(), {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){}
         return '<span class="ts2-newb" title="Signed up after the tee sheet was built'+(t?' — '+t:'')+'">NEW</span>';
     },
     // 3-Man Waltz event? By name OR the event's declared FORMAT (dropdown) — so a Waltz event that
@@ -130689,7 +130661,7 @@ window.TeeSheet = {
     // One unassigned SINGLE chip (factored out of render so the pool + singles list share it).
     _poolChip: function(r){
         var self=this, man=self._isManual(r.playerId), hc=self._hcp(r.handicap);
-        return '<span onpointerdown="TeeSheet.pdown(event,\''+r.playerId+'\')" class="ts2-pchip" data-golfer-av="'+self._esc(r.playerId)+'" data-golfer-av-nm="'+self._esc(r.playerName)+'" data-golfer-av-sz="18">'+self._esc(r.playerName)+(hc?'<span class="h">'+hc+'</span>':'')+
+        return '<span onpointerdown="TeeSheet.pdown(event,\''+r.playerId+'\')" class="ts2-pchip" data-golfer-av="'+self._esc(r.playerId)+'" data-golfer-av-nm="'+self._esc(r.playerName)+'" data-golfer-av-sz="18">'+self._esc(r.playerName)+(hc?'<span class="h">'+hc+'</span>':'')+self._newBadge(r)+
             (self.groups.length ? '<select onchange="TeeSheet.addPlayer(this.value,\''+r.playerId+'\')" title="Add to group"><option value="">＋</option>'+self.groups.map(function(g,i){ return '<option value="'+i+'">G'+(i+1)+'</option>'; }).join('')+'</select>' : '')+
             (man ? '<button onclick="TeeSheet.deleteManual(\''+r.playerId+'\')" title="Remove this name" class="mx">×</button>' : '<button onclick="TeeSheet.removeFromEvent(\''+r.playerId+'\')" title="Remove from event" class="mx">×</button>')+
         '</span>';
@@ -130699,9 +130671,9 @@ window.TeeSheet = {
     _teamChip: function(pair){
         var self=this, a=pair[0], b=pair[1], ha=self._hcp(a.handicap), hb=self._hcp(b.handicap);
         return '<span onpointerdown="TeeSheet.pdown(event,\''+a.playerId+'\')" class="ts2-pchip ts2-teamchip" title="Locked pair — drag moves both">'+
-            '<span class="tm" data-golfer-av="'+self._esc(a.playerId)+'" data-golfer-av-nm="'+self._esc(a.playerName)+'" data-golfer-av-sz="16">'+self._esc(a.playerName)+(ha?'<span class="h">'+ha+'</span>':'')+'</span>'+
+            '<span class="tm" data-golfer-av="'+self._esc(a.playerId)+'" data-golfer-av-nm="'+self._esc(a.playerName)+'" data-golfer-av-sz="16">'+self._esc(a.playerName)+(ha?'<span class="h">'+ha+'</span>':'')+self._newBadge(a)+'</span>'+
             '<span class="tx">＋</span>'+
-            '<span class="tm" data-golfer-av="'+self._esc(b.playerId)+'" data-golfer-av-nm="'+self._esc(b.playerName)+'" data-golfer-av-sz="16">'+self._esc(b.playerName)+(hb?'<span class="h">'+hb+'</span>':'')+'</span>'+
+            '<span class="tm" data-golfer-av="'+self._esc(b.playerId)+'" data-golfer-av-nm="'+self._esc(b.playerName)+'" data-golfer-av-sz="16">'+self._esc(b.playerName)+(hb?'<span class="h">'+hb+'</span>':'')+self._newBadge(b)+'</span>'+
             '<span class="tb">TEAM</span>'+
             (self.groups.length ? '<select onchange="TeeSheet.addPlayer(this.value,\''+a.playerId+'\')" title="Add team to a group"><option value="">＋</option>'+self.groups.map(function(g,i){ return '<option value="'+i+'">G'+(i+1)+'</option>'; }).join('')+'</select>' : '')+
             '<button onclick="TeeSheet.unlinkTeam(\''+a.playerId+'\',\''+b.playerId+'\')" title="Break this pair back into singles" class="mx">✕</button>'+
@@ -130763,7 +130735,7 @@ window.TeeSheet = {
     // moves everyone, ×N badge shows the size, ✕ splits it back into singles.
     _unitChip: function(members){
         var self=this, a=members[0];
-        var rows=members.map(function(m){ var h=self._hcp(m.handicap); return '<span class="um" data-golfer-av="'+self._esc(m.playerId)+'" data-golfer-av-nm="'+self._esc(m.playerName)+'" data-golfer-av-sz="16">'+self._esc(m.playerName)+(h?'<span class="h">'+h+'</span>':'')+'</span>'; }).join('<span class="tx">＋</span>');
+        var rows=members.map(function(m){ var h=self._hcp(m.handicap); return '<span class="um" data-golfer-av="'+self._esc(m.playerId)+'" data-golfer-av-nm="'+self._esc(m.playerName)+'" data-golfer-av-sz="16">'+self._esc(m.playerName)+(h?'<span class="h">'+h+'</span>':'')+self._newBadge(m)+'</span>'; }).join('<span class="tx">＋</span>');
         return '<span onpointerdown="TeeSheet.pdown(event,\''+a.playerId+'\')" class="ts2-pchip ts2-teamchip ts2-unitchip" title="'+t('ts2.unittip')+'">'+
             rows+
             '<span class="tb">×'+members.length+'</span>'+
@@ -135236,8 +135208,13 @@ const RegistrationsManager = {
         var _divs = (event && Array.isArray(event.divisions) && event.divisions.length) ? event.divisions
             : ((window.GolfDivisions && GolfDivisions.isDivisionEvent(event, _socName)) ? GolfDivisions.build((this.registrations||[]).map(function(r){ return (self.currentHandicaps && self.currentHandicaps[r.playerId] != null) ? self.currentHandicaps[r.playerId] : r.handicap; }), GolfDivisions.COUNT) : []);
         var divBadge = function(p){ return (window.GolfDivisions && _divs.length) ? GolfDivisions.badge(GolfDivisions.indexFor(_rawHcp(p), _divs)) : ''; };
-        // NEW badge — late registrants auto-slotted after the sheet was built (players[].lateAt, v822).
-        var newChip = function(p){ return (p && p.lateAt) ? '<span style="background:#16a34a;color:#fff;font:800 8px/1 \'JetBrains Mono\',monospace;letter-spacing:.06em;border-radius:5px;padding:2px 4px;margin-left:3px;vertical-align:middle;" title="Signed up after the tee sheet was built">NEW</span>' : ''; };
+        // NEW badge — registered after the sheet was built (special_requests.lateReg, v824;
+        // players[].lateAt kept for legacy v822-stamped rows).
+        var newChip = function(p){
+            var late = p && p.lateAt;
+            if (!late && p) { var r = regById[p.playerId]; var sr = (r && (r.specialRequests || r.special_requests)) || {}; late = sr.lateReg; }
+            return late ? '<span style="background:#16a34a;color:#fff;font:800 8px/1 \'JetBrains Mono\',monospace;letter-spacing:.06em;border-radius:5px;padding:2px 4px;margin-left:3px;vertical-align:middle;" title="Signed up after the tee sheet was built">NEW</span>' : '';
+        };
 
         var html = '<div style="background:#fff;border-radius:12px;padding:20px 22px;box-shadow:0 1px 4px rgba(0,0,0,.08);">';
         html += '<div style="font-size:22px;font-weight:800;color:#0f172a;">'+this._escHtml(eventName)+'</div>';
@@ -135285,7 +135262,7 @@ const RegistrationsManager = {
             html += '<div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;">Unassigned ('+unassigned.length+')</div>';
             html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
             unassigned.forEach(function(p){
-                html += '<span style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:999px;padding:3px 4px 3px 10px;font-size:12px;">'+self._escHtml(p.playerName||'')+' <span style="color:#94a3b8;">('+getHcp(p)+')</span>'+divBadge(p)+(window.TRGGMembership?TRGGMembership.badge(p.playerId,p.playerName):'');
+                html += '<span style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:999px;padding:3px 4px 3px 10px;font-size:12px;">'+self._escHtml(p.playerName||'')+' <span style="color:#94a3b8;">('+getHcp(p)+')</span>'+divBadge(p)+(window.TRGGMembership?TRGGMembership.badge(p.playerId,p.playerName):'')+newChip(p);
                 if (groupCount) { html += '<select onchange="RegistrationsManager.movePlayerToGroup(\''+p.playerId+'\', this.value)" title="Add to group" style="border:none;background:#16a34a;color:#fff;border-radius:7px;font-size:11px;font-weight:700;padding:3px 5px;cursor:pointer;"><option value="">＋</option>'; for (var i=0;i<groupCount;i++) html += '<option value="'+(i+1)+'">G'+(i+1)+'</option>'; html += '</select>'; }
                 html += '</span>';
             });

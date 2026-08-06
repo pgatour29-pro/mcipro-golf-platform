@@ -140452,7 +140452,16 @@ class OrganizerScoringSystem {
         round._notStarted = false;
         return round.id;
     }
-    async _hbhSaveRow(rid) {
+    // Saves for one row are SERIALIZED: a debounced save takes ~15 DB roundtrips, and a second
+    // fire mid-flight used to insert the same round_holes rows the first was inserting — the
+    // later (fuller) save died on the collision and the row stuck at a partial hole count.
+    _hbhSaveRow(rid) {
+        if (!this._hbhSaveChain) this._hbhSaveChain = {};
+        const next = (this._hbhSaveChain[rid] || Promise.resolve()).then(() => this._hbhSaveRowNow(rid));
+        this._hbhSaveChain[rid] = next.catch(() => {});
+        return next;
+    }
+    async _hbhSaveRowNow(rid) {
         const round = this._hbhRound(rid);
         if (!round) return;
         try {

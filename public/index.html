@@ -58106,6 +58106,9 @@ Waitlist (${waitlist.length} people):`;
                             </div>
                         </div>
                     </div>
+                    <!-- Multi-nine venues: the nines played apply EVENT-WIDE (synced with Paper
+                         Cards / live-scored rounds). Populated by _qseNineBarRender. -->
+                    <div id="qseNineBar" style="display:none" class="px-6 py-2 bg-amber-50 border-b border-amber-100 flex items-center gap-3 flex-wrap"></div>
 
                     <!-- Modal Body - Scrollable -->
                     <div class="flex-1 overflow-y-auto px-6 py-4">
@@ -140574,6 +140577,17 @@ class OrganizerScoringSystem {
     }
 
     async loadEditCourseDataRaw() {
+        // GLOBAL nine-combination sync (Pete 2026-08-06): a multi-nine event with a known
+        // combination uses THOSE holes — edit modal, hole-by-hole entry and _persistHoleScores
+        // all come through here, and its stitcher must never guess the nines.
+        try {
+            const _eid = String(this.currentEventId || (this.currentEvent && this.currentEvent.id) || '');
+            if (_eid) {
+                await this.resolveEventNines(_eid);
+                const ec = this._eventCombo;
+                if (ec && ec.eventId === _eid && ec.holes) return { holes: ec.holes };
+            }
+        } catch (e) {}
         // Organizer events store only free-text course_name (course_id usually NULL). Resolve it
         // against the courses table by TOKEN match — TRGG names are shorthand + event noise
         // ("Pattaya CC", "GREEN VALLEY FREE FOOD FRIDAY") — and stitch 9-hole nine records
@@ -141916,7 +141930,7 @@ class OrganizerScoringSystem {
         // 2-Man Scramble → the per-player grid is wrong (it would create individual rounds that never
         // group into teams). Route to the dedicated TEAM card-entry screen instead, which saves a
         // proper scramble round (scramble_config + team_size=2 + team handicap) for BOTH players.
-        if (this._isScramble2Event(event)) { this.qseEventData = event; return this.openScrambleTeamEntry(focusPlayerId); }
+        if (this._isScramble2Event(event)) { this.qseEventData = event; this._ninesTriedFor = null; return this.openScrambleTeamEntry(focusPlayerId); }
 
         // Populate event info (the event object carries course_name, not `course`).
         document.getElementById('qseEventName').textContent = event.title || 'Unknown Event';
@@ -141927,6 +141941,13 @@ class OrganizerScoringSystem {
         this.qseEventData = event;
         this.qsePlayersData = [];
         this.qseScores = {};
+
+        // Multi-nine venue: adopt the nines the PLAYERS picked in the scoring app (or a prior
+        // paper-card/QSE pick) — fresh DB look on every open so a group that started live-scoring
+        // mid-morning is picked up. Only if NOBODY has picked yet does the amber selector ask.
+        this._ninesTriedFor = null;
+        try { await this.resolveEventNines(event.id); } catch (e) {}
+        this._qseNineBarRender();
 
         // Reset stale search state from a previous open (iOS keeps form values)
         const _qseSearch = document.getElementById('qsePlayerSearch');
@@ -142586,8 +142607,13 @@ class OrganizerScoringSystem {
             this.qseScores[playerId].holes = holes;
         }
 
+        // Multi-nine venue with NO combination known yet → the par/SI below are a stand-in.
+        // Never silent: loud red banner pointing at the selector in the bar above.
+        const _nineCfgW = this._eventNinesCfg(this.qseEventData || {});
+        const _nineMissing = _nineCfgW && !(this._eventCombo && this._eventCombo.eventId === String((this.qseEventData || {}).id));
         const scorecardHTML = `
             <div class="bg-white rounded-lg p-4">
+                ${_nineMissing ? `<div class="mb-3 px-3 py-2 rounded-lg bg-red-50 border-2 border-red-300 text-red-700 text-sm font-bold">⚠ ${this._qseEsc(_lvT('pce.pick.nines','SELECT THE NINES PLAYED — scores locked until then'))}</div>` : ''}
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="font-bold text-lg">${this._qseEsc(_lvT('qse.hbh.title.fmt', '{name} - Hole-by-Hole Scorecard').replace('{name}', player.player_name))}</h3>
                     <button onclick="window.OrganizerScoringSystem.toggleHoleByHole('${playerId}')"
@@ -142839,7 +142865,108 @@ class OrganizerScoringSystem {
         this.updateScoreEntryStats();
     }
 
+    // ===== EVENT NINE-COMBINATION — GLOBAL SYNC (Pete 2026-08-06) =====
+    // At a multi-nine venue the combination played is EVENT-level truth: picked once anywhere
+    // (Paper Cards, the QSE picker, or a player's live-scored round), every surface follows it.
+    // Sources, in order: this session's pick → saved rounds/scorecards (course_name carries
+    // "(Front+Back)" — the DB syncs it across devices) → this device's localStorage.
+    _eventNinesCfg(ev) {
+        try { return (window.PaperCardEntry && PaperCardEntry._nineVenue) ? PaperCardEntry._nineVenue(ev || {}) : null; } catch (e) { return null; }
+    }
+    setEventNines(eventId, cfg, f, b, data) {
+        this._eventCombo = { eventId: String(eventId), cfg, f, b, holes: data.holes, name: data.name, comboId: data.comboId };
+        this._ninesTriedFor = String(eventId);
+        try { localStorage.setItem('eventNines_' + eventId, JSON.stringify({ f, b })); } catch (e) {}
+        this._qseCourseCache = null;
+    }
+    async resolveEventNines(eventId) {
+        if (!eventId) return null;
+        const eid = String(eventId);
+        if (this._eventCombo && this._eventCombo.eventId === eid) return this._eventCombo;
+        if (this._ninesTriedFor === eid) return null;   // looked already this session, nothing picked yet
+        this._ninesTriedFor = eid;
+        const ev = (this.allEvents || []).find(e => String(e.id) === eid) || this.qseEventData || this.currentEvent || {};
+        const cfg = this._eventNinesCfg(ev);
+        if (!cfg) return null;                          // standard 18-hole course — nothing to sync
+        let f = null, b = null;
+        try {
+            const sb = window.SupabaseDB.client;
+            // Pete's rule: PLAYERS are the first line of information — anyone live-scoring in the
+            // app picked the nines ON THE COURSE, so their scorecard wins; saved rounds (paper
+            // cards entered earlier) come second. The organizer never has to guess.
+            const [sc, rd] = await Promise.all([
+                sb.from('scorecards').select('course_name').eq('event_id', eid).ilike('course_name', '%(%+%)%').limit(1),
+                sb.from('rounds').select('course_name').eq('society_event_id', eid).ilike('course_name', '%(%+%)%').limit(1)
+            ]);
+            const nm = (sc.data && sc.data[0] && sc.data[0].course_name) || (rd.data && rd.data[0] && rd.data[0].course_name) || '';
+            const m = nm.match(/\(([^+()]+)\+([^()]+)\)/);
+            if (m) { f = m[1].trim(); b = m[2].trim(); }
+        } catch (e) {}
+        if (!f || !b) { try { const s = JSON.parse(localStorage.getItem('eventNines_' + eventId) || 'null'); if (s && s.f && s.b) { f = s.f; b = s.b; } } catch (e) {} }
+        if (!f || !b) return null;
+        // combo labels → the hidden round-setup selects' option VALUES (value or visible label)
+        const pick = (selId, label) => {
+            const el = document.getElementById(selId); if (!el) return null;
+            const t = String(label).toLowerCase().trim();
+            for (const o of el.options) { if (!o.value) continue; const val = o.value.toLowerCase(), txt = o.textContent.trim().toLowerCase(); if (val === t || txt === t || txt.startsWith(t) || t.startsWith(val)) return o.value; }
+            return null;
+        };
+        const fv = pick(cfg.f, f), bv = pick(cfg.b, b);
+        if (!fv || !bv) return null;
+        const data = window.PaperCardEntry ? await PaperCardEntry._comboFetch(cfg, fv, bv) : null;
+        if (!data) return null;
+        this.setEventNines(eid, cfg, fv, bv, data);
+        return this._eventCombo;
+    }
+    _qseNineBarRender() {
+        const bar = document.getElementById('qseNineBar'); if (!bar) return;
+        const ev = this.qseEventData || {};
+        const cfg = this._eventNinesCfg(ev);
+        if (!cfg) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+        const ec = (this._eventCombo && this._eventCombo.eventId === String(ev.id)) ? this._eventCombo : null;
+        const curF = (document.getElementById('qseNineF') || {}).value || (ec && ec.f) || '';
+        const curB = (document.getElementById('qseNineB') || {}).value || (ec && ec.b) || '';
+        const opts = (selId, chosen, other) => {
+            const src = document.getElementById(selId);
+            let out = '<option value="">—</option>';
+            if (src) for (const o of src.options) { if (!o.value) continue; out += `<option value="${o.value.replace(/"/g,'&quot;')}"${o.value === chosen ? ' selected' : ''}${o.value === other ? ' disabled' : ''}>${o.textContent.trim()}</option>`; }
+            return out;
+        };
+        bar.style.display = '';
+        bar.innerHTML =
+            `<span class="font-bold text-xs text-gray-700">${_lvT('pce.front','FRONT 9')}</span>`+
+            `<select id="qseNineF" onchange="window.OrganizerScoringSystem.qseNineChange()" class="border rounded px-2 py-1 text-sm">${opts(cfg.f, curF, curB)}</select>`+
+            `<span class="font-bold text-xs text-gray-700">${_lvT('pce.back','BACK 9')}</span>`+
+            `<select id="qseNineB" onchange="window.OrganizerScoringSystem.qseNineChange()" class="border rounded px-2 py-1 text-sm">${opts(cfg.b, curB, curF)}</select>`+
+            (ec
+                ? `<span class="text-xs font-bold text-green-700 bg-green-50 border border-green-200 rounded-full px-3 py-1">${(ec.name || '').replace(/</g,'&lt;')}</span>`
+                : `<span class="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-300 rounded-full px-3 py-1">⚠ ${_lvT('pce.pick.nines','SELECT THE NINES PLAYED — scores locked until then')}</span>`);
+    }
+    async qseNineChange() {
+        const f = (document.getElementById('qseNineF') || {}).value || '';
+        const b = (document.getElementById('qseNineB') || {}).value || '';
+        const ev = this.qseEventData || {};
+        const cfg = this._eventNinesCfg(ev);
+        if (!cfg || !f || !b || f === b) { this._qseNineBarRender(); return; }
+        const teeRaw = document.getElementById('qseTeeMarker')?.value || 'white';
+        const tee = String(teeRaw).toLowerCase().trim().split(/[\s(]/)[0] || 'white';
+        const data = window.PaperCardEntry ? await PaperCardEntry._comboFetch(cfg, f, b, tee) : null;
+        if (!data) { window.NotificationManager.show(_lvT('pce.toast.combofail','Could not load that nine combination'), 'error'); return; }
+        this.setEventNines(ev.id, cfg, f, b, data);
+        this._qseNineBarRender();
+        await this.onQseTeeChange();   // re-renders every open hole-by-hole grid + totals
+    }
     async loadCourseData() {
+        // GLOBAL nine-combination sync: a multi-nine event with a known combination uses THOSE
+        // holes on every surface — the resolvers below never get to guess.
+        try {
+            const _eid = String((this.qseEventData && this.qseEventData.id) || this.currentEventId || '');
+            if (_eid) {
+                await this.resolveEventNines(_eid);
+                const ec = this._eventCombo;
+                if (ec && ec.eventId === _eid && ec.holes) return { holes: ec.holes };
+            }
+        } catch (e) {}
         // Tee value is a label like "Blue (Men)" — reduce to the stored token "blue".
         const teeRaw = document.getElementById('qseTeeMarker')?.value || 'white';
         const tee = String(teeRaw).toLowerCase().trim().split(/[\s(]/)[0] || 'white';
@@ -143202,10 +143329,20 @@ window.PaperCardEntry = {
             });
         } catch(e) {}
         // Multi-nine venue (Phoenix, Burapha, Khao Kheow, …): we CANNOT know which nines were
-        // played — the organizer must pick both before any score can be typed. Standard 18-hole
-        // course: load the card directly.
+        // played — the organizer must pick both before any score can be typed. If the nines were
+        // already picked ANYWHERE for this event (QSE picker, a saved paper card, a live-scored
+        // round), the global resolver pre-fills them. Standard 18-hole course: load directly.
         this.nineSel = this._nineVenue(); this.nineF = ''; this.nineB = ''; this.comboName = null;
-        this.courseData = this.nineSel ? null : await this._loadCourse();
+        if (this.nineSel) {
+            this.courseData = null;
+            try {
+                OSS._ninesTriedFor = null;   // fresh DB look each open — another device may have picked
+                var known = await OSS.resolveEventNines(event.id);
+                if (known && known.holes) { this.nineF = known.f; this.nineB = known.b; this.courseData = { comboId: known.comboId, holes: known.holes }; this.comboName = known.name; }
+            } catch(e){}
+        } else {
+            this.courseData = await this._loadCourse();
+        }
         this.scores = {}; this.cur = 0; this.startNine = 1; this.sheetOpen = false; this.count = 0;
         this._dirHits = []; this._search = '';
         this._mount(); this.render();
@@ -143330,8 +143467,9 @@ window.PaperCardEntry = {
     // The hidden round-setup selects (always in the DOM) provide the nine OPTIONS, and the
     // matching LiveScorecardManager.load*Combination() does the load + SI interleave, so the
     // paper card uses EXACTLY the data a live-scored round would.
-    _nineVenue: function(){
-        var s = String((this.event && (this.event.course_name || this.event.courseName || '')) + ' ' + (this.event && this.event.title || '')).toLowerCase();
+    _nineVenue: function(ev){
+        var e = ev || this.event;
+        var s = String((e && (e.course_name || e.courseName || '')) + ' ' + (e && e.title || '')).toLowerCase();
         var V = [
             { re: /phoenix/,            f: 'phoenixFront9',      b: 'phoenixBack9',      fn: 'loadPhoenixCombination' },
             { re: /burapha/,            f: 'buraphaFront9',      b: 'buraphaBack9',      fn: 'loadBuraphaCombination' },
@@ -143359,35 +143497,44 @@ window.PaperCardEntry = {
     },
     setNineF: async function(v){ this.nineF = v; if (v && v === this.nineB) this.nineB = ''; if (this.nineF && this.nineB) { await this._loadCombo(); } else { this.courseData = null; } this.render(); },
     setNineB: async function(v){ this.nineB = v; if (this.nineF && this.nineB) { await this._loadCombo(); } else { this.courseData = null; } this.render(); },
-    _loadCombo: async function(){
-        var LS = window.LiveScorecardManager, cfg = this.nineSel;
-        if (!LS || !cfg) return;
+    // Headless combination fetch — sets the hidden round-setup selects, runs Live Scoring's own
+    // load*Combination, harvests + normalizes the holes, RESTORES all LS state. Pure: no PCE/OSS
+    // state writes, so QSE's picker and the global resolver can share it. Tee falls back to WHITE
+    // (several nine-record venues only store white-tee rows).
+    _comboFetch: async function(cfg, fVal, bVal, teeArg){
+        var LS = window.LiveScorecardManager;
+        if (!LS || !cfg || !fVal || !bVal) return null;
         var fe = document.getElementById(cfg.f), be = document.getElementById(cfg.b);
         var prevF = fe ? fe.value : '', prevB = be ? be.value : '';
         var prevCourse = LS.courseData, prevCombo = LS.comboNines;
         try {
-            if (fe) fe.value = this.nineF; if (be) be.value = this.nineB;
-            // Try the selected tee first, then WHITE — several nine-record venues (e.g. the
-            // Phoenix nines) only store white-tee rows, and an empty tee set = null courseData.
-            var tee = (document.getElementById('pceTee') || {}).value || 'white';
+            if (fe) fe.value = fVal; if (be) be.value = bVal;
+            var tee = teeArg || (document.getElementById('pceTee') || {}).value || 'white';
             var cd = null, tees = tee === 'white' ? ['white'] : [tee, 'white'];
             for (var ti = 0; ti < tees.length && !(cd && cd.holes && cd.holes.length); ti++) {
                 LS.courseData = null;
                 await LS[cfg.fn](tees[ti]);
                 cd = LS.courseData;
             }
-            if (!cd || !cd.holes || !cd.holes.length) { this.courseData = null; this.comboName = null; window.NotificationManager.show(_lvT('pce.toast.combofail','Could not load that nine combination'), 'error'); return; }
+            if (!cd || !cd.holes || !cd.holes.length) return null;
             var holes = cd.holes.slice().sort(function(a, b){ return (a.hole_number || a.number || 0) - (b.hole_number || b.number || 0); });
-            this.courseData = {
-                comboId: cd.id || null, comboName: cd.name || null,
+            return {
+                comboId: cd.id || null, name: cd.name || null,
                 holes: holes.map(function(h, i){ return { hole_number: i + 1, par: h.par || 4, handicap: (h.stroke_index != null ? h.stroke_index : (h.handicap != null ? h.handicap : i + 1)) }; })
             };
-            this.comboName = cd.name || null;
-        } catch(e) { console.error('[PCE] combo load', e); this.courseData = null; window.NotificationManager.show(_lvT('pce.toast.combofail','Could not load that nine combination'), 'error'); }
+        } catch(e) { console.error('[PCE] combo fetch', e); return null; }
         finally {
             if (fe) fe.value = prevF; if (be) be.value = prevB;
             LS.courseData = prevCourse; LS.comboNines = prevCombo;
         }
+    },
+    _loadCombo: async function(){
+        var d = await this._comboFetch(this.nineSel, this.nineF, this.nineB);
+        if (!d) { this.courseData = null; this.comboName = null; window.NotificationManager.show(_lvT('pce.toast.combofail','Could not load that nine combination'), 'error'); return; }
+        this.courseData = { comboId: d.comboId, holes: d.holes };
+        this.comboName = d.name;
+        // GLOBAL SYNC (Pete): the pick applies to the EVENT — every other surface follows it.
+        try { window.OrganizerScoringSystem.setEventNines(this.event.id, this.nineSel, this.nineF, this.nineB, d); } catch(e){}
     },
     _nineBarHTML: function(){
         if (!this.nineSel) {

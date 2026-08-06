@@ -124831,14 +124831,18 @@ const GolferEventRegManager = {
                 this.registrations, this._unitBreaks) : [];
             const _inUnit = {}; _units.forEach(u => u.forEach(m => { _inUnit[String(m.playerId)] = 1; }));
             const _singles = unassigned.filter(p => !_inUnit[String(p.playerId)]);
-            const _unitBlocks = _units.map(u => `
-                        <div class="border border-green-300 bg-green-50 rounded-lg p-1.5" style="grid-column:1/-1;">
+            const _unitBlocks = _units.map(u => {
+                const _bk = PlayTogetherUnits.isBooking(u);   // one registration (host + guests) → light red
+                const _fg = _bk ? '#b91c1c' : '#15803d';
+                return `
+                        <div class="border border-green-300 bg-green-50 rounded-lg p-1.5" style="grid-column:1/-1;${_bk ? 'border-color:#fca5a5;background:#fef2f2;' : ''}">
                             <div class="flex items-center justify-between mb-1 px-0.5">
-                                <span style="font-size:9px;font-weight:800;letter-spacing:.08em;color:#15803d;">PLAYS TOGETHER ×${u.length} — MOVES AS ONE</span>
-                                <button onclick="GolferEventRegManager.breakUnitOf('${u[0].playerId}')" title="Split into singles (this session only)" style="font-size:9px;font-weight:700;color:#15803d;text-decoration:underline;background:none;border:none;cursor:pointer;">SPLIT</button>
+                                <span style="font-size:9px;font-weight:800;letter-spacing:.08em;color:${_fg};">${_bk ? 'REGISTERED TOGETHER' : 'PLAYS TOGETHER'} ×${u.length} — MOVES AS ONE</span>
+                                <button onclick="GolferEventRegManager.breakUnitOf('${u[0].playerId}')" title="Split into singles (this session only)" style="font-size:9px;font-weight:700;color:${_fg};text-decoration:underline;background:none;border:none;cursor:pointer;">SPLIT</button>
                             </div>
                             <div class="space-y-1">${u.map(m => this._unassignedRowHTML(m, _vanMap)).join('')}</div>
-                        </div>`).join('');
+                        </div>`;
+            }).join('');
             container.innerHTML += `
                 <div class="${borderClass}">
                     <div class="text-xs font-medium text-gray-500 mb-2">${headerText}</div>
@@ -130142,6 +130146,17 @@ window.PlayTogetherUnits = {
         order.forEach(function(root){ var m=buckets[root]; if(m.length<2) return; for(var i=0;i<m.length;i+=5){ var c=m.slice(i,i+5); if(c.length>=2) units.push(c); } });
         return units;
     },
+    // A unit is a BOOKING party when any member registered under another member's account
+    // (special_requests.hostId points at a fellow member) — organizer pools tint these light red
+    // so "came in on one registration" reads apart from the green partner-request units.
+    isBooking: function(unit){
+        var ids={}; (unit||[]).forEach(function(m){ ids[String(m.playerId)]=1; });
+        return (unit||[]).some(function(m){
+            var sr=(m && (m.specialRequests || m.special_requests)) || {};
+            var hid=String(sr.hostId||sr.host_id||'');
+            return hid && hid!==String(m.playerId) && ids[hid];
+        });
+    },
     mates: function(pid, un, regs, breaks){
         var k=String(pid);
         if (!(un||[]).some(function(r){ return String(r.playerId)===k; })) return [];
@@ -130489,6 +130504,13 @@ window.TeeSheet = {
             '#teeSheetOverlay .ts2-unitchip .tx{color:var(--t-grn);font-weight:700;opacity:.7;}'+
             '#teeSheetOverlay .ts2-unitchip .tb{background:#16a34a;}'+
             '#teeSheetOverlay .ts2-unitchip .mx{color:var(--t-grn);}'+
+            /* BOOKING unit (host + the guests on their registration) — light red so one-registration
+               parties read apart from green partner-request units in the unassigned pool */
+            '#teeSheetOverlay .ts2-bookunit{border-color:rgba(239,68,68,.55);background:rgba(239,68,68,.07);}'+
+            '#teeSheetOverlay .ts2-bookunit .um .h{color:#ef4444;}'+
+            '#teeSheetOverlay .ts2-bookunit .tx{color:#ef4444;}'+
+            '#teeSheetOverlay .ts2-bookunit .tb{background:#ef4444;}'+
+            '#teeSheetOverlay .ts2-bookunit .mx{color:#ef4444;}'+
             /* ✦ REGULARS tray (RGV1): dashed GHOST chips = suggestions, visually distinct from the amber pool
                chips so they can never read as registered. Hover card explains WHY each name is suggested. */
             '#teeSheetOverlay .ts2-rhead{display:flex;align-items:center;justify-content:space-between;margin:14px 0 3px;}'+
@@ -130916,8 +130938,9 @@ window.TeeSheet = {
     // moves everyone, ×N badge shows the size, ✕ splits it back into singles.
     _unitChip: function(members){
         var self=this, a=members[0];
+        var book=!!(window.PlayTogetherUnits && PlayTogetherUnits.isBooking(members));   // one registration (host + guests) → light red
         var rows=members.map(function(m){ var h=self._hcp(m.handicap); return '<span class="um" data-golfer-av="'+self._esc(m.playerId)+'" data-golfer-av-nm="'+self._esc(m.playerName)+'" data-golfer-av-sz="16">'+self._esc(m.playerName)+(h?'<span class="h">'+h+'</span>':'')+self._newBadge(m)+'</span>'; }).join('<span class="tx">＋</span>');
-        return '<span onpointerdown="TeeSheet.pdown(event,\''+a.playerId+'\')" class="ts2-pchip ts2-teamchip ts2-unitchip" title="'+t('ts2.unittip')+'">'+
+        return '<span onpointerdown="TeeSheet.pdown(event,\''+a.playerId+'\')" class="ts2-pchip ts2-teamchip ts2-unitchip'+(book?' ts2-bookunit':'')+'" title="'+t('ts2.unittip')+'">'+
             rows+
             '<span class="tb">×'+members.length+'</span>'+
             (self.groups.length ? '<select onchange="TeeSheet.addPlayer(this.value,\''+a.playerId+'\')" title="'+t('ts2.unittip')+'"><option value="">＋</option>'+self.groups.map(function(g,i){ return '<option value="'+i+'">G'+(i+1)+'</option>'; }).join('')+'</select>' : '')+
@@ -134562,14 +134585,18 @@ const RegistrationsManager = {
                 this.registrations, this._unitBreaks) : [];
             const _inUnit = {}; _units.forEach(u => u.forEach(m => { _inUnit[String(m.playerId)] = 1; }));
             const _singles = unassigned.filter(p => !_inUnit[String(p.playerId)]);
-            const _unitBlocks = _units.map(u => `
-                        <div class="border border-green-300 bg-green-50 rounded-lg p-1.5" style="grid-column:1/-1;">
+            const _unitBlocks = _units.map(u => {
+                const _bk = PlayTogetherUnits.isBooking(u);   // one registration (host + guests) → light red
+                const _fg = _bk ? '#b91c1c' : '#15803d';
+                return `
+                        <div class="border border-green-300 bg-green-50 rounded-lg p-1.5" style="grid-column:1/-1;${_bk ? 'border-color:#fca5a5;background:#fef2f2;' : ''}">
                             <div class="flex items-center justify-between mb-1 px-0.5">
-                                <span style="font-size:9px;font-weight:800;letter-spacing:.08em;color:#15803d;">PLAYS TOGETHER ×${u.length} — MOVES AS ONE</span>
-                                <button onclick="RegistrationsManager.breakUnitOf('${u[0].playerId}')" title="Split into singles (this session only)" style="font-size:9px;font-weight:700;color:#15803d;text-decoration:underline;background:none;border:none;cursor:pointer;">SPLIT</button>
+                                <span style="font-size:9px;font-weight:800;letter-spacing:.08em;color:${_fg};">${_bk ? 'REGISTERED TOGETHER' : 'PLAYS TOGETHER'} ×${u.length} — MOVES AS ONE</span>
+                                <button onclick="RegistrationsManager.breakUnitOf('${u[0].playerId}')" title="Split into singles (this session only)" style="font-size:9px;font-weight:700;color:${_fg};text-decoration:underline;background:none;border:none;cursor:pointer;">SPLIT</button>
                             </div>
                             <div class="space-y-1">${u.map(m => this._unassignedRowHTML(m, _vanMap)).join('')}</div>
-                        </div>`).join('');
+                        </div>`;
+            }).join('');
             container.innerHTML += `
                 <div class="${borderClass}">
                     <div class="text-xs font-medium text-gray-500 mb-2">${headerText}</div>

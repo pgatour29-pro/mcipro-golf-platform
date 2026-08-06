@@ -101170,7 +101170,8 @@ This action cannot be undone.`);
                     playerId: p.playerId || p.id,
                     playerName: p.playerName || p.name,
                     handicap: (p.handicap != null ? p.handicap : 0),
-                    wantTransport: p.wantTransport
+                    wantTransport: p.wantTransport,
+                    lateAt: p.lateAt || null
                 }));
             });
             this.currentPairings.groups = groups;
@@ -101249,6 +101250,8 @@ This action cannot be undone.`);
             : ((window.GolfDivisions && GolfDivisions.isDivisionEvent(_ev, _socName)) ? GolfDivisions.build((this.currentPairings.players || []).map(p => p.handicap), GolfDivisions.COUNT) : []);
         const _trueHcp = (p) => { const key = String(p.playerId != null ? p.playerId : p.id); const r = (this.currentPairings.players || []).find(x => String(x.playerId) === key || String(x.id) === key); return r ? r.handicap : p.handicap; };
         const _divBadgeHtml = (p) => (window.GolfDivisions && _divisions.length) ? GolfDivisions.badge(GolfDivisions.indexFor(_trueHcp(p), _divisions)) : '';
+        // NEW badge — late registrants auto-slotted after the sheet was built (players[].lateAt, v822).
+        const _newChipHtml = (p) => (p && p.lateAt) ? '<span style="flex-shrink:0;background:#16a34a;color:#fff;font:800 8px/1 \'JetBrains Mono\',monospace;letter-spacing:.06em;border-radius:5px;padding:2px 4px;margin-left:3px;" title="Signed up after the tee sheet was built">NEW</span>' : '';
 
         // Available pool = players NOT in any group. Registrations key on playerId while group entries
         // normalize to id=playerId — match on BOTH id and playerId or grouped players leak into the pool.
@@ -101285,7 +101288,7 @@ This action cannot be undone.`);
                                 <div class="flex items-center justify-between bg-gray-50 rounded px-2 py-1 cursor-move" draggable="true" ondragstart="SocietyOrganizerSystem.pairingDragStart(event, '${player.id}')">
                                     <div class="flex items-center gap-1.5">
                                         <span class="text-[10px] font-bold text-gray-500">#${playerIndex + 1}</span>
-                                        <span class="text-xs font-medium text-gray-900 truncate" data-golfer-av="${player.playerId || player.id || ''}" data-golfer-av-nm="${String(player.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${player.playerName}</span>${_divBadgeHtml(player)}
+                                        <span class="text-xs font-medium text-gray-900 truncate" data-golfer-av="${player.playerId || player.id || ''}" data-golfer-av-nm="${String(player.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${player.playerName}</span>${_divBadgeHtml(player)}${_newChipHtml(player)}
                                     </div>
                                     <div class="flex items-center gap-1 shrink-0">
                                         <span class="text-[11px] text-gray-600">${window.formatHandicapDisplay(player.handicap)}</span>
@@ -118578,7 +118581,13 @@ class GolferEventsManager {
             if (targetPlayers.some(p => pid(p) === me)) return; // already there
             const myGroupIdx = groups.findIndex(g => plArr(g).some(p => pid(p) === me));
             const myReg = (this.currentEventRegistrations || []).find(r => r.playerId === me) || {};
-            const meObj = { playerId: me, playerName: myReg.playerName || (AppState.currentUser && AppState.currentUser.name) || 'You', handicap: (myReg.handicap != null ? myReg.handicap : null) };
+            // Carry my existing sheet object instead of rebuilding — rebuilding dropped extra keys
+            // (lateAt NEW-badge stamp, van), so a late registrant who moved groups lost their badge.
+            const myPrior = myGroupIdx >= 0 ? plArr(groups[myGroupIdx]).find(p => pid(p) === me) : null;
+            const meObj = Object.assign({}, myPrior || {}, { playerId: me, playerName: myReg.playerName || (AppState.currentUser && AppState.currentUser.name) || 'You', handicap: (myReg.handicap != null ? myReg.handicap : null) });
+            // Self-placed from the pool ⇒ the organizer didn't put them here — stamp lateAt so the
+            // tee sheet shows the NEW badge (same "no surprises" rule as auto-slotted late regs).
+            if (!myPrior && !meObj.lateAt) meObj.lateAt = new Date().toISOString();
 
             if (swapWithPlayerId) {
                 // SWAP — only valid when I'm already grouped, else the bumped player would be stranded.
@@ -124770,7 +124779,11 @@ const GolferEventRegManager = {
             window.NotificationManager?.show(mates.length ? ('No room for this group of ' + (mates.length + 1)) : 'Group is full', 'warning');
             return;
         }
-        const playerData = { playerId: playerReg.playerId, playerName: playerReg.playerName, handicap: playerReg.handicap };
+        // Merge onto the existing sheet object — rebuilding from the registration dropped
+        // extra keys (lateAt NEW-badge stamp), so moving a late registrant erased their badge.
+        let priorObj = null;
+        this.pairingsData.groups.forEach(g => { const hit = (g.players || []).find(p => p.playerId === playerId); if (hit) priorObj = hit; });
+        const playerData = Object.assign({}, priorObj || {}, { playerId: playerReg.playerId, playerName: playerReg.playerName, handicap: playerReg.handicap });
         this.pairingsData.groups.forEach(g => { g.players = (g.players || []).filter(p => p.playerId !== playerId); });
         if (targetGroup) {
             if (!targetGroup.players) targetGroup.players = [];
@@ -134779,7 +134792,11 @@ const RegistrationsManager = {
             window.NotificationManager?.show(mates.length ? ('No room for this group of ' + (mates.length + 1)) : 'Group is full — drop ON a player to swap places', 'warning');
             return;
         }
-        const playerData = { playerId: playerReg.playerId, playerName: playerReg.playerName, handicap: playerReg.handicap };
+        // Merge onto the existing sheet object — rebuilding from the registration dropped
+        // extra keys (lateAt NEW-badge stamp), so moving a late registrant erased their badge.
+        let priorObj = null;
+        this.pairingsData.groups.forEach(g => { const hit = (g.players || []).find(p => p.playerId === playerId); if (hit) priorObj = hit; });
+        const playerData = Object.assign({}, priorObj || {}, { playerId: playerReg.playerId, playerName: playerReg.playerName, handicap: playerReg.handicap });
         this.pairingsData.groups.forEach(g => { g.players = (g.players || []).filter(p => p.playerId !== playerId); });
         if (targetGroup) {
             if (!targetGroup.players) targetGroup.players = [];
@@ -134800,8 +134817,9 @@ const RegistrationsManager = {
         if (!this.pairingsData || !this.pairingsData.groups || String(pidA) === String(pidB)) return;
         const groups = this.pairingsData.groups;
         const locate = (pid) => { for (let gi = 0; gi < groups.length; gi++) { const ps = groups[gi].players || []; const ix = ps.findIndex(p => String(p.playerId) === String(pid)); if (ix >= 0) return { gi, ix }; } return null; };
-        const rec = (pid) => { const r = this.registrations.find(x => String(x.playerId) === String(pid)); return r ? { playerId: r.playerId, playerName: r.playerName, handicap: r.handicap } : null; };
-        const a = locate(pidA), b = locate(pidB), pa = rec(pidA), pb = rec(pidB);
+        // Merge onto the existing sheet objects — a rebuilt object dropped extra keys (lateAt NEW-badge stamp).
+        const rec = (pid, loc) => { const r = this.registrations.find(x => String(x.playerId) === String(pid)); return r ? Object.assign({}, (loc ? groups[loc.gi].players[loc.ix] : null) || {}, { playerId: r.playerId, playerName: r.playerName, handicap: r.handicap }) : null; };
+        const a = locate(pidA), b = locate(pidB), pa = rec(pidA, a), pb = rec(pidB, b);
         if (!pa || !pb || (!a && !b)) return;   // both unassigned → nothing to swap
         if (a && b) { groups[a.gi].players[a.ix] = pb; groups[b.gi].players[b.ix] = pa; }
         else if (b) { groups[b.gi].players[b.ix] = pa; }   // A unassigned → A takes B's slot
@@ -135218,6 +135236,8 @@ const RegistrationsManager = {
         var _divs = (event && Array.isArray(event.divisions) && event.divisions.length) ? event.divisions
             : ((window.GolfDivisions && GolfDivisions.isDivisionEvent(event, _socName)) ? GolfDivisions.build((this.registrations||[]).map(function(r){ return (self.currentHandicaps && self.currentHandicaps[r.playerId] != null) ? self.currentHandicaps[r.playerId] : r.handicap; }), GolfDivisions.COUNT) : []);
         var divBadge = function(p){ return (window.GolfDivisions && _divs.length) ? GolfDivisions.badge(GolfDivisions.indexFor(_rawHcp(p), _divs)) : ''; };
+        // NEW badge — late registrants auto-slotted after the sheet was built (players[].lateAt, v822).
+        var newChip = function(p){ return (p && p.lateAt) ? '<span style="background:#16a34a;color:#fff;font:800 8px/1 \'JetBrains Mono\',monospace;letter-spacing:.06em;border-radius:5px;padding:2px 4px;margin-left:3px;vertical-align:middle;" title="Signed up after the tee sheet was built">NEW</span>' : ''; };
 
         var html = '<div style="background:#fff;border-radius:12px;padding:20px 22px;box-shadow:0 1px 4px rgba(0,0,0,.08);">';
         html += '<div style="font-size:22px;font-weight:800;color:#0f172a;">'+this._escHtml(eventName)+'</div>';
@@ -135246,7 +135266,7 @@ const RegistrationsManager = {
                         var reg = regById[p.playerId] || {};
                         var wantsT = !!reg.wantTransport;
                         html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:5px 0;border-bottom:1px solid #f1f5f9;">';
-                        html += '<div style="min-width:0;flex:1;"><span style="font-size:13px;color:#0f172a;font-weight:600;">'+self._escHtml(p.playerName||'')+'</span> <span style="font-size:11px;color:#94a3b8;">('+getHcp(p)+')</span>'+divBadge(p)+(window.TRGGMembership?TRGGMembership.badge(p.playerId,p.playerName):'')+'</div>';
+                        html += '<div style="min-width:0;flex:1;"><span style="font-size:13px;color:#0f172a;font-weight:600;">'+self._escHtml(p.playerName||'')+'</span> <span style="font-size:11px;color:#94a3b8;">('+getHcp(p)+')</span>'+divBadge(p)+(window.TRGGMembership?TRGGMembership.badge(p.playerId,p.playerName):'')+newChip(p)+'</div>';
                         html += '<div style="display:flex;gap:3px;align-items:center;flex-shrink:0;">';
                         if (reg.id) html += '<button onclick="RegistrationsManager.toggleTransport(\''+reg.id+'\')" title="'+(wantsT?'On the van — tap for DIRECT':'DIRECT — tap for VAN')+'" style="border:none;border-radius:5px;font-size:10px;font-weight:700;padding:2px 6px;cursor:pointer;'+(wantsT?'background:#2563eb;color:#fff;':'background:#e2e8f0;color:#64748b;')+'">'+(wantsT?'VAN':'DIRECT')+'</button>';
                         html += '<select onchange="RegistrationsManager.movePlayerToGroup(\''+p.playerId+'\', this.value)" title="Move to group" style="border:1px solid #cbd5e1;border-radius:5px;font-size:10px;padding:1px 2px;">'+grpOpts(idx)+'</select>';

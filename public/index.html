@@ -130628,8 +130628,14 @@ window.TeeSheet = {
         };
         var up=evs.filter(function(e){ var t=eventMs(e); return isNaN(t) || t>=nowMs; })
                   .sort(function(a,b){ var ta=eventMs(a),tb=eventMs(b); return (isNaN(ta)?Infinity:ta)-(isNaN(tb)?Infinity:tb); });
+        // Recent PAST events stay in the list (newest first, last 7 days) — after midnight the
+        // organizer is often still finishing YESTERDAY's sheet/scores (Pete, Phoenix 2026-08-07
+        // 00:03: the picker had already dropped it and he couldn't go back). Fall-off only
+        // affects the DEFAULT selection, never reachability.
+        var past=evs.filter(function(e){ var t=eventMs(e); return !isNaN(t) && t<nowMs && (nowMs-t) < 7*24*3600*1000; })
+                    .sort(function(a,b){ return eventMs(b)-eventMs(a); }).slice(0,10);
         // Fallback so the picker isn't empty for a society with nothing upcoming: most-recent past events.
-        var list = up.length ? up : evs.slice().sort(function(a,b){ var ta=eventMs(a),tb=eventMs(b); return (isNaN(tb)?0:tb)-(isNaN(ta)?0:ta); }).slice(0,20);
+        var list = up.length ? up.concat(past) : (past.length ? past : evs.slice().sort(function(a,b){ var ta=eventMs(a),tb=eventMs(b); return (isNaN(tb)?0:tb)-(isNaN(ta)?0:ta); }).slice(0,20));
         // GMV1: a host tapping TEE SHEET on a specific card lands on THAT event (even a past one).
         if (this._preferId && !list.some(function(e){ return String(e.id)===String(self._preferId); })) {
             var pref = evs.find(function(e){ return String(e.id)===String(self._preferId); });

@@ -140459,6 +140459,16 @@ class OrganizerScoringSystem {
             await apply(round);
             for (const mate of ((this._hbhTeamLinks && this._hbhTeamLinks[rid]) || [])) await apply(mate);
             try { this._resortLeaderboard?.(); this.renderLeaderboard(); this.updateStats(); this._renderTwosBand?.(); this._renderTwosPanel?.(); this._renderHioBand?.(); this._renderHioPanel?.(); } catch (_) {}
+            // Visible confirmation (Pete 2026-08-06: "it didn't save"): the debounced save is
+            // otherwise silent — when a card COMPLETES (18 holes), say so, once per row.
+            try {
+                if (!this._hbhDoneToast) this._hbhDoneToast = {};
+                if ((round.holes_played || 0) >= 18 && !this._hbhDoneToast[rid]) {
+                    this._hbhDoneToast[rid] = true;
+                    const nm = this._hbhTeamName[round.id] || this.getPlayerName(round.golfer_id, round);
+                    window.NotificationManager.show('✓ ' + _lvT('pce.toast.saved','Saved — {name} · {g} (net {n} · {p} pts)').replace('{name}', nm).replace('{g}', round.total_gross).replace('{n}', round.total_net).replace('{p}', round.total_stableford), 'success', 3000);
+                }
+            } catch (_) {}
         } catch (e) {
             console.warn('[HBH] save failed', e);
             NotificationManager.show('Score not saved — retry', 'error');

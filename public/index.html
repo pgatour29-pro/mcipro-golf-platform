@@ -140417,8 +140417,20 @@ class OrganizerScoringSystem {
     // Unscored player (round.id null): CREATE their round first so _persistHoleScores has a
     // real id to write against — same insert shape as qseSavePlayerRound / Paper Cards,
     // including the event's synced nine-combination course id + name.
-    async _hbhEnsureRound(round) {
+    async _hbhEnsureRound(round, scores) {
         if (round.id != null) return round.id;
+        // rounds_holes_played_check requires 1..18 — the insert must carry REAL totals from the
+        // just-typed buffer (a zero-hole insert is rejected and the save dies in the catch).
+        const courseData = await this.loadEditCourseData();
+        const hcp = window.toPlayingHandicap(round.handicap_used);
+        let g = 0, n = 0, p = 0, hn = 0;
+        for (let h = 1; h <= 18; h++) {
+            const s = scores && scores[h]; if (!s) continue;
+            const m = (courseData.holes && courseData.holes[h - 1]) || { par: 4, handicap: h };
+            g += s; n += s - this.calcShotsOnHole(hcp, m.handicap || h);
+            p += this.calcStablefordPts(s, m.par || 4, hcp, m.handicap || h); hn++;
+        }
+        if (!hn) return null;   // nothing typed yet — nothing to create
         const ev = this.allEvents.find(e => e.id === this.currentEventId) || {};
         const combo = (this._eventCombo && this._eventCombo.eventId === String(this.currentEventId)) ? this._eventCombo : null;
         const evd = ev.event_date ? new Date(ev.event_date + 'T07:00:00') : new Date();
@@ -140430,7 +140442,7 @@ class OrganizerScoringSystem {
             type: 'society', society_event_id: this.currentEventId, organizer_id: ev.organizer_id || null,
             played_at: evd.toISOString(), started_at: evd.toISOString(),
             completed_at: new Date().toISOString(), status: 'completed',
-            total_gross: null, total_net: null, total_stableford: 0, holes_played: 0,
+            total_gross: g, total_net: n, total_stableford: p, holes_played: hn,
             handicap_used: round.handicap_used != null ? round.handicap_used : 0,
             tee_marker: String(teeRaw).toLowerCase().trim().split(/[\s(]/)[0] || 'white',
             course_rating: 72.0, slope_rating: 113
@@ -140444,8 +140456,8 @@ class OrganizerScoringSystem {
         const round = this._hbhRound(rid);
         if (!round) return;
         try {
-            if (round.id == null) await this._hbhEnsureRound(round);
             const scores = this._hbhScores[rid] || {};
+            if (round.id == null) { const rid2 = await this._hbhEnsureRound(round, scores); if (!rid2) return; }
             const apply = async (r) => {
                 const t = await this._persistHoleScores(r, scores);
                 r.total_gross = t.totalGross || null;

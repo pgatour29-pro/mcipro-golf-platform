@@ -119776,15 +119776,27 @@ class GolferEventsManager {
     // group while seats remain) and persists, so tee sheet / players modal / scoring prefill all
     // agree without waiting for an organizer to open the tee sheet. Only touches an EXISTING saved
     // sheet — first materialization stays with the organizer-load flow.
-    async _ensureBookingPlacement(eventId) {
+    async _ensureBookingPlacement(eventId, newRegIds) {
         try {
-            if (!window.BookingGroups || !window.SocietyGolfDB) return;
+            if (!window.SocietyGolfDB) return;
             const pairing = await window.SocietyGolfDB.getPairings(eventId);
             if (!pairing || !Array.isArray(pairing.groups)) return;
             const hasPlayers = pairing.groups.some(g => ((g && g.players) || []).length > 0);
             if (!hasPlayers) return;
             const regs = await window.SocietyGolfDB.getRegistrations(eventId);
-            if (window.BookingGroups.ensureGroups(pairing.groups, regs, pairing.groupSize)) {
+            const changedBooking = window.BookingGroups
+                ? window.BookingGroups.ensureGroups(pairing.groups, regs, pairing.groupSize) : false;
+            // AUTO-SLOT (Pete 2026-08-06): the registrant themselves (and any guests) take the first
+            // open seat — or start a new group — the moment they register onto a live sheet. SKIPPED
+            // on 2-man scrambles: team seats there are POSITIONAL (slots 1+2 / 3+4) and a solo drop
+            // could split a team; the organizer places scramble players.
+            let changedSolo = false;
+            let isS2 = false;
+            try { isS2 = !!(this.currentEvent && this._isTwoManScrambleEvent && this._isTwoManScrambleEvent(this.currentEvent)); } catch (e) {}
+            if (!isS2 && window.AutoSlotLateRegs && newRegIds && newRegIds.length) {
+                changedSolo = window.AutoSlotLateRegs(pairing, regs, newRegIds);
+            }
+            if (changedBooking || changedSolo) {
                 await window.SocietyGolfDB.savePairings(eventId, pairing);
             }
         } catch (e) { console.warn('[GolferEvents] booking placement', e); }
@@ -119962,6 +119974,7 @@ class GolferEventsManager {
 
                 // Update existing + add new guests
                 const guestRows = document.querySelectorAll('.guest-player-row');
+                const _newGuestIds = [];
                 for (const row of guestRows) {
                     const existingId = row.getAttribute('data-guest-id');
                     const name = row.querySelector('.guest-name')?.value?.trim();
@@ -119995,11 +120008,13 @@ class GolferEventsManager {
                             wantTransport, wantCompetition, partnerPrefs: [], caddyNumbers: '',
                             specialRequests: Object.assign({ sameGroup: rowSameGroup }, (AppState.currentUser?.lineUserId) ? { hostId: AppState.currentUser.lineUserId } : {})
                         });
+                        _newGuestIds.push(resolvedId);
                     }
                 }
                 this._editGuestIds = null;
-                // Late add onto an already-saved tee sheet → put the new guests in the host's group NOW.
-                await this._ensureBookingPlacement(this.currentEvent.id);
+                // Late add onto an already-saved tee sheet → new guests place themselves NOW
+                // (host's group first, else first open seat, else a new group).
+                await this._ensureBookingPlacement(this.currentEvent.id, _newGuestIds);
 
                 NotificationManager.show(`Registration updated successfully! Changes saved for ${this.currentEvent.name}`, 'success', 3000);
 
@@ -120161,6 +120176,7 @@ class GolferEventsManager {
                     // registrant's id so these added players get grouped WITH the host on the tee sheet /
                     // registration / golfer card (not scattered into separate groups / the pool).
                     const _hostId = AppState.currentUser?.lineUserId || null;
+                    const _lateIds = registration.playerId ? [registration.playerId] : [];
                     for (const guest of guestPlayers) {
                         const resolvedId = await this._resolveGuestId(guest.lineUserId, guest.name);
                         await window.SocietyGolfDB.registerForEvent({
@@ -120174,9 +120190,11 @@ class GolferEventsManager {
                             caddyNumbers: '',
                             specialRequests: Object.assign({ sameGroup: guest.sameGroup !== false }, _hostId ? { hostId: _hostId } : {})
                         });
+                        _lateIds.push(resolvedId);
                     }
-                    // Late add onto an already-saved tee sheet → put the party in the host's group NOW.
-                    if (guestPlayers.length) await this._ensureBookingPlacement(this.currentEvent.id);
+                    // Registration onto an already-saved tee sheet → the whole party places itself NOW
+                    // (host/partner group first, else first open seat, else a new group).
+                    await this._ensureBookingPlacement(this.currentEvent.id, _lateIds);
 
                     let confirmMsg = `Successfully registered for ${this.currentEvent.name}!`;
                     if (guestPlayers.length > 0) {
@@ -130011,7 +130029,7 @@ window.BookingGroups = {
                 if (room <= 0) return;
                 var add = missing.slice(0, room).map(function(id){
                     var r = byId[String(id)];
-                    return { playerId: r.playerId, playerName: r.playerName, handicap: r.handicap };
+                    return { playerId: r.playerId, playerName: r.playerName, handicap: r.handicap, lateAt: new Date().toISOString() };
                 });
                 groups[gIdx].players = (groups[gIdx].players||[]).concat(add);
                 if (!groups[gIdx].bookingHost) groups[gIdx].bookingHost = String(b.hostId);
@@ -130044,6 +130062,60 @@ window.BookingGroups = {
     }
 };
 
+// AUTO-SLOT LATE REGISTRATIONS (Pete 2026-08-06): once the organizer's tee sheet EXISTS, anyone
+// who registers after that places themselves — their host's/partner's group first, else the first
+// group with an open seat, else a NEW group at the bottom. Only the rows named in regIds are
+// placed (players an organizer deliberately left in the pool STAY in the pool); already-placed
+// players never move. Tolerates both saved group shapes (array / {players}). True on change.
+window.AutoSlotLateRegs = function(pairing, regs, regIds){
+    try {
+        if (!pairing || !Array.isArray(pairing.groups) || !Array.isArray(regs) || !regIds || !regIds.length) return false;
+        var groups = pairing.groups;
+        var size = parseInt(pairing.groupSize) || 4;
+        var plist = function(g){ return Array.isArray(g) ? g : ((g && g.players) || []); };
+        var placed = {};
+        groups.forEach(function(g){ plist(g).forEach(function(p){
+            if (p && p.playerId != null) placed[String(p.playerId)] = true;
+            if (p && p.id != null) placed[String(p.id)] = true;
+        }); });
+        var groupOf = function(pid){
+            for (var i = 0; i < groups.length; i++) {
+                if (plist(groups[i]).some(function(p){ return p && String(p.playerId || p.id) === String(pid); })) return i;
+            }
+            return -1;
+        };
+        var changed = false;
+        regIds.filter(Boolean).forEach(function(rid){
+            var reg = regs.find(function(r){ return String(r.playerId) === String(rid) || String(r.id) === String(rid); });
+            if (!reg || placed[String(reg.playerId)] || placed[String(reg.id)]) return;
+            // 1) their people first: host account's group, then picked partners' groups (consent-aware)
+            var want = [];
+            var sr = reg.specialRequests || {};
+            if (sr.hostId && sr.sameGroup !== false) want.push(String(sr.hostId));
+            if (window.PlayTogetherUnits) { try { want = want.concat(PlayTogetherUnits.targets(reg, regs) || []); } catch (e) {} }
+            var gIdx = -1;
+            for (var w = 0; w < want.length && gIdx < 0; w++) {
+                var gi = groupOf(want[w]);
+                if (gi >= 0 && plist(groups[gi]).length < size) gIdx = gi;
+            }
+            // 2) first group with an open seat (array order — the organizer's own ordering)
+            if (gIdx < 0) { for (var i = 0; i < groups.length; i++) { if (plist(groups[i]).length < size) { gIdx = i; break; } } }
+            // lateAt ⇒ the organizer's tee sheet shows a NEW badge — they signed up AFTER the
+            // sheet was built (Pete 2026-08-06: "no surprises").
+            var po = { playerId: reg.playerId, playerName: reg.playerName, handicap: reg.handicap, lateAt: new Date().toISOString() };
+            if (gIdx >= 0) {
+                if (Array.isArray(groups[gIdx])) groups[gIdx].push(po);
+                else groups[gIdx].players = plist(groups[gIdx]).concat([po]);
+            } else {
+                groups.push({ players: [po], teeTime: '', teeFixed: false });
+            }
+            placed[String(reg.playerId)] = true; if (reg.id != null) placed[String(reg.id)] = true;
+            changed = true;
+        });
+        return changed;
+    } catch (e) { console.warn('[AutoSlot]', e); return false; }
+};
+
 // ===== TEE SHEET (Groups & Transport) — organizer page: registered players → build groups → set transport
 // PER PLAYER (Van 1-15 / Own=direct / Special) → printable + LINE-shareable sheet. Opens from the "Tee Sheet"
 // cube in the organizer light dashboard. Groups persist to event_pairings (object shape, like the other
@@ -130055,6 +130127,13 @@ window.TeeSheet = {
     _series: null,   // active event_series this event belongs to (SERF1 — series field tray + BY STANDINGS)
     _esc: function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
     _hcp: function(h){ if(h==null||h===''||h==='null'||(typeof h==='number'&&isNaN(h))) return ''; return window.formatHandicapDisplay ? window.formatHandicapDisplay(h) : h; },
+    // NEW badge (Pete 2026-08-06): players auto-slotted AFTER the sheet was built carry
+    // players[].lateAt — the organizer sees at a glance who just signed up (no surprises).
+    _newBadge: function(p){
+        if (!p || !p.lateAt) return '';
+        var t=''; try { t=new Date(p.lateAt).toLocaleString(_lvLocale(), {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){}
+        return '<span class="ts2-newb" title="Signed up after the tee sheet was built'+(t?' — '+t:'')+'">NEW</span>';
+    },
     // 3-Man Waltz event? By name OR the event's declared FORMAT (dropdown) — so a Waltz event that
     // isn't named "waltz" still forces 3-man groups.
     _isWaltz: function(){
@@ -130332,6 +130411,7 @@ window.TeeSheet = {
             '#teeSheetOverlay .ts2-gvan option{background:var(--t-solid);color:var(--t-ink);}'+
             '#teeSheetOverlay .ts2-slot{display:grid;grid-template-columns:22px minmax(0,1fr) 34px 58px 16px;gap:7px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--t-hair);}'+
             '#teeSheetOverlay .ts2-slot:last-child{border-bottom:none;}'+
+            '#teeSheetOverlay .ts2-newb{flex-shrink:0;background:#16a34a;color:#fff;font:800 8px/1 \'JetBrains Mono\',monospace;letter-spacing:.06em;border-radius:5px;padding:3px 4px;margin-left:2px;}'+
             '#teeSheetOverlay .ts2-teamband{display:flex;align-items:center;gap:6px;padding:5px 12px 4px;font:700 8px/1 \'JetBrains Mono\',monospace;letter-spacing:.18em;color:var(--tc,#3b82f6);background:var(--t-box);text-transform:uppercase;}'+
             '#teeSheetOverlay .ts2-teamband::before{content:"";width:7px;height:7px;border-radius:2px;background:var(--tc,#3b82f6);flex:0 0 auto;}'+
             '#teeSheetOverlay .ts2-teamband.div{border-top:2px solid var(--t-blu);}'+
@@ -130476,7 +130556,7 @@ window.TeeSheet = {
             var p = res[1];
             var legacyPairings = !(p && p.firstTee);   // saved before the tee engine existed
             this.groups = (p && Array.isArray(p.groups)) ? p.groups.map(function(g){
-                return Array.isArray(g) ? { players: g.map(function(x){ return {playerId:x.id||x.playerId, playerName:x.playerName||x.name, handicap:x.handicap}; }), teeTime:'', teeFixed:false } : { players:(g.players||[]), teeTime:g.teeTime||'', teeFixed: legacyPairings ? !!(g.teeTime) : !!g.teeFixed, bookingHost:g.bookingHost, startNine:g.startNine||null, secondNine:g.secondNine||null };
+                return Array.isArray(g) ? { players: g.map(function(x){ return {playerId:x.id||x.playerId, playerName:x.playerName||x.name, handicap:x.handicap, lateAt:x.lateAt||null}; }), teeTime:'', teeFixed:false } : { players:(g.players||[]), teeTime:g.teeTime||'', teeFixed: legacyPairings ? !!(g.teeTime) : !!g.teeFixed, bookingHost:g.bookingHost, startNine:g.startNine||null, secondNine:g.secondNine||null };
             }) : [];
             this._groupSize = (p && p.groupSize) || 4;
             if (this._isWaltz()) this._groupSize = 3;   // 3-Man Waltz → teams of exactly 3
@@ -130547,7 +130627,7 @@ window.TeeSheet = {
             var p = res[1];
             var legacyPairings = !(p && p.firstTee);   // saved before the tee engine existed
             this.groups = (p && Array.isArray(p.groups)) ? p.groups.map(function(g){
-                return Array.isArray(g) ? { players: g.map(function(x){ return {playerId:x.id||x.playerId, playerName:x.playerName||x.name, handicap:x.handicap}; }), teeTime:'', teeFixed:false } : { players:(g.players||[]), teeTime:g.teeTime||'', teeFixed: legacyPairings ? !!(g.teeTime) : !!g.teeFixed, startNine:g.startNine||null, secondNine:g.secondNine||null };
+                return Array.isArray(g) ? { players: g.map(function(x){ return {playerId:x.id||x.playerId, playerName:x.playerName||x.name, handicap:x.handicap, lateAt:x.lateAt||null}; }), teeTime:'', teeFixed:false } : { players:(g.players||[]), teeTime:g.teeTime||'', teeFixed: legacyPairings ? !!(g.teeTime) : !!g.teeFixed, startNine:g.startNine||null, secondNine:g.secondNine||null };
             }) : [];
             while (this.groups.length < 12) { this.groups.push({ players: [], teeTime: '', teeFixed: false }); }   // pad up to 12 pre-set cubes
             this._groupSize = (p && p.groupSize) || this._groupSize || 4;
@@ -131361,7 +131441,7 @@ window.TeeSheet = {
                             '<span class="n"'+(_tm?' style="color:'+(_tm==='A'?'#3b82f6':'#f97316')+';font-weight:800;" title="Team '+_tm+'"':'')+'>'+(sl+1)+'</span>'+
                             '<span class="ts2-who" onpointerdown="TeeSheet.pdown(event,\''+p.playerId+'\')">'+
                                 '<span class="nm" data-golfer-av="'+self._esc(p.playerId)+'" data-golfer-av-nm="'+self._esc(p.playerName)+'" data-golfer-av-sz="20">'+self._esc(p.playerName)+'</span>'+
-                                '<span style="flex-shrink:0;display:inline-flex;gap:1px;align-items:center;">'+self._divBadge(p.playerId, p.handicap)+(window.TRGGMembership?TRGGMembership.badgeCompact(p.playerId,p.playerName,self._isTRGGEvent()):'')+'</span>'+
+                                '<span style="flex-shrink:0;display:inline-flex;gap:1px;align-items:center;">'+self._divBadge(p.playerId, p.handicap)+(window.TRGGMembership?TRGGMembership.badgeCompact(p.playerId,p.playerName,self._isTRGGEvent()):'')+self._newBadge(p)+'</span>'+
                             '</span>'+
                             '<span class="ts2-hcpc">'+(hc||'')+'</span>'+
                             '<select onchange="TeeSheet.setVan(\''+p.playerId+'\',this.value)" title="Transport" class="ts2-van'+(cur&&cur!=='own'?' set':'')+'">'+self._vanOptions(cur)+'</select>'+

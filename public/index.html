@@ -9691,6 +9691,7 @@
                 'pce.pick': 'select',
                 'pce.pick.nines': 'SELECT THE NINES PLAYED — scores locked until then',
                 'pce.toast.combofail': 'Could not load that nine combination',
+                'pce.genericcard': 'COURSE CARD NOT MATCHED — generic par-4 card, net/points approximate',
                 'pce.kbd.adv': 'score → auto-advance',
                 'pce.kbd.ten': 'digit = 1 / 10-15',
                 'pce.kbd.move': 'move',
@@ -11588,6 +11589,7 @@
                 'pce.pick': 'เลือก',
                 'pce.pick.nines': 'เลือกคอร์ส 9 หลุมที่เล่นก่อน — จึงจะกรอกสกอร์ได้',
                 'pce.toast.combofail': 'โหลดชุดคอร์ส 9 หลุมไม่สำเร็จ',
+                'pce.genericcard': 'ไม่พบสกอร์การ์ดของสนาม — ใช้การ์ดพาร์ 4 ทั่วไป เน็ต/แต้มเป็นค่าประมาณ',
                 'pce.kbd.adv': 'สกอร์ → เลื่อนอัตโนมัติ',
                 'pce.kbd.ten': 'ตัวเลข = 1 / 10-15',
                 'pce.kbd.move': 'เลื่อน',
@@ -13092,6 +13094,7 @@
                 'pce.pick': '선택',
                 'pce.pick.nines': '플레이한 9홀 코스를 선택하세요 — 선택 전에는 입력 불가',
                 'pce.toast.combofail': '해당 9홀 조합을 불러올 수 없습니다',
+                'pce.genericcard': '코스 카드를 찾을 수 없음 — 일반 파4 카드 사용, 네트/포인트는 근사치',
                 'pce.kbd.adv': '스코어 → 자동 이동',
                 'pce.kbd.ten': '숫자 = 1 / 10-15',
                 'pce.kbd.move': '이동',
@@ -15414,6 +15417,7 @@
                 'pce.pick': '選択',
                 'pce.pick.nines': 'プレーした9ホールを選択 — 選択するまで入力できません',
                 'pce.toast.combofail': 'その9ホールの組み合わせを読み込めませんでした',
+                'pce.genericcard': 'コースカード未検出 — 汎用パー4カード使用、ネット/ポイントは概算',
                 'pce.kbd.adv': 'スコア → 自動送り',
                 'pce.kbd.ten': '数字 = 1 / 10-15',
                 'pce.kbd.move': '移動',
@@ -143331,7 +143335,7 @@ window.PaperCardEntry = {
         var V = [
             { re: /phoenix/,            f: 'phoenixFront9',      b: 'phoenixBack9',      fn: 'loadPhoenixCombination' },
             { re: /burapha/,            f: 'buraphaFront9',      b: 'buraphaBack9',      fn: 'loadBuraphaCombination' },
-            { re: /plutaluang|thai navy/, f: 'plutaluangFront9', b: 'plutaluangBack9',   fn: 'loadPlutaluangCombination' },
+            { re: /pl?utaluang|thai navy/, f: 'plutaluangFront9', b: 'plutaluangBack9',  fn: 'loadPlutaluangCombination' },
             { re: /khao\s*kheow/,       f: 'khaoKheowFront9',    b: 'khaoKheowBack9',    fn: 'loadKhaoKheowCombination' },
             { re: /greenwood/,          f: 'greenwoodFront9',    b: 'greenwoodBack9',    fn: 'loadGreenwoodCombination' },
             { re: /laem\s*chabang/,     f: 'laemChabangFront9',  b: 'laemChabangBack9',  fn: 'loadLaemChabangCombination' },
@@ -143387,9 +143391,11 @@ window.PaperCardEntry = {
     },
     _nineBarHTML: function(){
         if (!this.nineSel) {
-            return '<div class="pce-ninetabs">'+
+            return '<div class="pce-ninetabs" style="align-items:center;flex-wrap:wrap;gap:8px;">'+
                 '<div class="pce-ntab' + (this.startNine === 1 ? ' on' : '') + '" onclick="PaperCardEntry.setNine(1)">' + this._esc(_lvT('pce.starts1','STARTS 1st TEE')) + '</div>'+
-                '<div class="pce-ntab' + (this.startNine === 10 ? ' on' : '') + '" onclick="PaperCardEntry.setNine(10)">' + this._esc(_lvT('pce.starts10','STARTS 10th TEE')) + '</div></div>';
+                '<div class="pce-ntab' + (this.startNine === 10 ? ' on' : '') + '" onclick="PaperCardEntry.setNine(10)">' + this._esc(_lvT('pce.starts10','STARTS 10th TEE')) + '</div>'+
+                (this.genericCard ? '<span style="font:800 10.5px/1.3 \'JetBrains Mono\',monospace;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:999px;padding:6px 10px;">⚠ ' + this._esc(_lvT('pce.genericcard','COURSE CARD NOT MATCHED — generic par-4 card, net/points approximate')) + '</span>' : '')+
+                '</div>';
         }
         var ready = !!this.courseData;
         return '<div class="pce-ninetabs" style="align-items:center;flex-wrap:wrap;gap:8px;">'+
@@ -143412,8 +143418,12 @@ window.PaperCardEntry = {
         var seq = function(d){ return !d || !d.holes || d.holes.length !== 18 || d.holes.every(function(h, i){ return (h.handicap || 0) === i + 1; }); };
         var d = null;
         try { d = await OSS.loadCourseData(); } catch(e){}
-        if (!seq(d)) return d;
-        try { var raw = await OSS.loadEditCourseDataRaw(); if (!seq(raw)) return raw; } catch(e){}
+        if (!seq(d)) { this.genericCard = false; return d; }
+        try { var raw = await OSS.loadEditCourseDataRaw(); if (!seq(raw)) { this.genericCard = false; return raw; } } catch(e){}
+        // Neither resolver matched — the card below is a GENERIC par-4/sequential-SI stand-in.
+        // Never silent: _nineBarHTML shows an amber warning so the organizer knows net/points
+        // are approximate and the course needs adding/matching.
+        this.genericCard = true;
         return d || { holes: Array.from({ length: 18 }, function(_, i){ return { hole_number: i + 1, par: 4, handicap: i + 1 }; }) };
     },
 

@@ -71698,6 +71698,9 @@ class SocietyGolfSupabase {
                 .select()
                 .single();
             if (updateErr) throw updateErr;
+            // Heals legacy registrants too: re-registering an id that predates the directory rule
+            // still lands them in the TRGG directory.
+            if (_rpIsTRGG) this._ensureTrggDirectoryEntry(updated.player_id || playerData.playerId, playerData.name, playerData.handicap);
             return updated;
         }
 
@@ -71728,7 +71731,55 @@ class SocietyGolfSupabase {
             throw error;
         }
 
+        // TRGG DIRECTORY (Pete 2026-08-07): every name that enters a TRGG event must be retrievable
+        // from the Players directory afterwards (and be a membership candidate). That directory lists
+        // society_members rows — fire-and-forget, never blocks the registration.
+        if (_rpIsTRGG) this._ensureTrggDirectoryEntry(data.player_id || playerData.playerId, playerData.name, playerData.handicap);
+
         return data;
+    }
+
+    // The organizer Players directory = society_members rows for the society; a profile alone is NOT
+    // listed. Ensure BOTH exist for a TRGG event registrant: a user_profiles row (searchable name)
+    // and a society_members row (directory listing; member_number stays NULL so TRGGMembership still
+    // shows them as guest until they actually join). TRGG-ONLY by design: for other societies a
+    // society_members row flips checkSocietyMembership → member pricing; TRGG events store
+    // non_member_fee = 0 and take the guest ฿100 from the id-prefix / TRGGMembership sweeps, so the
+    // row is fee-neutral here (verified against prod 2026-08-07). Never extend to other societies
+    // without re-checking their fee model.
+    TRGG_SOCIETY_PROFILE_ID = '7c0e4b72-d925-44bc-afda-38259a7ba346';
+    async _ensureTrggDirectoryEntry(playerId, name, handicap) {
+        try {
+            const pid = String(playerId || '');
+            if (!pid) return;
+            const sb = window.SupabaseDB && window.SupabaseDB.client;
+            if (!sb) return;
+            const cleanName = String(name || '').replace(/\s*\(guest\)\s*/ig, ' ').replace(/\s+/g, ' ').trim();
+            const hcp = parseFloat(handicap);
+            // 1) Profile (insert-or-skip — never clobbers an existing profile; same pattern as the
+            //    live-scoring guest add).
+            if (cleanName) {
+                await sb.from('user_profiles').upsert({
+                    line_user_id: pid,
+                    name: cleanName,
+                    role: 'golfer',
+                    handicap_index: isNaN(hcp) ? null : hcp,
+                    profile_data: { name: cleanName, handicap: isNaN(hcp) ? null : hcp, golfInfo: { handicap: isNaN(hcp) ? null : hcp }, isGuest: true, addedVia: 'event-registration' }
+                }, { onConflict: 'line_user_id', ignoreDuplicates: true });
+            }
+            // 2) Directory listing row.
+            const { data: ex } = await sb.from('society_members').select('id')
+                .eq('society_id', this.TRGG_SOCIETY_PROFILE_ID).eq('golfer_id', pid).limit(1).maybeSingle();
+            if (ex) return;
+            const rid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+                : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16); });
+            const { error: insErr } = await sb.from('society_members').insert({
+                id: rid, society_id: this.TRGG_SOCIETY_PROFILE_ID, golfer_id: pid,
+                role: 'member', status: 'active', notes: 'Auto-added from event registration'
+            });
+            if (insErr) console.warn('[SocietyGolf] TRGG directory add failed', insErr);
+            else console.log('[SocietyGolf] TRGG directory entry ensured for', pid, cleanName);
+        } catch (e) { console.warn('[SocietyGolf] _ensureTrggDirectoryEntry', e); }
     }
 
     // REGISTRATION PROTOCOL helper: if playerData.playerId is a GUEST/placeholder id but the name

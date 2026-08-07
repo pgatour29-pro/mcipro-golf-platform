@@ -120935,20 +120935,24 @@ class GolferEventsManager {
                 throw new Error('Could not remove your registration. Please try again, or contact the organizer.');
             }
 
-            // CLEANUP: Also delete guest registrations added by this player
+            // CLEANUP: Also delete the players THIS golfer added with their registration. Keyed by
+            // special_requests.hostId = me (stamped on every guest insert since v463) — NOT by the
+            // old event-wide LIKE 'GUEST-%', which (a) missed directory-resolved guests carrying
+            // real ids (U…/TRGG-GUEST-… — Pete's Putaluang party survived his unregister,
+            // 2026-08-07) and (b) deleted OTHER hosts' guests in the same event.
             if (registration) {
                 const { data: guestRegs } = await window.SupabaseDB.client
                     .from('event_registrations')
                     .select('id, player_id')
                     .eq('event_id', registration.event_id)
-                    .like('player_id', 'GUEST-%');
+                    .eq('special_requests->>hostId', String(registration.player_id));
                 if (guestRegs && guestRegs.length > 0) {
                     const guestIds = guestRegs.map(g => g.id);
                     await window.SupabaseDB.client
                         .from('event_registrations')
                         .delete()
                         .in('id', guestIds);
-                    console.log('[GolferEvents] Deleted', guestIds.length, 'guest registrations');
+                    console.log('[GolferEvents] Deleted', guestIds.length, 'party registrations (hostId-linked)');
                 }
 
                 // Pull the leaver (and their guests) out of the saved tee groups too —

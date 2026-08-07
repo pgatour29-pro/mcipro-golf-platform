@@ -130375,9 +130375,9 @@ window.TeeSheet = {
         if (this._golferMode) return (window.GolferEventsBridge && GolferEventsBridge.events) || [];
         return (window.SocietyOrganizerSystem && SocietyOrganizerSystem.events) || [];
     },
-    open: function(){ this._golferMode=false; this._preferId=null; this._mount(); this._loadEvents(); },
+    open: function(){ this._golferMode=false; this._preferId=null; this.eventId=null; this._mount(); this._loadEvents(); },
     openForGolfer: async function(eventId){
-        this._golferMode = true; this._preferId = eventId || null;
+        this._golferMode = true; this._preferId = eventId || null; this.eventId = null;
         try { await window.GolferEventsBridge.load(); } catch(e){ console.warn('[TeeSheet] golfer events', e); }
         this._mount(); this._loadEvents();
     },
@@ -130634,6 +130634,8 @@ window.TeeSheet = {
             '<div id="teeSheetBody"><div style="text-align:center;padding:40px;color:var(--t-dim);">Select an event…</div></div>'+
           '</div>';
         document.body.appendChild(el);
+        this._chipsHtml = '';          // fresh overlay → force the first chip paint
+        this._wireEventChips();        // delegated tap handling survives every chip rebuild
         try { if (window.ThemeMode) ThemeMode.apply(); } catch(e){}
     },
     _loadEvents: function(){
@@ -130666,7 +130668,13 @@ window.TeeSheet = {
         sel.innerHTML = list.map(function(e){ var d=e.date||e.event_date||''; return '<option value="'+e.id+'">'+self._esc(e.name||e.title||'Event')+(d?(' · '+d):'')+'</option>'; }).join('');
         this._evList = list;
         this._renderEventChips();
-        var first = this._preferId ? (list.find(function(e){ return String(e.id)===String(self._preferId); }) || list[0]) : list[0];
+        // STICKY SELECTION: a re-run of _loadEvents must never snap an ACTIVE selection back to the
+        // default (today's event) — the fall-off default only governs fresh opens (open() clears
+        // eventId). Same rule the Scoring tab follows through its 30s auto-refresh.
+        var first = null;
+        if (this._preferId) first = list.find(function(e){ return String(e.id)===String(self._preferId); }) || null;
+        if (!first && this.eventId) first = list.find(function(e){ return String(e.id)===String(self.eventId); }) || null;
+        if (!first) first = list[0];
         this._preferId = null;
         if(first){ sel.value=first.id; this.selectEvent(first.id); }
         else { var b=document.getElementById('teeSheetBody'); if(b) b.innerHTML='<div style="text-align:center;padding:40px;color:var(--t-dim);">No events found.</div>'; }
@@ -130687,15 +130695,40 @@ window.TeeSheet = {
         var evDate=function(e){ return e.date||e.event_date||''; };
         var picks=events.filter(function(e){ var d=evDate(e); return d>=monStr && d<=satStr; }).sort(function(a,b){ return String(evDate(a)).localeCompare(String(evDate(b))); });
         if(!picks.length) picks=(this._evList||[]).slice(0,6);
-        wrap.innerHTML = picks.map(function(e){
+        var html = picks.map(function(e){
             var d=e.date||e.event_date||'';
             var dd=d?new Date(d+'T00:00:00'):null;
             var lbl=(dd&&!isNaN(dd))?dd.toLocaleDateString(_lvLocale(),{weekday:'short',day:'numeric'}).toUpperCase().replace(',',''):'';
             var name=String(e.courseName||e.course_name||e.name||e.title||'Event');
             var short=name.length>14?name.slice(0,13)+'…':name;
             var mood=(typeof window.dateCubeMood==='function')?window.dateCubeMood(d):'';
-            return '<button class="ts2-evchip'+(mood?' '+mood:'')+(String(e.id)===String(self.eventId)?' on':'')+'" onclick="TeeSheet.selectEvent(\''+e.id+'\')"><span class="d">'+lbl+(d===todayStr?' · TODAY':'')+'</span><span class="c">'+self._esc(short)+'</span></button>';
+            return '<button class="ts2-evchip'+(mood?' '+mood:'')+(String(e.id)===String(self.eventId)?' on':'')+'" data-ev="'+e.id+'"><span class="d">'+lbl+(d===todayStr?' · TODAY':'')+'</span><span class="c">'+self._esc(short)+'</span></button>';
         }).join('');
+        // Only touch the DOM when the strip actually changed: every realtime _liveReload used to
+        // innerHTML-rebuild these cubes, and a finger mid-tap on a button that gets replaced fires
+        // NOTHING — on event morning (live churn) the strip could eat taps for minutes ("clicked
+        // Plutaluang, still on Green Valley"). Same trap family as the v815 sync pill.
+        if (html === this._chipsHtml && wrap.childNodes.length) return;
+        this._chipsHtml = html;
+        wrap.innerHTML = html;
+    },
+    // Chip taps are DELEGATED on the container (wired once in _mount): the container survives every
+    // innerHTML rebuild, so a tap that started on a chip still selects even if the strip re-rendered
+    // between finger-down and finger-up. Movement/time guards keep horizontal strip scrolls from selecting.
+    _wireEventChips: function(){
+        var cw=document.getElementById('tsEvChips'); if(!cw || cw._tsWired) return; cw._tsWired=true;
+        cw.addEventListener('pointerdown', function(ev){
+            var b=ev.target && ev.target.closest ? ev.target.closest('.ts2-evchip') : null;
+            TeeSheet._chipDn = b ? { id:b.getAttribute('data-ev'), x:ev.clientX, y:ev.clientY, t:Date.now() } : null;
+        }, true);
+        cw.addEventListener('pointerup', function(ev){
+            var d=TeeSheet._chipDn; TeeSheet._chipDn=null;
+            if(!d || !d.id) return;
+            if(Date.now()-d.t > 700) return;                                          // long-press / stall
+            if(Math.abs(ev.clientX-d.x) > 12 || Math.abs(ev.clientY-d.y) > 12) return; // strip scroll, not a tap
+            TeeSheet.selectEvent(d.id);
+        }, true);
+        cw.addEventListener('pointercancel', function(){ TeeSheet._chipDn=null; }, true);
     },
     // Selector is now permanently visible (Pete 2026-08-03); kept for any stray callers.
     toggleEventSelect: function(){ var w=document.getElementById('tsEvSelectWrap'); if(w) w.style.display='block'; },
@@ -130808,9 +130841,14 @@ window.TeeSheet = {
     _liveReload: async function(){
         if (Date.now() - (this._lastLocalSave || 0) < 2000) return;   // ignore our own just-saved echo
         var eventId = this.eventId; if (!eventId) return;
+        // Same guard the Scoring tab's refreshScores uses: a reload that started for the PRIOR event
+        // must never paint over a newly-selected one — check the event AND the selectEvent sequence
+        // after every await (selectEvent bumps _loadSeq the instant the organizer switches).
+        var self=this, seq=this._loadSeq || 0;
+        var stale=function(){ return self.eventId !== eventId || (self._loadSeq||0) !== seq; };
         try {
             var res = await Promise.all([SocietyGolfDB.getRegistrations(eventId), SocietyGolfDB.getPairings(eventId)]);
-            if (this.eventId !== eventId) return;   // switched away while loading
+            if (stale()) return;   // switched away while loading
             this.regs = res[0] || [];
             var p = res[1];
             var legacyPairings = !(p && p.firstTee);   // saved before the tee engine existed
@@ -130825,6 +130863,7 @@ window.TeeSheet = {
             this._renderHead();
             try { this._ensureDivisions(this._evSource().find(function(e){ return e.id===eventId; }) || {}); } catch(e){}
             try { await this._loadNines(); } catch(e){}
+            if (stale()) return;   // organizer switched during the nines lookup — don't repaint the old event
             this.render();
             try { this._applyNonMemberSurcharge(); } catch(e){}   // a live-added registrant may be a non-member
             try { this._applyVanTransportFee(); } catch(e){}      // a live van assignment must carry its ฿300

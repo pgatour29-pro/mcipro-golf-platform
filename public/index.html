@@ -130901,6 +130901,13 @@ window.TeeSheet = {
             // with the old 10-group default also show 12. Empty trailing cubes are skipped on the printed
             // /LINE sheet. teeTime:'' → the cascade stamps 09:05/09:10/…
             while (this.groups.length < 12) { this.groups.push({ players: [], teeTime: '', teeFixed: false }); }
+            // GHOST GUARD (Putaluang resurrection, 2026-08-07): snapshot who was ALREADY in the loaded
+            // sheet. _syncRegistrations may only auto-register players the organizer adds AFTER this —
+            // a grouped player with no registration at load time was REMOVED from the event (unregister/
+            // guest delete) and re-registering them brings the party back from the dead.
+            this._loadedGroupIds = {};
+            var _lgi = this._loadedGroupIds;
+            this.groups.forEach(function(g){ (g.players||[]).forEach(function(p){ if(p && p.playerId) _lgi[String(p.playerId)] = 1; }); });
             // A registrant's added players form ONE group in the host's group — auto-place the booking so it
             // lands in a group here (not the unassigned pool). Only fires for not-yet-materialized bookings.
             try { if (window.BookingGroups && window.BookingGroups.ensureGroups(this.groups, this.regs, this._groupSize)) { this._saveGroups(); } } catch(e){ console.warn('[TeeSheet] booking groups', e); }
@@ -130970,6 +130977,10 @@ window.TeeSheet = {
                 return Array.isArray(g) ? { players: g.map(function(x){ return {playerId:x.id||x.playerId, playerName:x.playerName||x.name, handicap:x.handicap, lateAt:x.lateAt||null}; }), teeTime:'', teeFixed:false } : { players:(g.players||[]), teeTime:g.teeTime||'', teeFixed: legacyPairings ? !!(g.teeTime) : !!g.teeFixed, startNine:g.startNine||null, secondNine:g.secondNine||null };
             }) : [];
             while (this.groups.length < 12) { this.groups.push({ players: [], teeTime: '', teeFixed: false }); }   // pad up to 12 pre-set cubes
+            // GHOST GUARD: players arriving via realtime were registered on the other device — mark
+            // them loaded so THIS device's _syncRegistrations never re-registers a removed player.
+            var _lgi2 = (this._loadedGroupIds = this._loadedGroupIds || {});
+            this.groups.forEach(function(g){ (g.players||[]).forEach(function(p){ if(p && p.playerId) _lgi2[String(p.playerId)] = 1; }); });
             this._groupSize = (p && p.groupSize) || this._groupSize || 4;
             if (this._isWaltz()) this._groupSize = 3;   // 3-Man Waltz → teams of exactly 3
             this.firstTee = (p && p.firstTee) || this.firstTee || this.eventTee;
@@ -132437,7 +132448,12 @@ window.TeeSheet = {
     _syncRegistrations: async function(){
         if(!this.eventId || this._syncing || !window.SocietyGolfDB) return;
         var have={}; (this.regs||[]).forEach(function(r){ have[String(r.playerId)]=1; });
-        var missing=[]; this.groups.forEach(function(g){ (g.players||[]).forEach(function(p){ if(p && p.playerId && !have[String(p.playerId)]){ have[String(p.playerId)]=1; missing.push(p); } }); });
+        // GHOST GUARD: only players added to the sheet THIS SESSION may be auto-registered. A player
+        // who was already in the loaded groups but has no registration was REMOVED from the event —
+        // re-registering them resurrected Pete's deleted Putaluang party (2026-08-07). They stay
+        // visible on the sheet (yellow manual chip) for the organizer to ✕ or keep deliberately.
+        var loaded=this._loadedGroupIds || {};
+        var missing=[]; this.groups.forEach(function(g){ (g.players||[]).forEach(function(p){ if(p && p.playerId && !have[String(p.playerId)] && !loaded[String(p.playerId)]){ have[String(p.playerId)]=1; missing.push(p); } }); });
         if(!missing.length) return;
         this._syncing=true;
         var changed=false;

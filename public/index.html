@@ -41631,13 +41631,11 @@ Waitlist (${waitlist.length} people):`;
                     this._nextEv = e;   // stashed for openCaddiesForNextRound (no inline-quote escaping)
                     const h = document.querySelector('#todaysTeeTimeCard h3');
                     if (h) { h.removeAttribute('data-i18n'); h.textContent = isToday ? "Today's Tee Time" : 'Next Round'; }
-                    // Countdown chip to tee (falls back to departure)
-                    let cnt = '';
-                    try {
-                        const at = new Date(e.event_date + 'T' + (tee || dep || '23:59') + ':00').getTime();
-                        const mins = Math.round((at - Date.now()) / 60000);
-                        if (mins > 0) cnt = mins < 60 ? ('in ' + mins + 'm') : (mins < 48 * 60 ? ('in ' + Math.round(mins / 60) + 'h') : ('in ' + Math.round(mins / 1440) + 'd'));
-                    } catch (err) {}
+                    // Countdown chip — DEPARTURE first (HARD RULE: the van is the deadline; tee only when
+                    // there's no departure or the van already left), exact h+m, and it TICKS. The old chip
+                    // counted to TEE, rounded 2h55m up to "3h" and never updated after render — Pete's 07:31
+                    // screenshot showed "IN 3H" while the 09:00 van was 1.5h away (2026-08-07).
+                    const cnt = this._cntText(e);
                     content.innerHTML =
                         '<div class="gdb-nr" onclick="DashboardUpcomingEvents.viewEvent(\'' + e.id + '\')">' +
                           '<div class="gdb-nr-top">' +
@@ -41657,14 +41655,44 @@ Waitlist (${waitlist.length} people):`;
                           '<div class="gdb-nr-meta">' +
                             '<span class="m"><span class="material-symbols-outlined">partly_cloudy_day</span><span id="todaysTeeWeather">Loading…</span></span>' +
                             '<span class="m" id="gdbNrPlaying" style="display:none;"><span class="material-symbols-outlined">groups</span><span></span></span>' +
-                            (cnt ? '<span class="gdb-chip ghost">' + cnt + '</span>' : '') +
+                            (cnt ? '<span class="gdb-chip ghost" id="gdbNrCnt">' + cnt + '</span>' : '') +
                           '</div>' +
+                          // TEE SHEET straight from this card (Pete 2026-08-07 photo): same sheet players
+                          // reach from the event card, one tap from the dashboard.
+                          '<button onclick="event.stopPropagation(); DashboardUpcomingEvents.viewTeeSheet(\'' + e.id + '\')" style="width:100%;margin-top:8px;padding:9px 0;display:flex;align-items:center;justify-content:center;gap:6px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;border-radius:12px;font-weight:700;font-size:12px;letter-spacing:.04em;cursor:pointer;"><span class="material-symbols-outlined" style="font-size:15px;">grid_view</span>TEE SHEET</button>' +
                           '<div class="gdb-nr-go"><span class="material-symbols-outlined">chevron_right</span></div>' +
                         '</div>';
                     this.loadWeather();
                     this._fillPlayingCount(e.id);
                     this._fillCaddyPhoto(caddy);
+                    // Minute tick so the chip can never go stale on an open dashboard.
+                    clearInterval(this._cntTimer);
+                    this._cntTimer = setInterval(() => {
+                        const el = document.getElementById('gdbNrCnt');
+                        if (!el || !this._nextEv) { clearInterval(this._cntTimer); return; }
+                        const txt = this._cntText(this._nextEv);
+                        if (txt) { el.textContent = txt; el.style.display = ''; } else { el.style.display = 'none'; }
+                    }, 60000);
                 } catch (e) {}
+            },
+
+            // Time-left text for the countdown chip: counts to DEPARTURE while the van hasn't left,
+            // then to TEE. Exact hours+minutes under 12h — rounding hid the real deadline.
+            _cntText(e) {
+                try {
+                    const tee = e.start_time ? String(e.start_time).slice(0, 5) : '';
+                    const dep = e.departure_time ? String(e.departure_time).slice(0, 5) : '';
+                    const mk = (t) => t ? new Date(e.event_date + 'T' + t + ':00').getTime() : NaN;
+                    const now = Date.now();
+                    let label = 'DEP', at = mk(dep);
+                    if (!(at > now)) { label = 'TEE'; at = mk(tee); }
+                    if (!(at > now)) return '';
+                    const mins = Math.floor((at - now) / 60000);
+                    if (mins >= 48 * 60) return label + ' in ' + Math.round(mins / 1440) + 'd';
+                    if (mins >= 12 * 60) return label + ' in ' + Math.round(mins / 60) + 'h';
+                    if (mins >= 60) return label + ' in ' + Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm';
+                    return label + ' in ' + mins + 'm';
+                } catch (err) { return ''; }
             },
 
             // Booked caddy's notebook photo → shown beside the number in the Next Round card
@@ -41852,6 +41880,23 @@ Waitlist (${waitlist.length} people):`;
                         }
                         // Now open the event detail
                         GolferEventsSystem.openEventDetail(eventId);
+                    }
+                }, 500);
+            },
+
+            // TEE SHEET button on the Today's Tee Time card (Pete 2026-08-07): jump straight to the
+            // group sheet players normally reach via the event card. jumpToPairings only fires the
+            // players modal when the golfer is registered for the event — otherwise the event detail
+            // opens as the natural fallback (same behavior as tapping the card).
+            async viewTeeSheet(eventId) {
+                if (typeof showGolferTab === 'function') showGolferTab('societyevents', null);
+                else TabManager.showTab('golferDashboard', 'societyevents', null);
+                setTimeout(async () => {
+                    if (typeof GolferEventsSystem !== 'undefined') {
+                        if (!GolferEventsSystem.allEvents || GolferEventsSystem.allEvents.length === 0) {
+                            await GolferEventsSystem.init();
+                        }
+                        GolferEventsSystem.openEventDetail(eventId, true);
                     }
                 }, 500);
             }

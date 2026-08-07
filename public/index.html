@@ -41659,7 +41659,7 @@ Waitlist (${waitlist.length} people):`;
                           '</div>' +
                           // TEE SHEET straight from this card (Pete 2026-08-07 photo): same sheet players
                           // reach from the event card, one tap from the dashboard.
-                          '<button onclick="event.stopPropagation(); DashboardUpcomingEvents.viewTeeSheet(\'' + e.id + '\')" style="width:100%;margin-top:8px;padding:9px 0;display:flex;align-items:center;justify-content:center;gap:6px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;border-radius:12px;font-weight:700;font-size:12px;letter-spacing:.04em;cursor:pointer;"><span class="material-symbols-outlined" style="font-size:15px;">grid_view</span>TEE SHEET</button>' +
+                          '<button id="gdbNrTsBtn" onclick="event.stopPropagation(); DashboardUpcomingEvents.viewTeeSheet(\'' + e.id + '\')" style="width:100%;margin-top:8px;padding:9px 0;display:flex;align-items:center;justify-content:center;gap:6px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;border-radius:12px;font-weight:700;font-size:12px;letter-spacing:.04em;cursor:pointer;"><span class="material-symbols-outlined" style="font-size:15px;">grid_view</span>TEE SHEET</button>' +
                           '<div class="gdb-nr-go"><span class="material-symbols-outlined">chevron_right</span></div>' +
                         '</div>';
                     this.loadWeather();
@@ -41884,21 +41884,35 @@ Waitlist (${waitlist.length} people):`;
                 }, 500);
             },
 
-            // TEE SHEET button on the Today's Tee Time card (Pete 2026-08-07): jump straight to the
-            // group sheet players normally reach via the event card. jumpToPairings only fires the
-            // players modal when the golfer is registered for the event — otherwise the event detail
-            // opens as the natural fallback (same behavior as tapping the card).
+            // TEE SHEET button on the Today's Tee Time card (Pete 2026-08-07): open the group-sheet
+            // modal DIRECTLY over the dashboard — no tab leap, no detail-modal flash (Pete: "why is it
+            // going to the events section then slowly opening the tee sheet"; HARD RULE: no page
+            // leaps). The players modal mounts on document.body, so it only needs state: the event,
+            // its registrations, and its pairings — fetched in parallel here. Roster empty or anything
+            // fails → the old event-detail route as fallback.
             async viewTeeSheet(eventId) {
-                if (typeof showGolferTab === 'function') showGolferTab('societyevents', null);
-                else TabManager.showTab('golferDashboard', 'societyevents', null);
-                setTimeout(async () => {
-                    if (typeof GolferEventsSystem !== 'undefined') {
-                        if (!GolferEventsSystem.allEvents || GolferEventsSystem.allEvents.length === 0) {
-                            await GolferEventsSystem.init();
-                        }
-                        GolferEventsSystem.openEventDetail(eventId, true);
+                const G = window.GolferEventsSystem;
+                const b = document.getElementById('gdbNrTsBtn');
+                if (b) { b.style.opacity = '.55'; b.disabled = true; }
+                try {
+                    if (G) {
+                        // currentEvent must point at THIS event BEFORE the roster load — its stale-load
+                        // guard drops results when currentEvent.id !== eventId (a leftover event from an
+                        // earlier browse would silently kill the direct path). Minimal shape from the
+                        // dashboard's own row is enough for the modal header + format detection;
+                        // upgraded to the full object below once the event list is in.
+                        const pre = (G.allEvents || []).find(x => String(x.id) === String(eventId));
+                        const d = (window.GolferCubeInfo && GolferCubeInfo._nextEv) || {};
+                        G.currentEvent = pre || { id: eventId, name: d.title || d.course_name || 'Event', courseName: d.course_name, date: d.event_date, startTime: d.start_time, format: d.event_format || d.format };
+                        const evP = (G.allEvents && G.allEvents.length) ? Promise.resolve() : G.loadEvents().catch(() => {});
+                        await Promise.all([evP, G.loadRegisteredPlayers(eventId), G.loadGolferPairing(eventId)]);
+                        const ev = (G.allEvents || []).find(x => String(x.id) === String(eventId));
+                        if (ev) G.currentEvent = ev;
+                        if ((G.currentEventRegistrations || []).length) { G.openPlayersModal(); return; }
                     }
-                }, 500);
+                } catch (err) { console.warn('[Dashboard] viewTeeSheet direct', err); }
+                finally { if (b) { b.style.opacity = ''; b.disabled = false; } }
+                this.viewEvent(eventId);   // fallback: empty roster / load failure → event detail
             }
         };
 

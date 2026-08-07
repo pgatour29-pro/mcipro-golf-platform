@@ -134068,15 +134068,42 @@ const RegistrationsManager = {
             picks = events.filter(e => e.date >= todayStr).sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, 6);
         }
         const cur = this.currentEventId;
-        wrap.innerHTML = picks.map(e => {
+        const html = picks.map(e => {
             const d = new Date(e.date + 'T00:00:00');
             const lbl = isNaN(d) ? '' : d.toLocaleDateString(_lvLocale(), { weekday: 'short', day: 'numeric' }).toUpperCase().replace(',', '');
             const isToday = e.date === todayStr;
             const name = String(e.courseName || e.name || 'Event');
             const short = name.length > 15 ? name.slice(0, 14) + '…' : name;
             const mood = (typeof window.dateCubeMood === 'function') ? window.dateCubeMood(e.date) : '';
-            return '<button class="scv3r-evchip' + (mood ? ' ' + mood : '') + (String(e.id) === String(cur) ? ' on' : '') + '" onclick="RegistrationsManager.selectEvent(\'' + e.id + '\')"><span class="d">' + lbl + (isToday ? ' · TODAY' : '') + '</span><span class="c">' + this._escR(short) + '</span></button>';
-        }).join('') + '<button class="scv3r-evchip scv3r-evchip-all" onclick="RegistrationsManager.toggleEventSelect()"><span class="c">ALL <span class="material-symbols-outlined" style="font-size:12px;vertical-align:-2px;">expand_more</span></span></button>';
+            return '<button class="scv3r-evchip' + (mood ? ' ' + mood : '') + (String(e.id) === String(cur) ? ' on' : '') + '" data-ev="' + e.id + '"><span class="d">' + lbl + (isToday ? ' · TODAY' : '') + '</span><span class="c">' + this._escR(short) + '</span></button>';
+        }).join('') + '<button class="scv3r-evchip scv3r-evchip-all" data-evall="1"><span class="c">ALL <span class="material-symbols-outlined" style="font-size:12px;vertical-align:-2px;">expand_more</span></span></button>';
+        this._wireEventChips(wrap);
+        // Skip the DOM swap when nothing changed — updateRowUI/renderStats rebuild the hero (and this
+        // strip) on every realtime row change, and a button replaced mid-tap fires nothing (v838 class).
+        if (html === this._chipsHtml && wrap.childNodes.length) return;
+        this._chipsHtml = html;
+        wrap.innerHTML = html;
+    },
+
+    // Chip taps are DELEGATED on the persistent row container so a rebuild between finger-down and
+    // finger-up can't lose the tap (v838 tap-theft class). Movement/time guards keep the horizontal
+    // strip scroll from selecting. Self-healing: if the container is ever re-created, the flag dies
+    // with it and the next render re-wires.
+    _wireEventChips(wrap) {
+        if (wrap._rWired) return; wrap._rWired = true;
+        wrap.addEventListener('pointerdown', (ev) => {
+            const b = ev.target && ev.target.closest ? ev.target.closest('.scv3r-evchip') : null;
+            this._chipDn = b ? { ev: b.getAttribute('data-ev'), all: b.hasAttribute('data-evall'), x: ev.clientX, y: ev.clientY, t: Date.now() } : null;
+        }, true);
+        wrap.addEventListener('pointerup', (ev) => {
+            const d = this._chipDn; this._chipDn = null;
+            if (!d) return;
+            if (Date.now() - d.t > 700) return;                                          // long-press / stall
+            if (Math.abs(ev.clientX - d.x) > 12 || Math.abs(ev.clientY - d.y) > 12) return; // strip scroll, not a tap
+            if (d.all) this.toggleEventSelect();
+            else if (d.ev) this.selectEvent(d.ev);
+        }, true);
+        wrap.addEventListener('pointercancel', () => { this._chipDn = null; }, true);
     },
 
     toggleEventSelect() {
@@ -139129,7 +139156,7 @@ class OrganizerScoringSystem {
         let picks = events.filter(e => { const d = evDate(e); return d >= monStr && d <= satStr; })
                           .sort((a, b) => evDate(a).localeCompare(evDate(b)));
         if (!picks.length) picks = events.slice().sort((a, b) => evDate(b).localeCompare(evDate(a))).slice(0, 6);   // fallback: most recent
-        wrap.innerHTML = picks.map(e => {
+        const html = picks.map(e => {
             const d = evDate(e);
             const dd = d ? new Date(d + 'T00:00:00') : null;
             const lbl = (dd && !isNaN(dd)) ? dd.toLocaleDateString(_lvLocale(), { weekday: 'short', day: 'numeric' }).toUpperCase().replace(',', '') : '';
@@ -139137,8 +139164,32 @@ class OrganizerScoringSystem {
             const short = name.length > 15 ? name.slice(0, 14) + '…' : name;
             const on = String(e.id) === String(activeId) ? ' on' : '';
             const mood = (typeof window.dateCubeMood === 'function') ? window.dateCubeMood(d) : '';
-            return '<button class="score-evchip' + (mood ? ' ' + mood : '') + on + '" onclick="window.OrganizerScoringSystem.pickEvent(\'' + e.id + '\')" title="' + esc(name) + '"><span class="d">' + esc(lbl) + (d === todayStr ? ' · TODAY' : '') + '</span><span class="c">' + esc(short) + '</span></button>';
-        }).join('') + '<button class="score-evchip allchip" onclick="window.OrganizerScoringSystem.toggleEventSelect()"><span class="c">ALL ▾</span></button>';
+            return '<button class="score-evchip' + (mood ? ' ' + mood : '') + on + '" data-ev="' + e.id + '" title="' + esc(name) + '"><span class="d">' + esc(lbl) + (d === todayStr ? ' · TODAY' : '') + '</span><span class="c">' + esc(short) + '</span></button>';
+        }).join('') + '<button class="score-evchip allchip" data-evall="1"><span class="c">ALL ▾</span></button>';
+        this._wireEventChips(wrap);
+        // No-op rebuilds skip the DOM swap — replacing a button mid-tap eats the tap (v838 class).
+        if (html === this._chipsHtml && wrap.childNodes.length) return;
+        this._chipsHtml = html;
+        wrap.innerHTML = html;
+    }
+
+    // Delegated chip taps on the persistent row container (v838 tap-theft class): a strip rebuild
+    // between finger-down and finger-up can't lose the tap. Guards keep strip scrolls from selecting.
+    _wireEventChips(wrap) {
+        if (wrap._sWired) return; wrap._sWired = true;
+        wrap.addEventListener('pointerdown', (ev) => {
+            const b = ev.target && ev.target.closest ? ev.target.closest('.score-evchip') : null;
+            this._chipDn = b ? { ev: b.getAttribute('data-ev'), all: b.hasAttribute('data-evall'), x: ev.clientX, y: ev.clientY, t: Date.now() } : null;
+        }, true);
+        wrap.addEventListener('pointerup', (ev) => {
+            const d = this._chipDn; this._chipDn = null;
+            if (!d) return;
+            if (Date.now() - d.t > 700) return;                                          // long-press / stall
+            if (Math.abs(ev.clientX - d.x) > 12 || Math.abs(ev.clientY - d.y) > 12) return; // strip scroll, not a tap
+            if (d.all) this.toggleEventSelect();
+            else if (d.ev) this.pickEvent(d.ev);
+        }, true);
+        wrap.addEventListener('pointercancel', () => { this._chipDn = null; }, true);
     }
 
     toggleEventSelect() {

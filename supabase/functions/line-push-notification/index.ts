@@ -985,18 +985,29 @@ async function handleAnnouncement(supabase: any, announcement: any) {
     .eq("id", announcement.society_id)
     .single();
 
-  // Recipients here are LINE IDs used directly (from society_members / subscriptions /
-  // registrations), so look up their language separately. Any recipient without a
-  // profile row defaults to 'en'.
+  // CRITICAL: map login ids → messaging_user_id (same as handleNewEvent). The ids collected
+  // above are LINE-LOGIN channel ids; the Messaging API knows a DIFFERENT id per user. Pushing
+  // login ids returns 200 but delivers NOTHING (LINE silently drops unknown multicast targets) —
+  // that's how the 2026-08-08 schedule digests reported notified:20 with zero delivered.
   const { data: langProfiles } = await supabase
     .from("user_profiles")
-    .select("line_user_id, language")
+    .select("line_user_id, messaging_user_id, language")
     .in("line_user_id", lineUserIds);
 
   const langByTarget = new Map<string, string>();
-  (langProfiles || []).forEach((p: any) => {
-    if (p.line_user_id) langByTarget.set(p.line_user_id, p.language || "en");
-  });
+  const mappedIds = (langProfiles || [])
+    .map((p: any) => {
+      const target = p.messaging_user_id || p.line_user_id;
+      if (target?.startsWith("U")) langByTarget.set(target, p.language || "en");
+      return target;
+    })
+    .filter((id: string) => id?.startsWith("U"));
+
+  // Recipients without a profile row keep their raw id (fallback, default 'en')
+  const profileLineIds = new Set((langProfiles || []).map((p: any) => p.line_user_id));
+  const unmappedIds = lineUserIds.filter((id: string) => !profileLineIds.has(id));
+  for (const id of unmappedIds) if (!langByTarget.has(id)) langByTarget.set(id, "en");
+  const pushTargets = [...new Set([...mappedIds, ...unmappedIds])];
 
   // Group by recipient language and compose the announcement per language.
   // The announcements table column is message_text — .content only exists on other callers'
@@ -1004,7 +1015,7 @@ async function handleAnnouncement(supabase: any, announcement: any) {
   const announceBody = announcement.content ?? announcement.message_text ?? "";
   const contentPreview = announceBody.substring(0, 200);
   const contentEllipsis = announceBody.length > 200 ? "..." : "";
-  const byLang = groupByLang(lineUserIds, langByTarget);
+  const byLang = groupByLang(pushTargets, langByTarget);
   let totalSent = 0;
 
   for (const [lang, ids] of byLang) {

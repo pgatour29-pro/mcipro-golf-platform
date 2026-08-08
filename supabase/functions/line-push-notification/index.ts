@@ -998,9 +998,12 @@ async function handleAnnouncement(supabase: any, announcement: any) {
     if (p.line_user_id) langByTarget.set(p.line_user_id, p.language || "en");
   });
 
-  // Group by recipient language and compose the announcement per language
-  const contentPreview = announcement.content?.substring(0, 200) || "";
-  const contentEllipsis = announcement.content?.length > 200 ? "..." : "";
+  // Group by recipient language and compose the announcement per language.
+  // The announcements table column is message_text — .content only exists on other callers'
+  // payloads, so without the fallback the LINE push went out with an EMPTY body.
+  const announceBody = announcement.content ?? announcement.message_text ?? "";
+  const contentPreview = announceBody.substring(0, 200);
+  const contentEllipsis = announceBody.length > 200 ? "..." : "";
   const byLang = groupByLang(lineUserIds, langByTarget);
   let totalSent = 0;
 
@@ -1197,7 +1200,7 @@ async function handlePlatformAnnouncement(supabase: any, announcement: any) {
         contents: [
           {
             type: "text",
-            text: announcement.content?.substring(0, 300) || "",
+            text: (announcement.content ?? announcement.message_text ?? "").substring(0, 300) || " ",
             size: "sm",
             color: "#444444",
             wrap: true,

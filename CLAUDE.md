@@ -74,6 +74,10 @@ building, not after.
   `$(cat …)` breaks on leading `--` comments). A `-f` file runs as ONE transaction: any error
   rolls back EVERYTHING in it, silently.
 - **NEVER bulk-write `society_events`** — writes fire LINE notifications to real members.
+  Bulk schedule loads = trigger-disabled inserts **PLUS one digest announcement** (INSERT into
+  `announcements` w/ society_id + title + message_text → one LINE push to the society's
+  connected members). Silence is a bug too — Pete expects members told when a schedule goes up
+  (2026-08-08). The announcements column is `message_text`, not `content`.
 - RLS traps: RLS-on + zero policies = table silently locked (reads return empty, no error).
   No DELETE policy = delete "succeeds" and removes 0 rows — check affected count, `.select()`
   on writes to confirm. Anon key can only do what policies allow; verify policies before

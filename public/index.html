@@ -130335,12 +130335,12 @@ window.PlayTogetherUnits = {
     }
 };
 
-// ===== BOOKING GROUPS — a host + the players they add during their OWN registration form one group. =====
+// ===== BOOKING GROUPS — a host + the players they add during their OWN registration form one unit. =====
 // The added players are linked to their host by special_requests.hostId (stamped at registration). Legacy
 // guests with no hostId fall back to created-at clustering: a GUEST-* reg belongs to the non-guest reg
-// created just before it in the same submit (within ~2 min). Used to (a) auto-place a booking into ONE
-// group on the organizer tee sheet + registration (not the unassigned pool) and (b) show the host + their
-// added players together on the golfer event card. See project_golfer_registration_revamp.
+// created just before it in the same submit (within ~2 min). detect() drives the pool drag-units
+// (REGISTERED TOGETHER frame), the golfer event card, and the Waltz AUTO GROUP teams. It never SEATS
+// anyone — see ensureGroups below. See project_golfer_registration_revamp.
 window.BookingGroups = {
     _isGuest: function(pid){ return /^GUEST-/i.test(String(pid == null ? '' : pid)); },
     // regs: camelCase rows from SocietyGolfDB.getRegistrations ({playerId, playerName, handicap, createdAt,
@@ -130376,77 +130376,13 @@ window.BookingGroups = {
         Object.keys(guestsByHost).forEach(function(h){ if (byId[h]) out.push({ hostId: h, memberIds: [h].concat(guestsByHost[h]) }); });
         return out;
     },
-    // Ensure each booking is ONE group in `groups` (array of {players:[{playerId,playerName,handicap}], ...}).
-    // Whole-party placement only runs when the booking has never been materialized (no group carries its
-    // bookingHost marker) AND none of its members are already grouped — so the organizer can rearrange freely
-    // afterward without it snapping back. LATE ADDS (Pete 2026-08-02): when part of the booking is already on
-    // the sheet, players added from the host's account afterwards APPEND to the group holding the host (or a
-    // placed mate) while seats remain — already-assigned players are never moved; a full group leaves the
-    // newcomer in the pool. PLACEMENT GOES DOWN THE LINE (Pete 2026-07-09): the booking party fills the
-    // FIRST group with enough free seats — group 1, then 2, … — and only creates a NEW group at the end when
-    // no existing group can take the whole party. Mutates `groups` in place; returns true if it changed anything.
-    ensureGroups: function(groups, regs, groupSize){
-        if (!Array.isArray(groups) || !regs) return false;
-        var size = parseInt(groupSize) || 4;
-        var bookings = this.detect(regs);
-        if (!bookings.length) return false;
-        var byId = {}; regs.forEach(function(r){ byId[String(r.playerId)] = r; });
-        // Pete's rule (2026-08-06): players who registered AFTER the sheet was built
-        // (special_requests.lateReg) are NEVER auto-placed — they stay in the unassigned
-        // pool until the organizer seats them. Pre-sheet regs carry no tag → cascade as before.
-        var isLate = function(id){ var r = byId[String(id)]; var sr = (r && (r.specialRequests || r.special_requests)) || {}; return !!sr.lateReg; };
-        var grouped = {}, hasBooking = {};
-        groups.forEach(function(g){
-            (g.players||[]).forEach(function(p){ grouped[String(p.playerId||p.id)] = true; });
-            if (g.bookingHost) hasBooking[String(g.bookingHost)] = true;
-        });
-        var changed = false;
-        bookings.forEach(function(b){
-            var missing = b.memberIds.filter(function(id){ return !grouped[String(id)] && byId[String(id)] && !isLate(id); });
-            if (!missing.length) return;
-            var placedIds = b.memberIds.filter(function(id){ return grouped[String(id)]; });
-            if (placedIds.length) {
-                var anchor = grouped[String(b.hostId)] ? String(b.hostId) : String(placedIds[0]);
-                var gIdx = -1;
-                for (var ai = 0; ai < groups.length && gIdx < 0; ai++) {
-                    if ((groups[ai].players||[]).some(function(p){ return String(p.playerId||p.id) === anchor; })) gIdx = ai;
-                }
-                if (gIdx < 0) return;
-                var room = size - (groups[gIdx].players||[]).length;
-                if (room <= 0) return;
-                var add = missing.slice(0, room).map(function(id){
-                    var r = byId[String(id)];
-                    return { playerId: r.playerId, playerName: r.playerName, handicap: r.handicap, lateAt: new Date().toISOString() };
-                });
-                groups[gIdx].players = (groups[gIdx].players||[]).concat(add);
-                if (!groups[gIdx].bookingHost) groups[gIdx].bookingHost = String(b.hostId);
-                add.forEach(function(p){ grouped[String(p.playerId)] = true; });
-                changed = true;
-                return;
-            }
-            if (hasBooking[String(b.hostId)]) return;
-            var players = missing.map(function(id){
-                var r = byId[String(id)];
-                return { playerId: r.playerId, playerName: r.playerName, handicap: r.handicap };
-            });
-            if (players.length < 2) return;
-            // Down the line: first group with room for the whole party keeps booking-mates together.
-            var placed = false;
-            for (var i = 0; i < groups.length; i++) {
-                var g = groups[i];
-                if (((g.players||[]).length + players.length) <= size) {
-                    g.players = (g.players||[]).concat(players);
-                    if (!g.bookingHost) g.bookingHost = String(b.hostId);
-                    placed = true;
-                    break;
-                }
-            }
-            if (!placed) groups.push({ players: players, teeTime: '', teeFixed: false, bookingHost: String(b.hostId) });
-            players.forEach(function(p){ grouped[String(p.playerId)] = true; });
-            changed = true;
-        });
-        return changed;
-    }
+    // v846 (Pete 2026-08-08, Pattaya CC Aug-10): auto-placement KILLED ENTIRELY. v824 already pooled
+    // POST-sheet registrants (lateReg tag), but a pre-sheet host+guest still cascaded into group 1 the
+    // first time an organizer opened the sheet. Rule is now total: code never seats ANYBODY — booking
+    // parties sit in the unassigned pool as one drag unit (REGISTERED TOGETHER frame, v837) exactly like
+    // partner-pref pairs, until the organizer places them. Kept as a stub so stray callers stay harmless;
+    // saved groups' bookingHost markers are left in place (they also stop stale-SW clients re-placing).
+    ensureGroups: function(){ return false; }
 };
 
 // (v824: AutoSlotLateRegs removed — Pete reversed the v822 auto-slot. Late registrants are now
@@ -130964,9 +130900,8 @@ window.TeeSheet = {
             this._loadedGroupIds = {};
             var _lgi = this._loadedGroupIds;
             this.groups.forEach(function(g){ (g.players||[]).forEach(function(p){ if(p && p.playerId) _lgi[String(p.playerId)] = 1; }); });
-            // A registrant's added players form ONE group in the host's group — auto-place the booking so it
-            // lands in a group here (not the unassigned pool). Only fires for not-yet-materialized bookings.
-            try { if (window.BookingGroups && window.BookingGroups.ensureGroups(this.groups, this.regs, this._groupSize)) { this._saveGroups(); } } catch(e){ console.warn('[TeeSheet] booking groups', e); }
+            // v846: booking parties are NOT auto-seated (Pete 2026-08-08) — they show in the unassigned
+            // pool as one REGISTERED-TOGETHER drag unit until the organizer places them.
             this._renderHead();
             this._ensureDivisions(ev);   // D1/D2 labels — TRGG auto-balances the field if none saved
             try { await window.TRGGMembership.load(this._hcpToast === true); } catch(e){}   // membership badges; ↻ forces a fresh roster pull
@@ -133555,18 +133490,10 @@ const RegistrationsManager = {
             this.pairingsData = pairings;
             this._unitBreaks = {};   // PTU unit splits are per-event, per-session
 
-            // A registrant's added players form ONE group with the host — auto-place the booking into a
-            // group (not the unassigned pool) so it shows grouped here + on the tee sheet + golfer card.
-            try {
-                if (window.BookingGroups) {
-                    if (!this.pairingsData) this.pairingsData = { groups: [] };
-                    if (!Array.isArray(this.pairingsData.groups)) this.pairingsData.groups = [];
-                    if (window.BookingGroups.ensureGroups(this.pairingsData.groups, this.registrations, this.pairingsData.groupSize)) {
-                        this._lastLocalPairSave = Date.now();
-                        await SocietyGolfDB.savePairings(eventId, this.pairingsData);
-                    }
-                }
-            } catch(e){ console.warn('[RegistrationsManager] booking groups', e); }
+            // v846: booking parties are NOT auto-seated (Pete 2026-08-08) — they stay in the unassigned
+            // pool as one REGISTERED-TOGETHER drag unit. Keep the pairingsData normalization only.
+            if (!this.pairingsData) this.pairingsData = { groups: [] };
+            if (!Array.isArray(this.pairingsData.groups)) this.pairingsData.groups = [];
 
             console.log(`[RegistrationsManager] Loaded: ${this.registrations.length} registrations, ${this.waitlist.length} waitlist`);
 

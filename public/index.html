@@ -116724,22 +116724,59 @@ class GolferEventsManager {
         // Count private events
         const privateEventsCount = this.allEvents.filter(e => e.isPrivate).length;
 
-        // Build options HTML (the select is hidden — it stays the single filter-state carrier)
-        let optionsHtml = '<option value="all">All Societies</option>';
-        optionsHtml += `<option value="private_events">Private Events (${privateEventsCount})</option>`;
+        // Build options HTML (the select is hidden — it stays the single filter-state carrier).
+        // NO "All Societies" option: browse is ONE society at a time — societies never mix in the feed.
+        let optionsHtml = `<option value="private_events">Private Events (${privateEventsCount})</option>`;
         sortedSocieties.forEach(society => {
             optionsHtml += `<option value="${society}">${society} (${societyCounts[society]})</option>`;
         });
 
         select.innerHTML = optionsHtml;
 
-        // Restore previous selection if it still exists
-        if (currentSelection === 'private_events' || (currentSelection && sortedSocieties.includes(currentSelection))) {
-            select.value = currentSelection;
-        }
-
         this._socData = { counts: societyCounts, logos: societyLogos, privateCount: privateEventsCount };
+
+        // Restore previous selection if it still exists; otherwise resolve a concrete society.
+        // (After the innerHTML rebuild the browser auto-picks the FIRST option — never intended.)
+        if (currentSelection === 'private_events' || (currentSelection && currentSelection !== 'all' && sortedSocieties.includes(currentSelection))) {
+            select.value = currentSelection;
+        } else {
+            select.value = this._defaultSociety();
+            if (!select.value && sortedSocieties.length) select.value = sortedSocieties[0];
+        }
         this.renderSocietyRail();
+    }
+
+    // ONE-SOCIETY-AT-A-TIME rule (Pete 2026-08-08): the browse feed never shows a combined
+    // all-societies list. When no explicit selection exists, resolve: last-viewed →
+    // first subscribed society with events → TRGG → busiest society with events.
+    _defaultSociety() {
+        let counts = this._socData && this._socData.counts;
+        if (!counts) {
+            // populateSocietyFilter hasn't run yet (cached-events first paint) — derive from events
+            counts = {};
+            (this.allEvents || []).forEach(ev => {
+                const n = this.getSocietyNameForEvent(ev);
+                if (n) counts[n] = (counts[n] || 0) + 1;
+            });
+        }
+        const names = Object.keys(counts);
+        if (!names.length) return '';
+        try {
+            const saved = localStorage.getItem('mcipro_gefb_society');
+            if (saved === 'private_events') {
+                if (this._socData && this._socData.privateCount > 0) return saved;
+            } else if (saved && (counts[saved] > 0 || (this.subscribedSocieties || []).includes(saved))) {
+                return saved;
+            }
+        } catch (e) { /* localStorage unavailable — fall through */ }
+        const subs = (this.subscribedSocieties || [])
+            .filter(n => counts[n] > 0)
+            .sort((a, b) => a.localeCompare(b));
+        if (subs.length) return subs[0];
+        const TRGG_PIN = 'Travellers Rest Golf Group';
+        if (counts[TRGG_PIN] > 0) return TRGG_PIN;
+        return names.filter(n => counts[n] > 0)
+            .sort((a, b) => (counts[b] - counts[a]) || a.localeCompare(b))[0] || names[0];
     }
 
     // GEFB v2 — canonical logo per society. Hardcoded canon FIRST to stay consistent with the
@@ -116757,14 +116794,16 @@ class GolferEventsManager {
         return (((parts[0] || '')[0] || '') + ((parts[1] || '')[0] || '')).toUpperCase() || '?';
     }
 
-    // GEFB v2 — avatar-size society logo tiles: [All][subscribed…][others w/ events][Private][Manage].
+    // GEFB v2 — avatar-size society logo tiles: [TRGG pinned][subscribed…][others w/ events][Private][Manage].
     // Tiles only WRITE the hidden #societyFilter and call applyFilters(); reading stays unchanged.
+    // No "All" tile — browse is one society at a time (societies never mix in the feed).
     renderSocietyRail() {
         const rail = document.getElementById('gefbSocRail');
         if (!rail || !this._socData) return;
 
         const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        const active = document.getElementById('societyFilter')?.value || 'all';
+        let active = document.getElementById('societyFilter')?.value;
+        if (!active || active === 'all') active = this._defaultSociety();
         const T = (k, fb) => { try { const v = t(k); return (v && v !== k) ? v : fb; } catch (e) { return fb; } };
 
         const counts = this._socData.counts;
@@ -116790,7 +116829,7 @@ class GolferEventsManager {
             return url ? `${mono}<img src="${esc(url)}" alt="" loading="lazy" onerror="this.remove()">` : mono;
         };
 
-        let html = tile('all', T('gefb.all', 'All'), '<span class="material-symbols-outlined">apps</span>', 0);
+        let html = '';
         pinned.forEach(n => { html += tile(n, n, logoInner(n), counts[n]); });
         subs.forEach(n => { html += tile(n, n, logoInner(n), counts[n]); });
         rest.forEach(n => { html += tile(n, n, logoInner(n), counts[n]); });
@@ -116822,8 +116861,10 @@ class GolferEventsManager {
     selectSocietyTile(value) {
         const select = document.getElementById('societyFilter');
         if (!select) return;
-        select.value = (select.value === value) ? 'all' : value;
-        if (!select.value) select.value = 'all'; // value missing from options → fail back to All
+        if (select.value === value) return; // one society at a time — tapping the active tile keeps it
+        select.value = value;
+        if (!select.value) select.value = this._defaultSociety(); // value missing from options
+        try { localStorage.setItem('mcipro_gefb_society', select.value); } catch (e) { /* private mode */ }
         this.applyFilters();
         this.renderSocietyRail();
     }
@@ -116867,7 +116908,9 @@ class GolferEventsManager {
     filterEvents() {
         const searchTerm = document.getElementById('societyEventSearch')?.value.toLowerCase() || '';
         const dateFilter = document.getElementById('societyEventDateFilter')?.value || 'upcoming';
-        const societyFilter = document.getElementById('societyFilter')?.value || 'all';
+        let societyFilter = document.getElementById('societyFilter')?.value || '';
+        // ONE society at a time — a stale/empty 'all' resolves to a concrete society, never a mixed feed
+        if (!societyFilter || societyFilter === 'all') societyFilter = this._defaultSociety();
         const sortOrder = document.getElementById('golferEventsSortOrder')?.value || this.currentSortOrder;
         const quickFilter = this.currentQuickFilter || 'all';
 
@@ -116875,9 +116918,9 @@ class GolferEventsManager {
             // Get normalized society name (handles TRGG events correctly)
             const eventSocietyName = this.getSocietyNameForEvent(event);
 
-            // SOCIETY FILTER (filter by specific society)
+            // SOCIETY FILTER (single society only)
             // Skip this check for 'private_events' - that's handled by currentEventType
-            if (societyFilter !== 'all' && societyFilter !== 'private_events') {
+            if (societyFilter !== 'private_events') {
                 if (eventSocietyName !== societyFilter) {
                     return false;
                 }
@@ -117041,7 +117084,7 @@ class GolferEventsManager {
         if (searchInput) searchInput.value = '';
         if (dateSelect) dateSelect.value = 'upcoming';
         if (sortSelect) sortSelect.value = 'date_asc';
-        if (societySelect) societySelect.value = 'all';
+        if (societySelect) societySelect.value = this._defaultSociety(); // never back to a mixed 'all' feed
         this.renderSocietyRail();
 
         // Reset day-of-week filter

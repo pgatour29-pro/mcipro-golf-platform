@@ -117816,7 +117816,7 @@ class GolferEventsManager {
         let _stateBtn = '';
         if (isCancelled) _stateBtn = `<button class="scv3g-btn danger" onclick="event.stopPropagation(); GolferEventsSystem.dismissCancelledEvent('${event.id}')">${L.dismiss}</button>`;
         else if (isPast) _stateBtn = event.resultsPublished ? `<button class="scv3g-btn warn" onclick="event.stopPropagation(); GolferEventsSystem.viewEventResults('${event.id}')">${L.results}</button>` : '';
-        else if (isUserRegistered) _stateBtn = `<button class="scv3g-btn ghost" onclick="event.stopPropagation(); GolferEventsSystem.openEventDetail('${event.id}')">${L.edit}</button>`;
+        else if (isUserRegistered) _stateBtn = `<button class="scv3g-btn ghost" onclick="event.stopPropagation(); GolferEventsSystem.editMyRegistration('${event.id}')">${L.edit}</button>`;
         else if (isOnWaitlist) _stateBtn = `<button class="scv3g-btn ghost" onclick="event.stopPropagation(); GolferEventsSystem.openEventDetail('${event.id}')">#${event.userWaitlistPosition}</button>`;
         else if (isPastCutoff) _stateBtn = `<span class="scv3g-btn ghost" style="opacity:.5;">${L.closed}</span>`;
         else if (isFull && enableWaitlist) _stateBtn = `<button class="scv3g-btn warn" onclick="event.stopPropagation(); GolferEventsSystem.openEventDetail('${event.id}')">${L.waitlist}</button>`;
@@ -117989,7 +117989,7 @@ class GolferEventsManager {
         try {
             const ev = (this.allEvents || []).find(e => String(e.id) === String(eventId));
             if (!ev) return;
-            if (ev.isUserRegistered) { this.openEventDetail(eventId); return; }
+            if (ev.isUserRegistered) { this.editMyRegistration(eventId); return; }
             const uid = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
             let wantT = true, wantC = true, name = '', hcp = null;
             // Both lookups fire in PARALLEL up front — the tap must not wait on the network twice
@@ -121492,10 +121492,13 @@ class GolferEventsManager {
     // silently no-opped while the roster fetch was still stamping _myRegId — the "you have to tap
     // edit twice" complaint (Pete 2026-08-09). Falls back to a direct reg-id lookup, same as
     // unregisterFromModal.
-    async editMyRegistration() {
-        const ev = this.currentEvent;
-        if (!ev) return;
-        let regId = this._myRegId || this.editingRegistrationId;
+    async editMyRegistration(eventId) {
+        const evId = eventId || (this.currentEvent && this.currentEvent.id);
+        if (!evId) return;
+        // _myRegId belongs to the currently-open event — only trust it for that same event.
+        // A card tap passes eventId BEFORE any detail modal opened, so it always looks up fresh.
+        const sameEvent = this.currentEvent && this.currentEvent.id === evId;
+        let regId = sameEvent ? (this._myRegId || this.editingRegistrationId) : null;
         if (!regId && window.SupabaseDB && window.SupabaseDB.client) {
             try {
                 const uid = (AppState && AppState.currentUser && AppState.currentUser.lineUserId) || localStorage.getItem('line_user_id');
@@ -121503,18 +121506,17 @@ class GolferEventsManager {
                     const { data } = await window.SupabaseDB.client
                         .from('event_registrations')
                         .select('id')
-                        .eq('event_id', ev.id)
+                        .eq('event_id', evId)
                         .eq('player_id', uid)
                         .maybeSingle();
                     if (data && data.id) regId = data.id;
                 }
             } catch (e) { console.warn('[GolferEvents] edit reg-id fallback lookup failed', e); }
         }
-        if (!regId) {
-            if (window.NotificationManager) window.NotificationManager.show(_lvT('regedit.notfound', 'Could not find your registration — please try again'), 'error', 4000);
-            return;
-        }
-        return this.editRegistration(regId, ev.id);
+        // No registration found (lookup hiccup / not actually registered): open the detail
+        // view rather than dead-ending the tap.
+        if (!regId) return this.openEventDetail(evId);
+        return this.editRegistration(regId, evId);
     }
 
     async unregisterFromModal() {

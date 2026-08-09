@@ -42704,10 +42704,36 @@ Waitlist (${waitlist.length} people):`;
                     }
                 } catch(e) { console.error('[CaddyPicker] Pool load error:', e); }
 
-                const favs = this.caddyPool.filter(c => c.isFav);
-                const others = this.caddyPool.filter(c => !c.isFav);
+                // COURSE-SCOPED PICKER (Pete 2026-08-09): assigning for an event shows THAT
+                // course's caddies ONLY — the full caddy_profiles roster for the course plus the
+                // golfer's own caddies there. Never the whole multi-course history ("I don't need
+                // to see all the caddies from other golf courses if I am playing at Pattaya CC").
+                const _evCourse = this._pickerEventCourse || '';
+                let _pool = this.caddyPool;
+                if (_evCourse && typeof _courseMatch === 'function') {
+                    _pool = _pool.filter(c => _courseMatch(c.course, _evCourse));
+                    const _courseLabel = (window.CaddyOrganizerSystem && CaddyOrganizerSystem.normalizeCourse)
+                        ? CaddyOrganizerSystem.normalizeCourse(_evCourse) : _evCourse;
+                    try {
+                        const { data: _prof } = await window.SupabaseDB.client
+                            .from('caddy_profiles').select('caddy_number, name, course_name')
+                            .eq('is_active', true);
+                        const _have = new Set(_pool.map(c => String(c.number)));
+                        (_prof || []).forEach(p => {
+                            if (!p.caddy_number || !/^[0-9]+$/.test(String(p.caddy_number).trim())) return;
+                            if (!_courseMatch(p.course_name, _evCourse)) return;
+                            const n = String(parseInt(p.caddy_number));
+                            if (_have.has(n)) return;
+                            _have.add(n);
+                            _pool.push({ number: n, course: _courseLabel, count: 0, isFav: false, name: p.name || '' });
+                        });
+                    } catch (e) { console.warn('[CaddyPicker] roster merge skipped:', e); }
+                    _pool.sort((a, b) => (b.isFav ? 1 : 0) - (a.isFav ? 1 : 0) || (parseInt(a.number) || 9999) - (parseInt(b.number) || 9999));
+                }
+                const favs = _pool.filter(c => c.isFav);
+                const others = _pool.filter(c => !c.isFav);
 
-                // Group others by course
+                // Group others by course (course-scoped pool = one group titled with the course)
                 const groups = {};
                 others.forEach(c => {
                     if (!groups[c.course]) groups[c.course] = [];

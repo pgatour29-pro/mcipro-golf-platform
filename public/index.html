@@ -84894,6 +84894,17 @@ class LiveScorecardSystem {
             </div>`;
         }
 
+        // CLEAR SCORECARD (Pete 2026-08-09): start-over / wrong-entry escape hatch lives with
+        // the edit surface. Only offered once something has been entered.
+        const anyEntered = this.players.some(p => Object.keys(this.scoresCache[p.id] || {}).length > 0);
+        if (anyEntered) {
+            html += `<div class="text-center mt-1 mb-2">
+                <button onclick="LiveScorecardManager.clearScorecard()" class="text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-300 rounded-lg px-4 py-2">
+                    <span class="material-symbols-outlined text-sm align-middle mr-1">restart_alt</span>Clear scorecard — start over
+                </button>
+            </div>`;
+        }
+
         container.innerHTML = html || '<p class="text-center text-gray-500 text-sm py-4">No scores entered yet</p>';
         // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
         if (window._golferChipDecorate) window._golferChipDecorate(container, 20);
@@ -84943,6 +84954,55 @@ class LiveScorecardSystem {
     cancelScorecardEdit() {
         this._scEdit = null;
         this.renderLiveScorecard();
+    }
+
+    // ===== CLEAR SCORECARD (Pete 2026-08-09) =====
+    // Start-over / wrong-entry escape hatch on the View Scorecard edit surface: wipes EVERY
+    // score for the whole group — saved DB rows, offline local_ caches, the pending save
+    // queue and local state — then puts the round back on its first hole. Round setup,
+    // players and the scorecards themselves stay; only scores go.
+    async clearScorecard() {
+        if (this._scEdit) this.cancelScorecardEdit();
+        const anyScores = (this.players || []).some(p => Object.keys(this.scoresCache?.[p.id] || {}).length > 0);
+        if (!anyScores) { window.NotificationManager.show('No scores to clear', 'info'); return; }
+        if (!confirm('Clear the ENTIRE scorecard?\n\nThis deletes every score entered this round for ALL players in the group and cannot be undone.\n\nThe round starts over from the first hole.')) return;
+
+        this._scoreQueue = []; // drop pending saves FIRST so nothing re-inserts after the wipe
+        const ids = (this.players || []).map(p => this.scorecards?.[p.id]).filter(Boolean);
+        const dbIds = ids.filter(id => !String(id).startsWith('local_'));
+        try {
+            if (dbIds.length && window.SupabaseDB?.client) {
+                const { data, error } = await window.SupabaseDB.client
+                    .from('scores').delete().in('scorecard_id', dbIds).select('id');
+                if (error) throw error;
+                // The totals cache on scorecards must not survive the wipe — boards read it.
+                await window.SupabaseDB.client.from('scorecards')
+                    .update({ total_gross: null, total_net: null, updated_at: new Date().toISOString() })
+                    .in('id', dbIds);
+                console.log(`[LiveScorecard] 🧹 Cleared ${(data || []).length} saved scores across ${dbIds.length} scorecards`);
+            }
+        } catch (e) {
+            console.error('[LiveScorecard] clearScorecard DB wipe failed:', e);
+            window.NotificationManager.show('Could not clear saved scores — check connection and try again', 'error');
+            return; // keep local state so the card never silently diverges from the DB
+        }
+        for (const id of ids) { if (String(id).startsWith('local_')) localStorage.removeItem(`scores_${id}`); }
+        for (const p of (this.players || [])) this.scoresCache[p.id] = {};
+        this.statsCache = {};
+        localStorage.removeItem(`mcipro_statsCache_${this.groupId || 'private'}`);
+        this.currentHoleIndex = 0;
+        this.latestHoleIndex = 0;
+        this.currentHole = (this.holeOrder && this.holeOrder[0]) || 1;
+        this.currentPlayerId = this.players?.[0]?.id;
+        this.currentScore = '';
+        this._saving = false;
+        this.renderHole();
+        this.updateGoToCurrentButton();
+        this.renderLiveScorecard();
+        this.updateCurrentRoundDisplay();
+        this.debouncedRefreshLeaderboard();
+        this.saveRoundState();
+        window.NotificationManager.show('Scorecard cleared — back to the first hole', 'success');
     }
 
     saveScorecardEdit() {

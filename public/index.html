@@ -17165,20 +17165,22 @@
                     try {
                         // Batch both writes (was 2 requests PER society in a loop)
                         const nowIso = new Date().toISOString();
-                        const memberRows = [], handicapRows = [];
+                        const memberRows = [];
                         for (const socId of selectedIds) {
                             const soc = societies.find(s => s.id === socId);
                             if (!soc) continue;
-                            memberRows.push({ society_name: soc.society_name, golfer_id: userId, status: 'active', joined_at: nowIso });
-                            handicapRows.push({ golfer_id: userId, society_id: socId, handicap_index: 18.0, calculation_method: 'MANUAL', rounds_count: 0, last_calculated_at: nowIso });
+                            // society_members has NO society_name column — key by society_id.
+                            // (The old society_name upsert 400'd silently, so picker joins never
+                            // actually created membership rows.)
+                            memberRows.push({ society_id: socId, golfer_id: userId, status: 'active', joined_at: nowIso });
                         }
                         if (memberRows.length) {
-                            await window.SupabaseDB.client.from('society_members').upsert(memberRows, { onConflict: 'society_name,golfer_id' });
+                            const { error: memErr } = await window.SupabaseDB.client.from('society_members').upsert(memberRows, { onConflict: 'society_id,golfer_id' });
+                            if (memErr) throw memErr;
                         }
-                        if (handicapRows.length) {
-                            // ignoreDuplicates: keep an existing handicap if the golfer already has one for that society
-                            await window.SupabaseDB.client.from('society_handicaps').upsert(handicapRows, { onConflict: 'golfer_id,society_id', ignoreDuplicates: true });
-                        }
+                        // No society_handicaps seeding here: the DB handicap engine owns that table,
+                        // and a placeholder 18.0 row overrides the golfer's real handicap everywhere
+                        // society-first resolution runs.
                         NotificationManager.show(`Joined ${selectedIds.size} societ${selectedIds.size > 1 ? 'ies' : 'y'}!`, 'success');
                     } catch(e) {
                         console.error('[SocietyPicker] Error:', e);
@@ -33363,7 +33365,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 try {
                     const { data: memberships } = await window.SupabaseDB.client
                         .from('society_members')
-                        .select('society_name, status, joined_at')
+                        .select('society_id, status, joined_at')
                         .eq('golfer_id', userId)
                         .eq('status', 'active');
 
@@ -33397,7 +33399,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (prof) mySocieties.set(prof.id, { name: prof.society_name, logo: prof.society_logo, hcp: h.handicap_index, id: prof.id });
                     });
                     (memberships || []).forEach(m => {
-                        const prof = (allProfiles || []).find(p => p.society_name === m.society_name);
+                        const prof = (allProfiles || []).find(p => p.id === m.society_id);
                         if (prof && !mySocieties.has(prof.id)) {
                             mySocieties.set(prof.id, { name: prof.society_name, logo: prof.society_logo, hcp: null, id: prof.id });
                         }
@@ -33436,13 +33438,19 @@ document.addEventListener('DOMContentLoaded', function() {
                         .select('id, society_name, society_logo, description')
                         .order('society_name');
 
-                    // Get user's current memberships
+                    // Get user's current memberships — society_members is the source of truth,
+                    // but legacy joins only ever created society_handicaps rows, so union both
+                    const { data: myMems } = await window.SupabaseDB.client
+                        .from('society_members')
+                        .select('society_id')
+                        .eq('golfer_id', userId)
+                        .eq('status', 'active');
                     const { data: myHcps } = await window.SupabaseDB.client
                         .from('society_handicaps')
                         .select('society_id')
                         .eq('golfer_id', userId)
                         .not('society_id', 'is', null);
-                    const myIds = new Set((myHcps || []).map(h => h.society_id));
+                    const myIds = new Set([...(myMems || []), ...(myHcps || [])].map(r => r.society_id).filter(Boolean));
 
                     const existing = document.getElementById('browseSocietiesModal');
                     if (existing) existing.remove();
@@ -33492,40 +33500,20 @@ document.addEventListener('DOMContentLoaded', function() {
                     const userId = AppState.currentUser?.lineUserId;
                     if (!userId) return;
 
-                    // Add to society_members
-                    await window.SupabaseDB.client.from('society_members').upsert({
-                        society_name: societyName,
+                    // Add to society_members — keyed by society_id; the table has NO society_name
+                    // column (the old society_name upsert 400'd silently, so Join never created a
+                    // membership row). Re-joining an inactive row flips it back to active.
+                    const { error: memErr } = await window.SupabaseDB.client.from('society_members').upsert({
+                        society_id: societyId,
                         golfer_id: userId,
                         status: 'active',
                         joined_at: new Date().toISOString()
-                    }, { onConflict: 'society_name,golfer_id' });
+                    }, { onConflict: 'society_id,golfer_id' });
+                    if (memErr) throw memErr;
 
-                    // Create society_handicaps entry if not exists
-                    const { data: existing } = await window.SupabaseDB.client
-                        .from('society_handicaps')
-                        .select('id')
-                        .eq('golfer_id', userId)
-                        .eq('society_id', societyId)
-                        .maybeSingle();
-
-                    if (!existing) {
-                        // Get universal handicap as starting point
-                        const { data: universal } = await window.SupabaseDB.client
-                            .from('society_handicaps')
-                            .select('handicap_index')
-                            .eq('golfer_id', userId)
-                            .is('society_id', null)
-                            .maybeSingle();
-
-                        await window.SupabaseDB.client.from('society_handicaps').insert({
-                            golfer_id: userId,
-                            society_id: societyId,
-                            handicap_index: universal?.handicap_index || 18.0,
-                            calculation_method: 'MANUAL',
-                            rounds_count: 0,
-                            last_calculated_at: new Date().toISOString()
-                        });
-                    }
+                    // No society_handicaps seeding: the DB handicap engine owns that table, and a
+                    // placeholder 18.0 row would override the golfer's REAL handicap everywhere
+                    // society-first resolution runs (e.g. a 6.9 player suddenly showing 18).
 
                     NotificationManager.show(`Joined ${societyName}!`, 'success');
                     // Refresh both modals
@@ -33546,7 +33534,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     await window.SupabaseDB.client.from('society_members')
                         .update({ status: 'inactive' })
                         .eq('golfer_id', userId)
-                        .eq('society_name', societyName);
+                        .eq('society_id', societyId);
 
                     NotificationManager.show(`Left ${societyName}`, 'success');
                     this.loadMySocieties();

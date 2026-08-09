@@ -17250,6 +17250,15 @@
             snoozedThisSession() {
                 try { return sessionStorage.getItem('mcipro_install_snooze') === '1'; } catch (e) { return false; }
             },
+            _iosNagCount() {
+                try { return parseInt(localStorage.getItem('mcipro_install_nags') || '0', 10) || 0; } catch (e) { return 0; }
+            },
+            // iOS never fires `appinstalled` and gives Safari/LINE no way to detect an
+            // existing home-screen icon, so the user telling us is the only signal.
+            markInstalled() {
+                try { localStorage.setItem('mcipro_pwa_installed', '1'); } catch (e) {}
+                this.close(false);
+            },
 
             // Show the gate for a non-installed mobile user (unless snoozed this session).
             // { force:true } bypasses the session snooze (used right after fresh signup).
@@ -17259,6 +17268,9 @@
                     if (this._open) return;
                     if (this.isInstalled()) return;          // already a home-screen app
                     if (!this.isMobile()) return;            // desktop: never force
+                    // iOS has no install signal (see markInstalled) — without a cap an
+                    // installed user opening via Safari/LINE gets re-nagged every session.
+                    if (!opts.force && this.isIOS() && this._iosNagCount() >= 3) return;
                     if (!opts.force && this.snoozedThisSession()) return;
                     this.show();
                 } catch (e) { console.warn('[InstallGate] maybeShow failed', e); }
@@ -17296,6 +17308,7 @@
                         androidSteps: ['Tap the menu <strong>&#8942;</strong> (top right)', 'Tap <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>', 'Tap <strong>"Install"</strong>'],
                         iosHead: 'Add to your Home Screen', iosSteps: ['Tap the <strong>Share</strong> button below', 'Choose <strong>"Add to Home Screen"</strong>', 'Tap <strong>"Add"</strong>'],
                         iosSafari: 'To install, open this page in <strong>Safari</strong> (Chrome on iPhone can\'t add to the home screen).', later: 'Maybe later',
+                        already: 'I already added it — don\'t ask again',
                         installedHead: 'App installed!', installedBody: 'Look for the MyCaddiPro icon on your home screen.',
                         installedDrawer: 'Don\'t see it? Swipe up to open your app drawer, <strong>press and hold</strong> the MyCaddiPro icon, then <strong>drag it onto your home screen</strong>.', done: 'Done'
                     },
@@ -17307,6 +17320,7 @@
                         androidSteps: ['แตะเมนู <strong>&#8942;</strong> (มุมบนขวา)', 'แตะ <strong>"ติดตั้งแอป"</strong> หรือ <strong>"เพิ่มในหน้าจอหลัก"</strong>', 'แตะ <strong>"ติดตั้ง"</strong>'],
                         iosHead: 'เพิ่มในหน้าจอหลัก', iosSteps: ['แตะปุ่ม <strong>แชร์</strong> ด้านล่าง', 'เลือก <strong>"เพิ่มในหน้าจอหลัก"</strong>', 'แตะ <strong>"เพิ่ม"</strong>'],
                         iosSafari: 'ในการติดตั้ง ให้เปิดหน้านี้ใน <strong>Safari</strong> (Chrome บน iPhone เพิ่มลงหน้าจอหลักไม่ได้)', later: 'ไว้ทีหลัง',
+                        already: 'ฉันเพิ่มไว้แล้ว — ไม่ต้องถามอีก',
                         installedHead: 'ติดตั้งแอปแล้ว!', installedBody: 'มองหาไอคอน MyCaddiPro บนหน้าจอหลักของคุณ',
                         installedDrawer: 'ไม่เห็นไอคอน? ปัดขึ้นเพื่อเปิดลิ้นชักแอป <strong>กดค้าง</strong>ที่ไอคอน MyCaddiPro แล้ว<strong>ลากไปวางบนหน้าจอหลัก</strong>', done: 'เสร็จสิ้น'
                     },
@@ -17318,6 +17332,7 @@
                         androidSteps: ['메뉴 <strong>&#8942;</strong> (오른쪽 위)를 탭', '<strong>"앱 설치"</strong> 또는 <strong>"홈 화면에 추가"</strong>를 탭', '<strong>"설치"</strong>를 탭'],
                         iosHead: '홈 화면에 추가', iosSteps: ['아래 <strong>공유</strong> 버튼을 탭', '<strong>"홈 화면에 추가"</strong> 선택', '<strong>"추가"</strong>를 탭'],
                         iosSafari: '설치하려면 이 페이지를 <strong>Safari</strong>에서 여세요 (iPhone의 Chrome은 홈 화면에 추가할 수 없습니다).', later: '나중에',
+                        already: '이미 추가했어요 — 다시 묻지 않기',
                         installedHead: '앱이 설치되었습니다!', installedBody: '홈 화면에서 MyCaddiPro 아이콘을 확인하세요.',
                         installedDrawer: '아이콘이 안 보이나요? 위로 스와이프해 앱 서랍을 열고, MyCaddiPro 아이콘을 <strong>길게 눌러</strong> <strong>홈 화면으로 끌어다 놓으세요</strong>.', done: '완료'
                     },
@@ -17329,6 +17344,7 @@
                         androidSteps: ['メニュー <strong>&#8942;</strong>（右上）をタップ', '<strong>「アプリをインストール」</strong>または<strong>「ホーム画面に追加」</strong>をタップ', '<strong>「インストール」</strong>をタップ'],
                         iosHead: 'ホーム画面に追加', iosSteps: ['下の<strong>共有</strong>ボタンをタップ', '<strong>「ホーム画面に追加」</strong>を選択', '<strong>「追加」</strong>をタップ'],
                         iosSafari: 'インストールするには、このページを <strong>Safari</strong> で開いてください（iPhone の Chrome はホーム画面に追加できません）。', later: 'あとで',
+                        already: '追加済みです — 今後表示しない',
                         installedHead: 'アプリをインストールしました！', installedBody: 'ホーム画面で MyCaddiPro のアイコンを確認してください。',
                         installedDrawer: 'アイコンが見つからない場合は、上にスワイプしてアプリ一覧を開き、MyCaddiPro のアイコンを<strong>長押し</strong>して<strong>ホーム画面にドラッグ</strong>してください。', done: '完了'
                     }
@@ -17339,6 +17355,7 @@
             show() {
                 if (document.getElementById('pwaInstallGate')) return;
                 this._open = true;
+                if (this.isIOS()) { try { localStorage.setItem('mcipro_install_nags', String(this._iosNagCount() + 1)); } catch (e) {} }
                 const t = this._strings();
                 const line = this.isLINE();
                 const ios = this.isIOS();
@@ -17394,7 +17411,8 @@
                         </div>
                         <div style="padding:20px;">
                             ${body}
-                            <button onclick="PWAInstallGate.close(true)" style="width:100%;background:none;color:#9ca3af;font-weight:500;padding:12px;border:none;cursor:pointer;font-size:13px;margin-top:8px;">${t.later}</button>
+                            <button onclick="PWAInstallGate.markInstalled()" style="width:100%;background:none;color:#059669;font-weight:600;padding:12px 12px 4px;border:none;cursor:pointer;font-size:13px;margin-top:8px;">✓ ${t.already}</button>
+                            <button onclick="PWAInstallGate.close(true)" style="width:100%;background:none;color:#9ca3af;font-weight:500;padding:8px 12px 12px;border:none;cursor:pointer;font-size:13px;">${t.later}</button>
                         </div>
                     </div>
                     ${showArrow ? '<div style="position:fixed;bottom:6px;left:50%;transform:translateX(-50%);font-size:38px;animation:pwaBounce 1s infinite;pointer-events:none;">⬇️</div>' : ''}

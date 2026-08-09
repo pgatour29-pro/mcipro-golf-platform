@@ -126527,10 +126527,53 @@ const OrganizerAutoClaim = {
         }
     ],
 
+    // JOA (Pete 2026-08-09): Jason signs in with the JOA LINE account OR Kakao. The Kakao id IS
+    // the bound owner (society_profiles.organizer_id = KAKAO-4911042963); the LINE identity is
+    // unknown until it first logs in. So: one-time name-token GRANT claim — the first non-guest
+    // login whose display name matches gets a society_organizer_roles grant pointing at the
+    // bound organizer (ownership itself never moves). One-shot guard: as soon as ANY grant row
+    // exists for that organizer_id, the slot is consumed and this never fires again — same
+    // "no standing name-based access" philosophy as the placeholder claim above.
+    GRANT_PENDING: [
+        {
+            grantOrganizerId: 'KAKAO-4911042963',      // JOA Golf Pattaya — bound owner (Kakao)
+            societyName: 'JOA Golf Pattaya',
+            nameTokenSets: [['joa'], ['jason', 'kang']]  // "JOA Golf …" LINE account, or Jason Kang by name
+        }
+    ],
+
     // True only if EVERY token appears as a whole word in the name (order/punctuation agnostic).
     _hasAllTokens(nameStr, tokens) {
         const n = ' ' + String(nameStr || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
         return tokens.every(t => n.includes(' ' + t + ' '));
+    },
+
+    // Phase 2 of run(): one-time grant claims (see GRANT_PENDING). Returns true only when a
+    // grant was freshly inserted this call — an already-granted user resolves through
+    // resolveManageableSociety on the normal path and needs no re-route kick.
+    async _runGrantClaims(uid, candidates) {
+        const db = window.SupabaseDB.client;
+        let claimedAny = false;
+        for (const g of this.GRANT_PENDING) {
+            try {
+                if (uid === g.grantOrganizerId) continue; // the owner needs no grant
+                const hit = g.nameTokenSets.some(set => candidates.some(c => this._hasAllTokens(c, set)));
+                if (!hit) continue;
+                const existing = await db.from('society_organizer_roles')
+                    .select('id, user_id').eq('organizer_id', g.grantOrganizerId).limit(5);
+                if (existing.error) continue;
+                const rows = existing.data || [];
+                if (rows.length > 0) continue; // slot consumed (or manually staffed) — never re-fires
+                const ins = await db.from('society_organizer_roles')
+                    .insert({ user_id: uid, organizer_id: g.grantOrganizerId, role: 'admin' })
+                    .select('id');
+                if (!ins.error && ins.data && ins.data.length) {
+                    console.log('[OrganizerAutoClaim] Grant claim:', g.societyName, '→', uid);
+                    claimedAny = true;
+                }
+            } catch (e) { console.warn('[OrganizerAutoClaim] grant claim', e); }
+        }
+        return claimedAny;
     },
 
     async run() {
@@ -126546,10 +126589,14 @@ const OrganizerAutoClaim = {
             const candidates = [u.name, u.displayName, u.username].filter(Boolean);
             if (candidates.length === 0) return false;
 
+            // One-time GRANT claims (JOA LINE etc.) — independent of the placeholder claim below
+            let grantClaimed = false;
+            try { grantClaimed = await this._runGrantClaims(uid, candidates); } catch (e) {}
+
             const match = this.PENDING.find(p =>
                 candidates.some(c => this._hasAllTokens(c, p.nameTokens))
             );
-            if (!match) return false;
+            if (!match) return grantClaimed;
 
             const db = window.SupabaseDB.client;
 

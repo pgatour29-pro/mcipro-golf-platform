@@ -142041,9 +142041,10 @@ class OrganizerScoringSystem {
                     .delete().eq('scorecard_id', scorecardId).select('id');
                 if (error) throw error;
                 // Boards read the totals cache on scorecards — it must not survive the wipe.
-                await sb.from('scorecards').update({
+                const { error: cardErr } = await sb.from('scorecards').update({
                     total_gross: null, total_net: null, updated_at: new Date().toISOString()
                 }).eq('id', scorecardId);
+                if (cardErr) throw cardErr;
                 if (window.SocietyGolfDB?._totalsCache) delete window.SocietyGolfDB._totalsCache[scorecardId];
                 console.log(`[OrganizerScoring] 🧹 Cleared ${(del || []).length} scores on scorecard ${scorecardId}`);
             }
@@ -142051,9 +142052,11 @@ class OrganizerScoringSystem {
                 const { data: del, error } = await sb.from('round_holes')
                     .delete().eq('round_id', roundId).select('id');
                 if (error) throw error;
-                await sb.from('rounds').update({
-                    total_gross: null, total_net: null, total_stableford: null, holes_played: 0
+                // holes_played has CHECK (1..18) — NULL passes, 0 does not.
+                const { error: roundErr } = await sb.from('rounds').update({
+                    total_gross: null, total_net: null, total_stableford: null, holes_played: null
                 }).eq('id', roundId);
+                if (roundErr) throw roundErr;
                 console.log(`[OrganizerScoring] 🧹 Cleared ${(del || []).length} round_holes on round ${roundId}`);
             }
 

@@ -41757,9 +41757,13 @@ Waitlist (${waitlist.length} people):`;
             // upcoming event's tee sheet — same direct path as the Next Round card's TEE SHEET
             // button ("just like in the full mode"), never to the events section when an event
             // exists. No upcoming registered event → the events tab is the honest destination.
+            // NOTE: DashboardUpcomingEvents is a top-level const — a global LEXICAL binding, not
+            // a window property; checking window.DashboardUpcomingEvents is always undefined and
+            // silently rerouted every tap to the events tab (Pete caught it live 2026-08-09).
             openTeeSheetCube() {
                 const e = this._cubeNextEv || this._nextEv;
-                if (e && e.id && window.DashboardUpcomingEvents) { DashboardUpcomingEvents.viewTeeSheet(e.id); return; }
+                const D = (typeof DashboardUpcomingEvents !== 'undefined') ? DashboardUpcomingEvents : null;
+                if (e && e.id && D) { D.viewTeeSheet(e.id); return; }
                 try { showGolferTab('societyevents'); } catch (err) {}
             },
 
@@ -46046,11 +46050,15 @@ Waitlist (${waitlist.length} people):`;
                      grid items default min-width:auto). */
                   #orgLiteCubesGrid > .cube-split,
                   #liteCubesGrid > .cube-split{ display:flex; flex-direction:column; gap:10px; min-height:150px; min-width:0; }
+                  /* padding OVERRIDES .metric-card's 16px — at 16px a half's two text lines clip
+                     at the tile's bottom edge on phones (Pete's screenshot 2026-08-09). The
+                     organizer dashboard's own 10px !important rule still wins there — fine. */
                   #orgLiteCubesGrid .cube-split > .cube-poster,
                   #liteCubesGrid .cube-split > .cube-poster{
                     background:linear-gradient(130deg,var(--p1) 0%,var(--p2) 55%,#ffffff 130%);
                     border:1px solid rgba(22,35,46,.08); overflow:hidden; position:relative;
                     flex:1 1 0; min-height:0; min-width:0; width:100%; border-radius:22px;
+                    padding:8px 12px;
                     display:flex; flex-direction:column; align-items:flex-start; justify-content:center; text-align:left;
                   }
                   #orgLiteCubesGrid .cube-split > .cube-poster h3,

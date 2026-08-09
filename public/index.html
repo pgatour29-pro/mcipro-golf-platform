@@ -130660,7 +130660,10 @@ window.TRGGDirectory = {
             '<div style="font-size:17px;font-weight:800;color:#0f172a;">Edit member</div>'+
             '<div style="font-size:12px;color:#64748b;margin:2px 0 12px;">#'+esc(m.member_id||'—')+'</div>'+
             fld('Full name','<div style="display:flex;gap:8px;margin-bottom:10px;"><input id="edName" value="'+esc(m.full_name||'')+'" style="flex:1;min-width:0;border:1px solid #cbd5e1;border-radius:9px;padding:10px 12px;font-size:14px;box-sizing:border-box;"><button type="button" onclick="TRGGDirectory._swapEditName()" title="Swap name order — Last, First &harr; First, Last" style="flex-shrink:0;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:9px;padding:0 12px;font-weight:700;font-size:12px;color:#475569;cursor:pointer;display:flex;align-items:center;gap:4px;"><span class="material-symbols-outlined" style="font-size:17px;">swap_horiz</span>Swap</button></div>')+
-            fld('Membership status','<select id="edStatus" style="'+inpS+'background:#fff;">'+opt('active','Active')+opt('expired','Expired')+'</select>')+
+            '<div style="display:flex;gap:10px;">'+
+                '<div style="flex:1;">'+fld('Member #','<input id="edMemberNum" value="'+esc(m.member_id||'')+'" placeholder="Assign any number" style="'+inpS+'">')+'</div>'+
+                '<div style="flex:1.4;">'+fld('Membership status','<select id="edStatus" style="'+inpS+'background:#fff;">'+opt('active','Active')+opt('expired','Expired')+'</select>')+'</div>'+
+            '</div>'+
             '<div style="display:flex;gap:10px;">'+
                 '<div style="flex:1;">'+fld('Date joined','<input id="edJoined" type="date" value="'+esc(m.date_joined)+'" style="width:100%;border:1px solid #cbd5e1;border-radius:9px;padding:9px 10px;font-size:14px;box-sizing:border-box;">')+'</div>'+
                 '<div style="flex:1;">'+fld('Expiry date','<input id="edExpiry" type="date" value="'+esc(m.expire_date)+'" style="width:100%;border:1px solid #cbd5e1;border-radius:9px;padding:9px 10px;font-size:14px;box-sizing:border-box;">')+'</div>'+
@@ -130676,7 +130679,8 @@ window.TRGGDirectory = {
         var status=(document.getElementById('edStatus')||{}).value||'active';
         var joined=(document.getElementById('edJoined')||{}).value||null;
         var expiry=(document.getElementById('edExpiry')||{}).value||null;
-        var patch={ full_name:name, status:status, date_joined:(joined||null), expire_date:(expiry||null) };
+        var memberNum=((document.getElementById('edMemberNum')||{}).value||'').trim();
+        var patch={ full_name:name, status:status, date_joined:(joined||null), expire_date:(expiry||null), member_id:(memberNum||null) };
         // Keep last_name/first_name consistent with the "Last, First" import format when a comma is present.
         if(name.indexOf(',')>=0){ var parts=name.split(','); patch.last_name=parts[0].trim(); patch.first_name=parts.slice(1).join(',').trim(); }
         try {
@@ -130685,11 +130689,13 @@ window.TRGGDirectory = {
             var resp=await q;
             if(resp && resp.error) throw resp.error;
             var m=(this._all||[]).find(function(x){ return (this._editId!=null ? String(x.id)===String(this._editId) : String(x.member_id)===String(this._editMemberId)); }.bind(this));
-            if(m){ m.full_name=patch.full_name; m.status=patch.status; m.date_joined=patch.date_joined; m.expire_date=patch.expire_date; if(patch.last_name!=null){ m.last_name=patch.last_name; m.first_name=patch.first_name; } }
+            if(m){ m.full_name=patch.full_name; m.status=patch.status; m.date_joined=patch.date_joined; m.expire_date=patch.expire_date; m.member_id=patch.member_id; if(patch.last_name!=null){ m.last_name=patch.last_name; m.first_name=patch.first_name; } }
             try { if(window.TRGGMembership) TRGGMembership.load(true); } catch(e){}   // refresh the membership cache used by tee sheet/roster
             this._jrClose();
             this._renderList();
-            if(window.NotificationManager) NotificationManager.show('Member updated', 'success');
+            // Organizers may assign ANY number (Pete's rule) — a collision saves fine, just surface it.
+            var dup=null; if(memberNum){ var selfId=this._editId; dup=(this._all||[]).find(function(x){ return String(x.member_id||'')===memberNum && String(x.id)!==String(selfId); }); }
+            if(window.NotificationManager) NotificationManager.show(dup ? ('Member updated — note: #'+memberNum+' is also used by '+(dup.full_name||'another member')) : 'Member updated', dup ? 'warning' : 'success');
         } catch(e){
             console.error('[TRGGDirectory] saveEdit', e);
             if(window.NotificationManager) NotificationManager.show('Failed to save — ' + (e && e.message ? e.message : e), 'error');

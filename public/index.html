@@ -145423,12 +145423,61 @@ class OrganizerRoundHistory {
                             <div style="font-size:16px;font-weight:700;color:#059669;">${stableford}</div>
                         </div>
                     </div>
+                    <!-- Delete -->
+                    <button onclick="event.stopPropagation(); window.OrganizerRoundHistory.deleteRound('${round.id}')" title="Delete round" style="flex-shrink:0;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:6px;display:flex;align-items:center;cursor:pointer;" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fef2f2'">
+                        <span class="material-symbols-outlined" style="color:#dc2626;font-size:16px;">delete</span>
+                    </button>
                     <!-- Arrow -->
                     <span class="material-symbols-outlined" style="color:#d1d5db;font-size:18px;flex-shrink:0;">chevron_right</span>
                 </div>`;
         }).join('');
         // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
         if (window._golferChipDecorate) window._golferChipDecorate(container, 20);
+    }
+
+    // DELETE A ROUND FROM HISTORY (Pete 2026-08-09): incorrect/test rounds must be removable.
+    // Full purge = the v866 recipe: round_holes + handicap_history + the rounds row itself,
+    // PLUS any scorecard for the same event+player (scores first) so the round doesn't linger
+    // on the scoring board or community leaderboards. The registration stays. rounds row goes
+    // LAST so a mid-purge failure leaves the card visible and the delete retryable.
+    async deleteRound(roundId) {
+        const round = this.allRounds.find(r => r.id === roundId);
+        if (!round) { window.NotificationManager.show('Round not found', 'error'); return; }
+        const who = round._playerName || round.player_name || 'Unknown';
+        const when = new Date(round.completed_at || round.started_at || round.played_at).toLocaleDateString();
+        if (!confirm(`DELETE ${who}'s round of ${when}?\n\nThis permanently removes the round, its hole scores and its handicap-ledger entry, and cannot be undone.`)) return;
+
+        const sb = window.SupabaseDB.client;
+        try {
+            const { data: dh, error: e1 } = await sb.from('round_holes').delete().eq('round_id', roundId).select('id');
+            if (e1) throw e1;
+            const { data: dhh, error: e2 } = await sb.from('handicap_history').delete().eq('round_id', roundId).select('id');
+            if (e2) throw e2;
+            let cardsGone = 0;
+            if (round.society_event_id && round.golfer_id) {
+                const { data: cards } = await sb.from('scorecards').select('id')
+                    .eq('event_id', round.society_event_id).eq('player_id', round.golfer_id);
+                const cardIds = (cards || []).map(c => c.id);
+                if (cardIds.length) {
+                    const { error: e3 } = await sb.from('scores').delete().in('scorecard_id', cardIds);
+                    if (e3) throw e3;
+                    const { data: dc, error: e4 } = await sb.from('scorecards').delete().in('id', cardIds).select('id');
+                    if (e4) throw e4;
+                    cardsGone = (dc || []).length;
+                }
+            }
+            const { data: dr, error: e5 } = await sb.from('rounds').delete().eq('id', roundId).select('id');
+            if (e5) throw e5;
+            if (!(dr || []).length) throw new Error('round row was not deleted (0 rows) — check permissions');
+            console.log(`[OrganizerRoundHistory] 🗑 Deleted round ${roundId}: ${(dh || []).length} holes, ${(dhh || []).length} hcp entries, ${cardsGone} scorecards`);
+            this.allRounds = this.allRounds.filter(r => r.id !== roundId);
+            this.updateStats();
+            this.filterRounds();
+            window.NotificationManager.show(`Round deleted — ${who}, ${when}`, 'success');
+        } catch (err) {
+            console.error('[OrganizerRoundHistory] deleteRound failed:', err);
+            window.NotificationManager.show('Could not delete round: ' + err.message, 'error');
+        }
     }
 
     async viewRoundDetails(roundId) {

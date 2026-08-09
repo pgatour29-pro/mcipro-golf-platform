@@ -21668,6 +21668,10 @@
 
                     if (error) throw error;
 
+                    // Same satellite re-key as the auto-match claim — this path previously moved
+                    // ONLY the profile row, orphaning rounds/memberships/grants under the guest id.
+                    await LineAuthentication._relinkGuestRows(profile.line_user_id, lineUserId);
+
                     console.log('[ManualSearch] ✅ Profile linked successfully');
 
                     // Persist so the reload lands straight on the dashboard (PWA session gate
@@ -21843,6 +21847,33 @@
                 console.log('[MemberLink] Selected match index:', index);
             }
 
+            // Re-key every satellite row stored under the guest id after a PK repoint. The claim
+            // paths move ONLY the user_profiles row; anything keyed to the old id is orphaned
+            // without this — proven live 2026-08-09: Louis Flanagan's society_organizer_roles
+            // admin grant stayed on TRGG-GUEST-0281 after his claim, so he never got the society
+            // dashboard. (The re-offer path is immune: merge_golfer_profiles sweeps every text
+            // column server-side.) supabase-js returns errors rather than throwing, so a
+            // unique-violation on one table (e.g. the LINE id already a member of the same
+            // society) never blocks the remaining re-keys.
+            static async _relinkGuestRows(oldGuestId, lineUserId) {
+                if (!oldGuestId || oldGuestId === lineUserId) return false;
+                try {
+                    const sb = window.SupabaseDB.client;
+                    await sb.from('scorecards').update({ player_id: lineUserId }).eq('player_id', oldGuestId);
+                    await sb.from('rounds').update({ golfer_id: lineUserId }).eq('golfer_id', oldGuestId);
+                    await sb.from('event_registrations').update({ player_id: lineUserId }).eq('player_id', oldGuestId);
+                    await sb.from('society_members').update({ golfer_id: lineUserId }).eq('golfer_id', oldGuestId);
+                    await sb.from('society_handicaps').update({ golfer_id: lineUserId }).eq('golfer_id', oldGuestId);
+                    await sb.from('society_organizer_roles').update({ user_id: lineUserId }).eq('user_id', oldGuestId);
+                    await sb.from('trgg_members').update({ matched_user_id: lineUserId }).eq('matched_user_id', oldGuestId);
+                    console.log('[MemberLink] ✅ Guest rows relinked', oldGuestId, '->', lineUserId);
+                    return true;
+                } catch (e) {
+                    console.warn('[MemberLink] guest relink failed (non-fatal):', e);
+                    return false;
+                }
+            }
+
             static async confirmMemberLink() {
                 const { lineUserId, profile, matches, selectedIndex } = window.memberLinkData;
                 const selectedMatch = matches[selectedIndex];
@@ -21884,20 +21915,10 @@
                             throw error;
                         }
 
-                        // Move their PAST ROUNDS onto the new account (rounds were stored under the guest id).
+                        // Move their satellite rows (rounds, registrations, memberships, organizer
+                        // grants, roster link) onto the new account — all stored under the guest id.
                         // Non-fatal — a relink error must NEVER block the login.
-                        if (oldGuestId && oldGuestId !== lineUserId) {
-                            try {
-                                const sb = window.SupabaseDB.client;
-                                await sb.from('scorecards').update({ player_id: lineUserId }).eq('player_id', oldGuestId);
-                                await sb.from('rounds').update({ golfer_id: lineUserId }).eq('golfer_id', oldGuestId);
-                                await sb.from('event_registrations').update({ player_id: lineUserId }).eq('player_id', oldGuestId);
-                                relinked = true;
-                                console.log('[MemberLink] ✅ Past rounds relinked', oldGuestId, '->', lineUserId);
-                            } catch (e) {
-                                console.warn('[MemberLink] round relink failed (non-fatal):', e);
-                            }
-                        }
+                        relinked = await LineAuthentication._relinkGuestRows(oldGuestId, lineUserId);
                     }
 
                     console.log('[MemberLink] ✅ Account linked successfully!');

@@ -41735,12 +41735,32 @@ Waitlist (${waitlist.length} people):`;
                     // "Next Round" = the first still-upcoming event. STRICT — the moment an event's
                     // tee time passes it drops here too (no grace, no falling back to a passed event).
                     const e = upcoming[0] || null;
+                    // GTS1: stash for the Tee Sheet half-cube + fill its live line (course · date)
+                    this._cubeNextEv = e;
+                    try {
+                        const tsEl = document.getElementById('cubeTeeSheetBody');
+                        if (tsEl && e) {
+                            const _c = e.course_name || e.title || '';
+                            const _d2 = e.event_date ? new Date(e.event_date + 'T00:00:00').toLocaleDateString(_lvLocale(), { day: 'numeric', month: 'short' }) : '';
+                            tsEl.textContent = _c + (_d2 ? ' · ' + _d2 : '');
+                        }
+                    } catch (e2) {}
                     // The Tee Time + Caddy cubes are for DIRECT course bookings (no society assistant) —
                     // they must NOT carry society-event info. The event's tee time/caddy belong in the
                     // Society Events cube (count, set above) and the "Next Round" box (rendered below).
                     const myReg = e ? regs.find(r => r.event_id === e.id) : null;
                     this.renderTeeBox(e, myReg);
                 } catch (e) {}
+            },
+
+            // GTS1 (Pete 2026-08-09): the golfer split-cube's Tee Sheet half goes STRAIGHT to the
+            // upcoming event's tee sheet — same direct path as the Next Round card's TEE SHEET
+            // button ("just like in the full mode"), never to the events section when an event
+            // exists. No upcoming registered event → the events tab is the honest destination.
+            openTeeSheetCube() {
+                const e = this._cubeNextEv || this._nextEv;
+                if (e && e.id && window.DashboardUpcomingEvents) { DashboardUpcomingEvents.viewTeeSheet(e.id); return; }
+                try { showGolferTab('societyevents'); } catch (err) {}
             },
 
             _hasTodayBooking() {
@@ -45336,13 +45356,22 @@ Waitlist (${waitlist.length} people):`;
                         <div id="cubeHandicapValue" style="font-size:32px;font-weight:800;color:#16a34a;line-height:1;position:relative;z-index:2;margin-top:4px;">--</div>
                         <div class="cube-pill" data-i18n="lightview.viewhistory">View round history</div>
                     </button>
-                    <button onclick="showGolferTab('societyevents', event)" class="card-hover metric-card cube-poster" style="--p1:#f6dcd8;--p2:#fdf3f1">
-                        <span class="enb-events-badge" style="display:none;position:absolute;top:8px;right:8px;background:#0d9488;color:#fff;font-size:11px;font-weight:800;min-width:20px;height:20px;border-radius:10px;align-items:center;justify-content:center;padding:0 6px;box-shadow:0 1px 5px rgba(0,0,0,.3);z-index:3;line-height:1;"></span>
-                        <span class="teeSheetCubeBadge" style="display:none;position:absolute;bottom:8px;right:8px;background:#16a34a;color:#fff;font-size:10px;font-weight:800;min-width:20px;height:20px;border-radius:10px;align-items:center;justify-content:center;padding:0 7px;box-shadow:0 1px 5px rgba(0,0,0,.3);z-index:3;line-height:1;letter-spacing:.02em;"></span>
-                        <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuFlag"/></svg></div>
-                        <h3 class="text-base font-bold text-gray-900 mb-1" data-i18n="lightview.societyevents">Society Events</h3>
-                        <div id="cubeEventsCount" class="cube-pill" data-i18n="lightview.upcoming">Upcoming</div>
-                    </button>
+                    <!-- GTS1 (Pete 2026-08-09): one cell, TWO buttons — Society Events top, Tee Sheet
+                         bottom going STRAIGHT to the upcoming event's sheet (Full-mode button path) -->
+                    <div class="cube-split">
+                        <button onclick="showGolferTab('societyevents', event)" class="card-hover metric-card cube-poster" style="--p1:#f6dcd8;--p2:#fdf3f1">
+                            <span class="enb-events-badge" style="display:none;position:absolute;top:8px;right:8px;background:#0d9488;color:#fff;font-size:11px;font-weight:800;min-width:20px;height:20px;border-radius:10px;align-items:center;justify-content:center;padding:0 6px;box-shadow:0 1px 5px rgba(0,0,0,.3);z-index:3;line-height:1;"></span>
+                            <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuFlag"/></svg></div>
+                            <h3 class="text-base font-bold text-gray-900 mb-1" data-i18n="lightview.societyevents">Society Events</h3>
+                            <div id="cubeEventsCount" style="position:relative;z-index:2;margin-top:2px;font-size:10px;font-weight:600;color:#64748b;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" data-i18n="lightview.upcoming">Upcoming</div>
+                        </button>
+                        <button onclick="GolferCubeInfo.openTeeSheetCube()" class="card-hover metric-card cube-poster" style="--p1:#e2e7ec;--p2:#f5f7f9">
+                            <span class="teeSheetCubeBadge" style="display:none;position:absolute;top:8px;right:8px;background:#16a34a;color:#fff;font-size:10px;font-weight:800;min-width:20px;height:20px;border-radius:10px;align-items:center;justify-content:center;padding:0 7px;box-shadow:0 1px 5px rgba(0,0,0,.3);z-index:3;line-height:1;letter-spacing:.02em;"></span>
+                            <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuTee"/></svg></div>
+                            <h3 class="text-base font-bold text-gray-900 mb-1" data-i18n="van.nav.teesheet">Tee Sheet</h3>
+                            <div id="cubeTeeSheetBody" style="position:relative;z-index:2;margin-top:2px;font-size:10px;font-weight:600;color:#64748b;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" data-i18n="lightview.noupcominground">No upcoming round</div>
+                        </button>
+                    </div>
                     <button onclick="openScheduleModal()" class="card-hover metric-card cube-poster" style="--p1:#d9e6f8;--p2:#f1f6fd">
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuCal"/></svg></div>
                         <h3 class="text-base font-bold text-gray-900 mb-1" data-i18n="lightview.schedule">Schedule</h3>
@@ -46007,31 +46036,37 @@ Waitlist (${waitlist.length} people):`;
                     font-weight:700;font-size:11px;line-height:1;padding:5px 10px;border-radius:999px;
                     max-width:calc(100% - 28px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
                   }
-                  /* ARV1 (2026-08-09): Events cell split into TWO independent stacked buttons
-                     (Events + Arrivals) sharing one grid cell on the organizer lite grid.
-                     Not direct children of the grid, so the poster base rules are restated here. */
-                  /* min-width:0 is LOAD-BEARING: the Events half's nowrap live line (long course
-                     names like Plutaluang Royal Thai Navy) otherwise sets the grid item's
-                     min-content and inflates the left column, crushing the right one (JOA bug
-                     2026-08-09 — grid items default min-width:auto). */
-                  #orgLiteCubesGrid > .cube-split{ display:flex; flex-direction:column; gap:10px; min-height:150px; min-width:0; }
-                  #orgLiteCubesGrid .cube-split > .cube-poster{
+                  /* ARV1 (2026-08-09): one grid cell split into TWO independent stacked buttons —
+                     organizer lite (Events + Arrivals) AND golfer lite (Society Events + Tee
+                     Sheet, GTS1). Not direct children of the grid, so poster base rules are
+                     restated here. */
+                  /* min-width:0 is LOAD-BEARING: a half's nowrap live line (long course names
+                     like Plutaluang Royal Thai Navy) otherwise sets the grid item's min-content
+                     and inflates the left column, crushing the right one (JOA bug 2026-08-09 —
+                     grid items default min-width:auto). */
+                  #orgLiteCubesGrid > .cube-split,
+                  #liteCubesGrid > .cube-split{ display:flex; flex-direction:column; gap:10px; min-height:150px; min-width:0; }
+                  #orgLiteCubesGrid .cube-split > .cube-poster,
+                  #liteCubesGrid .cube-split > .cube-poster{
                     background:linear-gradient(130deg,var(--p1) 0%,var(--p2) 55%,#ffffff 130%);
                     border:1px solid rgba(22,35,46,.08); overflow:hidden; position:relative;
                     flex:1 1 0; min-height:0; min-width:0; width:100%; border-radius:22px;
                     display:flex; flex-direction:column; align-items:flex-start; justify-content:center; text-align:left;
                   }
-                  #orgLiteCubesGrid .cube-split > .cube-poster h3{
+                  #orgLiteCubesGrid .cube-split > .cube-poster h3,
+                  #liteCubesGrid .cube-split > .cube-poster h3{
                     font-size:15px; font-weight:800; line-height:1.1; letter-spacing:-.01em;
                     color:#152430; max-width:100%; position:relative; z-index:2; margin-bottom:0;
                     word-break:normal; overflow-wrap:normal;
                   }
-                  #orgLiteCubesGrid .cube-split > .cube-poster .cube-art{
+                  #orgLiteCubesGrid .cube-split > .cube-poster .cube-art,
+                  #liteCubesGrid .cube-split > .cube-poster .cube-art{
                     pointer-events:none; position:absolute; right:-12px; bottom:-14px;
                     width:54px; height:54px; transform:rotate(-5deg); z-index:1;
                     filter:drop-shadow(0 6px 9px rgba(22,35,46,.22));
                   }
-                  #orgLiteCubesGrid .cube-split > .cube-poster .cube-art svg{ width:100%; height:100%; display:block; }
+                  #orgLiteCubesGrid .cube-split > .cube-poster .cube-art svg,
+                  #liteCubesGrid .cube-split > .cube-poster .cube-art svg{ width:100%; height:100%; display:block; }
                 </style>
                 <div id="dashboardCubesGrid" class="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4 mb-3 md:mb-8">
                     <button onclick="showGolferTab('booking', event)" class="card-hover metric-card cube-poster text-center group relative light-hide order-1" style="--p1:#d9efe1;--p2:#f2faf5">

@@ -42222,6 +42222,12 @@ Waitlist (${waitlist.length} people):`;
                         this.selectedEventId = upcoming[0].event_id;
                         const select = document.getElementById('caddyEventSelect');
                         if (select) select.value = upcoming[0].event_id;
+                    } else {
+                        // Last caddy removed → the card must EMPTY (Pete 2026-08-09: deleted
+                        // caddy stayed painted on the overview because this branch didn't exist).
+                        const container = document.getElementById('upcomingCaddyBookingsContent');
+                        if (container) container.innerHTML = '<div class="text-center py-4 text-sm text-gray-500">No caddy booked yet</div>';
+                        this.selectedEventId = null;
                     }
                 } catch (err) {
                     console.error('[DashboardCaddyBooking] Error loading:', err);
@@ -42396,6 +42402,10 @@ Waitlist (${waitlist.length} people):`;
                 }
             }
         };
+        // Every refresh call site guards on window.DashboardCaddyBooking — without this
+        // assignment they ALL silently no-op (the v818 lexical-const trap), which is how a
+        // removed caddy stayed painted on the overview card (Pete 2026-08-09).
+        window.DashboardCaddyBooking = DashboardCaddyBooking;
 
         // Booked Caddies View - Shows upcoming caddy bookings on the caddies tab
         // Dashboard cube notification badges
@@ -107912,6 +107922,36 @@ const GolferCaddyBooking = {
                 }
             } catch (e) { console.warn('[GolferCaddyBooking] notebook photo merge skipped:', e); }
 
+            // The golfer's OWN caddies (My Caddies notebook) must appear on this course's roster
+            // even when no caddy_profiles row exists (Pete 2026-08-09: "tried to book another
+            // caddy but she does not show up"). The roster query above is EXACT-match on
+            // course_name; notebook rows use short names ("Burapha" vs "Burapha Golf Club"), so
+            // alias-match via _courseMatch. Skips numbers already on the roster. Own try — a
+            // merge failure must never wipe the loaded roster.
+            try {
+                const uid = AppState.currentUser?.lineUserId || window.currentUserId || localStorage.getItem('line_user_id');
+                if (uid && typeof _courseMatch === 'function') {
+                    const { data: nbRows } = await window.SupabaseDB.client
+                        .from('caddy_notebook')
+                        .select('caddy_number, caddy_name, course_name, photo_url, rating')
+                        .eq('golfer_id', uid);
+                    const have = new Set(this.allCaddies.map(c => String(parseInt(c.caddy_number))).filter(n => n !== 'NaN'));
+                    (nbRows || []).forEach(r => {
+                        const n = String(parseInt(r.caddy_number));
+                        if (!r.caddy_number || n === 'NaN' || have.has(n)) return;
+                        if (!_courseMatch(r.course_name, courseId)) return;
+                        have.add(n);
+                        this.allCaddies.push({
+                            id: 'nb-' + n, caddy_number: String(r.caddy_number),
+                            name: r.caddy_name || ('Caddy #' + n), course_name: courseId,
+                            photo_url: r.photo_url || null, is_active: true,
+                            availability_status: 'available', rating: r.rating || null,
+                            _fromNotebook: true
+                        });
+                    });
+                }
+            } catch (e) { console.warn('[GolferCaddyBooking] notebook roster merge skipped:', e); }
+
         } catch (error) {
             console.error('[GolferCaddyBooking] Error loading caddies:', error);
             this.allCaddies = [];
@@ -108722,6 +108762,7 @@ const GolferCaddyBooking = {
         const caddy = this.allCaddies.find(c => c.id === caddyId);
         if (!caddy) {
             console.error('[GolferCaddyBooking] Caddy not found:', caddyId);
+            window.NotificationManager.show('Could not find that caddy — reopen the course list and try again', 'error');
             if (confirmBtn) confirmBtn.disabled = false;
             return;
         }
@@ -108735,10 +108776,16 @@ const GolferCaddyBooking = {
             const isAvailable = !caddy.availability_status || caddy.availability_status === 'available';
             const bookingStatus = isAvailable ? 'confirmed' : 'pending';
 
-            // Create booking in database - ONLY columns that exist in table
+            // caddy_id is a UUID column — notebook-merged rows carry a synthetic 'nb-<num>' id
+            // that must NOT go in it (22P02 kills the whole insert). Identity rides the text
+            // columns (golfer_id/caddie_name) like every other caddy_bookings writer.
+            const isRosterUuid = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(String(caddyId));
             const bookingData = {
                 user_id: userId,
-                caddy_id: caddyId,
+                golfer_id: userId,
+                golfer_name: AppState.currentUser?.displayName || AppState.currentUser?.firstName || null,
+                caddy_id: isRosterUuid ? caddyId : null,
+                caddie_name: caddy.caddy_number ? ('Caddy #' + parseInt(caddy.caddy_number)) : (caddy.name || null),
                 course_name: eventData?.course_name || caddy.course_name,
                 booking_date: date,
                 tee_time: time || null,
@@ -108759,8 +108806,9 @@ const GolferCaddyBooking = {
 
             console.log('[GolferCaddyBooking] Booking created successfully:', data);
 
-            // If confirmed, update caddy availability to booked
-            if (isAvailable && data && data[0]) {
+            // If confirmed, update caddy availability to booked (roster rows only — notebook
+            // pseudo-rows have no caddy_profiles record)
+            if (isAvailable && data && data[0] && isRosterUuid) {
                 await window.SupabaseDB.client
                     .from('caddy_profiles')
                     .update({ availability_status: 'booked' })
@@ -127388,10 +127436,16 @@ window.saveCaddyForEvent = async function(eventId, num){
     var user=(window.AppState&&AppState.currentUser)?AppState.currentUser:null;
     var lineId=user?(user.lineUserId||user.userId):null;
     if(!sb||!lineId)return;
-    await sb.from('event_registrations').update({caddy_numbers: (num||null)}).eq('event_id', eventId).eq('player_id', lineId);
+    // The write must be CHECKED and ANNOUNCED — a silent failure here looks like "can't
+    // put the caddy on the booking" (Pete 2026-08-09).
+    var res=await sb.from('event_registrations').update({caddy_numbers: (num||null)}).eq('event_id', eventId).eq('player_id', lineId).select('id');
+    if(res.error){ window.NotificationManager.show('Could not save caddy: '+res.error.message,'error'); return; }
+    if(!(res.data||[]).length){ window.NotificationManager.show('Could not save — no registration found for this event','error'); return; }
+    window.NotificationManager.show(num?('Caddy #'+num+' assigned ✓'):'Caddy removed','success');
     try{ if(window.updateOverviewCubes) updateOverviewCubes(); }catch(e){}
+    try{ if(window.DashboardCaddyBooking&&window.DashboardCaddyBooking.loadUserCaddyBookings) DashboardCaddyBooking.loadUserCaddyBookings(); }catch(e){}
     openScheduleModal();
-  }catch(err){ console.warn('[SaveCaddy]',err); }
+  }catch(err){ console.warn('[SaveCaddy]',err); window.NotificationManager.show('Could not save caddy','error'); }
 };
 
 // When a golfer's "Display Under Name" preference is "Golf Society" but no

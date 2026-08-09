@@ -127297,13 +127297,13 @@ window.ArrivalsPage = {
         try {
             var sb = window.SupabaseDB && window.SupabaseDB.client;
             var r = await sb.from('event_registrations')
-                .select('id,player_name,player_id,want_transport,special_requests,status,created_at')
+                .select('id,player_name,player_id,want_transport,special_requests,partner_prefs,status,created_at')
                 .eq('event_id', ev.id).order('created_at', { ascending: true });
             rows = (r.data || []).filter(function(x){ return x.status !== 'cancelled'; });
         } catch (e) { console.warn('[Arrivals] regs', e); }
         if (seq !== this._seq) return; // stale load — a newer pick/refresh superseded this one
         var esc = this._esc;
-        var regs = rows.map(function(x){ return { playerId: x.player_id, playerName: x.player_name, wantTransport: x.want_transport, specialRequests: x.special_requests || {}, createdAt: x.created_at }; });
+        var regs = rows.map(function(x){ return { id: x.id, playerId: x.player_id, playerName: x.player_name, wantTransport: x.want_transport, specialRequests: x.special_requests || {}, partnerPrefs: x.partner_prefs || [], createdAt: x.created_at }; });
         var byId = {};
         regs.forEach(function(r){ byId[String(r.playerId)] = r; });
         // Guest → host links: production grouper (hostId + legacy created_at clustering)
@@ -127312,6 +127312,35 @@ window.ArrivalsPage = {
         var hostOf = {}, guestsOf = {};
         units.forEach(function(u){ u.memberIds.slice(1).forEach(function(g){ hostOf[String(g)] = String(u.hostId); }); });
         Object.keys(hostOf).forEach(function(g){ (guestsOf[hostOf[g]] = guestsOf[hostOf[g]] || []).push(g); });
+        // TRGG membership marks (blue ✓ current / amber ✓ renewal ≤30d / red ✗ expired or non-member).
+        // The ROSTER is the authority, never the id prefix — members a host signed up carry
+        // TRGG-GUEST-* ids yet are real members (Pete 2026-08-09: members NEVER get a GUEST label).
+        var trgg = !!(window.TRGGMembership && TRGGMembership.isTRGG());
+        if (trgg) { try { await TRGGMembership.load(); } catch (eM) {} }
+        if (seq !== this._seq) return;
+        var memMark = function(pid, nm){
+            if (!trgg || !TRGGMembership._byId) return '';
+            var r = TRGGMembership.forPlayer(pid, nm);
+            var ic = function(icon, col, title){ return '<span title="'+title+'" style="margin-left:4px;color:'+col+';display:inline-flex;vertical-align:middle;"><span class="material-symbols-outlined" style="font-size:15px;">'+icon+'</span></span>'; };
+            if (!r.found) return ic('cancel', '#dc2626', 'Non-member');
+            if (!r.isCurrent) return ic('cancel', '#dc2626', 'EXPIRED'+(r.expireDate ? (' '+TRGGMembership._fmt(r.expireDate)) : ''));
+            var days = TRGGMembership._daysTo(r.expireDate);
+            if (days !== null && days <= TRGGMembership.RENEW_WINDOW_DAYS) return ic('check_circle', '#d97706', 'TRGG member — renewal due · exp '+TRGGMembership._fmt(r.expireDate));
+            return ic('check_circle', '#2563eb', 'TRGG member — current');
+        };
+        var isRealGuest = function(r){
+            if (!r) return false;
+            var guestish = /GUEST-|^MANUAL/i.test(String(r.playerId)) || !!(r.specialRequests && r.specialRequests.nonMember);
+            if (!guestish) return false;
+            if (trgg && TRGGMembership._byId && TRGGMembership.forPlayer(r.playerId, r.playerName).found) return false;
+            return true;
+        };
+        // Play-together units — partner picks (partner_prefs) + booking parties (hostId), the SAME
+        // shared engine the tee-sheet pools use (declines + sameGroup:false honoured inside it).
+        var ptUnits = [];
+        try { ptUnits = (window.PlayTogetherUnits && PlayTogetherUnits.units) ? (PlayTogetherUnits.units(regs, regs) || []) : []; } catch (eU) {}
+        var unitOf = {}, unitBooking = {};
+        ptUnits.forEach(function(u, i){ var bk = PlayTogetherUnits.isBooking(u); u.forEach(function(m){ unitOf[String(m.playerId)] = i; }); unitBooking[i] = bk; });
         var onT = function(r){ var v = r.specialRequests && r.specialRequests.van; return !!(r.wantTransport || (v && v !== 'own')); };
         var t = [], d = [];
         regs.forEach(function(r){ (onT(r) ? t : d).push(r); });
@@ -127323,41 +127352,66 @@ window.ArrivalsPage = {
             return '<span style="font-size:9.5px;font-weight:800;letter-spacing:.03em;border-radius:999px;padding:4px 9px;white-space:nowrap;'+((assigned || v === 'special') ? 'background:#dbeefc;color:#0369a1;' : 'background:#f1f5f9;color:#94a3b8;')+'">'+lbl+'</span>';
         };
         var avPal = ['#0d9488','#2b6ea6','#2e8557','#a67c2b','#a2543b','#7a5426','#1f4d78','#8c2f4f'];
-        var rowHtml = function(r, transport, nested){
+        var firstTok = function(nm){ return esc(String(nm || '').split(' ')[0].replace(/[,.;]+$/,'')); };
+        var rowHtml = function(r, transport, nested, extraSub){
             var nm = cleanName(r.playerName);
             var hid = hostOf[String(r.playerId)];
             var host = (hid && byId[hid]) ? cleanName(byId[hid].playerName) : '';
-            var isGuest = !!hid;
+            var guest = isRealGuest(r);
             var initials = window._golferInitials ? _golferInitials(nm) : '?';
             var col = avPal[(String(nm).charCodeAt(0) || 0) % avPal.length];
-            var gcnt = (guestsOf[String(r.playerId)] || []).length;
+            var gcnt = (guestsOf[String(r.playerId)] || []).filter(function(gid){ return isRealGuest(byId[gid]); }).length;
             var right = '';
             if (gcnt) right += '<span style="font-size:9.5px;font-weight:800;background:#f1f5f9;color:#475569;border-radius:999px;padding:4px 8px;white-space:nowrap;">+'+gcnt+' '+_lvT('arv.guestlc','guest')+(gcnt > 1 ? 's' : '')+'</span>';
-            if (isGuest) right += '<span style="font-size:9.5px;font-weight:800;background:#fef3c7;color:#92400e;border-radius:999px;padding:4px 8px;">'+_lvT('arv.guesttag','GUEST')+'</span>';
+            if (guest) right += '<span style="font-size:9.5px;font-weight:800;background:#fef3c7;color:#92400e;border-radius:999px;padding:4px 8px;">'+_lvT('arv.guesttag','GUEST')+'</span>';
             right += transport ? vanChip(r) : '<span style="width:8px;height:8px;border-radius:50%;background:#16a34a;flex:none;display:inline-block;"></span>';
+            var sub = '';
+            if (hid && host) sub = (guest ? _lvT('arv.guestof','guest of') : _lvT('arv.with','with'))+' '+firstTok(host);
+            else if (extraSub) sub = extraSub;
             return '<div style="position:relative;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e6ebf0;border-radius:14px;padding:8px 11px;margin-bottom:7px;'+(nested ? 'margin-left:30px;' : '')+'">'+
                 (nested ? '<span style="position:absolute;left:-17px;top:-10px;bottom:52%;width:13px;border-left:2px solid #d3dce4;border-bottom:2px solid #d3dce4;border-bottom-left-radius:9px;pointer-events:none;"></span>' : '')+
                 '<span data-golfer-face="'+esc(r.playerId)+'" style="width:33px;height:33px;border-radius:50%;background:'+col+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex:none;overflow:hidden;">'+esc(initials)+'</span>'+
                 '<div style="min-width:0;flex:1;">'+
-                    '<div style="font-size:13px;font-weight:700;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(nm)+'</div>'+
-                    ((isGuest && host) ? '<div style="font-size:9.5px;color:#94a3b8;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_lvT('arv.guestof','guest of')+' '+esc(host.split(' ')[0].replace(/[,.;]+$/,''))+'</div>' : '')+
+                    '<div style="font-size:13px;font-weight:700;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(nm)+memMark(r.playerId, r.playerName)+'</div>'+
+                    (sub ? '<div style="font-size:9.5px;color:#94a3b8;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+sub+'</div>' : '')+
                 '</div>'+
                 '<div style="display:flex;align-items:center;gap:6px;flex:none;">'+right+'</div>'+
             '</div>';
         };
-        // Hosts A→Z with their guests nested right under them (when in the same section);
-        // a guest whose host sits in the OTHER section renders standalone with its "guest of" line.
+        // A→Z; play-together units render as ONE framed block (green = partner request, light red =
+        // booking party — the tee-sheet pool convention). Linked players nest under their host when
+        // the host shares the frame; a member whose unit-mates sit in the OTHER section gets a
+        // "plays with …" hint instead of a one-row frame.
         var sectionHtml = function(list, transport){
-            var inSec = {};
-            list.forEach(function(r){ inSec[String(r.playerId)] = true; });
-            var tops = list.filter(function(r){ var h = hostOf[String(r.playerId)]; return !(h && inSec[h]); })
-                           .sort(function(a, b){ return cleanName(a.playerName).localeCompare(cleanName(b.playerName)); });
-            var out = [];
-            tops.forEach(function(r){
-                out.push(rowHtml(r, transport, false));
-                (guestsOf[String(r.playerId)] || []).forEach(function(gid){
-                    if (inSec[gid] && byId[gid]) out.push(rowHtml(byId[gid], transport, true));
+            var sorted = list.slice().sort(function(a, b){ return cleanName(a.playerName).localeCompare(cleanName(b.playerName)); });
+            var doneUnit = {}, out = [];
+            sorted.forEach(function(r){
+                var pid = String(r.playerId), ui = unitOf[pid];
+                if (ui === undefined) { out.push(rowHtml(r, transport, false, '')); return; }
+                if (doneUnit[ui]) return;
+                doneUnit[ui] = 1;
+                var members = sorted.filter(function(x){ return unitOf[String(x.playerId)] === ui; });
+                if (members.length < 2) {
+                    var mates = (ptUnits[ui] || []).filter(function(m){ return String(m.playerId) !== pid; })
+                        .map(function(m){ return firstTok(cleanName(m.playerName)); });
+                    out.push(rowHtml(r, transport, false, mates.length ? (_lvT('arv.playswith','plays with')+' '+mates.join(', ')) : ''));
+                    return;
+                }
+                members.sort(function(a, b){
+                    var la = hostOf[String(a.playerId)] ? 1 : 0, lb = hostOf[String(b.playerId)] ? 1 : 0;
+                    return (la - lb) || cleanName(a.playerName).localeCompare(cleanName(b.playerName));
                 });
+                var bk = !!unitBooking[ui];
+                var inFrame = {};
+                members.forEach(function(m){ inFrame[String(m.playerId)] = true; });
+                var rowsHtml = members.map(function(m){
+                    var h = hostOf[String(m.playerId)];
+                    return rowHtml(m, transport, !!(h && inFrame[h]), '');
+                }).join('');
+                out.push('<div style="border:1.5px solid '+(bk ? '#fca5a5' : '#86efac')+';border-radius:16px;padding:5px 5px 0;margin-bottom:7px;">'+
+                    '<div style="font-size:8px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:'+(bk ? '#b91c1c' : '#15803d')+';padding:2px 8px 4px;">'+(bk ? _lvT('arv.regtogether','Registered together') : _lvT('arv.playtogether','Play together'))+'</div>'+
+                    rowsHtml+
+                '</div>');
             });
             return out.join('');
         };
@@ -127365,7 +127419,7 @@ window.ArrivalsPage = {
         var tee = ev.start_time ? String(ev.start_time).slice(0,5) : '';
         var course = ev.course_name || ev.title || 'Event';
         var when = ev.event_date ? new Date(ev.event_date+'T00:00:00').toLocaleDateString(_lvLocale(),{weekday:'long',month:'long',day:'numeric'}) : '';
-        var gTotal = Object.keys(hostOf).length;
+        var gTotal = regs.filter(isRealGuest).length;
         var vanNums = {};
         t.forEach(function(r){ var v = r.specialRequests && r.specialRequests.van; if (v && v !== 'own' && v !== 'special') vanNums[v] = 1; });
         var vansUsed = Object.keys(vanNums).length;

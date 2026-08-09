@@ -118899,6 +118899,8 @@ class GolferEventsManager {
                     '<span class="material-symbols-outlined">close</span>' +
                 '</button>' +
             '</div>' +
+            // GTS1b: event pills — hop to another upcoming event's PUBLISHED tee sheet (filled async)
+            '<div id="playersModalEvChips" style="display:none;background:#f8fafc;border-bottom:1px solid #e5e7eb;flex-shrink:0;padding:8px 10px;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;"></div>' +
             vanBanner +
             '<div style="padding:8px 12px;border-bottom:1px solid #e5e7eb;flex-shrink:0;">' +
                 '<input type="text" id="playersModalSearch" oninput="GolferEventsSystem.filterPlayersModal()" placeholder="Search players..." style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;">' +
@@ -118911,6 +118913,7 @@ class GolferEventsManager {
         // Render the player list. Prefers the organizer's tee-sheet pairings when they exist,
         // otherwise falls back to mutual partner-preference grouping. (See _renderPlayersModalList.)
         this._renderPlayersModalList();
+        this._fillSheetEventChips();
 
         // Refresh pairings in the background in case the organizer changed them since this event
         // was opened, then re-render so the modal reflects the latest tee sheet.
@@ -118930,6 +118933,64 @@ class GolferEventsManager {
                     '<span class="material-symbols-outlined" style="font-size:16px;">edit</span> ' + (currentReg ? 'Edit Registration / Select Preferred Partners' : 'Register for Event') +
                 '</button></div>';
         }
+    }
+
+    // GTS1b (Pete 2026-08-09): pills at the top of the tee-sheet modal to hop between the
+    // golfer's OTHER upcoming events — like the organizer surfaces' event strips, but only
+    // events whose organizers have PUBLISHED a sheet (event_pairings with real groups). The
+    // current event always shows; the strip stays hidden when there's nowhere else to go.
+    async _fillSheetEventChips() {
+        try {
+            const strip = document.getElementById('playersModalEvChips');
+            if (!strip) return;
+            const uid = AppState.currentUser?.lineUserId || localStorage.getItem('line_user_id');
+            const sb = window.SupabaseDB && window.SupabaseDB.client;
+            if (!uid || !sb) return;
+            const d = new Date();
+            const today = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            const reg = await sb.from('event_registrations').select('event_id,status').eq('player_id', uid);
+            const ids = (reg.data || []).filter(r => r.status !== 'cancelled').map(r => r.event_id).filter(Boolean);
+            if (!ids.length) return;
+            const evs = await sb.from('society_events')
+                .select('id,title,course_name,event_date,start_time,departure_time')
+                .in('id', ids).gte('event_date', today)
+                .order('event_date', { ascending: true }).order('start_time', { ascending: true }).limit(12);
+            const nowMs = Date.now();
+            const upcoming = (evs.data || []).filter(c => {
+                const tt = c.start_time || c.departure_time || '23:59';
+                const t = new Date(c.event_date + 'T' + String(tt).slice(0, 5) + ':00').getTime();
+                return isNaN(t) || t >= nowMs;
+            });
+            if (upcoming.length < 2) return;
+            const pr = await sb.from('event_pairings').select('event_id, groups').in('event_id', upcoming.map(e => e.id));
+            const pub = {};
+            (pr.data || []).forEach(p => {
+                let g = p.groups, has = false;
+                try {
+                    if (typeof g === 'string') g = JSON.parse(g);
+                    has = Array.isArray(g) ? g.some(x => x && ((x.players || x.playerIds || []).length)) : !!g;
+                } catch (e) {}
+                if (has) pub[p.event_id] = 1;
+            });
+            const curId = this.currentEvent && this.currentEvent.id;
+            const list = upcoming.filter(e => pub[e.id] || e.id === curId);
+            if (list.length < 2 || !document.getElementById('playersModalEvChips')) { strip.style.display = 'none'; return; }
+            strip.innerHTML = list.map(e => {
+                const on = e.id === curId;
+                const dt = e.event_date ? new Date(e.event_date + 'T00:00:00') : null;
+                const lbl = (dt ? dt.toLocaleDateString(_lvLocale(), { weekday: 'short', day: 'numeric' }).toUpperCase() + ' · ' : '') + (e.course_name || e.title || 'Event');
+                return '<button onclick="GolferEventsSystem.switchSheetEvent(\'' + e.id + '\')" style="display:inline-block;margin-right:8px;font-size:10.5px;font-weight:700;border-radius:999px;padding:7px 12px;cursor:pointer;max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;' + (on ? 'background:#065f46;color:#fff;border:1px solid #065f46;' : 'background:#fff;color:#334155;border:1px solid #d1d5db;') + '">' + String(lbl).replace(/</g, '&lt;') + '</button>';
+            }).join('');
+            strip.style.display = 'block';
+        } catch (e) { console.warn('[GolferEvents] sheet chips', e); }
+    }
+
+    // Chip tap → reload roster/pairings for that event and re-open the sheet (same direct path
+    // as the cube; openPlayersModal removes the prior modal, chips refill on reopen).
+    switchSheetEvent(eventId) {
+        if (!eventId || (this.currentEvent && this.currentEvent.id === eventId)) return;
+        const D = (typeof DashboardUpcomingEvents !== 'undefined') ? DashboardUpcomingEvents : null;
+        if (D) D.viewTeeSheet(eventId);
     }
 
     // Decide how to render the expanded players modal list:

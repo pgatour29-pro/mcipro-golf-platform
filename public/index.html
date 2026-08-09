@@ -141189,8 +141189,9 @@ class OrganizerScoringSystem {
                      <th class="px-2 py-2 text-center font-semibold bg-green-50">TOT</th>
                      <th class="px-2 py-2 text-center font-semibold bg-yellow-50">${_isScr2 ? 'NET' : 'PTS'}</th></tr></thead><tbody>`;
 
-            // Group into divisions so this grid matches the Summary tab EXACTLY (Division 1 then
-            // Division 2, ranked within each). No divisions configured → one combined list.
+            // Group into divisions (Division 1 then Division 2). Order within each is ALPHABETICAL
+            // (Pete 2026-08-09): this grid is the organizer's score-ENTRY sheet — finding a name
+            // beats live standings here; the Summary tab keeps the rankings.
             // 2-man scramble is team-scored (one division, v717): ONE row per team instead.
             let _groups;
             if (_isScr2) {
@@ -141211,11 +141212,11 @@ class OrganizerScoringSystem {
                 reps.sort((a, b) => ((a.total_gross || 999) - this._hbhTeamHcp[a.id]) - ((b.total_gross || 999) - this._hbhTeamHcp[b.id]));
                 _groups = [{ name: null, players: reps.concat(built.unassigned.filter(r => r.id)) }];
             } else {
+                const _byName = (a, b) => String(this.getPlayerName(a.golfer_id, a) || '')
+                    .localeCompare(String(this.getPlayerName(b.golfer_id, b) || ''), undefined, { sensitivity: 'base' });
                 const _divGroups = this._scoringDivisionGroups(this.leaderboardData);
-                const _flat = [...this.leaderboardData];
-                if (this.currentFormat === 'stableford') _flat.sort((a, b) => (b.total_stableford || 0) - (a.total_stableford || 0));
-                else _flat.sort((a, b) => (a.total_gross || 999) - (b.total_gross || 999));
-                _groups = _divGroups || [{ name: null, players: _flat }];
+                if (_divGroups) _divGroups.forEach(g => g.players.sort(_byName));
+                _groups = _divGroups || [{ name: null, players: [...this.leaderboardData].sort(_byName) }];
             }
 
             for (const _grp of _groups) {

@@ -141212,8 +141212,18 @@ class OrganizerScoringSystem {
                 reps.sort((a, b) => ((a.total_gross || 999) - this._hbhTeamHcp[a.id]) - ((b.total_gross || 999) - this._hbhTeamHcp[b.id]));
                 _groups = [{ name: null, players: reps.concat(built.unassigned.filter(r => r.id)) }];
             } else {
-                const _byName = (a, b) => String(this.getPlayerName(a.golfer_id, a) || '')
-                    .localeCompare(String(this.getPlayerName(b.golfer_id, b) || ''), undefined, { sensitivity: 'base' });
+                // A–Z by SURNAME regardless of profile format (Pete 2026-08-09): "Bacon, Randy"
+                // sorts on Bacon; "Billy Shepley" sorts on Shepley (last word). Full name breaks ties.
+                const _surname = (r) => {
+                    const n = String(this.getPlayerName(r.golfer_id, r) || '').trim();
+                    const comma = n.indexOf(',');
+                    if (comma > 0) return n.slice(0, comma).trim();
+                    const parts = n.split(/\s+/);
+                    return parts[parts.length - 1] || '';
+                };
+                const _byName = (a, b) =>
+                    _surname(a).localeCompare(_surname(b), undefined, { sensitivity: 'base' }) ||
+                    String(this.getPlayerName(a.golfer_id, a) || '').localeCompare(String(this.getPlayerName(b.golfer_id, b) || ''), undefined, { sensitivity: 'base' });
                 const _divGroups = this._scoringDivisionGroups(this.leaderboardData);
                 if (_divGroups) _divGroups.forEach(g => g.players.sort(_byName));
                 _groups = _divGroups || [{ name: null, players: [...this.leaderboardData].sort(_byName) }];

@@ -133171,6 +133171,11 @@ window.printHTMLDocument = function(html) {
 window.DashboardMode = {
     KEY: 'mcipro_dashboardView',
     _chooserShown: false,
+    // Pete 2026-08-09: EVERYONE lands in Light at login/page-load; Full (geekout) is the
+    // in-session option via the header/drawer switch. The latch below is the only thing get()
+    // trusts — stored/profile values no longer drive the landing view (they're still written so
+    // nothing downstream breaks, but a reload always comes back Light).
+    _sessionView: null,
 
     // translate via the app's t() with a hard fallback
     tr: function (k, fb) { try { var v = (typeof t === 'function') ? t(k) : null; return (v && v !== k) ? v : fb; } catch (e) { return fb; } },
@@ -133190,7 +133195,7 @@ window.DashboardMode = {
         return null;
     },
 
-    get() { return this.stored() || 'geekout'; },
+    get() { return this._sessionView || 'light'; },
     hasChosen() { return this.stored() !== null; },
 
     apply() {
@@ -133214,6 +133219,7 @@ window.DashboardMode = {
 
     set(view, persist) {
         if (view !== 'light' && view !== 'geekout') return;
+        this._sessionView = view;
         try { localStorage.setItem(this.KEY, view); } catch (e) {}
         try {
             if (AppState && AppState.currentUser) {
@@ -133248,13 +133254,10 @@ window.DashboardMode = {
         } catch (e) { console.warn('[DashboardMode] persist failed', e); }
     },
 
-    // Apply the saved view; show the one-time chooser if the user has never picked.
+    // Everyone lands in Light (Pete 2026-08-09) — no chooser modal anymore; Full is the
+    // switch-view option in the header/drawer.
     init() {
         this.apply();
-        if (!this._chooserShown && !this.hasChosen()) {
-            var self = this;
-            setTimeout(function () { if (!self.hasChosen()) self.showChooser(); }, 800);
-        }
     },
 
     showChooser() {

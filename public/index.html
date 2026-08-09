@@ -19898,6 +19898,9 @@
             }
 
             static initGolferDashboard() {
+                // Organizer-first landing: organizers go straight to their society dashboard
+                // (once per page load; golfer view stays reachable via the drawer)
+                if (window.maybeAutoRouteOrganizer) maybeAutoRouteOrganizer();
                 // === PERFORMANCE OPTIMIZATION: Check if already initialized ===
                 const cacheKey = 'golfer_dashboard_init';
                 const cached = GlobalCacheManager.get(cacheKey);
@@ -19924,6 +19927,10 @@
                             if (claimed) {
                                 if (typeof RoleSwitcher !== 'undefined' && RoleSwitcher.init) RoleSwitcher.init();
                                 if (typeof initDrawerOrganizerButton === 'function') initDrawerOrganizerButton();
+                                // First-ever organizer login: the pre-claim route check found no
+                                // society — re-arm and land them society-first now
+                                window._orgAutoRouteDone = false;
+                                if (window.maybeAutoRouteOrganizer) maybeAutoRouteOrganizer();
                             }
                         }).catch(() => {});
                     }
@@ -19933,6 +19940,10 @@
                             if (claimed) {
                                 if (typeof RoleSwitcher !== 'undefined' && RoleSwitcher.init) RoleSwitcher.init();
                                 if (typeof initDrawerOrganizerButton === 'function') initDrawerOrganizerButton();
+                                // First-ever organizer login: the pre-claim route check found no
+                                // society — re-arm and land them society-first now
+                                window._orgAutoRouteDone = false;
+                                if (window.maybeAutoRouteOrganizer) maybeAutoRouteOrganizer();
                             }
                         }).catch(() => {});
                     }
@@ -19959,6 +19970,10 @@
                         if (claimed) {
                             if (typeof RoleSwitcher !== 'undefined' && RoleSwitcher.init) RoleSwitcher.init();
                             if (typeof initDrawerOrganizerButton === 'function') initDrawerOrganizerButton();
+                            // First-ever organizer login: the pre-claim route check found no
+                            // society — re-arm and land them society-first now
+                            window._orgAutoRouteDone = false;
+                            if (window.maybeAutoRouteOrganizer) maybeAutoRouteOrganizer();
                         }
                     }).catch(() => {});
                 }
@@ -19968,6 +19983,10 @@
                         if (claimed) {
                             if (typeof RoleSwitcher !== 'undefined' && RoleSwitcher.init) RoleSwitcher.init();
                             if (typeof initDrawerOrganizerButton === 'function') initDrawerOrganizerButton();
+                            // First-ever organizer login: the pre-claim route check found no
+                            // society — re-arm and land them society-first now
+                            window._orgAutoRouteDone = false;
+                            if (window.maybeAutoRouteOrganizer) maybeAutoRouteOrganizer();
                         }
                     }).catch(() => {});
                 }
@@ -126731,6 +126750,29 @@ async function quickSwitchToOrganizer() {
     }
 }
 window.quickSwitchToOrganizer = quickSwitchToOrganizer;
+
+// ===== ORGANIZER-FIRST LANDING (Pete 2026-08-09) =====
+// Anyone who IS an organizer (owned society OR delegated society_organizer_roles grant) lands on
+// their SOCIETY dashboard at login/restore; the personal golfer dashboard is the SECONDARY view,
+// reached via the drawer's "My Golfer Profile". Runs ONCE per page load so a deliberate switch
+// to golfer sticks for the rest of the session. Ownership is re-proven via
+// resolveManageableSociety (fail closed: no society → stay on golfer); routing reuses
+// quickSwitchToOrganizer (ownership-proven, so no PIN gate). The claim callbacks re-arm this so
+// a first-ever organizer login (auto-claim / grant transfer) still lands society-first.
+window._orgAutoRouteDone = false;
+window.maybeAutoRouteOrganizer = function() {
+    if (window._orgAutoRouteDone) return;
+    window._orgAutoRouteDone = true;
+    try {
+        if (typeof RoleSwitcher === 'undefined' || !RoleSwitcher.isUserOrganizer) return;
+        RoleSwitcher.isUserOrganizer().then(function(isOrg) {
+            if (!isOrg) return;
+            var active = document.querySelector('.screen.active');
+            if (active && active.id !== 'golferDashboard') return; // user already moved on (e.g. PWA resume mid-round)
+            if (window.quickSwitchToOrganizer) quickSwitchToOrganizer();
+        }).catch(function(){});
+    } catch (e) {}
+};
 
 // ===== LIGHT / GEEKOUT DASHBOARD VIEW =====
 // Light = simple dashboard (Society Events, Play Golf, Spectate Live, Caddy Booking) + simplified

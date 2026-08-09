@@ -58613,10 +58613,9 @@ Waitlist (${waitlist.length} people):`;
                         </div>
                     </div>
                     <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
-                        <div class="text-sm text-orange-600 flex items-center gap-2">
-                            <span class="material-symbols-outlined text-sm">warning</span>
-                            Changes will update the player's round history
-                        </div>
+                        <button onclick="window.OrganizerScoringSystem.clearEditedScorecard()" class="text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-300 rounded-lg px-4 py-2">
+                            <span class="material-symbols-outlined text-sm align-middle mr-1">restart_alt</span>Clear scorecard
+                        </button>
                         <div class="flex gap-3">
                             <button onclick="window.OrganizerScoringSystem.closeEditScoreModal()" class="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100">Cancel</button>
                             <button onclick="window.OrganizerScoringSystem.saveEditedScore()" class="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium">
@@ -142003,6 +142002,67 @@ class OrganizerScoringSystem {
         } catch (error) {
             console.error('[OrganizerScoring] Error saving:', error);
             NotificationManager.show('Error saving: ' + error.message, 'error');
+        }
+    }
+
+    // ===== CLEAR SCORECARD (Pete 2026-08-09) =====
+    // Organizer-side twin of LiveScorecardManager.clearScorecard, scoped to ONE player: wipes
+    // every saved score for the round open in the Edit modal so the player starts over. Same
+    // dual-target resolution as saveEditedScore — a player can have a live scorecard (scores)
+    // AND an archived round (round_holes) for the same event; both must be emptied or the stale
+    // copy resurfaces on one of the boards. Scorecard/round rows and setup stay; only scores go.
+    async clearEditedScorecard() {
+        if (!this.editingRound) { window.NotificationManager.show('No round selected', 'error'); return; }
+        const playerName = this.getPlayerName(this.editingRound.golfer_id, this.editingRound) || 'this player';
+        if (!confirm(`Clear the ENTIRE scorecard for ${playerName}?\n\nThis deletes every saved score for this round and cannot be undone.`)) return;
+
+        const sb = window.SupabaseDB.client;
+        const golferId = this.editingRound.golfer_id;
+        const eventId = this.currentEventId;
+        try {
+            let scorecardId = this.editScorecardId;
+            if (!scorecardId && eventId && golferId) {
+                const { data: cards } = await sb.from('scorecards')
+                    .select('id').eq('event_id', eventId).eq('player_id', golferId)
+                    .order('created_at', { ascending: false }).limit(1);
+                if (cards && cards.length) scorecardId = cards[0].id;
+            }
+            let roundId = this.editArchivedRoundId;
+            if (!roundId && eventId && golferId) {
+                const { data: rws } = await sb.from('rounds')
+                    .select('id').eq('society_event_id', eventId).eq('golfer_id', golferId)
+                    .order('played_at', { ascending: false }).limit(1);
+                if (rws && rws.length) roundId = rws[0].id;
+            }
+            if (!scorecardId && !roundId) roundId = this.editingRoundId;
+
+            if (scorecardId) {
+                const { data: del, error } = await sb.from('scores')
+                    .delete().eq('scorecard_id', scorecardId).select('id');
+                if (error) throw error;
+                // Boards read the totals cache on scorecards — it must not survive the wipe.
+                await sb.from('scorecards').update({
+                    total_gross: null, total_net: null, updated_at: new Date().toISOString()
+                }).eq('id', scorecardId);
+                if (window.SocietyGolfDB?._totalsCache) delete window.SocietyGolfDB._totalsCache[scorecardId];
+                console.log(`[OrganizerScoring] 🧹 Cleared ${(del || []).length} scores on scorecard ${scorecardId}`);
+            }
+            if (roundId) {
+                const { data: del, error } = await sb.from('round_holes')
+                    .delete().eq('round_id', roundId).select('id');
+                if (error) throw error;
+                await sb.from('rounds').update({
+                    total_gross: null, total_net: null, total_stableford: null, holes_played: 0
+                }).eq('id', roundId);
+                console.log(`[OrganizerScoring] 🧹 Cleared ${(del || []).length} round_holes on round ${roundId}`);
+            }
+
+            window.NotificationManager.show(`Scorecard cleared for ${playerName}`, 'success');
+            this.closeEditScoreModal();
+            await this.refreshScores();
+        } catch (error) {
+            console.error('[OrganizerScoring] clearEditedScorecard failed:', error);
+            window.NotificationManager.show('Could not clear scorecard: ' + error.message, 'error');
         }
     }
 

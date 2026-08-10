@@ -42,6 +42,7 @@ DECLARE
   v_del    bigint;
   v_ctid   tid;
   is_ph    boolean;
+  v_nkey   text;
 BEGIN
   IF p_survivor IS NULL OR p_absorbed IS NULL OR p_survivor = p_absorbed THEN
     RAISE EXCEPTION 'merge needs two different ids (survivor=%, absorbed=%)', p_survivor, p_absorbed;
@@ -144,6 +145,42 @@ BEGIN
 
   INSERT INTO profile_merges(survivor_id, absorbed_id, absorbed_row, moved, reason)
   VALUES (p_survivor, p_absorbed, to_jsonb(v_abs), v_moved, p_reason);
+
+  -- RESURRECTION GUARD (2026-08-11): the TRGG handicap pull CREATES a new profile for any
+  -- scraped name that matches nothing — so a merged-away name comes straight back on the next
+  -- pull unless trgg_handicap_alias maps its name-key to the survivor ("Jin, Yun Jong" was
+  -- absorbed 15x and re-created daily; the 2026-08-09 organizer merges all resurrected on
+  -- 2026-08-10). Every TRGG-relevant merge now records the absorbed NAME as an alias of the
+  -- survivor, so all four pull entry points resolve it instead of creating. Skipped when a
+  -- DIFFERENT live profile still owns that name-key (an alias would hijack their pull row).
+  -- Best-effort: an alias failure must never fail the merge.
+  BEGIN
+    IF p_survivor LIKE 'TRGG-%' OR p_absorbed LIKE 'TRGG-%'
+       OR EXISTS (SELECT 1 FROM society_members sm
+                  WHERE sm.golfer_id IN (p_survivor, p_absorbed)
+                    AND sm.society_id::text IN ('7c0e4b72-d925-44bc-afda-38259a7ba346',
+                                                '17451cf3-f499-4aa3-83d7-c206149838c4',
+                                                '17451cf3-8b57-4166-af0a-dd902b7fb1af'))
+    THEN
+      SELECT (SELECT string_agg(t, ' ' ORDER BY t)
+              FROM unnest(string_to_array(trim(regexp_replace(lower(regexp_replace(COALESCE(v_abs.name,''),
+                     '\([^)]*\)',' ','g')),'[^a-z0-9]+',' ','g')),' ')) t WHERE t <> '')
+        INTO v_nkey;
+      IF v_nkey IS NOT NULL AND v_nkey <> '' AND NOT EXISTS (
+           SELECT 1 FROM user_profiles u
+           WHERE u.line_user_id <> p_survivor
+             AND (SELECT string_agg(t2, ' ' ORDER BY t2)
+                  FROM unnest(string_to_array(trim(regexp_replace(lower(regexp_replace(COALESCE(u.name,''),
+                         '\([^)]*\)',' ','g')),'[^a-z0-9]+',' ','g')),' ')) t2 WHERE t2 <> '') = v_nkey)
+      THEN
+        INSERT INTO trgg_handicap_alias(alias_key, golfer_id)
+        VALUES (v_nkey, p_survivor)
+        ON CONFLICT (alias_key) DO UPDATE SET golfer_id = EXCLUDED.golfer_id;
+      END IF;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
 
   RETURN jsonb_build_object('survivor', p_survivor, 'absorbed', p_absorbed, 'moved', v_moved);
 END $$;

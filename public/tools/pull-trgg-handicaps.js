@@ -40,7 +40,7 @@
   const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
   const KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
   const SID = '7c0e4b72-d925-44bc-afda-38259a7ba346'; // Travellers Rest Golf Group
-  const VERSION = 'v780';
+  const VERSION = 'v781';
 
   const H = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };
   const log = (...a) => console.log('[TRGG pull]', ...a);
@@ -128,12 +128,28 @@
   // An entry matching a profile's raw name verbatim claims it up front; leftovers use the key rank.
   const ordKey = s => String(s == null ? '' : s).toLowerCase()
     .replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+  // A merged pair leaves the site listing BOTH name orders for ONE aliased golfer, sometimes
+  // with different values (Komatsu 24.3 vs 36, 2026-08-11). Last-row-wins made his handicap
+  // depend on list order — instead keep only the row whose raw name matches the surviving
+  // profile's own name order (that row IS the member's record) and drop the others.
+  {
+    const byAlias = {};
+    entries.forEach(e => { const id = aliasMap[e.key]; if (id) (byAlias[id] = byAlias[id] || []).push(e); });
+    Object.keys(byAlias).forEach(id => {
+      const group = byAlias[id]; if (group.length < 2) return;
+      const p = profById[id];
+      const best = (p && group.find(e => ordKey(e.name) === ordKey(p.name))) || group[0];
+      group.forEach(e => { if (e !== best) e._skip = true; });
+      log('alias dedupe:', group.map(e => `${e.name}=${e.num}${e._skip ? ' (dropped)' : ' (kept)'}`).join(', '));
+    });
+  }
   const byOrd = {}; Object.keys(byKey).forEach(k => byKey[k].forEach(p => { const o = ordKey(p.name); if (o) (byOrd[o] = byOrd[o] || []).push(p); }));
   const usedIds = new Set(); const exactPick = {};
   for (const e of entries) { if (aliasMap[e.key]) continue; const cands = byOrd[ordKey(e.name)] || []; const p = cands.find(x => !usedIds.has(x.line_user_id)); if (p) { usedIds.add(p.line_user_id); exactPick[e.name] = p; } }
   const profUpd = [], shRows = [], newbies = []; let matched = 0;
   const stamp = new Date().toISOString();
   for (const e of entries) {
+    if (e._skip) continue;   // duplicate list row of an aliased golfer — kept row carries the value
     let p = null;
     const aliasId = aliasMap[e.key];
     if (aliasId && profById[aliasId]) {

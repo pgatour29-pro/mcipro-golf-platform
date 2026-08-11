@@ -105553,7 +105553,7 @@ const TRGGHandicapPaste = {
             } else {
                 if(lockedKeys.has(e.key)){ lockedSkipped++; continue; }   // only match is a locked player — don't duplicate them
                 const gid='TRGG-HCP-'+stamp+'-'+(++seq);
-                newProf.push({ line_user_id:gid, name:e.name, display_name:e.name, role:'golfer', handicap_index:e.num, trgg_handicap:e.num, profile_data:{handicap:e.num, is_manual_entry:true}, society_name:'Travellers Rest Golf Group' });
+                newProf.push({ line_user_id:gid, name:e.name, display_name:e.name, role:'golfer', trgg_handicap:e.num, profile_data:{handicap:e.num, is_manual_entry:true}, society_name:'Travellers Rest Golf Group' });
                 newMem.push({ id:(window.crypto&&crypto.randomUUID?crypto.randomUUID():gid+'-m'), society_id:SID, golfer_id:gid, role:'member', status:'active', joined_at:new Date().toISOString() });
                 shRows.push({ golfer_id:gid, society_id:SID, handicap_index:e.num, calculation_method:'TRGG-masterscoreboard', last_calculated_at:new Date().toISOString() });
                 const mrows=memByKey[e.key]||[];
@@ -105568,7 +105568,7 @@ const TRGGHandicapPaste = {
             for(const c of chunk(newMem,200)){ try{ await sb.from('society_members').insert(c); }catch(e){} }
             let rosterLinked=0;
             for(const c of chunk(memLink,25)){ try{ const rs=await Promise.all(c.map(l=> sb.from('trgg_members').update({ matched_user_id:l.gid }).eq('id', l.rowId).is('matched_user_id', null).select('id'))); rs.forEach(r=>{ if(r&&r.data&&r.data.length) rosterLinked++; }); }catch(e){ console.warn('[TRGG Paste] roster link', e); } }
-            for(const c of chunk(profUpd,25)){ await Promise.all(c.map(u=> sb.from('user_profiles').update({ handicap_index:u.hcp, trgg_handicap:u.hcp, profile_data:u.pd }).eq('line_user_id', u.id))); }
+            for(const c of chunk(profUpd,25)){ await Promise.all(c.map(u=> sb.from('user_profiles').update({ trgg_handicap:u.hcp, profile_data:u.pd }).eq('line_user_id', u.id))); }
             for(const c of chunk(shRows,300)){ const r=await sb.from('society_handicaps').upsert(c, { onConflict:'golfer_id,society_id' }); if(r.error) throw r.error; }
             // registrations store a handicap SNAPSHOT — push the new master handicaps onto upcoming events too
             let regSync = 0; try { const rs = await sb.rpc('sync_upcoming_trgg_reg_handicaps'); regSync = (rs && rs.data) || 0; } catch(e){ console.warn('[TRGG Paste] reg sync', e); }

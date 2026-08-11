@@ -40,7 +40,7 @@
   const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
   const KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
   const SID = '7c0e4b72-d925-44bc-afda-38259a7ba346'; // Travellers Rest Golf Group
-  const VERSION = 'v782';
+  const VERSION = 'v783';
 
   const H = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };
   const log = (...a) => console.log('[TRGG pull]', ...a);
@@ -105,7 +105,7 @@
   log('Loading MyCaddiPro players…');
   let profs = [];
   for (let off = 0; ; off += 1000) {
-    const r = await rest(`user_profiles?select=line_user_id,name,profile_data,handicap_index,trgg_handicap,universal_handicap&limit=1000&offset=${off}`);
+    const r = await rest(`user_profiles?select=line_user_id,name,profile_data,trgg_handicap&limit=1000&offset=${off}`);
     if (!r.ok) { alert('Could not load players: ' + r.status + ' ' + (await r.text())); return; }
     const d = await r.json(); profs = profs.concat(d); if (d.length < 1000) break;
   }
@@ -162,15 +162,12 @@
     if (!p) { if (lockedKeys.has(e.key)) { lockedSkipped++; continue; } newbies.push(e); continue; }
     matched++;
     const pd = Object.assign({}, p.profile_data || {}); pd.handicap = e.num;
-    // A player with an explicit WHS index (universal_handicap set — Andersson WHS 1.7 vs
-    // TRGG +0.9, 2026-08-11) keeps handicap_index = WHS; the pull maintains only the TRGG
-    // fields for them. Everyone else (universal_handicap null) gets the old full sync.
-    const hasWhs = p.universal_handicap != null;
+    // The pull maintains ONLY the TRGG fields. user_profiles.handicap_index is the WHS
+    // display — NEVER written by the TRGG pull, for anyone (Pete's rule, 2026-08-11).
     // skip the profile PATCH when nothing changed (avoids ~1k needless writes)
-    const cur = p.handicap_index == null ? null : parseFloat(p.handicap_index);
     const curTrgg = p.trgg_handicap == null ? null : parseFloat(p.trgg_handicap);
-    if ((!hasWhs && cur !== e.num) || curTrgg !== e.num || (p.profile_data || {}).handicap !== e.num)
-      profUpd.push({ id: p.line_user_id, hcp: e.num, pd, keepWhs: hasWhs });
+    if (curTrgg !== e.num || (p.profile_data || {}).handicap !== e.num)
+      profUpd.push({ id: p.line_user_id, hcp: e.num, pd });
     shRows.push({ golfer_id: p.line_user_id, society_id: SID, handicap_index: e.num, calculation_method: 'TRGG-masterscoreboard', last_calculated_at: stamp });
   }
 
@@ -192,7 +189,7 @@
     let seq = 0; const ts = Date.now();
     for (const e of newbies) {
       const gid = 'TRGG-HCP-' + ts + '-' + (++seq);
-      newProf.push({ line_user_id: gid, name: e.name, display_name: e.name, role: 'golfer', handicap_index: e.num, trgg_handicap: e.num, profile_data: { handicap: e.num, is_manual_entry: true }, society_name: 'Travellers Rest Golf Group' });
+      newProf.push({ line_user_id: gid, name: e.name, display_name: e.name, role: 'golfer', trgg_handicap: e.num, profile_data: { handicap: e.num, is_manual_entry: true }, society_name: 'Travellers Rest Golf Group' });
       newMem.push({ id: crypto.randomUUID(), society_id: SID, golfer_id: gid, role: 'member', status: 'active', joined_at: stamp });
       shRows.push({ golfer_id: gid, society_id: SID, handicap_index: e.num, calculation_method: 'TRGG-masterscoreboard', last_calculated_at: stamp });
       const rows = memByKey[e.key] || [];
@@ -224,9 +221,7 @@
     await Promise.all(c.map(async u => {
       const r = await rest(`user_profiles?line_user_id=eq.${encodeURIComponent(u.id)}`, {
         method: 'PATCH', headers: { Prefer: 'return=minimal' },
-        body: JSON.stringify(u.keepWhs
-          ? { trgg_handicap: u.hcp, profile_data: u.pd }
-          : { handicap_index: u.hcp, trgg_handicap: u.hcp, profile_data: u.pd })
+        body: JSON.stringify({ trgg_handicap: u.hcp, profile_data: u.pd })
       });
       if (!r.ok) profErr++;
     }));

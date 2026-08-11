@@ -123,6 +123,7 @@
     const S = {
         rounds: [],        // newest first, enriched with .diff .scramble .tee ratings
         universal: null,   // { handicap_index, calculation_method, rounds_count }
+        societies: [],     // { id, name, hcp, method, member, status } per society
         currentIndex: null,
         method: null,      // 'ANCHORED' | 'WHS-8of20' | null
         lens: null,        // whsLens over eligible diffs
@@ -143,7 +144,7 @@
         const db = window.SupabaseDB && window.SupabaseDB.client;
         if (!uid || !db) throw new Error('No user or database connection');
 
-        const [roundsRes, uniRes] = await Promise.all([
+        const [roundsRes, uniRes, socRes, memRes] = await Promise.all([
             db.from('rounds').select('*')
                 .eq('golfer_id', uid)
                 .eq('status', 'completed')
@@ -155,10 +156,41 @@
                 .select('handicap_index, calculation_method, rounds_count, updated_at')
                 .eq('golfer_id', uid)
                 .is('society_id', null)
-                .maybeSingle()
+                .maybeSingle(),
+            db.from('society_handicaps')
+                .select('society_id, handicap_index, calculation_method')
+                .eq('golfer_id', uid)
+                .not('society_id', 'is', null),
+            db.from('society_members')
+                .select('society_id, status')
+                .eq('golfer_id', uid)
         ]);
 
         if (roundsRes.error) throw roundsRes.error;
+
+        // Societies: union of handicap rows and membership rows, named via society_profiles
+        const socHcp = (socRes && !socRes.error ? socRes.data : []) || [];
+        const socMem = (memRes && !memRes.error ? memRes.data : []) || [];
+        const socIds = Array.from(new Set(
+            socHcp.map(r => String(r.society_id)).concat(socMem.map(r => String(r.society_id)))
+        )).filter(id => id && id !== 'null');
+        const socNames = {};
+        if (socIds.length) {
+            try {
+                const nr = await db.from('society_profiles').select('id, society_name').in('id', socIds);
+                (nr.data || []).forEach(p => { socNames[String(p.id)] = p.society_name; });
+            } catch (e) { /* names are best-effort */ }
+        }
+        const memBy = {}; socMem.forEach(r => { memBy[String(r.society_id)] = r; });
+        const hcpBy = {}; socHcp.forEach(r => { hcpBy[String(r.society_id)] = r; });
+        S.societies = socIds.map(id => ({
+            id,
+            name: socNames[id] || 'Society',
+            hcp: hcpBy[id] ? hcpBy[id].handicap_index : null,
+            method: hcpBy[id] ? String(hcpBy[id].calculation_method || '') : '',
+            member: !!memBy[id],
+            status: memBy[id] ? String(memBy[id].status || '') : ''
+        })).sort((a, b) => a.name.localeCompare(b.name));
 
         S.rounds = (roundsRes.data || []).map(r => {
             const { cr, slope } = ratingForTee(r.tee_marker);
@@ -370,8 +402,26 @@
         const anchoredLive = S.method !== 'WHS-8OF20';
         const methodLabel = S.method || (S.currentIndex != null ? 'PROFILE' : 'NO INDEX');
 
+        // Society memberships + society handicaps (Pete 2026-08-11: the ledger must list
+        // the societies a player belongs to alongside the society handicap for each)
+        const socHtml = (S.societies && S.societies.length)
+            ? `<div class="hl-sec">
+                <div class="hl-sechead">SOCIETIES · ${S.societies.length}</div>
+                <div class="hl-card" style="padding:0">
+                    ${S.societies.map(s => `
+                    <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid rgba(148,163,184,.12)">
+                        <div style="flex:1;min-width:0">
+                            <div style="font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.name)}</div>
+                            <div style="font-size:11px;color:#64748b;letter-spacing:.06em">${s.member ? (s.status && s.status.toLowerCase() !== 'active' ? esc(s.status.toUpperCase()) : 'MEMBER') : 'HANDICAP ONLY'}</div>
+                        </div>
+                        ${/manual/i.test(s.method) ? '<span class="hl-chip amber">MANUAL</span>' : ''}
+                        <div style="font-size:20px;font-weight:800;color:${GREEN}">${s.hcp != null ? fmtIdx(Number(s.hcp)) : '—'}</div>
+                    </div>`).join('')}
+                </div>
+            </div>` : '';
+
         if (!n) {
-            m.innerHTML = `<div class="hl-wrap">${headHtml(methodLabel)}<div class="hl-empty">No completed rounds with a tee marker yet.<br>Post rounds in Live Scoring and the ledger builds itself.</div></div>`;
+            m.innerHTML = `<div class="hl-wrap">${headHtml(methodLabel)}${socHtml}<div class="hl-empty">No completed rounds with a tee marker yet.<br>Post rounds in Live Scoring and the ledger builds itself.</div></div>`;
             wireHead(m);
             return;
         }
@@ -446,6 +496,8 @@
                     </div>
                 </div>
             </div>
+
+            ${socHtml}
 
             <div class="hl-sec">
                 <div class="hl-sechead">LAST ${n} ROUNDS · BEST ${lens ? lens.use : 0} COUNT</div>

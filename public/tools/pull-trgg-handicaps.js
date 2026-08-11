@@ -40,7 +40,7 @@
   const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
   const KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
   const SID = '7c0e4b72-d925-44bc-afda-38259a7ba346'; // Travellers Rest Golf Group
-  const VERSION = 'v783';
+  const VERSION = 'v784';
 
   const H = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };
   const log = (...a) => console.log('[TRGG pull]', ...a);
@@ -97,7 +97,16 @@
   log(`puller ${VERSION} — scraped ${entries.length} players. Sample:`);
   console.table(entries.slice(0, 12).map(e => ({ name: e.name, handicap: e.num })));
 
-  if (!confirm(`Scraped ${entries.length} players from masterscore — puller ${VERSION}.\n\n` +
+  // The full TRGG handicap list is ~1,180 rows. A fraction of that means the page is a
+  // division view / search / paginated tail — the 2026-08-11 run silently updated only
+  // surnames Pull→Z (282 rows) because that's all the page had. Warn LOUDLY; a partial
+  // run is still safe (only the players on the page are updated, the rest keep old values).
+  const partialWarn = entries.length < 600
+    ? `⚠️ ONLY ${entries.length} ROWS ON THIS PAGE — the full TRGG list is ~1,180.\n` +
+      `This looks like a filtered, searched or paginated view. Only the players on THIS\n` +
+      `page will be updated; everyone else keeps their old handicap.\n` +
+      `Open the FULL Handicap List (or run this once on every page).\n\n` : '';
+  if (!confirm(partialWarn + `Scraped ${entries.length} players from masterscore — puller ${VERSION}.\n\n` +
       entries.slice(0, 6).map(e => `  ${e.name} — ${e.num}`).join('\n') +
       `\n  …\n\nApply these to MyCaddiPro now?`)) { log('Cancelled — nothing written.'); return; }
 

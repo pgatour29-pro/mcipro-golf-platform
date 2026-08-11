@@ -118161,6 +118161,9 @@ class GolferEventsManager {
         if (s2) { try { pool = this._scramble2Eligible(others, ctx.myId) || []; } catch (e) { pool = others; } }
         if (!pool.length) return;
         const assigned = this._partnerAssignedIds(ctx.pairing || null);
+        // Quick-reg only opens for the UNREGISTERED (registered taps route to editMyRegistration),
+        // so the current user can't be in any unit — every unit member is locked here.
+        const unitLocked = this._partnerUnitLockedIds(others, ctx.myId);
         const esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
         const hcpTag = function (r) {
             return (r.handicap !== null && r.handicap !== undefined && r.handicap !== '')
@@ -118169,7 +118172,8 @@ class GolferEventsManager {
         const inGrpTag = '<span class="h">' + esc(_lvT('qreg.ingroup', 'In group')) + '</span>';
         const chips = pool.map(r => {
             if (s2) return '<label class="qr-pch"><input type="radio" name="qrS2Partner" value="' + esc(r.playerId) + '"><span data-golfer-av="' + esc(r.playerId) + '" data-golfer-av-nm="' + esc(r.playerName) + '" data-golfer-av-sz="18">' + esc(r.playerName) + '</span>' + hcpTag(r) + '</label>';
-            const grouped = assigned.has(String(r.playerId)) || assigned.has(String(r.id));
+            const grouped = assigned.has(String(r.playerId)) || assigned.has(String(r.id)) ||
+                unitLocked.has(String(r.playerId)) || unitLocked.has(String(r.id));
             return '<label class="qr-pch' + (grouped ? ' is-grp' : '') + '"><input type="checkbox" class="qr-pref" value="' + esc(r.id) + '" data-name="' + esc(r.playerName) + '"' + (grouped ? ' disabled' : ' onchange="GolferEventsSystem._qrLimit(this)"') + '><span data-golfer-av="' + esc(r.playerId) + '" data-golfer-av-nm="' + esc(r.playerName) + '" data-golfer-av-sz="18">' + esc(r.playerName) + '</span>' + hcpTag(r) + (grouped ? inGrpTag : '') + '</label>';
         }).join('');
         slot.style.cssText = 'padding:0 18px;';
@@ -120425,6 +120429,24 @@ class GolferEventsManager {
         return set;
     }
 
+    // Pete (2026-08-11): players already locked into a play-together unit (someone's partner picks
+    // or a host's booking party) are off the menu for everyone OUTSIDE that unit — same "In group"
+    // gray as a seated player. Units CONTAINING me stay tappable so editing my own picks works.
+    _partnerUnitLockedIds(regs, myId) {
+        const set = new Set();
+        try {
+            if (!window.PlayTogetherUnits) return set;
+            (PlayTogetherUnits.units(regs || [], regs || []) || []).forEach(u => {
+                if (u.some(m => String(m.playerId) === String(myId))) return;
+                u.forEach(m => {
+                    if (m.playerId != null && m.playerId !== '') set.add(String(m.playerId));
+                    if (m.id != null && m.id !== '') set.add(String(m.id));
+                });
+            });
+        } catch (e) {}
+        return set;
+    }
+
     populatePartnerPreferences() {
         const container = document.getElementById('partnerPrefsContainer');
         const registrations = this.currentEventRegistrations || [];
@@ -120496,11 +120518,13 @@ class GolferEventsManager {
         } catch (e) {}
 
         // SCV3G: tappable player chips (frame 2), not a checkbox list. Players already placed in a
-        // saved tee-sheet group are grayed out — picking them would do nothing.
+        // saved tee-sheet group OR spoken for by another play-together unit are grayed out.
         const assigned = this._partnerAssignedIds();
+        const unitLocked = this._partnerUnitLockedIds(registrations, currentUserId);
         const inGrpTag = _lvT('qreg.ingroup', 'In group');
         container.innerHTML = otherPlayers.map(reg => {
-            const grouped = assigned.has(String(reg.playerId)) || assigned.has(String(reg.id));
+            const grouped = assigned.has(String(reg.playerId)) || assigned.has(String(reg.id)) ||
+                unitLocked.has(String(reg.playerId)) || unitLocked.has(String(reg.id));
             return `
             <label class="scv3g-pch${grouped ? ' is-grp' : ''}">
                 <input type="checkbox" class="partner-pref-checkbox" value="${reg.id}" data-name="${reg.playerName}"${grouped ? ' disabled' : (myPicked.has(String(reg.id)) ? ' checked' : '')}>

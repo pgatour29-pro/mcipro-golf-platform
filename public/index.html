@@ -105527,11 +105527,28 @@ const TRGGHandicapPaste = {
         const byOrd={}; Object.keys(byKey).forEach(k=>byKey[k].forEach(p=>{ const o=ordKey(p.name); if(o) (byOrd[o]=byOrd[o]||[]).push(p); }));
         const usedIds=new Set(); const exactPick={};
         for(const e of entries){ if(aliasMap[e.key]) continue; const cands=byOrd[ordKey(e.name)]||[]; const p=cands.find(x=>!usedIds.has(x.line_user_id)); if(p){ usedIds.add(p.line_user_id); exactPick[e.name]=p; } }
+        // One aliased golfer, several list rows (both name orders of a merged pair): keep the row
+        // whose raw name matches the profile's own order, drop the rest. Duplicate golfer_ids in a
+        // single upsert batch abort the WHOLE write ("ON CONFLICT DO UPDATE command cannot affect
+        // row a second time" — Pete's paste, 2026-08-11); the bookmarklet got this guard in v781,
+        // this path didn't (the four-entry-points trap).
+        {
+            const byAlias={};
+            entries.forEach(e=>{ const id=aliasMap[e.key]; if(id) (byAlias[id]=byAlias[id]||[]).push(e); });
+            Object.keys(byAlias).forEach(id=>{
+                const group=byAlias[id]; if(group.length<2) return;
+                const p=profById[id];
+                const best=(p && group.find(e=>ordKey(e.name)===ordKey(p.name))) || group[0];
+                group.forEach(e=>{ if(e!==best) e._skip=true; });
+            });
+        }
         for(const e of entries){
+            if(e._skip) continue;   // duplicate list row of an aliased golfer — kept row carries the value
             // Known alias → update that real account directly (no dup)
             const aliasId = aliasMap[e.key];
             if(aliasId){
                 if(lockedIds.has(aliasId)){ lockedSkipped++; continue; }   // manual override — leave it alone
+                usedIds.add(aliasId);
                 const ap = profById[aliasId];
                 const apd = Object.assign({}, (ap && ap.profile_data) || {}); apd.handicap=e.num;
                 profUpd.push({ id:aliasId, hcp:e.num, pd:apd });
@@ -105569,7 +105586,10 @@ const TRGGHandicapPaste = {
             let rosterLinked=0;
             for(const c of chunk(memLink,25)){ try{ const rs=await Promise.all(c.map(l=> sb.from('trgg_members').update({ matched_user_id:l.gid }).eq('id', l.rowId).is('matched_user_id', null).select('id'))); rs.forEach(r=>{ if(r&&r.data&&r.data.length) rosterLinked++; }); }catch(e){ console.warn('[TRGG Paste] roster link', e); } }
             for(const c of chunk(profUpd,25)){ await Promise.all(c.map(u=> sb.from('user_profiles').update({ trgg_handicap:u.hcp, profile_data:u.pd }).eq('line_user_id', u.id))); }
-            for(const c of chunk(shRows,300)){ const r=await sb.from('society_handicaps').upsert(c, { onConflict:'golfer_id,society_id' }); if(r.error) throw r.error; }
+            // Final safety net: one row per golfer no matter how entries resolved — a repeated
+            // golfer_id makes Postgres reject the whole upsert batch.
+            const shByGolfer={}; shRows.forEach(r=>{ shByGolfer[r.golfer_id]=r; });
+            for(const c of chunk(Object.values(shByGolfer),300)){ const r=await sb.from('society_handicaps').upsert(c, { onConflict:'golfer_id,society_id' }); if(r.error) throw r.error; }
             // registrations store a handicap SNAPSHOT — push the new master handicaps onto upcoming events too
             let regSync = 0; try { const rs = await sb.rpc('sync_upcoming_trgg_reg_handicaps'); regSync = (rs && rs.data) || 0; } catch(e){ console.warn('[TRGG Paste] reg sync', e); }
             set('Done! '+matched+' updated, '+created+' new'+(rosterLinked?(', '+rosterLinked+' linked to member roster'):'')+(lockedSkipped?(', '+lockedSkipped+' locked (kept manual)'):'')+(parseErrors?(' ('+parseErrors+' skipped)'):'')+' - '+entries.length+' players, '+regSync+' upcoming registrations synced'+(created>rosterLinked?' · new names show in the TRGG Directory as non-members':''),'#059669');

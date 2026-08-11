@@ -40,7 +40,7 @@
   const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
   const KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
   const SID = '7c0e4b72-d925-44bc-afda-38259a7ba346'; // Travellers Rest Golf Group
-  const VERSION = 'v784';
+  const VERSION = 'v785';
 
   const H = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };
   const log = (...a) => console.log('[TRGG pull]', ...a);
@@ -164,6 +164,7 @@
     if (aliasId && profById[aliasId]) {
       if (lockedIds.has(aliasId)) { lockedSkipped++; continue; }   // manual override — leave it alone
       p = profById[aliasId];
+      usedIds.add(aliasId);   // later entries must not re-match this profile via exact/key rank
     } else {
       p = exactPick[e.name] || null;
       if (!p) { const list = byKey[e.key] || []; let i = used[e.key] || 0; while (i < list.length) { const c = list[i++]; if (!usedIds.has(c.line_user_id)) { p = c; break; } } used[e.key] = i; if (p) usedIds.add(p.line_user_id); }
@@ -236,7 +237,10 @@
     }));
   }
   let shErr = 0;
-  for (const c of chunk(shRows, 300)) {
+  // One row per golfer — a repeated golfer_id aborts the whole upsert batch
+  // ("ON CONFLICT DO UPDATE command cannot affect row a second time").
+  const shByGolfer = {}; shRows.forEach(r => { shByGolfer[r.golfer_id] = r; });
+  for (const c of chunk(Object.values(shByGolfer), 300)) {
     const r = await rest('society_handicaps?on_conflict=golfer_id,society_id', {
       method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(c)
     });

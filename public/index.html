@@ -83521,7 +83521,15 @@ class LiveScorecardSystem {
                 }
             });
 
-            grid.innerHTML = this.players.map(p => {
+            // SOLO VIEW (Pete 2026-08-12): a player who owns ONLY their own card doesn't need
+            // to look at three cards they can't type on — show just theirs. The host, who owns
+            // several, still sees the whole group (including the red ones they've handed out).
+            const _meDev = this._deviceUser();
+            const _owned = this.players.filter(p => this._ownsCard(p.id));
+            const _soloView = _owned.length === 1 && String(_owned[0].id) === String(_meDev);
+            const cardPlayers = _soloView ? _owned : this.players;
+
+            grid.innerHTML = cardPlayers.map(p => {
                 const score = this.getPlayerScore(p.id, this.currentHole);
                 const total = this.getPlayerTotal(p.id);
                 const isActive = p.id === this.currentPlayerId;
@@ -85459,6 +85467,48 @@ class LiveScorecardSystem {
                     .eq('id', scId);
             }
         } catch (e) { console.warn('[LiveScorecard] card owner save failed (non-fatal):', e); }
+    }
+    // Apply a controlled_by change that arrived from another device (realtime payload).
+    _applyOwnerFromRow(row) {
+        if (!row || !row.player_id) return false;
+        this.cardOwner = this.cardOwner || {};
+        const next = row.controlled_by || null;
+        if (String(this.cardOwner[row.player_id] || '') === String(next || '')) return false;
+        this.cardOwner[row.player_id] = next;
+        this._syncSelfScoringFromOwnership();
+        // Never yank the keypad out from under a half-typed score.
+        if (!this._saving && this.currentScore === '') {
+            if (!this._ownsCard(this.currentPlayerId)) {
+                const nextCtl = this.players.find(p => this._ownsCard(p.id));
+                if (nextCtl) { this.currentPlayerId = nextCtl.id; }
+            }
+            this.renderHole();
+        }
+        return true;
+    }
+    // Re-pull every card's owner for this group (recovery path — realtime can be missed while
+    // the phone is locked, and a stale owner map shows a card as green in two places).
+    async _refreshCardOwners() {
+        try {
+            const sb = window.SupabaseDB?.client;
+            const ids = Object.values(this.scorecards || {}).filter(id => id && !String(id).startsWith('local_'));
+            if (!sb || !ids.length) return false;
+            const { data: rows } = await sb.from('scorecards').select('player_id, controlled_by').in('id', ids);
+            let changed = false;
+            (rows || []).forEach(r => {
+                const next = r.controlled_by || null;
+                if (String(this.cardOwner?.[r.player_id] || '') !== String(next || '')) {
+                    this.cardOwner = this.cardOwner || {};
+                    this.cardOwner[r.player_id] = next;
+                    changed = true;
+                }
+            });
+            if (changed) {
+                this._syncSelfScoringFromOwnership();
+                if (!this._saving && this.currentScore === '') this.renderHole();
+            }
+            return changed;
+        } catch (e) { return false; }
     }
     // Tapping Start Play on your own phone claims YOUR card — nothing else moves.
     async _claimOwnCard() {
@@ -94795,6 +94845,9 @@ class LiveScorecardSystem {
                 if (!this.scoresCache[pid]) this.scoresCache[pid] = {};
                 if (this.scoresCache[pid][r.hole_number] !== r.gross_score) { this.scoresCache[pid][r.hole_number] = r.gross_score; changed = true; }
             });
+            // Ownership can change while this phone is locked (realtime is dropped, and those
+            // events never replay) — re-pull it alongside the scores.
+            try { await this._refreshCardOwners(); } catch (e) {}
             const advanced = this._catchUpAdvance();
             if (changed && !advanced) { this.renderHole(); this.debouncedRefreshLeaderboard(); }
             console.log('[LiveScorecard] 🔄 resync (' + (reason || 'visibility') + '): changed=' + changed + ', advanced=' + advanced);
@@ -94903,7 +94956,11 @@ class LiveScorecardSystem {
                 schema: 'public',
                 table: 'scorecards',
                 filter: `group_id=eq.${this.groupId}`
-            }, () => {
+            }, (payload) => {
+                // OWNERSHIP (v887): when a player claims their own card, controlled_by changes
+                // on THEIR device — this is how every other device learns about it. Without it
+                // the host's copy stays green and the card looks typeable in two places.
+                try { this._applyOwnerFromRow(payload && payload.new); } catch (e) {}
                 // Live rules/status sync (Pete: no close-and-reopen for fixes):
                 // match config or card status changed elsewhere — re-pull the
                 // shared config and refresh the boards in place.

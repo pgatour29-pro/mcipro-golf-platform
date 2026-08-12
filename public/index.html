@@ -83558,7 +83558,7 @@ class LiveScorecardSystem {
                 const mine = this._ownsCard(p.id);
                 const activeHere = mine && isActive;
                 return `
-                    <div class="sc-player-card scv3-pc ${mine ? (activeHere ? 'is-active' : (needsScore ? 'needs-score' : 'is-done')) : 'is-locked'}" onclick="LiveScorecardManager.tapPlayerCard('${p.id}')">
+                    <div class="sc-player-card scv3-pc ${mine ? (activeHere ? 'is-active' : (needsScore ? 'needs-score' : 'is-done')) : 'is-locked'}" data-pid="${p.id}" onclick="LiveScorecardManager.tapPlayerCard('${p.id}')">
                         ${activeHere ? '<span class="scv3-pc-tag">SCORING</span>' : (!mine ? '<span class="scv3-pc-tag locked">THEIR PHONE</span>' : '')}
                         <span class="scv3-pc-pos">${posBadge}</span>
                         <div class="sc-player-name" title="${p.name}">${firstName}</div>
@@ -84746,10 +84746,14 @@ class LiveScorecardSystem {
             else positionMap[pt.id] = idx + 1;
         });
 
-        // Update each player card in-place
+        // Update each player card in-place.
+        // v888: look the card up by data-pid, NEVER by grid index. In solo view (a player who
+        // owns only their own card) the grid holds ONE card while players[] holds the whole
+        // four-ball, so grid.children[i] paired the wrong player with the wrong cube — it
+        // painted the host's score and position into the viewer's own card.
         for (var i = 0; i < this.players.length; i++) {
             var p = this.players[i];
-            var card = grid.children[i];
+            var card = grid.querySelector('[data-pid="' + String(p.id).replace(/"/g, '\\"') + '"]');
             if (!card) continue;
 
             var pScore = this.getPlayerScore(p.id, this.currentHole);
@@ -85674,6 +85678,25 @@ class LiveScorecardSystem {
         const savingPlayerId = this.currentPlayerId;
         const savingHole = this.currentHole;
 
+        // OWNERSHIP HARD STOP (v888). enterDigit already refuses red cards, but that only
+        // guards the KEYPAD — a stale owner map, a queued tap, or a rotation that landed on a
+        // card claimed a moment ago could still reach the write and clobber the owner's score.
+        // Bangpra 2026-08-12 hole 4: Joe entered 6 on his phone, the host's device still
+        // believed it owned Joe's cube and wrote 5 straight over it. The write is the last
+        // place that can stop it, so it stops here too — and rotation moves on rather than
+        // parking on a card this device cannot write.
+        if (!this._ownsCard(savingPlayerId) && !this.scoringFormats.includes('scramble')) {
+            const _sp = this.players.find(p => p.id === savingPlayerId);
+            this.currentScore = '';
+            this._saving = false;
+            const _next = this.players.find(p => this._ownsCard(p.id));
+            if (_next) { this.currentPlayerId = _next.id; }
+            this.renderHole();
+            NotificationManager.show(`${_sp?.name || 'That player'} is scoring on their own phone — not saved`, 'warning');
+            try { this._refreshCardOwners(); } catch (e) {}
+            return;
+        }
+
         // SCRAMBLE MODE: Apply score to team players
         if (this.scoringFormats.includes('scramble')) {
             // Determine which players to apply score to
@@ -85857,10 +85880,14 @@ class LiveScorecardSystem {
             requestAnimationFrame(() => {
                 const grid = document.getElementById('groupScorecardGrid');
                 if (grid) {
-                    // SCV3: state via classes — inline paints would override the design layer
+                    // SCV3: state via classes — inline paints would override the design layer.
+                    // v888: read the pid off the card itself; players[i] does not line up with
+                    // grid.children[i] in solo view. A red (locked) card keeps its state — it
+                    // belongs to another device and must never be repainted as scorable here.
                     for (let i = 0; i < grid.children.length; i++) {
                         var box = grid.children[i];
-                        var pid = this.players[i]?.id;
+                        var pid = box.getAttribute('data-pid');
+                        if (!pid || box.classList.contains('is-locked')) continue;
                         var hasScore = !!this.scoresCache[pid]?.[this.currentHole];
                         box.style.cssText = '';
                         box.classList.remove('is-active', 'needs-score', 'is-done');
@@ -85905,7 +85932,8 @@ class LiveScorecardSystem {
             const grid = document.getElementById('groupScorecardGrid');
             if (grid) {
                 // SCV3: swap state classes (inline paints would override the design layer)
-                const lastBox = grid.children[currentIndex];
+                // v888: by data-pid, not index — solo view renders one card, not players.length.
+                const lastBox = grid.querySelector('[data-pid="' + String(savingPlayerId).replace(/"/g, '\\"') + '"]');
                 if (lastBox) {
                     lastBox.style.cssText = '';
                     lastBox.classList.remove('is-active', 'needs-score');

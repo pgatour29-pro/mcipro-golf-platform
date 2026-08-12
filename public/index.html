@@ -85450,12 +85450,28 @@ class LiveScorecardSystem {
         const id = String(playerId || '');
         return /^U[0-9a-f]{32}$/i.test(id) || /^(GOOGLE|KAKAO)-/i.test(id);
     }
+    // v891: FAIL CLOSED. This used to return true for undefined AND null alike, so a device
+    // whose owner map hadn't loaded owned EVERY card. Joe's phone restored a pre-v890 saved
+    // state (which didn't persist cardOwner), read every card as unknown, and could open and
+    // type Gilbert's card. Two different things were being conflated:
+    //   key ABSENT  → ownership not loaded on this device yet ⇒ NOT mine, and go refetch.
+    //   value null  → loaded, and the DB genuinely has no owner (a pre-v884 round) ⇒ anyone,
+    //                 so those rounds don't brick mid-play.
     _ownsCard(playerId) {
-        const owner = this.cardOwner?.[playerId];
-        // Legacy rounds started before ownership stamping: owner unknown → don't brick them,
-        // keep the old any-device behaviour until the card is explicitly claimed.
-        if (owner === undefined || owner === null || owner === '') return true;
+        if (!this.cardOwner || !Object.prototype.hasOwnProperty.call(this.cardOwner, playerId)) {
+            this._ownerRefetchNeeded();
+            return false;
+        }
+        const owner = this.cardOwner[playerId];
+        if (owner === null || owner === '') return true;   // confirmed unowned (legacy round)
         return String(owner) === this._deviceUser();
+    }
+    // Debounced self-heal: an unknown owner means this device is running blind, so pull the
+    // real map rather than sit there fail-closed.
+    _ownerRefetchNeeded() {
+        if (this._ownerRefetchAt && (Date.now() - this._ownerRefetchAt) < 4000) return;
+        this._ownerRefetchAt = Date.now();
+        Promise.resolve().then(() => this._refreshCardOwners()).catch(() => {});
     }
     // Mirror ownership into selfScoring ("cards this device is NOT responsible for") so every
     // existing every()-check on pace/rotation stays correct without touching those call sites.

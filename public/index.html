@@ -42533,7 +42533,10 @@ Waitlist (${waitlist.length} people):`;
                     // Messages — handled by existing message badge system
 
                     // Play Golf — active live round
-                    const hasActiveRound = window.liveScorecardInstance?.roundId && window.liveScorecardInstance?.players?.length > 0;
+                    // (v900) was window.liveScorecardInstance?.roundId — neither the global nor
+                    // the property exists, so the badge never showed. The manager's live-round
+                    // marker is LiveScorecardManager.groupId.
+                    const hasActiveRound = window.LiveScorecardManager?.groupId && window.LiveScorecardManager?.players?.length > 0;
                     const pgBadge = document.getElementById('playGolfBadge');
                     if (pgBadge) pgBadge.style.display = hasActiveRound ? 'flex' : 'none';
 
@@ -74057,6 +74060,9 @@ class SocietyGolfSupabase {
                 .select('*')
                 .eq('id', existing.id)
                 .single();
+            // (v900) tell the caller this card was REUSED, not created — startRound must
+            // not re-parent its group_id or steal its controlled_by (the group-clobber).
+            if (fullScorecard) fullScorecard._reused = true;
             return fullScorecard;
         }
 
@@ -75103,6 +75109,10 @@ class LiveScorecardSystem {
                 Promise.resolve(this._claimOwnCard())
                     .then(() => { if (this._snapToLiveHole()) this.renderHole(); })
                     .catch(() => {});
+                // (v900) team/game configs (scramble pairs, waltz, match play teams) are not
+                // part of the DB-join state — without this pull the joiner scored an
+                // undifferentiated round for up to ~5 min until the sync loop's 4th tick.
+                setTimeout(() => { try { Promise.resolve(this.loadMatchConfigFromDB()).catch(() => {}); } catch (e) {} }, 0);
             }
         } catch (e) { /* ownership is non-fatal — never block a restore */ }
         this.groupId = state.groupId;
@@ -75386,6 +75396,10 @@ class LiveScorecardSystem {
     async _findMyLiveRoundInDb() {
         try {
             const me = this._deviceUser();
+            // (v900) the page-load caller fires 2s after DOMContentLoaded — on a slow
+            // on-course connection the client can still be initializing, and bailing out
+            // here silently cost the golfer their only join-the-round prompt.
+            try { await window.SupabaseDB?.waitForReady?.(); } catch (e) {}
             const sb = window.SupabaseDB?.client;
             if (!me || !sb) return null;
             const since = new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString();
@@ -75420,7 +75434,10 @@ class LiveScorecardSystem {
 
             const players = [], scorecards = {}, cardOwner = {};
             cards.forEach(c => {
-                players.push({ id: c.player_id, name: c.player_name, handicap: (c.playing_handicap != null ? c.playing_handicap : c.handicap) });
+                // (v900) lineUserId powers the post-round handicap sync/adjust paths —
+                // without it every DB-joined player was silently skipped there. player_id
+                // IS the login id (same as the normal add path).
+                players.push({ id: c.player_id, name: c.player_name, lineUserId: c.player_id, handicap: (c.playing_handicap != null ? c.playing_handicap : c.handicap) });
                 scorecards[c.player_id] = c.id;
                 cardOwner[c.player_id] = c.controlled_by || null;
             });
@@ -75441,12 +75458,24 @@ class LiveScorecardSystem {
                 });
             } catch (e) {}
 
-            const holeOrder = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
-            const idx = Math.min(Math.max(holeOrder.indexOf(maxHole || 1), 0), 17);
+            // (v900) back-nine start: if the group has only scored holes 10-18 so far, the
+            // round started on the back — a joiner with a 1..18 hole order would walk the
+            // wrong nine. Early in a round (when takeovers happen) this heuristic is exact.
+            const scoredHoles = new Set();
+            Object.values(scoresCache).forEach(ph => Object.keys(ph).forEach(h => scoredHoles.add(parseInt(h, 10))));
+            const backNineStart = scoredHoles.size > 0 && [...scoredHoles].every(h => h >= 10);
+            const holeOrder = backNineStart
+                ? [10,11,12,13,14,15,16,17,18,1,2,3,4,5,6,7,8,9]
+                : [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
+            const idx = Math.min(Math.max(holeOrder.indexOf(maxHole || holeOrder[0]), 0), 17);
             return {
                 players, scorecards, cardOwner, courseData, scoringFormats, scoresCache,
                 groupId, eventId: head.event_id || null, courseId: head.course_id,
                 gameCode: head.game_code || null, selectedTeeMarker: teeMarker,
+                startingNine: backNineStart ? 'back' : 'front',
+                // (v900) without roundType a joiner who FINISHES the round saved it to
+                // history as a practice round even when it was a society event.
+                roundType: head.event_id ? 'society' : 'practice',
                 holeOrder, currentHole: holeOrder[idx], currentHoleIndex: idx,
                 currentPlayerId: me, savedAt: new Date().toISOString(), _fromDb: true
             };
@@ -82521,6 +82550,46 @@ class LiveScorecardSystem {
 
         try {
 
+        // ── TAKEOVER GUARD (v900) ──────────────────────────────────────────────────
+        // Tapping Start Round while a live round for this golfer already exists must
+        // JOIN that round, never re-create it. The page-load resume check runs only
+        // once (2s after DOMContentLoaded) — a phone that was already sitting on the
+        // setup screen when the host started the round sails past it, and the fresh
+        // start path then reuses the whole group's in_progress cards, re-parents them
+        // to a new group_id and stamps controlled_by = this device: every cube on the
+        // host's phone goes RED mid-round (the standing group-clobber, hit live at
+        // Phoenix 2026-07-02 and Bangpra 2026-08-12).
+        try {
+            const _lsLive = this.loadRoundState();
+            let _live = (_lsLive && _lsLive.players && _lsLive.players.length) ? _lsLive : null;
+            if (!_live) {
+                const _dbLive = await this._findMyLiveRoundInDb();
+                const _setupEventId = document.getElementById('scorecardEventSelect')?.value || null;
+                // Join a DB round when it's a GROUP round (someone is scoring for me) or
+                // it's MY OWN round for the event currently selected (crash-resume). A
+                // solo practice card never hijacks an intentional fresh start.
+                if (_dbLive && _dbLive.players && _dbLive.players.length &&
+                    (_dbLive.players.length > 1 || (_dbLive.eventId && _dbLive.eventId === _setupEventId))) {
+                    _live = _dbLive;
+                }
+            }
+            if (_live) {
+                clearTimeout(timeoutId);
+                removeLoading();
+                console.log('[LiveScorecard] 🔗 Start Round found a live round — joining it instead of re-creating:', _live.groupId);
+                this.restoreRoundState(_live);
+                this.showLiveScorecard();
+                NotificationManager.show('Rejoined your live round', 'success');
+                setTimeout(() => {
+                    const g = document.getElementById('groupScorecardGrid');
+                    if (g && g.children.length === 0 && this.players.length > 0) this.renderHole();
+                }, 400);
+                return;
+            }
+        } catch (joinErr) {
+            console.warn('[LiveScorecard] Live-round join check failed — continuing with fresh start:', joinErr);
+        }
+
         // FIX: Get tee marker BEFORE loading course data
         const teeMarkerEl = document.querySelector('input[name="teeMarker"]:checked');
         if (!teeMarkerEl) {
@@ -83027,43 +83096,36 @@ class LiveScorecardSystem {
         // Try to create scorecards online, fall back to offline mode if needed
         let isOfflineMode = false;
 
-        // Cleanup: Abandon any leftover in_progress scorecards for these players
-        // (prevents ghost rounds from showing up on live leaderboards)
-        try {
-            const loggedInPlayerId = this.players.find(p => p.isLoggedInUser)?.id;
-            if (loggedInPlayerId) {
-                const { data: staleCards } = await window.SupabaseDB.client
-                    .from('scorecards')
-                    .select('id, group_id')
-                    .eq('player_id', loggedInPlayerId)
-                    .eq('status', 'in_progress')
-                    .neq('group_id', this.groupId);
-
-                if (staleCards && staleCards.length > 0) {
-                    const staleGroupIds = [...new Set(staleCards.map(c => c.group_id).filter(Boolean))];
-                    console.log(`[LiveScorecard] 🧹 Cleaning up ${staleCards.length} stale in_progress scorecards from ${staleGroupIds.length} old groups`);
-                    for (const gid of staleGroupIds) {
-                        await window.SupabaseDB.client
-                            .from('scorecards')
-                            .update({ status: 'abandoned' })
-                            .eq('group_id', gid)
-                            .eq('status', 'in_progress');
-                    }
-                }
-            }
-        } catch (cleanupErr) {
-            console.warn('[LiveScorecard] Stale scorecard cleanup failed (non-fatal):', cleanupErr);
-        }
+        // (v900) The "abandon leftover in_progress scorecards" block that lived here was
+        // dead code — it keyed on p.isLoggedInUser, which nothing ever sets — and if ever
+        // "fixed" it abandoned entire OLD GROUPS by group_id, which under the ownership
+        // model can nuke a live host's round. Removed; stale-card hygiene is the takeover
+        // guard at the top of startRound (join, don't re-create) + SQL sweeps.
 
         // Create all scorecards in PARALLEL for speed (was taking 2+ mins for 4 players!)
         try {
-            const scorecardPromises = this.players.map(async (player) => {
-                const scorecard = await window.SocietyGolfDB.createScorecard(
+            const createdCards = await Promise.all(this.players.map(async (player) => ({
+                player,
+                scorecard: await window.SocietyGolfDB.createScorecard(
                     this.eventId,
                     player.id,
                     player.handicap
-                );
+                )
+            })));
 
+            // GROUP ADOPTION (v900): if MY OWN card already lives in an in_progress group
+            // (crash-restart, or a takeover that slipped past the join guard), keep the
+            // round in THAT group instead of re-parenting every card to the freshly
+            // minted group id — re-parenting split the host's round live at Phoenix.
+            const _adoptMe = this._deviceUser();
+            const _myReused = createdCards.find(({ player, scorecard }) =>
+                scorecard && scorecard._reused && scorecard.group_id && String(player.id) === String(_adoptMe));
+            if (_myReused && _myReused.scorecard.group_id !== this.groupId) {
+                console.log('[LiveScorecard] 🔗 Adopting existing group of my reused card:', _myReused.scorecard.group_id);
+                this.groupId = _myReused.scorecard.group_id;
+            }
+
+            const scorecardPromises = createdCards.map(async ({ player, scorecard }) => {
                 // Update with group and course info
                 // Build match play configuration to save
                 const matchPlayConfig = {};
@@ -83084,24 +83146,36 @@ class LiveScorecardSystem {
                 // Get live spectating toggle value
                 const isLiveSpectatable = document.getElementById('liveSpectatingToggle')?.checked || false;
 
+                const updatePayload = {
+                    group_id: this.groupId,
+                    course_id: courseId,
+                    game_code: this.gameCode,
+                    course_name: this.courseData.name,
+                    tee_marker: teeMarker,
+                    player_name: player.name,
+                    scoring_format: JSON.stringify(this.scoringFormats),
+                    match_play_config: Object.keys(matchPlayConfig).length > 0 ? JSON.stringify(matchPlayConfig) : null,
+                    is_live_spectatable: isLiveSpectatable,  // NEW: Enable live spectating for public viewing
+                    // OWNERSHIP (2026-08-12): the device starting the round owns every card
+                    // until it hands one over. Without this stamp controlled_by stays NULL and
+                    // every device would show green — the accidental-entry hole we're closing.
+                    controlled_by: this._deviceUser() || null,
+                    control_taken_at: new Date().toISOString()
+                };
+                // OWNERSHIP PRESERVATION (v900): never steal a card another device already
+                // controls. A REUSED card carrying a real owner keeps that owner — only
+                // fresh or unowned cards get stamped with this device.
+                let cardOwnerId = updatePayload.controlled_by;
+                if (scorecard._reused && scorecard.controlled_by &&
+                    String(scorecard.controlled_by) !== String(updatePayload.controlled_by || '')) {
+                    delete updatePayload.controlled_by;
+                    delete updatePayload.control_taken_at;
+                    cardOwnerId = scorecard.controlled_by;
+                }
+
                 const { error: updateError } = await window.SupabaseDB.client
                     .from('scorecards')
-                    .update({
-                        group_id: this.groupId,
-                        course_id: courseId,
-                        game_code: this.gameCode,
-                        course_name: this.courseData.name,
-                        tee_marker: teeMarker,
-                        player_name: player.name,
-                        scoring_format: JSON.stringify(this.scoringFormats),
-                        match_play_config: Object.keys(matchPlayConfig).length > 0 ? JSON.stringify(matchPlayConfig) : null,
-                        is_live_spectatable: isLiveSpectatable,  // NEW: Enable live spectating for public viewing
-                        // OWNERSHIP (2026-08-12): the device starting the round owns every card
-                        // until it hands one over. Without this stamp controlled_by stays NULL and
-                        // every device would show green — the accidental-entry hole we're closing.
-                        controlled_by: this._deviceUser() || null,
-                        control_taken_at: new Date().toISOString()
-                    })
+                    .update(updatePayload)
                     .eq('id', scorecard.id);
 
                 if (updateError) {
@@ -83109,7 +83183,7 @@ class LiveScorecardSystem {
                     throw updateError;
                 }
 
-                return { playerId: player.id, scorecardId: scorecard.id };
+                return { playerId: player.id, scorecardId: scorecard.id, cardOwnerId };
             });
 
             // Wait for ALL scorecard creations in parallel (MUCH faster!)
@@ -83117,12 +83191,11 @@ class LiveScorecardSystem {
 
             // Store scorecard IDs
             this.cardOwner = this.cardOwner || {};
-            const _startOwner = this._deviceUser();
-            results.forEach(({ playerId, scorecardId }) => {
+            results.forEach(({ playerId, scorecardId, cardOwnerId }) => {
                 this.scorecards[playerId] = scorecardId;
-                // Mirror the controlled_by stamp written above so this device knows it owns
-                // every card immediately, without waiting for a re-read.
-                this.cardOwner[playerId] = _startOwner || null;
+                // Mirror the controlled_by stamps written above so this device knows what
+                // it owns immediately, without waiting for a re-read.
+                this.cardOwner[playerId] = cardOwnerId || null;
             });
             this._syncSelfScoringFromOwnership();
 
@@ -83311,7 +83384,7 @@ class LiveScorecardSystem {
                     if (resumed) {
                         // Jump to the first hole THIS device's own card hasn't scored yet, so a
                         // player taking over lands on the live hole (e.g. 7), not back on hole 1.
-                        const myId = window.Auth?.currentUserId || window.AppState?.currentUser?.lineUserId;
+                        const myId = this._deviceUser();
                         const myPlayer = this.players.find(p => p.id === myId) || this.players[0];
                         const myCache = this.scoresCache[myPlayer.id] || {};
                         const resumeIdx = this.holeOrder.findIndex(h => myCache[h] == null);
@@ -83606,29 +83679,9 @@ class LiveScorecardSystem {
             const _soloView = _mine.length > 0 && !_ownsOthers;
             const cardPlayers = _soloView ? _mine : this.players;
 
-            // DIAGNOSTIC (v895, Bangpra): a player's phone kept rendering another golfer's card
-            // and I could not reproduce it from this side. Log the actual decision inputs ONCE
-            // per round-load so the device itself says why. Remove once the cause is nailed.
-            try {
-                if (!this._soloDiagSent) {
-                    this._soloDiagSent = true;
-                    window.logClientError && window.logClientError('card_owner_diag', {
-                        message: 'soloView=' + _soloView + ' cards=' + cardPlayers.length,
-                        extra: {
-                            deviceUser: _meDev,
-                            authId: (window.Auth && window.Auth.currentUserId) || null,
-                            appStateId: (window.AppState && window.AppState.currentUser && window.AppState.currentUser.lineUserId) || null,
-                            lsId: (function(){ try { return localStorage.getItem('line_user_id'); } catch(e){ return null; } })(),
-                            groupId: this.groupId,
-                            players: this.players.map(p => ({ id: p.id, lu: p.lineUserId || null, n: p.name })),
-                            cardOwner: this.cardOwner || null,
-                            owns: this.players.filter(p => this._ownsCard(p.id)).map(p => p.name),
-                            mine: _mine.map(p => p.name),
-                            ownsOthers: _ownsOthers
-                        }
-                    });
-                }
-            } catch (e) {}
+            // (v900) v895 card_owner_diag instrumentation removed — the Bangpra cause was
+            // found via screenshot (restored currentPlayerId, fixed v896) and the diagnostic
+            // never returned a row.
 
             grid.innerHTML = cardPlayers.map(p => {
                 const score = this.getPlayerScore(p.id, this.currentHole);
@@ -85719,7 +85772,11 @@ class LiveScorecardSystem {
         }
         // OWNERSHIP GUARD (2026-08-12): a RED card belongs to another device. The keypad is
         // inert for it — this is the accidental-entry block. Tapping the red cube takes it back.
-        if (!this._ownsCard(this.currentPlayerId)) {
+        // (v900) scramble exempted to MATCH saveCurrentScore's guard: scramble scores the PAIR
+        // as one unit and render hard-selects players[0] — without the exemption the keypad
+        // was dead on any device that didn't own players[0]'s card while the save would
+        // have been allowed.
+        if (!this._ownsCard(this.currentPlayerId) && !this.scoringFormats.includes('scramble')) {
             const sp = this.players.find(x => x.id === this.currentPlayerId);
             NotificationManager.show((sp?.name || 'This player') + ' is scoring on their own phone — tap their red card to take it back', 'warning');
             return;
@@ -94981,7 +95038,13 @@ class LiveScorecardSystem {
                 }
                 // every ~5 min also re-pull shared match config (rules fixes)
                 this._syncTick = (this._syncTick || 0) + 1;
-                if (this._syncTick % 4 === 0) { try { await this.loadMatchConfigFromDB(); } catch (e) {} }
+                if (this._syncTick % 4 === 0) {
+                    try { await this.loadMatchConfigFromDB(); } catch (e) {}
+                    // (v900) also heal card ownership — a locked phone drops realtime and a
+                    // missed controlled_by flip never replays; without this a handover could
+                    // stay invisible until the next focus/visibility resync.
+                    try { await this._refreshCardOwners(); } catch (e) {}
+                }
             } catch (e) { /* transient network — next tick retries */ }
         }, 75000);
         console.log('[LiveSync] Reconciliation loop started (75s)');

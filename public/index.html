@@ -39357,22 +39357,27 @@ document.addEventListener('DOMContentLoaded', function() {
                         .like('line_user_id', 'U%');
 
                     if (hcpProfiles && hcpProfiles.length > 0) {
-                        // Also fetch society handicaps
+                        // Also fetch society handicaps — scoped to our players' ids, chunked:
+                        // society_handicaps has 2000+ rows and PostgREST caps any query at 1000
                         let societyHcpMap = {};
                         try {
-                            const { data: societyMembers } = await window.SupabaseDB.client
-                                .from('society_handicaps')
-                                .select('golfer_id, handicap_index')
-                                .not('handicap_index', 'is', null);
-                            if (societyMembers) {
-                                societyMembers.forEach(sm => {
-                                    const hcp = parseFloat(sm.handicap_index);
-                                    if (!isNaN(hcp)) {
-                                        if (societyHcpMap[sm.golfer_id] === undefined || hcp < societyHcpMap[sm.golfer_id]) {
-                                            societyHcpMap[sm.golfer_id] = hcp;
+                            const profileIds = hcpProfiles.map(p => p.line_user_id);
+                            for (let i = 0; i < profileIds.length; i += 100) {
+                                const { data: societyMembers } = await window.SupabaseDB.client
+                                    .from('society_handicaps')
+                                    .select('golfer_id, handicap_index')
+                                    .in('golfer_id', profileIds.slice(i, i + 100))
+                                    .not('handicap_index', 'is', null);
+                                if (societyMembers) {
+                                    societyMembers.forEach(sm => {
+                                        const hcp = parseFloat(sm.handicap_index);
+                                        if (!isNaN(hcp)) {
+                                            if (societyHcpMap[sm.golfer_id] === undefined || hcp < societyHcpMap[sm.golfer_id]) {
+                                                societyHcpMap[sm.golfer_id] = hcp;
+                                            }
                                         }
-                                    }
-                                });
+                                    });
+                                }
                             }
                         } catch(e) { /* society_members may not have handicap_index */ }
 

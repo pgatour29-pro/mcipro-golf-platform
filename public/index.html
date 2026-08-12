@@ -75043,6 +75043,13 @@ class LiveScorecardSystem {
         this.holeOrder = state.holeOrder || [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
         this.startingNine = state.startingNine || 'front';
         this.scorecards = state.scorecards || {};
+        // Card ownership (v884) travels with the restored state; a DB join (v886) carries the
+        // live controlled_by values, then claims this device's own card so the joiner can score.
+        this.cardOwner = state.cardOwner || this.cardOwner || {};
+        try {
+            this._syncSelfScoringFromOwnership();
+            if (state._fromDb) Promise.resolve(this._claimOwnCard()).catch(() => {});
+        } catch (e) { /* ownership is non-fatal — never block a restore */ }
         this.groupId = state.groupId;
         this.eventId = state.eventId;
         this.courseId = state.courseId || this.courseData?.id || null;
@@ -75315,8 +75322,86 @@ class LiveScorecardSystem {
         console.log('[LiveScorecard] 🧹 cleanupRoundUI complete');
     }
 
+    // JOIN A ROUND SOMEONE ELSE STARTED (v886) ────────────────────────────────────────────
+    // Resume was localStorage-only (`mcipro_active_round`), which only ever exists on the
+    // device that STARTED the round. A player who is in the group but didn't start it had no
+    // path back in — their scorecard tab just asked them to pick a course. Bangpra 2026-08-12:
+    // Joe Ryder was a player in Pete's group and his phone still showed the course picker.
+    // This rebuilds the same state object from the DB so any player in the group can walk in.
+    async _findMyLiveRoundInDb() {
+        try {
+            const me = this._deviceUser();
+            const sb = window.SupabaseDB?.client;
+            if (!me || !sb) return null;
+            const since = new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString();
+            const { data: mineRows } = await sb.from('scorecards')
+                .select('group_id, created_at')
+                .eq('player_id', me).eq('status', 'in_progress')
+                .gte('created_at', since)
+                .order('created_at', { ascending: false }).limit(1);
+            const groupId = mineRows?.[0]?.group_id;
+            if (!groupId) return null;
+
+            const { data: cards } = await sb.from('scorecards')
+                .select('id, player_id, player_name, handicap, playing_handicap, group_id, course_id, course_name, tee_marker, scoring_format, event_id, game_code, controlled_by')
+                .eq('group_id', groupId).eq('status', 'in_progress');
+            if (!cards || !cards.length) return null;
+
+            const head = cards.find(c => c.course_id) || cards[0];
+            const teeMarker = head.tee_marker || 'white';
+            // courseData carries the holes (par/SI/yardage) — without it every hole defaults to par 4.
+            let courseData = null;
+            try { courseData = await this.loadCourseData(head.course_id, teeMarker); } catch (e) {}
+            courseData = courseData || this.courseData || { id: head.course_id, name: head.course_name, holes: [] };
+
+            let scoringFormats = ['stableford'];
+            try { const f = JSON.parse(head.scoring_format || '[]'); if (Array.isArray(f) && f.length) scoringFormats = f; } catch (e) {}
+
+            const players = [], scorecards = {}, cardOwner = {};
+            cards.forEach(c => {
+                players.push({ id: c.player_id, name: c.player_name, handicap: (c.playing_handicap != null ? c.playing_handicap : c.handicap) });
+                scorecards[c.player_id] = c.id;
+                cardOwner[c.player_id] = c.controlled_by || null;
+            });
+
+            // Pull the group's scores so the joiner lands on the group's live hole, not hole 1.
+            const scoresCache = {};
+            let maxHole = 0;
+            try {
+                const ids = cards.map(c => c.id);
+                const { data: rows } = await sb.from('scores')
+                    .select('scorecard_id, hole_number, gross_score').in('scorecard_id', ids);
+                const byCard = {}; cards.forEach(c => { byCard[c.id] = c.player_id; });
+                (rows || []).forEach(r => {
+                    const pid = byCard[r.scorecard_id];
+                    if (!pid || r.gross_score == null) return;
+                    (scoresCache[pid] = scoresCache[pid] || {})[r.hole_number] = r.gross_score;
+                    if (r.hole_number > maxHole) maxHole = r.hole_number;
+                });
+            } catch (e) {}
+
+            const holeOrder = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
+            const idx = Math.min(Math.max(holeOrder.indexOf(maxHole || 1), 0), 17);
+            return {
+                players, scorecards, cardOwner, courseData, scoringFormats, scoresCache,
+                groupId, eventId: head.event_id || null, courseId: head.course_id,
+                gameCode: head.game_code || null, selectedTeeMarker: teeMarker,
+                holeOrder, currentHole: holeOrder[idx], currentHoleIndex: idx,
+                currentPlayerId: me, savedAt: new Date().toISOString(), _fromDb: true
+            };
+        } catch (e) {
+            console.warn('[LiveScorecard] DB round lookup failed (non-fatal):', e);
+            return null;
+        }
+    }
+
     async checkForActiveRound() {
-        const state = this.loadRoundState();
+        let state = this.loadRoundState();
+        // Nothing saved on THIS device — see if I'm a player in a round someone else started.
+        if (!state || !state.players || state.players.length === 0) {
+            state = await this._findMyLiveRoundInDb();
+            if (state) console.log('[LiveScorecard] 🔗 Joining round from DB:', state.groupId);
+        }
         if (!state || !state.players || state.players.length === 0) {
             return false;
         }

@@ -83194,6 +83194,12 @@ class LiveScorecardSystem {
                 (ctlRows || []).forEach(r => { this.cardOwner[r.player_id] = r.controlled_by || null; });
             }
             this._syncSelfScoringFromOwnership();
+            // v885: CLAIM YOUR OWN CARD on Start Play. A player already in the live scorecard
+            // just taps Start Play — their own cube must come up GREEN on their phone without
+            // the host having to hand it over first (and it goes RED on the host at the same
+            // moment, so the same card is never typeable in two places). Only ever claims the
+            // card belonging to the person holding THIS device; never anyone else's.
+            await this._claimOwnCard();
         } catch (ctlErr) { console.warn('[LiveScorecard] card ownership load failed (non-fatal):', ctlErr); }
 
         // Select first player THIS DEVICE controls (updates UI). On the host's phone that's the
@@ -85326,10 +85332,16 @@ class LiveScorecardSystem {
     _deviceUser() {
         return String(window.Auth?.currentUserId || window.AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id') || '');
     }
-    // Guests (GUEST-*/MANUAL-*) have no phone to hand a card to — handing one over would
-    // strand it red on every device and auto-advance would skip them to a blank card.
+    // Who can actually hold a card on their own phone = anyone who can LOG IN. This app has
+    // three auth providers: LINE (U…), Google (GOOGLE-…) and Kakao (KAKAO-…). Everything else
+    // in user_profiles is synthetic and has no device — TRGG-… (918 rows), MANUAL-…/manual-…,
+    // player-…, ph-…, bare uuids. Handing a card to one of those strands it RED on every device
+    // and auto-advance skips that player to a blank card.
+    // v885 FIX: this used to require a LINE U-id, which locked out every Google/Kakao golfer —
+    // Joe Ryder (GOOGLE-1060574…) could not be handed his own card at Bangpra.
     _canOwnDevice(playerId) {
-        return /^U[0-9a-f]{32}$/i.test(String(playerId || ''));
+        const id = String(playerId || '');
+        return /^U[0-9a-f]{32}$/i.test(id) || /^(GOOGLE|KAKAO)-/i.test(id);
     }
     _ownsCard(playerId) {
         const owner = this.cardOwner?.[playerId];
@@ -85362,6 +85374,19 @@ class LiveScorecardSystem {
                     .eq('id', scId);
             }
         } catch (e) { console.warn('[LiveScorecard] card owner save failed (non-fatal):', e); }
+    }
+    // Tapping Start Play on your own phone claims YOUR card — nothing else moves.
+    async _claimOwnCard() {
+        try {
+            const me = this._deviceUser();
+            if (!me) return;
+            const mine = (this.players || []).find(p => String(p.id) === String(me));
+            if (!mine) return;                                   // not a player in this round
+            if (String(this.cardOwner?.[mine.id] || '') === String(me)) return;  // already mine
+            await this._setCardOwner(mine.id, me);
+            this.currentPlayerId = mine.id;
+            this.currentScore = '';
+        } catch (e) { console.warn('[LiveScorecard] own-card claim failed (non-fatal):', e); }
     }
     tapPlayerCard(playerId) {
         const player = (this.players || []).find(p => p.id === playerId);

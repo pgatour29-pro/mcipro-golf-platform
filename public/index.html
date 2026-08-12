@@ -75354,7 +75354,13 @@ class LiveScorecardSystem {
 
             const { data: cards } = await sb.from('scorecards')
                 .select('id, player_id, player_name, handicap, playing_handicap, group_id, course_id, course_name, tee_marker, scoring_format, event_id, game_code, controlled_by')
-                .eq('group_id', groupId).eq('status', 'in_progress');
+                // ORDER MATTERS: without it Postgres returns rows in whatever order it likes,
+                // so a joining device built players[] in a different order from the host's —
+                // Joe's players[0] was Gilbert, and anything keyed off position (rotation, the
+                // active-player strip) pointed at the wrong golfer. created_at is the round's
+                // own creation order, so every device agrees.
+                .eq('group_id', groupId).eq('status', 'in_progress')
+                .order('created_at', { ascending: true });
             if (!cards || !cards.length) return null;
 
             const head = cards.find(c => c.course_id) || cards[0];
@@ -83534,10 +83540,16 @@ class LiveScorecardSystem {
             // SOLO VIEW (Pete 2026-08-12): a player who owns ONLY their own card doesn't need
             // to look at three cards they can't type on — show just theirs. The host, who owns
             // several, still sees the whole group (including the red ones they've handed out).
+            // v893: the test is "do I hold anyone ELSE's card?", not "do I hold exactly one?".
+            // While a joining device's owner map is still unknown it owns ZERO cards, which is
+            // not 1, so it fell out of solo view and rendered the whole four-ball — Joe was
+            // looking at Gilbert's card on his phone. A player who holds nobody else's card
+            // only ever needs their own.
             const _meDev = this._deviceUser();
-            const _owned = this.players.filter(p => this._ownsCard(p.id));
-            const _soloView = _owned.length === 1 && String(_owned[0].id) === String(_meDev);
-            const cardPlayers = _soloView ? _owned : this.players;
+            const _mine = this.players.filter(p => String(p.id) === String(_meDev));
+            const _ownsOthers = this.players.some(p => String(p.id) !== String(_meDev) && this._ownsCard(p.id));
+            const _soloView = _mine.length > 0 && !_ownsOthers;
+            const cardPlayers = _soloView ? _mine : this.players;
 
             grid.innerHTML = cardPlayers.map(p => {
                 const score = this.getPlayerScore(p.id, this.currentHole);

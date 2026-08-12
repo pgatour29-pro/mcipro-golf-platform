@@ -74946,6 +74946,9 @@ class LiveScorecardSystem {
             scoringFormats: this.scoringFormats,
             gameConfigs: this.gameConfigs,
             scoresCache: this.scoresCache,
+            // Ownership must survive a reload, or the restored device thinks it owns every
+            // card again and can type over one that belongs to another phone.
+            cardOwner: this.cardOwner || {},
             currentHole: this.currentHole,
             currentHoleIndex: this.currentHoleIndex,
             currentPlayerId: this.currentPlayerId,
@@ -75048,7 +75051,14 @@ class LiveScorecardSystem {
         this.cardOwner = state.cardOwner || this.cardOwner || {};
         try {
             this._syncSelfScoringFromOwnership();
-            if (state._fromDb) Promise.resolve(this._claimOwnCard()).catch(() => {});
+            // Re-open lands on the hole this device actually needs, not whatever was saved —
+            // a corrupted currentHole would otherwise survive in localStorage forever.
+            this._snapToLiveHole();
+            if (state._fromDb) {
+                Promise.resolve(this._claimOwnCard())
+                    .then(() => { if (this._snapToLiveHole()) this.renderHole(); })
+                    .catch(() => {});
+            }
         } catch (e) { /* ownership is non-fatal — never block a restore */ }
         this.groupId = state.groupId;
         this.eventId = state.eventId;
@@ -85471,6 +85481,25 @@ class LiveScorecardSystem {
                     .eq('id', scId);
             }
         } catch (e) { console.warn('[LiveScorecard] card owner save failed (non-fatal):', e); }
+    }
+    // Snap to THIS DEVICE's live hole = the first hole one of its own cards still needs.
+    // Only ever called when a round is (re)opened — never mid-round, or it would fight a
+    // player flicking back to check a previous hole. A bad currentHole otherwise persists in
+    // localStorage forever: v889 stopped the 9→18 jump, but Joe's phone had already SAVED
+    // hole 18 and every reload restored it, so the fix alone never brought him back.
+    _snapToLiveHole() {
+        try {
+            if (!this.players?.length || !this.holeOrder?.length) return false;
+            if (!this.players.some(p => this._ownsCard(p.id))) return false;   // owns nothing — leave it alone
+            let idx = 0;
+            while (idx < this.holeOrder.length - 1 && this._holeDoneForThisDevice(this.holeOrder[idx])) idx++;
+            if (idx === this.currentHoleIndex) return false;
+            console.log('[LiveScorecard] ⏪ snapping hole ' + this.currentHole + ' → ' + this.holeOrder[idx]);
+            this.currentHoleIndex = idx;
+            this.currentHole = this.holeOrder[idx];
+            this.currentScore = '';
+            return true;
+        } catch (e) { return false; }
     }
     // THE pace predicate — every auto-advance path goes through here.
     // A device waits only for the cards it OWNS. Writing that as

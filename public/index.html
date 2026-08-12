@@ -83580,6 +83580,30 @@ class LiveScorecardSystem {
             const _soloView = _mine.length > 0 && !_ownsOthers;
             const cardPlayers = _soloView ? _mine : this.players;
 
+            // DIAGNOSTIC (v895, Bangpra): a player's phone kept rendering another golfer's card
+            // and I could not reproduce it from this side. Log the actual decision inputs ONCE
+            // per round-load so the device itself says why. Remove once the cause is nailed.
+            try {
+                if (!this._soloDiagSent) {
+                    this._soloDiagSent = true;
+                    window.logClientError && window.logClientError('card_owner_diag', {
+                        message: 'soloView=' + _soloView + ' cards=' + cardPlayers.length,
+                        extra: {
+                            deviceUser: _meDev,
+                            authId: (window.Auth && window.Auth.currentUserId) || null,
+                            appStateId: (window.AppState && window.AppState.currentUser && window.AppState.currentUser.lineUserId) || null,
+                            lsId: (function(){ try { return localStorage.getItem('line_user_id'); } catch(e){ return null; } })(),
+                            groupId: this.groupId,
+                            players: this.players.map(p => ({ id: p.id, lu: p.lineUserId || null, n: p.name })),
+                            cardOwner: this.cardOwner || null,
+                            owns: this.players.filter(p => this._ownsCard(p.id)).map(p => p.name),
+                            mine: _mine.map(p => p.name),
+                            ownsOthers: _ownsOthers
+                        }
+                    });
+                }
+            } catch (e) {}
+
             grid.innerHTML = cardPlayers.map(p => {
                 const score = this.getPlayerScore(p.id, this.currentHole);
                 const total = this.getPlayerTotal(p.id);

@@ -75524,7 +75524,7 @@ class LiveScorecardSystem {
 
         // Select first player if not already selected
         if (this.players && this.players.length > 0 && !this.currentPlayerId) {
-            this.currentPlayerId = this.players[0].id;
+            this.currentPlayerId = this._firstOwnedPlayerId();
         }
 
         // AUTO-MAP: Capture GPS for hole 1 (or whatever starting hole) at round start
@@ -85498,6 +85498,14 @@ class LiveScorecardSystem {
             }
         } catch (e) { console.warn('[LiveScorecard] card owner save failed (non-fatal):', e); }
     }
+    // The card the keypad should land on for THIS device — the first one it actually owns.
+    // v892: every hole navigation used to hard-code players[0], which on a player's phone is
+    // one of the host's cards. Joe had to tap his own cube again on every single hole before
+    // he could type. Falls back to players[0] so a host who owns nothing still has a target.
+    _firstOwnedPlayerId() {
+        const owned = (this.players || []).find(p => this._ownsCard(p.id));
+        return (owned || (this.players || [])[0] || {}).id || null;
+    }
     // Snap to THIS DEVICE's live hole = the first hole one of its own cards still needs.
     // Only ever called when a round is (re)opened — never mid-round, or it would fight a
     // player flicking back to check a previous hole. A bad currentHole otherwise persists in
@@ -86166,7 +86174,7 @@ class LiveScorecardSystem {
         if (this.currentHoleIndex < 17) {
             this.currentHoleIndex++;
             this.currentHole = this.holeOrder[this.currentHoleIndex];
-            this.currentPlayerId = this.players[0].id;
+            this.currentPlayerId = this._firstOwnedPlayerId();
             this.currentScore = '';
             this._saving = false;
             // Track furthest hole reached
@@ -86210,7 +86218,7 @@ class LiveScorecardSystem {
         if (this.currentHoleIndex !== this.latestHoleIndex) {
             this.currentHoleIndex = this.latestHoleIndex;
             this.currentHole = this.holeOrder[this.currentHoleIndex];
-            this.currentPlayerId = this.players[0].id;
+            this.currentPlayerId = this._firstOwnedPlayerId();
             this.currentScore = '';
             this._saving = false;
             this.renderHole();
@@ -86224,7 +86232,7 @@ class LiveScorecardSystem {
         if (idx >= 0) {
             this.currentHoleIndex = idx;
             this.currentHole = holeNumber;
-            this.currentPlayerId = this.players[0].id;
+            this.currentPlayerId = this._firstOwnedPlayerId();
             this.currentScore = '';
             this._saving = false;
             this.renderHole();

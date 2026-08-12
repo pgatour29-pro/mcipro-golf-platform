@@ -39368,7 +39368,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 societyMembers.forEach(sm => {
                                     const hcp = parseFloat(sm.handicap_index);
                                     if (!isNaN(hcp)) {
-                                        if (!societyHcpMap[sm.golfer_id] || hcp < societyHcpMap[sm.golfer_id]) {
+                                        if (societyHcpMap[sm.golfer_id] === undefined || hcp < societyHcpMap[sm.golfer_id]) {
                                             societyHcpMap[sm.golfer_id] = hcp;
                                         }
                                     }
@@ -39381,17 +39381,15 @@ document.addEventListener('DOMContentLoaded', function() {
                             const name = p.display_name || p.name;
                             if (!name || name === 'Unknown') return;
 
-                            // Get universal handicap from multiple sources
-                            const universalHcp = parseFloat(p.handicap_index) ||
-                                parseFloat(p.profile_data?.handicap) ||
-                                parseFloat(p.profile_data?.golfInfo?.handicap) ||
-                                NaN;
+                            // Get universal handicap from multiple sources (0 is a valid handicap — no || chain)
+                            const profileHcps = [p.handicap_index, p.profile_data?.handicap, p.profile_data?.golfInfo?.handicap]
+                                .map(v => parseFloat(v));
 
                             // Get society handicap
                             const societyHcp = societyHcpMap[p.line_user_id] ?? NaN;
 
-                            // Use the lowest valid handicap
-                            const candidates = [universalHcp, societyHcp].filter(h => !isNaN(h) && h >= -10 && h <= 54);
+                            // Use the lowest valid handicap from ANY source in the system
+                            const candidates = [...profileHcps, societyHcp].filter(h => !isNaN(h) && h >= -10 && h <= 54);
                             if (candidates.length === 0) return;
 
                             const lowestHcp = Math.min(...candidates);

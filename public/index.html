@@ -85472,6 +85472,19 @@ class LiveScorecardSystem {
             }
         } catch (e) { console.warn('[LiveScorecard] card owner save failed (non-fatal):', e); }
     }
+    // THE pace predicate — every auto-advance path goes through here.
+    // A device waits only for the cards it OWNS. Writing that as
+    //   players.every(p => notMine(p) || hasScore(p))
+    // is vacuously TRUE when this device owns NOTHING, and catch-up then marches straight to
+    // hole 18. Bangpra 2026-08-12: handing a card over jumped the receiving device from hole 9
+    // to 18 — for a beat after the handover lands it owns zero cards (the claim is async), so
+    // every term was "not mine" and the loop ran to the end. Own nothing ⇒ never auto-advance.
+    // Same family as the [].every() trap that _catchUpAdvance's groupId/players guard covers.
+    _holeDoneForThisDevice(hole) {
+        const owned = (this.players || []).filter(p => this._ownsCard(p.id));
+        if (!owned.length) return false;
+        return owned.every(p => this.getPlayerScore(p.id, hole));
+    }
     // Apply a controlled_by change that arrived from another device (realtime payload).
     _applyOwnerFromRow(row) {
         if (!row || !row.player_id) return false;
@@ -85903,7 +85916,7 @@ class LiveScorecardSystem {
             // The advance check used to run ONLY on the last-in-rotation save, so this phone
             // never auto-advanced even with all 4 scores present. If the hole is complete for
             // everyone (counting synced-in scores), advance from here too.
-            const allDoneMid = this.players.every(p => (this.selfScoring && this.selfScoring[p.id]) || this.getPlayerScore(p.id, savingHole));
+            const allDoneMid = this._holeDoneForThisDevice(savingHole);
             if (allDoneMid && this.currentHoleIndex < 17) {
                 clearTimeout(this.autoAdvanceTimeout);
                 this.autoAdvanceTimeout = setTimeout(() => {
@@ -85951,7 +85964,7 @@ class LiveScorecardSystem {
             }
 
             // Auto-advance to next hole after delay — released (📱) players never block the pace
-            const allDone = this.players.every(p => (this.selfScoring && this.selfScoring[p.id]) || this.getPlayerScore(p.id, savingHole));
+            const allDone = this._holeDoneForThisDevice(savingHole);
             if (allDone && this.currentHoleIndex < 17) {
                 clearTimeout(this.autoAdvanceTimeout);
                 this.autoAdvanceTimeout = setTimeout(() => {
@@ -94842,7 +94855,7 @@ class LiveScorecardSystem {
         if (this._saving || this.currentScore !== '') return 0;
         let advanced = 0;
         while (this.currentHoleIndex < 17 && advanced < 18 &&
-               this.players.every(p => (this.selfScoring && this.selfScoring[p.id]) || this.getPlayerScore(p.id, this.currentHole))) {
+               this._holeDoneForThisDevice(this.currentHole)) {
             this.nextHole();
             advanced++;
         }
@@ -94962,7 +94975,7 @@ class LiveScorecardSystem {
                 // this group (counting the remote self-scorer's entry that just arrived), advance to
                 // the next hole — so this phone follows along instead of getting stuck a hole behind.
                 if (!this._saving && this.currentScore === '' && this.currentHoleIndex < 17) {
-                    const allDone = this.players.every(p => (this.selfScoring && this.selfScoring[p.id]) || this.getPlayerScore(p.id, this.currentHole));
+                    const allDone = this._holeDoneForThisDevice(this.currentHole);
                     if (allDone) {
                         // SKIP GUARD (Greenwood 2026-07-29): pin the advance to the hole it was armed
                         // on — if the device moves on before the timer fires, the timer is stale.
@@ -94972,7 +94985,7 @@ class LiveScorecardSystem {
                             this.autoAdvanceTimeout = null;
                             if (!this._saving && this.currentScore === '' && this.currentHoleIndex < 17 &&
                                 this.currentHole === armedHole &&
-                                this.players.every(p => (this.selfScoring && this.selfScoring[p.id]) || this.getPlayerScore(p.id, this.currentHole))) {
+                                this._holeDoneForThisDevice(this.currentHole)) {
                                 this.nextHole();
                             }
                         }, 1200);

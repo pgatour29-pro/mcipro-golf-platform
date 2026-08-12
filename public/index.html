@@ -75080,6 +75080,16 @@ class LiveScorecardSystem {
         this.cardOwner = state.cardOwner || this.cardOwner || {};
         try {
             this._syncSelfScoringFromOwnership();
+            // v896: the SAVED currentPlayerId is not to be trusted. A state written by an older
+            // build (or before a card changed hands) points at a card this device does not own,
+            // and restore honoured it verbatim — the grid correctly showed Joe's single card
+            // while the name above the keypad and the strip below both read "Gilbert, Tristan",
+            // and every score needed a tap on his own cube first because the keypad was aimed
+            // at a card he cannot write.
+            if (!this.scoringFormats?.includes('scramble') && !this._ownsCard(this.currentPlayerId)) {
+                this.currentPlayerId = this._firstOwnedPlayerId();
+                this.currentScore = '';
+            }
             // Re-open lands on the hole this device actually needs, not whatever was saved —
             // a corrupted currentHole would otherwise survive in localStorage forever.
             this._snapToLiveHole();
@@ -83463,6 +83473,16 @@ class LiveScorecardSystem {
         if (groupScoreHoleNum) groupScoreHoleNum.textContent = this.currentHole;
         if (groupScorePar) groupScorePar.textContent = par;
         if (groupScoreIndex) groupScoreIndex.textContent = strokeIndex;
+
+        // v896 BACKSTOP: the keypad must never be aimed at a card this device cannot write.
+        // Whatever set currentPlayerId — a restored state, a stale rotation, a card that just
+        // changed hands — correct it here, because this is the one function every path ends in.
+        // It is what feeds the name above the keypad and the nine-hole strip below it.
+        if (!this.scoringFormats?.includes('scramble') && this.players?.length &&
+            this.currentPlayerId && !this._ownsCard(this.currentPlayerId)) {
+            const _fix = this._firstOwnedPlayerId();
+            if (_fix && _fix !== this.currentPlayerId) { this.currentPlayerId = _fix; this.currentScore = ''; }
+        }
 
         // Update active player name display
         if (this.currentPlayerId) {

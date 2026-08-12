@@ -1,0 +1,507 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>Player card height mockup</title>
+<style>
+  :root{ --ink:#10151B; --mut:#64748B; --grn:#15803d; }
+  *{box-sizing:border-box;}
+  body{ margin:0; background:#E7ECF0; font-family:'Instrument Sans',system-ui,-apple-system,'Segoe UI',sans-serif; color:var(--ink); padding:18px; }
+  .stage{ display:flex; gap:18px; align-items:flex-start; }
+  .col{ width:390px; flex:none; }
+  .colhead{ font:800 13px/1.2 system-ui; letter-spacing:.06em; text-transform:uppercase; margin-bottom:2px; }
+  .colsub{ font:500 11px/1.35 system-ui; color:#5b6773; margin-bottom:10px; min-height:30px; }
+  .tagline{ display:inline-block; font:800 10px/1 monospace; letter-spacing:.08em; padding:4px 7px; border-radius:6px; margin-bottom:8px; }
+  .t-cur{ background:#94a3b8; color:#fff; }
+  .t-a{ background:#0ea5e9; color:#fff; }
+  .t-b{ background:#16a34a; color:#fff; }
+  .vlabel{ font:700 10px/1 monospace; letter-spacing:.1em; color:#64748b; text-transform:uppercase; margin:14px 0 5px; }
+
+  /* ---- group wrapper (light theme, phone) ---- */
+  .wrap{ background:#fff; border:1px solid rgba(15,23,42,0.09); border-radius:14px; padding:6px 8px 5px; }
+  .whead{ display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+  .wlab{ font:600 11px/1 system-ui; letter-spacing:.5px; text-transform:uppercase; color:#64748b; }
+  .wmeta{ display:flex; gap:8px; font:500 11px/1 system-ui; color:#94a3b8; }
+  .wmeta b{ color:#059669; font-weight:700; }
+  .wmeta i{ color:#475569; font-style:normal; font-weight:700; }
+  .grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:5px; padding-top:8px; }
+  .grid.one{ grid-template-columns:1fr; }
+  .foot{ display:flex; justify-content:space-between; margin-top:3px; font:500 10px/1 system-ui; color:#475569; }
+
+  /* ---- shared card chrome ---- */
+  .pc{ position:relative; background:#F7F9FA; border:1px solid rgba(15,23,42,0.10); border-radius:11px; min-width:0; }
+  .pc.needs{ background:rgba(22,163,74,0.06); border-color:rgba(22,163,74,0.35); }
+  .pc.active{ background:rgba(22,163,74,0.13); border-color:#16a34a; box-shadow:0 0 0 1.5px #16a34a, 0 2px 10px rgba(22,163,74,0.25); }
+  .tag{ position:absolute; top:-7px; left:50%; transform:translateX(-50%); font:700 7px/1 monospace; letter-spacing:.14em;
+        color:#052e14; background:linear-gradient(180deg,#4ade80,#22c55e); padding:3px 7px; border-radius:7px; box-shadow:0 2px 8px rgba(34,197,94,.4); z-index:5; white-space:nowrap;}
+  .pos{ display:inline-flex; align-items:center; justify-content:center; height:16px; padding:0 6px; border-radius:9px;
+        font:800 9px/1 system-ui; letter-spacing:.04em; flex:none; border:1px solid rgba(0,0,0,.3); box-shadow:0 1px 3px rgba(0,0,0,.45); }
+  .p1{ background:#facc15; color:#1c1400; } .p2{ background:#e5e7eb; color:#111827; }
+  .p3{ background:#fb923c; color:#301000; } .p4{ background:#3f4c5c; color:#fff; }
+  .av{ border-radius:50%; background:rgba(15,23,42,0.08); color:#46525C; display:flex; align-items:center; justify-content:center; font:600 10.5px/1 system-ui; flex:none; }
+  .active .av{ background:linear-gradient(135deg,#15803d,#22c55e); color:#fff; box-shadow:0 0 12px rgba(34,197,94,.45); }
+  .self{ position:absolute; width:20px; height:20px; border-radius:50%; border:1px solid rgba(15,23,42,0.18); background:rgba(15,23,42,0.05);
+         font-size:10px; line-height:1; display:flex; align-items:center; justify-content:center; opacity:.55; z-index:4; }
+  .nm{ font:700 12.5px/1.1 system-ui; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sc{ font:300 23px/1 'Outfit',system-ui; color:var(--ink); letter-spacing:-.02em; }
+  .sc.empty{ color:#96A1AC; font-weight:200; }
+
+  /* ================= CURRENT ================= */
+  .cur .pc{ text-align:center; padding:8px 3px 5px; }
+  .cur .self{ top:4px; left:4px; }
+  .cur .posw{ position:absolute; top:5px; right:5px; }
+  .cur .av{ width:28px; height:28px; margin:0 auto; }
+  .cur .nm{ margin-top:4px; }
+  .cur .hcp{ font:600 11px/1 monospace; letter-spacing:.06em; color:var(--mut); margin-top:2px; }
+  .cur .sc{ margin-top:2px; }
+  .cur .pts{ font:700 12px/1 monospace; letter-spacing:.06em; color:var(--grn); margin-top:2px; min-height:13px; }
+  /* current, single-player size bumps */
+  .cur .grid.one .av{ width:44px; height:44px; font-size:14px; }
+  .cur .grid.one .nm{ font-size:17px; }
+  .cur .grid.one .hcp{ font-size:13px; }
+  .cur .grid.one .sc{ font-size:34px; }
+  .cur .grid.one .pts{ font-size:14px; }
+
+  /* ================= OPTION A ================= */
+  /* top edge = tag (left) + rank (right); both cost zero internal height */
+  .oa .tag, .ob .tag{ left:4px; transform:none; }
+  .oa .pc{ text-align:center; padding:7px 6px 5px; }
+  .oa .self{ top:5px; left:3px; width:18px; height:18px; }
+  .oa .posw{ position:absolute; top:-7px; right:4px; z-index:5; }
+  .oa .av{ width:26px; height:26px; margin:0 auto; }
+  .oa .nm{ margin-top:3px; }
+  .oa .meta{ display:flex; align-items:center; justify-content:space-between; gap:4px; margin-top:3px; white-space:nowrap; }
+  .oa .hcp{ font:600 10px/1 monospace; letter-spacing:0; color:var(--mut); }
+  .oa .dot{ display:none; }
+  .oa .pts{ font:700 10.5px/1 monospace; letter-spacing:0; color:var(--grn); }
+  .oa .sc{ margin-top:3px; }
+  .oa .grid.one .av{ width:40px; height:40px; font-size:14px; }
+  .oa .grid.one .nm{ font-size:17px; }
+  .oa .grid.one .meta{ justify-content:center; gap:12px; }
+  .oa .grid.one .hcp{ font-size:13px; } .oa .grid.one .pts{ font-size:14px; }
+  .oa .grid.one .sc{ font-size:34px; }
+
+  /* ================= OPTION B ================= */
+  .ob .pc{ padding:6px 6px 5px; }
+  .ob .top{ display:flex; align-items:center; justify-content:space-between; gap:3px; }
+  .ob .self{ position:static; width:19px; height:19px; }
+  .ob .av{ width:27px; height:27px; }
+  .ob .sc{ font-size:24px; }
+  .ob .nm{ margin-top:3px; text-align:center; }
+  .ob .meta{ display:flex; align-items:center; justify-content:space-between; gap:4px; margin-top:3px; white-space:nowrap; }
+  .ob .hcp{ font:600 10px/1 monospace; letter-spacing:0; color:var(--mut); }
+  .ob .pts{ font:700 10.5px/1 monospace; letter-spacing:0; color:var(--grn); }
+  .ob .dot{ display:none; }
+  /* position badge floats on the top border edge — costs zero internal width/height */
+  .ob .meta .pos{ position:absolute; top:-7px; right:4px; height:15px; padding:0 5px; font-size:8.5px; z-index:5; }
+  /* single player: full horizontal row */
+  .ob .grid.one .pc{ padding:7px 10px; }
+  .ob .grid.one .row{ display:flex; align-items:center; gap:11px; }
+  .ob .grid.one .av{ width:42px; height:42px; font-size:14px; }
+  .ob .grid.one .txt{ flex:1; min-width:0; }
+  .ob .grid.one .nm{ margin-top:0; text-align:left; font-size:17px; }
+  .ob .grid.one .meta{ justify-content:flex-start; margin-top:3px; }
+  .ob .grid.one .hcp{ font-size:12.5px; } .ob .grid.one .pts{ font-size:13.5px; }
+  .ob .grid.one .sc{ font-size:36px; }
+
+  /* ============ OPTION E: NAME ONLY — no avatar, no initials, no 📱 ============ */
+  .oe .tag, .oe2 .tag{ left:4px; transform:none; }
+  .oe .pc{ padding:6px 7px 5px; }
+  .oe .top{ display:flex; align-items:center; justify-content:space-between; gap:5px; }
+  .oe .nm{ font-size:13.5px; }
+  .oe .sc{ font-size:24px; flex:none; }
+  .oe .meta{ display:flex; align-items:center; justify-content:space-between; gap:4px; margin-top:3px; white-space:nowrap; }
+  .oe .hcp{ font:600 10px/1 monospace; color:var(--mut); }
+  .oe .pts{ font:700 10.5px/1 monospace; color:var(--grn); }
+  .oe .pos{ position:absolute; top:-7px; right:4px; height:15px; padding:0 5px; font-size:8.5px; z-index:5; }
+  .oe .grid.one .pc{ padding:9px 12px; }
+  .oe .grid.one .nm{ font-size:19px; }
+  .oe .grid.one .sc{ font-size:38px; }
+  .oe .grid.one .meta{ justify-content:flex-start; gap:14px; margin-top:4px; }
+  .oe .grid.one .hcp{ font-size:13px; } .oe .grid.one .pts{ font-size:14px; }
+
+  /* ============ OPTION E2: name only, stacked (score keeps its own line) ============ */
+  .oe2 .pc{ padding:6px 6px 5px; text-align:center; }
+  .oe2 .nm{ font-size:13.5px; }
+  .oe2 .meta{ display:flex; align-items:center; justify-content:space-between; gap:4px; margin-top:3px; white-space:nowrap; }
+  .oe2 .hcp{ font:600 10px/1 monospace; color:var(--mut); }
+  .oe2 .pts{ font:700 10.5px/1 monospace; color:var(--grn); }
+  .oe2 .sc{ font-size:24px; margin-top:3px; }
+  .oe2 .pos{ position:absolute; top:-7px; right:4px; height:15px; padding:0 5px; font-size:8.5px; z-index:5; }
+  .oe2 .grid.one .pc{ padding:9px 12px; }
+  .oe2 .grid.one .nm{ font-size:19px; }
+  .oe2 .grid.one .sc{ font-size:38px; margin-top:4px; }
+  .oe2 .grid.one .meta{ justify-content:center; gap:16px; margin-top:4px; }
+  .oe2 .grid.one .hcp{ font-size:13px; } .oe2 .grid.one .pts{ font-size:14px; }
+
+  .hbadge{ display:inline-block; font:800 11px/1 monospace; padding:5px 8px; border-radius:6px; background:#111827; color:#fff; margin-top:7px; }
+  .hbadge.win{ background:#15803d; }
+  .hbadge.best{ background:#b45309; }
+
+  /* a "real LINE photo" stand-in so the mix reads honestly */
+  .photo{ background:linear-gradient(160deg,#7dd3fc,#0369a1) !important; color:transparent !important; position:relative; overflow:hidden; }
+  .photo::after{ content:''; position:absolute; left:50%; top:22%; transform:translateX(-50%);
+    width:34%; height:34%; border-radius:50%; background:rgba(255,255,255,.92);
+    box-shadow:0 0.72em 0 -0.06em rgba(255,255,255,.92), 0 0 0 0 transparent; }
+  .photo::before{ content:''; position:absolute; left:50%; bottom:-16%; transform:translateX(-50%);
+    width:74%; height:52%; border-radius:50% 50% 45% 45%; background:rgba(255,255,255,.92); }
+
+  /* ================= OPTION C: option B, initials dropped ================= */
+  .oc .tag{ left:4px; transform:none; }
+  .oc .pc{ padding:6px 6px 5px; }
+  .oc .top{ display:flex; align-items:center; justify-content:space-between; gap:3px; min-height:24px; }
+  .oc .self{ position:static; width:19px; height:19px; }
+  .oc .av{ width:27px; height:27px; }
+  .oc .av.blank{ display:none; }
+  .oc .sc{ font-size:24px; }
+  .oc .nm{ margin-top:3px; text-align:center; }
+  .oc .meta{ display:flex; align-items:center; justify-content:space-between; gap:4px; margin-top:3px; white-space:nowrap; }
+  .oc .hcp{ font:600 10px/1 monospace; color:var(--mut); }
+  .oc .pts{ font:700 10.5px/1 monospace; color:var(--grn); }
+  .oc .dot{ display:none; }
+  .oc .meta .pos{ position:absolute; top:-7px; right:4px; height:15px; padding:0 5px; font-size:8.5px; z-index:5; }
+  .oc .grid.one .pc{ padding:7px 10px; }
+  .oc .grid.one .row{ display:flex; align-items:center; gap:11px; }
+  .oc .grid.one .av{ width:42px; height:42px; font-size:14px; }
+  .oc .grid.one .txt{ flex:1; min-width:0; }
+  .oc .grid.one .nm{ margin-top:0; text-align:left; font-size:17px; }
+  .oc .grid.one .meta{ justify-content:flex-start; gap:12px; margin-top:3px; }
+  .oc .grid.one .hcp{ font-size:12.5px; } .oc .grid.one .pts{ font-size:13.5px; }
+  .oc .grid.one .sc{ font-size:36px; }
+
+  /* ================= OPTION D: face becomes a chip beside the name ================= */
+  .od .tag{ left:4px; transform:none; }
+  .od .pc{ padding:6px 6px 5px; }
+  .od .top{ display:flex; align-items:center; justify-content:space-between; gap:4px; }
+  .od .self{ position:static; width:18px; height:18px; }
+  .od .sc{ font-size:24px; }
+  .od .nmrow{ display:flex; align-items:center; justify-content:center; gap:5px; margin-top:2px; min-height:18px; }
+  .od .av{ width:18px; height:18px; font-size:0; }
+  .od .av.blank{ display:none; }
+  .od .nm{ min-width:0; }
+  .od .meta{ display:flex; align-items:center; justify-content:space-between; gap:4px; margin-top:3px; white-space:nowrap; }
+  .od .hcp{ font:600 10px/1 monospace; color:var(--mut); }
+  .od .pts{ font:700 10.5px/1 monospace; color:var(--grn); }
+  .od .meta .pos{ position:absolute; top:-7px; right:4px; height:15px; padding:0 5px; font-size:8.5px; z-index:5; }
+  .od .grid.one .pc{ padding:7px 10px; }
+  .od .grid.one .row{ display:flex; align-items:center; gap:11px; }
+  .od .grid.one .av{ width:42px; height:42px; }
+  .od .grid.one .txt{ flex:1; min-width:0; }
+  .od .grid.one .nm{ text-align:left; font-size:17px; }
+  .od .grid.one .nmrow{ justify-content:flex-start; margin-top:0; }
+  .od .grid.one .meta{ justify-content:flex-start; gap:12px; margin-top:3px; }
+  .od .grid.one .hcp{ font-size:12.5px; } .od .grid.one .pts{ font-size:13.5px; }
+  .od .grid.one .sc{ font-size:36px; }
+</style></head>
+<body>
+<div class="stage">
+
+  <!-- ============ CURRENT ============ -->
+  <div class="col cur">
+    <div class="colhead">Current</div>
+    <div class="colsub">avatar → name → HCP → score → PTS. Five stacked rows; points sit at the bottom, far from HCP.</div>
+    <span class="tagline t-cur">AS SHIPPED</span>
+
+    <div class="vlabel">4 players</div>
+    <div class="wrap">
+      <div class="whead"><span class="wlab">Group</span><div class="wmeta"><span>H<b>7</b></span><span>P<i>5</i></span><span>SI<i>7</i></span></div></div>
+      <div class="grid" id="g-cur4"></div>
+      <div class="foot"><span>3/4 players entered</span><span>Stats</span></div>
+    </div>
+
+    <div class="vlabel">Single player</div>
+    <div class="wrap">
+      <div class="whead"><span class="wlab">Group</span><div class="wmeta"><span>H<b>7</b></span><span>P<i>5</i></span><span>SI<i>7</i></span></div></div>
+      <div class="grid one" id="g-cur1"></div>
+      <div class="foot"><span>1/1 players entered</span><span>Stats</span></div>
+    </div>
+    <div class="hbadge" id="h-cur">card h: –</div>
+  </div>
+
+  <!-- ============ OPTION A ============ -->
+  <div class="col oa">
+    <div class="colhead">Option A — merged meta</div>
+    <div class="colsub">Exactly what you asked: PTS moves up beside HCP on one line. Same anatomy, one row fewer, tighter gaps.</div>
+    <span class="tagline t-a">MINIMAL CHANGE</span>
+
+    <div class="vlabel">4 players</div>
+    <div class="wrap">
+      <div class="whead"><span class="wlab">Group</span><div class="wmeta"><span>H<b>7</b></span><span>P<i>5</i></span><span>SI<i>7</i></span></div></div>
+      <div class="grid" id="g-oa4"></div>
+      <div class="foot"><span>3/4 players entered</span><span>Stats</span></div>
+    </div>
+
+    <div class="vlabel">Single player</div>
+    <div class="wrap">
+      <div class="whead"><span class="wlab">Group</span><div class="wmeta"><span>H<b>7</b></span><span>P<i>5</i></span><span>SI<i>7</i></span></div></div>
+      <div class="grid one" id="g-oa1"></div>
+      <div class="foot"><span>1/1 players entered</span><span>Stats</span></div>
+    </div>
+    <div class="hbadge win" id="h-oa">card h: –</div>
+  </div>
+
+  <!-- ============ OPTION B ============ -->
+  <div class="col ob">
+    <div class="colhead">Option B — score on the top row</div>
+    <div class="colsub">Avatar and the big score share row 1, name below, then HCP · PTS. Solo view becomes one horizontal band.</div>
+    <span class="tagline t-b">MAX COMPACTION</span>
+
+    <div class="vlabel">4 players</div>
+    <div class="wrap">
+      <div class="whead"><span class="wlab">Group</span><div class="wmeta"><span>H<b>7</b></span><span>P<i>5</i></span><span>SI<i>7</i></span></div></div>
+      <div class="grid" id="g-ob4"></div>
+      <div class="foot"><span>3/4 players entered</span><span>Stats</span></div>
+    </div>
+
+    <div class="vlabel">Single player</div>
+    <div class="wrap">
+      <div class="whead"><span class="wlab">Group</span><div class="wmeta"><span>H<b>7</b></span><span>P<i>5</i></span><span>SI<i>7</i></span></div></div>
+      <div class="grid one" id="g-ob1"></div>
+      <div class="foot"><span>1/1 players entered</span><span>Stats</span></div>
+    </div>
+    <div class="hbadge win" id="h-ob">card h: –</div>
+  </div>
+
+  <!-- ============ OPTION C ============ -->
+  <div class="col oc">
+    <div class="colhead">Option C — B, initials dropped</div>
+    <div class="colsub">Disc renders ONLY when a real LINE photo exists (Pete here). No photo → no disc, no two-letter stand-in. The name does that job.</div>
+    <span class="tagline t-b">NO INITIALS</span>
+
+    <div class="vlabel">4 players</div>
+    <div class="wrap">
+      <div class="whead"><span class="wlab">Group</span><div class="wmeta"><span>H<b>7</b></span><span>P<i>5</i></span><span>SI<i>7</i></span></div></div>
+      <div class="grid" id="g-oc4"></div>
+      <div class="foot"><span>3/4 players entered</span><span>Stats</span></div>
+    </div>
+
+    <div class="vlabel">Single player</div>
+    <div class="wrap">
+      <div class="whead"><span class="wlab">Group</span><div class="wmeta"><span>H<b>7</b></span><span>P<i>5</i></span><span>SI<i>7</i></span></div></div>
+      <div class="grid one" id="g-oc1"></div>
+      <div class="foot"><span>1/1 players entered</span><span>Stats</span></div>
+    </div>
+    <div class="hbadge best" id="h-oc">card h: –</div>
+  </div>
+
+  <!-- ============ OPTION D ============ -->
+  <div class="col od">
+    <div class="colhead">Option D — face beside the name</div>
+    <div class="colsub">Photo shrinks to an 18px chip on the name line, so a face costs ~4px instead of 29px. Keeps your "every name gets a face" rule where a face actually exists.</div>
+    <span class="tagline t-b">NO INITIALS + FACE KEPT</span>
+
+    <div class="vlabel">4 players</div>
+    <div class="wrap">
+      <div class="whead"><span class="wlab">Group</span><div class="wmeta"><span>H<b>7</b></span><span>P<i>5</i></span><span>SI<i>7</i></span></div></div>
+      <div class="grid" id="g-od4"></div>
+      <div class="foot"><span>3/4 players entered</span><span>Stats</span></div>
+    </div>
+
+    <div class="vlabel">Single player</div>
+    <div class="wrap">
+      <div class="whead"><span class="wlab">Group</span><div class="wmeta"><span>H<b>7</b></span><span>P<i>5</i></span><span>SI<i>7</i></span></div></div>
+      <div class="grid one" id="g-od1"></div>
+      <div class="foot"><span>1/1 players entered</span><span>Stats</span></div>
+    </div>
+    <div class="hbadge best" id="h-od">card h: –</div>
+  </div>
+
+  <!-- ============ OPTION E ============ -->
+  <div class="col oe">
+    <div class="colhead">Option E — name only</div>
+    <div class="colsub">No avatar, no initials, no 📱 button. Name and score share row 1, HCP and PTS below. Rank pill floats on the top edge.</div>
+    <span class="tagline t-b">NAME ONLY</span>
+
+    <div class="vlabel">4 players</div>
+    <div class="wrap">
+      <div class="whead"><span class="wlab">Group</span><div class="wmeta"><span>H<b>7</b></span><span>P<i>5</i></span><span>SI<i>7</i></span></div></div>
+      <div class="grid" id="g-oe4"></div>
+      <div class="foot"><span>3/4 players entered</span><span>Stats</span></div>
+    </div>
+
+    <div class="vlabel">Single player</div>
+    <div class="wrap">
+      <div class="whead"><span class="wlab">Group</span><div class="wmeta"><span>H<b>7</b></span><span>P<i>5</i></span><span>SI<i>7</i></span></div></div>
+      <div class="grid one" id="g-oe1"></div>
+      <div class="foot"><span>1/1 players entered</span><span>Stats</span></div>
+    </div>
+    <div class="hbadge best" id="h-oe">card h: –</div>
+  </div>
+
+  <!-- ============ OPTION E2 ============ -->
+  <div class="col oe2">
+    <div class="colhead">Option E2 — name only, score on its own line</div>
+    <div class="colsub">Same content, but the score keeps a full centred line of its own — bigger target, taller card.</div>
+    <span class="tagline t-b">NAME ONLY / STACKED</span>
+
+    <div class="vlabel">4 players</div>
+    <div class="wrap">
+      <div class="whead"><span class="wlab">Group</span><div class="wmeta"><span>H<b>7</b></span><span>P<i>5</i></span><span>SI<i>7</i></span></div></div>
+      <div class="grid" id="g-oe24"></div>
+      <div class="foot"><span>3/4 players entered</span><span>Stats</span></div>
+    </div>
+
+    <div class="vlabel">Single player</div>
+    <div class="wrap">
+      <div class="whead"><span class="wlab">Group</span><div class="wmeta"><span>H<b>7</b></span><span>P<i>5</i></span><span>SI<i>7</i></span></div></div>
+      <div class="grid one" id="g-oe21"></div>
+      <div class="foot"><span>1/1 players entered</span><span>Stats</span></div>
+    </div>
+    <div class="hbadge best" id="h-oe2">card h: –</div>
+  </div>
+
+</div>
+
+<script>
+// photo:true = this golfer actually has a linePictureUrl. Live DB: ~2% of 1,272 profiles do,
+// so 1-in-4 is already generous for a real four-ball.
+const P = [
+  { n:'Pete',    i:'PP', hcp:18, sc:6, pts:24, pos:1, state:'active', photo:true },
+  { n:'Somchai', i:'SK', hcp:12, sc:5, pts:22, pos:2, state:'',       photo:false },
+  { n:'Derek',   i:'DB', hcp:24, sc:7, pts:19, pos:3, state:'',       photo:false },
+  { n:'Rocky',   i:'RJ', hcp:9,  sc:0, pts:17, pos:4, state:'needs',  photo:false },
+];
+const face = p => p.photo ? 'av photo' : 'av blank';
+const posC = {1:'p1',2:'p2',3:'p3'};
+const ord  = {1:'1ST',2:'2ND',3:'3RD',4:'4TH'};
+
+function cur(p, active){
+  return `<div class="pc ${p.state}">
+    ${p.state==='active'?'<span class="tag">SCORING</span>':''}
+    <button class="self">📱</button>
+    <span class="posw"><span class="pos ${posC[p.pos]||'p4'}">${ord[p.pos]}</span></span>
+    <div class="av">${p.i}</div>
+    <div class="nm">${p.n}</div>
+    <div class="hcp">HCP ${p.hcp}</div>
+    <div class="sc ${p.sc?'':'empty'}">${p.sc||'–'}</div>
+    <div class="pts">${p.pts} PTS</div>
+  </div>`;
+}
+function oa(p){
+  return `<div class="pc ${p.state}">
+    ${p.state==='active'?'<span class="tag">SCORING</span>':''}
+    <button class="self">📱</button>
+    <span class="posw"><span class="pos ${posC[p.pos]||'p4'}">${ord[p.pos]}</span></span>
+    <div class="av">${p.i}</div>
+    <div class="nm">${p.n}</div>
+    <div class="meta"><span class="hcp">HCP ${p.hcp}</span><span class="dot">●</span><span class="pts">${p.pts} PTS</span></div>
+    <div class="sc ${p.sc?'':'empty'}">${p.sc||'–'}</div>
+  </div>`;
+}
+function ob(p){
+  return `<div class="pc ${p.state}">
+    ${p.state==='active'?'<span class="tag">SCORING</span>':''}
+    <div class="top">
+      <button class="self">📱</button>
+      <div class="av">${p.i}</div>
+      <div class="sc ${p.sc?'':'empty'}">${p.sc||'–'}</div>
+    </div>
+    <div class="nm">${p.n}</div>
+    <div class="meta"><span class="pos ${posC[p.pos]||'p4'}">${ord[p.pos]}</span><span class="hcp">HCP ${p.hcp}</span><span class="dot">●</span><span class="pts">${p.pts} PTS</span></div>
+  </div>`;
+}
+function ob1(p){
+  return `<div class="pc ${p.state}">
+    ${p.state==='active'?'<span class="tag">SCORING</span>':''}
+    <div class="row">
+      <div class="av">${p.i}</div>
+      <div class="txt">
+        <div class="nm">${p.n}</div>
+        <div class="meta"><span class="pos ${posC[p.pos]||'p4'}">${ord[p.pos]}</span><span class="hcp">HCP ${p.hcp}</span><span class="dot">●</span><span class="pts">${p.pts} PTS</span></div>
+      </div>
+      <div class="sc ${p.sc?'':'empty'}">${p.sc||'–'}</div>
+    </div>
+  </div>`;
+}
+function oc(p){
+  return `<div class="pc ${p.state}">
+    ${p.state==='active'?'<span class="tag">SCORING</span>':''}
+    <div class="top">
+      <button class="self">📱</button>
+      <div class="${face(p)}"></div>
+      <div class="sc ${p.sc?'':'empty'}">${p.sc||'–'}</div>
+    </div>
+    <div class="nm">${p.n}</div>
+    <div class="meta"><span class="pos ${posC[p.pos]||'p4'}">${ord[p.pos]}</span><span class="hcp">HCP ${p.hcp}</span><span class="pts">${p.pts} PTS</span></div>
+  </div>`;
+}
+function oc1(p){
+  return `<div class="pc ${p.state}">
+    ${p.state==='active'?'<span class="tag">SCORING</span>':''}
+    <div class="row">
+      <div class="${face(p)}"></div>
+      <div class="txt">
+        <div class="nm">${p.n}</div>
+        <div class="meta"><span class="pos ${posC[p.pos]||'p4'}">${ord[p.pos]}</span><span class="hcp">HCP ${p.hcp}</span><span class="pts">${p.pts} PTS</span></div>
+      </div>
+      <div class="sc ${p.sc?'':'empty'}">${p.sc||'–'}</div>
+    </div>
+  </div>`;
+}
+function od(p){
+  return `<div class="pc ${p.state}">
+    ${p.state==='active'?'<span class="tag">SCORING</span>':''}
+    <div class="top">
+      <button class="self">📱</button>
+      <div class="sc ${p.sc?'':'empty'}">${p.sc||'–'}</div>
+    </div>
+    <div class="nmrow"><span class="${face(p)}"></span><span class="nm">${p.n}</span></div>
+    <div class="meta"><span class="pos ${posC[p.pos]||'p4'}">${ord[p.pos]}</span><span class="hcp">HCP ${p.hcp}</span><span class="pts">${p.pts} PTS</span></div>
+  </div>`;
+}
+function od1(p){
+  return `<div class="pc ${p.state}">
+    ${p.state==='active'?'<span class="tag">SCORING</span>':''}
+    <div class="row">
+      <div class="${face(p)}"></div>
+      <div class="txt">
+        <div class="nmrow"><span class="nm">${p.n}</span></div>
+        <div class="meta"><span class="pos ${posC[p.pos]||'p4'}">${ord[p.pos]}</span><span class="hcp">HCP ${p.hcp}</span><span class="pts">${p.pts} PTS</span></div>
+      </div>
+      <div class="sc ${p.sc?'':'empty'}">${p.sc||'–'}</div>
+    </div>
+  </div>`;
+}
+function oe(p){
+  return `<div class="pc ${p.state}">
+    ${p.state==='active'?'<span class="tag">SCORING</span>':''}
+    <span class="pos ${posC[p.pos]||'p4'}">${ord[p.pos]}</span>
+    <div class="top">
+      <span class="nm">${p.n}</span>
+      <span class="sc ${p.sc?'':'empty'}">${p.sc||'–'}</span>
+    </div>
+    <div class="meta"><span class="hcp">HCP ${p.hcp}</span><span class="pts">${p.pts} PTS</span></div>
+  </div>`;
+}
+function oe2(p){
+  return `<div class="pc ${p.state}">
+    ${p.state==='active'?'<span class="tag">SCORING</span>':''}
+    <span class="pos ${posC[p.pos]||'p4'}">${ord[p.pos]}</span>
+    <div class="nm">${p.n}</div>
+    <div class="meta"><span class="hcp">HCP ${p.hcp}</span><span class="pts">${p.pts} PTS</span></div>
+    <div class="sc ${p.sc?'':'empty'}">${p.sc||'–'}</div>
+  </div>`;
+}
+const solo = [P[0]];
+const $ = id => document.getElementById(id);
+$('g-cur4').innerHTML = P.map(cur).join('');  $('g-cur1').innerHTML = solo.map(cur).join('');
+$('g-oa4').innerHTML  = P.map(oa).join('');   $('g-oa1').innerHTML  = solo.map(oa).join('');
+$('g-ob4').innerHTML  = P.map(ob).join('');   $('g-ob1').innerHTML  = solo.map(ob1).join('');
+$('g-oc4').innerHTML  = P.map(oc).join('');   $('g-oc1').innerHTML  = solo.map(oc1).join('');
+$('g-od4').innerHTML  = P.map(od).join('');   $('g-od1').innerHTML  = solo.map(od1).join('');
+$('g-oe4').innerHTML  = P.map(oe).join('');   $('g-oe1').innerHTML  = solo.map(oe).join('');
+$('g-oe24').innerHTML = P.map(oe2).join('');  $('g-oe21').innerHTML = solo.map(oe2).join('');
+
+function h(id){ return Math.round(document.querySelector('#'+id+' .pc').getBoundingClientRect().height); }
+const c4=h('g-cur4'), c1=h('g-cur1');
+function badge(el, four, one){
+  const d4 = Math.round((1-four/c4)*100), d1 = Math.round((1-one/c1)*100);
+  el.textContent = `4-up ${four}px  ·  solo ${one}px` + (four!==c4 ? `   ▼ ${d4}% / ${d1}%` : '');
+}
+badge($('h-cur'), c4, c1);
+badge($('h-oa'), h('g-oa4'), h('g-oa1'));
+badge($('h-ob'), h('g-ob4'), h('g-ob1'));
+badge($('h-oc'), h('g-oc4'), h('g-oc1'));
+badge($('h-od'), h('g-od4'), h('g-od1'));
+badge($('h-oe'), h('g-oe4'), h('g-oe1'));
+badge($('h-oe2'), h('g-oe24'), h('g-oe21'));
+</script>
+</body></html>

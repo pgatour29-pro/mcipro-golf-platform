@@ -5131,6 +5131,28 @@
         body.theme-light #scorecardActiveSection .scv3-pc-hcp { color:#64748B; }
         body.theme-light #scorecardActiveSection .scv3-pc-pts { color:#15803d; }
 
+        /* ── SCV3 CARD OWNERSHIP (Pete 2026-08-12): name-only cube, one owner per card.
+           GREEN = this device owns the card and may type it. RED = another device owns it,
+           so the keypad can never write here by accident. Avatar/initials/📱 removed — the
+           name already identifies the player, and 98% of profiles have no LINE photo. ── */
+        #scorecardActiveSection .scv3-pc-meta { display:flex; align-items:center; justify-content:space-between; gap:4px; margin-top:3px; white-space:nowrap; min-width:0; }
+        /* 4-across leaves ~78px of card width — HCP and PTS must both fit one line there, so
+           drop the base .06em tracking and hold 10px; 1-3 cards are wide enough to go back up. */
+        #scorecardActiveSection .scv3-pc-meta .scv3-pc-hcp,
+        #scorecardActiveSection .scv3-pc-meta .scv3-pc-pts { margin-top:0; min-height:0; letter-spacing:0; font-size:10px; overflow:hidden; }
+        #scorecardActiveSection #groupScorecardGrid:has(.scv3-pc:nth-child(-n+3):last-child) .scv3-pc-meta .scv3-pc-hcp,
+        #scorecardActiveSection #groupScorecardGrid:has(.scv3-pc:nth-child(-n+3):last-child) .scv3-pc-meta .scv3-pc-pts { font-size:13px !important; }
+        /* rank pill rides the top border edge — costs zero internal width/height */
+        #scorecardActiveSection .scv3-pc-pos { position:absolute; top:-7px; right:4px; left:auto; z-index:5; }
+        #scorecardActiveSection .scv3-pc-tag { left:4px; transform:none; }
+        /* RED = locked to another device */
+        #scorecardActiveSection .scv3-pc.is-locked { border-color:rgba(239,68,68,0.55) !important; background:rgba(239,68,68,0.08) !important; box-shadow:none !important; }
+        #scorecardActiveSection .scv3-pc.is-locked .sc-player-name,
+        #scorecardActiveSection .scv3-pc.is-locked .sc-player-score { opacity:0.72; }
+        #scorecardActiveSection .scv3-pc-tag.locked { background:linear-gradient(180deg,#f87171,#ef4444); color:#3b0505; box-shadow:0 2px 8px rgba(239,68,68,0.4); }
+        body.theme-light #scorecardActiveSection .scv3-pc.is-locked { border-color:#dc2626 !important; background:rgba(220,38,38,0.07) !important; }
+        body.theme-light #scorecardActiveSection .scv3-pc-tag.locked { background:#dc2626; color:#fff; box-shadow:0 0 0 1.5px rgba(220,38,38,0.35); }
+
         /* ===== SCV3 exact-model pass ===== */
         /* Group titles */
         #scorecardStartSection .scv3-gtitle { font:600 10.5px/1 'Instrument Sans',sans-serif; letter-spacing:.16em; text-transform:uppercase; color:#59636E; margin:20px 8px 8px; background:transparent !important; border:none !important; }
@@ -82927,7 +82949,12 @@ class LiveScorecardSystem {
                         player_name: player.name,
                         scoring_format: JSON.stringify(this.scoringFormats),
                         match_play_config: Object.keys(matchPlayConfig).length > 0 ? JSON.stringify(matchPlayConfig) : null,
-                        is_live_spectatable: isLiveSpectatable  // NEW: Enable live spectating for public viewing
+                        is_live_spectatable: isLiveSpectatable,  // NEW: Enable live spectating for public viewing
+                        // OWNERSHIP (2026-08-12): the device starting the round owns every card
+                        // until it hands one over. Without this stamp controlled_by stays NULL and
+                        // every device would show green — the accidental-entry hole we're closing.
+                        controlled_by: this._deviceUser() || null,
+                        control_taken_at: new Date().toISOString()
                     })
                     .eq('id', scorecard.id);
 
@@ -82943,9 +82970,15 @@ class LiveScorecardSystem {
             const results = await Promise.all(scorecardPromises);
 
             // Store scorecard IDs
+            this.cardOwner = this.cardOwner || {};
+            const _startOwner = this._deviceUser();
             results.forEach(({ playerId, scorecardId }) => {
                 this.scorecards[playerId] = scorecardId;
+                // Mirror the controlled_by stamp written above so this device knows it owns
+                // every card immediately, without waiting for a re-read.
+                this.cardOwner[playerId] = _startOwner || null;
             });
+            this._syncSelfScoringFromOwnership();
 
             // FIX: Validate all players have scorecard IDs
             const missingScorecardsPlayers = this.players.filter(p => !this.scorecards[p.id]);
@@ -83148,28 +83181,27 @@ class LiveScorecardSystem {
             console.warn('[LiveScorecard] Resume score load failed (non-fatal):', resumeErr);
         }
 
-        // SELF-SCORING flags: restore which players keep their own score on their own phone
-        // (scorecards.controlled_by = that player's id). Set by the host's 📱 release toggle.
+        // CARD OWNERSHIP: restore who owns each card (scorecards.controlled_by). Drives the
+        // green/red cubes and, via _syncSelfScoringFromOwnership, the pace + rotation checks.
         try {
-            this.selfScoring = this.selfScoring || {};
-            const ctlIds = Object.values(this.scorecards || {}).filter(Boolean);
+            this.cardOwner = this.cardOwner || {};
+            const ctlIds = Object.values(this.scorecards || {}).filter(id => id && !String(id).startsWith('local_'));
             if (window.SupabaseDB?.client && ctlIds.length) {
                 const { data: ctlRows } = await window.SupabaseDB.client
                     .from('scorecards')
                     .select('id, player_id, controlled_by')
                     .in('id', ctlIds);
-                (ctlRows || []).forEach(r => {
-                    if (r.controlled_by && r.controlled_by === r.player_id) this.selfScoring[r.player_id] = true;
-                });
+                (ctlRows || []).forEach(r => { this.cardOwner[r.player_id] = r.controlled_by || null; });
             }
-        } catch (ctlErr) { console.warn('[LiveScorecard] self-scoring flag load failed (non-fatal):', ctlErr); }
+            this._syncSelfScoringFromOwnership();
+        } catch (ctlErr) { console.warn('[LiveScorecard] card ownership load failed (non-fatal):', ctlErr); }
 
         // Select first player THIS DEVICE controls (updates UI). On the host's phone that's the
         // first non-released player; on a released self-scorer's OWN phone it's themselves —
         // without this, their device auto-selected a teammate's cube (Greenwood 2026-07-18).
-        const _selDeviceOwner = window.Auth?.currentUserId || window.AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
-        const _ownReleased = this.players.find(p => String(p.id) === String(_selDeviceOwner) && this.selfScoring?.[p.id]);
-        this.selectPlayer((_ownReleased || this.players.find(p => !this.selfScoring?.[p.id]) || this.players[0]).id);
+        const _selDeviceOwner = this._deviceUser();
+        const _ownCard = this.players.find(p => String(p.id) === String(_selDeviceOwner) && this._ownsCard(p.id));
+        this.selectPlayer((_ownCard || this.players.find(p => this._ownsCard(p.id)) || this.players[0]).id);
 
         // Render first hole and leaderboard
         this.refreshLeaderboard();
@@ -83411,7 +83443,9 @@ class LiveScorecardSystem {
                 const badgeStyle = badgeColors[pos] || 'background:#3f4c5c;color:#ffffff;';
                 const posBadge = `<span style="display:inline-flex;align-items:center;justify-content:center;height:16px;padding:0 6px;border-radius:9px;font-size:9px;font-weight:800;letter-spacing:0.04em;line-height:1;flex-shrink:0;border:1px solid rgba(0,0,0,0.3);box-shadow:0 1px 3px rgba(0,0,0,0.45);${badgeStyle}">${posLabel}</span>`;
 
-                const totalStr = total !== 0 ? `${total > 0 && isStableford ? '+' : ''}${total} PTS` : '&nbsp;';
+                // No '+' prefix: at 4-across "HCP 18" + "+24 PTS" overflows the ~78px card and
+                // bleeds into the neighbour. Stableford totals are never negative anyway.
+                const totalStr = total !== 0 ? `${total} PTS` : '&nbsp;';
                 // Check if this player has NOT entered a score for current hole yet
                 const hasScore = !!this.scoresCache[p.id]?.[this.currentHole];
                 const needsScore = !hasScore;
@@ -83420,22 +83454,23 @@ class LiveScorecardSystem {
                 const initials = (nameParts[0]?.[0] || '?') + (nameParts[1]?.[0] || '');
                 const firstName = nameParts[0] || p.name;
                 const hcpNum = (p.handicap !== undefined && p.handicap !== null && p.handicap !== '') ? Math.round(Number(p.handicap)) : null;
-                const isSelf = !!this.selfScoring?.[p.id];
+                // OWNERSHIP (Pete 2026-08-12): green = this device owns the card, red = another
+                // device does. Only the owner's keypad can write, so no accidental entry.
+                const mine = this._ownsCard(p.id);
+                const activeHere = mine && isActive;
                 return `
-                    <div class="sc-player-card scv3-pc ${isActive && !isSelf ? 'is-active' : (needsScore ? 'needs-score' : 'is-done')}${isSelf ? ' is-self' : ''}" onclick="LiveScorecardManager.selectPlayer('${p.id}')">
-                        ${isSelf ? '<span class="scv3-pc-tag self">📱 SELF</span>' : (isActive ? '<span class="scv3-pc-tag">SCORING</span>' : '')}
-                        <button class="scv3-pc-selfbtn${isSelf ? ' on' : ''}" title="${isSelf ? 'Take back scoring for this player' : 'This player keeps their own score on their phone'}" onclick="event.stopPropagation();LiveScorecardManager.toggleSelfScoring('${p.id}')">📱</button>
+                    <div class="sc-player-card scv3-pc ${mine ? (activeHere ? 'is-active' : (needsScore ? 'needs-score' : 'is-done')) : 'is-locked'}" onclick="LiveScorecardManager.tapPlayerCard('${p.id}')">
+                        ${activeHere ? '<span class="scv3-pc-tag">SCORING</span>' : (!mine ? '<span class="scv3-pc-tag locked">THEIR PHONE</span>' : '')}
                         <span class="scv3-pc-pos">${posBadge}</span>
-                        <div class="scv3-pc-av" data-golfer-face="${p.lineUserId || p.id || ''}">${initials.toUpperCase()}</div>
                         <div class="sc-player-name" title="${p.name}">${firstName}</div>
-                        <div class="scv3-pc-hcp">${hcpNum !== null ? 'HCP ' + hcpNum : '&nbsp;'}</div>
+                        <div class="scv3-pc-meta">
+                            <span class="scv3-pc-hcp">${hcpNum !== null ? 'HCP ' + hcpNum : '&nbsp;'}</span>
+                            <span class="scv3-pc-pts">${totalStr}</span>
+                        </div>
                         <div class="sc-player-score${score ? '' : ' is-empty'}">${score || '–'}</div>
-                        <div class="scv3-pc-pts">${totalStr}</div>
                     </div>
                 `;
             }).join('');
-            // GLOBAL RULE: golfer card avatars get the LINE photo (initials stay when none).
-            if (window._golferFaceFill) window._golferFaceFill(grid);
             console.log('[LiveScorecard] ✅ Grid rendered, innerHTML length:', grid.innerHTML.length);
             } catch (renderErr) {
                 console.error('[LiveScorecard] ❌ Error rendering player cards:', renderErr);
@@ -83454,7 +83489,7 @@ class LiveScorecardSystem {
         const enteredCtl = ctlPlayers.filter(p => this.getPlayerScore(p.id, this.currentHole)).length;
         const selfCount = this.players.length - ctlPlayers.length;
         document.getElementById('holeProgress').textContent =
-            `${enteredCtl}/${ctlPlayers.length} players entered${selfCount ? ' · ' + selfCount + ' 📱 self-scoring' : ''}`;
+            `${enteredCtl}/${ctlPlayers.length} players entered${selfCount ? ' · ' + selfCount + ' on their own phone' : ''}`;
 
         // ALWAYS show BOTH buttons (Next Hole + Finish Round)
         const nextHoleBtn = document.getElementById('nextHoleButton');
@@ -85279,35 +85314,81 @@ class LiveScorecardSystem {
         this.renderHole();
     }
 
-    // SELF-SCORING release (Pete 2026-07-02): host taps 📱 on a player's cube to hand scoring
-    // to that player's own phone. Rotation, auto-advance and the entered-count skip released
-    // players so the host's pace never waits on them; their scores still stream in live.
-    // Persisted on scorecards.controlled_by so it survives reloads.
-    async toggleSelfScoring(playerId) {
-        this.selfScoring = this.selfScoring || {};
-        const player = this.players.find(p => p.id === playerId);
-        if (!player) return;
-        const turningOn = !this.selfScoring[playerId];
-        const others = Math.max(this.players.length - Object.keys(this.selfScoring).length - (turningOn ? 1 : 0), 0);
-        const msg = turningOn
-            ? `${player.name} will keep their OWN score on their phone.\n\nYou'll keep scoring the other ${others} player(s). Their scores still show up here live, and the hole won't wait for them.`
-            : `Take back scoring for ${player.name}?`;
-        if (!window.confirm(msg)) return;
-        if (turningOn) this.selfScoring[playerId] = true; else delete this.selfScoring[playerId];
-        if (turningOn && this.currentPlayerId === playerId) {
-            const nextCtl = this.players.find(p => !this.selfScoring[p.id]);
+    // ── CARD OWNERSHIP (Pete 2026-08-12) ──────────────────────────────────────────────
+    // One owner per card, persisted on scorecards.controlled_by. GREEN cube = this device
+    // owns it and may type; RED cube = another device owns it and the keypad is inert here.
+    // Replaces the 📱 self-scoring toggle: the tap model IS the handover.
+    //   tap a RED card              → take it back (becomes green here, red there)
+    //   tap a GREEN unselected card → select it for scoring
+    //   tap the GREEN SELECTED card → hand it to that player's phone (one click, no confirm)
+    // `selfScoring` is kept as the derived "not mine" view so the auto-advance predicates,
+    // the entered-count and the rotation keep working unchanged.
+    _deviceUser() {
+        return String(window.Auth?.currentUserId || window.AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id') || '');
+    }
+    // Guests (GUEST-*/MANUAL-*) have no phone to hand a card to — handing one over would
+    // strand it red on every device and auto-advance would skip them to a blank card.
+    _canOwnDevice(playerId) {
+        return /^U[0-9a-f]{32}$/i.test(String(playerId || ''));
+    }
+    _ownsCard(playerId) {
+        const owner = this.cardOwner?.[playerId];
+        // Legacy rounds started before ownership stamping: owner unknown → don't brick them,
+        // keep the old any-device behaviour until the card is explicitly claimed.
+        if (owner === undefined || owner === null || owner === '') return true;
+        return String(owner) === this._deviceUser();
+    }
+    // Mirror ownership into selfScoring ("cards this device is NOT responsible for") so every
+    // existing every()-check on pace/rotation stays correct without touching those call sites.
+    _syncSelfScoringFromOwnership() {
+        this.selfScoring = {};
+        (this.players || []).forEach(p => { if (!this._ownsCard(p.id)) this.selfScoring[p.id] = true; });
+    }
+    async _setCardOwner(playerId, ownerId) {
+        this.cardOwner = this.cardOwner || {};
+        this.cardOwner[playerId] = ownerId;
+        this._syncSelfScoringFromOwnership();
+        // If we just gave away the card we were scoring, jump to the next one we still own.
+        if (this.currentPlayerId === playerId && !this._ownsCard(playerId)) {
+            const nextCtl = this.players.find(p => this._ownsCard(p.id));
             if (nextCtl) { this.currentPlayerId = nextCtl.id; this.currentScore = ''; }
         }
         this.renderHole();
         try {
             const scId = this.scorecards?.[playerId];
-            if (scId && window.SupabaseDB?.client) {
+            if (scId && !String(scId).startsWith('local_') && window.SupabaseDB?.client) {
                 await window.SupabaseDB.client.from('scorecards')
-                    .update({ controlled_by: turningOn ? playerId : null, control_taken_at: turningOn ? new Date().toISOString() : null })
+                    .update({ controlled_by: ownerId, control_taken_at: new Date().toISOString() })
                     .eq('id', scId);
             }
-        } catch (e) { console.warn('[LiveScorecard] self-scoring flag save failed (non-fatal):', e); }
-        NotificationManager.show(turningOn ? `${player.name} is scoring on their own phone 📱` : `You're scoring for ${player.name} again`, 'info');
+        } catch (e) { console.warn('[LiveScorecard] card owner save failed (non-fatal):', e); }
+    }
+    tapPlayerCard(playerId) {
+        const player = (this.players || []).find(p => p.id === playerId);
+        if (!player) return;
+        if (!this._ownsCard(playerId)) return this.takeBackCard(playerId);
+        if (this.currentPlayerId !== playerId) return this.selectPlayer(playerId);
+        return this.handOverCard(playerId);
+    }
+    async handOverCard(playerId) {
+        const player = this.players.find(p => p.id === playerId);
+        if (!player) return;
+        if (!this._canOwnDevice(playerId)) {
+            NotificationManager.show(`${player.name} has no linked phone — you keep this card`, 'warning');
+            return;
+        }
+        if (String(playerId) === this._deviceUser()) {
+            NotificationManager.show(`This is your own card`, 'info');
+            return;
+        }
+        await this._setCardOwner(playerId, playerId);
+        NotificationManager.show(`${player.name} now scores their own card 📱`, 'info');
+    }
+    async takeBackCard(playerId) {
+        const player = this.players.find(p => p.id === playerId);
+        if (!player) return;
+        await this._setCardOwner(playerId, this._deviceUser());
+        NotificationManager.show(`You're scoring for ${player.name} again`, 'info');
     }
 
     enterDigit(digit) {
@@ -85315,16 +85396,12 @@ class LiveScorecardSystem {
             NotificationManager.show('Select a player first', 'warning');
             return;
         }
-        // Released player — their phone owns this card now. But if the released player IS the
-        // person holding THIS phone, this device is exactly where their score belongs — never
-        // block the card's owner from scoring themselves (Greenwood 2026-07-18).
-        if (this.selfScoring && this.selfScoring[this.currentPlayerId]) {
-            const _deviceOwner = window.Auth?.currentUserId || window.AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
-            if (String(this.currentPlayerId) !== String(_deviceOwner)) {
-                const sp = this.players.find(x => x.id === this.currentPlayerId);
-                window.alert((sp?.name || 'This player') + ' is keeping their own score on their phone.\n\nTap the 📱 badge on their card to take back control.');
-                return;
-            }
+        // OWNERSHIP GUARD (2026-08-12): a RED card belongs to another device. The keypad is
+        // inert for it — this is the accidental-entry block. Tapping the red cube takes it back.
+        if (!this._ownsCard(this.currentPlayerId)) {
+            const sp = this.players.find(x => x.id === this.currentPlayerId);
+            NotificationManager.show((sp?.name || 'This player') + ' is scoring on their own phone — tap their red card to take it back', 'warning');
+            return;
         }
 
         // Block input only while saveCurrentScore is actively processing

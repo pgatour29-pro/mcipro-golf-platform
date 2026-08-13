@@ -116,7 +116,7 @@ building, not after.
 - `NotificationManager.show()` bare is a NO-OP — always `window.NotificationManager.show()`.
 - i18n: never hardcode user-facing strings — use `t()` / `_lvT()` keys; dicts must stay at
   parity across EN/TH/KO/JA; dates through `_lvLocale()`.
-- Design: NO purple — green `#22c55e` for highlights. Contrast floor: no gray-on-gray under
+- Design: NO purple — and pink/magenta/fuchsia/indigo COUNT AS PURPLE (Pete, 2026-08-14; v906 purge left zero in public/*.html — keep it that way). Green `#22c55e` for highlights. Contrast floor: no gray-on-gray under
   Tailwind 400 for text. Compact chrome globally: 1-line header, one-band hero, content starts
   ≤~250px on phone, full width on monitor. Every theme-aware page header ships `[data-theme-toggle]`.
   Stock Tailwind via CDN only — no custom design tokens.

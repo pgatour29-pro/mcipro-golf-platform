@@ -503,7 +503,7 @@
                     // Tee sheet made? (the trigger) + the registered field (who to list).
                     // NB: event_pairings has NO 'id' column — key is event_id.
                     sb.from('event_pairings').select('event_id').eq('event_id', eventId).limit(1),
-                    sb.from('event_registrations').select('player_id, player_name, handicap, status').eq('event_id', eventId)
+                    sb.from('event_registrations').select('player_id, player_name, handicap, status, special_requests').eq('event_id', eventId)
                 ]);
                 if (seq !== state.evSeq) return;
                 const event = evRes.data || { id:eventId, title:'Event' };
@@ -734,10 +734,26 @@
                             }).filter(ids => ids.length);
                         } catch(e){ console.warn('[Results] Waltz pairings load failed', e); }
                     }
-                    if (!teamDefs.length){
-                        const byGroup = {};
-                        players.forEach(p => { if (p.fmt.includes('waltz')) (byGroup[p.group] = byGroup[p.group]||[]).push(p.id); });
-                        teamDefs = Object.values(byGroup);
+                    // Pairings cover only PLACED groups — a registered trio never put on the
+                    // tee sheet (or a walk-on group) must still board. Cover every scored waltz
+                    // player the pairings missed: registration host+guests clusters first, then
+                    // scorecard group clusters. Lone strays stay individuals — no pseudo-teams.
+                    const covered = new Set(teamDefs.flat().map(String));
+                    const strays = [...players.values()].filter(p => p.fmt.includes('waltz') && !covered.has(p.id));
+                    if (strays.length){
+                        const unitOf = {};
+                        (registrations||[]).forEach(r => {
+                            if (r.player_id == null) return;
+                            const h = r.special_requests && r.special_requests.hostId;
+                            unitOf[String(r.player_id)] = h ? String(h) : String(r.player_id);
+                        });
+                        const hostClusters = {};
+                        strays.forEach(p => { const k = unitOf[p.id] || p.id; (hostClusters[k] = hostClusters[k]||[]).push(p.id); });
+                        const inHostTeam = new Set();
+                        Object.values(hostClusters).forEach(ids => { if (ids.length >= 2){ teamDefs.push(ids); ids.forEach(id => inHostTeam.add(id)); } });
+                        const groupClusters = {};
+                        strays.forEach(p => { if (!inHostTeam.has(p.id) && p.group) (groupClusters[p.group] = groupClusters[p.group]||[]).push(p.id); });
+                        Object.values(groupClusters).forEach(ids => { if (ids.length >= 2) teamDefs.push(ids); });
                     }
                     const wCount = h => ((h-1)%3)+1;
                     const teams = teamDefs.map(ids => {
@@ -903,11 +919,14 @@
                     </div>`).join('') + '</div>';
             };
 
-            let html = '';
+            // 3-Man Waltz: the TEAM result leads the Winners tab (big team totals, members
+            // with their individual points), then the official individual placings below.
+            const teamHtml = waltzTeamCardsHtml(true, '');
+            let html = teamHtml ? (teamHtml + `<div class="pb-1" style="font-size:11px;font-weight:800;color:var(--sub);text-transform:uppercase;">${esc(rt('individual'))}</div>`) : '';
             order.forEach(g => {
                 const list = groups[g].slice().sort((a,b) => (a.position||999)-(b.position||999));
                 if (g) html += `<div class="division-band">${esc(g)}</div>`;
-                html += podiumHtml(list);
+                if (!teamHtml) html += podiumHtml(list);   // waltz: teams own the podium slot
                 html += list.map(r => `
                     <div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line);">
                         <span style="width:34px;text-align:center;font-weight:800;font-size:${r.position<=3?'17px':'13.5px'};color:${r.position<=3?'var(--gold)':'var(--sub)'};">${medal(r.position)}</span>
@@ -1367,6 +1386,52 @@
             }
         }
 
+        // Waltz team cards — TEAM score is the headline (big green total), members with
+        // their individual points underneath, full 18-hole H/Cnt/Pts grid always included.
+        // Shared by the Full Results tab and the Winners tab.
+        function waltzTeamCardsHtml(showPlaces, padClass){
+            const d = state.eventData;
+            const teams = d && d.teamBoards && d.teamBoards.waltz;
+            if (!teams || !teams.length) return '';
+            const wCount = h => ((h-1)%3)+1;
+            const cnt = hs => hs.map(h => `<td class="text-center" style="min-width:18px;font-weight:700;color:var(--green);">${wCount(h)}</td>`).join('');
+            return `
+                <div class="${padClass||''}">
+                    <div style="background:var(--band);border-left:4px solid var(--green);border-radius:8px;padding:8px 12px;margin-bottom:10px;">
+                        <div style="font-weight:800;font-size:14px;">${esc(rt('waltzTitle'))}</div>
+                        <div class="sub" style="font-size:11px;">${esc(rt('waltzSub'))}</div>
+                    </div>
+                    ${teams.map((tm,i) => {
+                        const f9 = tm.teamHolePts.slice(0,9), b9 = tm.teamHolePts.slice(9);
+                        const f9T = f9.filter(p=>p!==null).reduce((a,b)=>a+b,0);
+                        const b9T = b9.filter(p=>p!==null).reduce((a,b)=>a+b,0);
+                        const cell = p => `<td class="text-center" style="color:var(--green);font-weight:600;">${p!==null?p:'-'}</td>`;
+                        const memberLine = tm.members.map(m => `<span style="white-space:nowrap;" data-golfer-av="${esc(m.id||'')}" data-golfer-av-nm="${esc(m.name)}" data-golfer-av-sz="16">${esc(m.name)} <b style="color:var(--green);">${m.pts}</b></span>`).join('<span class="sub"> · </span>');
+                        const win = showPlaces && i===0;
+                        return `<div style="border:1.5px solid ${win?'var(--green)':'var(--line)'};border-radius:12px;padding:10px 12px;margin-bottom:10px;background:${win?'var(--band)':'var(--card)'};">
+                            <div style="display:flex;align-items:center;gap:10px;">
+                                <span style="flex-shrink:0;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:${showPlaces&&i<3?'18px':'13px'};background:var(--band);">${showPlaces ? medal(i+1) : (i+1)}</span>
+                                <div style="flex:1;min-width:0;">
+                                    <div style="font-weight:800;font-size:13.5px;line-height:1.25;">${esc(tm.name)}</div>
+                                    <div style="font-size:11px;margin-top:3px;line-height:1.5;">${memberLine}</div>
+                                </div>
+                                <div style="flex-shrink:0;text-align:right;">
+                                    <div style="font-weight:800;font-size:27px;line-height:1;color:var(--green);">${tm.total}</div>
+                                    <div style="font-size:9.5px;font-weight:700;color:var(--sub);text-transform:uppercase;">${esc(rt('pts'))}</div>
+                                </div>
+                            </div>
+                            <div class="scroll-x" style="margin-top:8px;">
+                                <table style="width:100%;border-collapse:collapse;font-size:9px;color:var(--sub);">
+                                    <tr><td style="font-weight:700;padding-right:4px;">H</td>${[1,2,3,4,5,6,7,8,9].map(h=>`<td class="text-center" style="min-width:18px;">${h}</td>`).join('')}<td class="text-center" style="min-width:22px;font-weight:800;">${esc(rt('out'))}</td><td style="width:4px;"></td>${[10,11,12,13,14,15,16,17,18].map(h=>`<td class="text-center" style="min-width:18px;">${h}</td>`).join('')}<td class="text-center" style="min-width:22px;font-weight:800;">${esc(rt('inn'))}</td></tr>
+                                    <tr><td style="font-weight:700;color:var(--green);">${esc(rt('cnt'))}</td>${cnt([1,2,3,4,5,6,7,8,9])}<td></td><td></td>${cnt([10,11,12,13,14,15,16,17,18])}<td></td></tr>
+                                    <tr><td style="font-weight:700;">${esc(rt('pts'))}</td>${f9.map(cell).join('')}<td class="text-center" style="font-weight:800;color:var(--green);">${f9T||'-'}</td><td></td>${b9.map(cell).join('')}<td class="text-center" style="font-weight:800;color:var(--green);">${b9T||'-'}</td></tr>
+                                </table>
+                            </div>
+                        </div>`;
+                    }).join('')}
+                </div>`;
+        }
+
         // ---------- Team boards HTML (ported from live.html, theme-var restyle) ----------
         function renderTeamBoardsHtml(teamBoards){
             if (!teamBoards) return '';
@@ -1374,40 +1439,7 @@
             const showPlaces = !!(state.eventData && state.eventData.published);
             let html = '';
             if (teamBoards.waltz){
-                const wCount = h => ((h-1)%3)+1;
-                const cnt = hs => hs.map(h => `<td class="text-center" style="min-width:18px;font-weight:700;color:var(--green);">${wCount(h)}</td>`).join('');
-                html += `
-                    <div class="px-3 pt-3">
-                        <div style="background:var(--band);border-left:4px solid var(--green);border-radius:8px;padding:8px 12px;margin-bottom:8px;">
-                            <div style="font-weight:800;font-size:14px;">${esc(rt('waltzTitle'))}</div>
-                            <div class="sub" style="font-size:11px;">${esc(rt('waltzSub'))}</div>
-                        </div>
-                        ${teamBoards.waltz.map((tm,i) => {
-                            const f9 = tm.teamHolePts.slice(0,9), b9 = tm.teamHolePts.slice(9);
-                            const f9T = f9.filter(p=>p!==null).reduce((a,b)=>a+b,0);
-                            const b9T = b9.filter(p=>p!==null).reduce((a,b)=>a+b,0);
-                            const cell = p => `<td class="text-center" style="color:var(--green);font-weight:600;">${p!==null?p:'-'}</td>`;
-                            const memberLine = tm.members.map(m => `<span data-golfer-av="${esc(m.id||'')}" data-golfer-av-nm="${esc(m.name)}" data-golfer-av-sz="16">${esc(m.name)} <b style="color:var(--green);">${m.pts}</b></span>`).join('<span class="sub"> · </span>');
-                            return `<div style="border-bottom:1px solid var(--line);padding:8px 0;" class="${showPlaces && i===0?'winner-row':''}">
-                                <div class="flex items-center justify-between mb-1 px-1">
-                                    <div class="flex items-center gap-2" style="min-width:0;">
-                                        <span style="font-weight:800;color:var(--sub);">${i+1}</span>
-                                        ${showPlaces && i===0 ? '<span>🏆</span>' : ''}
-                                        <span style="font-weight:800;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(tm.name)}</span>
-                                    </div>
-                                    <span style="font-weight:800;color:var(--green);white-space:nowrap;">${tm.total} ${esc(rt('pts')).toLowerCase()}</span>
-                                </div>
-                                <div style="font-size:11px;" class="px-1 mb-1">${memberLine}</div>
-                                <div class="scroll-x">
-                                    <table style="width:100%;border-collapse:collapse;font-size:9px;color:var(--sub);">
-                                        <tr><td style="font-weight:700;padding-right:4px;">H</td>${[1,2,3,4,5,6,7,8,9].map(h=>`<td class="text-center" style="min-width:18px;">${h}</td>`).join('')}<td class="text-center" style="min-width:22px;font-weight:800;">${esc(rt('out'))}</td><td style="width:4px;"></td>${[10,11,12,13,14,15,16,17,18].map(h=>`<td class="text-center" style="min-width:18px;">${h}</td>`).join('')}<td class="text-center" style="min-width:22px;font-weight:800;">${esc(rt('inn'))}</td></tr>
-                                        <tr><td style="font-weight:700;color:var(--green);">${esc(rt('cnt'))}</td>${cnt([1,2,3,4,5,6,7,8,9])}<td></td><td></td>${cnt([10,11,12,13,14,15,16,17,18])}<td></td></tr>
-                                        <tr><td style="font-weight:700;">${esc(rt('pts'))}</td>${f9.map(cell).join('')}<td class="text-center" style="font-weight:800;color:var(--green);">${f9T||'-'}</td><td></td>${b9.map(cell).join('')}<td class="text-center" style="font-weight:800;color:var(--green);">${b9T||'-'}</td></tr>
-                                    </table>
-                                </div>
-                            </div>`;
-                        }).join('')}
-                    </div>`;
+                html += waltzTeamCardsHtml(showPlaces, 'px-3 pt-3');
             }
             if (teamBoards.scramble){
                 html += `

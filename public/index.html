@@ -17621,7 +17621,7 @@
                     const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
                     const { data } = await window.SupabaseDB.client
                         .from('scorecards')
-                        .select('player_id, player_name, created_at, scoring_format, scores(hole_number, gross_score, stableford_points, par)')
+                        .select('player_id, player_name, group_id, created_at, scoring_format, scores(hole_number, gross_score, stableford_points, par)')
                         .eq('event_id', eventId)
                         .gte('created_at', since)
                         .neq('status', 'abandoned');
@@ -17634,7 +17634,7 @@
                     const since = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString();
                     const { data } = await window.SupabaseDB.client
                         .from('scorecards')
-                        .select('player_id, player_name, created_at, scoring_format, scores(hole_number, gross_score, stableford_points, par)')
+                        .select('player_id, player_name, group_id, created_at, scoring_format, scores(hole_number, gross_score, stableford_points, par)')
                         .eq('course_id', course)
                         .is('event_id', null)
                         .gte('created_at', since)
@@ -17643,7 +17643,7 @@
                 } else if (groupId) {
                     const { data } = await window.SupabaseDB.client
                         .from('scorecards')
-                        .select('player_id, player_name, created_at, scoring_format, scores(hole_number, gross_score, stableford_points, par)')
+                        .select('player_id, player_name, group_id, created_at, scoring_format, scores(hole_number, gross_score, stableford_points, par)')
                         .eq('group_id', groupId)
                         .neq('status', 'abandoned');
                     scorecards = data || [];
@@ -17710,17 +17710,38 @@
                 // event_pairings groups (forced to 3s for Waltz) so every device agrees.
                 const waltzOn = !!(mgr?.scoringFormats?.includes?.('waltz'))
                     || scorecards.some(sc => String(sc.scoring_format || '').includes('waltz'));
-                let waltzTeamDefs = (mgr?.waltzConfig?.teams?.length) ? mgr.waltzConfig.teams : [];
-                if (waltzOn && !waltzTeamDefs.length && eventId) {
+                let waltzTeamDefs = (mgr?.waltzConfig?.teams?.length)
+                    ? mgr.waltzConfig.teams.map(tm => ({ playerIds: (tm.playerIds || []).map(String), playerNames: tm.playerNames || null }))
+                    : [];
+                // v905: MERGE team sources instead of local-else-pairings — the scorer's own
+                // device used to show ONLY its own team. Pairings teams are appended, then
+                // scorecard group_id clusters catch anyone no def covers (a registered 3-man
+                // team the organizer never placed on the tee sheet still ranks as a TEAM).
+                const _wCover = new Set(waltzTeamDefs.flatMap(tm => tm.playerIds));
+                const _wAddDef = (rawIds) => {
+                    const ids = [...new Set(rawIds)];
+                    if (!ids.length || ids.some(id => _wCover.has(id))) return;
+                    waltzTeamDefs.push({ playerIds: ids, playerNames: null });
+                    ids.forEach(id => _wCover.add(id));
+                };
+                if (waltzOn && eventId) {
                     try {
                         const pairing = await window.SocietyGolfDB?.getPairings?.(eventId);
                         const raw = (pairing && Array.isArray(pairing.groups)) ? pairing.groups : [];
                         // event_pairings.groups has TWO shapes: legacy array-of-arrays and {players:[...]}
-                        waltzTeamDefs = raw.map(g => {
+                        raw.forEach(g => {
                             const ps = Array.isArray(g) ? g : ((g && g.players) || []);
-                            return { playerIds: ps.map(x => String(x.playerId || x.id || '')).filter(Boolean), playerNames: null };
-                        }).filter(tm => tm.playerIds.length);
+                            _wAddDef(ps.map(x => String(x.playerId || x.id || '')).filter(Boolean));
+                        });
                     } catch (e) { console.warn('[LiveLeaderboard] Waltz pairings load failed', e); }
+                }
+                if (waltzOn) {
+                    const _wByGroup = {};
+                    scorecards.forEach(sc => {
+                        const pid = String(sc.player_id || ''), gk = String(sc.group_id || '');
+                        if (pid && gk && !_wCover.has(pid)) (_wByGroup[gk] = _wByGroup[gk] || []).push(pid);
+                    });
+                    Object.values(_wByGroup).forEach(ids => { if (ids.length >= 2) _wAddDef(ids); });
                 }
                 if (waltzOn && waltzTeamDefs.length) {
                     const rowById = new Map(rows.map(r => [r.id, r]));
@@ -39619,9 +39640,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                         <span onclick="event.stopPropagation();window._viewAllDay('${dayDate}');" style="color:#22d3ee;font-size:11px;cursor:pointer;font-weight:600;padding:6px 12px;background:rgba(34,211,238,0.1);border:1px solid rgba(34,211,238,0.3);border-radius:6px;-webkit-tap-highlight-color:rgba(34,211,238,0.3);user-select:none;">View All →</span>
                                     </div>`;
                                     // v622: 3-Man Waltz event → TEAM standings first (pink), individuals below
-                                    const _wEvId = courseRounds[0]?.society_event_id;
-                                    if (_wEvId && window.CommunityWaltz?.isWaltzTitle(courseRounds[0]?._eventTitle)) {
-                                        const _wTeams = await window.CommunityWaltz.teamsForEvent(_wEvId, courseRounds);
+                                    // v905: don't key off courseRounds[0] alone — a same-day casual round at
+                                    // the same course used to land first and skip the whole team band.
+                                    const _wLead = courseRounds.find(r => r.society_event_id && window.CommunityWaltz?.isWaltzTitle(r._eventTitle));
+                                    const _wEvId = _wLead?.society_event_id;
+                                    if (_wEvId) {
+                                        const _wTeams = await window.CommunityWaltz.teamsForEvent(_wEvId, courseRounds.filter(r => r.society_event_id === _wEvId));
                                         _wTeams.slice(0, 5).forEach((tm, ti) => {
                                             const tMedal = ti === 0 ? micon('military_tech', 'text-yellow-500') : ti === 1 ? micon('military_tech', 'text-gray-400') : ti === 2 ? micon('military_tech', 'text-amber-700') : (ti + 1);
                                             const tNames = tm.members.map(m => m.name).join(' · ');
@@ -45793,6 +45817,51 @@ Waitlist (${waitlist.length} people):`;
                                 const ps = Array.isArray(g) ? g : ((g && g.players) || []);
                                 return ps.map(x => String(x.playerId || x.id || '')).filter(Boolean);
                             }).filter(ids => ids.length);
+                            // v905: a registered 3-man team the organizer never placed on the tee
+                            // sheet must still rank as a TEAM — fall back to registration hostId
+                            // clusters, then scorecard group_id, for round owners no pairing group
+                            // covers. Fallback queries only run when someone is uncovered.
+                            const covered = new Set(teamDefs.flat());
+                            let leftover = [...new Set(rounds.map(r => String(r.golfer_id || '')).filter(Boolean))]
+                                .filter(id => !covered.has(id));
+                            const addClusters = (lists) => {
+                                lists.forEach(rawIds => {
+                                    const ids = [...new Set(rawIds)];
+                                    if (ids.length >= 2 && ids.some(id => leftover.includes(id)) && !ids.some(id => covered.has(id))) {
+                                        teamDefs.push(ids);
+                                        ids.forEach(id => covered.add(id));
+                                    }
+                                });
+                                leftover = leftover.filter(id => !covered.has(id));
+                            };
+                            if (leftover.length) {
+                                const { data: regs } = await window.SupabaseDB.client
+                                    .from('event_registrations')
+                                    .select('player_id, special_requests, status')
+                                    .eq('event_id', eventId);
+                                const byHost = {};
+                                (regs || []).filter(r => r.status !== 'cancelled').forEach(r => {
+                                    const pid = String(r.player_id || '');
+                                    if (!pid) return;
+                                    let sr = r.special_requests;
+                                    if (typeof sr === 'string') { try { sr = JSON.parse(sr); } catch (_) { sr = null; } }
+                                    const anchor = String((sr && sr.hostId) || pid);
+                                    (byHost[anchor] = byHost[anchor] || []).push(pid);
+                                });
+                                addClusters(Object.values(byHost));
+                            }
+                            if (leftover.length) {
+                                const { data: cards } = await window.SupabaseDB.client
+                                    .from('scorecards')
+                                    .select('player_id, group_id')
+                                    .eq('event_id', eventId);
+                                const byGroup = {};
+                                (cards || []).forEach(c => {
+                                    const pid = String(c.player_id || ''), gk = String(c.group_id || '');
+                                    if (pid && gk) (byGroup[gk] = byGroup[gk] || []).push(pid);
+                                });
+                                addClusters(Object.values(byGroup));
+                            }
                             if (!teamDefs.length) return [];
                             const ids = rounds.map(r => r.id).filter(Boolean);
                             const { data: holes } = await window.SupabaseDB.client
@@ -77966,14 +78035,24 @@ class LiveScorecardSystem {
     // Is this event a 3-Man Waltz? Detect by name from the in-memory event lists (event.format is
     // stableford; the Waltz is applied here at scoring time).
     _isWaltzEventById(eventId) {
+        const test = (s) => /waltz|(?:^|[^a-z0-9])(?:3|three)[ -]?man/i.test(String(s || ''));
+        // v905: same source set as _isScramble2EventById (the v715 lesson) — loadedEvents is the
+        // list the live scorecard actually resolves events from; check it FIRST, don't bail on a
+        // found-but-mismatch, and fall back to the selected dropdown option's text.
         const lists = [
-            (window.SocietyOrganizerSystem && SocietyOrganizerSystem.events) || [],
-            (window.GolferEventsSystem && GolferEventsSystem.allEvents) || []
+            this.loadedEvents || [],
+            (window.GolferEventsSystem && GolferEventsSystem.allEvents) || [],
+            (window.SocietyOrganizerSystem && SocietyOrganizerSystem.events) || []
         ];
         for (const L of lists) {
             const ev = L.find(e => String(e.id) === String(eventId));
-            if (ev) return /waltz|(?:^|[^a-z0-9])(?:3|three)[ -]?man/i.test(String(ev.name || ev.title || ev.courseName || ''));
+            if (ev && test(ev.name || ev.title || ev.courseName || ev.course_name)) return true;
         }
+        try {
+            const sel = document.getElementById('scorecardEventSelect');
+            const opt = sel && sel.options[sel.selectedIndex];
+            if (opt && String(opt.value) === String(eventId) && test(opt.textContent)) return true;
+        } catch (e) {}
         return false;
     }
 
@@ -79209,6 +79288,21 @@ class LiveScorecardSystem {
                 holesError = queryResult.error;
 
                 if (holes && holes.length > 0) {
+                    // v905: prefer ONE tee's full row set over an arbitrary first-per-hole mix —
+                    // e.g. St Andrews 2000 stores white1/white2 (no plain "white"). Ladder:
+                    // prefix of requested tee → white* → yellow → blue → tee with most rows.
+                    const byTee = {};
+                    holes.forEach(h => { const t = String(h.tee_marker || '').toLowerCase(); (byTee[t] = byTee[t] || []).push(h); });
+                    const want = String(teeMarker || '').toLowerCase();
+                    const teeNames = Object.keys(byTee);
+                    const pick = teeNames.filter(t => t.startsWith(want)).sort()[0]
+                        || teeNames.filter(t => t.startsWith('white')).sort()[0]
+                        || (byTee.yellow && 'yellow') || (byTee.blue && 'blue')
+                        || teeNames.sort((a, b) => byTee[b].length - byTee[a].length)[0];
+                    if (pick && byTee[pick].length >= 18) {
+                        holes = byTee[pick];
+                        console.log(`[LiveScorecard] ✅ Loaded tee "${pick}" for requested "${teeMarker}"`);
+                    }
                     // CRITICAL: Deduplicate holes - keep only one entry per hole number
                     // Otherwise handicap shot allocation breaks (gives multiple shots per hole)
                     const uniqueHoles = [];
@@ -89966,7 +90060,10 @@ class LiveScorecardSystem {
         }
 
         const courseName = this.courseData?.name || 'Unknown Course';
-        const teeMarker = document.getElementById('scorecardTeeMarkerSelect')?.value || 'White';
+        // v905: read the ACTUAL tee radio (the old #scorecardTeeMarkerSelect id never existed
+        // anywhere, so the header always printed WHITE)
+        const teeMarker = document.querySelector('input[name="teeMarker"]:checked')?.value
+            || document.getElementById('scorecardTeeMarkerSelect')?.value || 'White';
         // Format all selected formats for display
         const formatNames = {
             'stableford': 'Stableford',
@@ -89976,7 +90073,8 @@ class LiveScorecardSystem {
             'nassau': 'Nassau',
             'skins': 'Skins',
             'matchplay': 'Match Play',
-            'bestball': 'Best Ball'
+            'bestball': 'Best Ball',
+            'waltz': '3-Man Waltz'
         };
         const format = this.scoringFormats.map(f => formatNames[f] || f).join(' • ');
 
@@ -90022,6 +90120,19 @@ class LiveScorecardSystem {
             `;
             playersContainer.appendChild(note);
         } else {
+            // v905: 3-Man Waltz — the finished card must represent the TEAM, not just list
+            // individuals. Prepend the same team-standings board the in-round leaderboard
+            // uses (async — it reads the event/group scorecards), individual cards below.
+            if (this.scoringFormats.includes('waltz')) {
+                const waltzSlot = document.createElement('div');
+                waltzSlot.id = 'finalWaltzTeamSection';
+                waltzSlot.className = 'mb-4';
+                playersContainer.appendChild(waltzSlot);
+                Promise.resolve()
+                    .then(() => this._waltzTeamSectionHtml())
+                    .then(html => { if (html) waltzSlot.innerHTML = html; })
+                    .catch(e => console.warn('[LiveScorecard] final waltz section failed', e));
+            }
             // For non-scramble formats, show individual player scorecards
             this.players.forEach(player => {
                 const playerCard = this.renderPlayerFinalizedScorecard(player);
@@ -94319,7 +94430,7 @@ class LiveScorecardSystem {
     async _waltzTeamSectionHtml() {
         try {
             if (!window.SupabaseDB?.client) return '';
-            const sel = 'player_id, player_name, created_at, scoring_format, scores(hole_number, gross_score, stableford_points)';
+            const sel = 'player_id, player_name, group_id, created_at, scoring_format, scores(hole_number, gross_score, stableford_points)';
             let scorecards = [];
             if (this.eventId) {
                 const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
@@ -94335,15 +94446,35 @@ class LiveScorecardSystem {
                 || scorecards.some(sc => String(sc.scoring_format || '').includes('waltz'));
             if (!waltzOn || !scorecards.length) return '';
 
-            let teamDefs = (this.waltzConfig?.teams?.length) ? this.waltzConfig.teams : [];
-            if (!teamDefs.length && this.eventId) {
+            let teamDefs = (this.waltzConfig?.teams?.length)
+                ? this.waltzConfig.teams.map(tm => ({ playerIds: (tm.playerIds || []).map(String), playerNames: tm.playerNames || null }))
+                : [];
+            // v905: MERGE sources (local + pairings + scorecard group_id clusters) instead of
+            // local-else-pairings — scorer devices used to show only their own team, and a
+            // team never placed on the tee sheet showed as no team at all.
+            const _cover = new Set(teamDefs.flatMap(tm => tm.playerIds));
+            const _addDef = (rawIds) => {
+                const ids = [...new Set(rawIds)];
+                if (!ids.length || ids.some(id => _cover.has(id))) return;
+                teamDefs.push({ playerIds: ids, playerNames: null });
+                ids.forEach(id => _cover.add(id));
+            };
+            if (this.eventId) {
                 const pairing = await window.SocietyGolfDB?.getPairings?.(this.eventId);
                 const raw = (pairing && Array.isArray(pairing.groups)) ? pairing.groups : [];
                 // event_pairings.groups has TWO shapes: legacy array-of-arrays and {players:[...]}
-                teamDefs = raw.map(g => {
+                raw.forEach(g => {
                     const ps = Array.isArray(g) ? g : ((g && g.players) || []);
-                    return { playerIds: ps.map(x => String(x.playerId || x.id || '')).filter(Boolean), playerNames: null };
-                }).filter(tm => tm.playerIds.length);
+                    _addDef(ps.map(x => String(x.playerId || x.id || '')).filter(Boolean));
+                });
+            }
+            {
+                const byGroup = {};
+                scorecards.forEach(sc => {
+                    const pid = String(sc.player_id || ''), gk = String(sc.group_id || '');
+                    if (pid && gk && !_cover.has(pid)) (byGroup[gk] = byGroup[gk] || []).push(pid);
+                });
+                Object.values(byGroup).forEach(ids => { if (ids.length >= 2) _addDef(ids); });
             }
             if (!teamDefs.length) return '';
 

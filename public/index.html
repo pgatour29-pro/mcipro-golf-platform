@@ -118520,6 +118520,39 @@ class GolferEventsManager {
         } catch (e) { console.warn('[Scramble2] link partner', e); }
     }
 
+    // THE ONE event-handicap resolver (Pete 2026-08-13: TRGG events use ONLY the TRGG handicap,
+    // at registration and during the event — never the global/anchored index, never another
+    // society's value). Order: the EVENT society's society_handicaps row (TRGG matches under
+    // either TRGG id, newest first; a NULL-society event titled TRGG still counts as TRGG) →
+    // for TRGG, the masterscoreboard value stored on the profile (trgg_handicap) → null, and
+    // the caller decides its own last-resort fallback. Mirrors the sync_event_reg_handicaps RPC.
+    async _eventSocietyHcp(ev, golferId) {
+        try {
+            if (!golferId || !window.SupabaseDB?.client) return null;
+            const TRGG_IDS = ['7c0e4b72-d925-44bc-afda-38259a7ba346', '17451cf3-8b57-4166-af0a-dd902b7fb1af'];
+            let soc = ev?.societyId || ev?.society_id || null;
+            if (!soc && /trgg|travellers/i.test(String(ev?.title || ev?.name || ''))) soc = TRGG_IDS[0];
+            if (!soc) return null;
+            const isTrgg = TRGG_IDS.includes(String(soc));
+            const socIds = isTrgg ? TRGG_IDS : [String(soc)];
+            const { data: rows } = await window.SupabaseDB.client
+                .from('society_handicaps')
+                .select('handicap_index, updated_at')
+                .eq('golfer_id', golferId)
+                .in('society_id', socIds)
+                .order('updated_at', { ascending: false, nullsFirst: false });
+            const hit = (rows || []).find(r => r.handicap_index != null);
+            if (hit) return Number(hit.handicap_index);
+            if (isTrgg) {
+                const { data: prof } = await window.SupabaseDB.client
+                    .from('user_profiles').select('trgg_handicap')
+                    .eq('line_user_id', golferId).maybeSingle();
+                if (prof && prof.trgg_handicap != null) return Number(prof.trgg_handicap);
+            }
+            return null;
+        } catch (e) { console.warn('[SCV3G] _eventSocietyHcp', e); return null; }
+    }
+
     // ===== SCV3G: one-tap register from the card — uses your usual setup (last registration) =====
     async quickRegister(eventId) {
         try {
@@ -118533,12 +118566,17 @@ class GolferEventsManager {
             const regsP = window.SocietyGolfDB.getRegistrations(eventId).catch(e => { console.warn('[SCV3G] quickRegister partner list', e); return []; });
             // Tee-sheet pairings ride along so already-grouped players render grayed out in the picker.
             const pairsP = (window.SocietyGolfDB.getPairings ? window.SocietyGolfDB.getPairings(eventId) : Promise.resolve(null)).catch(() => null);
+            // The EVENT society's handicap rides in parallel too — the last registration can belong
+            // to ANOTHER society, and a TRGG event must snapshot the TRGG handicap, nothing else.
+            const socHcpP = this._eventSocietyHcp(ev, uid);
             try {
                 const { data } = await window.SupabaseDB.client.from('event_registrations')
                     .select('want_transport, want_competition, player_name, handicap')
                     .eq('player_id', uid).order('created_at', { ascending: false }).limit(1);
                 if (data && data[0]) { wantT = !!data[0].want_transport; wantC = !!data[0].want_competition; name = data[0].player_name || ''; hcp = data[0].handicap; }
             } catch (e) {}
+            const socHcp = await socHcpP;
+            if (socHcp != null) hcp = socHcp;   // event-society value OVERRIDES the carried-over one
             if (!name) name = AppState?.currentUser?.name || AppState?.currentUser?.displayName || '';
             if (hcp == null) hcp = AppState?.currentUser?.golfInfo?.handicap ?? AppState?.currentUser?.handicap ?? null;
             if (!name || hcp == null || hcp === '') { this.openEventDetail(eventId); return; }   // missing info → full page
@@ -119096,26 +119134,13 @@ class GolferEventsManager {
         // a handicap upload.
         let handicap = null;
         const golferId = AppState.currentUser?.lineUserId;
-        const _evSoc = this.currentEvent?.societyId || this.currentEvent?.society_id || null;
 
-        if (golferId && _evSoc) {
-            try {
-                const TRGG_IDS = ['7c0e4b72-d925-44bc-afda-38259a7ba346', '17451cf3-8b57-4166-af0a-dd902b7fb1af'];
-                const socIds = TRGG_IDS.includes(String(_evSoc)) ? TRGG_IDS : [String(_evSoc)];
-                const { data: socRows } = await window.SupabaseDB.client
-                    .from('society_handicaps')
-                    .select('handicap_index, society_id, updated_at')
-                    .eq('golfer_id', golferId)
-                    .in('society_id', socIds)
-                    .order('updated_at', { ascending: false, nullsFirst: false });
-                const hit = (socRows || []).find(r => r.handicap_index != null);
-                if (hit) {
-                    handicap = Number(hit.handicap_index);
-                    console.log('[GolferEventsSystem] Sign-up handicap = SOCIETY row:', handicap);
-                }
-            } catch (err) {
-                console.warn('[GolferEventsSystem] society handicap fetch failed:', err);
-            }
+        if (golferId) {
+            // ONE resolver shared with one-tap register + join request + waitlist:
+            // event society row (TRGG = either id, newest first; TRGG-titled NULL-society
+            // events count as TRGG) → TRGG masterscoreboard value on the profile.
+            handicap = await this._eventSocietyHcp(this.currentEvent, golferId);
+            if (handicap != null) console.log('[GolferEventsSystem] Sign-up handicap = SOCIETY:', handicap);
         }
 
         if (golferId && handicap == null) {
@@ -121740,6 +121765,11 @@ class GolferEventsManager {
             let handicap = null;
             const golferId = currentUser.lineUserId;
             if (this.currentEvent) {
+                // THE ONE resolver first (TRGG dual-id + masterscoreboard fallback — a TRGG
+                // event must never fall through to the universal, Pete 2026-08-13).
+                handicap = await this._eventSocietyHcp(this.currentEvent, golferId);
+            }
+            if (handicap == null && this.currentEvent) {
                 let eventSociety = this.currentEvent.societyName || this.currentEvent.organizerName || '';
                 if (!eventSociety && this.currentEvent.name) {
                     const eventTitle = this.currentEvent.name;
@@ -121855,6 +121885,11 @@ class GolferEventsManager {
             let handicap = null;
             const golferId = currentUser.lineUserId;
             if (this.currentEvent) {
+                // THE ONE resolver first (TRGG dual-id + masterscoreboard fallback — a TRGG
+                // event must never fall through to the universal, Pete 2026-08-13).
+                handicap = await this._eventSocietyHcp(this.currentEvent, golferId);
+            }
+            if (handicap == null && this.currentEvent) {
                 let eventSociety = this.currentEvent.societyName || this.currentEvent.organizerName || '';
                 if (!eventSociety && this.currentEvent.name) {
                     const eventTitle = this.currentEvent.name;

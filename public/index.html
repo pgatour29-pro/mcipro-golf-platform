@@ -74820,6 +74820,42 @@ class SocietyGolfSupabase {
 
 // Initialize global instance
 window.SocietyGolfDB = new SocietyGolfSupabase();
+
+// ============================================
+// LATE REGISTRATION → ORGANIZER LINE ALERT (v909)
+// Cutoff = 07:00 Asia/Bangkok on event day (van-transport planning window).
+// Registrations BEFORE the cutoff are intentionally silent; at/after it the
+// event's organizers get a LINE push. The edge function re-checks the cutoff
+// server-side, resolves the organizer set and localizes per recipient.
+// ============================================
+window.LateRegNotify = {
+    isLate(eventDate) {
+        if (!eventDate) return null;                          // unknown — let the server decide
+        const d = String(eventDate).slice(0, 10);
+        const bkk = new Date(Date.now() + 7 * 3600 * 1000);   // Bangkok = UTC+7, no DST
+        const today = bkk.toISOString().slice(0, 10);
+        if (today !== d) return today > d;
+        return bkk.getUTCHours() >= 7;
+    },
+    send(eventId, eventDate, info) {
+        try {
+            if (!eventId) return;
+            if (this.isLate(eventDate) === false) return;     // clearly before cutoff — stay silent
+            fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'late_registration', record: {
+                    event_id: eventId,
+                    player_name: (info && info.playerName) || '',
+                    handicap: (info && info.handicap != null && info.handicap !== '') ? info.handicap : null,
+                    guest_names: (info && info.guestNames) || [],
+                    want_transport: !!(info && info.wantTransport),
+                    is_update: !!(info && info.isUpdate)
+                }})
+            }).catch(() => {});
+        } catch (e) { console.warn('[LateReg] notify error:', e); }
+    }
+};
     </script>
 
     <script>
@@ -120411,6 +120447,11 @@ class GolferEventsManager {
 
             NotificationManager.show('Registration saved with ' + partners.length + ' partner preference' + (partners.length !== 1 ? 's' : ''), 'success');
 
+            // Organizer LINE alert only if this lands after the 07:00 event-day cutoff
+            window.LateRegNotify?.send(eventId, this.currentEvent && (this.currentEvent.date || this.currentEvent.event_date), {
+                playerName: name, handicap: parseFloat(hcp) || 0, wantTransport: false
+            });
+
             // Refresh the modal to show updated groupings
             await this.loadRegisteredPlayers(eventId);
             this.openPlayersModal();
@@ -121638,32 +121679,14 @@ class GolferEventsManager {
 
                 NotificationManager.show(`Registration updated successfully! Changes saved for ${this.currentEvent.name}`, 'success', 3000);
 
-                // Notify organizer of registration update (especially new guests)
-                try {
-                    const event = this.currentEvent;
-                    if (event?.societyId) {
-                        const { data: orgMembers } = await window.SupabaseDB.client
-                            .from('society_members')
-                            .select('golfer_id')
-                            .eq('society_id', event.societyId)
-                            .eq('role', 'organizer');
-                        const newGuests = (guestPlayers || []).filter(g => g.name);
-                        const guestText = newGuests.length > 0 ? `\n👥 Guests: ${newGuests.map(g => g.name + (g.handicap !== null ? ' (HCP: ' + g.handicap + ')' : '')).join(', ')}` : '';
-                        const isKo = this.isKoreanEvent && this.isKoreanEvent(event);
-                        const updateMsg = isKo
-                            ? `📋 등록 수정\n\n🏌️ ${event.name}\n📅 ${event.date || ''}\n\n👤 ${playerName} (HCP: ${handicap})${guestText}\n\nMyCaddiPro`
-                            : `📋 REGISTRATION UPDATED\n\n🏌️ ${event.name}\n📅 ${event.date || ''}\n\n👤 ${playerName} (HCP: ${handicap})${guestText}\n\nUpdated via MyCaddiPro`;
-                        for (const org of (orgMembers || [])) {
-                            if (org.golfer_id?.startsWith('U')) {
-                                fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ type: 'system_alert', recipient_id: org.golfer_id, message: updateMsg })
-                                }).catch(() => {});
-                            }
-                        }
-                    }
-                } catch(e) { console.warn('[Notify] Update notification error:', e); }
+                // Organizer LINE alert ONLY for LATE registration changes (≥07:00 Bangkok on
+                // event day — e.g. guests added on event morning → van seats). Earlier edits
+                // are silent per Pete 2026-08-14.
+                window.LateRegNotify?.send(this.currentEvent?.id, this.currentEvent?.date || this.currentEvent?.event_date, {
+                    playerName, handicap,
+                    guestNames: (guestPlayers || []).filter(g => g.name).map(g => g.name),
+                    wantTransport, isUpdate: true
+                });
 
                 // Clear edit mode
                 this.editingRegistrationId = null;
@@ -121824,31 +121847,13 @@ class GolferEventsManager {
 
                     NotificationManager.show(confirmMsg, 'success', 4000);
 
-                    // Notify organizer via LINE
-                    try {
-                        const event = this.currentEvent;
-                        if (event?.societyId) {
-                            const { data: orgMembers } = await window.SupabaseDB.client
-                                .from('society_members')
-                                .select('golfer_id')
-                                .eq('society_id', event.societyId)
-                                .eq('role', 'organizer');
-                            const guestText = guestPlayers.length > 0 ? ` + ${guestPlayers.length} guest(s): ${guestPlayers.map(g => g.name).join(', ')}` : '';
-                            const isKoNotif = this.isKoreanEvent && this.isKoreanEvent(event);
-                            const notifMsg = isKoNotif
-                                ? `📋 새 등록\n\n🏌️ ${event.name}\n📅 ${event.date || event.event_date || ''}\n\n👤 ${playerName} (HCP: ${handicap})${guestText}\n\nMyCaddiPro`
-                                : `📋 NEW REGISTRATION\n\n🏌️ ${event.name}\n📅 ${event.date || event.event_date || ''}\n\n👤 ${playerName} (HCP: ${handicap})${guestText}\n\nRegistered via MyCaddiPro`;
-                            for (const org of (orgMembers || [])) {
-                                if (org.golfer_id?.startsWith('U')) {
-                                    fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ type: 'system_alert', recipient_id: org.golfer_id, message: notifMsg })
-                                    }).catch(e => console.warn('[Notify] Error:', e));
-                                }
-                            }
-                        }
-                    } catch(e) { console.warn('[Notify] Organizer notification error:', e); }
+                    // Organizer LINE alert ONLY for LATE registrations (≥07:00 Bangkok on event
+                    // day, van-transport window) — pre-cutoff regs are silent per Pete 2026-08-14.
+                    window.LateRegNotify?.send(this.currentEvent?.id, this.currentEvent?.date || this.currentEvent?.event_date, {
+                        playerName, handicap,
+                        guestNames: guestPlayers.map(g => g.name),
+                        wantTransport
+                    });
 
                     // Offer to book tee time and caddy
                     setTimeout(() => {
@@ -124589,6 +124594,13 @@ class GolferEventsManager {
                 wantTransport: request.want_transport || false,
                 wantCompetition: request.want_competition || false,
                 partnerPrefs: request.partner_prefs || []
+            });
+
+            // Organizer LINE alert only if approval lands after the 07:00 event-day
+            // cutoff (no event date at hand here — the edge function decides).
+            window.LateRegNotify?.send(eventId, null, {
+                playerName: request.golfer_name, handicap: request.handicap,
+                wantTransport: request.want_transport || false
             });
 
             // Update request status to approved

@@ -21,7 +21,7 @@ interface LineMessage {
 }
 
 interface NotificationPayload {
-  type: "new_event" | "event_update" | "new_message" | "announcement" | "platform_announcement" | "emergency_alert";
+  type: "new_event" | "event_update" | "new_message" | "announcement" | "platform_announcement" | "emergency_alert" | "late_registration";
   record: any;
   old_record?: any;
 }
@@ -60,6 +60,15 @@ const L10N: Record<string, Record<string, string>> = {
     emergency_header: "EMERGENCY ALERT",
     emergency_body_default: "Emergency Alert",
     emergency_unknown: "Unknown",
+    latereg_header: "⚠️ LATE REGISTRATION",
+    latereg_sub: "After the 07:00 cutoff on event day",
+    latereg_sub_update: "Registration changed after the 07:00 cutoff",
+    latereg_guests: "👥 Guests: {names}",
+    latereg_departure: "🚐 Departure: {time}",
+    latereg_tee: "⛳ Tee: {time}",
+    latereg_transport_yes: "🚐 Transport requested: YES — check van seats",
+    latereg_transport_no: "🚐 Transport: not requested",
+    latereg_footer: "Registered via MyCaddiPro",
   },
   th: {
     evt_update_header: "📢 อัปเดตกิจกรรม: {title}",
@@ -83,6 +92,15 @@ const L10N: Record<string, Record<string, string>> = {
     emergency_header: "การแจ้งเตือนฉุกเฉิน",
     emergency_body_default: "การแจ้งเตือนฉุกเฉิน",
     emergency_unknown: "ไม่ทราบ",
+    latereg_header: "⚠️ ลงทะเบียนล่าช้า",
+    latereg_sub: "หลังเวลาปิดรับ 07:00 น. ของวันจัดกิจกรรม",
+    latereg_sub_update: "แก้ไขการลงทะเบียนหลังเวลาปิดรับ 07:00 น.",
+    latereg_guests: "👥 แขก: {names}",
+    latereg_departure: "🚐 ออกเดินทาง: {time}",
+    latereg_tee: "⛳ ทีออฟ: {time}",
+    latereg_transport_yes: "🚐 ขอใช้รถรับส่ง: ต้องการ — โปรดตรวจสอบที่นั่งรถตู้",
+    latereg_transport_no: "🚐 รถรับส่ง: ไม่ต้องการ",
+    latereg_footer: "ลงทะเบียนผ่าน MyCaddiPro",
   },
   ko: {
     evt_update_header: "📢 이벤트 업데이트: {title}",
@@ -106,6 +124,15 @@ const L10N: Record<string, Record<string, string>> = {
     emergency_header: "긴급 경보",
     emergency_body_default: "긴급 경보",
     emergency_unknown: "알 수 없음",
+    latereg_header: "⚠️ 마감 후 등록",
+    latereg_sub: "이벤트 당일 07:00 마감 이후 등록",
+    latereg_sub_update: "07:00 마감 이후 등록 변경",
+    latereg_guests: "👥 게스트: {names}",
+    latereg_departure: "🚐 출발: {time}",
+    latereg_tee: "⛳ 티오프: {time}",
+    latereg_transport_yes: "🚐 차량 이용 신청: 예 — 밴 좌석을 확인하세요",
+    latereg_transport_no: "🚐 차량 이용: 신청 안 함",
+    latereg_footer: "MyCaddiPro를 통해 등록됨",
   },
   ja: {
     evt_update_header: "📢 イベント更新: {title}",
@@ -129,6 +156,15 @@ const L10N: Record<string, Record<string, string>> = {
     emergency_header: "緊急アラート",
     emergency_body_default: "緊急アラート",
     emergency_unknown: "不明",
+    latereg_header: "⚠️ 締切後の登録",
+    latereg_sub: "開催日 07:00 の締切以降の登録です",
+    latereg_sub_update: "07:00 の締切以降に登録が変更されました",
+    latereg_guests: "👥 ゲスト: {names}",
+    latereg_departure: "🚐 出発: {time}",
+    latereg_tee: "⛳ ティーオフ: {time}",
+    latereg_transport_yes: "🚐 送迎希望: あり — バンの座席をご確認ください",
+    latereg_transport_no: "🚐 送迎: 希望なし",
+    latereg_footer: "MyCaddiPro からの登録",
   },
 };
 
@@ -209,6 +245,9 @@ serve(async (req) => {
         break;
       case "system_alert":
         result = await handleSystemAlert(supabase, payload);
+        break;
+      case "late_registration":
+        result = await handleLateRegistration(supabase, payload.record);
         break;
       case "emergency_alert":
         result = await handleEmergencyAlert(supabase, payload.record);
@@ -1428,6 +1467,126 @@ async function handleSystemAlert(supabase: any, payload: any) {
 
   console.log("[LINE Push] System alert result:", sent ? "SUCCESS" : "FAILED");
   return { success: sent, notified: sent ? 1 : 0 };
+}
+
+// ============================================================================
+// LATE REGISTRATION → ORGANIZERS (van-transport cutoff = 07:00 Asia/Bangkok on
+// event day; earlier registrations are intentionally silent per Pete 2026-08-14)
+// ============================================================================
+function isPastBangkokCutoff(eventDate: string): boolean {
+  // Bangkok is UTC+7 year-round (no DST), so wall-clock = UTC epoch + 7h.
+  if (!eventDate) return false;
+  const evDate = String(eventDate).slice(0, 10);
+  const bkk = new Date(Date.now() + 7 * 3600 * 1000);
+  const todayBkk = bkk.toISOString().slice(0, 10);
+  if (todayBkk !== evDate) return todayBkk > evDate;
+  return bkk.getUTCHours() >= 7;
+}
+
+async function handleLateRegistration(supabase: any, record: any) {
+  const eventId = record?.event_id;
+  if (!eventId) return { success: false, error: "Missing event_id" };
+
+  const { data: event } = await supabase
+    .from("society_events")
+    .select("id, title, event_date, start_time, departure_time, society_id, organizer_id")
+    .eq("id", eventId)
+    .single();
+  if (!event) return { success: false, error: "Event not found" };
+
+  // Server-side cutoff re-check — the client also checks, but phone clocks lie.
+  if (!isPastBangkokCutoff(event.event_date)) {
+    console.log("[LINE Push] Late-reg skipped, before cutoff:", eventId);
+    return { success: true, notified: 0, reason: "not_late" };
+  }
+
+  // Organizer set: event's own organizer_id, society profile (dedicated notify id
+  // wins over login id), plus any co-organizers in society_members.
+  const rawIds = new Set<string>();
+  if (event.organizer_id) rawIds.add(event.organizer_id);
+  if (event.society_id) {
+    const { data: prof } = await supabase
+      .from("society_profiles")
+      .select("organizer_id, notify_line_id")
+      .eq("id", event.society_id)
+      .single();
+    if (prof?.notify_line_id) rawIds.add(prof.notify_line_id);
+    else if (prof?.organizer_id) rawIds.add(prof.organizer_id);
+    const { data: members } = await supabase
+      .from("society_members")
+      .select("golfer_id")
+      .eq("society_id", event.society_id)
+      .eq("role", "organizer");
+    for (const m of members || []) if (m.golfer_id) rawIds.add(m.golfer_id);
+  }
+  const organizerIds = [...rawIds].filter((id) => typeof id === "string" && id.startsWith("U"));
+  if (organizerIds.length === 0) {
+    console.log("[LINE Push] Late-reg: no LINE organizers for event", eventId);
+    return { success: true, notified: 0, reason: "no_line_organizers" };
+  }
+
+  const { data: profiles } = await supabase
+    .from("user_profiles")
+    .select("line_user_id, messaging_user_id, language")
+    .in("line_user_id", organizerIds);
+
+  const langByTarget = new Map<string, string>();
+  const targets: string[] = [];
+  for (const id of organizerIds) {
+    const p = (profiles || []).find((x: any) => x.line_user_id === id);
+    const target = p?.messaging_user_id || id;
+    if (!target?.startsWith("U")) continue;
+    if (!langByTarget.has(target)) {
+      langByTarget.set(target, p?.language || "en");
+      targets.push(target);
+    }
+  }
+  if (targets.length === 0) return { success: true, notified: 0, reason: "no_valid_targets" };
+
+  const playerName = record.player_name || "Unknown player";
+  const hcp = record.handicap;
+  const hcpTxt = hcp === null || hcp === undefined || hcp === "" ? "" : ` (HCP ${hcp})`;
+  const guestNames = Array.isArray(record.guest_names) ? record.guest_names.filter(Boolean) : [];
+  const fmtTime = (t: any) => (t ? String(t).slice(0, 5) : "");
+
+  const composeFor = (lang: string): string => {
+    const dateTxt = event.event_date
+      ? new Date(event.event_date).toLocaleDateString(localeFor(lang), { weekday: "short", month: "short", day: "numeric" })
+      : "";
+    const lines = [
+      tr(lang, "latereg_header"),
+      tr(lang, record.is_update ? "latereg_sub_update" : "latereg_sub"),
+      "",
+      `🏌️ ${event.title || ""}`,
+    ];
+    if (dateTxt) lines.push(`📅 ${dateTxt}`);
+    // Departure before tee — house rule.
+    if (event.departure_time) lines.push(tr(lang, "latereg_departure", { time: fmtTime(event.departure_time) }));
+    if (event.start_time) lines.push(tr(lang, "latereg_tee", { time: fmtTime(event.start_time) }));
+    lines.push("", `👤 ${playerName}${hcpTxt}`);
+    if (guestNames.length > 0) lines.push(tr(lang, "latereg_guests", { names: guestNames.join(", ") }));
+    lines.push(tr(lang, record.want_transport ? "latereg_transport_yes" : "latereg_transport_no"));
+    lines.push("", tr(lang, "latereg_footer"));
+    return lines.join("\n");
+  };
+
+  // Dry-run: report who WOULD be notified and the message, without sending.
+  if (record.dry_run === true) {
+    return { success: true, dry_run: true, would_notify: targets, sample_en: composeFor("en") };
+  }
+
+  const byLang = groupByLang(targets, langByTarget);
+  let totalSent = 0;
+  for (const [lang, ids] of byLang) {
+    const message: LineMessage = { type: "text", text: composeFor(lang) };
+    const batches = chunkArray(ids, 500);
+    for (const batch of batches) {
+      totalSent += await sendMulticast(batch, [message]);
+    }
+  }
+
+  console.log(`[LINE Push] Late-reg notified ${totalSent} organizer(s) for event ${eventId}`);
+  return { success: true, notified: totalSent };
 }
 
 // ============================================================================

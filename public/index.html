@@ -134610,6 +134610,12 @@ window.DashboardMode = {
    ============================================================ */
 window.ThemeMode = {
     KEY: 'mcipro_colorTheme',
+    // Pete 2026-08-16: EVERYONE lands in LIGHT color theme at login/page-load; Dark is the
+    // in-session option via the [data-theme-toggle] buttons. Same latch pattern as
+    // DashboardMode._sessionView (v857): get() only trusts this latch — stored/profile values
+    // no longer drive the landing theme (still written so nothing downstream breaks, but a
+    // reload always comes back Light).
+    _session: null,
 
     userId() {
         try { return (window.AppState && AppState.currentUser && (AppState.currentUser.lineUserId || AppState.currentUser.userId || AppState.currentUser.id)) || localStorage.getItem('line_user_id') || null; } catch (e) { return null; }
@@ -134626,7 +134632,7 @@ window.ThemeMode = {
         return null;
     },
 
-    get() { return this.stored() || 'light'; },
+    get() { return this._session || 'light'; },
 
     apply() {
         var on = (this.get() === 'light');
@@ -134645,6 +134651,7 @@ window.ThemeMode = {
 
     set(theme, persist) {
         if (theme !== 'light' && theme !== 'dark') return;
+        this._session = theme;
         try { localStorage.setItem(this.KEY, theme); } catch (e) {}
         try {
             if (AppState && AppState.currentUser) {

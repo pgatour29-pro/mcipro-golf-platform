@@ -17086,6 +17086,11 @@
                     ScreenManager.showScreen(dashMap[role] || 'golferDashboard');
                     UserInterface.updateUserDisplays();
 
+                    // v911: avatar self-heal — biometric login restores from DB only, so an
+                    // empty linePictureUrl never updates without this (no-op unless LIFF
+                    // is logged in as this user)
+                    LineAuthentication.backfillAvatarFromLiff(storedUserId, userProfile.profile_data || {});
+
                     // Load cloud data
                     setTimeout(async () => {
                         try {
@@ -20909,6 +20914,35 @@
                 }
             }
 
+            // v911 avatar self-heal: the immediate localStorage session restore SKIPS LIFF
+            // init entirely, so a profile whose linePictureUrl was stored empty at signup
+            // (or whose LINE photo changed since) never gets another chance to update —
+            // even for users who open the app inside LINE every day. Passive only: never
+            // calls liff.login(); writes only when LIFF is logged in as THIS user.
+            static async backfillAvatarFromLiff(lineUserId, profileData) {
+                try {
+                    if (!lineUserId || lineUserId[0] !== 'U') return;
+                    if (typeof liff === 'undefined' || !window.SupabaseDB?.client) return;
+                    try { await liff.init({ liffId: LineConfig.liffId }); } catch (e) { /* already-initialized is fine */ }
+                    if (typeof liff.isLoggedIn !== 'function' || !liff.isLoggedIn()) return;
+                    const lp = await liff.getProfile();
+                    // Shared-device guard: only write when the LIFF session belongs to this account
+                    if (!lp || lp.userId !== lineUserId || !lp.pictureUrl) return;
+                    const pd = profileData || {};
+                    if (pd.linePictureUrl === lp.pictureUrl) return;
+                    const merged = { ...pd, linePictureUrl: lp.pictureUrl };
+                    const { error } = await window.SupabaseDB.client
+                        .from('user_profiles')
+                        .update({ profile_data: merged })
+                        .eq('line_user_id', lineUserId);
+                    if (error) { console.warn('[AvatarHeal] update failed:', error.message); return; }
+                    if (AppState.currentUser) AppState.currentUser.avatar = lp.pictureUrl;
+                    console.log('[AvatarHeal] ✅ linePictureUrl backfilled from LIFF for', lineUserId);
+                } catch (e) {
+                    console.warn('[AvatarHeal] skipped:', e?.message || e);
+                }
+            }
+
             static async setUserFromLineProfile(profile) {
                 const lineUserId = profile.userId;
 
@@ -21127,8 +21161,9 @@
                         localStorage.setItem('mcipro_user_profiles', JSON.stringify(profiles));
                         console.log('[LINE] ✅ Profile array also updated for consistency');
 
-                        // Update Supabase if LINE picture URL is missing
-                        if (!userProfile.profile_data.linePictureUrl && profile.pictureUrl) {
+                        // Update Supabase if LINE picture URL is missing or the photo changed
+                        // (LINE issues a new CDN URL per photo; stale ones 404 → initials disc)
+                        if (profile.pictureUrl && userProfile.profile_data.linePictureUrl !== profile.pictureUrl) {
                             console.log('[LINE] Updating Supabase with LINE picture URL:', profile.pictureUrl);
                             const updatedProfileData = {
                                 ...userProfile.profile_data,
@@ -23041,6 +23076,21 @@
                 }
                 localStorage.setItem('mcipro_user_profiles', JSON.stringify(profiles));
                 console.log('[OAuth] ✅ Profile array also updated');
+
+                // v911: persist the provider avatar — this path only wrote localStorage, so
+                // existing users' profile_data.linePictureUrl never updated after signup
+                const freshPic = profile.pictureUrl || profile.picture;
+                if (freshPic && existingUser.profile_data.linePictureUrl !== freshPic) {
+                    const pdWithPic = { ...existingUser.profile_data, linePictureUrl: freshPic };
+                    window.SupabaseDB.client
+                        .from('user_profiles')
+                        .update({ profile_data: pdWithPic })
+                        .eq('line_user_id', existingUser.line_user_id || userId)
+                        .then(({ error }) => {
+                            if (error) console.error('[OAuth] Avatar backfill failed:', error.message);
+                            else console.log('[OAuth] ✅ Avatar saved to profile_data.linePictureUrl');
+                        });
+                }
             }
 
             console.log(`%c[OAuth] ✓ AppState.currentUser SET`, 'background: #4CAF50; color: white; font-weight: bold;');
@@ -25711,6 +25761,9 @@
                                     // Update UI displays
                                     if (typeof UserInterface !== 'undefined') UserInterface.updateUserDisplays();
                                     if (typeof ProfileSystem !== 'undefined') ProfileSystem.initializeDashboard();
+                                    // v911: avatar self-heal (fire-and-forget; no-op unless
+                                    // LIFF is logged in as this user and the photo differs)
+                                    LineAuthentication.backfillAvatarFromLiff(savedLineUserIdImmediate, userProfile.profile_data || {});
                                 }, 500);
                             } else {
                                 // Profile not found in Supabase - but DON'T clear line_user_id yet

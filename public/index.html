@@ -56609,14 +56609,14 @@ Waitlist (${waitlist.length} people):`;
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                     <div class="metric-card bg-gradient-to-br from-blue-50 to-blue-100 cursor-pointer hover:shadow-lg transition" onclick="AdminSystem.showStatDrill('new-today')">
                         <div class="text-center">
-                            <p class="text-xs text-blue-600 font-medium uppercase tracking-wide">Today</p>
+                            <p class="text-xs text-blue-600 font-medium uppercase tracking-wide">Last 24h</p>
                             <p class="text-2xl font-bold text-blue-900" id="admin-new-today">0</p>
                             <p class="text-xs text-blue-500">new members</p>
                         </div>
                     </div>
                     <div class="metric-card bg-gradient-to-br from-green-50 to-green-100 cursor-pointer hover:shadow-lg transition" onclick="AdminSystem.showStatDrill('new-week')">
                         <div class="text-center">
-                            <p class="text-xs text-green-600 font-medium uppercase tracking-wide">This Week</p>
+                            <p class="text-xs text-green-600 font-medium uppercase tracking-wide">Last 7 Days</p>
                             <p class="text-2xl font-bold text-green-900" id="admin-new-week">0</p>
                             <p class="text-xs text-green-500">new members</p>
                         </div>
@@ -69634,13 +69634,12 @@ const AdminSystem = {
         try {
             const now = new Date();
 
-            // Today (local timezone)
-            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-            // This week (Monday start)
-            const dayOfWeek = now.getDay();
-            const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-            const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
+            // ROLLING windows for the short cubes. Calendar boundaries made them lie:
+            // on a Monday morning "Today" AND "This Week" both read 0 while three people
+            // had signed up the previous evening (Pete, 2026-08-17). Last-24h / last-7d
+            // always show recent signups regardless of what day it is.
+            const todayStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
             // This month
             const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -69735,17 +69734,18 @@ const AdminSystem = {
     // ---- Admin stat drill-downs: tap a stat card → see the records behind the number ----
     showStatDrill(type) {
         const now = new Date();
-        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const dow = now.getDay();
-        const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (dow === 0 ? -6 : 1 - dow));
+        // Rolling windows — MUST match updateMemberGrowthStats so the drill list matches the cube number
+        const todayStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
         const yearStart = new Date(now.getFullYear(), 0, 1);
         const cfg = {
-            'new-today': { title: 'New Members — Today', since: todayStart, kind: 'members' },
-            'new-week': { title: 'New Members — This Week', since: weekStart, kind: 'members' },
+            'new-today': { title: 'New Members — Last 24 Hours', since: todayStart, kind: 'members' },
+            'new-week': { title: 'New Members — Last 7 Days', since: weekStart, kind: 'members' },
             'new-month': { title: 'New Members — This Month', since: monthStart, kind: 'members' },
             'new-ytd': { title: 'New Members — Year to Date', since: yearStart, kind: 'members' },
-            'active-today': { title: 'Active Today — Rounds Started', since: todayStart, kind: 'active' }
+            // calendar day, NOT rolling 24h — must match the Active Today card's scorecards count
+            'active-today': { title: 'Active Today — Rounds Started', since: new Date(now.getFullYear(), now.getMonth(), now.getDate()), kind: 'active' }
         }[type];
         if (!cfg) return;
         this._drillOpen(cfg.title);

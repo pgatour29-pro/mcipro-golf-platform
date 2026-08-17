@@ -78067,6 +78067,34 @@ class LiveScorecardSystem {
     // Start Round is pressed.
     // ============================================
 
+    // A round that is already FINISHED and POSTED for this event must never re-populate its
+    // pairings: the next scorecard is a FRESH one, not the old group to hand-delete
+    // (Pete, 2026-08-17 — Pattaya CC group kept reappearing after scores were posted).
+    // Signal = a COMPLETED scorecard for (event, me): live Finish marks every saved player's
+    // card completed, and organizer Paper Card Entry inserts cards already completed.
+    // Result is cached per event; completeRound stamps the cache on Finish so the very next
+    // setup pass sees it without a DB round-trip. Errors fail open to the old behavior.
+    async _roundAlreadyPosted(eventId) {
+        try {
+            if (!eventId) return false;
+            this._postedEvents = this._postedEvents || {};
+            if (this._postedEvents[eventId] !== undefined) return this._postedEvents[eventId];
+            const uid = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
+            if (!uid || !window.SupabaseDB?.client) return false;
+            const { data, error } = await window.SupabaseDB.client
+                .from('scorecards')
+                .select('id')
+                .eq('event_id', eventId)
+                .eq('player_id', uid)
+                .eq('status', 'completed')
+                .limit(1);
+            if (error) return false;
+            const posted = !!(data && data.length);
+            this._postedEvents[eventId] = posted;
+            return posted;
+        } catch (e) { return false; }
+    }
+
     async prefillFromTeeSheet(eventId) {
         // Guard against overlapping loads when the event dropdown changes quickly
         const seq = (this._prefillSeq = (this._prefillSeq || 0) + 1);
@@ -78080,6 +78108,13 @@ class LiveScorecardSystem {
             if (this.groupId || localStorage.getItem('mcipro_active_round')) return;
             // Same event re-selected and the group is still in the list — nothing to do
             if (this._prefillEventId === eventId && this.players.some(p => p.fromTeeSheet)) return;
+
+            // Round already played and posted → the setup stays a fresh scorecard
+            if (await this._roundAlreadyPosted(eventId)) {
+                console.log('[LiveScorecard] ⛳ Prefill skipped — round for this event already posted');
+                return;
+            }
+            if (seq !== this._prefillSeq) return;
 
             const pairing = await window.SocietyGolfDB.getPairings(eventId);
             if (seq !== this._prefillSeq) return; // a different event was picked while loading
@@ -78590,6 +78625,15 @@ class LiveScorecardSystem {
                 option.textContent = s.society_name + ' (' + hcpDisplay + ') — ' + T('scorecard.noevent');
                 select.appendChild(option);
             });
+        }
+
+        // A registered-today event whose round is already POSTED is a finished day: land on
+        // Play Golf with a fresh scorecard instead of re-selecting the finished event, which
+        // re-filled the old pairings on every app open (Pete, 2026-08-17). The event stays in
+        // the dropdown for a deliberate re-pick; prefill has its own posted-round guard.
+        if (firstRegisteredTodayId && await this._roundAlreadyPosted(firstRegisteredTodayId)) {
+            console.log('[LiveScorecard] Registered today-event already posted — landing on Play Golf fresh');
+            firstRegisteredTodayId = null;
         }
 
         // Auto-select: prioritize registered today's event, then any today's event
@@ -87221,6 +87265,13 @@ class LiveScorecardSystem {
 
             alert('ERROR showing scorecard: ' + error.message);
             console.error('[LiveScorecard] ERROR:', error);
+        }
+
+        // Round is posted — stamp the posted-event cache so this event's pairings never
+        // re-prefill the setup this session (next sessions read the completed scorecards).
+        if (this.eventId) {
+            this._postedEvents = this._postedEvents || {};
+            this._postedEvents[this.eventId] = true;
         }
 
         // ONLY clear active round state if save was successful

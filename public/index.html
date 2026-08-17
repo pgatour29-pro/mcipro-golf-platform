@@ -82883,99 +82883,52 @@ class LiveScorecardSystem {
         // Set flag to skip scramble panel on first render (performance)
         this._initialRender = true;
 
-        // Khao Kheow & Plutaluang: Handle 9-hole course combinations
-        if (courseId === 'khao_kheow') {
-            await this.loadKhaoKheowCombination(teeMarker);
+        // Multi-nine venues (Phoenix, Khao Kheow, …): one generic path via _comboConfig.
+        // DB tee coverage varies — several venues carry only the WHITE card, so a tee
+        // with no rows falls back to White (par/SI identical, only yardage differs)
+        // instead of dead-ending with "select the nines" while the nines ARE selected
+        // (Orlando @ Phoenix 2026-08-17, Blue tee). Every early exit here must clear
+        // the overlay or the 30s "timed out" toast fires on top of the real error.
+        const comboCfg = this._comboConfig()[courseId];
+        if (comboCfg) {
+            const comboName = document.getElementById('scorecardCourseSelect')?.selectedOptions?.[0]?.textContent?.trim() || courseId;
+            await this[comboCfg.loader](teeMarker);
             if (!this.courseData) {
-                NotificationManager.show('Please select both Front 9 and Back 9 courses', 'error');
-                return;
-            }
-        } else if (courseId === 'plutaluang') {
-            await this.loadPlutaluangCombination(teeMarker);
-            if (!this.courseData) {
-                NotificationManager.show('Please select both Front 9 and Back 9 courses for Plutaluang', 'error');
-                return;
-            }
-        } else if (courseId === 'burapha') {
-            await this.loadBuraphaCombination(teeMarker);
-            if (!this.courseData) {
-                NotificationManager.show('Please select both Front 9 and Back 9 courses for Burapha', 'error');
-                return;
-            }
-        } else if (courseId === 'greenwood') {
-            await this.loadGreenwoodCombination(teeMarker);
-            if (!this.courseData) {
-                NotificationManager.show('Please select both Front 9 and Back 9 courses for Greenwood', 'error');
-                return;
-            }
-        } else if (courseId === 'phoenix') {
-            await this.loadPhoenixCombination(teeMarker);
-            if (!this.courseData) {
-                NotificationManager.show('Please select both Front 9 and Back 9 courses for Phoenix', 'error');
-                return;
-            }
-        } else if (courseId === 'laem_chabang') {
-            await this.loadLaemChabangCombination(teeMarker);
-            if (!this.courseData) {
-                NotificationManager.show('Please select both Front 9 and Back 9 courses for Laem Chabang', 'error');
-                return;
-            }
-        } else if (courseId === 'siam_plantation') {
-            await this.loadPlantationCombination(teeMarker);
-            if (!this.courseData) {
-                NotificationManager.show('Please select both Front 9 and Back 9 nines for Siam Plantation', 'error');
-                return;
-            }
-        } else if (courseId === 'highlands_cm') {
-            await this.loadHighlandsCombination(teeMarker);
-            if (!this.courseData) {
-                NotificationManager.show('Please select both Front 9 and Back 9 nines for Highlands', 'error');
-                return;
-            }
-        } else if (courseId === 'alpine_cm') {
-            await this.loadAlpineCombination(teeMarker);
-            if (!this.courseData) {
-                NotificationManager.show('Please select both Front 9 and Back 9 nines for Alpine', 'error');
-                return;
-            }
-        } else if (courseId === 'pattana') {
-            await this.loadPattanaNineCombination(teeMarker);
-            if (!this.courseData) {
-                NotificationManager.show('Please select both Front 9 and Back 9 nines for Pattana', 'error');
-                return;
-            }
-        } else if (courseId === 'black_mountain_hh') {
-            await this.loadBlackMountainCombination(teeMarker);
-            if (!this.courseData) {
-                NotificationManager.show('Please select both Front 9 and Back 9 nines for Black Mountain', 'error');
-                return;
-            }
-        } else if (courseId === 'springfield_hh') {
-            await this.loadSpringfieldCombination(teeMarker);
-            if (!this.courseData) {
-                NotificationManager.show('Please select both Front 9 and Back 9 nines for Springfield', 'error');
-                return;
-            }
-        } else if (courseId === 'majestic_hh') {
-            await this.loadMajesticCombination(teeMarker);
-            if (!this.courseData) {
-                NotificationManager.show('Please select both Front 9 and Back 9 nines for Majestic Creek', 'error');
-                return;
-            }
-        } else if (courseId === 'lakeview_hh') {
-            await this.loadLakeviewCombination(teeMarker);
-            if (!this.courseData) {
-                NotificationManager.show('Please select both Front 9 and Back 9 nines for Lake View', 'error');
-                return;
+                const fv = document.getElementById(comboCfg.front)?.value || '';
+                const bv = document.getElementById(comboCfg.back)?.value || '';
+                if (!fv || !bv) {
+                    removeLoading();
+                    clearTimeout(timeoutId);
+                    window.NotificationManager.show(`Please select both Front 9 and Back 9 for ${comboName}`, 'error');
+                    return;
+                }
+                if (teeMarker !== 'white') {
+                    console.warn(`[LiveScorecard] No ${teeMarker} tee card for ${courseId} — falling back to white`);
+                    await this[comboCfg.loader]('white');
+                    if (this.courseData) {
+                        this.selectedTeeMarker = 'white';
+                        window.NotificationManager.show(`${comboName}: no ${teeMarker} tee card in the system yet — starting on the White card (same par & stroke index)`, 'warning');
+                    }
+                }
+                if (!this.courseData) {
+                    removeLoading();
+                    clearTimeout(timeoutId);
+                    window.NotificationManager.show(`Could not load course data for ${comboName} (${fv} + ${bv}) — check connection and try again`, 'error');
+                    return;
+                }
             }
         } else {
             // Load course data from database with selected tee marker
             await this.loadCourseData(courseId, teeMarker);
             if (!this.courseData) {
+                removeLoading();
+                clearTimeout(timeoutId);
                 NotificationManager.show('Error loading course data', 'error');
                 return;
             }
             if (!this.courseData.holes || this.courseData.holes.length === 0) {
+                removeLoading();
+                clearTimeout(timeoutId);
                 NotificationManager.show('No hole data found for this course/tee. Please check course setup.', 'error');
                 return;
             }
@@ -83419,7 +83372,7 @@ class LiveScorecardSystem {
                     course_id: courseId,
                     game_code: this.gameCode,
                     course_name: this.courseData.name,
-                    tee_marker: teeMarker,
+                    tee_marker: this.selectedTeeMarker || teeMarker,
                     player_name: player.name,
                     scoring_format: JSON.stringify(this.scoringFormats),
                     match_play_config: Object.keys(matchPlayConfig).length > 0 ? JSON.stringify(matchPlayConfig) : null,
@@ -83519,7 +83472,7 @@ class LiveScorecardSystem {
                         group_id: this.groupId,
                         course_id: courseId,
                         course_name: this.courseData.name,
-                        tee_marker: teeMarker,
+                        tee_marker: this.selectedTeeMarker || teeMarker,
                         scoring_format: this.scoringFormats,
                         match_play_config: Object.keys(matchPlayConfig).length > 0 ? matchPlayConfig : null,
                         status: 'in_progress',

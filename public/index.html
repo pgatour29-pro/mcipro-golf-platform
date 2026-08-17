@@ -76218,6 +76218,20 @@ class LiveScorecardSystem {
 
         const eventValue = eventSelect.value;
 
+        // Leaving an event for Practice/Private/society-casual: drop the event's tee-sheet
+        // auto-added group mates. Without this, a golfer registered in a today event who
+        // switches the dropdown to Practice keeps the whole event group on their casual
+        // round (Pete + Orlando's Phoenix test, 2026-08-17) — only the Play Golf TAB
+        // switch pruned before. Same prune as setRoundTab/prefillFromTeeSheet.
+        if (!eventValue || eventValue === 'private' || eventValue.startsWith('society:')) {
+            const prevAuto = (this.players || []).filter(p => p.fromTeeSheet);
+            if (prevAuto.length) {
+                this.players = this.players.filter(p => !p.fromTeeSheet);
+                prevAuto.forEach(p => delete this.scoresCache[p.id]);
+                this.renderPlayersList();
+            }
+        }
+
         // Practice or private round - keep society selection
         if (!eventValue || eventValue === 'private') {
             console.log(`[LiveScorecard] Event changed to ${eventValue || 'practice'} - society selection preserved`);

@@ -3449,17 +3449,16 @@
            the golfer global back button was the only one visible and it exited the dashboard.) */
         #societyOrganizerDashboard.light-mode:not(.org-on-home) #orgLiteBackBtn { display:flex !important; }
 
-        /* Light live scoring — keep hole info+SI, names+HCP, keypad, leaderboard; hide games/stats/match/press */
-        #golferDashboard.light-mode #scSection_games,
+        /* Light live scoring — keep hole info+SI, names+HCP, keypad, leaderboard. Pete 2026-08-17:
+           GAMES (formats/points/game code) + PRESS + MATCH PROGRESS must be reachable in Light too
+           (everyone lands Light since v857) — only the stats capture stays Full-only. */
         #golferDashboard.light-mode #scSection_stats,
         #golferDashboard.light-mode #statsToggleInRound,
-        #golferDashboard.light-mode #statsInputRow,
-        /* game-money setup: per-game points values, Master Points, Game Code */
-        #golferDashboard.light-mode [id$="PointsSection"],
-        #golferDashboard.light-mode #scSection_gamecode { display: none !important; }
-        /* Round Summary card: Light keeps ONLY the View Scorecard toggle + scorecard (tap-to-edit),
-           hides the games/format summary, header and progress bar. Full mode untouched. */
-        #golferDashboard.light-mode #currentPlayerScoreDisplay > :not(#viewScorecardSection) { display: none !important; }
+        #golferDashboard.light-mode #statsInputRow { display: none !important; }
+        /* Round Summary card: Light keeps the View Scorecard toggle + scorecard (tap-to-edit) AND
+           the game buttons (PRESS / MATCH PROGRESS); hides the format summary, header and progress
+           bar. Full mode untouched. */
+        #golferDashboard.light-mode #currentPlayerScoreDisplay > :not(#viewScorecardSection):not(#gameButtonsSection) { display: none !important; }
         #golferDashboard.light-mode #viewScorecardSection { border-top: none !important; margin-top: 0 !important; padding-top: 0 !important; }
 
         /* Hide welcome text, avatar, HCP, club info — keep only hamburger */
@@ -51630,6 +51629,10 @@ Waitlist (${waitlist.length} people):`;
                                 <!-- Format scores will be dynamically inserted here -->
                             </div>
 
+                            <!-- Game buttons (PRESS / BITS / MATCH PROGRESS) — own section so the
+                                 light-mode card rule can keep them while hiding the summary -->
+                            <div id="gameButtonsSection"></div>
+
                             <!-- Progress Bar -->
                             <div class="mt-3 pt-3 border-t border-green-200">
                                 <div class="flex justify-between text-xs text-gray-600 mb-1">
@@ -85320,10 +85323,13 @@ class LiveScorecardSystem {
                 scoresHTML += '</div>';
             }
 
-            scoresHTML += this.renderPressEntryButton();
-            scoresHTML += this.renderBitsEntryButton();
-            scoresHTML += this.renderMatchEntryButton();
             formatScoresDiv.innerHTML = scoresHTML;
+            // Game buttons live in their OWN card section (#gameButtonsSection) so Light mode can
+            // show them while hiding the format summary; fall back inline if the div is missing.
+            const gameBtnsHTML = this.renderPressEntryButton() + this.renderBitsEntryButton() + this.renderMatchEntryButton();
+            const gameBtnsDiv = document.getElementById('gameButtonsSection');
+            if (gameBtnsDiv) gameBtnsDiv.innerHTML = gameBtnsHTML;
+            else formatScoresDiv.innerHTML += gameBtnsHTML;
             // GLOBAL RULE: golfer names get their LINE avatar (initials disc when none).
             if (window._golferChipDecorate) window._golferChipDecorate(formatScoresDiv, 18);
 

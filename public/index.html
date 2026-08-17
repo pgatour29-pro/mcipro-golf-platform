@@ -97493,8 +97493,9 @@ document.addEventListener('DOMContentLoaded', async function() {
                         started_at: playedDate.toISOString(),
                         completed_at: playedDate.toISOString(),
                         total_gross: totalGross,
-                        total_net: totalNet,
-                        total_stableford: totalStableford
+                        total_net: totalNet
+                        // no total_stableford — scorecards has no such column; including it
+                        // made EVERY save from this tab fail (zero ps_ cards ever created)
                     });
 
                 if (scError) throw scError;
@@ -97516,6 +97517,35 @@ document.addEventListener('DOMContentLoaded', async function() {
                     .insert(scoreRows);
 
                 if (scoreError) throw scoreError;
+
+                // Round History reads the rounds table — without this row the posted score
+                // never appears there (same fix as RoundPostScore.submit). Combo-venue ids
+                // ('phoenix', 'greenwood', …) fail the course_id FK — retry without the id.
+                const roundRow = {
+                    golfer_id: user?.lineUserId || user?.uniqueId || 'anonymous',
+                    player_name: user?.name || user?.displayName || null,
+                    course_name: courseName, course_id: courseId, tee_marker: tee,
+                    total_gross: totalGross, total_net: totalNet, total_stableford: totalStableford,
+                    holes_played: scores.length > 9 ? 18 : 9, status: 'completed',
+                    played_at: playedDate.toISOString(), started_at: playedDate.toISOString(), completed_at: playedDate.toISOString(),
+                    notes: `Posted via Post Score. Net: ${totalNet}, Stableford: ${totalStableford}`,
+                    type: 'practice', handicap_used: handicap
+                };
+                let { error: rErr } = await window.SupabaseDB.client.from('rounds').insert(roundRow);
+                if (rErr && rErr.code === '23503') {
+                    console.warn('[PostScore] course_id FK rejected, retrying without it:', rErr.message);
+                    roundRow.course_id = null;
+                    ({ error: rErr } = await window.SupabaseDB.client.from('rounds').insert(roundRow));
+                }
+                if (rErr) {
+                    console.error('[PostScore] rounds insert failed:', rErr.message);
+                    LoadingManager.hide();
+                    window.NotificationManager.show('Scorecard saved, but it could not be added to Round History: ' + (rErr.message || rErr.code), 'error');
+                    return;
+                }
+                if (typeof GolfScoreSystem !== 'undefined') {
+                    setTimeout(() => { GolfScoreSystem.loadRoundHistoryTable?.(); }, 500);
+                }
 
                 LoadingManager.hide();
                 NotificationManager.show(`Score posted! Gross: ${totalGross} | Net: ${totalNet} | Stableford: ${totalStableford}`, 'success');
@@ -98452,8 +98482,13 @@ document.addEventListener('DOMContentLoaded', async function() {
                     scores.map(s=>({ scorecard_id:scId, hole_number:s.hole_number, par:s.par, stroke_index:s.stroke_index, gross_score:s.gross_score, net_score:s.net_score, handicap_strokes:s.handicap_strokes, stableford_points:s.stableford }))
                 );
                 if (e2) throw e2;
-                // Also save to rounds table for round history display
-                const { error: e3 } = await window.SupabaseDB.client.from('rounds').insert({
+                // Also save to rounds table — this row IS Round History. Combo venues
+                // ('phoenix', 'greenwood', 'khao_kheow', …) are not ids in the courses table
+                // (only their per-nine rows are), so the course_id FK rejects them — retry
+                // without the id; history and community boards group by course_name anyway.
+                // A remaining failure must SURFACE: swallowing it said "Score saved!" while
+                // the history list stayed empty (Alondo's Phoenix/Greenwood posts, 2026-08-17).
+                const roundRow = {
                     golfer_id: user?.lineUserId||user?.uniqueId||'anonymous',
                     player_name: user?.name||user?.displayName||null,
                     course_name: cName, course_id: courseId, tee_marker: tee,
@@ -98462,8 +98497,20 @@ document.addEventListener('DOMContentLoaded', async function() {
                     played_at: pd.toISOString(), started_at: pd.toISOString(), completed_at: pd.toISOString(),
                     notes: `Posted via Round History. Net: ${tN}, Stableford: ${tS}`,
                     type: 'practice', handicap_used: handicap
-                });
-                if (e3) console.warn('[RoundPostScore] rounds insert failed:', e3.message);
+                };
+                let { error: e3 } = await window.SupabaseDB.client.from('rounds').insert(roundRow);
+                if (e3 && e3.code === '23503') {
+                    console.warn('[RoundPostScore] course_id FK rejected, retrying without it:', e3.message);
+                    roundRow.course_id = null;
+                    ({ error: e3 } = await window.SupabaseDB.client.from('rounds').insert(roundRow));
+                }
+                if (e3) {
+                    console.error('[RoundPostScore] rounds insert failed:', e3.message);
+                    LoadingManager.hide();
+                    window.NotificationManager.show('Scorecard saved, but it could not be added to Round History: ' + (e3.message || e3.code), 'error');
+                    this.closeModal();
+                    return;
+                }
                 LoadingManager.hide();
                 NotificationManager.show(`Score saved! Gross: ${tG} | Net: ${tN} | Stableford: ${tS}`, 'success');
                 this.closeModal();

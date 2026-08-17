@@ -97975,8 +97975,13 @@ document.addEventListener('DOMContentLoaded', async function() {
             const user = window.AppState?.currentUser;
             const hcp = document.getElementById('rpsHandicap');
             if (hcp && user) hcp.value = user.handicap || user.playingHandicap || '';
-            // Reset grid
+            // Reset grid + nine pickers
             this.courseHoles = [];
+            this._combo = null;
+            const nines = document.getElementById('rpsNines');
+            if (nines) nines.classList.add('hidden');
+            const emptyTxt = document.getElementById('rpsEmptyTxt');
+            if (emptyTxt) emptyTxt.textContent = 'Select a course to enter scores';
             const grid = document.getElementById('rpsGrid');
             const empty = document.getElementById('rpsEmpty');
             if (grid) grid.classList.add('hidden');
@@ -98086,6 +98091,16 @@ document.addEventListener('DOMContentLoaded', async function() {
                         <label class="rpsv2-lbl" style="margin-top:0">Course</label>
                         <select id="rpsCourseSel" class="rpsv2-in" onchange="RoundPostScore.onCourseChanged()"></select>
                         <p class="rpsv2-hint">Can't find your course? <button onclick="OCRCourseCreator.openModal()">Quick Add</button></p>
+                        <div id="rpsNines" class="hidden rpsv2-two">
+                            <div>
+                                <label class="rpsv2-lbl">Front 9</label>
+                                <select id="rpsNineF" class="rpsv2-in" onchange="RoundPostScore.onNinesChanged()"></select>
+                            </div>
+                            <div>
+                                <label class="rpsv2-lbl">Back 9</label>
+                                <select id="rpsNineB" class="rpsv2-in" onchange="RoundPostScore.onNinesChanged()"></select>
+                            </div>
+                        </div>
                         <div class="rpsv2-two">
                             <div>
                                 <label class="rpsv2-lbl">Date</label>
@@ -98125,7 +98140,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                         </div>
                         <div id="rpsEmpty" class="rpsv2-empty">
                             <span class="material-symbols-outlined" style="font-size:30px;display:block;margin-bottom:4px">scoreboard</span>
-                            <p style="margin:0">Select a course to enter scores</p>
+                            <p style="margin:0" id="rpsEmptyTxt">Select a course to enter scores</p>
                         </div>
                     </div>
                     <div class="rpsv2-foot">
@@ -98216,12 +98231,42 @@ document.addEventListener('DOMContentLoaded', async function() {
             const courseId = document.getElementById('rpsCourseSel').value;
             const grid = document.getElementById('rpsGrid');
             const empty = document.getElementById('rpsEmpty');
-            if (!courseId) {
+            const nines = document.getElementById('rpsNines');
+            const emptyTxt = document.getElementById('rpsEmptyTxt');
+            const hideGrid = (msg) => {
                 if (grid) grid.classList.add('hidden');
                 if (empty) empty.classList.remove('hidden');
+                if (emptyTxt && msg) emptyTxt.textContent = msg;
                 this.courseHoles = [];
+            };
+            // Multi-nine venues (Khao Kheow, Phoenix, Greenwood, Pattana, Laem Chabang, ...)
+            // have NO course_holes rows under the parent id — holes live per-nine. Same
+            // pickers as Live Scoring: choose front/back, then PaperCardEntry._comboFetch
+            // (pure, state-restoring) runs that venue's tested load*Combination.
+            const LS = window.LiveScorecardManager;
+            const cc = (courseId && LS && typeof LS._comboConfig === 'function') ? LS._comboConfig()[courseId] : null;
+            if (cc && window.PaperCardEntry?._comboFetch) {
+                this._combo = { f: cc.front, b: cc.back, fn: cc.loader };
+                const fill = (dstId, srcId) => {
+                    const dst = document.getElementById(dstId), src = document.getElementById(srcId);
+                    if (!dst || !src) return '';
+                    const prev = dst.dataset.course === courseId ? dst.value : '';
+                    let html = '<option value="">-- Select --</option>';
+                    for (const o of src.options) { if (o.value) html += `<option value="${o.value}">${o.textContent.trim()}</option>`; }
+                    dst.innerHTML = html; dst.dataset.course = courseId;
+                    if (prev && [...dst.options].some(o => o.value === prev)) dst.value = prev;
+                    return dst.value;
+                };
+                const f = fill('rpsNineF', cc.front), b = fill('rpsNineB', cc.back);
+                if (nines) nines.classList.remove('hidden');
+                if (f && b) { await this.onNinesChanged(); return; }
+                hideGrid('Select the front & back nines you played');
                 return;
             }
+            this._combo = null;
+            if (nines) nines.classList.add('hidden');
+            if (emptyTxt) emptyTxt.textContent = 'Select a course to enter scores';
+            if (!courseId) { hideGrid(); return; }
             try {
                 LoadingManager.show('Loading course...');
                 const dbId = this.COURSE_ID_MAP[courseId] || courseId;
@@ -98237,29 +98282,67 @@ document.addEventListener('DOMContentLoaded', async function() {
                     if (holes) { const seen = new Set(); holes = holes.filter(h => { if (seen.has(h.hole_number)) return false; seen.add(h.hole_number); return true; }); }
                 }
                 if (error) throw error;
-                if (!holes || holes.length === 0) { NotificationManager.show('No hole data found', 'warning'); LoadingManager.hide(); return; }
-                this.courseHoles = holes;
-                // Populate par & SI
-                for (let i = 1; i <= 18; i++) {
-                    const h = holes.find(x => x.hole_number === i);
-                    const p = document.getElementById(`rpP${i}`); if (p) p.textContent = h ? h.par : '-';
-                    const s = document.getElementById(`rpS${i}`); if (s) s.textContent = h ? h.stroke_index : '-';
-                }
-                const fp = holes.filter(h => h.hole_number <= 9).reduce((s, h) => s + (h.par||0), 0);
-                const bp = holes.filter(h => h.hole_number > 9).reduce((s, h) => s + (h.par||0), 0);
-                const po = document.getElementById('rpPO'); if (po) po.textContent = fp || '-';
-                const pi = document.getElementById('rpPI'); if (pi) pi.textContent = bp || '-';
-                // Clear scores, show grid
-                for (let i = 1; i <= 18; i++) { const inp = document.getElementById(`rps${i}`); if (inp) inp.value = ''; }
-                if (grid) grid.classList.remove('hidden');
-                if (empty) empty.classList.add('hidden');
-                this.updateCalcs();
                 LoadingManager.hide();
+                if (!holes || holes.length === 0) { window.NotificationManager.show('No hole data found for this course', 'warning'); hideGrid(); return; }
+                this.courseHoles = holes;
+                this._paintHoles();
             } catch (err) {
                 console.error('[RoundPostScore]', err);
                 LoadingManager.hide();
-                NotificationManager.show('Failed to load course', 'error');
+                window.NotificationManager.show('Failed to load course', 'error');
             }
+        },
+
+        async onNinesChanged() {
+            const grid = document.getElementById('rpsGrid');
+            const empty = document.getElementById('rpsEmpty');
+            const emptyTxt = document.getElementById('rpsEmptyTxt');
+            const f = document.getElementById('rpsNineF')?.value;
+            const b = document.getElementById('rpsNineB')?.value;
+            if (!this._combo || !f || !b || f === b) {
+                if (grid) grid.classList.add('hidden');
+                if (empty) empty.classList.remove('hidden');
+                if (emptyTxt) emptyTxt.textContent = (f && b && f === b)
+                    ? 'Front and back nine must be different'
+                    : 'Select the front & back nines you played';
+                this.courseHoles = [];
+                return;
+            }
+            try {
+                LoadingManager.show('Loading course...');
+                const tee = (document.getElementById('rpsTee')?.value || 'white').toLowerCase();
+                const d = await window.PaperCardEntry._comboFetch(this._combo, f, b, tee);
+                LoadingManager.hide();
+                if (!d || !d.holes || !d.holes.length) {
+                    window.NotificationManager.show('Could not load that nine combination', 'error');
+                    return;
+                }
+                this.courseHoles = d.holes.map(h => ({ hole_number: h.hole_number, par: h.par, stroke_index: h.handicap }));
+                this._paintHoles();
+            } catch (err) {
+                console.error('[RoundPostScore]', err);
+                LoadingManager.hide();
+                window.NotificationManager.show('Failed to load course', 'error');
+            }
+        },
+
+        _paintHoles() {
+            const grid = document.getElementById('rpsGrid');
+            const empty = document.getElementById('rpsEmpty');
+            const holes = this.courseHoles;
+            for (let i = 1; i <= 18; i++) {
+                const h = holes.find(x => x.hole_number === i);
+                const p = document.getElementById(`rpP${i}`); if (p) p.textContent = h ? h.par : '-';
+                const s = document.getElementById(`rpS${i}`); if (s) s.textContent = h ? h.stroke_index : '-';
+            }
+            const fp = holes.filter(h => h.hole_number <= 9).reduce((s, h) => s + (h.par||0), 0);
+            const bp = holes.filter(h => h.hole_number > 9).reduce((s, h) => s + (h.par||0), 0);
+            const po = document.getElementById('rpPO'); if (po) po.textContent = fp || '-';
+            const pi = document.getElementById('rpPI'); if (pi) pi.textContent = bp || '-';
+            for (let i = 1; i <= 18; i++) { const inp = document.getElementById(`rps${i}`); if (inp) inp.value = ''; }
+            if (grid) grid.classList.remove('hidden');
+            if (empty) empty.classList.add('hidden');
+            this.updateCalcs();
         },
 
         updateCalcs() {

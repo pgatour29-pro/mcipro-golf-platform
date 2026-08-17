@@ -29333,6 +29333,9 @@ Sent from Login Page`;
                 try { if (window.ThemeMode) ThemeMode.apply(); } catch (e) {}
                 try { if (window.updateOverviewCubes) updateOverviewCubes(); } catch (e) {}
                 try { if (window.ensureSocietyAffiliation) ensureSocietyAffiliation(); } catch (e) {}
+                // Re-entering overview: repaint history cube pill + all cube badges from fresh seen-stamps
+                try { if (window.GolferCubeInfo) GolferCubeInfo.loadHistory(); } catch (e) {}
+                try { if (window.DashboardBadges) DashboardBadges.update(); } catch (e) {}
                 // Check for new condition reports
                 setTimeout(() => checkConditionReportsBadge(), 2000);
                 // Wait for user to be fully loaded
@@ -42689,7 +42692,10 @@ Waitlist (${waitlist.length} people):`;
         const origShowGolferTab = window.showGolferTab;
         if (origShowGolferTab) {
             window.showGolferTab = function(tab, evt) {
-                if (tab === 'rounds') localStorage.setItem('mcipro_last_seen', new Date().toISOString());
+                if (tab === 'rounds') {
+                    localStorage.setItem('mcipro_last_seen', new Date().toISOString());
+                    if (window.DashboardBadges) DashboardBadges.setBadge('historyBadge', 0);
+                }
                 if (tab === 'results') {
                     localStorage.setItem('mcipro_results_seen', new Date().toISOString());
                     if (window.DashboardBadges) DashboardBadges.setBadge('resultsCubeBadge', 0);
@@ -97546,6 +97552,8 @@ document.addEventListener('DOMContentLoaded', async function() {
                 if (typeof GolfScoreSystem !== 'undefined') {
                     setTimeout(() => { GolfScoreSystem.loadRoundHistoryTable?.(); }, 500);
                 }
+                // History cube pill + badge must reflect the new round without a reload
+                setTimeout(() => { window.GolferCubeInfo?.loadHistory?.(); window.DashboardBadges?.update?.(); }, 500);
 
                 LoadingManager.hide();
                 NotificationManager.show(`Score posted! Gross: ${totalGross} | Net: ${totalNet} | Stableford: ${totalStableford}`, 'success');
@@ -98518,6 +98526,8 @@ document.addEventListener('DOMContentLoaded', async function() {
                 if (typeof GolfScoreSystem !== 'undefined') {
                     setTimeout(() => { GolfScoreSystem.loadRoundHistoryTable?.(); }, 500);
                 }
+                // History cube pill + badge must reflect the new round without a reload
+                setTimeout(() => { window.GolferCubeInfo?.loadHistory?.(); window.DashboardBadges?.update?.(); }, 500);
             } catch (err) {
                 console.error('[RoundPostScore]', err);
                 LoadingManager.hide();

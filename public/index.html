@@ -23694,11 +23694,19 @@
         // Expose FallbackAuthentication to window for Auth system
         window.FallbackAuthentication = FallbackAuthentication;
 
-        // Notification Management System (Disabled - Notifications removed per user request)
+        // Notification Management System — historical kill-switch. This GLOBAL class declaration
+        // lexically shadows window.NotificationManager (the real toast system, defined earlier)
+        // for every later script, so ~890 bare NotificationManager.show() calls land here.
+        // Info/success stay console-only (notification spam was removed per Pete's request), but
+        // ERRORS and WARNINGS must reach the user — 471 silent failure paths cost four separate
+        // bug hunts on 2026-08-17 alone. Forward those two types to the real toast.
         class NotificationManager {
             static show(message, type = 'info', duration = null) {
-                // Notifications disabled - logging to console instead
                 console.log(`[${type.toUpperCase()}] ${message}`);
+                const real = window.NotificationManager;
+                if ((type === 'error' || type === 'warning') && real && real !== NotificationManager && typeof real.show === 'function') {
+                    try { real.show(message, type, duration || undefined); } catch (e) {}
+                }
             }
         }
 

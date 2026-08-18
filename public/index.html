@@ -6955,6 +6955,11 @@
         .scv3g-ec { background:var(--g-card); border:1px solid var(--g-hair); border-radius:16px; padding:11px 12px;
             display:flex; gap:11px; align-items:center; position:relative; cursor:pointer; color:var(--g-ink); }
         .scv3g-ec.cancelled { border-color:rgba(251,113,133,.5); opacity:.8; }
+        /* Card border states (v930): registered BLUE beats today/tomorrow GREEN (cancelled beats both).
+           Border grows 1px→2px, so padding drops 1px each side — content width stays identical to
+           neighbouring cards (no ragged left edge down the feed). */
+        .scv3g-ec.ec-today { border:2px solid #22c55e; box-shadow:0 0 0 2px rgba(34,197,94,.28); padding:10px 11px; }
+        .scv3g-ec.ec-reg { border:2px solid #3b82f6; box-shadow:0 0 0 2px rgba(59,130,246,.28); padding:10px 11px; }
         /* Fav star lives IN the right action column (first row, above the fee) — NOT absolute in the
            card corner. The one-button-wide vertical .r column puts the fee digits exactly under that
            corner, so a pinned star sat ON the fee's last digit. */
@@ -48574,7 +48579,7 @@ Waitlist (${waitlist.length} people):`;
                             </button>
                             <button onclick="GolferEventsSystem.setQuickFilter('registered')" id="golferEventsChipRegistered"
                                     class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-700">
-                                <span class="material-symbols-outlined" style="font-size:inherit;vertical-align:middle;line-height:1;">task_alt</span> Registered
+                                <span class="material-symbols-outlined" style="font-size:inherit;vertical-align:middle;line-height:1;">task_alt</span> Registered<span id="gefbRegCountBadge" style="display:none;margin-left:4px;min-width:16px;padding:2px 4px;border-radius:999px;background:#2563eb;color:#fff;font-size:9px;font-weight:700;line-height:1;text-align:center;vertical-align:middle;">0</span>
                             </button>
                             <button onclick="GolferEventsSystem.setQuickFilter('open')" id="golferEventsChipOpen"
                                     class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 hover:bg-green-50 hover:text-green-700">
@@ -118440,6 +118445,7 @@ class GolferEventsManager {
 
         // Update event count badge
         this.updateFilterCount();
+        this._updateRegBadge(societyFilter);
 
         this.renderEvents();
     }
@@ -118508,6 +118514,22 @@ class GolferEventsManager {
             const count = this.filteredEvents.length;
             countBadge.textContent = `${count} event${count !== 1 ? 's' : ''}`;
         }
+    }
+
+    // Registered-pill counter (v930) — scoped exactly like tapping the pill (this society's
+    // upcoming feed), so the badge number always equals the rows the tap reveals.
+    _updateRegBadge(societyFilter) {
+        const el = document.getElementById('gefbRegCountBadge');
+        if (!el) return;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const n = this.allEvents.filter(ev => {
+            if (societyFilter !== 'private_events' && this.getSocietyNameForEvent(ev) !== societyFilter) return false;
+            if (new Date(ev.date) < today) return false;
+            return !!ev.isUserRegistered;
+        }).length;
+        el.textContent = n;
+        el.style.display = n > 0 ? 'inline-block' : 'none';
     }
 
     resetFilters() {
@@ -118825,8 +118847,11 @@ class GolferEventsManager {
         }
         const _pct = max > 0 ? Math.min(100, Math.round(registered / max * 100)) : Math.min(100, Math.round((registered / 40) * 100));
         const _isJOA = event.name?.startsWith('JOA Golf') || event.organizerId === 'JOAGOLFPAT' || event.organizerId === 'Udb12b92d028efee5a017a03a6c4c1ad4' || event.organizerName === 'JOA Golf Pattaya';
+        // Border state (v930): blue "you're in" dominates green "happening today/tomorrow" —
+        // a registered player already knows the event is on; blue is their card's identity.
+        const _ecState = isCancelled ? 'cancelled' : isUserRegistered ? 'ec-reg' : (isImminent && !isPast) ? 'ec-today' : '';
         return `
-            <div id="event-card-${event.id}" class="scv3g-ec ${isCancelled ? 'cancelled' : ''}" onclick="GolferEventsSystem.openEventDetail('${event.id}', ${event.isUserRegistered ? 'true' : 'false'})">
+            <div id="event-card-${event.id}" class="scv3g-ec ${_ecState}" onclick="GolferEventsSystem.openEventDetail('${event.id}', ${event.isUserRegistered ? 'true' : 'false'})">
                 ${notificationBadge}
                 <div class="d ${window.dateCubeMood(event.date)}"><div class="w">${eventDate.toLocaleDateString(L.lang === 'ko' ? 'ko-KR' : 'en-US', { weekday: 'short' }).toUpperCase()}</div><div class="n">${eventDate.getDate()}</div></div>
                 <div class="m">

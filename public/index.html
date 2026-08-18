@@ -75416,16 +75416,26 @@ class LiveScorecardSystem {
     async refreshCourseDataFromDB() {
         try {
             if (!window.SupabaseDB?.client || !this.courseData?.holes?.length) return;
-            // Combo course with a known nine selection: rebuild via the same loader as round start
-            if (this.comboNines?.course === 'phoenix' && this.comboNines.front && this.comboNines.back) {
-                const f = document.getElementById('phoenixFront9');
-                const b = document.getElementById('phoenixBack9');
+            // Combo course with a known nine selection: rebuild via the same loader as round
+            // start. Generalized from the Phoenix-only case (2026-08-18, Burapha C+D): the
+            // in-place patch below reads course_holes[courseData.id], and combo loaders stamp
+            // base ids whose course_holes rows can be a DIFFERENT 18 — the "self-heal" would
+            // have rewritten a C+D round to the A+B card.
+            const ccfg = this.comboNines?.course ? this._comboConfig()[this.comboNines.course] : null;
+            if (ccfg && this.comboNines.front && this.comboNines.back && typeof this[ccfg.loader] === 'function') {
+                const f = document.getElementById(ccfg.front);
+                const b = document.getElementById(ccfg.back);
                 if (f && b) {
                     f.value = this.comboNines.front;
                     b.value = this.comboNines.back;
-                    await this.loadPhoenixCombination();
-                    console.log('[LiveScorecard] 🔄 Course data refreshed from DB (phoenix combo)');
-                    try { this.renderHole(); this.debouncedRefreshLeaderboard(); } catch (e) {}
+                    const prev = this.courseData;
+                    try { await this[ccfg.loader](this.selectedTeeMarker || 'white'); } catch (e) {}
+                    if (!this.courseData?.holes?.length) {
+                        this.courseData = prev;   // loader failed (offline / missing tee card) — keep the live table
+                    } else {
+                        console.log(`[LiveScorecard] 🔄 Course data refreshed from DB (${this.comboNines.course} combo)`);
+                        try { this.renderHole(); this.debouncedRefreshLeaderboard(); } catch (e) {}
+                    }
                     return;
                 }
             }
@@ -80345,18 +80355,22 @@ class LiveScorecardSystem {
     // Recalculate all scores in the DB for a player when their handicap changes mid-round
     async recalculatePlayerScores(playerId, newHandicap) {
         try {
-            if (!this.roundId) return;
             const sb = window.SupabaseDB?.client;
             if (!sb) return;
 
-            // Find the player's scorecard for this round
-            const { data: scorecard } = await sb
-                .from('scorecards')
-                .select('id')
-                .eq('round_id', this.roundId)
-                .eq('player_id', playerId)
-                .single();
-            if (!scorecard) return;
+            // scorecards has NO round_id column — the round's card ids live in this.scorecards
+            // (player_id → card id) on every path (fresh start, restore, DB join). The old
+            // roundId gate + round_id lookup matched nothing, so mid-round handicap corrections
+            // never rewrote saved holes (found 2026-08-18, Burapha C+D live round).
+            let cardId = this.scorecards?.[playerId] || null;
+            if (!cardId && this.groupId) {
+                const { data: sc } = await sb.from('scorecards').select('id')
+                    .eq('group_id', this.groupId).eq('player_id', playerId)
+                    .eq('status', 'in_progress').limit(1);
+                cardId = sc?.[0]?.id || null;
+            }
+            if (!cardId) return;
+            const scorecard = { id: cardId };
 
             // Update the DAY'S playing handicap only — scorecards.handicap is the player's
             // INDEX and must survive mid-round adjustments (Pete's global rule 2026-07-02:
@@ -80464,6 +80478,7 @@ class LiveScorecardSystem {
         // tag names so future swaps + persistence know the current nines
         this.courseData.front9Name = front9;
         this.courseData.back9Name = newBack9;
+        this.comboNines = { course: courseKey, front: front9, back: newBack9 };
 
         // Rewrite + recompute already-saved scores against the new stroke index / par
         try { await this.recomputeScoresForCourseChange(); }
@@ -80480,11 +80495,16 @@ class LiveScorecardSystem {
     // from the new courseData, then recompute net/stableford/handicap_strokes for each player.
     async recomputeScoresForCourseChange() {
         const sb = window.SupabaseDB?.client;
-        if (!sb || !this.roundId || !this.courseData) return;
+        if (!sb || !this.courseData) return;
         const siByHole = {}, parByHole = {};
         for (const h of this.courseData.holes) { siByHole[h.hole_number] = h.stroke_index; parByHole[h.hole_number] = h.par; }
 
-        const { data: cards } = await sb.from('scorecards').select('id, player_id, handicap').eq('round_id', this.roundId);
+        // scorecards has NO round_id column — this.scorecards (player_id → card id) IS the
+        // round's card set. The old roundId gate + round_id query matched nothing, so this
+        // whole "heal saved holes" pass was a silent no-op (found 2026-08-18, Burapha C+D).
+        const cardIds = Object.values(this.scorecards || {}).filter(Boolean);
+        if (!cardIds.length) return;
+        const { data: cards } = await sb.from('scorecards').select('id, player_id, handicap').in('id', cardIds);
         for (const card of (cards || [])) {
             const { data: scores } = await sb.from('scores').select('*').eq('scorecard_id', card.id);
             if (!scores || !scores.length) continue;
@@ -82972,6 +82992,16 @@ class LiveScorecardSystem {
                     return;
                 }
             }
+            // Record the nine selection — a resumed round rebuilds the combo from this
+            // (refreshCourseDataFromDB). Combo loaders stamp BASE ids ('burapha'), and the
+            // base id's course_holes rows can be a DIFFERENT 18 than the nines being played,
+            // so the in-place resume patch alone would rewrite the round to the wrong card
+            // (Burapha C+D live round vs the A+B rows under 'burapha' — 2026-08-18).
+            this.comboNines = {
+                course: courseId,
+                front: document.getElementById(comboCfg.front)?.value || null,
+                back: document.getElementById(comboCfg.back)?.value || null
+            };
         } else {
             // Load course data from database with selected tee marker
             await this.loadCourseData(courseId, teeMarker);

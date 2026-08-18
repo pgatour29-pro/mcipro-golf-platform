@@ -95,6 +95,13 @@ building, not after.
 - Stored `total_fee` is the organizer's authority — never recompute/overwrite it for display.
   Handicaps resolve `society_handicaps` → profile fallback; MANUAL `calculation_method` rows are
   human overrides — imports must never sweep them.
+- TRGG hcp is PRIMARY (Pete 2026-08-18): for anyone with a locked `TRGG%`/`%MASTERSCORE%`
+  society row, the universal (society_id NULL) row and the `user_profiles` mirror TRACK that
+  locked value — enforced by DB trigger `trg_sync_universal_to_locked` (cascades on import
+  writes) plus a mirror branch in `auto_update_society_handicaps_on_round` (round completions).
+  ANCHORED drift only applies to golfers with NO locked row; a MANUAL universal still wins.
+  SQL: `sql/universal_mirrors_locked_trgg_20260818.sql`. Never re-add independent universal
+  drift for TRGG members.
 
 ## Deploy ritual (every `public/` change)
 1. `npm test` — must pass.

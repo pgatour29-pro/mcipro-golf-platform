@@ -75497,6 +75497,14 @@ class LiveScorecardSystem {
                 if (fresh && fresh.handicap != null && Number(fresh.handicap) !== Number(p.handicap)) {
                     console.log(`[LiveScorecard] 🔄 Handicap refreshed from DB: ${p.name || p.id} ${p.handicap} → ${fresh.handicap}`);
                     p.handicap = Number(fresh.handicap);
+                    // Propagate into every game config's handicap map — matchplay/nassau/press read
+                    // THOSE (settlementHandicap → gameConfigs), not player.handicap. Without this a
+                    // DB correction healed stableford but the game boards kept the old value
+                    // (Jason 137 vs 13.7 @ Burapha C+D, 2026-08-18 — stableford right, match wrong).
+                    Object.values(this.gameConfigs || {}).forEach(cfg => {
+                        if (cfg && cfg.handicaps) cfg.handicaps[p.id] = Number(fresh.handicap);
+                    });
+                    this._shared = null;   // settlement/press cache re-derives from the new values
                     changed++;
                 }
             });

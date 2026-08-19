@@ -81268,6 +81268,57 @@ class LiveScorecardSystem {
         } catch (e) { console.warn('[MatchBoard] loadMatchConfigFromDB failed', e); }
     }
 
+    // v935: ONE device picking teams/games covers the WHOLE group — persist the config
+    // to every in_progress card in the group (each card carries a full copy, the same
+    // shape startRound writes), and every other device adopts it through
+    // loadMatchConfigFromDB (v934 stale-adopt + missing-fill). Before Pete's Green
+    // Valley round this was local-only, so each phone asked for the teams again.
+    // GUARD: validate every id against the group's LIVE cards first — a device restored
+    // with pre-claim ids (the reason the chooser appeared at all) must never write those
+    // dead ids back over the repaired DB config.
+    async persistMatchConfigToDB() {
+        try {
+            const sb = window.SupabaseDB?.client;
+            if (!sb || !this.groupId) return;
+            const cfg = {};
+            if (this.matchPlayTeams) {
+                cfg.teams = this.matchPlayTeams;
+                const gm = document.querySelector('input[name="teamGameMode"]:checked');
+                const gmVal = gm?.value || this.matchPlayTeamGameMode;
+                if (gmVal) cfg.teamGameMode = gmVal;
+            }
+            if (this.roundRobinMatches) cfg.roundRobin = this.roundRobinMatches;
+            if (Object.keys(this.gameConfigs || {}).length) cfg.gameConfigs = this.gameConfigs;
+            if (!Object.keys(cfg).length) return;
+
+            const { data: liveCards } = await sb.from('scorecards')
+                .select('player_id').eq('group_id', this.groupId).eq('status', 'in_progress');
+            if (!liveCards || !liveCards.length) return; // pre-round setup — startRound saves it
+            const live = new Set(liveCards.map(c => c.player_id));
+            const t = this.matchPlayTeams || {};
+            const cfgIds = [
+                ...(t.teamA || []), ...(t.teamB || []),
+                ...(t.anchorTeam || []), ...(t.rotatingPool || []),
+                ...Object.values(this.gameConfigs || {}).flatMap(g => (g && g.players) || [])
+            ];
+            if (cfgIds.some(id => id && !live.has(id))) {
+                console.warn('[LiveScorecard] ⏭️ Not persisting match config — it references ids with no live card (stale device)');
+                return;
+            }
+
+            await sb.from('scorecards')
+                .update({ match_play_config: JSON.stringify(cfg) })
+                .eq('group_id', this.groupId)
+                .eq('status', 'in_progress');
+            console.log('[LiveScorecard] 📤 Match config persisted to group', this.groupId);
+        } catch (e) { console.warn('[LiveScorecard] persistMatchConfigToDB failed', e); }
+    }
+
+    schedulePersistMatchConfig() {
+        clearTimeout(this._persistCfgTimer);
+        this._persistCfgTimer = setTimeout(() => { this.persistMatchConfigToDB(); }, 1200);
+    }
+
     teamLabel(ids) { return (ids || []).map(id => this.getPlayerName(id)).join(' & '); }
 
     // Tap-to-fix handicap chips for the players in a match
@@ -82479,6 +82530,7 @@ class LiveScorecardSystem {
             successDiv.innerHTML = micon('task_alt') + (hasTeamB
                 ? ' Both teams configured for public match play'
                 : ' Team A configured for public match play');
+            this.schedulePersistMatchConfig();
             return true;
         } else {
             // Private game: Need all 4 positions filled
@@ -82510,6 +82562,7 @@ class LiveScorecardSystem {
             errorDiv.classList.add('hidden');
             successDiv.classList.remove('hidden');
             successDiv.innerHTML = micon('task_alt') + ' Teams configured correctly';
+            this.schedulePersistMatchConfig();
             return true;
         }
     }
@@ -82572,6 +82625,7 @@ class LiveScorecardSystem {
             successDiv.innerHTML = micon('task_alt') + ' Anchor team configured - ' + matches.length + ' matches';
         }
         console.log('[LiveScorecard] Anchor Team configured:', this.matchPlayTeams);
+        this.schedulePersistMatchConfig();
         return true;
     }
 

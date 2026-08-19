@@ -75382,8 +75382,17 @@ class LiveScorecardSystem {
         // v934: local restores need the reconcile pull too, not just DB joins — a saved
         // state can carry team/game-config ids a mid-round claim has since re-keyed, and
         // loadMatchConfigFromDB is where stale ids get swapped for the repaired DB config.
-        if (!state._fromDb && (this.matchPlayTeams || Object.keys(this.gameConfigs || {}).length)) {
-            setTimeout(() => { try { Promise.resolve(this.loadMatchConfigFromDB()).catch(() => {}); } catch (e) {} }, 0);
+        // v937: reconcile the ROSTER ids first (dead guest ids → live claimed ids, joined
+        // by card uuid) so handover/selection/choosers work, then pull the config.
+        if (!state._fromDb) {
+            setTimeout(() => {
+                try {
+                    Promise.resolve(this._reconcileRosterIds())
+                        .then(() => (this.matchPlayTeams || Object.keys(this.gameConfigs || {}).length)
+                            ? this.loadMatchConfigFromDB() : null)
+                        .catch(() => {});
+                } catch (e) {}
+            }, 0);
         }
         this.scrambleConfig = state.scrambleConfig || null;
         this.waltzConfig = state.waltzConfig || null;
@@ -75536,6 +75545,59 @@ class LiveScorecardSystem {
                 try { this.renderHole(); this.debouncedRefreshLeaderboard(); } catch (e) {}
             }
         } catch (e) { console.warn('[LiveScorecard] handicap refresh failed (non-fatal):', e); }
+    }
+
+    // v937: after a mid-round claim, this device's restored roster still carries the dead
+    // pre-claim ids — teams/configs self-heal (v934) but the ROSTER never did, so handover
+    // says "no linked phone" (placeholder check on a dead guest id), selection snaps to the
+    // wrong name, and the recovery chooser builds dead combos (Pete, Green Valley
+    // 2026-08-19, the whole afternoon). The join key is the CARD UUID this device already
+    // holds: this.scorecards[localId] is the same row whose player_id the claim re-keyed.
+    // Fetch those cards once and remap every stale local id to the card's live player_id
+    // across every id-keyed structure. No name matching — the uuid is authoritative.
+    async _reconcileRosterIds() {
+        try {
+            const sb = window.SupabaseDB?.client;
+            if (!sb || !this.players?.length || !this.scorecards) return;
+            const uuids = this.players.map(p => this.scorecards[p.id]).filter(Boolean);
+            if (!uuids.length) return;
+            const { data } = await sb.from('scorecards').select('id, player_id').in('id', uuids);
+            if (!data || !data.length) return;
+            const liveByCard = {};
+            data.forEach(c => { liveByCard[c.id] = c.player_id; });
+            let changed = 0;
+            this.players.forEach(p => {
+                const card = this.scorecards[p.id];
+                const live = card && liveByCard[card];
+                if (!live || String(live) === String(p.id)) return;
+                const old = p.id;
+                p.id = live;
+                this.scorecards[live] = card;
+                delete this.scorecards[old];
+                if (this.cardOwner && this.cardOwner[old] !== undefined) {
+                    // the owner VALUE can be the dead id too (a player owning their own card)
+                    const owner = this.cardOwner[old];
+                    this.cardOwner[live] = String(owner) === String(old) ? live : owner;
+                    delete this.cardOwner[old];
+                }
+                Object.values(this.gameConfigs || {}).forEach(cfg => {
+                    if (!cfg) return;
+                    if (Array.isArray(cfg.players)) cfg.players = cfg.players.map(id => String(id) === String(old) ? live : id);
+                    if (cfg.handicaps && cfg.handicaps[old] !== undefined) { cfg.handicaps[live] = cfg.handicaps[old]; delete cfg.handicaps[old]; }
+                });
+                const T = this.matchPlayTeams;
+                if (T) ['teamA', 'teamB', 'anchorTeam', 'rotatingPool'].forEach(k => {
+                    if (Array.isArray(T[k])) T[k] = T[k].map(id => String(id) === String(old) ? live : id);
+                });
+                if (String(this.currentPlayerId) === String(old)) this.currentPlayerId = live;
+                console.log('[LiveScorecard] 👻→✅ Roster id reconciled:', old, '→', live);
+                changed++;
+            });
+            if (changed) {
+                this.saveRoundState();
+                try { this.renderHole(); this.debouncedRefreshLeaderboard(); } catch (e) {}
+            }
+        } catch (e) { console.warn('[LiveScorecard] roster reconcile failed (non-fatal):', e); }
     }
 
     // One-tap match-play recovery when the setup state was lost (renders in the empty leaderboard state)

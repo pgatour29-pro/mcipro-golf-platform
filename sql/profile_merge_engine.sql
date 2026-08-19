@@ -127,6 +127,19 @@ BEGIN
       'table','event_pairings','column','groups(jsonb)','rows',v_cnt,'deleted_dupes',0);
   END IF;
 
+  -- Match-play/game configs store player ids INSIDE scorecards.match_play_config JSONB
+  -- (teams arrays + gameConfigs players/handicap keys) — same blind spot as event_pairings
+  -- (proven live: Justin Carroll's matchplay board empty mid-round, 2026-08-19).
+  UPDATE scorecards
+     SET match_play_config = replace(match_play_config::text, p_absorbed, p_survivor)::jsonb
+   WHERE match_play_config IS NOT NULL
+     AND match_play_config::text LIKE '%' || p_absorbed || '%';
+  GET DIAGNOSTICS v_cnt = ROW_COUNT;
+  IF v_cnt > 0 THEN
+    v_moved := v_moved || jsonb_build_object(
+      'table','scorecards','column','match_play_config(jsonb)','rows',v_cnt,'deleted_dupes',0);
+  END IF;
+
   -- A first-login claim absorbs a rich roster/guest profile into a BLANK LINE shell — carry the
   -- absorbed profile's identity data onto the survivor wherever the survivor is empty
   -- (merge-don't-clobber: the survivor's own values always win; isGuest never survives).

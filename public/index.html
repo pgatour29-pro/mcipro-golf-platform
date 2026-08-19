@@ -21982,6 +21982,23 @@
             // society) never blocks the remaining re-keys.
             static async _relinkGuestRows(oldGuestId, lineUserId) {
                 if (!oldGuestId || oldGuestId === lineUserId) return false;
+                // v933: prefer the server-side sweep — it moves EVERY table plus the ids
+                // EMBEDDED in JSON (event_pairings.groups, scorecards.match_play_config),
+                // which the hand-picked list below can't reach. Proven live 2026-08-19:
+                // Justin Carroll claimed mid-round and his matchplay/nassau boards went
+                // empty — the configs still pointed at TRGG-GUEST-0153. Fall through to
+                // the legacy list on any RPC failure so a claim is never blocked.
+                try {
+                    const { error: rpcErr } = await window.SupabaseDB.client
+                        .rpc('relink_guest_rows', { p_old: oldGuestId, p_new: lineUserId });
+                    if (!rpcErr) {
+                        console.log('[MemberLink] ✅ Guest rows relinked via RPC', oldGuestId, '->', lineUserId);
+                        return true;
+                    }
+                    console.warn('[MemberLink] relink RPC failed, using legacy fallback:', rpcErr.message || rpcErr);
+                } catch (e) {
+                    console.warn('[MemberLink] relink RPC threw, using legacy fallback:', e);
+                }
                 try {
                     const sb = window.SupabaseDB.client;
                     await sb.from('scorecards').update({ player_id: lineUserId }).eq('player_id', oldGuestId);

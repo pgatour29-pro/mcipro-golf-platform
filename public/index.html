@@ -75379,6 +75379,12 @@ class LiveScorecardSystem {
         this.isPrivateRound = state.isPrivateRound || false;
         this.matchPlayTeams = state.matchPlayTeams;
         this.roundRobinMatches = state.roundRobinMatches;
+        // v934: local restores need the reconcile pull too, not just DB joins — a saved
+        // state can carry team/game-config ids a mid-round claim has since re-keyed, and
+        // loadMatchConfigFromDB is where stale ids get swapped for the repaired DB config.
+        if (!state._fromDb && (this.matchPlayTeams || Object.keys(this.gameConfigs || {}).length)) {
+            setTimeout(() => { try { Promise.resolve(this.loadMatchConfigFromDB()).catch(() => {}); } catch (e) {} }, 0);
+        }
         this.scrambleConfig = state.scrambleConfig || null;
         this.waltzConfig = state.waltzConfig || null;
         this.bitsGame = state.bitsGame || null;
@@ -81197,7 +81203,7 @@ class LiveScorecardSystem {
             // while teamGameMode ALWAYS refreshes from DB — so a server-side rules
             // fix reaches the host mid-round (Green Valley all-square dispute).
             let q = window.SupabaseDB.client.from('scorecards')
-                .select('match_play_config, created_at')
+                .select('player_id, match_play_config, created_at')
                 .not('match_play_config', 'is', null)
                 .neq('status', 'abandoned');
             if (this.eventId) {
@@ -81211,11 +81217,22 @@ class LiveScorecardSystem {
             } else if (this.groupId) {
                 q = q.eq('group_id', this.groupId);
             } else { return; }
-            const { data } = await q.order('created_at', { ascending: false }).limit(1);
+            const { data } = await q.order('created_at', { ascending: false });
             if (!data || !data.length || !data[0].match_play_config) return;
             const config = typeof data[0].match_play_config === 'string' ? JSON.parse(data[0].match_play_config) : data[0].match_play_config;
 
-            if (!this.matchPlayTeams && config.teams) {
+            // v934: a config id that matches NO live scorecard is garbage, not a host edit.
+            // A mid-round guest→LINE claim (relink_guest_rows) re-keys every card and the DB
+            // configs, but a device's restored state still holds the dead guest id — which
+            // knocked the match board back to the team chooser (Pete, Green Valley
+            // 2026-08-19). Stale-id configs ADOPT the repaired DB copy; configs whose ids
+            // all resolve keep the missing-only fill so live host edits stay protected.
+            const liveIds = new Set(data.map(sc => sc.player_id));
+            const _stale = ids => (ids || []).some(id => id && !liveIds.has(id));
+
+            const localTeamIds = this.matchPlayTeams
+                ? [...(this.matchPlayTeams.teamA || []), ...(this.matchPlayTeams.teamB || [])] : [];
+            if (config.teams && (!this.matchPlayTeams || _stale(localTeamIds))) {
                 this.matchPlayTeams = config.teams;
                 const teamsCheckbox = document.querySelector('input[name="matchPlayType"][value="teams"]');
                 if (teamsCheckbox) teamsCheckbox.checked = true;
@@ -81233,7 +81250,10 @@ class LiveScorecardSystem {
             if (config.gameConfigs) {
                 if (!this.gameConfigs) this.gameConfigs = {};
                 Object.keys(config.gameConfigs).forEach(fmt => {
-                    if (!this.gameConfigs[fmt]) {
+                    // v934: adopt the DB copy when the local config references a dead id
+                    // (see the stale-id note above) — its players/handicap keys point at a
+                    // player who no longer has a scorecard, so every board reads PENDING.
+                    if (!this.gameConfigs[fmt] || _stale(this.gameConfigs[fmt].players)) {
                         this.gameConfigs[fmt] = config.gameConfigs[fmt];
                     } else {
                         // Fill only MISSING handicaps — preserve host's local (tap-to-fix) values

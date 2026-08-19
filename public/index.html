@@ -75557,6 +75557,20 @@ class LiveScorecardSystem {
             this.saveRoundState();
             this.refreshLeaderboard();
             NotificationManager.show('Match play restored ✔', 'success');
+            // v936: the combo above is built from THIS device's roster ids — after a
+            // mid-round guest→LINE claim those are dead, so the restored teams match no
+            // scorecard and the board stays empty (Pete's dead taps, Green Valley
+            // 2026-08-19). Persist propagates a VALID pick to the group (v935 guard
+            // blocks a stale one), and the config pull adopts the repaired DB teams
+            // when the local ones are stale (v934) — then re-render with the outcome.
+            this.schedulePersistMatchConfig();
+            setTimeout(() => {
+                try {
+                    Promise.resolve(this.loadMatchConfigFromDB())
+                        .then(() => { try { this.refreshLeaderboard(); } catch (e) {} })
+                        .catch(() => {});
+                } catch (e) {}
+            }, 0);
         } catch (e) { console.error('[LiveScorecard] restoreMatchType failed:', e); }
     }
 
@@ -94445,6 +94459,21 @@ class LiveScorecardSystem {
 
                 // If no panels were generated (no match play modes active), show default
                 if (!allPanelsHtml) {
+                    // v936: before resigning to the chooser, try the DB ONCE — the group's
+                    // config usually still has the teams (they're only lost locally, e.g.
+                    // after a mid-round claim re-keyed the ids). If the pull adopts teams,
+                    // the re-render below replaces this chooser with the real board.
+                    const inst = window.liveScorecardInstance;
+                    if (inst && !inst._matchCfgAutoPulled) {
+                        inst._matchCfgAutoPulled = true;
+                        setTimeout(() => {
+                            try {
+                                Promise.resolve(inst.loadMatchConfigFromDB())
+                                    .then(() => { if (inst.matchPlayTeams) { try { inst.refreshLeaderboard(); } catch (e) {} } })
+                                    .catch(() => {});
+                            } catch (e) {}
+                        }, 0);
+                    }
                     // Fall back to basic match play table
                     sortedLeaderboard.sort((a, b) => (Number(b.matchplay?.netHoles) || 0) - (Number(a.matchplay?.netHoles) || 0));
 

@@ -78022,11 +78022,16 @@ class LiveScorecardSystem {
 
             // CHV1: keep the tee ratings for course-handicap display and render the strip.
             // Par comes from the same YAML profile (cached — no extra fetch).
-            this._teeRatingsForCH = tees;
+            // v939 GUARD: only a REAL profile feeds the strip. loadYAMLProfile falls back to
+            // getDefaultProfile on a missing course, and its tees carry INVENTED ratings
+            // (74/140…) — 56 DB courses have no profile, and a fake conversion shown as real
+            // is worse than none. Default profiles lack version/layout/course_details.
             try {
                 const prof = await window.scorecardProfileLoader.loadYAMLProfile(courseId);
+                const isRealProfile = !!(prof && (prof.version || prof.layout || prof.course_details));
+                this._teeRatingsForCH = isRealProfile ? tees : null;
                 this._courseParForCH = prof?.par || prof?.course_details?.par || 72;
-            } catch (e) { this._courseParForCH = 72; }
+            } catch (e) { this._teeRatingsForCH = null; this._courseParForCH = 72; }
             this.renderCourseHcpStrip();
             if (!teeMarkerContainer._chListener) {
                 teeMarkerContainer._chListener = true;
@@ -79707,7 +79712,8 @@ class LiveScorecardSystem {
 
             // CHV1: the profile's tee ratings feed the course-handicap strip — stash them
             // here too so a resumed round (which never runs the setup tee loader) shows it.
-            if (courseProfile?.tees?.length) {
+            // v939: real profiles only (default fallback carries invented ratings).
+            if ((courseProfile?.version || courseProfile?.layout || courseProfile?.course_details) && courseProfile?.tees?.length) {
                 this._teeRatingsForCH = courseProfile.tees;
                 this._courseParForCH = courseProfile.par || courseProfile.course_details?.par || 72;
                 setTimeout(() => { try { this.renderCourseHcpStrip(); } catch (e) {} }, 0);
@@ -97376,9 +97382,11 @@ document.addEventListener('DOMContentLoaded', async function() {
 
                 // CHV1: tee ratings from the YAML profile drive the course-handicap strip
                 // (courses.tees in the DB is empty — the YAML cards are the rating source).
+                // v939: real profiles only — the default fallback carries invented ratings.
                 try {
                     const prof = await window.scorecardProfileLoader?.loadYAMLProfile(course.course_code || course.id);
-                    if (prof?.tees?.length) {
+                    const isRealProfile = !!(prof && (prof.version || prof.layout || prof.course_details));
+                    if (isRealProfile && prof?.tees?.length) {
                         course._chTees = prof.tees;
                         course._chPar = prof.par || prof.course_details?.par || 72;
                     }

@@ -75390,6 +75390,7 @@ class LiveScorecardSystem {
                     Promise.resolve(this._reconcileRosterIds())
                         .then(() => (this.matchPlayTeams || Object.keys(this.gameConfigs || {}).length)
                             ? this.loadMatchConfigFromDB() : null)
+                        .then(() => { try { this.renderCourseHcpStrip(); } catch (e) {} })
                         .catch(() => {});
                 } catch (e) {}
             }, 0);
@@ -78018,6 +78019,19 @@ class LiveScorecardSystem {
             });
 
             console.log('[LiveScorecard] ✅ Populated', tees.length, 'tee markers');
+
+            // CHV1: keep the tee ratings for course-handicap display and render the strip.
+            // Par comes from the same YAML profile (cached — no extra fetch).
+            this._teeRatingsForCH = tees;
+            try {
+                const prof = await window.scorecardProfileLoader.loadYAMLProfile(courseId);
+                this._courseParForCH = prof?.par || prof?.course_details?.par || 72;
+            } catch (e) { this._courseParForCH = 72; }
+            this.renderCourseHcpStrip();
+            if (!teeMarkerContainer._chListener) {
+                teeMarkerContainer._chListener = true;
+                teeMarkerContainer.addEventListener('change', () => this.renderCourseHcpStrip());
+            }
         } catch (error) {
             console.error('[LiveScorecard] Error loading tee markers:', error);
             // Fall back to default tees instead of leaving empty
@@ -78040,6 +78054,86 @@ class LiveScorecardSystem {
             NotificationManager.show('Error loading tee options — showing default tees', 'warning');
         }
     }
+
+    // ===== CHV1: Course Handicap display (2026-08-19, Pete's request) =====
+    // WHS conversion: CH = Index × (Slope ÷ 113) + (CR − Par), rounded.
+    // DISPLAY ONLY — stroke allocation and stored handicaps are untouched
+    // (the universal handicap engine stays the single writer).
+    _courseHcpFor(index, tee) {
+        const i = parseFloat(index);
+        if (isNaN(i)) return null;
+        const s = parseFloat(tee && tee.slope_rating), c = parseFloat(tee && tee.course_rating);
+        const p = parseFloat(this._courseParForCH) || 72;
+        if (!s || !c) return Math.round(i);
+        return Math.round(i * (s / 113) + (c - p));
+    }
+    _fmtCH(ch) { return ch === null ? '–' : (ch < 0 ? '+' + Math.abs(ch) : String(ch)); }
+
+    _selectedTeeForCH() {
+        const val = (document.querySelector('input[name="teeMarker"]:checked')?.value
+            || this.selectedTeeMarker || 'white').toLowerCase();
+        const tees = this._teeRatingsForCH || [];
+        return tees.find(t => String(t.color || t.name || '').toLowerCase() === val) || null;
+    }
+
+    // Renders "White 70.7/121 — CH: Pete 1 · Dirk 16 …" in the setup card (under the tee
+    // pills) and, when the scoring screen is up, in a strip under #holeInfoStrip. Falls
+    // back to the logged-in user alone when no roster exists yet. No ratings → no strip.
+    renderCourseHcpStrip() {
+        try {
+            const tee = this._selectedTeeForCH();
+            const havePlayers = (this.players || []).length > 0;
+            const me = window.AppState?.currentUser;
+            const myIdx = me?.handicap_index ?? me?.handicap ?? me?.profile_data?.handicap;
+            const roster = havePlayers
+                ? this.players.map(p => ({ name: (p.name || '').split(',')[0] || p.name, idx: p.handicap }))
+                : (myIdx != null ? [{ name: 'You', idx: myIdx }] : []);
+
+            const build = () => {
+                if (!tee || !tee.slope_rating || !roster.length) return '';
+                const rating = `${tee.course_rating}/${tee.slope_rating}`;
+                const chips = roster.map(r => {
+                    const ch = this._courseHcpFor(r.idx, tee);
+                    if (ch === null) return '';
+                    const idxDisp = window.formatHandicapDisplay ? window.formatHandicapDisplay(r.idx) : r.idx;
+                    return `<span style="white-space:nowrap;">${r.name} ${idxDisp}→<b>${this._fmtCH(ch)}</b></span>`;
+                }).filter(Boolean).join('<span style="color:#cbd5e1;"> · </span>');
+                if (!chips) return '';
+                return `<span style="color:#64748b;font-weight:600;">${(tee.color || '')} ${rating}</span>
+                        <span style="color:#0f766e;font-weight:700;margin-left:4px;">Course HCP:</span> ${chips}`;
+            };
+            const html = build();
+
+            // Setup card strip (created once under the tee pills)
+            const teeCard = document.getElementById('scSection_tee');
+            if (teeCard) {
+                let el = document.getElementById('courseHcpStrip');
+                if (!el) {
+                    el = document.createElement('div');
+                    el.id = 'courseHcpStrip';
+                    el.style.cssText = 'font-size:11px;line-height:1.6;margin-top:6px;';
+                    teeCard.appendChild(el);
+                }
+                el.innerHTML = html;
+                el.style.display = html ? '' : 'none';
+            }
+
+            // Live scoring strip (created once under the hole info cluster)
+            const holeStrip = document.getElementById('holeInfoStrip');
+            if (holeStrip) {
+                let el = document.getElementById('liveCourseHcpStrip');
+                if (!el) {
+                    el = document.createElement('div');
+                    el.id = 'liveCourseHcpStrip';
+                    el.style.cssText = 'font-size:11px;line-height:1.6;padding:2px 12px 4px;';
+                    holeStrip.insertAdjacentElement('afterend', el);
+                }
+                el.innerHTML = html;
+                el.style.display = html ? '' : 'none';
+            }
+        } catch (e) { console.warn('[LiveScorecard] CH strip render failed (non-fatal):', e); }
+    }
+    // ===== END CHV1 =====
 
     async init() {
         console.log('[LiveScorecard] Initializing...');
@@ -79610,6 +79704,14 @@ class LiveScorecardSystem {
                 name: courseProfile?.course_name || window.scorecardProfileLoader.getCourseDisplayName(courseId),
                 scorecard_url: courseProfile?.scorecard_url || null
             };
+
+            // CHV1: the profile's tee ratings feed the course-handicap strip — stash them
+            // here too so a resumed round (which never runs the setup tee loader) shows it.
+            if (courseProfile?.tees?.length) {
+                this._teeRatingsForCH = courseProfile.tees;
+                this._courseParForCH = courseProfile.par || courseProfile.course_details?.par || 72;
+                setTimeout(() => { try { this.renderCourseHcpStrip(); } catch (e) {} }, 0);
+            }
 
             let queryResult = holesResult;
             let holes = queryResult.data;
@@ -83951,6 +84053,9 @@ class LiveScorecardSystem {
         clearTimeout(timeoutId);
         removeLoading();
         NotificationManager.show('Round started!', 'success');
+
+        // CHV1: course-handicap strip on the live screen, with the final roster
+        try { this.renderCourseHcpStrip(); } catch (e) {}
 
         // Save round state to localStorage for crash recovery
         this.saveRoundState();
@@ -97269,6 +97374,16 @@ document.addEventListener('DOMContentLoaded', async function() {
                     holes = res.data || [];
                 }
 
+                // CHV1: tee ratings from the YAML profile drive the course-handicap strip
+                // (courses.tees in the DB is empty — the YAML cards are the rating source).
+                try {
+                    const prof = await window.scorecardProfileLoader?.loadYAMLProfile(course.course_code || course.id);
+                    if (prof?.tees?.length) {
+                        course._chTees = prof.tees;
+                        course._chPar = prof.par || prof.course_details?.par || 72;
+                    }
+                } catch (e) {}
+
                 const courseImages = [];
                 // Use scorecard_url from database if available
                 if (course.scorecard_url) {
@@ -97397,6 +97512,30 @@ document.addEventListener('DOMContentLoaded', async function() {
                     ${courseImages.map(img => `<img src="${img}" alt="Scorecard" class="w-full rounded-lg shadow-md mb-2 cursor-pointer" onclick="VirtualScorecard.openImage('${img}')">`).join('')}
                 </div>` : '';
 
+            // CHV1: "Your Course Handicap" — the viewer's index converted per rated tee
+            // (Index × Slope/113 + (CR − Par), rounded). Display only.
+            let chStripHtml = '';
+            try {
+                const u = window.AppState?.currentUser;
+                const myIdx = parseFloat(u?.handicap_index ?? u?.handicap ?? u?.profile_data?.handicap);
+                const chTees = (course._chTees || []).filter(t => t.slope_rating && t.course_rating);
+                if (!isNaN(myIdx) && chTees.length) {
+                    const par = parseFloat(course._chPar) || 72;
+                    const idxDisp = window.formatHandicapDisplay ? window.formatHandicapDisplay(myIdx) : myIdx;
+                    const cells = chTees.map(t => {
+                        const ch = Math.round(myIdx * (t.slope_rating / 113) + (t.course_rating - par));
+                        const chDisp = ch < 0 ? '+' + Math.abs(ch) : ch;
+                        return `<span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-teal-200 text-[11px]" style="white-space:nowrap;">
+                            <b>${t.color || t.name}</b> <span class="text-gray-400">${t.course_rating}/${t.slope_rating}</span>
+                            <span class="font-bold text-teal-700 text-[13px]">→ ${chDisp}</span></span>`;
+                    }).join(' ');
+                    chStripHtml = `<div class="rounded-lg p-2 mb-3" style="background:#f0fdfa;border:1px solid #99f6e4;">
+                        <div class="text-[10px] font-bold uppercase tracking-wider mb-1" style="color:#0f766e;">Your Course Handicap (Index ${idxDisp})</div>
+                        <div class="flex flex-wrap gap-1.5">${cells}</div>
+                    </div>`;
+                }
+            } catch (e) {}
+
             return `
                 <div class="mb-3">
                     <div class="flex items-center gap-2 mb-1">
@@ -97406,6 +97545,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     <p class="text-xs text-gray-500 ml-7">${course.location || 'Thailand'} | Par ${course.par || 72} | ${course.total_holes || 18} Holes${course.designer ? ` | Designed by ${course.designer}` : ''}${course.year_opened ? ` (${course.year_opened})` : ''}</p>
                     ${teeBadges ? `<div class="flex flex-wrap gap-1 mt-2 ml-7">${teeBadges}</div>` : ''}
                 </div>
+                ${chStripHtml}
                 ${hasHoles ? `
                     ${buildHalf(1, 9, 'FRONT')}
                     ${buildHalf(10, 18, 'BACK')}

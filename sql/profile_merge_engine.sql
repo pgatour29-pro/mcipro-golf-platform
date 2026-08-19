@@ -115,30 +115,35 @@ BEGIN
       'table', r.table_name, 'column', r.column_name, 'rows', v_cnt, 'deleted_dupes', v_del);
   END LOOP;
 
-  -- Tee-sheet groups store playerIds INSIDE the groups JSONB — the column sweep above can't see
-  -- them (proven live: Tom Britt claim, 2026-07-27). String-replace the id; a 15+ char
-  -- placeholder / LINE id can't collide with other JSON content.
-  UPDATE event_pairings
-     SET groups = replace(groups::text, p_absorbed, p_survivor)::jsonb
-   WHERE groups::text LIKE '%' || p_absorbed || '%';
-  GET DIAGNOSTICS v_cnt = ROW_COUNT;
-  IF v_cnt > 0 THEN
-    v_moved := v_moved || jsonb_build_object(
-      'table','event_pairings','column','groups(jsonb)','rows',v_cnt,'deleted_dupes',0);
-  END IF;
-
-  -- Match-play/game configs store player ids INSIDE scorecards.match_play_config JSONB
-  -- (teams arrays + gameConfigs players/handicap keys) — same blind spot as event_pairings
-  -- (proven live: Justin Carroll's matchplay board empty mid-round, 2026-08-19).
-  UPDATE scorecards
-     SET match_play_config = replace(match_play_config::text, p_absorbed, p_survivor)::jsonb
-   WHERE match_play_config IS NOT NULL
-     AND match_play_config::text LIKE '%' || p_absorbed || '%';
-  GET DIAGNOSTICS v_cnt = ROW_COUNT;
-  IF v_cnt > 0 THEN
-    v_moved := v_moved || jsonb_build_object(
-      'table','scorecards','column','match_play_config(jsonb)','rows',v_cnt,'deleted_dupes',0);
-  END IF;
+  -- Ids also live INSIDE json/jsonb documents — tee-sheet groups (Tom Britt, 2026-07-27),
+  -- scorecards.match_play_config (Justin Carroll's matchplay board empty mid-round,
+  -- 2026-08-19), rounds.game_config/playing_partners, four_ball_groups, side-game pools,
+  -- partner prefs… The text-column sweep can't see them, and hand-enumerating columns kept
+  -- missing new ones, so sweep EVERY json/jsonb column generically. String-replace is safe:
+  -- a 15+ char placeholder / LINE id can't collide with unrelated JSON content. Audit/log
+  -- tables stay verbatim (profile_merges is the undo record; client_errors and
+  -- trgg_sync_runs are historical captures).
+  FOR r IN
+    SELECT c.table_name, c.column_name, c.data_type
+    FROM information_schema.columns c
+    JOIN information_schema.tables t
+      ON t.table_name = c.table_name AND t.table_schema = c.table_schema
+    WHERE c.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+      AND c.data_type IN ('json','jsonb')
+      AND c.is_generated = 'NEVER'
+      AND c.table_name NOT IN ('profile_merges','client_errors','trgg_sync_runs')
+  LOOP
+    EXECUTE format(
+      'UPDATE public.%I SET %I = replace(%I::text, $1, $2)::%s WHERE %I::text LIKE $3',
+      r.table_name, r.column_name, r.column_name, r.data_type, r.column_name)
+      USING p_absorbed, p_survivor, '%' || p_absorbed || '%';
+    GET DIAGNOSTICS v_cnt = ROW_COUNT;
+    IF v_cnt > 0 THEN
+      v_moved := v_moved || jsonb_build_object(
+        'table', r.table_name, 'column', r.column_name || '(' || r.data_type || ')',
+        'rows', v_cnt, 'deleted_dupes', 0);
+    END IF;
+  END LOOP;
 
   -- A first-login claim absorbs a rich roster/guest profile into a BLANK LINE shell — carry the
   -- absorbed profile's identity data onto the survivor wherever the survivor is empty

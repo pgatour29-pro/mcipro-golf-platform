@@ -87,25 +87,34 @@ BEGIN
       'table', r.table_name, 'column', r.column_name, 'rows', v_cnt, 'deleted_dupes', v_del);
   END LOOP;
 
-  -- Ids embedded in JSONB — invisible to the column sweep above.
-  UPDATE event_pairings
-     SET groups = replace(groups::text, p_old, p_new)::jsonb
-   WHERE groups::text LIKE '%' || p_old || '%';
-  GET DIAGNOSTICS v_cnt = ROW_COUNT;
-  IF v_cnt > 0 THEN
-    v_moved := v_moved || jsonb_build_object(
-      'table','event_pairings','column','groups(jsonb)','rows',v_cnt,'deleted_dupes',0);
-  END IF;
-
-  UPDATE scorecards
-     SET match_play_config = replace(match_play_config::text, p_old, p_new)::jsonb
-   WHERE match_play_config IS NOT NULL
-     AND match_play_config::text LIKE '%' || p_old || '%';
-  GET DIAGNOSTICS v_cnt = ROW_COUNT;
-  IF v_cnt > 0 THEN
-    v_moved := v_moved || jsonb_build_object(
-      'table','scorecards','column','match_play_config(jsonb)','rows',v_cnt,'deleted_dupes',0);
-  END IF;
+  -- Ids embedded in json/jsonb documents — invisible to the column sweep above. Sweep EVERY
+  -- json column generically (tee-sheet groups, match_play_config, rounds game configs,
+  -- four_ball_groups, side-game pools, partner prefs, profile_data self-refs…) instead of
+  -- hand-enumerating: the enumerated lists are how groups (2026-07-27) and match_play_config
+  -- (2026-08-19) got missed. Audit/log tables stay verbatim. Unlike the text sweep,
+  -- user_profiles IS included here: its PK was already repointed by the claim, but
+  -- profile_data can still embed the old id.
+  FOR r IN
+    SELECT c.table_name, c.column_name, c.data_type
+    FROM information_schema.columns c
+    JOIN information_schema.tables t
+      ON t.table_name = c.table_name AND t.table_schema = c.table_schema
+    WHERE c.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+      AND c.data_type IN ('json','jsonb')
+      AND c.is_generated = 'NEVER'
+      AND c.table_name NOT IN ('profile_merges','client_errors','trgg_sync_runs')
+  LOOP
+    EXECUTE format(
+      'UPDATE public.%I SET %I = replace(%I::text, $1, $2)::%s WHERE %I::text LIKE $3',
+      r.table_name, r.column_name, r.column_name, r.data_type, r.column_name)
+      USING p_old, p_new, '%' || p_old || '%';
+    GET DIAGNOSTICS v_cnt = ROW_COUNT;
+    IF v_cnt > 0 THEN
+      v_moved := v_moved || jsonb_build_object(
+        'table', r.table_name, 'column', r.column_name || '(' || r.data_type || ')',
+        'rows', v_cnt, 'deleted_dupes', 0);
+    END IF;
+  END LOOP;
 
   RETURN jsonb_build_object('old', p_old, 'new', p_new, 'moved', v_moved);
 END $$;

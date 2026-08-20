@@ -143318,6 +143318,29 @@ class OrganizerScoringSystem {
         return { holes };
     }
 
+    // THE course-name matcher — every free-text course_name → course id resolution comes
+    // through here. Tokens minus filler words, candidates ranked by share of course-name
+    // tokens matched (then event-name coverage). Never match by contiguous substring: that
+    // resolved "Green Valley Country Club" to Summit Green Valley (Chiang Mai) instead of
+    // Green Valley Rayong — "Rayong" sits mid-name, so the substring test failed on the
+    // right course and passed on the wrong one (2026-08-19: 18 paper cards rescored).
+    _courseTok(s) {
+        const FILLER = ['golf', 'club', 'country', 'course', 'resort', 'spa', 'international', 'cc', 'gc', 'the', 'and', 'with', 'nine', 'loop'];
+        return String(s || '').replace(/&amp;/g, '&').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(w => w && !FILLER.includes(w));
+    }
+
+    _scoreCoursesByName(courseName, courses) {
+        const eTok = this._courseTok(courseName);
+        if (!eTok.length) return [];
+        const eSet = new Set(eTok);
+        return (courses || []).map(c => {
+            const cT = this._courseTok(c.name);
+            const m = cT.filter(t => eSet.has(t)).length;
+            return { c, cT, m, score: cT.length ? m / cT.length : 0, ecov: m / eTok.length };
+        }).filter(x => x.m >= 1 && (x.score >= 0.5 || x.ecov >= 0.5))
+          .sort((a, b) => b.score - a.score || b.m - a.m || a.c.name.localeCompare(b.c.name));
+    }
+
     async loadEditCourseDataRaw() {
         // GLOBAL nine-combination sync (Pete 2026-08-06): a multi-nine event with a known
         // combination uses THOSE holes — edit modal, hole-by-hole entry and _persistHoleScores
@@ -143346,8 +143369,7 @@ class OrganizerScoringSystem {
         const cacheKey = event?.course_id || courseName;
         if (cacheKey && this._editCourseCache && this._editCourseCache.key === cacheKey) return this._editCourseCache.data;
 
-        const FILLER = ['golf', 'club', 'country', 'course', 'resort', 'spa', 'international', 'cc', 'gc', 'the', 'and', 'with', 'nine', 'loop'];
-        const tok = s => String(s || '').replace(/&amp;/g, '&').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(w => w && !FILLER.includes(w));
+        const tok = s => this._courseTok(s);
 
         try {
             if (!this._qseCoursesList) {
@@ -143355,8 +143377,6 @@ class OrganizerScoringSystem {
                 this._qseCoursesList = cs || [];
             }
             const courses = this._qseCoursesList;
-            const eTok = tok(courseName);
-            const eSet = new Set(eTok);
 
             // Rank candidate courses: courseCov = matched/course-tokens, eventCov = matched/event-tokens
             // (eventCov catches short names like "Phoenix" against "Phoenix Gold - Lake Nine").
@@ -143365,13 +143385,7 @@ class OrganizerScoringSystem {
             if (direct) {
                 scored = [{ c: direct, cT: tok(direct.name), m: 99, score: 1 }];
             } else {
-                if (!eTok.length) return DEFAULT;
-                scored = courses.map(c => {
-                    const cT = tok(c.name);
-                    const m = cT.filter(t => eSet.has(t)).length;
-                    return { c, cT, m, score: cT.length ? m / cT.length : 0, ecov: m / eTok.length };
-                }).filter(x => x.m >= 1 && (x.score >= 0.5 || x.ecov >= 0.5))
-                  .sort((a, b) => b.score - a.score || b.m - a.m || a.c.name.localeCompare(b.c.name));
+                scored = this._scoreCoursesByName(courseName, courses);
             }
             if (!scored.length) {
                 console.warn('[OrganizerScoring] Course not matched — using placeholder par/SI for:', courseName);
@@ -145893,9 +145907,13 @@ class OrganizerScoringSystem {
                     const { data: cs } = await window.SupabaseDB.client.from('courses').select('id, name, course_code');
                     this._qseCoursesList = cs || [];
                 }
+                // Exact name/code first, else the shared TOKEN matcher (_scoreCoursesByName).
+                // No substring fallback: it resolved "Green Valley Country Club" to Summit
+                // Green Valley (Chiang Mai), and a wrong-but-REAL card passes every
+                // placeholder check downstream (2026-08-19: 18 paper cards rescored).
                 const match = this._qseCoursesList.find(c => norm(c.name) === target)
                            || this._qseCoursesList.find(c => norm(c.course_code) === target)
-                           || this._qseCoursesList.find(c => { const n = norm(c.name); return n && (n.includes(target) || target.includes(n)); });
+                           || (this._scoreCoursesByName(courseName, this._qseCoursesList)[0] || {}).c;
                 courseId = match ? match.id : null;
             }
             if (!courseId) { console.warn('[QuickScoreEntry] Course not matched — using placeholder SI for:', courseName); return DEFAULT; }

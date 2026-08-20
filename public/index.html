@@ -69592,10 +69592,24 @@ const AdminSystem = {
     // open. editUser() pulls profile_data on demand for the single row it needs.
     _userCols: 'line_user_id,name,display_name,username,email,phone,role,subscription_tier,created_at,handicap_index,society_name',
 
-    // Real app registrations = LINE ('U…'), Kakao ('KAKAO-…'), Google ('GOOGLE-…') login ids.
-    // The other ~1,200 profiles are synthetic guest/manual imports (TRGG-GUEST-…, MANUAL-…)
-    // and must not count as signups.
-    _realUserOr: 'line_user_id.like.U*,line_user_id.like.KAKAO-*,line_user_id.like.GOOGLE-*',
+    // New members = every REAL PERSON added to the platform, however they arrived:
+    // self-signups (LINE 'U…', Kakao 'KAKAO-…', Google 'GOOGLE-…') PLUS people added one at a
+    // time by organizers (MANUAL-… event adds, player_… live-scoring guests). Only bulk roster
+    // imports (TRGG-GUEST-… ×1125, TRGG-HCP-…) are excluded: counting those made an import read
+    // as a signup spike, but excluding MANUAL-/player_ hid every organizer-added member, so
+    // "Last 24h" sat on 0 the morning after adding one (Pete 2026-08-20).
+    _newMemberOr: 'line_user_id.like.U*,line_user_id.like.KAKAO-*,line_user_id.like.GOOGLE-*,line_user_id.like.MANUAL-*,line_user_id.like.player_*',
+
+    // How a profile entered the system — shown in Recent Signups + the stat drill lists
+    _signupSource(id) {
+        id = id || '';
+        if (id.startsWith('KAKAO-')) return 'Kakao';
+        if (id.startsWith('GOOGLE-')) return 'Google';
+        if (id.startsWith('MANUAL-')) return 'Manual add';
+        if (id.startsWith('player_')) return 'Guest';
+        if (id.startsWith('U')) return 'LINE';
+        return 'Import';
+    },
 
     async loadData() {
         // FIXED: Load all users from Supabase database (not just localStorage)
@@ -69729,13 +69743,13 @@ const AdminSystem = {
             // Format dates for Supabase query
             const formatDate = (d) => d.toISOString();
 
-            // Count new members for each period — REAL registrations only (LINE/Kakao/Google).
-            // Without the filter these cards counted synthetic TRGG-GUEST-/MANUAL- imports,
-            // so a roster import read as a signup spike.
+            // Count new members for each period — real people only (self-signups + one-at-a-time
+            // organizer adds). Bulk roster imports stay excluded so an import never reads as a
+            // signup spike.
             const newSince = (since) => window.SupabaseDB.client
                 .from('user_profiles')
                 .select('line_user_id', { count: 'exact', head: true })
-                .or(this._realUserOr)
+                .or(this._newMemberOr)
                 .gte('created_at', formatDate(since));
 
             const [todayResult, weekResult, monthResult, ytdResult] = await Promise.all([
@@ -69770,15 +69784,15 @@ const AdminSystem = {
     async loadRecentSignups() {
         const container = document.getElementById('admin-recent-signups');
 
-        // Own 5-row query: newest REAL registrations. The old code sliced the tail of
-        // this.users — which is sorted by NAME, so it showed the end of the alphabet
+        // Own 5-row query: newest real members (signups + organizer adds). The old code sliced
+        // the tail of this.users — which is sorted by NAME, so it showed the end of the alphabet
         // (mostly synthetic guest imports), not recent signups.
         let recent = [];
         try {
             const { data, error } = await window.SupabaseDB.client
                 .from('user_profiles')
-                .select('name, display_name, username, role, created_at')
-                .or(this._realUserOr)
+                .select('line_user_id, name, display_name, username, role, created_at')
+                .or(this._newMemberOr)
                 .order('created_at', { ascending: false })
                 .limit(5);
             if (error) throw error;
@@ -69796,13 +69810,14 @@ const AdminSystem = {
             const name = user.display_name || user.name || 'Unknown User';
             const username = user.username || 'no-username';
             const role = user.role || 'golfer';
+            const source = this._signupSource(user.line_user_id);
             const createdAt = user.created_at || user.createdAt || new Date().toISOString();
 
             return `
                 <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div>
                         <p class="font-medium text-gray-900">${name}</p>
-                        <p class="text-xs text-gray-500">${role} • ${username}</p>
+                        <p class="text-xs text-gray-500">${role} • ${username} • ${source}</p>
                     </div>
                     <span class="text-xs text-gray-400">${this.getTimeAgo(createdAt)}</span>
                 </div>
@@ -69835,10 +69850,10 @@ const AdminSystem = {
         const sb = window.SupabaseDB.client;
         let items, summary;
         if (cfg.kind === 'members') {
-            // Same real-registration filter as the stat cards, so the drill list matches the number
+            // Same new-member filter as the stat cards, so the drill list matches the number
             const { data, error } = await sb.from('user_profiles')
                 .select('line_user_id, name, display_name, username, role, created_at')
-                .or(this._realUserOr)
+                .or(this._newMemberOr)
                 .gte('created_at', cfg.since.toISOString())
                 .order('created_at', { ascending: false });
             if (error) throw error;
@@ -69846,7 +69861,7 @@ const AdminSystem = {
             summary = list.length + ' member' + (list.length === 1 ? '' : 's');
             items = list.map(u => ({
                 name: u.display_name || u.name || 'Unknown',
-                sub: (u.role || 'golfer') + ' • ' + (u.username || 'no-username'),
+                sub: (u.role || 'golfer') + ' • ' + (u.username || 'no-username') + ' • ' + this._signupSource(u.line_user_id),
                 meta: this.getTimeAgo(u.created_at)
             }));
         } else {

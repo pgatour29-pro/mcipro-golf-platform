@@ -145002,11 +145002,30 @@ class OrganizerScoringSystem {
         if (el && el.value !== clean) el.value = clean;
         this.scrScores[ti].holes[hole] = (clean === '') ? undefined : parseInt(clean);
         this._scrRecalc(ti); this._scrFooter();
-        if (clean.length >= 2) this._scrFocus(ti, hole + 1);
+        if (this._scrAdvTimer) { clearTimeout(this._scrAdvTimer); this._scrAdvTimer = null; }
+        if (clean.length >= 2 || (clean.length === 1 && clean !== '1' && clean !== '0')) {
+            this._scrNext(ti, hole);
+        } else if (clean === '1') {
+            // a leading 1 could become 10-15 — give the second digit 550ms, then move on
+            this._scrAdvTimer = setTimeout(() => {
+                this._scrAdvTimer = null;
+                const cur = document.getElementById('scrH_' + ti + '_' + hole);
+                if (cur && document.activeElement === cur) this._scrNext(ti, hole);
+            }, 550);
+        }
     }
     scrHoleKey(e, ti, hole) {
-        if (e.key === 'Enter' || e.key === 'ArrowRight') { e.preventDefault(); this._scrFocus(ti, hole + 1); }
+        if (e.key === 'Enter' || e.key === 'ArrowRight') {
+            e.preventDefault();
+            if (this._scrAdvTimer) { clearTimeout(this._scrAdvTimer); this._scrAdvTimer = null; }
+            if (e.key === 'Enter' && hole === 18) { this._scrMaybeAutoSave(ti); return; }
+            this._scrFocus(ti, hole + 1);
+        }
         else if (e.key === 'ArrowLeft') { e.preventDefault(); this._scrFocus(ti, hole - 1); }
+    }
+    _scrNext(ti, hole) {
+        if (hole < 18) { this._scrFocus(ti, hole + 1); return; }
+        this._scrMaybeAutoSave(ti);
     }
     _scrFocus(ti, hole) {
         if (hole < 1 || hole > 18) return;
@@ -145035,8 +145054,99 @@ class OrganizerScoringSystem {
         const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
         set('scrTeamsReady', ready); set('scrTeamsTotal', (this.scrTeams || []).length);
     }
-    async saveScrambleTeams() {
+    async _scrSaveCtx() {
         const client = window.SupabaseDB.client;
+        const event = this.qseEventData;
+        const eventDate = event.event_date ? new Date(event.event_date) : new Date();
+        const _evc = (this._eventCourse && this._eventCourse.eventId === String(event.id)) ? this._eventCourse : null;
+        if (this._scrOrgFor !== String(this.currentEventId)) {
+            let organizerId = null;
+            try { const { data } = await client.from('society_events').select('organizer_id').eq('id', this.currentEventId).single(); organizerId = (data && data.organizer_id) || null; } catch (e) {}
+            this._scrOrgId = organizerId; this._scrOrgFor = String(this.currentEventId);
+        }
+        return {
+            client: client, eventDate: eventDate,
+            courseId: (_evc && _evc.courseId) || event.course_id || null,
+            courseName: (_evc && _evc.courseName) || event.course_name || event.courseName || event.course || 'Unknown Course',
+            tee: document.getElementById('scrTeeMarker') ? document.getElementById('scrTeeMarker').value : 'white',
+            organizerId: this._scrOrgId,
+            holes: (this.scrCourse && this.scrCourse.holes) || []
+        };
+    }
+    // Saves ONE team's card: a scramble round for BOTH players (same team gross, each player's own strokes).
+    async _scrSaveTeam(ti, ctx) {
+        const t = this.scrTeams[ti], s = this.scrScores[ti];
+        const holes = ctx.holes;
+        const teamHcp = parseInt(s.teamHcp) || 0;
+        const entered = []; for (let h = 1; h <= 18; h++) { const v = parseInt(s.holes[h]); if (v > 0) entered.push({ h, v }); }
+        const totalGross = entered.reduce((a, x) => a + x.v, 0);
+        let ok = 0, err = 0;
+        for (let m = 0; m < 2; m++) {
+            const gid = t.ids[m], gname = t.names[m], indivHcp = t.hcps[m] || 0;
+            try {
+                const alloc = this._scrAllocate(indivHcp, holes);
+                let totalStableford = 0, totalStrokes = 0;
+                const holeRecords = [];
+                entered.forEach(({ h, v }) => {
+                    const hd = holes[h - 1] || { par: 4, handicap: h };
+                    const si = hd.handicap != null ? hd.handicap : h;
+                    const strokes = alloc[h] || 0;
+                    const pts = this.calculateStablefordPoints(v, hd.par, indivHcp, si);
+                    totalStableford += pts; totalStrokes += strokes;
+                    holeRecords.push({ round_id: null, hole_number: h, par: hd.par, stroke_index: si, gross_score: v, net_score: (v - strokes), stableford_points: pts, handicap_strokes: strokes });
+                });
+                const roundData = {
+                    golfer_id: gid, player_name: gname, course_id: ctx.courseId, course_name: ctx.courseName,
+                    type: 'society', society_event_id: this.currentEventId, organizer_id: ctx.organizerId,
+                    played_at: ctx.eventDate.toISOString(), started_at: ctx.eventDate.toISOString(), completed_at: new Date().toISOString(),
+                    status: 'completed', total_gross: totalGross, total_net: (totalGross - totalStrokes), total_stableford: totalStableford,
+                    handicap_used: indivHcp, tee_marker: ctx.tee, course_rating: 72.0, slope_rating: 113, holes_played: entered.length,
+                    team_size: 2, scramble_config: { teamName: t.teamName, teamHcp: teamHcp }, scoring_formats: ['scramble']
+                };
+                const { data: round, error } = await ctx.client.from('rounds').insert(roundData).select().single();
+                if (error) { console.error('[ScrTeam] round', gname, error); err++; continue; }
+                if (round && round.id && holeRecords.length) {
+                    holeRecords.forEach(r => { r.round_id = round.id; });
+                    const { error: he } = await ctx.client.from('round_holes').insert(holeRecords);
+                    if (he) console.warn('[ScrTeam] holes', gname, he);
+                }
+                ok++;
+            } catch (e) { console.error('[ScrTeam] save', e); err++; }
+        }
+        if (!err) t.existing = true;
+        return { ok: ok, err: err, gross: totalGross, net: totalGross - teamHcp };
+    }
+    // 18th hole entered → complete card saves itself, then the cursor hops to the next unscored team.
+    async _scrMaybeAutoSave(ti) {
+        const t = (this.scrTeams || [])[ti]; if (!t || t.existing || this._scrSaving) return;
+        const s = this.scrScores[ti]; if (!s) return;
+        let firstEmpty = 0;
+        for (let h = 1; h <= 18; h++) { if (!(parseInt(s.holes[h]) > 0)) { firstEmpty = h; break; } }
+        if (firstEmpty) { this._scrFocus(ti, firstEmpty); return; }
+        this._scrSaving = true;
+        try {
+            const ctx = await this._scrSaveCtx();
+            const r = await this._scrSaveTeam(ti, ctx);
+            if (r.err) { window.NotificationManager.show(t.teamName + ' — save failed, check connection and use Save Team Scores', 'error'); return; }
+            window.NotificationManager.show(t.teamName + ' saved · ' + r.gross + ' gross / ' + r.net + ' net', 'success');
+            this._scrRender();
+            const teams = this.scrTeams || [];
+            let nx = -1;
+            for (let k = 1; k <= teams.length; k++) { const j = (ti + k) % teams.length; if (!teams[j].existing) { nx = j; break; } }
+            if (nx >= 0) {
+                const card = document.querySelector('[data-scrteam="' + nx + '"]');
+                if (card && card.scrollIntoView) card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                const nti = nx;
+                setTimeout(() => {
+                    const s2 = this.scrScores[nti] || { holes: {} };
+                    let h = 1; for (; h <= 18; h++) { if (!(parseInt(s2.holes[h]) > 0)) break; }
+                    this._scrFocus(nti, Math.min(h, 18));
+                }, 300);
+            }
+            try { if (this.currentEventId) this.loadEventScores(this.currentEventId); } catch (e) {}
+        } finally { this._scrSaving = false; }
+    }
+    async saveScrambleTeams() {
         const toSave = (this.scrTeams || []).map((t, ti) => ({ t, ti })).filter(({ t, ti }) => {
             if (t.existing) return false;
             const s = this.scrScores[ti];
@@ -145047,55 +145157,11 @@ class OrganizerScoringSystem {
         const partial = toSave.filter(({ ti }) => { let c = 0; for (let h = 1; h <= 18; h++) if (parseInt(this.scrScores[ti].holes[h]) > 0) c++; return c < 18; }).length;
         if (!confirm('Save ' + toSave.length + ' team scorecard(s)?' + (partial ? ('\n\n' + partial + ' team(s) have fewer than 18 holes entered.') : '') + '\n\nEach saves a scramble round for BOTH players (ranked by team net).')) return;
         window.NotificationManager.show('Saving ' + toSave.length + ' team(s)…', 'info');
-        const event = this.qseEventData;
-        const eventDate = event.event_date ? new Date(event.event_date) : new Date();
-        const _evc = (this._eventCourse && this._eventCourse.eventId === String(event.id)) ? this._eventCourse : null;
-        const courseId = (_evc && _evc.courseId) || event.course_id || null;
-        const courseName = (_evc && _evc.courseName) || event.course_name || event.courseName || event.course || 'Unknown Course';
-        const tee = document.getElementById('scrTeeMarker') ? document.getElementById('scrTeeMarker').value : 'white';
-        let organizerId = null;
-        try { const { data } = await client.from('society_events').select('organizer_id').eq('id', this.currentEventId).single(); organizerId = (data && data.organizer_id) || null; } catch (e) {}
-        const holes = (this.scrCourse && this.scrCourse.holes) || [];
+        const ctx = await this._scrSaveCtx();
         let ok = 0, err = 0;
-        for (const { t, ti } of toSave) {
-            const s = this.scrScores[ti];
-            const teamHcp = parseInt(s.teamHcp) || 0;
-            const entered = []; for (let h = 1; h <= 18; h++) { const v = parseInt(s.holes[h]); if (v > 0) entered.push({ h, v }); }
-            const totalGross = entered.reduce((a, x) => a + x.v, 0);
-            let teamOk = true;
-            for (let m = 0; m < 2; m++) {
-                const gid = t.ids[m], gname = t.names[m], indivHcp = t.hcps[m] || 0;
-                try {
-                    const alloc = this._scrAllocate(indivHcp, holes);
-                    let totalStableford = 0, totalStrokes = 0;
-                    const holeRecords = [];
-                    entered.forEach(({ h, v }) => {
-                        const hd = holes[h - 1] || { par: 4, handicap: h };
-                        const si = hd.handicap != null ? hd.handicap : h;
-                        const strokes = alloc[h] || 0;
-                        const pts = this.calculateStablefordPoints(v, hd.par, indivHcp, si);
-                        totalStableford += pts; totalStrokes += strokes;
-                        holeRecords.push({ round_id: null, hole_number: h, par: hd.par, stroke_index: si, gross_score: v, net_score: (v - strokes), stableford_points: pts, handicap_strokes: strokes });
-                    });
-                    const roundData = {
-                        golfer_id: gid, player_name: gname, course_id: courseId, course_name: courseName,
-                        type: 'society', society_event_id: this.currentEventId, organizer_id: organizerId,
-                        played_at: eventDate.toISOString(), started_at: eventDate.toISOString(), completed_at: new Date().toISOString(),
-                        status: 'completed', total_gross: totalGross, total_net: (totalGross - totalStrokes), total_stableford: totalStableford,
-                        handicap_used: indivHcp, tee_marker: tee, course_rating: 72.0, slope_rating: 113, holes_played: entered.length,
-                        team_size: 2, scramble_config: { teamName: t.teamName, teamHcp: teamHcp }, scoring_formats: ['scramble']
-                    };
-                    const { data: round, error } = await client.from('rounds').insert(roundData).select().single();
-                    if (error) { console.error('[ScrTeam] round', gname, error); err++; teamOk = false; continue; }
-                    if (round && round.id && holeRecords.length) {
-                        holeRecords.forEach(r => { r.round_id = round.id; });
-                        const { error: he } = await client.from('round_holes').insert(holeRecords);
-                        if (he) console.warn('[ScrTeam] holes', gname, he);
-                    }
-                    ok++;
-                } catch (e) { console.error('[ScrTeam] save', e); err++; teamOk = false; }
-            }
-            if (teamOk) t.existing = true;
+        for (const { ti } of toSave) {
+            const r = await this._scrSaveTeam(ti, ctx);
+            ok += r.ok; err += r.err;
         }
         window.NotificationManager.show('Saved ' + ok + ' round(s)' + (err ? (' · ' + err + ' failed') : ''), err ? 'warning' : 'success');
         this._scrRender();

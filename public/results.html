@@ -699,20 +699,21 @@
                 }
                 const players = new Map();
                 best.forEach((sc, pid) => {
-                    const holePts = new Array(18).fill(null), holeNets = new Array(18).fill(null), holeGross = new Array(18).fill(null);
+                    const holePts = new Array(18).fill(null), holeNets = new Array(18).fill(null), holeGross = new Array(18).fill(null), holePars = new Array(18).fill(null);
                     let pts=0, gross=0, net=0, thru=0;
                     (sc.scores||[]).forEach(h => {
                         if (h.hole_number>=1 && h.hole_number<=18){
                             holePts[h.hole_number-1] = Number(h.stableford_points)||0;
                             holeGross[h.hole_number-1] = (h.gross_score!=null)?Number(h.gross_score):null;
                             holeNets[h.hole_number-1] = (h.net_score!=null)?Number(h.net_score):null;
+                            holePars[h.hole_number-1] = (h.par!=null)?Number(h.par):null;
                             pts += Number(h.stableford_points)||0;
                             gross += Number(h.gross_score)||0;
                             net += (h.net_score!=null)?Number(h.net_score):(Number(h.gross_score)||0);
                             thru = Math.max(thru, h.hole_number);
                         }
                     });
-                    players.set(String(pid), { id:String(pid), name:sc.player_name||'Player', group:sc.group_id||'', fmt:scFormats(sc), pts, gross, net, holePts, holeNets, holeGross, thru });
+                    players.set(String(pid), { id:String(pid), name:sc.player_name||'Player', group:sc.group_id||'', fmt:scFormats(sc), pts, gross, net, holePts, holeNets, holeGross, holePars, thru });
                 });
 
                 const boards = { waltz:null, scramble:null, matches:null, labels:[] };
@@ -790,12 +791,12 @@
                     const playedHcp = new Map(), playedScore = new Map();
                     if (eventId){
                         try {
-                            const { data: rds } = await sb.from('rounds').select('golfer_id, scramble_config, team_size, total_gross, total_stableford, holes_played').eq('society_event_id', eventId).eq('team_size', 2);
+                            const { data: rds } = await sb.from('rounds').select('id, golfer_id, scramble_config, team_size, total_gross, total_stableford, holes_played').eq('society_event_id', eventId).eq('team_size', 2);
                             const byTeam = new Map();
                             (rds || []).forEach(r => {
                                 const cfg = r.scramble_config || {};
                                 if (!cfg.teamName || !r.golfer_id) return;
-                                if (!byTeam.has(cfg.teamName)) byTeam.set(cfg.teamName, { ids: [], hcp: (cfg.teamHcp != null ? Number(cfg.teamHcp) : null), gross: 0, pts: 0, thru: 0 });
+                                if (!byTeam.has(cfg.teamName)) byTeam.set(cfg.teamName, { ids: [], hcp: (cfg.teamHcp != null ? Number(cfg.teamHcp) : null), gross: 0, pts: 0, thru: 0, repRound: null });
                                 const t = byTeam.get(cfg.teamName);
                                 if (!t.ids.includes(String(r.golfer_id))) t.ids.push(String(r.golfer_id));
                                 // Both teammates' rounds carry the TEAM gross — keep it as the score
@@ -803,13 +804,28 @@
                                 t.gross = Math.max(t.gross, Number(r.total_gross) || 0);
                                 t.pts = Math.max(t.pts, Number(r.total_stableford) || 0);
                                 t.thru = Math.max(t.thru, Number(r.holes_played) || 0);
+                                if (!t.repRound) t.repRound = r.id;   // either teammate's round carries the team's holes
                             });
                             if (byTeam.size){
+                                // Team hole-by-hole for paper teams: one teammate's round_holes = the team's holes.
+                                try {
+                                    const repIds = []; byTeam.forEach(t => { if (t.gross > 0 && t.repRound) repIds.push(t.repRound); });
+                                    if (repIds.length){
+                                        const { data: rhs } = await sb.from('round_holes').select('round_id, hole_number, par, gross_score').in('round_id', repIds);
+                                        const byRid = new Map();
+                                        (rhs || []).forEach(h => {
+                                            if (!byRid.has(h.round_id)) byRid.set(h.round_id, { g: new Array(18).fill(null), p: new Array(18).fill(null) });
+                                            const o = byRid.get(h.round_id);
+                                            if (h.hole_number >= 1 && h.hole_number <= 18){ o.g[h.hole_number-1] = (h.gross_score!=null)?Number(h.gross_score):null; o.p[h.hole_number-1] = (h.par!=null)?Number(h.par):null; }
+                                        });
+                                        byTeam.forEach(t => { const o = t.repRound && byRid.get(t.repRound); if (o){ t.holeGross = o.g; t.holePars = o.p; } });
+                                    }
+                                } catch(e){ console.warn('[Results] scramble hole detail load failed', e); }
                                 const played = [], inPlayed = new Set();
                                 byTeam.forEach(t => {
                                     played.push(t.ids); t.ids.forEach(id => inPlayed.add(id));
                                     if (t.hcp != null) playedHcp.set(t.ids.join('|'), t.hcp);
-                                    if (t.gross > 0) playedScore.set(t.ids.join('|'), { gross: t.gross, pts: t.pts, thru: t.thru });
+                                    if (t.gross > 0) playedScore.set(t.ids.join('|'), { gross: t.gross, pts: t.pts, thru: t.thru, holeGross: t.holeGross || null, holePars: t.holePars || null });
                                 });
                                 teamDefs = played.concat(teamDefs.map(ids => ids.filter(id => !inPlayed.has(String(id)))).filter(ids => ids.length));
                             }
@@ -832,7 +848,12 @@
                             const started = gross > 0;
                             const net = started ? (gross - teamHcp) : 0;
                             const thru = scored.length ? Math.max.apply(null, scored.map(m => m.thru || 0)) : ((rsc && rsc.thru) || 0);
-                            return { name: names.join(' & '), teamHcp, gross, net, pts, thru, started };
+                            // Team hole-by-hole: the shared ball — a live member's scorecard holes first,
+                            // else the round_holes off a paper-entered round.
+                            const sm = scored.find(m => m.holeGross && m.holeGross.some(v => v != null));
+                            const holeGross = sm ? sm.holeGross : ((rsc && rsc.holeGross) || null);
+                            const holePars = sm ? sm.holePars : ((rsc && rsc.holePars) || null);
+                            return { name: names.join(' & '), teamHcp, gross, net, pts, thru, started, holeGross, holePars };
                         }).sort((a, b) => (b.started - a.started) || (a.started ? (a.net - b.net) : 0));
                         if (teams.length){ boards.scramble = teams; boards.labels.push('Scramble'); }
                     } else {
@@ -840,7 +861,7 @@
                         players.forEach(p => {
                             if (!p.fmt.includes('scramble')) return;
                             const key = p.group + '|' + p.holeGross.join(',');
-                            if (!clusters.has(key)) clusters.set(key, { members:[], pts:p.pts, gross:p.gross, net:p.net, thru:p.thru, teamHcp:null, started:true });
+                            if (!clusters.has(key)) clusters.set(key, { members:[], pts:p.pts, gross:p.gross, net:p.net, thru:p.thru, teamHcp:null, started:true, holeGross:p.holeGross, holePars:p.holePars });
                             clusters.get(key).members.push(p.name);
                         });
                         const teams = [...clusters.values()].map(c => ({ ...c, name:c.members.join(' & ') })).sort((a, b) => b.pts - a.pts || a.net - b.net);
@@ -1464,6 +1485,40 @@
         }
 
         // ---------- Team boards HTML (ported from live.html, theme-var restyle) ----------
+        // Team hole-by-hole grid (scramble = one shared ball, so one gross line for the team).
+        function teamHoleDetailsHtml(tm, tid){
+            const pars = tm.holePars || new Array(18).fill(null);
+            const nine = (start) => {
+                const holes = tm.holeGross.slice(start, start+9);
+                const ps = pars.slice(start, start+9);
+                const tot = holes.reduce((s,v) => s+(v||0), 0);
+                return `
+                    <div class="hole-grid mb-1">
+                        ${holes.map((_,i) => `<div class="hole-cell hole-head">${start+i+1}</div>`).join('')}
+                        <div class="hole-cell hole-head">${esc(start===0?rt('out'):rt('inn'))}</div>
+                    </div>
+                    <div class="hole-grid mb-1">
+                        ${ps.map(p => `<div class="hole-cell hole-par">P${p||4}</div>`).join('')}
+                        <div class="hole-cell"></div>
+                    </div>
+                    <div class="hole-grid mb-1">
+                        ${holes.map((s,i) => `<div class="hole-cell ${getScoreClass(s!=null?s:null, ps[i]||null)}">${s!=null?s:'-'}</div>`).join('')}
+                        <div class="hole-cell hole-tot">${tot||'-'}</div>
+                    </div>`;
+            };
+            return `
+                <tr id="details-${tid}" class="hole-details" style="background:var(--card2);">
+                    <td colspan="5" class="p-3">
+                        <div style="font-size:11px;font-weight:700;color:var(--sub);margin-bottom:8px;">${esc(rt('holeByHole'))}</div>
+                        <div class="mb-2">${nine(0)}</div>
+                        <div>${nine(9)}</div>
+                        <div class="text-right sub" style="font-size:11px;margin-top:6px;">
+                            ${esc(rt('total'))}: <b style="color:var(--ink);">${tm.gross||'-'}</b>
+                            · ${esc(rt('net'))}: <b style="color:var(--green);">${tm.net||'-'}</b>
+                        </div>
+                    </td>
+                </tr>`;
+        }
         function renderTeamBoardsHtml(teamBoards){
             if (!teamBoards) return '';
             // Same rule as the individual table: no published results → no winner markers.
@@ -1485,14 +1540,18 @@
                                 <th class="text-center">${esc(rt('hcp'))}</th>
                                 <th class="text-center">${esc(rt('gross'))}</th><th class="text-center">${esc(rt('net'))}</th>
                             </tr></thead>
-                            <tbody>${teamBoards.scramble.map((tm,i) => `
+                            <tbody>${teamBoards.scramble.map((tm,i) => {
+                                const canX = !!(tm.holeGross && tm.holeGross.some(v => v != null));
+                                const tid = 'tmscr_' + i;
+                                return `
                                 <tr class="${showPlaces && i===0 && tm.started!==false?'winner-row':''}">
                                     <td class="text-center" style="font-weight:800;">${tm.started===false?'–':(i+1)}${showPlaces && i===0 && tm.started!==false?' 🏆':''}</td>
-                                    <td>${esc(tm.name)}</td>
+                                    <td><span class="${canX?'player-btn':''}" ${canX?`data-player-id="${tid}"`:''}>${canX?`<span class="msym expand-icon" id="icon-${tid}">expand_more</span>`:''}${esc(tm.name)}</span></td>
                                     <td class="text-center sub">${tm.teamHcp!=null?tm.teamHcp:'-'}</td>
                                     <td class="text-center">${tm.gross||'-'}</td>
                                     <td class="text-center" style="font-weight:800;color:var(--green);">${tm.net||'-'}</td>
-                                </tr>`).join('')}
+                                </tr>` + (canX ? teamHoleDetailsHtml(tm, tid) : '');
+                            }).join('')}
                             </tbody>
                         </table></div>
                     </div>`;

@@ -787,21 +787,30 @@
                     // ACTUAL played teams override the sheet: a scramble round stamps
                     // scramble_config.teamName+teamHcp on both teammates' rounds. On-course
                     // reshuffles make the sheet stale — grouping by it mixes two balls' grosses.
-                    const playedHcp = new Map();
+                    const playedHcp = new Map(), playedScore = new Map();
                     if (eventId){
                         try {
-                            const { data: rds } = await sb.from('rounds').select('golfer_id, scramble_config, team_size').eq('society_event_id', eventId).eq('team_size', 2);
+                            const { data: rds } = await sb.from('rounds').select('golfer_id, scramble_config, team_size, total_gross, total_stableford, holes_played').eq('society_event_id', eventId).eq('team_size', 2);
                             const byTeam = new Map();
                             (rds || []).forEach(r => {
                                 const cfg = r.scramble_config || {};
                                 if (!cfg.teamName || !r.golfer_id) return;
-                                if (!byTeam.has(cfg.teamName)) byTeam.set(cfg.teamName, { ids: [], hcp: (cfg.teamHcp != null ? Number(cfg.teamHcp) : null) });
+                                if (!byTeam.has(cfg.teamName)) byTeam.set(cfg.teamName, { ids: [], hcp: (cfg.teamHcp != null ? Number(cfg.teamHcp) : null), gross: 0, pts: 0, thru: 0 });
                                 const t = byTeam.get(cfg.teamName);
                                 if (!t.ids.includes(String(r.golfer_id))) t.ids.push(String(r.golfer_id));
+                                // Both teammates' rounds carry the TEAM gross — keep it as the score
+                                // source for paper/totals-entered teams that never had a live scorecard.
+                                t.gross = Math.max(t.gross, Number(r.total_gross) || 0);
+                                t.pts = Math.max(t.pts, Number(r.total_stableford) || 0);
+                                t.thru = Math.max(t.thru, Number(r.holes_played) || 0);
                             });
                             if (byTeam.size){
                                 const played = [], inPlayed = new Set();
-                                byTeam.forEach(t => { played.push(t.ids); t.ids.forEach(id => inPlayed.add(id)); if (t.hcp != null) playedHcp.set(t.ids.join('|'), t.hcp); });
+                                byTeam.forEach(t => {
+                                    played.push(t.ids); t.ids.forEach(id => inPlayed.add(id));
+                                    if (t.hcp != null) playedHcp.set(t.ids.join('|'), t.hcp);
+                                    if (t.gross > 0) playedScore.set(t.ids.join('|'), { gross: t.gross, pts: t.pts, thru: t.thru });
+                                });
                                 teamDefs = played.concat(teamDefs.map(ids => ids.filter(id => !inPlayed.has(String(id)))).filter(ids => ids.length));
                             }
                         } catch(e){ console.warn('[Results] scramble played-team overlay failed', e); }
@@ -815,11 +824,14 @@
                             const sumH = ids.map(id => parseFloat(regHcp[String(id)])).filter(h => !isNaN(h)).reduce((a, b) => a + b, 0);
                             const storedHcp = playedHcp.get(ids.join('|'));
                             const teamHcp = (storedHcp != null) ? storedHcp : Math.round(sumH * 0.25);
-                            const gross = scored.length ? Math.max.apply(null, scored.map(m => m.gross || 0)) : 0;   // teammates share the team gross
-                            const pts = scored.length ? Math.max.apply(null, scored.map(m => m.pts || 0)) : 0;
+                            // Score source: live scorecards first; teams entered as paper/totals rounds
+                            // (no scorecard) fall back to the team gross stamped on their rounds.
+                            const rsc = playedScore.get(ids.join('|'));
+                            const gross = scored.length ? Math.max.apply(null, scored.map(m => m.gross || 0)) : ((rsc && rsc.gross) || 0);   // teammates share the team gross
+                            const pts = scored.length ? Math.max.apply(null, scored.map(m => m.pts || 0)) : ((rsc && rsc.pts) || 0);
                             const started = gross > 0;
                             const net = started ? (gross - teamHcp) : 0;
-                            const thru = scored.length ? Math.max.apply(null, scored.map(m => m.thru || 0)) : 0;
+                            const thru = scored.length ? Math.max.apply(null, scored.map(m => m.thru || 0)) : ((rsc && rsc.thru) || 0);
                             return { name: names.join(' & '), teamHcp, gross, net, pts, thru, started };
                         }).sort((a, b) => (b.started - a.started) || (a.started ? (a.net - b.net) : 0));
                         if (teams.length){ boards.scramble = teams; boards.labels.push('Scramble'); }

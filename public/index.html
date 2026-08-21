@@ -9741,6 +9741,7 @@
                 'qse.subtitle': 'Enter scores for all players - saves to round history & updates handicaps',
                 'qse.event': 'Event:',
                 'qse.course': 'Course:',
+                'qse.course.auto': 'Course auto-detected from posted scorecards',
                 'qse.date': 'Date:',
                 'qse.tee': 'Tee:',
                 'qse.tee.black': 'Black (Championship)',
@@ -11671,6 +11672,7 @@
                 'qse.subtitle': 'บันทึกคะแนนของผู้เล่นทุกคน - บันทึกลงประวัติรอบและอัปเดตแฮนดิแคปอัตโนมัติ',
                 'qse.event': 'รายการ:',
                 'qse.course': 'สนาม:',
+                'qse.course.auto': 'ตรวจพบสนามอัตโนมัติจากสกอร์การ์ดที่บันทึกแล้ว',
                 'qse.date': 'วันที่:',
                 'qse.tee': 'ที:',
                 'qse.tee.black': 'ดำ (แชมเปียนชิพ)',
@@ -13205,6 +13207,7 @@
                 'qse.subtitle': '모든 플레이어의 점수 입력 - 라운드 기록에 저장되고 핸디캡이 자동 갱신됩니다',
                 'qse.event': '이벤트:',
                 'qse.course': '코스:',
+                'qse.course.auto': '게시된 스코어카드에서 코스 자동 감지됨',
                 'qse.date': '날짜:',
                 'qse.tee': '티:',
                 'qse.tee.black': '블랙 (챔피언십)',
@@ -15563,6 +15566,7 @@
                 'qse.subtitle': '全プレーヤーのスコアを入力 - ラウンド履歴に保存され、ハンディキャップが自動更新されます',
                 'qse.event': 'イベント:',
                 'qse.course': 'コース:',
+                'qse.course.auto': '投稿済みスコアカードからコースを自動検出',
                 'qse.date': '日付:',
                 'qse.tee': 'ティー:',
                 'qse.tee.black': 'ブラック (チャンピオンシップ)',
@@ -143091,12 +143095,13 @@ class OrganizerScoringSystem {
         if (!hn) return null;   // nothing typed yet — nothing to create
         const ev = this.allEvents.find(e => e.id === this.currentEventId) || {};
         const combo = (this._eventCombo && this._eventCombo.eventId === String(this.currentEventId)) ? this._eventCombo : null;
+        const evc = (this._eventCourse && this._eventCourse.eventId === String(this.currentEventId)) ? this._eventCourse : null;
         const evd = ev.event_date ? new Date(ev.event_date + 'T07:00:00') : new Date();
         const teeRaw = document.getElementById('qseTeeMarker')?.value || 'white';
         const { data, error } = await window.SupabaseDB.client.from('rounds').insert({
             golfer_id: round.golfer_id, player_name: round.player_name || this.getPlayerName(round.golfer_id, round) || null,
-            course_id: (combo && combo.comboId) || ev.course_id || null,
-            course_name: (combo && combo.name) || ev.course_name || ev.courseName || 'Unknown Course',
+            course_id: (combo && combo.comboId) || (evc && evc.courseId) || ev.course_id || null,
+            course_name: (combo && combo.name) || (evc && evc.courseName) || ev.course_name || ev.courseName || 'Unknown Course',
             type: 'society', society_event_id: this.currentEventId, organizer_id: ev.organizer_id || null,
             played_at: evd.toISOString(), started_at: evd.toISOString(),
             completed_at: new Date().toISOString(), status: 'completed',
@@ -143363,13 +143368,19 @@ class OrganizerScoringSystem {
         const event = this.allEvents.find(e => e.id === this.currentEventId);
         const courseName = event?.course_name || event?.courseName || event?.course || '';
 
+        // EVENT-COURSE SYNC: posted scorecards/rounds pin the venue — the matcher never guesses.
+        let evc = null;
+        try { evc = await this.resolveEventCourse(this.currentEventId || (this.currentEvent && this.currentEvent.id)); } catch (e) {}
+
         // Placeholder ONLY when the course can't be resolved — never cached, so it retries.
         const DEFAULT = { holes: Array.from({ length: 18 }, (_, i) => ({ hole_number: i + 1, par: 4, handicap: i + 1 })) };
 
-        const cacheKey = event?.course_id || courseName;
+        const cacheKey = (evc && evc.courseId) || event?.course_id || courseName;
         if (cacheKey && this._editCourseCache && this._editCourseCache.key === cacheKey) return this._editCourseCache.data;
 
         const tok = s => this._courseTok(s);
+        const eTok = tok(courseName);
+        const eSet = new Set(eTok);
 
         try {
             if (!this._qseCoursesList) {
@@ -143381,9 +143392,13 @@ class OrganizerScoringSystem {
             // Rank candidate courses: courseCov = matched/course-tokens, eventCov = matched/event-tokens
             // (eventCov catches short names like "Phoenix" against "Phoenix Gold - Lake Nine").
             let scored;
-            const direct = event?.course_id ? courses.find(c => c.id === event.course_id) : null;
+            const pinnedId = (evc && evc.courseId) || event?.course_id || null;
+            const direct = pinnedId ? courses.find(c => c.id === pinnedId) : null;
             if (direct) {
-                scored = [{ c: direct, cT: tok(direct.name), m: 99, score: 1 }];
+                // Pinned course first; keep the matcher's candidates as backups so a pinned
+                // aggregator row with no course_holes still falls through to a real card.
+                scored = [{ c: direct, cT: tok(direct.name), m: 99, score: 1 },
+                          ...this._scoreCoursesByName(courseName, courses).filter(x => x.c.id !== direct.id)];
             } else {
                 scored = this._scoreCoursesByName(courseName, courses);
             }
@@ -144754,7 +144769,9 @@ class OrganizerScoringSystem {
 
         // Populate event info (the event object carries course_name, not `course`).
         document.getElementById('qseEventName').textContent = event.title || 'Unknown Event';
-        document.getElementById('qseCourseName').textContent = event.course_name || event.courseName || event.course || 'Unknown Course';
+        const _qseCourseEl = document.getElementById('qseCourseName');
+        _qseCourseEl.textContent = event.course_name || event.courseName || event.course || 'Unknown Course';
+        _qseCourseEl.classList.remove('text-green-700', 'font-semibold'); _qseCourseEl.title = '';
         document.getElementById('qseEventDate').textContent = new Date(event.event_date).toLocaleDateString();
 
         // Store event data for later use
@@ -144768,6 +144785,18 @@ class OrganizerScoringSystem {
         this._ninesTriedFor = null;
         try { await this.resolveEventNines(event.id); } catch (e) {}
         this._qseNineBarRender();
+
+        // Same rule for the VENUE: posted cards pin the course — show the real one, not the
+        // event-title guess. Fresh look each open so a mid-morning live scorer is adopted.
+        this._courseTriedFor = null;
+        try {
+            const evc = await this.resolveEventCourse(event.id);
+            if (evc) {
+                _qseCourseEl.textContent = evc.courseName + ' ✓';
+                _qseCourseEl.classList.add('text-green-700', 'font-semibold');
+                _qseCourseEl.title = _lvT('qse.course.auto', 'Course auto-detected from posted scorecards');
+            }
+        } catch (e) {}
 
         // Reset stale search state from a previous open (iOS keeps form values)
         const _qseSearch = document.getElementById('qsePlayerSearch');
@@ -144837,6 +144866,12 @@ class OrganizerScoringSystem {
         if (gid('scrEventName')) gid('scrEventName').textContent = event.title || 'Event';
         if (gid('scrCourseName')) gid('scrCourseName').textContent = event.course_name || event.courseName || event.course || 'Unknown';
         if (gid('scrEventDate')) gid('scrEventDate').textContent = event.event_date ? new Date(event.event_date).toLocaleDateString() : '-';
+        // Posted cards pin the venue (same rule as QSE) — fresh look each open.
+        this._courseTriedFor = null;
+        try {
+            const evc = await this.resolveEventCourse(event.id);
+            if (evc && gid('scrCourseName')) gid('scrCourseName').textContent = evc.courseName + ' ✓';
+        } catch (e) {}
         const container = gid('scrTeamsContainer');
         if (container) container.innerHTML = '<div class="py-8 text-center text-gray-500">Loading teams…</div>';
         gid('scrambleTeamEntryModal').style.display = 'flex';
@@ -144991,8 +145026,9 @@ class OrganizerScoringSystem {
         window.NotificationManager.show('Saving ' + toSave.length + ' team(s)…', 'info');
         const event = this.qseEventData;
         const eventDate = event.event_date ? new Date(event.event_date) : new Date();
-        const courseId = event.course_id || null;
-        const courseName = event.course_name || event.courseName || event.course || 'Unknown Course';
+        const _evc = (this._eventCourse && this._eventCourse.eventId === String(event.id)) ? this._eventCourse : null;
+        const courseId = (_evc && _evc.courseId) || event.course_id || null;
+        const courseName = (_evc && _evc.courseName) || event.course_name || event.courseName || event.course || 'Unknown Course';
         const tee = document.getElementById('scrTeeMarker') ? document.getElementById('scrTeeMarker').value : 'white';
         let organizerId = null;
         try { const { data } = await client.from('society_events').select('organizer_id').eq('id', this.currentEventId).single(); organizerId = (data && data.organizer_id) || null; } catch (e) {}
@@ -145733,6 +145769,7 @@ class OrganizerScoringSystem {
             }
             const ev = this.qseEventData || {};
             const combo = (this._eventCombo && this._eventCombo.eventId === String(ev.id)) ? this._eventCombo : null;
+            const evc = (this._eventCourse && this._eventCourse.eventId === String(ev.id)) ? this._eventCourse : null;
             const teeRaw = document.getElementById('qseTeeMarker')?.value || 'white';
             const tee = String(teeRaw).toLowerCase().trim().split(/[\s(]/)[0] || 'white';
             let roundId = null;
@@ -145748,8 +145785,8 @@ class OrganizerScoringSystem {
                 const evd = ev.event_date ? new Date(ev.event_date + 'T07:00:00') : new Date();
                 const ins = await sb.from('rounds').insert({
                     golfer_id: playerId, player_name: player.player_name || null,
-                    course_id: (combo && combo.comboId) || ev.course_id || null,
-                    course_name: (combo && combo.name) || ev.course_name || ev.courseName || 'Unknown Course',
+                    course_id: (combo && combo.comboId) || (evc && evc.courseId) || ev.course_id || null,
+                    course_name: (combo && combo.name) || (evc && evc.courseName) || ev.course_name || ev.courseName || 'Unknown Course',
                     type: 'society', society_event_id: ev.id, organizer_id: ev.organizer_id || null,
                     played_at: evd.toISOString(), started_at: evd.toISOString(),
                     completed_at: new Date().toISOString(), status: 'completed',
@@ -145828,6 +145865,50 @@ class OrganizerScoringSystem {
         this.setEventNines(eid, cfg, fv, bv, data);
         return this._eventCombo;
     }
+    // ===== EVENT COURSE — GLOBAL SYNC (Pete 2026-08-21) =====
+    // The VENUE is event-level truth and the players are the first line of information:
+    // anyone live-scoring in the app picked the course ON the course, so their scorecard's
+    // course_id wins; saved rounds come second. Only on an all-paper day with nothing posted
+    // may the name matcher guess from the event title — that guess once sent Green Valley
+    // (Rayong) cards to Summit Green Valley (Chiang Mai): 18 rounds rescored (2026-08-19).
+    async resolveEventCourse(eventId) {
+        if (!eventId) return null;
+        const eid = String(eventId);
+        if (this._eventCourse && this._eventCourse.eventId === eid) return this._eventCourse;
+        if (this._courseTriedFor === eid) return null;   // looked this session, nothing posted yet
+        this._courseTriedFor = eid;
+        try {
+            const sb = window.SupabaseDB.client;
+            if (!this._qseCoursesList) {
+                const { data: cs } = await sb.from('courses').select('id, name, course_code');
+                this._qseCoursesList = cs || [];
+            }
+            const valid = new Map(this._qseCoursesList.map(c => [String(c.id), c]));
+            const [sc, rd] = await Promise.all([
+                sb.from('scorecards').select('course_id, course_name').eq('event_id', eid).not('course_id', 'is', null).limit(50),
+                sb.from('rounds').select('course_id, course_name').eq('society_event_id', eid).not('course_id', 'is', null).limit(50)
+            ]);
+            // Majority vote per source, ids validated against the courses table (combo slugs
+            // resolve their holes via the nine-sync path; base-id cards still pin the venue).
+            const tally = rows => {
+                const t = {};
+                (rows || []).forEach(r => {
+                    const id = String(r.course_id || '');
+                    if (!valid.has(id)) return;
+                    t[id] = t[id] || { n: 0 }; t[id].n++;
+                });
+                const best = Object.entries(t).sort((a, b) => b[1].n - a[1].n)[0];
+                return best ? { id: best[0], name: valid.get(best[0]).name } : null;
+            };
+            const hit = tally(sc.data) || tally(rd.data);
+            if (hit) {
+                this._eventCourse = { eventId: eid, courseId: hit.id, courseName: hit.name, source: 'posted' };
+                this._qseCourseCache = null; this._editCourseCache = null;
+                return this._eventCourse;
+            }
+        } catch (e) { console.warn('[OrganizerScoring] resolveEventCourse', e); }
+        return null;
+    }
     _qseNineBarRender() {
         const bar = document.getElementById('qseNineBar'); if (!bar) return;
         const ev = this.qseEventData || {};
@@ -145881,7 +145962,11 @@ class OrganizerScoringSystem {
         const teeRaw = document.getElementById('qseTeeMarker')?.value || 'white';
         const tee = String(teeRaw).toLowerCase().trim().split(/[\s(]/)[0] || 'white';
 
-        let courseId = this.qseEventData?.course_id || null;
+        // EVENT-COURSE SYNC: players who live-scored already pinned the venue — adopt their
+        // scorecards' course_id before the event's own (usually NULL) id or any name guessing.
+        let evc = null;
+        try { evc = await this.resolveEventCourse((this.qseEventData && this.qseEventData.id) || this.currentEventId); } catch (e) {}
+        let courseId = (evc && evc.courseId) || this.qseEventData?.course_id || null;
         const courseName = this.qseEventData?.course_name || this.qseEventData?.courseName || this.qseEventData?.course || null;
 
         // loadCourseData runs on every keystroke — memoize per (course, tee).
@@ -146053,8 +146138,9 @@ class OrganizerScoringSystem {
 
             const teeMarker = document.getElementById('qseTeeMarker').value;
             const eventDate = new Date(this.qseEventData.event_date);
-            const courseId = this.qseEventData.course_id || null;
-            const courseName = this.qseEventData.course_name || this.qseEventData.courseName || this.qseEventData.course || 'Unknown Course';
+            const _evc = (this._eventCourse && this._eventCourse.eventId === String(this.currentEventId)) ? this._eventCourse : null;
+            const courseId = (_evc && _evc.courseId) || this.qseEventData.course_id || null;
+            const courseName = (_evc && _evc.courseName) || this.qseEventData.course_name || this.qseEventData.courseName || this.qseEventData.course || 'Unknown Course';
 
             // Get organizer ID for this event
             const { data: eventData } = await window.SupabaseDB.client
@@ -146249,6 +146335,11 @@ window.PaperCardEntry = {
                 arr.forEach(function(p){ if (p) self.groupOf[String(p.playerId || p.id)] = 'G' + (i + 1); });
             });
         } catch(e) {}
+        // Posted cards pin the VENUE (event-course sync): players who live-scored picked the
+        // course on the course — adopt their course_id before any name matching. Fresh DB look
+        // each open so a group that started live-scoring mid-morning is picked up.
+        OSS._courseTriedFor = null;
+        try { await OSS.resolveEventCourse(event.id); } catch(e){}
         // Multi-nine venue (Phoenix, Burapha, Khao Kheow, …): we CANNOT know which nines were
         // played — the organizer must pick both before any score can be typed. If the nines were
         // already picked ANYWHERE for this event (QSE picker, a saved paper card, a live-scored
@@ -146734,10 +146825,12 @@ window.PaperCardEntry = {
                 if (up.error) throw up.error;
             } else {
                 var evd = this.event.event_date ? new Date(this.event.event_date + 'T07:00:00') : new Date();
+                var evc = null;
+                try { var _oc = window.OrganizerScoringSystem._eventCourse; if (_oc && _oc.eventId === String(this.event.id)) evc = _oc; } catch(e){}
                 var ins = await sb.from('rounds').insert({
                     golfer_id: playerId, player_name: p.player_name || null,
-                    course_id: (this.courseData && this.courseData.comboId) || this.event.course_id || null,
-                    course_name: this.comboName || this.event.course_name || this.event.courseName || 'Unknown Course',
+                    course_id: (this.courseData && this.courseData.comboId) || (evc && evc.courseId) || this.event.course_id || null,
+                    course_name: this.comboName || (evc && evc.courseName) || this.event.course_name || this.event.courseName || 'Unknown Course',
                     type: 'society', society_event_id: this.event.id,
                     organizer_id: this.event.organizer_id || null,
                     played_at: evd.toISOString(), started_at: evd.toISOString(),

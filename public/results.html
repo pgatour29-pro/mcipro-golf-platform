@@ -1536,10 +1536,36 @@
             }
         })();
 
+        // REALTIME: score entries must land the moment they're saved — live cards (scorecards),
+        // paper-card/post-round entry (rounds), official publishes (event_results) all nudge a
+        // silent re-pull of the viewed event. Rows carrying an event id for a DIFFERENT event are
+        // ignored; rows with no id in the payload (e.g. DELETE stubs) refresh to be safe.
+        let _rtDebounce = null;
+        function _rtKick(p){
+            try {
+                const row = (p && (p.new || p.old)) || {};
+                if (('event_id' in row) || ('society_event_id' in row)) {
+                    const eid = row.event_id || row.society_event_id;
+                    if (!eid || !state.selectedEventId || String(eid) !== String(state.selectedEventId)) return;
+                }
+            } catch(e){}
+            clearTimeout(_rtDebounce);
+            _rtDebounce = setTimeout(function(){
+                try { if (state.selectedEventId && document.visibilityState !== 'hidden') loadEvent(state.selectedEventId, true); } catch(e){}
+            }, 1200);
+        }
+        try {
+            sb.channel('results-rt')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'scorecards' }, _rtKick)
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'rounds' }, _rtKick)
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'event_results' }, _rtKick)
+                .subscribe(function(status){ console.log('[Results] realtime:', status); });
+        } catch(e){ console.warn('[Results] realtime unavailable', e); }
+
         // Embed height reporting: keep the parent frame sized to our content so the app page
         // scrolls as one (ResizeObserver catches renders; the interval is a safety net).
-        // Live-populate: silently re-pull the selected event periodically so scores appear as they
-        // come in — unscored players stay at the bottom and move up when their card posts.
+        // Fallback poll: silently re-pull the selected event periodically in case realtime drops —
+        // unscored players stay at the bottom and move up when their card posts.
         setInterval(function(){ try { if (state.selectedEventId && document.visibilityState !== 'hidden') loadEvent(state.selectedEventId, true); } catch(e){} }, 40000);
 
         if (EMBED) {

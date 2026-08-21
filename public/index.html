@@ -9563,6 +9563,12 @@
                 'scorecard.scoretoggle': 'Score this player',
                 'scorecard.checkall': 'Check all',
                 'scorecard.uncheckall': 'Uncheck all',
+                'scorecard.whoscore.title': 'Who are you scoring for?',
+                'scorecard.whoscore.sub': 'Your group is set from the tee sheet. Score the whole group, or just yourself? Untick anyone you are not scoring for.',
+                'scorecard.whoscore.group': 'Whole group',
+                'scorecard.whoscore.justme': 'Just myself',
+                'scorecard.whoscore.confirm': 'Confirm',
+                'scorecard.whoscore.you': 'You',
                 'scorecard.trackstats': 'Track Stats (FW/GIR/Putts)',
                 'scorecard.startround': 'Start Round',
                 'scorecard.endround': 'End Round',
@@ -11496,6 +11502,12 @@
                 'scorecard.scoretoggle': 'จดสกอร์ให้ผู้เล่นนี้',
                 'scorecard.checkall': 'เลือกทั้งหมด',
                 'scorecard.uncheckall': 'ยกเลิกทั้งหมด',
+                'scorecard.whoscore.title': 'คุณจดสกอร์ให้ใคร?',
+                'scorecard.whoscore.sub': 'กลุ่มของคุณถูกตั้งจากตารางออกรอบแล้ว จะจดสกอร์ให้ทั้งกลุ่มหรือเฉพาะตัวเอง? เอาเครื่องหมายถูกออกสำหรับคนที่คุณไม่ได้จดให้',
+                'scorecard.whoscore.group': 'ทั้งกลุ่ม',
+                'scorecard.whoscore.justme': 'เฉพาะตัวเอง',
+                'scorecard.whoscore.confirm': 'ยืนยัน',
+                'scorecard.whoscore.you': 'คุณ',
                 'scorecard.trackstats': 'ติดตามสถิติ (FW/GIR/พัตต์)',
                 'scorecard.startround': 'เริ่มรอบ',
                 'scorecard.endround': 'จบรอบ',
@@ -13606,6 +13618,12 @@
                 'scorecard.scoretoggle': '이 플레이어 스코어 기록',
                 'scorecard.checkall': '전체 선택',
                 'scorecard.uncheckall': '전체 해제',
+                'scorecard.whoscore.title': '누구의 스코어를 기록하나요?',
+                'scorecard.whoscore.sub': '티시트에서 그룹이 설정되었습니다. 그룹 전체를 기록하나요, 본인만 기록하나요? 기록하지 않을 플레이어는 체크를 해제하세요.',
+                'scorecard.whoscore.group': '그룹 전체',
+                'scorecard.whoscore.justme': '나만',
+                'scorecard.whoscore.confirm': '확인',
+                'scorecard.whoscore.you': '나',
                 'scorecard.trackstats': '통계 추적 (FW/GIR/퍼트)',
                 'scorecard.startround': '라운드 시작',
                 'scorecard.endround': '라운드 종료',
@@ -15402,6 +15420,12 @@
                 'scorecard.scoretoggle': 'このプレーヤーを記録',
                 'scorecard.checkall': '全員選択',
                 'scorecard.uncheckall': '全員解除',
+                'scorecard.whoscore.title': '誰のスコアをつけますか？',
+                'scorecard.whoscore.sub': 'ティーシートからグループが設定されました。グループ全員か、自分だけか？記録しないプレーヤーのチェックを外してください。',
+                'scorecard.whoscore.group': 'グループ全員',
+                'scorecard.whoscore.justme': '自分だけ',
+                'scorecard.whoscore.confirm': '確定',
+                'scorecard.whoscore.you': '自分',
                 'scorecard.trackstats': '統計追跡（FW/GIR/パット）',
                 'scorecard.startround': 'ラウンド開始',
                 'scorecard.endround': 'ラウンド終了',
@@ -78465,6 +78489,10 @@ class LiveScorecardSystem {
             // the teams from the tee-sheet split, so the scorer touches nothing but Start Round.
             try { if (this._isScramble2EventById(eventId)) this._defaultScramble2Format(eventId); } catch (e) {}
 
+            // ⛳ WHO-SCORE popup: ask up front — whole group or just yourself? Drives the same
+            // green scoring checks below; skipped on 2-man scramble (own pair shares this card).
+            try { this._promptWhoScoring(eventId); } catch (e) { console.warn('[LiveScorecard] whoScore prompt', e); }
+
             // Society handicaps refresh in the background, same as manual add
             const selectedSociety = document.getElementById('roundSocietySelect')?.value;
             if (selectedSociety) {
@@ -78725,6 +78753,106 @@ class LiveScorecardSystem {
             }
         } catch (e) { console.warn('[LiveScorecard] toggleAllScoring scramble guard', e); }
         this.renderPlayersList();
+    }
+
+    // ⛳ WHO-SCORE popup: shown once per event right after the tee-sheet group auto-populates.
+    // Same interaction as event registration (pick your partners + direct/transport): a quick
+    // answer — whole group or just yourself — plus a tick list to drop anyone another phone is
+    // scoring. It only drives the existing green scoringEnabled checks (startRound drops
+    // unticked players), so the setup list stays the reviewable source of truth.
+    // Skipped for 2-Man Scramble events: pairs share ONE card and your own pair can never be
+    // dismissed there — the team-grain toggles on the players list handle that case.
+    _promptWhoScoring(eventId) {
+        this._whoScorePrompted = this._whoScorePrompted || new Set();
+        if (!eventId || this._whoScorePrompted.has(String(eventId))) return;
+        if (this.groupId || localStorage.getItem('mcipro_active_round')) return;
+        const mates = this.players.filter(p => p.fromTeeSheet);
+        if (!mates.length) return;
+        if (this._isScramble2EventById(eventId)) return;
+        // Never pop over a different page — prefill can land after a quick tab hop
+        const startSec = document.getElementById('scorecardStartSection');
+        if (!startSec || !startSec.offsetParent) return;
+        const tt = (k, fb) => { try { return (typeof _lvT === 'function') ? _lvT(k, fb) : fb; } catch (e) { return fb; } };
+        const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        document.getElementById('scWhoScoreOverlay')?.remove();
+
+        const uid = String(AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id') || '');
+        const me = this.players.find(p => String(p.lineUserId || p.id) === uid) || this.players.find(p => !p.fromTeeSheet);
+        const meRow = me ? `
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:#f0fdf4;border:1px solid #86efac;">
+                <span class="material-symbols-outlined" style="font-size:20px;color:#16a34a;flex-shrink:0;">check_circle</span>
+                <span style="font-size:15px;font-weight:700;color:#0f172a;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(this.formatPlayerName(me.name))}</span>
+                <span style="font-size:10px;font-weight:800;color:#15803d;background:#dcfce7;border-radius:6px;padding:2px 7px;flex-shrink:0;">${tt('scorecard.whoscore.you', 'You')}</span>
+            </div>` : '';
+        const rows = mates.map(p => `
+            <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0;cursor:pointer;">
+                <input type="checkbox" ${p.scoringEnabled === false ? '' : 'checked'} data-whoscore-pid="${esc(String(p.lineUserId || p.id))}"
+                       onchange="LiveScorecardManager._whoScoreSync()"
+                       style="accent-color:#16a34a;width:20px;height:20px;flex-shrink:0;cursor:pointer;">
+                <span style="font-size:15px;font-weight:700;color:#0f172a;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(this.formatPlayerName(p.name))}</span>
+            </label>`).join('');
+
+        const div = document.createElement('div');
+        div.id = 'scWhoScoreOverlay';
+        div.style.cssText = 'position:fixed;inset:0;z-index:11450;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;padding:16px;';
+        div.innerHTML = `
+            <div style="width:100%;max-width:380px;background:#ffffff;border-radius:18px;padding:18px 16px;box-shadow:0 24px 60px rgba(0,0,0,0.35);">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                    <span class="material-symbols-outlined" style="font-size:22px;color:#16a34a;">groups</span>
+                    <div style="font-size:17px;font-weight:800;color:#0f172a;">${tt('scorecard.whoscore.title', 'Who are you scoring for?')}</div>
+                </div>
+                <div style="font-size:13px;color:#475569;line-height:1.45;margin-bottom:12px;">${tt('scorecard.whoscore.sub', 'Your group is set from the tee sheet. Score the whole group, or just yourself? Untick anyone you are not scoring for.')}</div>
+                <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">${meRow}${rows}</div>
+                <div style="display:flex;gap:8px;">
+                    <button onclick="LiveScorecardManager._applyWhoScore('me')" style="flex:1;padding:12px 8px;border-radius:12px;border:1.5px solid #cbd5e1;background:#f8fafc;color:#334155;font-size:14px;font-weight:800;cursor:pointer;">${tt('scorecard.whoscore.justme', 'Just myself')}</button>
+                    <button id="scWhoScoreGo" onclick="LiveScorecardManager._applyWhoScore('custom')" style="flex:1.4;padding:12px 8px;border-radius:12px;border:none;background:#16a34a;color:#ffffff;font-size:14px;font-weight:800;cursor:pointer;">${tt('scorecard.whoscore.group', 'Whole group')}</button>
+                </div>
+            </div>`;
+        // Backdrop tap = keep the list as it stands (default: whole group) — same as today
+        div.addEventListener('click', (e) => { if (e.target === div) LiveScorecardManager._closeWhoScore(); });
+        document.body.appendChild(div);
+        this._whoScoreSync();
+    }
+
+    // Green button reads "Whole group" while every box is ticked, "Confirm" once it's a subset
+    _whoScoreSync() {
+        const tt = (k, fb) => { try { return (typeof _lvT === 'function') ? _lvT(k, fb) : fb; } catch (e) { return fb; } };
+        const boxes = Array.from(document.querySelectorAll('#scWhoScoreOverlay input[data-whoscore-pid]'));
+        const go = document.getElementById('scWhoScoreGo');
+        if (!go || !boxes.length) return;
+        go.textContent = boxes.every(b => b.checked)
+            ? tt('scorecard.whoscore.group', 'Whole group')
+            : tt('scorecard.whoscore.confirm', 'Confirm');
+    }
+
+    _applyWhoScore(mode) {
+        try {
+            const on = {};
+            document.querySelectorAll('#scWhoScoreOverlay input[data-whoscore-pid]').forEach(b => {
+                on[b.dataset.whoscorePid] = (mode === 'me') ? false : b.checked;
+            });
+            this.players.forEach(p => {
+                if (!p.fromTeeSheet) return;
+                const pid = String(p.lineUserId || p.id);
+                if (on[pid] !== undefined) p.scoringEnabled = on[pid];
+                else if (mode === 'me') p.scoringEnabled = false;
+            });
+            this.renderPlayersList();
+            const tt = (k, fb) => { try { return (typeof _lvT === 'function') ? _lvT(k, fb) : fb; } catch (e) { return fb; } };
+            const active = this.players.filter(p => p.scoringEnabled !== false).length;
+            window.NotificationManager?.show(
+                tt('scorecard.scoringfor', 'Scoring for {x} of {y} players').replace('{x}', active).replace('{y}', this.players.length),
+                'success');
+        } catch (e) { console.warn('[LiveScorecard] whoScore apply', e); }
+        this._closeWhoScore();
+    }
+
+    _closeWhoScore() {
+        if (this._prefillEventId) {
+            this._whoScorePrompted = this._whoScorePrompted || new Set();
+            this._whoScorePrompted.add(String(this._prefillEventId));
+        }
+        document.getElementById('scWhoScoreOverlay')?.remove();
     }
 
     async loadEvents() {
@@ -90545,6 +90673,8 @@ class LiveScorecardSystem {
         this.teeSheetGroup = null;
         this._prefillEventId = null;
         this._prefillDismissed = null;
+        this._whoScorePrompted = null;
+        document.getElementById('scWhoScoreOverlay')?.remove();
 
         // Show start section
         document.getElementById('scorecardStartSection').style.display = 'block';

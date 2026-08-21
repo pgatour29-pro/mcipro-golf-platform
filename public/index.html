@@ -142496,7 +142496,9 @@ class OrganizerScoringSystem {
 
     // ===== 2-Man Scramble team leaderboard =====
     // Teams come from the tee sheet's saved 2-man split (event_pairings.groups[].teams), else consecutive
-    // pairs of a group's players. Stored as [ [id,id], ... ].
+    // pairs of a group's players. Stored as [ [id,id], ... ]. Saved rounds OVERRIDE the sheet: a scramble
+    // round stamps scramble_config.teamName on both teammates, so it records who actually shared a ball —
+    // on-course reshuffles make the sheet stale, and grouping cards by sheet pairs mixes two teams' grosses.
     async _loadScramblePairings() {
         if (this._scrPairingsEventId !== this.currentEventId) this._scrPairingTeams = [];
         this._scrPairingsEventId = this.currentEventId;
@@ -142510,7 +142512,28 @@ class OrganizerScoringSystem {
                 if (!t.length) { for (let k = 0; k + 1 < players.length; k += 2) t.push([players[k], players[k + 1]]); }
                 t.forEach(pair => { const ids = pair.filter(Boolean); if (ids.length) teams.push(ids); });
             });
-            this._scrPairingTeams = teams;
+            let final = teams;
+            try {
+                const { data: rds } = await window.SupabaseDB.client
+                    .from('rounds')
+                    .select('golfer_id, scramble_config, team_size')
+                    .eq('society_event_id', this.currentEventId)
+                    .eq('team_size', 2);
+                const byTeam = new Map();
+                (rds || []).forEach(r => {
+                    const tn = r.scramble_config && r.scramble_config.teamName;
+                    if (!tn || !r.golfer_id) return;
+                    if (!byTeam.has(tn)) byTeam.set(tn, []);
+                    const ids = byTeam.get(tn);
+                    if (!ids.includes(String(r.golfer_id))) ids.push(String(r.golfer_id));
+                });
+                if (byTeam.size) {
+                    const played = Array.from(byTeam.values());
+                    const inPlayed = new Set(played.flat());
+                    final = played.concat(teams.map(pair => pair.filter(id => !inPlayed.has(String(id)))).filter(pair => pair.length));
+                }
+            } catch (e) { console.warn('[OrganizerScoring] Scramble played-team overlay failed', e); }
+            this._scrPairingTeams = final;
         } catch (e) { console.warn('[OrganizerScoring] Scramble pairings load failed', e); }
     }
     // Group leaderboard rows into the 2-man teams (tee-sheet split). Leftovers → "not in a team yet".

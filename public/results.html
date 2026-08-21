@@ -784,6 +784,28 @@
                             });
                         } catch(e){ console.warn('[Results] scramble pairings load failed', e); }
                     }
+                    // ACTUAL played teams override the sheet: a scramble round stamps
+                    // scramble_config.teamName+teamHcp on both teammates' rounds. On-course
+                    // reshuffles make the sheet stale — grouping by it mixes two balls' grosses.
+                    const playedHcp = new Map();
+                    if (eventId){
+                        try {
+                            const { data: rds } = await sb.from('rounds').select('golfer_id, scramble_config, team_size').eq('society_event_id', eventId).eq('team_size', 2);
+                            const byTeam = new Map();
+                            (rds || []).forEach(r => {
+                                const cfg = r.scramble_config || {};
+                                if (!cfg.teamName || !r.golfer_id) return;
+                                if (!byTeam.has(cfg.teamName)) byTeam.set(cfg.teamName, { ids: [], hcp: (cfg.teamHcp != null ? Number(cfg.teamHcp) : null) });
+                                const t = byTeam.get(cfg.teamName);
+                                if (!t.ids.includes(String(r.golfer_id))) t.ids.push(String(r.golfer_id));
+                            });
+                            if (byTeam.size){
+                                const played = [], inPlayed = new Set();
+                                byTeam.forEach(t => { played.push(t.ids); t.ids.forEach(id => inPlayed.add(id)); if (t.hcp != null) playedHcp.set(t.ids.join('|'), t.hcp); });
+                                teamDefs = played.concat(teamDefs.map(ids => ids.filter(id => !inPlayed.has(String(id)))).filter(ids => ids.length));
+                            }
+                        } catch(e){ console.warn('[Results] scramble played-team overlay failed', e); }
+                    }
                     const regHcp = {}, regName = {};
                     (registrations || []).forEach(r => { regHcp[String(r.player_id)] = r.handicap; regName[String(r.player_id)] = r.player_name; });
                     if (teamDefs.length){
@@ -791,7 +813,8 @@
                             const scored = ids.map(id => players.get(String(id))).filter(Boolean);
                             const names = ids.map(id => (players.get(String(id)) && players.get(String(id)).name) || regName[String(id)] || 'Player');
                             const sumH = ids.map(id => parseFloat(regHcp[String(id)])).filter(h => !isNaN(h)).reduce((a, b) => a + b, 0);
-                            const teamHcp = Math.round(sumH * 0.25);
+                            const storedHcp = playedHcp.get(ids.join('|'));
+                            const teamHcp = (storedHcp != null) ? storedHcp : Math.round(sumH * 0.25);
                             const gross = scored.length ? Math.max.apply(null, scored.map(m => m.gross || 0)) : 0;   // teammates share the team gross
                             const pts = scored.length ? Math.max.apply(null, scored.map(m => m.pts || 0)) : 0;
                             const started = gross > 0;

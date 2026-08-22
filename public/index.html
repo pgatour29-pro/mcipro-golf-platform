@@ -118170,6 +118170,17 @@ class GolferEventsManager {
     subscribeToEventChanges() {
         console.log('[GolferEventsSystem] 🔔 Setting up real-time subscriptions...');
 
+        // Re-init (every societyevents tab show) must not re-.on() an already-subscribed
+        // channel — supabase-js throws "cannot add postgres_changes callbacks ... after
+        // subscribe()" (43 client_errors across 10 golfers since June). Remove stale channels
+        // by TOPIC, not by stored ref: a previous crash can leave a channel this instance
+        // never got a handle on.
+        try {
+            (window.SupabaseDB.client.getChannels() || [])
+                .filter(c => c.topic === 'realtime:golfer_view_registrations' || c.topic === 'realtime:golfer_view_waitlist')
+                .forEach(c => window.SupabaseDB.client.removeChannel(c));
+        } catch (e) { console.warn('[GolferEventsSystem] stale channel cleanup', e); }
+
         // Subscribe to society_events table changes (when organizer updates event details)
         SocietyGolfDB.subscribeToEvents((payload) => {
             console.log('[GolferEventsSystem] 📡 Event change detected:', payload.eventType);

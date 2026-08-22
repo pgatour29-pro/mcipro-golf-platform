@@ -1905,6 +1905,16 @@ export async function subscribeGlobalMessages() {
     state.globalSub = null;
   }
 
+  // Sweep by TOPIC too, not just our stored ref: the supabase client registry is global,
+  // so a channel created by another instance of this module (cache-busted re-import) or a
+  // reset state stays subscribed with no ref here — .channel() then returns that subscribed
+  // instance and .on('postgres_changes') throws "cannot add callbacks after subscribe()"
+  // (35 client_errors across 9 golfers). Same topic-sweep fix as v951's golfer events one.
+  try {
+    const stale = (supabase.getChannels() || []).filter(c => c.topic === 'realtime:realtime:chat_messages');
+    for (const c of stale) { try { await supabase.removeChannel(c); } catch (e) {} }
+  } catch (e) {}
+
   console.log('[Chat] Setting up global message subscription with backfill');
   console.time('[Chat] ⚡ Realtime join');
 

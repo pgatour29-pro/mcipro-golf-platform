@@ -779,10 +779,19 @@
 
             if (error) return [];
 
-            // Also find live scorecards at the same course today without an event_id
-            // (players who started individual rounds at the same course)
+            // Also find live scorecards at the same course today without an event_id —
+            // but ONLY for golfers REGISTERED for this event (Pete 2026-08-22: a Play Golf
+            // round at the same course/day is NOT part of the society event; registration is
+            // the membership test). This keeps the rescue path for a registered golfer who
+            // started via Play Golf without picking the event, and nothing else. If the
+            // registration list can't be read, fail CLOSED (no merge).
             const event = allEvents.find(e => e.id === eventId);
             if (event?.course_name) {
+                const { data: evRegs, error: evRegsError } = await supabaseClient
+                    .from('event_registrations')
+                    .select('player_id')
+                    .eq('event_id', eventId);
+                const regIds = evRegsError ? null : new Set((evRegs || []).map(r => String(r.player_id)));
                 const today = getToday();
                 const { data: extraCards } = await supabaseClient
                     .from('scorecards')
@@ -796,10 +805,10 @@
                     .lte('created_at', `${today}T23:59:59`)
                     .neq('status', 'abandoned');
 
-                // Merge, avoiding duplicates by player_id
+                // Merge, avoiding duplicates by player_id — registered golfers only
                 const existingPlayerIds = new Set((scorecards || []).map(s => s.player_id));
                 (extraCards || []).forEach(sc => {
-                    if (!existingPlayerIds.has(sc.player_id)) {
+                    if (regIds && regIds.has(String(sc.player_id)) && !existingPlayerIds.has(sc.player_id)) {
                         scorecards.push(sc);
                         existingPlayerIds.add(sc.player_id);
                     }

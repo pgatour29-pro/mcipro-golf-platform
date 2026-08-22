@@ -362,9 +362,41 @@
             season2s: {},          // cache: 'SOC|year' → aggregated par-3 2s race
             season2sYear: null,
             season1s: {},          // cache: 'SOC|year|all' → aggregated hole-in-one race
-            season1sYear: null
+            season1sYear: null,
+            evParMap: null         // real pars (18) for the open event's course — see getCourseParMap
         };
         const expandedPlayers = new Set();
+
+        // Real pars for the hole-by-hole grids: scores rows only carry par for PLAYED holes,
+        // so unplayed holes used to render a "P4" placeholder (all-P4 back nine mid-round on
+        // par-74 St Andrews 2000 — same bug as live.html, fixed there in v952). Loads the
+        // course's true card once per course; tee pick = white* first (St Andrews stores
+        // white1/white2, no plain "white"), then yellow/blue/most-rows — the engine's ladder.
+        const _courseParsCache = {};
+        async function getCourseParMap(courseId){
+            if (!courseId) return null;
+            if (_courseParsCache[courseId] !== undefined) return _courseParsCache[courseId];
+            let map = null;
+            try {
+                const { data: holes } = await sb.from('course_holes')
+                    .select('hole_number, par, tee_marker')
+                    .eq('course_id', courseId)
+                    .order('hole_number');
+                if (holes && holes.length){
+                    const byTee = {};
+                    holes.forEach(h => { const t = String(h.tee_marker||'').toLowerCase(); (byTee[t] = byTee[t]||[]).push(h); });
+                    const names = Object.keys(byTee);
+                    const pick = names.filter(t => t.startsWith('white')).sort()[0]
+                        || (byTee.yellow && 'yellow') || (byTee.blue && 'blue')
+                        || names.sort((a,b) => byTee[b].length - byTee[a].length)[0];
+                    const rows = pick ? byTee[pick] : holes;
+                    map = new Array(18).fill(null);
+                    rows.forEach(h => { if (h.hole_number>=1 && h.hole_number<=18 && map[h.hole_number-1]==null) map[h.hole_number-1] = h.par; });
+                }
+            } catch(e){ console.warn('[Results] course par fetch failed', e); }
+            _courseParsCache[courseId] = map;
+            return map;
+        }
 
         function setUrl(){
             try {
@@ -475,7 +507,7 @@
         async function loadEvent(eventId, silent){
             state.selectedEventId = eventId;
             state.loadingEventId = eventId;
-            if (!silent) expandedPlayers.clear();
+            if (!silent) { expandedPlayers.clear(); state.evParMap = null; }  // no stale course bleeding into the next event
             renderStrip();
             setUrl();
             const seq = ++state.evSeq;
@@ -490,9 +522,9 @@
             }
             try {
                 const [evRes, resRes, cardRes, winRes, rndRes, pairRes, regRes] = await Promise.all([
-                    sb.from('society_events').select('id,title,course_name,event_date,format,society_id,divisions').eq('id', eventId).maybeSingle(),
+                    sb.from('society_events').select('id,title,course_name,event_date,format,society_id,divisions,course_id').eq('id', eventId).maybeSingle(),
                     sb.from('event_results').select('*').eq('event_id', eventId).order('position', {ascending:true}),
-                    sb.from('scorecards').select(`id, player_id, player_name, total_gross, total_net, handicap, playing_handicap, status, created_at, scoring_format, group_id,
+                    sb.from('scorecards').select(`id, player_id, player_name, total_gross, total_net, handicap, playing_handicap, status, created_at, scoring_format, group_id, course_id,
                         scores (hole_number, gross_score, net_score, stableford_points, par, stroke_index)`).eq('event_id', eventId),
                     sb.from('event_winnings').select('player_id, player_name, category, label, notes, division').eq('event_id', eventId),
                     sb.from('rounds').select('id, golfer_id, player_name, total_gross, total_net, total_stableford, holes_played, handicap_used, status').eq('society_event_id', eventId),
@@ -524,6 +556,14 @@
                 // sync society chip to the event's title if deep-linked cross-society
                 const soc = socForTitle(event.title);
                 if (soc && soc.key !== state.socKey){ state.socKey = soc.key; renderSocChips(); selectSociety(soc.key, true); }
+
+                // Real pars for every hole grid on this page (individual AND team): scores rows
+                // only carry par for PLAYED holes, so unplayed holes rendered the P4 placeholder
+                // (Pete 2026-08-22: back nine all P4 mid-round on par-74 St Andrews 2000 — same
+                // bug fixed on live.html in v952, this is the global sweep). The map is applied
+                // at RENDER time in renderHoleDetails + teamHoleDetailsHtml, one choke point.
+                state.evParMap = await getCourseParMap((cards[0] && cards[0].course_id) || event.course_id);
+                if (seq !== state.evSeq) return;
 
                 // best scorecard per player (most holes, else latest) — same dedup as live.html
                 const best = new Map();
@@ -1087,6 +1127,12 @@
             return cls;
         }
 
+        // A hole's par comes from its saved score row when played, else the event course's
+        // real card (state.evParMap) — "P4" is a last-ditch fallback, never a placeholder.
+        function parAt(pars, start, i){
+            return pars[i] != null ? pars[i] : (state.evParMap ? state.evParMap[start+i] : null);
+        }
+
         function renderHoleDetails(en, colspan, pid){
             const nine = (start) => {
                 const holes = en.hole_scores.slice(start, start+9);
@@ -1100,11 +1146,11 @@
                         <div class="hole-cell hole-head">${esc(start===0?rt('out'):rt('inn'))}</div>
                     </div>
                     <div class="hole-grid mb-1">
-                        ${pars.map(p => `<div class="hole-cell hole-par">P${p||4}</div>`).join('')}
+                        ${pars.map((p,i) => `<div class="hole-cell hole-par">P${parAt(pars,start,i)||4}</div>`).join('')}
                         <div class="hole-cell"></div>
                     </div>
                     <div class="hole-grid mb-1">
-                        ${holes.map((s,i) => `<div class="hole-cell ${getScoreClass(s, pars[i])}">${s!==null?s:'-'}</div>`).join('')}
+                        ${holes.map((s,i) => `<div class="hole-cell ${getScoreClass(s, parAt(pars,start,i))}">${s!==null?s:'-'}</div>`).join('')}
                         <div class="hole-cell hole-tot">${tot||'-'}</div>
                     </div>
                     <div class="hole-grid">
@@ -1498,11 +1544,11 @@
                         <div class="hole-cell hole-head">${esc(start===0?rt('out'):rt('inn'))}</div>
                     </div>
                     <div class="hole-grid mb-1">
-                        ${ps.map(p => `<div class="hole-cell hole-par">P${p||4}</div>`).join('')}
+                        ${ps.map((p,i) => `<div class="hole-cell hole-par">P${parAt(ps,start,i)||4}</div>`).join('')}
                         <div class="hole-cell"></div>
                     </div>
                     <div class="hole-grid mb-1">
-                        ${holes.map((s,i) => `<div class="hole-cell ${getScoreClass(s!=null?s:null, ps[i]||null)}">${s!=null?s:'-'}</div>`).join('')}
+                        ${holes.map((s,i) => `<div class="hole-cell ${getScoreClass(s!=null?s:null, parAt(ps,start,i))}">${s!=null?s:'-'}</div>`).join('')}
                         <div class="hole-cell hole-tot">${tot||'-'}</div>
                     </div>`;
             };

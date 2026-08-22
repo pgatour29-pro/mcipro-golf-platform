@@ -725,13 +725,54 @@
             }
         }
 
+        // Real pars for the hole-by-hole grid. scores rows only carry par for PLAYED holes,
+        // so every unplayed hole rendered the "P4" placeholder — a Thru-0 card showed all-P4
+        // on par-74 St Andrews 2000 with its two par-6s (Pete, 2026-08-22). Fetch the course's
+        // true pars once per course and fill the gaps. Tee pick = same ladder as the scoring
+        // engine (white* first — St Andrews stores white1/white2, no plain "white").
+        const _courseParsCache = {};
+        async function getCourseParMap(courseId) {
+            if (!courseId) return null;
+            if (_courseParsCache[courseId] !== undefined) return _courseParsCache[courseId];
+            let map = null;
+            try {
+                const { data: holes } = await supabaseClient
+                    .from('course_holes')
+                    .select('hole_number, par, tee_marker')
+                    .eq('course_id', courseId)
+                    .order('hole_number');
+                if (holes && holes.length) {
+                    const byTee = {};
+                    holes.forEach(h => { const t = String(h.tee_marker || '').toLowerCase(); (byTee[t] = byTee[t] || []).push(h); });
+                    const names = Object.keys(byTee);
+                    const pick = names.filter(t => t.startsWith('white')).sort()[0]
+                        || (byTee.yellow && 'yellow') || (byTee.blue && 'blue')
+                        || names.sort((a, b) => byTee[b].length - byTee[a].length)[0];
+                    const rows = pick ? byTee[pick] : holes;
+                    map = new Array(18).fill(null);
+                    rows.forEach(h => { if (h.hole_number >= 1 && h.hole_number <= 18 && map[h.hole_number - 1] == null) map[h.hole_number - 1] = h.par; });
+                }
+            } catch (e) { console.warn('[Live] course par fetch failed', e); }
+            _courseParsCache[courseId] = map;
+            return map;
+        }
+
+        // Prefetch par maps for a set of scorecards, keyed by course_id
+        async function getParMapsFor(scorecards) {
+            const maps = {};
+            for (const cid of [...new Set((scorecards || []).map(s => s.course_id).filter(Boolean))]) {
+                maps[cid] = await getCourseParMap(cid);
+            }
+            return maps;
+        }
+
         // Get event leaderboard
         async function getEventLeaderboard(eventId, format = 'stableford') {
             // Get scorecards linked to this event
             const { data: scorecards, error } = await supabaseClient
                 .from('scorecards')
                 .select(`
-                    id, player_id, player_name, total_gross, total_net, status, created_at, scoring_format, group_id,
+                    id, player_id, player_name, total_gross, total_net, status, created_at, scoring_format, group_id, course_id,
                     scores (hole_number, gross_score, net_score, stableford_points, par)
                 `)
                 .eq('event_id', eventId);
@@ -746,7 +787,7 @@
                 const { data: extraCards } = await supabaseClient
                     .from('scorecards')
                     .select(`
-                        id, player_id, player_name, total_gross, total_net, status, created_at, scoring_format, group_id,
+                        id, player_id, player_name, total_gross, total_net, status, created_at, scoring_format, group_id, course_id,
                         scores (hole_number, gross_score, net_score, stableford_points, par)
                     `)
                     .is('event_id', null)
@@ -792,6 +833,7 @@
             const uniqueScorecards = Array.from(bestByPlayer.values());
             console.log(`[Live] Deduplicated ${scorecards.length} scorecards to ${uniqueScorecards.length} unique players`);
 
+            const parMaps = await getParMapsFor(uniqueScorecards);
             const leaderboard = uniqueScorecards.map(sc => {
                 // Store both gross and par for each hole
                 const holeScores = new Array(18).fill(null);
@@ -802,6 +844,9 @@
                         holePars[score.hole_number - 1] = score.par || 4; // Default to par 4 if not set
                     }
                 }
+                // Unplayed holes: real course pars, not the P4 placeholder
+                const parMap = parMaps[sc.course_id];
+                if (parMap) for (let i = 0; i < 18; i++) { if (holePars[i] == null) holePars[i] = parMap[i]; }
 
                 return {
                     player_id: sc.player_id,
@@ -865,7 +910,7 @@
             const { data: scorecards, error } = await supabaseClient
                 .from('scorecards')
                 .select(`
-                    id, player_id, player_name, created_at,
+                    id, player_id, player_name, created_at, course_id,
                     scores (hole_number, gross_score, stableford_points, par)
                 `)
                 .in('player_id', entrantIds)
@@ -892,6 +937,7 @@
                 }
             }
 
+            const poolParMaps = await getParMapsFor(Object.values(bestScorecardByPlayer));
             const playerScores = {};
             for (const sc of Object.values(bestScorecardByPlayer)) {
                 const holeScores = new Array(18).fill(null);
@@ -902,6 +948,8 @@
                         holePars[score.hole_number - 1] = score.par || 4;
                     }
                 }
+                const pMap = poolParMaps[sc.course_id];
+                if (pMap) for (let i = 0; i < 18; i++) { if (holePars[i] == null) holePars[i] = pMap[i]; }
 
                 playerScores[sc.player_id] = {
                     player_id: sc.player_id,
@@ -934,7 +982,7 @@
             const { data: scorecards, error } = await supabaseClient
                 .from('scorecards')
                 .select(`
-                    id, player_id, player_name, created_at, scoring_format, group_id,
+                    id, player_id, player_name, created_at, scoring_format, group_id, course_id,
                     scores (hole_number, gross_score, net_score, stableford_points, par)
                 `)
                 .eq('group_id', groupId)
@@ -944,6 +992,7 @@
             if (error || !scorecards) return [];
 
             // Build leaderboard same as events
+            const casualParMaps = await getParMapsFor(scorecards);
             const leaderboard = scorecards.map(sc => {
                 const holeScores = new Array(18).fill(null);
                 const holePars = new Array(18).fill(null);
@@ -953,6 +1002,8 @@
                         holePars[score.hole_number - 1] = score.par || 4;
                     }
                 }
+                const cMap = casualParMaps[sc.course_id];
+                if (cMap) for (let i = 0; i < 18; i++) { if (holePars[i] == null) holePars[i] = cMap[i]; }
 
                 return {
                     player_id: sc.player_id,

@@ -9818,6 +9818,11 @@
                 'pce.card.enterbtn': 'ENTER SCORES — PAPER CARD',
                 'pce.kbd.save': 'save',
                 'pce.pts': 'PTS',
+                'pce.card.roster': 'EVENT PLAYERS',
+                'pce.card.left': 'LEFT',
+                'pce.card.now': 'ENTERING',
+                'pce.card.savefirst': 'Save {name} ({n}/18) before switching?',
+                'pce.card.alldone': 'All players posted',
                 'pce.toast.walkfail': 'Could not add walk-on',
                 'pce.toast.addfail': 'Could not add player',
                 'pce.toast.noscores': 'No scores on the card yet',
@@ -11781,6 +11786,11 @@
                 'pce.card.enterbtn': 'กรอกสกอร์ — สกอร์การ์ด',
                 'pce.kbd.save': 'บันทึก',
                 'pce.pts': 'แต้ม',
+                'pce.card.roster': 'ผู้เล่นในรายการ',
+                'pce.card.left': 'เหลือ',
+                'pce.card.now': 'กำลังกรอก',
+                'pce.card.savefirst': 'บันทึก {name} ({n}/18) ก่อนสลับหรือไม่?',
+                'pce.card.alldone': 'บันทึกครบทุกคนแล้ว',
                 'pce.toast.walkfail': 'เพิ่ม walk-on ไม่สำเร็จ',
                 'pce.toast.addfail': 'เพิ่มผู้เล่นไม่สำเร็จ',
                 'pce.toast.noscores': 'ยังไม่มีสกอร์ในการ์ด',
@@ -13342,6 +13352,11 @@
                 'pce.card.enterbtn': '스코어 입력 — 스코어 카드',
                 'pce.kbd.save': '저장',
                 'pce.pts': '점수',
+                'pce.card.roster': '이벤트 플레이어',
+                'pce.card.left': '남음',
+                'pce.card.now': '입력 중',
+                'pce.card.savefirst': '전환 전에 {name} ({n}/18)을(를) 저장할까요?',
+                'pce.card.alldone': '전원 등록 완료',
                 'pce.toast.walkfail': '워크온 추가 실패',
                 'pce.toast.addfail': '플레이어 추가 실패',
                 'pce.toast.noscores': '카드에 스코어가 없습니다',
@@ -15739,6 +15754,11 @@
                 'pce.card.enterbtn': 'スコア入力 — スコアカード',
                 'pce.kbd.save': '保存',
                 'pce.pts': 'PT',
+                'pce.card.roster': 'イベントプレーヤー',
+                'pce.card.left': '残り',
+                'pce.card.now': '入力中',
+                'pce.card.savefirst': '切替前に {name} ({n}/18) を保存しますか?',
+                'pce.card.alldone': '全員登録済み',
                 'pce.toast.walkfail': 'ウォークオンを追加できませんでした',
                 'pce.toast.addfail': 'プレーヤーを追加できませんでした',
                 'pce.toast.noscores': 'カードにスコアがありません',
@@ -143390,6 +143410,13 @@ class OrganizerScoringSystem {
             scores: Object.assign({}, existing || {}),
             handicap: round.handicap_used,
             saveLabel: _lvT('pce.saveround', 'SAVE ROUND'),
+            players: Object.keys(this._hbhRows || {}).map(k => {
+                const r = this._hbhRows[k];
+                return { id: k, name: this.getPlayerName(r.golfer_id, r), hcp: r.handicap_used,
+                    posted: !!(this._hbhScores && this._hbhScores[k] && Object.keys(this._hbhScores[k]).length), gross: r.total_gross };
+            }),
+            activeId: rid,
+            onPick: (k) => self.hbhOpenCard(k),
             onSave: async (scores) => {
                 if (!self._hbhScores) self._hbhScores = {};
                 self._hbhScores[rid] = scores;
@@ -143726,6 +143753,9 @@ class OrganizerScoringSystem {
                 handicap: round.handicap_used,
                 saveLabel: _lvT('pce.card.savechanges', 'SAVE CHANGES'),
                 clearLabel: _lvT('pce.card.clearcard', 'CLEAR SCORECARD'),
+                players: (this.leaderboardData || []).filter(r => r.id).map(r => ({ id: r.id, name: this.getPlayerName(r.golfer_id, r), hcp: r.handicap_used, posted: !!r.total_gross, gross: r.total_gross })),
+                activeId: roundId,
+                onPick: (rid) => self.openEditScoreModal(rid),
                 onSave: async (scores) => {
                     self.editScoreData = scores;
                     return await self.saveEditedScore();   // false keeps the card open on failure
@@ -145912,9 +145942,8 @@ class OrganizerScoringSystem {
                     </td>
                     <td class="py-2 px-3 border text-center">
                         <button onclick="window.OrganizerScoringSystem.toggleHoleByHole('${player.player_id}')"
-                                class="px-3 py-1 text-xs ${hasHoleScores ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'} rounded hover:opacity-80"
-                                ${player.hasExistingRound ? 'disabled' : ''}>
-                            ${hasHoleScores ? this._qseEsc(_lvT('qse.edit', '✓ Edit')) : this._qseEsc(_lvT('qse.enter', '+ Enter'))}
+                                class="px-3 py-1 text-xs ${hasHoleScores || player.hasExistingRound ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'} rounded hover:opacity-80">
+                            ${hasHoleScores || player.hasExistingRound ? this._qseEsc(_lvT('qse.edit', '✓ Edit')) : this._qseEsc(_lvT('qse.enter', '+ Enter'))}
                         </button>
                     </td>
                     <td class="py-2 px-3 border text-center">${statusIcon}</td>
@@ -145960,6 +145989,21 @@ class OrganizerScoringSystem {
         const courseData = await this.loadCourseData();
         if (!this.qseScores[playerId]) this.qseScores[playerId] = { gross: '', stableford: '', holes: {} };
         if (!this.qseScores[playerId].holes) this.qseScores[playerId].holes = {};
+        // Posted player picked from the card roster: seed their SAVED holes so the card opens
+        // prefilled for editing instead of blank (a blank re-save would wipe their round).
+        if (player.hasExistingRound) {
+            const cur = this.qseScores[playerId].holes;
+            if (!Object.keys(cur).some(k => cur[k])) {
+                try {
+                    const sb = window.SupabaseDB.client;
+                    const ex = await sb.from('rounds').select('id').eq('society_event_id', (this.qseEventData || {}).id).eq('golfer_id', playerId).order('played_at', { ascending: false }).limit(1);
+                    if (ex.data && ex.data.length) {
+                        const hs = await sb.from('round_holes').select('hole_number, gross_score').eq('round_id', ex.data[0].id);
+                        (hs.data || []).forEach(r => { if (r.gross_score != null) cur[r.hole_number] = r.gross_score; });
+                    }
+                } catch (e) { console.warn('[QSE] card prefill', e); }
+            }
+        }
         const self = this;
         window.PaperCardEntry.openCard({
             title: player.hasExistingRound ? _lvT('pce.card.edit', 'Edit Score') : _lvT('pce.card.enter', 'Enter Score'),
@@ -145971,6 +146015,9 @@ class OrganizerScoringSystem {
             scores: Object.assign({}, this.qseScores[playerId].holes),
             handicap: player.handicap,
             saveLabel: player.hasExistingRound ? _lvT('pce.resave', 'RE-SAVE ROUND') : _lvT('pce.saveround', 'SAVE ROUND'),
+            players: (this.qsePlayersData || []).map(p => ({ id: p.player_id, name: p.player_name, hcp: p.handicap, posted: !!p.hasExistingRound })),
+            activeId: playerId,
+            onPick: (pid) => self.toggleHoleByHole(pid),
             onSave: async (scores) => {
                 self.qseScores[playerId].holes = scores;
                 try { await self.updateHoleTotals(playerId); } catch (e) {}
@@ -146936,7 +146983,15 @@ window.PaperCardEntry = {
             saveLabel: opts.saveLabel || _lvT('pce.card.save','SAVE'), onSave: opts.onSave || null,
             onClear: opts.onClear || null, clearLabel: opts.clearLabel || _lvT('pce.card.clear','CLEAR CARD'), busy: false,
             // playing handicap enables LIVE net/stableford on the card (v960)
-            hcp: (opts.handicap === '' || opts.handicap == null) ? null : window.toPlayingHandicap(opts.handicap) };
+            hcp: (opts.handicap === '' || opts.handicap == null) ? null : window.toPlayingHandicap(opts.handicap),
+            // v961: event roster on the card — tap to switch player; 18th hole auto-saves and
+            // rolls to the next unscored player (onPick reopens the card for them)
+            players: Array.isArray(opts.players) ? opts.players.map(function(p){ return { id: p.id, name: p.name, hcp: p.hcp, posted: !!p.posted, gross: p.gross }; }) : null,
+            activeId: opts.activeId != null ? opts.activeId : null,
+            onPick: opts.onPick || null,
+            autoSave: opts.autoSave !== false,
+            snap: '' };
+        this._custom.snap = JSON.stringify(this.scores);
         this.startNine = opts.startNine === 10 ? 10 : 1;
         this.sheetOpen = false; this._dirHits = []; this._search = '';
         // cursor lands on the first EMPTY hole so edit flows are fix-ready
@@ -146973,26 +147028,85 @@ window.PaperCardEntry = {
         var pts = (c.hcp != null && filled) ? this._cardPtsTots() : null;
         return '<div class="pce-nt"><div class="a">' + this._esc(c.title) + '</div><div class="b">' + this._esc(c.sub) + '</div></div>'+
             '<div class="pce-sum"><span>' + (t.out || 0) + ' + ' + (t.inn || 0) + ' = ' + (t.tot || 0) + ' ' + this._esc(_lvT('pce.gross','GROSS')) + (pts ? ' · ' + pts.tot + ' ' + this._esc(_lvT('pce.pts','PTS')) : '') + '</span><span style="font:600 9px/1.3 \'JetBrains Mono\',monospace;color:#64748b;">' + filled + '/18' + (c.hcp == null ? ' · ' + this._esc(_lvT('pce.autocalc','NET & PTS AUTO')) : '') + '</span></div>'+
-            '<div style="padding:12px 14px;">'+
+            '<div style="padding:12px 14px;flex-shrink:0;">'+
                 '<button class="pce-cta pce-cta2" ' + (filled && !c.busy ? '' : 'disabled') + ' onclick="PaperCardEntry._customSave()">' + (c.busy ? '…' : this._esc(c.saveLabel) + (filled && filled < 18 ? ' (' + filled + '/18)' : '')) + '</button>'+
                 (c.onClear ? '<button class="pce-clr" onclick="PaperCardEntry._customClear()">' + this._esc(c.clearLabel) + '</button>' : '')+
-            '</div>';
+            '</div>'+
+            this._customRosterHTML();
     },
-    _customSave: async function(){
-        var c = this._custom; if (!c || c.busy) return;
+    _customSave: function(){ return this._customSaveFlow(true, false); },
+    _customAutoSave: function(){ return this._customSaveFlow(true, true); },
+    // advance: on success, roll to the next unscored roster player (or close when no roster).
+    // isAuto: skip the interactive guards (18/18 completion or an already-confirmed switch).
+    _customSaveFlow: async function(advance, isAuto){
+        var c = this._custom; if (!c || c.busy) return false;
         var filled = this._filled();
-        if (!filled) { window.NotificationManager.show(_lvT('pce.toast.noscores','No scores on the card yet'), 'warning'); return; }
-        if (filled < 18 && !confirm(_lvT('pce.confirm.partial','Only {n} of 18 holes filled — save anyway?').replace('{n}', filled))) return;
+        if (!filled) { if (!isAuto) window.NotificationManager.show(_lvT('pce.toast.noscores','No scores on the card yet'), 'warning'); return false; }
+        if (!isAuto && filled < 18 && !confirm(_lvT('pce.confirm.partial','Only {n} of 18 holes filled — save anyway?').replace('{n}', filled))) return false;
         c.busy = true; this.render();
+        var ok = false;
         try {
             var ret = c.onSave ? await c.onSave(Object.assign({}, this.scores)) : true;
-            if (ret !== false) { this.close(); return; }
+            ok = ret !== false;
         } catch(e) {
             console.error('[CardPad] save', e);
             window.NotificationManager.show(_lvT('pce.card.savefail','Could not save — try again'), 'error');
         }
+        if (!this._custom) return ok;           // a caller may have torn the card down
         c.busy = false;
-        if (this._custom) this.render();
+        if (!ok) { this.render(); return false; }
+        c.snap = JSON.stringify(this.scores);
+        if (c.players && c.players.length) {
+            var me = c.players.find(function(p){ return String(p.id) === String(c.activeId); });
+            if (me) { me.posted = true; me.gross = this._tots().tot; }
+            var next = this._rosterNext();
+            if (advance && next && c.onPick) { c.onPick(next.id); return true; }
+            if (advance && !next) window.NotificationManager.show('✓ ' + _lvT('pce.card.alldone','All players posted'), 'success', 2500);
+            this.render();
+            return true;
+        }
+        if (advance) { this.close(); return true; }
+        this.render();
+        return true;
+    },
+    _rosterNext: function(){
+        var c = this._custom; if (!c || !c.players || !c.players.length) return null;
+        var idx = c.players.findIndex(function(p){ return String(p.id) === String(c.activeId); });
+        for (var i = 1; i <= c.players.length; i++) {
+            var p = c.players[(idx + i + c.players.length) % c.players.length];
+            if (!p.posted && String(p.id) !== String(c.activeId)) return p;
+        }
+        return null;
+    },
+    // Roster tap: keep typed work safe, then let the caller reopen the card for the new player.
+    _customPick: async function(pid){
+        var c = this._custom; if (!c || c.busy || !c.onPick) return;
+        if (String(pid) === String(c.activeId)) return;
+        var dirty = c.snap !== JSON.stringify(this.scores);
+        if (dirty && this._filled()) {
+            var nm = ((c.players || []).find(function(p){ return String(p.id) === String(c.activeId); }) || {}).name || '';
+            if (confirm(_lvT('pce.card.savefirst','Save {name} ({n}/18) before switching?').replace('{name}', nm).replace('{n}', this._filled()))) {
+                var ok = await this._customSaveFlow(false, true);
+                if (!ok) return;
+            }
+        }
+        c.onPick(pid);
+    },
+    _customRosterHTML: function(){
+        var c = this._custom, self = this;
+        if (!c || !c.players || !c.players.length) return '';
+        var left = c.players.filter(function(p){ return !p.posted; }).length;
+        var rows = '<div class="pce-sec">' + this._esc(_lvT('pce.card.roster','EVENT PLAYERS')) + ' (' + c.players.length + ' · ' + left + ' ' + this._esc(_lvT('pce.card.left','LEFT')) + ')</div>';
+        c.players.forEach(function(p){
+            var on = String(p.id) === String(c.activeId);
+            rows += '<div class="pce-nrow pick' + (on ? ' hit' : '') + (p.posted && !on ? ' done' : '') + '" onclick="PaperCardEntry._customPick(\'' + self._esc(String(p.id).replace(/'/g, '')) + '\')">'+
+                '<span data-golfer-av="' + self._esc(p.id) + '" data-golfer-av-nm="' + self._esc(p.name) + '" data-golfer-av-sz="24"></span>'+
+                '<div><div class="nm">' + self._esc(p.name) + '</div><div class="sub">HCP ' + (window.formatHandicapDisplay ? window.formatHandicapDisplay(p.hcp) : (p.hcp != null ? p.hcp : '—')) + '</div></div>'+
+                (on ? '<span class="g" style="background:#f0fdf4;border-color:#bbf7d0;color:#15803d;">' + self._esc(_lvT('pce.card.now','ENTERING')) + '</span>'
+                    : (p.posted ? '<span class="ok">' + (p.gross != null ? self._esc(p.gross) + ' ' : '') + '✓</span>' : ''))+
+                '</div>';
+        });
+        return '<div class="pce-names">' + rows + '</div>';
     },
     _customClear: async function(){
         var c = this._custom; if (!c || c.busy || !c.onClear) return;
@@ -147083,6 +147197,8 @@ window.PaperCardEntry = {
         '#pceOverlay .pce-clr{margin-top:8px;display:block;width:100%;background:#fff;border:2px dashed #fecaca;color:#dc2626;border-radius:12px;padding:10px;font:800 11px/1 \'Instrument Sans\',sans-serif;cursor:pointer;}'+
         '#pceOverlay .pce-hpts{margin-left:auto;min-width:18px;text-align:center;font:800 10.5px/1 \'JetBrains Mono\',monospace;color:#16a34a;}'+
         '#pceOverlay .pce-hrow .pce-hpts + .pce-cell{margin-left:6px;}'+
+        '#pceOverlay .pce-mroster{margin-top:10px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;}'+
+        '#pceOverlay .pce-mroster .pce-names{max-height:340px;}'+
         '#pceOverlay .pce-sum{margin:8px 14px 0;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:8px 12px;font:800 12px/1 \'JetBrains Mono\',monospace;color:#15803d;display:flex;justify-content:space-between;align-items:center;}'+
         '#pceOverlay .pce-sheetbg{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:10060;display:flex;align-items:flex-end;}'+
         '#pceOverlay .pce-sheet{background:#fff;width:100%;border-radius:20px 20px 0 0;max-height:86vh;display:flex;flex-direction:column;}'+
@@ -147238,9 +147354,18 @@ window.PaperCardEntry = {
     tap: function(n){
         if (this.nineSel && !this.courseData) { window.NotificationManager.show(_lvT('pce.pick.nines','SELECT THE NINES PLAYED — scores locked until then'), 'warning'); return; }
         var h = this._curHole();
+        var wasFilled = this._filled();
         this.scores[h] = n;
         if (this.cur < 17) { this.cur++; this.render(); }
+        else if (this._custom) { this.cur = 17; this.render(); }
         else { this.cur = 17; this.openSheet(); }
+        // Custom card: the tap that COMPLETES the 18th hole auto-saves (Pete 2026-08-23 —
+        // no button hunt) and, with a roster, rolls straight on to the next unscored player.
+        // Crossing 17→18 only — edit flows that OPEN at 18/18 never auto-fire.
+        if (this._custom && this._custom.autoSave && wasFilled === 17 && this._filled() === 18) {
+            var self = this;
+            setTimeout(function(){ if (self._custom) self._customAutoSave(); }, 350);
+        }
     },
     back: function(){
         var h = this._curHole();
@@ -147298,7 +147423,13 @@ window.PaperCardEntry = {
         document.getElementById('pceSide').innerHTML = this._custom ? this._customPanelHTML() : this._namesHTML(false);
         var host = document.getElementById('pceSheetHost');
         host.innerHTML = (!desktop && this.sheetOpen && !this._custom) ? ('<div class="pce-sheetbg" onclick="if(event.target===this){PaperCardEntry.sheetOpen=false;PaperCardEntry.render();}"><div class="pce-sheet">' + this._namesHTML(true) + '</div></div>') : '';
-        try { if (!this._custom && window._golferChipDecorate) { window._golferChipDecorate(document.getElementById('pceSide'), 24); if (host.firstChild) window._golferChipDecorate(host, 24); } } catch(e){}
+        try {
+            if (window._golferChipDecorate) {
+                window._golferChipDecorate(document.getElementById('pceSide'), 24);
+                if (this._custom) window._golferChipDecorate(document.getElementById('pceMain'), 24);   // mobile roster avatars
+                if (host.firstChild) window._golferChipDecorate(host, 24);
+            }
+        } catch(e){}
     },
 
     _cellHTML: function(h){
@@ -147355,7 +147486,8 @@ window.PaperCardEntry = {
             '</div>'+
             (this._custom
                 ? ('<button class="pce-cta pce-mobonly" ' + (filled && !this._custom.busy ? '' : 'disabled') + ' onclick="PaperCardEntry._customSave()">' + (this._custom.busy ? '…' : this._esc(this._custom.saveLabel) + (filled && filled < 18 ? ' (' + filled + '/18)' : '')) + '</button>'
-                    + (this._custom.onClear ? '<button class="pce-clr pce-mobonly" onclick="PaperCardEntry._customClear()">' + this._esc(this._custom.clearLabel) + '</button>' : ''))
+                    + (this._custom.onClear ? '<button class="pce-clr pce-mobonly" onclick="PaperCardEntry._customClear()">' + this._esc(this._custom.clearLabel) + '</button>' : '')
+                    + (this._custom.players ? '<div class="pce-mroster pce-mobonly">' + this._customRosterHTML() + '</div>' : ''))
                 : ('<button class="pce-cta pce-mobonly" ' + (filled ? '' : 'disabled') + ' onclick="PaperCardEntry.openSheet()">' + this._esc(_lvT('pce.whose','WHOSE CARD IS THIS?')) + (filled < 18 ? ' (' + filled + '/18)' : '') + ' →</button>'));
     },
 

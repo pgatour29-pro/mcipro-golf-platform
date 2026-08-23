@@ -360,8 +360,11 @@
                     .order('created_at', { ascending: false }).limit(100);
                 const me = uid();
                 const unread = (data || []).filter(m => m.sender_id !== me && !(m.read_by || []).includes(me)).length;
-                const badge = document.getElementById('manager-msg-badge');
-                if (badge) { badge.textContent = unread > 99 ? '99+' : unread; badge.style.display = unread ? 'flex' : 'none'; }
+                // Tab badge + MHV-C phone mirrors (dock Chat + Messages cube)
+                ['manager-msg-badge', 'mgrDockMsgBadge', 'mgrCubeMsgBadge'].forEach(id => {
+                    const badge = document.getElementById(id);
+                    if (badge) { badge.textContent = unread > 99 ? '99+' : unread; badge.style.display = unread ? 'flex' : 'none'; }
+                });
             } catch (e) { }
         },
 

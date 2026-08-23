@@ -9781,6 +9781,13 @@
                 'pce.kbd.name': 'pick the player',
                 'pce.whose': 'Whose card is this?',
                 'pce.whose.sub': 'Tap a name to save this card to them.',
+                'pce.whofirst': 'Who are you scoring?',
+                'pce.whofirst.sub': 'Tap a name to start their card — or just enter scores first.',
+                'pce.pickfirst': 'SELECT PLAYER (OPTIONAL)',
+                'pce.pin.save': 'SAVE — {name}',
+                'pce.pin.switch': 'Save {name} first, then start {next}?',
+                'pce.pin.now': 'NOW SCORING',
+                'pce.pin.unpin': 'Unpin — back to score-first',
                 'pce.gross': 'GROSS',
                 'pce.autocalc': 'NET & PTS AUTO',
                 'pce.typename': 'Type a name…',
@@ -11753,6 +11760,13 @@
                 'pce.kbd.name': 'เลือกผู้เล่น',
                 'pce.whose': 'การ์ดใบนี้ของใคร?',
                 'pce.whose.sub': 'แตะชื่อเพื่อบันทึกการ์ดใบนี้ให้ผู้เล่น',
+                'pce.whofirst': 'กำลังกรอกสกอร์ให้ใคร?',
+                'pce.whofirst.sub': 'แตะชื่อเพื่อเริ่มการ์ดของเขา หรือกรอกสกอร์ก่อนก็ได้',
+                'pce.pickfirst': 'เลือกผู้เล่น (ไม่บังคับ)',
+                'pce.pin.save': 'บันทึก — {name}',
+                'pce.pin.switch': 'บันทึกการ์ดของ {name} ก่อน แล้วเริ่มของ {next}?',
+                'pce.pin.now': 'กำลังกรอกสกอร์',
+                'pce.pin.unpin': 'เลิกเลือก — กลับไปกรอกสกอร์ก่อน',
                 'pce.gross': 'กรอส',
                 'pce.autocalc': 'เน็ต & แต้ม อัตโนมัติ',
                 'pce.typename': 'พิมพ์ชื่อ…',
@@ -13323,6 +13337,13 @@
                 'pce.kbd.name': '플레이어 선택',
                 'pce.whose': '누구의 카드인가요?',
                 'pce.whose.sub': '이름을 탭하면 이 카드가 저장됩니다.',
+                'pce.whofirst': '누구의 스코어를 입력하나요?',
+                'pce.whofirst.sub': '이름을 탭해 카드를 시작하거나, 점수를 먼저 입력해도 됩니다.',
+                'pce.pickfirst': '플레이어 선택 (선택사항)',
+                'pce.pin.save': '저장 — {name}',
+                'pce.pin.switch': '{name}의 카드를 먼저 저장하고 {next}를 시작할까요?',
+                'pce.pin.now': '입력 중',
+                'pce.pin.unpin': '선택 해제 — 점수 먼저 입력으로',
                 'pce.gross': '그로스',
                 'pce.autocalc': '네트 & 포인트 자동',
                 'pce.typename': '이름 입력…',
@@ -15729,6 +15750,13 @@
                 'pce.kbd.name': 'プレーヤー選択',
                 'pce.whose': 'このカードは誰のもの?',
                 'pce.whose.sub': '名前をタップするとこのカードが保存されます。',
+                'pce.whofirst': '誰のスコアを入力しますか?',
+                'pce.whofirst.sub': '名前をタップしてカードを開始、または先にスコア入力もできます。',
+                'pce.pickfirst': 'プレーヤー選択(任意)',
+                'pce.pin.save': '保存 — {name}',
+                'pce.pin.switch': '{name}のカードを保存してから{next}を開始しますか?',
+                'pce.pin.now': '入力中',
+                'pce.pin.unpin': '選択解除 — スコア先入力へ',
                 'pce.gross': 'グロス',
                 'pce.autocalc': 'ネット & ポイント自動',
                 'pce.typename': '名前を入力…',
@@ -147126,7 +147154,7 @@ window.OrganizerScoringSystem = new OrganizerScoringSystem();
 // column shape as _persistHoleScores, so leaderboards / results / handicap engine see no
 // difference from a QSE-entered round. Existing QSE stays as the per-player EDIT surface.
 window.PaperCardEntry = {
-    players: [], scores: {}, cur: 0, startNine: 1, sheetOpen: false, saving: false,
+    players: [], scores: {}, cur: 0, startNine: 1, sheetOpen: false, saving: false, pin: null,
     courseData: null, groupOf: {}, posted: {}, count: 0, _dirHits: [], _dirSeq: 0,
     _oneTimer: null, _keyBound: null, nineSel: null, nineF: '', nineB: '', comboName: null,
     _esc: function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
@@ -147183,7 +147211,7 @@ window.PaperCardEntry = {
             this.courseData = await this._loadCourse();
         }
         this.scores = {}; this.cur = 0; this.startNine = 1; this.sheetOpen = false; this.count = 0;
-        this._dirHits = []; this._search = ''; this._custom = null;
+        this._dirHits = []; this._search = ''; this._custom = null; this.pin = null;
         this._mount();
         var teeEl = document.getElementById('pceTee'); if (teeEl) teeEl.style.display = '';
         this.render();
@@ -147194,7 +147222,7 @@ window.PaperCardEntry = {
         if (this._keyBound) { document.removeEventListener('keydown', this._keyBound, true); this._keyBound = null; }
         if (this._oneTimer) { clearTimeout(this._oneTimer); this._oneTimer = null; }
         var el = document.getElementById('pceOverlay'); if (el) el.remove();
-        var wasCustom = !!this._custom; this._custom = null;
+        var wasCustom = !!this._custom; this._custom = null; this.pin = null;
         // custom-mode callers own their refresh (saveEditedScore, qseSavePlayerRound, _hbhSaveRow…)
         if (!wasCustom) { try { window.OrganizerScoringSystem.refreshScores && window.OrganizerScoringSystem.refreshScores(); } catch(e){} }
     },
@@ -147260,11 +147288,11 @@ window.PaperCardEntry = {
         return neg ? -(full + (si > 18 - rem ? 1 : 0)) : (full + (si <= rem ? 1 : 0));
     },
     _cardPts: function(h){
-        var c = this._custom; if (!c || c.hcp == null) return null;
+        var hv = this._cardHcpVal(); if (hv == null) return null;
         var s = this.scores[h]; if (!s) return null;
         var m = this._holeMeta(h);
         var par = parseInt(m.par) || 4, si = parseInt(m.handicap) || h;
-        return Math.max(0, 2 + par - (s - this._cardShots(c.hcp, si)));
+        return Math.max(0, 2 + par - (s - this._cardShots(hv, si)));
     },
     _cardPtsTots: function(){
         var o = 0, i = 0;
@@ -147443,6 +147471,11 @@ window.PaperCardEntry = {
         '#pceOverlay .pce-cell.birdie{color:#dc2626;border-radius:50%;border-color:#fca5a5;}'+
         '#pceOverlay .pce-kbd{margin-top:12px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 14px;display:flex;gap:18px;align-items:center;flex-wrap:wrap;font:600 11px/1.4 \'Instrument Sans\',sans-serif;color:#475569;}'+
         '#pceOverlay .pce-kbd kbd{background:#f1f5f9;border:1px solid #cbd5e1;border-bottom-width:2px;border-radius:6px;font:800 10.5px/1 \'JetBrains Mono\',monospace;color:#0f172a;padding:3px 6px;}'+
+        '#pceOverlay .pce-pinbar{display:flex;align-items:center;gap:10px;background:#f0fdf4;border:2px solid #16a34a;border-radius:12px;padding:8px 12px;margin-bottom:10px;}'+
+        '#pceOverlay .pce-pinbar .k{font:800 9px/1 \'JetBrains Mono\',monospace;color:#15803d;letter-spacing:.08em;}'+
+        '#pceOverlay .pce-pinbar .nm{font:800 15px/1.2 \'Instrument Sans\',sans-serif;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'+
+        '#pceOverlay .pce-pinbar .sub{font:600 10px/1.3 \'JetBrains Mono\',monospace;color:#475569;}'+
+        '#pceOverlay .pce-pinbar .x{margin-left:auto;border:none;background:#dcfce7;border-radius:8px;color:#166534;font-size:16px;font-weight:700;padding:4px 10px;cursor:pointer;flex-shrink:0;}'+
         // mobile 2-col card
         '#pceOverlay .pce-cols{display:grid;grid-template-columns:1fr 1fr;gap:8px;}'+
         '#pceOverlay .pce-col9{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;}'+
@@ -147658,7 +147691,7 @@ window.PaperCardEntry = {
         var wasFilled = this._filled();
         this.scores[h] = n;
         if (this.cur < 17) { this.cur++; this.render(); }
-        else if (this._custom) { this.cur = 17; this.render(); }
+        else if (this._custom || this.pin) { this.cur = 17; this.render(); }
         else { this.cur = 17; this.openSheet(); }
         // Custom card: the tap that COMPLETES the 18th hole auto-saves (Pete 2026-08-23 —
         // no button hunt) and, with a roster, rolls straight on to the next unscored player.
@@ -147666,6 +147699,12 @@ window.PaperCardEntry = {
         if (this._custom && this._custom.autoSave && wasFilled === 17 && this._filled() === 18) {
             var self = this;
             setTimeout(function(){ if (self._custom) self._customAutoSave(); }, 350);
+        }
+        // Name-first paper card (v969): a pinned player's card auto-saves the moment it
+        // completes — same rhythm as the custom card, no "whose card" sheet needed.
+        if (!this._custom && this.pin && wasFilled === 17 && this._filled() === 18) {
+            var self2 = this;
+            setTimeout(function(){ if (self2.pin && !self2._custom) self2.saveTo(self2.pin); }, 350);
         }
     },
     back: function(){
@@ -147681,6 +147720,59 @@ window.PaperCardEntry = {
             var inp = window.innerWidth >= 900 ? document.getElementById('pceName') : document.getElementById('pceNameM');
             if (inp) inp.focus();
         }, 60);
+    },
+
+    // ===== NAME-FIRST pin (v969) =====
+    // Pete 2026-08-23: organizers also want the REVERSE order — tap a name FIRST, the name sits
+    // on top of the card, enter their scores, save, pick the next name. The original score-first
+    // protocol is untouched: a name tapped on a card that already has scores still SAVES to them.
+    // Empty card + name tap = pin. Pinned card knows the handicap → live PTS + 18th auto-save.
+    nameTap: function(pid){
+        if (this._custom) return;
+        if (!this._filled()) { this.setPin(pid); return; }
+        var self = this;
+        if (this.pin && String(pid) !== String(this.pin)) {
+            // card in progress for the pinned player — save theirs first, then start the tapped one
+            var cp = (this.players || []).find(function(x){ return String(x.player_id) === String(self.pin); });
+            var np = (this.players || []).find(function(x){ return String(x.player_id) === String(pid); });
+            if (!confirm(_lvT('pce.pin.switch','Save {name} first, then start {next}?').replace('{name}', (cp && cp.player_name) || '?').replace('{next}', (np && np.player_name) || '?'))) return;
+            this.saveTo(this.pin).then(function(){ if (!self._filled()) self.setPin(pid); });
+            return;
+        }
+        this.saveTo(pid);
+    },
+    setPin: function(pid){
+        this.pin = String(pid);
+        this.sheetOpen = false;
+        this.render();
+        try { window.innerWidth >= 900 && setTimeout(function(){ var el = document.getElementById('pceOverlay'); el && el.focus && el.focus(); }, 50); } catch(e){}
+    },
+    unpin: function(){ this.pin = null; this.render(); },
+    _pinPlayer: function(){
+        if (!this.pin) return null;
+        var self = this;
+        return (this.players || []).find(function(x){ return String(x.player_id) === String(self.pin); }) || null;
+    },
+    // The card's live handicap: custom mode passes it in; the pinned paper card derives it the
+    // same way saveTo will (toPlayingHandicap) so the on-card PTS match what gets stored.
+    _cardHcpVal: function(){
+        if (this._custom) return this._custom.hcp != null ? this._custom.hcp : null;
+        var p = this._pinPlayer();
+        if (!p || p.handicap == null) return null;
+        try { return window.toPlayingHandicap(p.handicap); } catch(e) { return null; }
+    },
+    _pinBarHTML: function(){
+        if (this._custom || !this.pin) return '';
+        var p = this._pinPlayer(); if (!p) return '';
+        var g = this.groupOf[String(p.player_id)] || '';
+        var pi = this.posted[String(p.player_id)];
+        var sub = 'HCP ' + (window.formatHandicapDisplay ? window.formatHandicapDisplay(p.handicap) : p.handicap)
+            + (g ? ' · ' + g : '')
+            + (pi ? ' · ' + _lvT('pce.alreadyposted','ALREADY POSTED ✓') + (pi.gross != null ? ' ' + pi.gross : '') : '');
+        return '<div class="pce-pinbar">'+
+            '<span data-golfer-av="' + this._esc(p.player_id) + '" data-golfer-av-nm="' + this._esc(p.player_name) + '" data-golfer-av-sz="28"></span>'+
+            '<div style="min-width:0;"><div class="k">' + this._esc(_lvT('pce.pin.now','NOW SCORING')) + '</div><div class="nm">' + this._esc(p.player_name) + '</div><div class="sub">' + this._esc(sub) + '</div></div>'+
+            '<button class="x" onclick="PaperCardEntry.unpin()" title="' + this._esc(_lvT('pce.pin.unpin','Unpin — back to score-first')) + '">✕</button></div>';
     },
 
     _keydown: function(e){
@@ -147705,10 +147797,11 @@ window.PaperCardEntry = {
         else if (e.key === 'Backspace') { e.preventDefault(); this.back(); }
         else if (e.key === 'ArrowRight') { e.preventDefault(); if (this.cur < 17) { this.cur++; this.render(); } }
         else if (e.key === 'ArrowLeft') { e.preventDefault(); if (this.cur > 0) { this.cur--; this.render(); } }
-        else if (e.key === 'Enter') { e.preventDefault(); if (this._custom) { this._customSave(); } else { this.openSheet(); } }
+        else if (e.key === 'Enter') { e.preventDefault(); if (this._custom) { this._customSave(); } else if (this.pin) { this.saveTo(this.pin); } else { this.openSheet(); } }
         else if (e.key === 'Escape') {
             if (this._custom) { if (!this._filled() || confirm(_lvT('pce.card.discard','Discard this card?'))) this.close(); }
             else if (this.sheetOpen) { this.sheetOpen = false; this.render(); }
+            else if (this.pin) { this.unpin(); }
         }
     },
 
@@ -147716,7 +147809,8 @@ window.PaperCardEntry = {
         var el = document.getElementById('pceOverlay'); if (!el) return;
         var ev = this.event || {};
         var line = String(ev.title || '') + ' · ' + String(ev.course_name || ev.courseName || '') + ' · ' + String(ev.event_date || '');
-        var t1El = document.getElementById('pceT1'); if (t1El) t1El.textContent = this._custom ? this._custom.title : _lvT('pce.title','Paper Card Entry');
+        var pinP = this._custom ? null : this._pinPlayer();
+        var t1El = document.getElementById('pceT1'); if (t1El) t1El.textContent = this._custom ? this._custom.title : (pinP ? pinP.player_name : _lvT('pce.title','Paper Card Entry'));
         var evEl = document.getElementById('pceEvLine'); if (evEl) evEl.textContent = this._custom ? this._custom.sub : line;
         var progEl = document.getElementById('pceProg'); if (progEl) progEl.textContent = this._custom ? (this._filled() + '/18') : (this._postedCount() + '/' + (this.players || []).length + ' ' + _lvT('pce.posted','POSTED'));
         var desktop = window.innerWidth >= 900;
@@ -147727,7 +147821,7 @@ window.PaperCardEntry = {
         try {
             if (window._golferChipDecorate) {
                 window._golferChipDecorate(document.getElementById('pceSide'), 24);
-                if (this._custom) window._golferChipDecorate(document.getElementById('pceMain'), 24);   // mobile roster avatars
+                if (this._custom || this.pin) window._golferChipDecorate(document.getElementById('pceMain'), 24);   // mobile roster + pinned-banner avatars
                 if (host.firstChild) window._golferChipDecorate(host, 24);
             }
         } catch(e){}
@@ -147741,7 +147835,7 @@ window.PaperCardEntry = {
     },
     _cardTableHTML: function(){
         var self = this, t = this._tots();
-        var showPts = !!(this._custom && this._custom.hcp != null);
+        var showPts = this._cardHcpVal() != null;
         var pt = showPts ? this._cardPtsTots() : null;
         var row = function(from){
             var hs = []; for (var h = from; h < from + 9; h++) hs.push(h);
@@ -147757,19 +147851,19 @@ window.PaperCardEntry = {
             }
             return out;
         };
-        return this._nineBarHTML()+
+        return this._pinBarHTML() + this._nineBarHTML()+
             '<table class="pce-sc">' + row(1) + row(10) + '</table>'+
             '<div class="pce-kbd">'+
                 '<span><kbd>2</kbd>–<kbd>9</kbd> ' + this._esc(_lvT('pce.kbd.adv','score → auto-advance')) + '</span>'+
                 '<span><kbd>1</kbd>+' + this._esc(_lvT('pce.kbd.ten','digit = 1 / 10-15')) + '</span>'+
                 '<span><kbd>←</kbd><kbd>→</kbd> ' + this._esc(_lvT('pce.kbd.move','move')) + '</span>'+
                 '<span><kbd>⌫</kbd> ' + this._esc(_lvT('pce.kbd.back','back')) + '</span>'+
-                '<span><kbd>Enter</kbd> ' + this._esc(this._custom ? _lvT('pce.kbd.save','save') : _lvT('pce.kbd.name','pick the player')) + '</span>'+
+                '<span><kbd>Enter</kbd> ' + this._esc((this._custom || this.pin) ? _lvT('pce.kbd.save','save') : _lvT('pce.kbd.name','pick the player')) + '</span>'+
             '</div>';
     },
     _cardColsHTML: function(){
         var self = this, t = this._tots();
-        var showPts = !!(this._custom && this._custom.hcp != null);
+        var showPts = this._cardHcpVal() != null;
         var pt = showPts ? this._cardPtsTots() : null;
         var col = function(from, cap){
             var rows = ''; for (var h = from; h < from + 9; h++) { var m = self._holeMeta(h); var p = showPts ? self._cardPts(h) : null; rows += '<div class="pce-hrow"><span class="h">' + h + '</span><span class="p">P' + m.par + '·S' + (m.handicap || '') + '</span>' + (showPts ? '<span class="pce-hpts">' + (p == null ? '' : p) + '</span>' : '') + self._cellHTML(h) + '</div>'; }
@@ -147777,7 +147871,7 @@ window.PaperCardEntry = {
             return '<div class="pce-col9"><div class="pce-cap"><span>' + cap + '</span><span>PAR ' + (self.courseData ? parSum : '—') + '</span></div>' + rows + '</div>';
         };
         var filled = this._filled();
-        return this._nineBarHTML()+
+        return this._pinBarHTML() + this._nineBarHTML()+
             '<div class="pce-cols">' + col(1, 'OUT') + col(10, 'IN') + '</div>'+
             '<div class="pce-tots"><div class="pce-tot"><div class="k">OUT</div><div class="v">' + (t.out || 0) + '</div></div><div class="pce-tot"><div class="k">IN</div><div class="v">' + (t.inn || 0) + '</div></div><div class="pce-tot g"><div class="k">TOTAL</div><div class="v">' + (t.tot || 0) + '</div></div>' + (showPts ? '<div class="pce-tot g"><div class="k">' + this._esc(_lvT('pce.pts','PTS')) + '</div><div class="v">' + pt.tot + '</div></div>' : '') + '</div>'+
             '<div class="pce-pad pce-mobonly">'+
@@ -147789,7 +147883,10 @@ window.PaperCardEntry = {
                 ? ('<button class="pce-cta pce-mobonly" ' + (filled && !this._custom.busy ? '' : 'disabled') + ' onclick="PaperCardEntry._customSave()">' + (this._custom.busy ? '…' : this._esc(this._custom.saveLabel) + (filled && filled < 18 ? ' (' + filled + '/18)' : '')) + '</button>'
                     + (this._custom.onClear ? '<button class="pce-clr pce-mobonly" onclick="PaperCardEntry._customClear()">' + this._esc(this._custom.clearLabel) + '</button>' : '')
                     + (this._custom.players ? '<div class="pce-mroster pce-mobonly">' + this._customRosterHTML() + '</div>' : ''))
-                : ('<button class="pce-cta pce-mobonly" ' + (filled ? '' : 'disabled') + ' onclick="PaperCardEntry.openSheet()">' + this._esc(_lvT('pce.whose','WHOSE CARD IS THIS?')) + (filled < 18 ? ' (' + filled + '/18)' : '') + ' →</button>'));
+                : (this.pin
+                    ? ('<button class="pce-cta pce-mobonly" ' + (filled && !this.saving ? '' : 'disabled') + ' onclick="PaperCardEntry.saveTo(PaperCardEntry.pin)">' + this._esc(_lvT('pce.pin.save','SAVE — {name}').replace('{name}', (this._pinPlayer() || {}).player_name || '')) + (filled && filled < 18 ? ' (' + filled + '/18)' : '') + '</button>')
+                    // empty card: the same button now also STARTS the name-first flow (v969)
+                    : ('<button class="pce-cta pce-mobonly" onclick="PaperCardEntry.openSheet()">' + (filled ? (this._esc(_lvT('pce.whose','WHOSE CARD IS THIS?')) + (filled < 18 ? ' (' + filled + '/18)' : '')) : this._esc(_lvT('pce.pickfirst','SELECT PLAYER (OPTIONAL)'))) + ' →</button>')));
     },
 
     _namesHTML: function(isSheet){
@@ -147803,13 +147900,15 @@ window.PaperCardEntry = {
         var gnum = function(p){ var g = self.groupOf[String(p.player_id)]; return g ? parseInt(g.slice(1)) : 999; };
         un.sort(function(a, b){ return gnum(a) - gnum(b) || String(a.player_name).localeCompare(String(b.player_name)); });
         var rows = '';
-        rows += '<div class="pce-sum"><span>' + (t.out || 0) + ' + ' + (t.inn || 0) + ' = ' + (t.tot || 0) + ' ' + this._esc(_lvT('pce.gross','GROSS')) + '</span><span style="font:600 9px/1.3 \'JetBrains Mono\',monospace;color:#64748b;">' + this._esc(_lvT('pce.autocalc','NET & PTS AUTO')) + '</span></div>';
+        var pinPts = (this._cardHcpVal() != null && this._filled()) ? this._cardPtsTots().tot : null;
+        rows += '<div class="pce-sum"><span>' + (t.out || 0) + ' + ' + (t.inn || 0) + ' = ' + (t.tot || 0) + ' ' + this._esc(_lvT('pce.gross','GROSS')) + (pinPts != null ? ' · ' + pinPts + ' ' + this._esc(_lvT('pce.pts','PTS')) : '') + '</span><span style="font:600 9px/1.3 \'JetBrains Mono\',monospace;color:#64748b;">' + this._esc(_lvT('pce.autocalc','NET & PTS AUTO')) + '</span></div>';
         rows += '<input class="pce-srch" id="' + (isSheet ? 'pceNameM' : 'pceName') + '" placeholder="' + this._esc(_lvT('pce.typename','Type a name…')) + '" autocomplete="off" value="' + this._esc(this._search || '') + '" oninput="PaperCardEntry.searchInput(this.value)">';
         rows += '<div class="pce-names">';
         rows += '<div class="pce-sec">' + this._esc(_lvT('pce.noscore','NO SCORE YET')) + ' (' + un.length + ')</div>';
         un.forEach(function(p, i){
             var g = self.groupOf[String(p.player_id)] || '';
-            rows += '<div class="pce-nrow pick' + (i === 0 && term ? ' hit' : '') + '" onclick="PaperCardEntry.saveTo(\'' + self._esc(p.player_id) + '\')">'+
+            var isPin = self.pin && String(p.player_id) === String(self.pin);
+            rows += '<div class="pce-nrow pick' + (isPin || (i === 0 && term) ? ' hit' : '') + '" onclick="PaperCardEntry.nameTap(\'' + self._esc(p.player_id) + '\')">'+
                 '<span data-golfer-av="' + self._esc(p.player_id) + '" data-golfer-av-nm="' + self._esc(p.player_name) + '" data-golfer-av-sz="24"></span>'+
                 '<div><div class="nm">' + self._esc(p.player_name) + '</div><div class="sub"><span class="pce-hchip" onclick="event.stopPropagation();PaperCardEntry._hcpEditPce(\'' + self._esc(String(p.player_id).replace(/'/g, '')) + '\')">HCP ' + (window.formatHandicapDisplay ? window.formatHandicapDisplay(p.handicap) : p.handicap) + ' ✎</span></div></div>'+
                 (g ? '<span class="g">' + g + '</span>' : '') + '</div>';
@@ -147825,7 +147924,7 @@ window.PaperCardEntry = {
             rows += '<div class="pce-sec">' + this._esc(_lvT('pce.alreadyposted','ALREADY POSTED ✓')) + ' (' + done.length + ')</div>';
             done.forEach(function(p){
                 var pi = self.posted[String(p.player_id)] || {};
-                rows += '<div class="pce-nrow done" onclick="PaperCardEntry.saveTo(\'' + self._esc(p.player_id) + '\')">'+
+                rows += '<div class="pce-nrow done' + (self.pin && String(p.player_id) === String(self.pin) ? ' hit' : '') + '" onclick="PaperCardEntry.nameTap(\'' + self._esc(p.player_id) + '\')">'+
                     '<span data-golfer-av="' + self._esc(p.player_id) + '" data-golfer-av-nm="' + self._esc(p.player_name) + '" data-golfer-av-sz="24"></span>'+
                     '<div><div class="nm">' + self._esc(p.player_name) + '</div><div class="sub">' + (pi.gross != null ? pi.gross : '') + (pi.net != null ? ' · NET ' + pi.net : '') + '</div></div>'+
                     '<span class="ok">' + self._esc(_lvT('pce.postedok','POSTED ✓')) + '</span></div>';
@@ -147833,7 +147932,11 @@ window.PaperCardEntry = {
         }
         rows += '</div>';
         rows += '<div class="pce-walk" onclick="PaperCardEntry.walkOn()">＋ ' + this._esc(_lvT('pce.walkon','Not on the sheet — add walk-on')) + '</div>';
-        return '<div class="pce-nt"><div class="a">' + this._esc(_lvT('pce.whose','Whose card is this?')) + '</div><div class="b">' + this._esc(_lvT('pce.whose.sub','Tap a name to save this card to them.')) + '</div></div>' + rows;
+        // Empty card = name-FIRST mode: tapping a name pins the player instead of saving (v969).
+        var hdr = this._filled()
+            ? '<div class="a">' + this._esc(_lvT('pce.whose','Whose card is this?')) + '</div><div class="b">' + this._esc(_lvT('pce.whose.sub','Tap a name to save this card to them.')) + '</div>'
+            : '<div class="a">' + this._esc(_lvT('pce.whofirst','Who are you scoring?')) + '</div><div class="b">' + this._esc(_lvT('pce.whofirst.sub','Tap a name to start their card — or just enter scores first.')) + '</div>';
+        return '<div class="pce-nt">' + hdr + '</div>' + rows;
     },
 
     searchInput: function(v){
@@ -148003,6 +148106,7 @@ window.PaperCardEntry = {
             this.players.push(p);
             this._search = ''; this._dirHits = [];
             this._renderNamesOnly(); // show them on the sheet even if saveTo bails (empty card)
+            if (!this._filled()) { this.setPin(finalId); return; }   // name-first: empty card → pin them
             return this.saveTo(finalId, p);
         } catch(e) { console.error('[PCE] directory add', e); window.NotificationManager.show(_lvT('pce.toast.addfail','Could not add player'), 'error'); }
     },
@@ -148070,9 +148174,12 @@ window.PaperCardEntry = {
             this.count++;
             window.NotificationManager.show('✓ ' + _lvT('pce.toast.saved','Saved — {name} · {g} (net {n} · {p} pts)').replace('{name}', p.player_name).replace('{g}', totalGross).replace('{n}', totalNet).replace('{p}', totalPts), 'success', 3500);
             // fresh card, same rhythm
-            this.scores = {}; this.cur = 0; this.sheetOpen = false; this._search = ''; this._dirHits = [];
+            var hadPin = !!this.pin;
+            this.scores = {}; this.cur = 0; this.sheetOpen = false; this._search = ''; this._dirHits = []; this.pin = null;
             this.render();
             if (window.innerWidth >= 900) { var ov = document.getElementById('pceOverlay'); ov && ov.focus && ov.focus(); }
+            // name-first rhythm on mobile: straight back to the name sheet to pick the next player
+            else if (hadPin) { this.openSheet(); }
         } catch(e) {
             console.error('[PCE] save', e);
             window.NotificationManager.show(_lvT('pce.toast.savefail','Save failed — card kept, try again'), 'error');

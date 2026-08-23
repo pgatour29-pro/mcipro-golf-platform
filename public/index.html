@@ -141795,14 +141795,15 @@ class OrganizerScoringSystem {
             const eventDate = new Date(event.event_date);
             const dateStr = eventDate.toLocaleDateString(_lvLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
 
-            // Mark today's events with red dot indicator
+            // TODAY tag stays text-only — the colored dots are wayfinding (see _applyEventDots:
+            // 🟢 current / 🔵 next / 🔴 prior, exactly three in the whole list).
             const eventDateStr = event.event_date?.split('T')[0];
             const isToday = eventDateStr === todayStr;
 
             // Decode any stored HTML entity (some titles have a literal "&amp;") and drop the old
             // "(undefined)" course suffix — the title already contains the course.
             const _dt = document.createElement('textarea'); _dt.innerHTML = String(event.title || 'Event');
-            option.textContent = (isToday ? '🔴 TODAY: ' : '') + _dt.value + ' - ' + dateStr;
+            option.textContent = (isToday ? 'TODAY: ' : '') + _dt.value + ' - ' + dateStr;
             select.appendChild(option);
 
             // Track today's event
@@ -141841,6 +141842,34 @@ class OrganizerScoringSystem {
 
         // Week-view chips (mirrors the Tee Sheet / Registrations event strip)
         this.renderEventChips();
+        this._applyEventDots();
+    }
+
+    // Wayfinding dots for the ALL dropdown — exactly three in the whole list: 🟢 the event
+    // you're on, 🔵 the next event chronologically, 🔴 the prior one. The list is sorted
+    // newest-first, so 🔵 sits above 🟢 and 🔴 below it — up/down navigation at a glance.
+    _applyEventDots() {
+        const select = document.getElementById('organizerScoringEventSelect');
+        const evs = this.allEvents || [];
+        if (!select || !evs.length) return;
+        const dstr = e => String(e.event_date || '').split('T')[0];
+        let anchorId = select.value;
+        if (!anchorId) {
+            // nothing selected yet: anchor on today's event, else nearest upcoming, else newest
+            const t = new Date();
+            const todayStr = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+            const todayEv = evs.find(e => dstr(e) === todayStr);
+            const fut = evs.filter(e => dstr(e) >= todayStr);   // DESC order → last entry = nearest upcoming
+            anchorId = (todayEv && todayEv.id) || (fut.length ? fut[fut.length - 1].id : evs[0].id);
+        }
+        const i = evs.findIndex(e => String(e.id) === String(anchorId));
+        const nextId = i > 0 ? String(evs[i - 1].id) : null;                                    // later date = above
+        const priorId = (i >= 0 && i < evs.length - 1) ? String(evs[i + 1].id) : null;          // earlier date = below
+        for (const opt of select.options) {
+            if (!opt.value) continue;
+            const bare = opt.textContent.replace(/^(?:🟢|🔵|🔴)\s*/, '');
+            opt.textContent = (opt.value === String(anchorId) ? '🟢 ' : opt.value === nextId ? '🔵 ' : opt.value === priorId ? '🔴 ' : '') + bare;
+        }
     }
 
     // Build the week-strip of event chips + the ALL dropdown toggle. Uses the FULL event list
@@ -141910,6 +141939,7 @@ class OrganizerScoringSystem {
         const sel = document.getElementById('organizerScoringEventSelect');
         if (sel) sel.value = eventId;
         this.renderEventChips();          // instant highlight
+        this._applyEventDots();           // dots follow the selection
         if (eventId) this.loadEventScores(eventId);
     }
 

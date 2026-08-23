@@ -100196,6 +100196,20 @@ class SocietyOrganizerManager {
             }
 
             select.innerHTML = html;
+            // v967 (Pete 2026-08-23): DEFAULT to the ORGANIZER'S OWN SOCIETY, not Universal.
+            // The old default ('' = universal) meant an organizer typing a new hcp and hitting
+            // save silently edited the UNIVERSAL row — which society events don't read (society
+            // row resolves first) — the classic invisible "not working" edit. TRGG dual-id:
+            // society_profiles id is what the dropdown carries.
+            try {
+                const TRGG_IDS = ['7c0e4b72-d925-44bc-afda-38259a7ba346', '17451cf3-8b57-4166-af0a-dd902b7fb1af'];
+                let mySoc = (window.AppState && AppState.selectedSociety && AppState.selectedSociety.id) || (this.societyProfile && this.societyProfile.id) || null;
+                if (mySoc && TRGG_IDS.includes(String(mySoc))) mySoc = TRGG_IDS[0];
+                if (mySoc && Array.from(select.options).some(o => o.value === String(mySoc))) {
+                    select.value = String(mySoc);
+                    if (this.onHandicapScopeChanged) this.onHandicapScopeChanged();
+                }
+            } catch (e) {}
             console.log(`[EditMember] Loaded ${societies?.length || 0} societies for handicap scope`);
         } catch (err) {
             console.error('[EditMember] Error loading handicap scopes:', err);

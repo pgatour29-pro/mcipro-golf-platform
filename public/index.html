@@ -9823,6 +9823,10 @@
                 'pce.card.now': 'ENTERING',
                 'pce.card.savefirst': 'Save {name} ({n}/18) before switching?',
                 'pce.card.alldone': 'All players posted',
+                'pce.hcp.title': 'Adjust Handicap',
+                'pce.hcp.saved': 'Handicap saved',
+                'pce.hcp.fail': 'Could not save handicap',
+                'pce.hcp.bad': 'Enter a handicap number',
                 'pce.toast.walkfail': 'Could not add walk-on',
                 'pce.toast.addfail': 'Could not add player',
                 'pce.toast.noscores': 'No scores on the card yet',
@@ -11791,6 +11795,10 @@
                 'pce.card.now': 'กำลังกรอก',
                 'pce.card.savefirst': 'บันทึก {name} ({n}/18) ก่อนสลับหรือไม่?',
                 'pce.card.alldone': 'บันทึกครบทุกคนแล้ว',
+                'pce.hcp.title': 'ปรับแฮนดิแคป',
+                'pce.hcp.saved': 'บันทึกแฮนดิแคปแล้ว',
+                'pce.hcp.fail': 'บันทึกแฮนดิแคปไม่สำเร็จ',
+                'pce.hcp.bad': 'กรอกตัวเลขแฮนดิแคป',
                 'pce.toast.walkfail': 'เพิ่ม walk-on ไม่สำเร็จ',
                 'pce.toast.addfail': 'เพิ่มผู้เล่นไม่สำเร็จ',
                 'pce.toast.noscores': 'ยังไม่มีสกอร์ในการ์ด',
@@ -13357,6 +13365,10 @@
                 'pce.card.now': '입력 중',
                 'pce.card.savefirst': '전환 전에 {name} ({n}/18)을(를) 저장할까요?',
                 'pce.card.alldone': '전원 등록 완료',
+                'pce.hcp.title': '핸디캡 조정',
+                'pce.hcp.saved': '핸디캡 저장됨',
+                'pce.hcp.fail': '핸디캡을 저장할 수 없습니다',
+                'pce.hcp.bad': '핸디캡 숫자를 입력하세요',
                 'pce.toast.walkfail': '워크온 추가 실패',
                 'pce.toast.addfail': '플레이어 추가 실패',
                 'pce.toast.noscores': '카드에 스코어가 없습니다',
@@ -15759,6 +15771,10 @@
                 'pce.card.now': '入力中',
                 'pce.card.savefirst': '切替前に {name} ({n}/18) を保存しますか?',
                 'pce.card.alldone': '全員登録済み',
+                'pce.hcp.title': 'ハンディキャップ調整',
+                'pce.hcp.saved': 'ハンディキャップ保存済み',
+                'pce.hcp.fail': 'ハンディキャップを保存できませんでした',
+                'pce.hcp.bad': 'ハンディキャップの数値を入力してください',
                 'pce.toast.walkfail': 'ウォークオンを追加できませんでした',
                 'pce.toast.addfail': 'プレーヤーを追加できませんでした',
                 'pce.toast.noscores': 'カードにスコアがありません',
@@ -143417,6 +143433,12 @@ class OrganizerScoringSystem {
             }),
             activeId: rid,
             onPick: (k) => self.hbhOpenCard(k),
+            onHcp: async (k2, v) => {
+                const r = self._hbhRound(k2);
+                if (!r) throw new Error('row not found');
+                await self.setSocietyHandicap(r.golfer_id, v);
+                r.handicap_used = v;   // re-save recomputes this row with the new hcp
+            },
             onSave: async (scores) => {
                 if (!self._hbhScores) self._hbhScores = {};
                 self._hbhScores[rid] = scores;
@@ -143425,6 +143447,40 @@ class OrganizerScoringSystem {
                 return true;
             }
         });
+    }
+
+    // v963 — organizer on-the-fly handicap adjust (Pete 2026-08-23). Society-scoped MANUAL
+    // override in society_handicaps — the FIRST source every resolver reads. Never touches the
+    // universal (society_id NULL) row or the profile mirror; the DB engine owns those. MANUAL
+    // rows are human overrides — imports never sweep them. Fail-loud on 0-row writes (RLS).
+    async setSocietyHandicap(golferId, hcp) {
+        const sb = window.SupabaseDB.client;
+        const ev = this.qseEventData || (this.allEvents || []).find(e => e.id === this.currentEventId) || {};
+        const TRGG_IDS = ['7c0e4b72-d925-44bc-afda-38259a7ba346', '17451cf3-8b57-4166-af0a-dd902b7fb1af'];
+        let soc = ev.societyId || ev.society_id || null;
+        if (!soc && /trgg|travellers/i.test(String(ev.title || ev.name || ''))) soc = TRGG_IDS[0];
+        if (!soc && window.AppState?.selectedSociety?.id) soc = AppState.selectedSociety.id;
+        if (!soc) throw new Error('No society context');
+        const isTrgg = TRGG_IDS.includes(String(soc));
+        const matchIds = isTrgg ? TRGG_IDS : [String(soc)];
+        const writeId = isTrgg ? TRGG_IDS[0] : String(soc);   // TRGG rows live under the society_profiles id
+        const { data: ex } = await sb.from('society_handicaps').select('id')
+            .eq('golfer_id', golferId).in('society_id', matchIds)
+            .order('updated_at', { ascending: false, nullsFirst: false }).limit(1);
+        if (ex && ex.length) {
+            const { data: up, error } = await sb.from('society_handicaps')
+                .update({ handicap_index: hcp, calculation_method: 'MANUAL', updated_at: new Date().toISOString() })
+                .eq('id', ex[0].id).select('id');
+            if (error) throw error;
+            if (!up || !up.length) throw new Error('handicap update blocked (0 rows)');
+        } else {
+            const { data: ins, error } = await sb.from('society_handicaps')
+                .insert({ golfer_id: golferId, society_id: writeId, handicap_index: hcp, calculation_method: 'MANUAL' })
+                .select('id');
+            if (error) throw error;
+            if (!ins || !ins.length) throw new Error('handicap insert blocked (0 rows)');
+        }
+        return true;
     }
 
     // Per-hole cell colour for the hole-by-hole grid (score vs par).
@@ -143756,6 +143812,15 @@ class OrganizerScoringSystem {
                 players: (this.leaderboardData || []).filter(r => r.id).map(r => ({ id: r.id, name: this.getPlayerName(r.golfer_id, r), hcp: r.handicap_used, posted: !!r.total_gross, gross: r.total_gross })),
                 activeId: roundId,
                 onPick: (rid) => self.openEditScoreModal(rid),
+                onHcp: async (rid2, v) => {
+                    // roster ids here are ROUND ids — map back to the golfer for the society write;
+                    // also stamp the row so SAVE CHANGES recomputes this round with the new hcp
+                    const row = (self.leaderboardData || []).find(r => String(r.id) === String(rid2));
+                    if (!row) throw new Error('round row not found');
+                    await self.setSocietyHandicap(row.golfer_id, v);
+                    row.handicap_used = v;
+                    if (self.editingRound && String(self.editingRound.id) === String(rid2)) self.editingRound.handicap_used = v;
+                },
                 onSave: async (scores) => {
                     self.editScoreData = scores;
                     return await self.saveEditedScore();   // false keeps the card open on failure
@@ -145647,11 +145712,31 @@ class OrganizerScoringSystem {
             // use: first by id (fast batch), then by NAME for the leftovers.
             const _ids = (registrations || []).map(r => r.player_id).filter(Boolean);
             const _hcpById = {};
+            // SOCIETY HANDICAP FIRST (v963 — Hirai bug): a fresh MANUAL society adjustment lives
+            // in society_handicaps only; user_profiles.handicap_index is the universal mirror and
+            // LAGS it. The id-batch below used to read the profile directly and silently ignore
+            // the organizer's adjustment. TRGG dual-id set matched like _eventSocietyHcp.
+            const _qseEv = this.qseEventData || (this.allEvents || []).find(e => e.id === this.currentEventId) || {};
+            const _TRGG_IDS = ['7c0e4b72-d925-44bc-afda-38259a7ba346', '17451cf3-8b57-4166-af0a-dd902b7fb1af'];
+            let _qseSoc = _qseEv.societyId || _qseEv.society_id || null;
+            if (!_qseSoc && /trgg|travellers/i.test(String(_qseEv.title || _qseEv.name || ''))) _qseSoc = _TRGG_IDS[0];
+            const _qseSocIds = _qseSoc ? (_TRGG_IDS.includes(String(_qseSoc)) ? _TRGG_IDS : [String(_qseSoc)]) : null;
+            if (_ids.length && _qseSocIds) {
+                try {
+                    const { data: _socRows } = await window.SupabaseDB.client
+                        .from('society_handicaps')
+                        .select('golfer_id, handicap_index, updated_at')
+                        .in('golfer_id', _ids)
+                        .in('society_id', _qseSocIds)
+                        .order('updated_at', { ascending: false, nullsFirst: false });
+                    (_socRows || []).forEach(r => { if (r.handicap_index != null && _hcpById[String(r.golfer_id)] == null) _hcpById[String(r.golfer_id)] = parseFloat(r.handicap_index); });
+                } catch (e) {}
+            }
             if (_ids.length) {
                 try {
                     const { data: _profs } = await window.SupabaseDB.client
                         .from('user_profiles').select('line_user_id, handicap_index').in('line_user_id', _ids);
-                    (_profs || []).forEach(p => { if (p.handicap_index != null) _hcpById[String(p.line_user_id)] = parseFloat(p.handicap_index); });
+                    (_profs || []).forEach(p => { if (p.handicap_index != null && _hcpById[String(p.line_user_id)] == null) _hcpById[String(p.line_user_id)] = parseFloat(p.handicap_index); });
                 } catch (e) {}
             }
             // Name-resolve anyone the id lookup missed (throwaway/guest registration ids) against the
@@ -146018,6 +146103,12 @@ class OrganizerScoringSystem {
             players: (this.qsePlayersData || []).map(p => ({ id: p.player_id, name: p.player_name, hcp: p.handicap, posted: !!p.hasExistingRound })),
             activeId: playerId,
             onPick: (pid) => self.toggleHoleByHole(pid),
+            onHcp: async (pid, v) => {
+                await self.setSocietyHandicap(pid, v);
+                const pl = (self.qsePlayersData || []).find(x => x.player_id === pid);
+                if (pl) pl.handicap = v;
+                try { await self.updateHoleTotals(pid); } catch (e) {}
+            },
             onSave: async (scores) => {
                 self.qseScores[playerId].holes = scores;
                 try { await self.updateHoleTotals(playerId); } catch (e) {}
@@ -146995,6 +147086,7 @@ window.PaperCardEntry = {
             }) : null,
             activeId: opts.activeId != null ? opts.activeId : null,
             onPick: opts.onPick || null,
+            onHcp: opts.onHcp || null,   // v963: organizer on-the-fly handicap adjust (tap the HCP chip)
             autoSave: opts.autoSave !== false,
             snap: '' };
         this._custom.snap = JSON.stringify(this.scores);
@@ -147098,6 +147190,53 @@ window.PaperCardEntry = {
         }
         c.onPick(pid);
     },
+    // v963: tap an HCP chip on the roster → adjust on the fly. Saves through the caller's
+    // onHcp (society MANUAL override), then live-refreshes the card's points if it was the
+    // active player.
+    _hcpEdit: function(pid){
+        var c = this._custom; if (!c || !c.onHcp) return;
+        var p = (c.players || []).find(function(x){ return String(x.id) === String(pid); }); if (!p) return;
+        var ov = document.getElementById('pceOverlay'); if (!ov) return;
+        var old = document.getElementById('pceHcpBg'); if (old) old.remove();
+        var bg = document.createElement('div');
+        bg.className = 'pce-walkbg'; bg.id = 'pceHcpBg';
+        bg.onclick = function(e){ if (e.target === bg) bg.remove(); };
+        bg.innerHTML = '<div class="pce-walkmod">'+
+            '<div class="pce-nt" style="display:flex;align-items:flex-start;gap:10px;">'+
+                '<div style="flex:1;min-width:0;"><div class="a">' + this._esc(_lvT('pce.hcp.title','Adjust Handicap')) + '</div>'+
+                '<div class="b">' + this._esc(p.name) + '</div></div>'+
+                '<button class="pce-x" onclick="document.getElementById(\'pceHcpBg\').remove()">✕</button>'+
+            '</div>'+
+            '<div style="display:flex;gap:8px;padding:0 14px 14px;">'+
+                '<input class="pce-wkhcp" id="pceHcpVal" inputmode="decimal" autocomplete="off" value="' + this._esc(p.hcp != null ? p.hcp : '') + '" placeholder="' + this._esc(_lvT('pce.walkon.hcpph','HCP (blank = 36)')) + '" onkeydown="if(event.key===\'Enter\'){event.preventDefault();PaperCardEntry._hcpSave(\'' + this._esc(String(pid).replace(/'/g, '')) + '\');}else if(event.key===\'Escape\'){document.getElementById(\'pceHcpBg\').remove();}">'+
+                '<button class="pce-wkbtn" onclick="PaperCardEntry._hcpSave(\'' + this._esc(String(pid).replace(/'/g, '')) + '\')">' + this._esc(_lvT('pce.card.save','SAVE')) + '</button>'+
+            '</div></div>';
+        ov.appendChild(bg);
+        setTimeout(function(){ var i = document.getElementById('pceHcpVal'); if (i) { i.focus(); try { i.select(); } catch(e){} } }, 60);
+    },
+    _hcpSave: async function(pid){
+        var c = this._custom; if (!c || !c.onHcp) return;
+        var inp = document.getElementById('pceHcpVal'); if (!inp) return;
+        var s = String(inp.value || '').trim();
+        var isP = s.startsWith('+');
+        var v = parseFloat(s.replace('+', ''));
+        if (isNaN(v)) { window.NotificationManager.show(_lvT('pce.hcp.bad','Enter a handicap number'), 'warning'); return; }
+        if (isP) v = -v;
+        var btn = document.querySelector('#pceHcpBg .pce-wkbtn'); if (btn) { btn.disabled = true; btn.textContent = '…'; }
+        try {
+            await c.onHcp(pid, v);
+            var p = (c.players || []).find(function(x){ return String(x.id) === String(pid); });
+            if (p) p.hcp = v;
+            if (String(pid) === String(c.activeId)) c.hcp = window.toPlayingHandicap(v);
+            var bg = document.getElementById('pceHcpBg'); if (bg) bg.remove();
+            this.render();
+            window.NotificationManager.show('✓ ' + _lvT('pce.hcp.saved','Handicap saved'), 'success', 2000);
+        } catch(e) {
+            console.error('[CardPad] hcp save', e);
+            if (btn) { btn.disabled = false; btn.textContent = _lvT('pce.card.save','SAVE'); }
+            window.NotificationManager.show(_lvT('pce.hcp.fail','Could not save handicap'), 'error');
+        }
+    },
     _customRosterHTML: function(){
         var c = this._custom, self = this;
         if (!c || !c.players || !c.players.length) return '';
@@ -147105,9 +147244,13 @@ window.PaperCardEntry = {
         var rows = '<div class="pce-sec">' + this._esc(_lvT('pce.card.roster','EVENT PLAYERS')) + ' (' + c.players.length + ' · ' + left + ' ' + this._esc(_lvT('pce.card.left','LEFT')) + ')</div>';
         c.players.forEach(function(p){
             var on = String(p.id) === String(c.activeId);
+            var hcpDisp = 'HCP ' + (window.formatHandicapDisplay ? window.formatHandicapDisplay(p.hcp) : (p.hcp != null ? p.hcp : '—'));
+            var hcpHtml = c.onHcp
+                ? '<span class="pce-hchip" onclick="event.stopPropagation();PaperCardEntry._hcpEdit(\'' + self._esc(String(p.id).replace(/'/g, '')) + '\')">' + hcpDisp + ' ✎</span>'
+                : hcpDisp;
             rows += '<div class="pce-nrow pick' + (on ? ' hit' : '') + (p.posted && !on ? ' done' : '') + '" onclick="PaperCardEntry._customPick(\'' + self._esc(String(p.id).replace(/'/g, '')) + '\')">'+
                 '<span data-golfer-av="' + self._esc(p.id) + '" data-golfer-av-nm="' + self._esc(p.name) + '" data-golfer-av-sz="24"></span>'+
-                '<div><div class="nm">' + self._esc(p.name) + '</div><div class="sub">HCP ' + (window.formatHandicapDisplay ? window.formatHandicapDisplay(p.hcp) : (p.hcp != null ? p.hcp : '—')) + '</div></div>'+
+                '<div><div class="nm">' + self._esc(p.name) + '</div><div class="sub">' + hcpHtml + '</div></div>'+
                 (on ? '<span class="g" style="background:#f0fdf4;border-color:#bbf7d0;color:#15803d;">' + self._esc(_lvT('pce.card.now','ENTERING')) + '</span>'
                     : (p.posted ? '<span class="ok">' + (p.gross != null ? self._esc(p.gross) + ' ' : '') + '✓</span>' : ''))+
                 '</div>';
@@ -147205,6 +147348,8 @@ window.PaperCardEntry = {
         '#pceOverlay .pce-hrow .pce-hpts + .pce-cell{margin-left:6px;}'+
         '#pceOverlay .pce-mroster{margin-top:10px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;}'+
         '#pceOverlay .pce-mroster .pce-names{max-height:340px;}'+
+        '#pceOverlay .pce-hchip{cursor:pointer;border-bottom:1px dashed #94a3b8;padding-bottom:1px;}'+
+        '#pceOverlay .pce-hchip:hover{color:#15803d;border-color:#15803d;}'+
         '#pceOverlay .pce-sum{margin:8px 14px 0;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:8px 12px;font:800 12px/1 \'JetBrains Mono\',monospace;color:#15803d;display:flex;justify-content:space-between;align-items:center;}'+
         '#pceOverlay .pce-sheetbg{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:10060;display:flex;align-items:flex-end;}'+
         '#pceOverlay .pce-sheet{background:#fff;width:100%;border-radius:20px 20px 0 0;max-height:86vh;display:flex;flex-direction:column;}'+

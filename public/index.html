@@ -9817,6 +9817,7 @@
                 'pce.card.pickcourse': 'Select a course first',
                 'pce.card.enterbtn': 'ENTER SCORES — PAPER CARD',
                 'pce.kbd.save': 'save',
+                'pce.pts': 'PTS',
                 'pce.toast.walkfail': 'Could not add walk-on',
                 'pce.toast.addfail': 'Could not add player',
                 'pce.toast.noscores': 'No scores on the card yet',
@@ -11779,6 +11780,7 @@
                 'pce.card.pickcourse': 'เลือกสนามก่อน',
                 'pce.card.enterbtn': 'กรอกสกอร์ — สกอร์การ์ด',
                 'pce.kbd.save': 'บันทึก',
+                'pce.pts': 'แต้ม',
                 'pce.toast.walkfail': 'เพิ่ม walk-on ไม่สำเร็จ',
                 'pce.toast.addfail': 'เพิ่มผู้เล่นไม่สำเร็จ',
                 'pce.toast.noscores': 'ยังไม่มีสกอร์ในการ์ด',
@@ -13339,6 +13341,7 @@
                 'pce.card.pickcourse': '먼저 코스를 선택하세요',
                 'pce.card.enterbtn': '스코어 입력 — 스코어 카드',
                 'pce.kbd.save': '저장',
+                'pce.pts': '점수',
                 'pce.toast.walkfail': '워크온 추가 실패',
                 'pce.toast.addfail': '플레이어 추가 실패',
                 'pce.toast.noscores': '카드에 스코어가 없습니다',
@@ -15735,6 +15738,7 @@
                 'pce.card.pickcourse': 'まずコースを選択してください',
                 'pce.card.enterbtn': 'スコア入力 — スコアカード',
                 'pce.kbd.save': '保存',
+                'pce.pts': 'PT',
                 'pce.toast.walkfail': 'ウォークオンを追加できませんでした',
                 'pce.toast.addfail': 'プレーヤーを追加できませんでした',
                 'pce.toast.noscores': 'カードにスコアがありません',
@@ -98024,6 +98028,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 sub: courseName,
                 holes: holes,
                 scores: scores,
+                handicap: document.getElementById('postScoreHandicap')?.value,
                 saveLabel: _lvT('pce.card.done', 'DONE — REVIEW & POST'),
                 onSave: (sc) => {
                     for (let i = 1; i <= 18; i++) {
@@ -99092,6 +99097,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 sub: courseName,
                 holes: holes,
                 scores: scores,
+                handicap: document.getElementById('rpsHandicap')?.value,
                 saveLabel: _lvT('pce.card.done', 'DONE — REVIEW & POST'),
                 onSave: (sc) => {
                     for (let i = 1; i <= 18; i++) {
@@ -143382,6 +143388,7 @@ class OrganizerScoringSystem {
                 return { par: h.par || 4, handicap: h.handicap || (i + 1) };
             }),
             scores: Object.assign({}, existing || {}),
+            handicap: round.handicap_used,
             saveLabel: _lvT('pce.saveround', 'SAVE ROUND'),
             onSave: async (scores) => {
                 if (!self._hbhScores) self._hbhScores = {};
@@ -143716,6 +143723,7 @@ class OrganizerScoringSystem {
                 sub: String(playerName || '') + ' · HCP ' + hcpDisp + ' · ' + String(event?.title || ''),
                 holes: holes,
                 scores: Object.assign({}, this.editScoreData),
+                handicap: round.handicap_used,
                 saveLabel: _lvT('pce.card.savechanges', 'SAVE CHANGES'),
                 clearLabel: _lvT('pce.card.clearcard', 'CLEAR SCORECARD'),
                 onSave: async (scores) => {
@@ -145961,6 +145969,7 @@ class OrganizerScoringSystem {
                 return { par: h.par || 4, handicap: h.handicap || (i + 1) };
             }),
             scores: Object.assign({}, this.qseScores[playerId].holes),
+            handicap: player.handicap,
             saveLabel: player.hasExistingRound ? _lvT('pce.resave', 'RE-SAVE ROUND') : _lvT('pce.saveround', 'SAVE ROUND'),
             onSave: async (scores) => {
                 self.qseScores[playerId].holes = scores;
@@ -146925,7 +146934,9 @@ window.PaperCardEntry = {
         for (var h = 1; h <= 18; h++) { var v = parseInt(sc[h]); if (v) this.scores[h] = v; }
         this._custom = { title: opts.title || _lvT('pce.card.title','Score Card'), sub: opts.sub || '',
             saveLabel: opts.saveLabel || _lvT('pce.card.save','SAVE'), onSave: opts.onSave || null,
-            onClear: opts.onClear || null, clearLabel: opts.clearLabel || _lvT('pce.card.clear','CLEAR CARD'), busy: false };
+            onClear: opts.onClear || null, clearLabel: opts.clearLabel || _lvT('pce.card.clear','CLEAR CARD'), busy: false,
+            // playing handicap enables LIVE net/stableford on the card (v960)
+            hcp: (opts.handicap === '' || opts.handicap == null) ? null : window.toPlayingHandicap(opts.handicap) };
         this.startNine = opts.startNine === 10 ? 10 : 1;
         this.sheetOpen = false; this._dirHits = []; this._search = '';
         // cursor lands on the first EMPTY hole so edit flows are fix-ready
@@ -146938,10 +146949,30 @@ window.PaperCardEntry = {
         if (!this._keyBound) { this._keyBound = this._keydown.bind(this); document.addEventListener('keydown', this._keyBound, true); }
         try { window.innerWidth >= 900 && setTimeout(function(){ var el2 = document.getElementById('pceOverlay'); el2 && el2.focus && el2.focus(); }, 50); } catch(e){}
     },
+    // Live stableford on the custom card (v960): standard allocation by SI, plus-hcp aware,
+    // pts = max(0, 2 + par − net) — byte-identical to what every save path stores.
+    _cardShots: function(hcp, si){
+        var r = Math.round(hcp || 0), neg = r < 0, a = Math.abs(r);
+        var full = Math.floor(a / 18), rem = a % 18;
+        return neg ? -(full + (si > 18 - rem ? 1 : 0)) : (full + (si <= rem ? 1 : 0));
+    },
+    _cardPts: function(h){
+        var c = this._custom; if (!c || c.hcp == null) return null;
+        var s = this.scores[h]; if (!s) return null;
+        var m = this._holeMeta(h);
+        var par = parseInt(m.par) || 4, si = parseInt(m.handicap) || h;
+        return Math.max(0, 2 + par - (s - this._cardShots(c.hcp, si)));
+    },
+    _cardPtsTots: function(){
+        var o = 0, i = 0;
+        for (var h = 1; h <= 18; h++) { var p = this._cardPts(h); if (p == null) continue; if (h <= 9) o += p; else i += p; }
+        return { out: o, inn: i, tot: o + i };
+    },
     _customPanelHTML: function(){
         var c = this._custom, t = this._tots(), filled = this._filled();
+        var pts = (c.hcp != null && filled) ? this._cardPtsTots() : null;
         return '<div class="pce-nt"><div class="a">' + this._esc(c.title) + '</div><div class="b">' + this._esc(c.sub) + '</div></div>'+
-            '<div class="pce-sum"><span>' + (t.out || 0) + ' + ' + (t.inn || 0) + ' = ' + (t.tot || 0) + ' ' + this._esc(_lvT('pce.gross','GROSS')) + '</span><span style="font:600 9px/1.3 \'JetBrains Mono\',monospace;color:#64748b;">' + filled + '/18 · ' + this._esc(_lvT('pce.autocalc','NET & PTS AUTO')) + '</span></div>'+
+            '<div class="pce-sum"><span>' + (t.out || 0) + ' + ' + (t.inn || 0) + ' = ' + (t.tot || 0) + ' ' + this._esc(_lvT('pce.gross','GROSS')) + (pts ? ' · ' + pts.tot + ' ' + this._esc(_lvT('pce.pts','PTS')) : '') + '</span><span style="font:600 9px/1.3 \'JetBrains Mono\',monospace;color:#64748b;">' + filled + '/18' + (c.hcp == null ? ' · ' + this._esc(_lvT('pce.autocalc','NET & PTS AUTO')) : '') + '</span></div>'+
             '<div style="padding:12px 14px;">'+
                 '<button class="pce-cta pce-cta2" ' + (filled && !c.busy ? '' : 'disabled') + ' onclick="PaperCardEntry._customSave()">' + (c.busy ? '…' : this._esc(c.saveLabel) + (filled && filled < 18 ? ' (' + filled + '/18)' : '')) + '</button>'+
                 (c.onClear ? '<button class="pce-clr" onclick="PaperCardEntry._customClear()">' + this._esc(c.clearLabel) + '</button>' : '')+
@@ -147050,6 +147081,8 @@ window.PaperCardEntry = {
         // custom card mode (openCard): desktop save panel + clear button
         '#pceOverlay .pce-cta2{display:block;width:100%;}'+
         '#pceOverlay .pce-clr{margin-top:8px;display:block;width:100%;background:#fff;border:2px dashed #fecaca;color:#dc2626;border-radius:12px;padding:10px;font:800 11px/1 \'Instrument Sans\',sans-serif;cursor:pointer;}'+
+        '#pceOverlay .pce-hpts{margin-left:auto;min-width:18px;text-align:center;font:800 10.5px/1 \'JetBrains Mono\',monospace;color:#16a34a;}'+
+        '#pceOverlay .pce-hrow .pce-hpts + .pce-cell{margin-left:6px;}'+
         '#pceOverlay .pce-sum{margin:8px 14px 0;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:8px 12px;font:800 12px/1 \'JetBrains Mono\',monospace;color:#15803d;display:flex;justify-content:space-between;align-items:center;}'+
         '#pceOverlay .pce-sheetbg{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:10060;display:flex;align-items:flex-end;}'+
         '#pceOverlay .pce-sheet{background:#fff;width:100%;border-radius:20px 20px 0 0;max-height:86vh;display:flex;flex-direction:column;}'+
@@ -147276,6 +147309,8 @@ window.PaperCardEntry = {
     },
     _cardTableHTML: function(){
         var self = this, t = this._tots();
+        var showPts = !!(this._custom && this._custom.hcp != null);
+        var pt = showPts ? this._cardPtsTots() : null;
         var row = function(from){
             var hs = []; for (var h = from; h < from + 9; h++) hs.push(h);
             var out = '<tr><th class="sec">' + self._esc(_lvT('pce.hole','HOLE')) + '</th>' + hs.map(function(h){ return '<th>' + h + '</th>'; }).join('') + '<th>' + (from === 1 ? 'OUT' : 'IN / TOT') + '</th></tr>';
@@ -147283,6 +147318,11 @@ window.PaperCardEntry = {
             out += '<tr><td class="lbl">S.I.</td>' + hs.map(function(h){ return '<td>' + (self._holeMeta(h).handicap || '') + '</td>'; }).join('') + '<td class="tot">—</td></tr>';
             var totCell = from === 1 ? ('<td class="tot" style="font-size:15px;">' + (t.out || '') + '</td>') : ('<td class="grand">' + (t.inn || 0) + ' / ' + (t.tot || 0) + '</td>');
             out += '<tr><td class="lbl">' + self._esc(_lvT('pce.score','SCORE')) + '</td>' + hs.map(function(h){ return '<td style="padding:4px 2px;">' + self._cellHTML(h) + '</td>'; }).join('') + totCell + '</tr>';
+            // live stableford row (custom card with a known handicap only)
+            if (showPts) {
+                var ptsTot = from === 1 ? ('<td class="tot" style="color:#16a34a;">' + (pt.out || 0) + '</td>') : ('<td class="tot" style="color:#16a34a;">' + (pt.inn || 0) + ' / ' + (pt.tot || 0) + '</td>');
+                out += '<tr><td class="lbl" style="color:#16a34a;">' + self._esc(_lvT('pce.pts','PTS')) + '</td>' + hs.map(function(h){ var p = self._cardPts(h); return '<td style="font-weight:800;color:' + (p > 0 ? '#16a34a' : '#cbd5e1') + ';">' + (p == null ? '' : p) + '</td>'; }).join('') + ptsTot + '</tr>';
+            }
             return out;
         };
         return this._nineBarHTML()+
@@ -147297,15 +147337,17 @@ window.PaperCardEntry = {
     },
     _cardColsHTML: function(){
         var self = this, t = this._tots();
+        var showPts = !!(this._custom && this._custom.hcp != null);
+        var pt = showPts ? this._cardPtsTots() : null;
         var col = function(from, cap){
-            var rows = ''; for (var h = from; h < from + 9; h++) { var m = self._holeMeta(h); rows += '<div class="pce-hrow"><span class="h">' + h + '</span><span class="p">P' + m.par + '·S' + (m.handicap || '') + '</span>' + self._cellHTML(h) + '</div>'; }
+            var rows = ''; for (var h = from; h < from + 9; h++) { var m = self._holeMeta(h); var p = showPts ? self._cardPts(h) : null; rows += '<div class="pce-hrow"><span class="h">' + h + '</span><span class="p">P' + m.par + '·S' + (m.handicap || '') + '</span>' + (showPts ? '<span class="pce-hpts">' + (p == null ? '' : p) + '</span>' : '') + self._cellHTML(h) + '</div>'; }
             var parSum = 0; for (var h2 = from; h2 < from + 9; h2++) parSum += (parseInt(self._holeMeta(h2).par) || 0);
             return '<div class="pce-col9"><div class="pce-cap"><span>' + cap + '</span><span>PAR ' + (self.courseData ? parSum : '—') + '</span></div>' + rows + '</div>';
         };
         var filled = this._filled();
         return this._nineBarHTML()+
             '<div class="pce-cols">' + col(1, 'OUT') + col(10, 'IN') + '</div>'+
-            '<div class="pce-tots"><div class="pce-tot"><div class="k">OUT</div><div class="v">' + (t.out || 0) + '</div></div><div class="pce-tot"><div class="k">IN</div><div class="v">' + (t.inn || 0) + '</div></div><div class="pce-tot g"><div class="k">TOTAL</div><div class="v">' + (t.tot || 0) + '</div></div></div>'+
+            '<div class="pce-tots"><div class="pce-tot"><div class="k">OUT</div><div class="v">' + (t.out || 0) + '</div></div><div class="pce-tot"><div class="k">IN</div><div class="v">' + (t.inn || 0) + '</div></div><div class="pce-tot g"><div class="k">TOTAL</div><div class="v">' + (t.tot || 0) + '</div></div>' + (showPts ? '<div class="pce-tot g"><div class="k">' + this._esc(_lvT('pce.pts','PTS')) + '</div><div class="v">' + pt.tot + '</div></div>' : '') + '</div>'+
             '<div class="pce-pad pce-mobonly">'+
                 '<div class="pce-prow">' + [2,3,4,5].map(function(n){ return '<div class="pce-key" onclick="PaperCardEntry.tap(' + n + ')">' + n + '</div>'; }).join('') + '</div>'+
                 '<div class="pce-prow">' + [6,7,8,9].map(function(n){ return '<div class="pce-key" onclick="PaperCardEntry.tap(' + n + ')">' + n + '</div>'; }).join('') + '</div>'+

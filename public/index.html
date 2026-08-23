@@ -9788,6 +9788,10 @@
                 'pce.pin.switch': 'Save {name} first, then start {next}?',
                 'pce.pin.now': 'NOW SCORING',
                 'pce.pin.unpin': 'Unpin — back to score-first',
+                'pce.pin.editing': 'EDITING POSTED CARD',
+                'pce.pin.clear': 'CLEAR',
+                'pce.clear.confirm': 'Clear the ENTIRE scorecard for {name}?\n\nThis deletes every saved score for this round and cannot be undone.',
+                'pce.clear.done': 'Scorecard cleared for {name}',
                 'pce.gross': 'GROSS',
                 'pce.autocalc': 'NET & PTS AUTO',
                 'pce.typename': 'Type a name…',
@@ -11767,6 +11771,10 @@
                 'pce.pin.switch': 'บันทึกการ์ดของ {name} ก่อน แล้วเริ่มของ {next}?',
                 'pce.pin.now': 'กำลังกรอกสกอร์',
                 'pce.pin.unpin': 'เลิกเลือก — กลับไปกรอกสกอร์ก่อน',
+                'pce.pin.editing': 'แก้ไขการ์ดที่บันทึกแล้ว',
+                'pce.pin.clear': 'ล้างการ์ด',
+                'pce.clear.confirm': 'ล้างสกอร์การ์ดทั้งหมดของ {name}?\n\nสกอร์ที่บันทึกไว้ของรอบนี้จะถูกลบทั้งหมดและกู้คืนไม่ได้',
+                'pce.clear.done': 'ล้างสกอร์การ์ดของ {name} แล้ว',
                 'pce.gross': 'กรอส',
                 'pce.autocalc': 'เน็ต & แต้ม อัตโนมัติ',
                 'pce.typename': 'พิมพ์ชื่อ…',
@@ -13344,6 +13352,10 @@
                 'pce.pin.switch': '{name}의 카드를 먼저 저장하고 {next}를 시작할까요?',
                 'pce.pin.now': '입력 중',
                 'pce.pin.unpin': '선택 해제 — 점수 먼저 입력으로',
+                'pce.pin.editing': '저장된 카드 수정 중',
+                'pce.pin.clear': '카드 지우기',
+                'pce.clear.confirm': '{name}의 스코어카드 전체를 지울까요?\n\n이 라운드의 저장된 모든 점수가 삭제되며 되돌릴 수 없습니다.',
+                'pce.clear.done': '{name}의 스코어카드를 지웠습니다',
                 'pce.gross': '그로스',
                 'pce.autocalc': '네트 & 포인트 자동',
                 'pce.typename': '이름 입력…',
@@ -15757,6 +15769,10 @@
                 'pce.pin.switch': '{name}のカードを保存してから{next}を開始しますか?',
                 'pce.pin.now': '入力中',
                 'pce.pin.unpin': '選択解除 — スコア先入力へ',
+                'pce.pin.editing': '保存済みカードを編集中',
+                'pce.pin.clear': 'カードをクリア',
+                'pce.clear.confirm': '{name}のスコアカード全体をクリアしますか?\n\nこのラウンドの保存済みスコアはすべて削除され、元に戻せません。',
+                'pce.clear.done': '{name}のスコアカードをクリアしました',
                 'pce.gross': 'グロス',
                 'pce.autocalc': 'ネット & ポイント自動',
                 'pce.typename': '名前を入力…',
@@ -144439,27 +144455,38 @@ class OrganizerScoringSystem {
     async clearEditedScorecard() {
         if (!this.editingRound) { window.NotificationManager.show('No round selected', 'error'); return; }
         const playerName = this.getPlayerName(this.editingRound.golfer_id, this.editingRound) || 'this player';
-        if (!confirm(`Clear the ENTIRE scorecard for ${playerName}?\n\nThis deletes every saved score for this round and cannot be undone.`)) return;
+        const ok = await this.clearPostedScorecard(this.currentEventId, this.editingRound.golfer_id, playerName, {
+            scorecardId: this.editScorecardId, roundId: this.editArchivedRoundId, fallbackRoundId: this.editingRoundId
+        });
+        if (!ok) return;
+        this.closeEditScoreModal();
+        await this.refreshScores();
+    }
+
+    // v970: the ONE clear-scorecard engine — Edit Score modal AND Paper Card Entry route here.
+    // Wipes the live scorecard's scores (+ the totals cache boards read) AND the archived
+    // round's holes + totals. Confirms inside; returns true only after a successful wipe.
+    async clearPostedScorecard(eventId, golferId, playerName, hints) {
+        hints = hints || {};
+        if (!confirm(_lvT('pce.clear.confirm', 'Clear the ENTIRE scorecard for {name}?\n\nThis deletes every saved score for this round and cannot be undone.').replace('{name}', playerName || 'this player'))) return false;
 
         const sb = window.SupabaseDB.client;
-        const golferId = this.editingRound.golfer_id;
-        const eventId = this.currentEventId;
         try {
-            let scorecardId = this.editScorecardId;
+            let scorecardId = hints.scorecardId;
             if (!scorecardId && eventId && golferId) {
                 const { data: cards } = await sb.from('scorecards')
                     .select('id').eq('event_id', eventId).eq('player_id', golferId)
                     .order('created_at', { ascending: false }).limit(1);
                 if (cards && cards.length) scorecardId = cards[0].id;
             }
-            let roundId = this.editArchivedRoundId;
+            let roundId = hints.roundId;
             if (!roundId && eventId && golferId) {
                 const { data: rws } = await sb.from('rounds')
                     .select('id').eq('society_event_id', eventId).eq('golfer_id', golferId)
                     .order('played_at', { ascending: false }).limit(1);
                 if (rws && rws.length) roundId = rws[0].id;
             }
-            if (!scorecardId && !roundId) roundId = this.editingRoundId;
+            if (!scorecardId && !roundId) roundId = hints.fallbackRoundId;
 
             if (scorecardId) {
                 const { data: del, error } = await sb.from('scores')
@@ -144485,12 +144512,12 @@ class OrganizerScoringSystem {
                 console.log(`[OrganizerScoring] 🧹 Cleared ${(del || []).length} round_holes on round ${roundId}`);
             }
 
-            window.NotificationManager.show(`Scorecard cleared for ${playerName}`, 'success');
-            this.closeEditScoreModal();
-            await this.refreshScores();
+            window.NotificationManager.show(_lvT('pce.clear.done', 'Scorecard cleared for {name}').replace('{name}', playerName || ''), 'success');
+            return true;
         } catch (error) {
-            console.error('[OrganizerScoring] clearEditedScorecard failed:', error);
+            console.error('[OrganizerScoring] clearPostedScorecard failed:', error);
             window.NotificationManager.show('Could not clear scorecard: ' + error.message, 'error');
+            return false;
         }
     }
 
@@ -147177,7 +147204,8 @@ window.PaperCardEntry = {
         try {
             var sb = window.SupabaseDB.client;
             var rr = await sb.from('rounds').select('golfer_id,total_gross,total_net').eq('society_event_id', event.id);
-            ((rr && rr.data) || []).forEach(function(r){ self.posted[String(r.golfer_id)] = { gross: r.total_gross, net: r.total_net, src: 'round' }; });
+            // A CLEARED round keeps its row with NULL totals — that is NOT a posted score.
+            ((rr && rr.data) || []).forEach(function(r){ if (r.total_gross == null) return; self.posted[String(r.golfer_id)] = { gross: r.total_gross, net: r.total_net, src: 'round' }; });
             var sc = await sb.from('scorecards').select('player_id,total_gross,total_net').eq('event_id', event.id).not('total_gross','is',null);
             ((sc && sc.data) || []).forEach(function(r){ if (!self.posted[String(r.player_id)]) self.posted[String(r.player_id)] = { gross: r.total_gross, net: r.total_net, src: 'live' }; });
         } catch(e) { console.warn('[PCE] posted lookup', e); }
@@ -147211,7 +147239,7 @@ window.PaperCardEntry = {
             this.courseData = await this._loadCourse();
         }
         this.scores = {}; this.cur = 0; this.startNine = 1; this.sheetOpen = false; this.count = 0;
-        this._dirHits = []; this._search = ''; this._custom = null; this.pin = null;
+        this._dirHits = []; this._search = ''; this._custom = null; this.pin = null; this._pinPrefill = null; this._pinSnap = null;
         this._mount();
         var teeEl = document.getElementById('pceTee'); if (teeEl) teeEl.style.display = '';
         this.render();
@@ -147222,7 +147250,7 @@ window.PaperCardEntry = {
         if (this._keyBound) { document.removeEventListener('keydown', this._keyBound, true); this._keyBound = null; }
         if (this._oneTimer) { clearTimeout(this._oneTimer); this._oneTimer = null; }
         var el = document.getElementById('pceOverlay'); if (el) el.remove();
-        var wasCustom = !!this._custom; this._custom = null; this.pin = null;
+        var wasCustom = !!this._custom; this._custom = null; this.pin = null; this._pinPrefill = null; this._pinSnap = null;
         // custom-mode callers own their refresh (saveEditedScore, qseSavePlayerRound, _hbhSaveRow…)
         if (!wasCustom) { try { window.OrganizerScoringSystem.refreshScores && window.OrganizerScoringSystem.refreshScores(); } catch(e){} }
     },
@@ -147476,6 +147504,8 @@ window.PaperCardEntry = {
         '#pceOverlay .pce-pinbar .nm{font:800 15px/1.2 \'Instrument Sans\',sans-serif;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'+
         '#pceOverlay .pce-pinbar .sub{font:600 10px/1.3 \'JetBrains Mono\',monospace;color:#475569;}'+
         '#pceOverlay .pce-pinbar .x{margin-left:auto;border:none;background:#dcfce7;border-radius:8px;color:#166534;font-size:16px;font-weight:700;padding:4px 10px;cursor:pointer;flex-shrink:0;}'+
+        '#pceOverlay .pce-pinbar .clr{margin-left:auto;border:1px solid #fca5a5;background:#fef2f2;border-radius:8px;color:#dc2626;font:800 10px/1 \'JetBrains Mono\',monospace;letter-spacing:.05em;padding:7px 10px;cursor:pointer;flex-shrink:0;}'+
+        '#pceOverlay .pce-pinbar .clr + .x{margin-left:8px;}'+
         // mobile 2-col card
         '#pceOverlay .pce-cols{display:grid;grid-template-columns:1fr 1fr;gap:8px;}'+
         '#pceOverlay .pce-col9{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;}'+
@@ -147732,6 +147762,10 @@ window.PaperCardEntry = {
         if (!this._filled()) { this.setPin(pid); return; }
         var self = this;
         if (this.pin && String(pid) !== String(this.pin)) {
+            // Unedited prefilled card = just BROWSING posted cards — switch freely, nothing to lose.
+            if (this._pinPrefill === String(this.pin) && JSON.stringify(this.scores) === this._pinSnap) {
+                this.scores = {}; this.cur = 0; this.setPin(pid); return;
+            }
             // card in progress for the pinned player — save theirs first, then start the tapped one
             var cp = (this.players || []).find(function(x){ return String(x.player_id) === String(self.pin); });
             var np = (this.players || []).find(function(x){ return String(x.player_id) === String(pid); });
@@ -147743,11 +147777,61 @@ window.PaperCardEntry = {
     },
     setPin: function(pid){
         this.pin = String(pid);
+        this._pinPrefill = null; this._pinSnap = null;
         this.sheetOpen = false;
         this.render();
+        // Posted player: pull their SAVED hole scores into the boxes so the organizer can edit
+        // and re-save from right here (Pete 2026-08-23). Guards: still pinned to them, nothing
+        // typed meanwhile (a fetch must never clobber typed work).
+        var self = this;
+        if (this.posted[String(pid)] && !this._filled()) {
+            this._loadPostedScores(pid).then(function(sc){
+                if (!sc || self._custom || String(self.pin) !== String(pid) || self._filled()) return;
+                self.scores = sc; self.cur = 0;
+                self._pinPrefill = String(pid); self._pinSnap = JSON.stringify(sc);
+                self.render();
+            });
+        }
         try { window.innerWidth >= 900 && setTimeout(function(){ var el = document.getElementById('pceOverlay'); el && el.focus && el.focus(); }, 50); } catch(e){}
     },
-    unpin: function(){ this.pin = null; this.render(); },
+    unpin: function(){
+        // A prefilled card is THEIR saved round — never leave its scores behind where the
+        // score-first path could stamp them onto another player.
+        if (this._pinPrefill) { this.scores = {}; this.cur = 0; }
+        this.pin = null; this._pinPrefill = null; this._pinSnap = null;
+        this.render();
+    },
+    // Saved hole scores for a posted player: archived round first (paper/QSE cards), the live
+    // scorecard second — same precedence as the posted[] lookup in open().
+    _loadPostedScores: async function(pid){
+        var sb = window.SupabaseDB.client, out = null;
+        try {
+            var ex = await sb.from('rounds').select('id').eq('society_event_id', this.event.id).eq('golfer_id', pid).order('played_at', { ascending: false }).limit(1);
+            if (ex.data && ex.data.length) {
+                var rh = await sb.from('round_holes').select('hole_number,gross_score').eq('round_id', ex.data[0].id);
+                if (rh.data && rh.data.length) { out = {}; rh.data.forEach(function(r){ if (r.gross_score) out[r.hole_number] = r.gross_score; }); }
+            }
+            if (!out) {
+                var sc = await sb.from('scorecards').select('id').eq('event_id', this.event.id).eq('player_id', pid).not('total_gross','is',null).order('created_at', { ascending: false }).limit(1);
+                if (sc.data && sc.data.length) {
+                    var sr = await sb.from('scores').select('hole_number,gross_score').eq('scorecard_id', sc.data[0].id);
+                    if (sr.data && sr.data.length) { out = {}; sr.data.forEach(function(r){ if (r.gross_score) out[r.hole_number] = r.gross_score; }); }
+                }
+            }
+        } catch(e) { console.warn('[PCE] posted prefill', e); }
+        return out;
+    },
+    // Wipe the pinned player's SAVED scorecard — the Edit Score modal's Clear, reachable from
+    // the paper card (Pete 2026-08-23). One engine: OSS.clearPostedScorecard (confirms inside).
+    clearCard: async function(){
+        var pid = this.pin; if (!pid || this.saving) return;
+        var p = this._pinPlayer(); if (!p) return;
+        var ok = await window.OrganizerScoringSystem.clearPostedScorecard(this.event.id, pid, p.player_name);
+        if (!ok) return;
+        delete this.posted[String(pid)];
+        this.scores = {}; this.cur = 0; this._pinPrefill = null; this._pinSnap = null;
+        this.render();
+    },
     _pinPlayer: function(){
         if (!this.pin) return null;
         var self = this;
@@ -147769,9 +147853,11 @@ window.PaperCardEntry = {
         var sub = 'HCP ' + (window.formatHandicapDisplay ? window.formatHandicapDisplay(p.handicap) : p.handicap)
             + (g ? ' · ' + g : '')
             + (pi ? ' · ' + _lvT('pce.alreadyposted','ALREADY POSTED ✓') + (pi.gross != null ? ' ' + pi.gross : '') : '');
+        var editing = this._pinPrefill === String(this.pin);
         return '<div class="pce-pinbar">'+
             '<span data-golfer-av="' + this._esc(p.player_id) + '" data-golfer-av-nm="' + this._esc(p.player_name) + '" data-golfer-av-sz="28"></span>'+
-            '<div style="min-width:0;"><div class="k">' + this._esc(_lvT('pce.pin.now','NOW SCORING')) + '</div><div class="nm">' + this._esc(p.player_name) + '</div><div class="sub">' + this._esc(sub) + '</div></div>'+
+            '<div style="min-width:0;"><div class="k">' + this._esc(editing ? _lvT('pce.pin.editing','EDITING POSTED CARD') : _lvT('pce.pin.now','NOW SCORING')) + '</div><div class="nm">' + this._esc(p.player_name) + '</div><div class="sub">' + this._esc(sub) + '</div></div>'+
+            (pi ? '<button class="clr" onclick="PaperCardEntry.clearCard()">' + this._esc(_lvT('pce.pin.clear','CLEAR')) + '</button>' : '')+
             '<button class="x" onclick="PaperCardEntry.unpin()" title="' + this._esc(_lvT('pce.pin.unpin','Unpin — back to score-first')) + '">✕</button></div>';
     },
 
@@ -148120,7 +148206,9 @@ window.PaperCardEntry = {
         if (!filled) { window.NotificationManager.show(_lvT('pce.toast.noscores','No scores on the card yet'), 'warning'); return; }
         if (filled < 18 && !confirm(_lvT('pce.confirm.partial','Only {n} of 18 holes filled — save anyway?').replace('{n}', filled))) return;
         var already = this.posted[String(playerId)];
-        if (already && !confirm(_lvT('pce.confirm.replace','{name} already has {g} posted. Replace with this card?').replace('{name}', p.player_name).replace('{g}', already.gross != null ? already.gross : '—'))) return;
+        // Editing their own prefilled card = a deliberate re-save; the replace confirm would just nag.
+        var editingOwn = this._pinPrefill && String(this._pinPrefill) === String(playerId);
+        if (already && !editingOwn && !confirm(_lvT('pce.confirm.replace','{name} already has {g} posted. Replace with this card?').replace('{name}', p.player_name).replace('{g}', already.gross != null ? already.gross : '—'))) return;
         this.saving = true;
         try {
             var sb = window.SupabaseDB.client;
@@ -148136,11 +148224,12 @@ window.PaperCardEntry = {
                 holeRows.push({ hole_number: h, par: m.par || 4, stroke_index: m.handicap || h, gross_score: s, net_score: net, stableford_points: pts });
                 totalGross += s; totalNet += net; totalPts += pts; holesN++;
             }
+            // ALWAYS look for their existing round (not only when posted[] says so) — a CLEARED
+            // round has NULL totals so it drops out of posted[], and inserting a second rounds
+            // row for the same event+player would double them up. Update-in-place wins.
             var roundId = null;
-            if (already && already.src === 'round') {
-                var ex = await sb.from('rounds').select('id').eq('society_event_id', this.event.id).eq('golfer_id', playerId).order('played_at', { ascending: false }).limit(1);
-                if (ex.data && ex.data.length) roundId = ex.data[0].id;
-            }
+            var ex = await sb.from('rounds').select('id').eq('society_event_id', this.event.id).eq('golfer_id', playerId).order('played_at', { ascending: false }).limit(1);
+            if (ex.data && ex.data.length) roundId = ex.data[0].id;
             if (roundId) {
                 await sb.from('round_holes').delete().eq('round_id', roundId);
                 var up = await sb.from('rounds').update({ total_gross: totalGross, total_net: totalNet, total_stableford: totalPts, holes_played: holesN, handicap_used: p.handicap, tee_marker: (document.getElementById('pceTee') || {}).value || 'blue' }).eq('id', roundId).select('id');
@@ -148175,7 +148264,7 @@ window.PaperCardEntry = {
             window.NotificationManager.show('✓ ' + _lvT('pce.toast.saved','Saved — {name} · {g} (net {n} · {p} pts)').replace('{name}', p.player_name).replace('{g}', totalGross).replace('{n}', totalNet).replace('{p}', totalPts), 'success', 3500);
             // fresh card, same rhythm
             var hadPin = !!this.pin;
-            this.scores = {}; this.cur = 0; this.sheetOpen = false; this._search = ''; this._dirHits = []; this.pin = null;
+            this.scores = {}; this.cur = 0; this.sheetOpen = false; this._search = ''; this._dirHits = []; this.pin = null; this._pinPrefill = null; this._pinSnap = null;
             this.render();
             if (window.innerWidth >= 900) { var ov = document.getElementById('pceOverlay'); ov && ov.focus && ov.focus(); }
             // name-first rhythm on mobile: straight back to the name sheet to pick the next player

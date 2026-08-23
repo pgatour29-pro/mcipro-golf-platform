@@ -39469,7 +39469,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 rounds.forEach(r => {
                     roundPlayerMap[r.id] = r.golfer_id;
                     roundCourseMap[r.id] = r.course_name || 'Unknown';
-                    roundDateMap[r.id] = r.completed_at || r.played_at || '';
+                    // Played date, not entry date — late-entered cards carry next-day completed_at
+                    roundDateMap[r.id] = r.played_at || r.completed_at || '';
                 });
 
                 // Build player names from rounds.player_name (most reliable source)
@@ -39814,7 +39815,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         let lookbackDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 14).toISOString();
                         let { data: recentRounds } = await window.SupabaseDB.client
                             .from('rounds')
-                            .select('id, golfer_id, player_name, total_gross, total_stableford, course_name, completed_at, society_event_id, scramble_config, team_size, handicap_used')
+                            .select('id, golfer_id, player_name, total_gross, total_stableford, course_name, completed_at, played_at, started_at, society_event_id, scramble_config, team_size, handicap_used')
                             .gte('completed_at', lookbackDate)
                             .gte('total_gross', 55).lt('total_gross', 200)
                             .order('completed_at', { ascending: false }).limit(40);
@@ -39823,7 +39824,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             lookbackDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 60).toISOString();
                             const fallback = await window.SupabaseDB.client
                                 .from('rounds')
-                                .select('id, golfer_id, player_name, total_gross, total_stableford, course_name, completed_at, society_event_id, scramble_config, team_size, handicap_used')
+                                .select('id, golfer_id, player_name, total_gross, total_stableford, course_name, completed_at, played_at, started_at, society_event_id, scramble_config, team_size, handicap_used')
                                 .gte('completed_at', lookbackDate)
                                 .gte('total_gross', 55).lt('total_gross', 200)
                                 .order('completed_at', { ascending: false }).limit(40);
@@ -39899,27 +39900,31 @@ document.addEventListener('DOMContentLoaded', function() {
                                 r._divisions = evDiv || socDiv || null;
                             });
 
-                            // Group by day, sort by score within each day
+                            // Group by the day the round was PLAYED (played_at/started_at — the QSE/PCE
+                            // writers stamp these to the EVENT date), never completed_at: a paper card
+                            // entered after midnight lands on its own next-day board otherwise.
+                            const playedTs = (r) => r.played_at || r.started_at || r.completed_at;
                             const dayGroups = {};
                             recentRounds.forEach(r => {
-                                const day = new Date(r.completed_at).toLocaleDateString(_lvLocale(), { weekday: 'short', month: 'short', day: 'numeric' });
-                                if (!dayGroups[day]) dayGroups[day] = [];
-                                dayGroups[day].push(r);
+                                const d = new Date(playedTs(r));
+                                const dayKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                                if (!dayGroups[dayKey]) dayGroups[dayKey] = [];
+                                dayGroups[dayKey].push(r);
                             });
                             // NET score: 2-man scramble teams subtract their combined team handicap (individuals net=gross)
                             const netOf = (x) => (Number(x.total_gross) || 0) - ((x.scramble_config?.teamName && x.team_size === 2) ? (parseFloat(x.scramble_config.teamHcp) || 0) : 0);
                             // Sort each day's rounds best-first BY EVENT FORMAT (stableford = points desc, stroke play = gross asc)
                             Object.values(dayGroups).forEach(g => g.sort((a, b) => window.CommunityScore.sortKey(a) - window.CommunityScore.sortKey(b)));
 
-                            // Keep only the last 4 event days
-                            const dayEntries = Object.entries(dayGroups).slice(0, 4);
+                            // Keep only the last 4 PLAYED days, newest first (keys sort lexically)
+                            const dayEntries = Object.entries(dayGroups).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 4);
 
                             let allRows = '';
                             let globalRank = 0;
                             // Store rounds by day for View All modal
                             window._recentRoundsByDay = {};
-                            for (const [day, rounds] of dayEntries) {
-                                const dayDate = rounds[0]?.completed_at?.split('T')[0] || '';
+                            for (const [dayDate, rounds] of dayEntries) {
+                                const day = new Date(dayDate + 'T12:00:00').toLocaleDateString(_lvLocale(), { weekday: 'short', month: 'short', day: 'numeric' });
                                 window._recentRoundsByDay[dayDate] = rounds;
 
                                 // Sub-group by course within each day

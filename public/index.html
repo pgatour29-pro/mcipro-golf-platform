@@ -100317,6 +100317,15 @@ class SocietyOrganizerManager {
 
                 console.log(`[SaveUserEdits] ✅ Society handicap saved: ${handicapNumeric} for society ${handicapScope}`);
 
+                // v966 (Pete: "changing the hcp from the players directory is not working"):
+                // the society row alone changes nothing visible — apply to the event selected
+                // in Scoring (registration + posted round recompute + board refresh) so the
+                // adjustment is REAL the moment it saves.
+                try {
+                    const OSS = window.OrganizerScoringSystem;
+                    if (OSS && OSS.currentEventId && OSS.applyHandicapToEvent) await OSS.applyHandicapToEvent(golferId, handicapNumeric);
+                } catch (e) { console.warn('[SaveUserEdits] apply to event', e); }
+
                 // Also update name and home club if changed (but NOT the universal handicap)
                 const existingProfile = await window.SupabaseDB.getUserProfile(golferId);
                 const existingProfileData = existingProfile?.profile_data || {};
@@ -100372,6 +100381,12 @@ class SocietyOrganizerManager {
                     console.error('[SaveUserEdits] Error saving universal handicap:', universalHcpError);
                     // Continue anyway - try to update profile
                 }
+
+                // v966: universal-scope edits apply to the selected event's round too
+                try {
+                    const OSS = window.OrganizerScoringSystem;
+                    if (OSS && OSS.currentEventId && OSS.applyHandicapToEvent) await OSS.applyHandicapToEvent(golferId, handicapNumeric);
+                } catch (e) { console.warn('[SaveUserEdits] apply to event', e); }
             }
 
             // Check if this is a GUEST ID (not a LINE user)

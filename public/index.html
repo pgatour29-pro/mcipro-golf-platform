@@ -143437,7 +143437,8 @@ class OrganizerScoringSystem {
                 const r = self._hbhRound(k2);
                 if (!r) throw new Error('row not found');
                 await self.setSocietyHandicap(r.golfer_id, v);
-                r.handicap_used = v;   // re-save recomputes this row with the new hcp
+                r.handicap_used = v;
+                await self.applyHandicapToEvent(r.golfer_id, v);   // recompute their posted round NOW
             },
             onSave: async (scores) => {
                 if (!self._hbhScores) self._hbhScores = {};
@@ -143481,6 +143482,48 @@ class OrganizerScoringSystem {
             if (!ins || !ins.length) throw new Error('handicap insert blocked (0 rows)');
         }
         return true;
+    }
+
+    // v964 — an organizer handicap adjustment must apply IMMEDIATELY (Pete: "still not
+    // saving"): the society row alone changes nothing visible — the posted round keeps its
+    // stored handicap_used and the leaderboard reads THAT. This stamps the new hcp onto the
+    // event registration + round/scorecard, recomputes every stored hole (net/stableford)
+    // from the saved gross via _persistHoleScores (the ONE shared write path), and refreshes
+    // the boards. No re-save dance.
+    async applyHandicapToEvent(golferId, hcp) {
+        const sb = window.SupabaseDB.client;
+        const eventId = this.currentEventId;
+        if (!eventId || !golferId) return;
+        try { await sb.from('event_registrations').update({ handicap: hcp }).eq('event_id', eventId).eq('player_id', golferId); } catch (e) { console.warn('[HCP] reg stamp', e); }
+        const { data: rws } = await sb.from('rounds').select('id').eq('society_event_id', eventId).eq('golfer_id', golferId).order('played_at', { ascending: false }).limit(1);
+        const { data: cards } = await sb.from('scorecards').select('id').eq('event_id', eventId).eq('player_id', golferId).order('created_at', { ascending: false }).limit(1);
+        const roundId = (rws && rws[0] && rws[0].id) || null;
+        const scorecardId = (cards && cards[0] && cards[0].id) || null;
+        if (!roundId && !scorecardId) return;   // registered, nothing posted yet
+        if (roundId) { const { error } = await sb.from('rounds').update({ handicap_used: hcp }).eq('id', roundId); if (error) throw error; }
+        if (scorecardId) { try { await sb.from('scorecards').update({ handicap: hcp }).eq('id', scorecardId); } catch (e) {} }
+        // recompute stored holes with the new hcp (gross stays — net/pts/totals change)
+        let grossMap = {};
+        if (roundId) {
+            const { data: hs } = await sb.from('round_holes').select('hole_number, gross_score').eq('round_id', roundId);
+            (hs || []).forEach(r => { if (r.gross_score != null) grossMap[r.hole_number] = r.gross_score; });
+        }
+        if (!Object.keys(grossMap).length && scorecardId) {
+            const { data: hs2 } = await sb.from('scores').select('hole_number, gross_score').eq('scorecard_id', scorecardId);
+            (hs2 || []).forEach(r => { if (r.gross_score != null) grossMap[r.hole_number] = r.gross_score; });
+        }
+        if (Object.keys(grossMap).length) {
+            const roundObj = { id: roundId || scorecardId, golfer_id: golferId, handicap_used: hcp, is_live: !roundId && !!scorecardId };
+            await this._persistHoleScores(roundObj, grossMap);
+        } else if (roundId) {
+            // totals-only round (no hole detail): recompute net from gross − playing hcp
+            const { data: rr } = await sb.from('rounds').select('total_gross').eq('id', roundId).maybeSingle();
+            if (rr && rr.total_gross != null) {
+                const ph = window.toPlayingHandicap(hcp);
+                await sb.from('rounds').update({ total_net: rr.total_gross - ph }).eq('id', roundId);
+            }
+        }
+        try { await this.refreshScores(); } catch (e) {}
     }
 
     // Per-hole cell colour for the hole-by-hole grid (score vs par).
@@ -143820,6 +143863,7 @@ class OrganizerScoringSystem {
                     await self.setSocietyHandicap(row.golfer_id, v);
                     row.handicap_used = v;
                     if (self.editingRound && String(self.editingRound.id) === String(rid2)) self.editingRound.handicap_used = v;
+                    await self.applyHandicapToEvent(row.golfer_id, v);   // recompute their posted round NOW
                 },
                 onSave: async (scores) => {
                     self.editScoreData = scores;
@@ -146105,6 +146149,7 @@ class OrganizerScoringSystem {
             onPick: (pid) => self.toggleHoleByHole(pid),
             onHcp: async (pid, v) => {
                 await self.setSocietyHandicap(pid, v);
+                await self.applyHandicapToEvent(pid, v);   // recompute their posted round NOW
                 const pl = (self.qsePlayersData || []).find(x => x.player_id === pid);
                 if (pl) pl.handicap = v;
                 try { await self.updateHoleTotals(pid); } catch (e) {}

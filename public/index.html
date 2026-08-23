@@ -70689,24 +70689,33 @@ const AdminSystem = {
             this.users[userIndex].profile_data.golfInfo.handicap = handicap;
             this.users[userIndex].profile_data.golfInfo.lastHandicapUpdate = new Date().toISOString();
 
-            // Also update society_handicaps table (source of truth)
+            // Also update society_handicaps table (source of truth).
+            // v968: shared fail-loud writer (see SocietyOrganizerSystem.saveUserEdits for why
+            // DELETE+INSERT never saved anything) — lazily defined here too since either
+            // editor can run first.
             if (handicap !== null) {
+                if (!window.upsertUniversalHandicap) {
+                    window.upsertUniversalHandicap = async function(golferId, numericHcp) {
+                        const sb = window.SupabaseDB.client;
+                        const { data: ex } = await sb.from('society_handicaps').select('id').eq('golfer_id', golferId).is('society_id', null).limit(1);
+                        if (ex && ex.length) {
+                            const { data: up, error } = await sb.from('society_handicaps')
+                                .update({ handicap_index: numericHcp, calculation_method: 'MANUAL', last_calculated_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+                                .eq('id', ex[0].id).select('id');
+                            if (error) throw error;
+                            if (!up || !up.length) throw new Error('universal handicap update blocked (0 rows)');
+                        } else {
+                            const { data: ins, error } = await sb.from('society_handicaps')
+                                .insert({ golfer_id: golferId, society_id: null, handicap_index: numericHcp, calculation_method: 'MANUAL', last_calculated_at: new Date().toISOString() })
+                                .select('id');
+                            if (error) throw error;
+                            if (!ins || !ins.length) throw new Error('universal handicap insert blocked (0 rows)');
+                        }
+                        return true;
+                    };
+                }
                 const numericHcp = handicap.startsWith('+') ? -parseFloat(handicap.substring(1)) : parseFloat(handicap);
-                await window.SupabaseDB.client
-                    .from('society_handicaps')
-                    .delete()
-                    .eq('golfer_id', userId)
-                    .is('society_id', null);
-
-                await window.SupabaseDB.client
-                    .from('society_handicaps')
-                    .insert({
-                        golfer_id: userId,
-                        society_id: null,
-                        handicap_index: numericHcp,
-                        calculation_method: 'MANUAL',
-                        last_calculated_at: new Date().toISOString()
-                    });
+                await window.upsertUniversalHandicap(userId, numericHcp);
             }
 
             const updatePayload = {
@@ -100257,6 +100266,30 @@ class SocietyOrganizerManager {
     }
 
     async saveUserEdits() {
+        // v968: ONE universal-handicap writer, fail-loud. Defined here (first-load path) and
+        // shared with AdminSystem. society_handicaps has a partial-unique index that dedupes
+        // universal rows AND no RLS DELETE policy — DELETE+INSERT silently saved NOTHING for
+        // months. UPDATE the existing row; INSERT only when none exists; throw on 0 rows.
+        if (!window.upsertUniversalHandicap) {
+            window.upsertUniversalHandicap = async function(golferId, numericHcp) {
+                const sb = window.SupabaseDB.client;
+                const { data: ex } = await sb.from('society_handicaps').select('id').eq('golfer_id', golferId).is('society_id', null).limit(1);
+                if (ex && ex.length) {
+                    const { data: up, error } = await sb.from('society_handicaps')
+                        .update({ handicap_index: numericHcp, calculation_method: 'MANUAL', last_calculated_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+                        .eq('id', ex[0].id).select('id');
+                    if (error) throw error;
+                    if (!up || !up.length) throw new Error('universal handicap update blocked (0 rows)');
+                } else {
+                    const { data: ins, error } = await sb.from('society_handicaps')
+                        .insert({ golfer_id: golferId, society_id: null, handicap_index: numericHcp, calculation_method: 'MANUAL', last_calculated_at: new Date().toISOString() })
+                        .select('id');
+                    if (error) throw error;
+                    if (!ins || !ins.length) throw new Error('universal handicap insert blocked (0 rows)');
+                }
+                return true;
+            };
+        }
         try {
             const golferId = document.getElementById('editUserId').value;
             const name = document.getElementById('editUserFullName').value.trim();
@@ -100374,26 +100407,16 @@ class SocietyOrganizerManager {
             if (handicapNumeric !== null) {
                 console.log('[SaveUserEdits] Saving universal handicap to society_handicaps...');
 
-                // DELETE+INSERT pattern (upsert was creating duplicates)
-                await window.SupabaseDB.client
-                    .from('society_handicaps')
-                    .delete()
-                    .eq('golfer_id', golferId)
-                    .is('society_id', null);
-
-                const { error: universalHcpError } = await window.SupabaseDB.client
-                    .from('society_handicaps')
-                    .insert({
-                        golfer_id: golferId,
-                        society_id: null,
-                        handicap_index: handicapNumeric,
-                        calculation_method: 'MANUAL',
-                        last_calculated_at: new Date().toISOString()
-                    });
-
-                if (universalHcpError) {
-                    console.error('[SaveUserEdits] Error saving universal handicap:', universalHcpError);
-                    // Continue anyway - try to update profile
+                // v968: the old DELETE+INSERT NEVER WORKED — RLS has no DELETE policy (the
+                // delete "succeeded" removing 0 rows), the insert then died on the universal
+                // unique index, and the error was SWALLOWED with a success toast. Update-first,
+                // fail-loud — never pretend a save happened.
+                try {
+                    await window.upsertUniversalHandicap(golferId, handicapNumeric);
+                } catch (e) {
+                    console.error('[SaveUserEdits] universal hcp save FAILED:', e);
+                    DevMode.showNotification('Universal handicap NOT saved: ' + (e.message || e), 'error');
+                    return;
                 }
 
                 // v966: universal-scope edits apply to the selected event's round too

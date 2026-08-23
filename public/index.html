@@ -8517,6 +8517,15 @@
                 'mgr.cube.forecast': 'Radar & forecast',
                 'mgr.cube.chat': 'Staff chat',
                 'mgr.cube.setup': 'Course setup',
+                'ps.dock.pos': 'POS',
+                'ps.dock.teesheet': 'Tee Sheet',
+                'ps.cube.register': 'Open register',
+                'ps.cube.teesheet': 'Live bookings',
+                'ps.cube.stock': 'Stock & products',
+                'ps.cube.reports': 'Reports & CSV',
+                'ps.cube.customers': 'Recent players',
+                'ps.cube.chat': 'Team chat',
+                'ps.cube.setup': 'Course & tee sheet',
                 // PAV1 — Golfer Performance Analytics
                 'ganl.title': 'Performance Analytics',
                 'ganl.last10': 'Last 10',
@@ -10576,6 +10585,15 @@
                 'mgr.cube.forecast': 'เรดาร์และพยากรณ์',
                 'mgr.cube.chat': 'แชททีมงาน',
                 'mgr.cube.setup': 'ตั้งค่าสนาม',
+                'ps.dock.pos': 'ขาย',
+                'ps.dock.teesheet': 'ทีชีท',
+                'ps.cube.register': 'เปิดเครื่องขาย',
+                'ps.cube.teesheet': 'การจองแบบสด',
+                'ps.cube.stock': 'สต๊อกและสินค้า',
+                'ps.cube.reports': 'รายงานและ CSV',
+                'ps.cube.customers': 'ลูกค้าล่าสุด',
+                'ps.cube.chat': 'แชททีมงาน',
+                'ps.cube.setup': 'ตั้งค่าสนามและทีชีท',
                 // PAV1 — Golfer Performance Analytics
                 'ganl.title': 'การวิเคราะห์ผลงาน',
                 'ganl.last10': '10 รอบล่าสุด',
@@ -12514,6 +12532,15 @@
                 'mgr.cube.forecast': '레이더·예보',
                 'mgr.cube.chat': '직원 채팅',
                 'mgr.cube.setup': '코스 설정',
+                'ps.dock.pos': 'POS',
+                'ps.dock.teesheet': '티시트',
+                'ps.cube.register': '계산대 열기',
+                'ps.cube.teesheet': '실시간 예약',
+                'ps.cube.stock': '재고·상품',
+                'ps.cube.reports': '보고서·CSV',
+                'ps.cube.customers': '최근 고객',
+                'ps.cube.chat': '팀 채팅',
+                'ps.cube.setup': '코스·티시트 설정',
                 // PAV1 — Golfer Performance Analytics
                 'ganl.title': '퍼포먼스 분석',
                 'ganl.last10': '최근 10라운드',
@@ -14626,6 +14653,15 @@
                 'mgr.cube.forecast': 'レーダー・予報',
                 'mgr.cube.chat': 'スタッフチャット',
                 'mgr.cube.setup': 'コース設定',
+                'ps.dock.pos': 'POS',
+                'ps.dock.teesheet': 'ティーシート',
+                'ps.cube.register': 'レジを開く',
+                'ps.cube.teesheet': 'ライブ予約',
+                'ps.cube.stock': '在庫・商品',
+                'ps.cube.reports': 'レポート・CSV',
+                'ps.cube.customers': '最近の顧客',
+                'ps.cube.chat': 'チームチャット',
+                'ps.cube.setup': 'コース・ティーシート設定',
                 // PAV1 — Golfer Performance Analytics
                 'ganl.title': 'パフォーマンス分析',
                 'ganl.last10': '直近10ラウンド',
@@ -20659,6 +20695,8 @@
                 TabManager.showTab('proshopDashboard', 'pos');
                 UserInterface.updateUserDisplays();
                 this.updateProshopCourseDisplay(); // Update course name
+                // MHV-C: phones land on the cube home (POS data still loads underneath)
+                if (window.mgrIsPhone && window.psShowHome && mgrIsPhone()) psShowHome();
                 // Real-data proshop module (proshop-dashboard.js, defer-loaded)
                 const boot = (tries) => {
                     if (window.ProshopDashboard) { window.ProshopDashboard.init(); return; }
@@ -29930,13 +29968,55 @@ Sent from Login Page`;
             if (s) s.classList.remove('open');
             if (d) d.classList.remove('open');
         };
-        // Rotating phone→desktop while on the cube home would leave no active tab — restore Overview
+        // ===== Same shell for the Pro Shop dashboard (v979) =====
+        window.psDockActive = function (tab) {
+            if (tab === 'pos') { /* POS is both hero and dock tab */ }
+            if (tab === 'home' || tab === 'overview') tab = 'home';
+            document.querySelectorAll('#psDock .mdk').forEach(b => b.classList.remove('active'));
+            const hit = document.querySelector(`#psDock .mdk[data-tab="${tab}"]`) || document.getElementById('psDockMore');
+            if (hit) hit.classList.add('active');
+        };
+        window.psShowHome = function () {
+            document.querySelectorAll('#proshopDashboard .tab-content').forEach(c => c.classList.remove('active'));
+            const h = document.getElementById('psCubeHome');
+            if (h) h.style.display = 'block';
+            window.psCloseMore();
+            window.psDockActive('home');
+            try { window.scrollTo(0, 0); } catch (e) { }
+        };
+        window.psOpenSection = function (tab) {
+            const h = document.getElementById('psCubeHome');
+            if (h) h.style.display = 'none';
+            window.psCloseMore();
+            showProshopTab(tab);
+            window.psDockActive(tab);
+            try { window.scrollTo(0, 0); } catch (e) { }
+        };
+        window.psToggleMore = function () {
+            const s = document.getElementById('psMoreSheet'), d = document.getElementById('psMoreDim');
+            if (s && s.classList.contains('open')) { window.psCloseMore(); return; }
+            if (s) s.classList.add('open');
+            if (d) d.classList.add('open');
+        };
+        window.psCloseMore = function () {
+            const s = document.getElementById('psMoreSheet'), d = document.getElementById('psMoreDim');
+            if (s) s.classList.remove('open');
+            if (d) d.classList.remove('open');
+        };
+
+        // Rotating phone→desktop while on a cube home would leave no active tab — restore defaults
         try {
             window.matchMedia('(min-width: 768px)').addEventListener('change', (m) => {
-                const scr = document.getElementById('managerDashboard');
-                if (m.matches && scr && scr.classList.contains('active') &&
+                if (!m.matches) return;
+                const mgr = document.getElementById('managerDashboard');
+                if (mgr && mgr.classList.contains('active') &&
                     !document.querySelector('#managerDashboard .tab-content.active')) {
                     showManagerTab('overview');
+                }
+                const ps = document.getElementById('proshopDashboard');
+                if (ps && ps.classList.contains('active') &&
+                    !document.querySelector('#proshopDashboard .tab-content.active')) {
+                    showProshopTab('pos');
                 }
             });
         } catch (e) { }
@@ -32027,6 +32107,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (typeof ScreenManager?.showScreen === 'function') ScreenManager.showScreen('proshopDashboard');
                 }
             } catch {}
+            // MHV-C: any tab switch leaves the phone cube home
+            const psHome = document.getElementById('psCubeHome');
+            if (psHome) psHome.style.display = 'none';
+            if (window.psDockActive) psDockActive(tabName);
             TabManager.showTab('proshopDashboard', tabName, event);
             // Update settings display when switching to settings tab
             if (tabName === 'settings' && typeof ScreenManager?.updateProshopCourseDisplay === 'function') {
@@ -55900,9 +55984,9 @@ Waitlist (${waitlist.length} people):`;
          Mockup: design-mockups/manager-header-revamp/mhv-c.html (Pete picked C + "follow" the
          golfer cube home, 2026-08-23). -->
     <style id="mhvcCSS">
-        #mgrDock, #mgrMoreSheet, #mgrMoreDim, #mgrCubeHome { display: none; }
+        .mhvDock, .mhvSheet, .mhvDim, .mhvCubeHome { display: none; }
         /* desktop/tablet: cube home can never show (beats the inline style set on phones) */
-        @media (min-width: 768px) { #mgrCubeHome { display: none !important; } }
+        @media (min-width: 768px) { .mhvCubeHome { display: none !important; } }
         @media (max-width: 767px) {
             /* ---- 48px green app bar (GHD2 palette) ---- */
             #managerDashboard .nav-header { background: linear-gradient(180deg,#071a0e,#0c2a16); border-bottom: 2px solid #22c55e; }
@@ -55925,7 +56009,9 @@ Waitlist (${waitlist.length} people):`;
             }
             /* body-level FABs (back / scroll-top) must ride ABOVE the dock */
             body:has(#managerDashboard.active) #dashboardBackBtn,
-            body:has(#managerDashboard.active) #globalScrollToTopBtn { bottom: 88px !important; }
+            body:has(#managerDashboard.active) #globalScrollToTopBtn,
+            body:has(#proshopDashboard.active) #dashboardBackBtn,
+            body:has(#proshopDashboard.active) #globalScrollToTopBtn { bottom: 88px !important; }
             #managerDashboard .nav-header .emergency-btn .material-symbols-outlined { font-size: 18px; }
             #managerDashboard .nav-header .btn-logout .material-symbols-outlined { font-size: 17px; }
             #managerDashboard .nav-header .btn-logout span[data-i18n] { display: none; }
@@ -55934,18 +56020,18 @@ Waitlist (${waitlist.length} people):`;
             #managerDashboard main { padding-bottom: 96px; }
 
             /* ---- cube home (poster-tile language of the golfer overview) ---- */
-            #mgrCubeHome { display: none; }
-            #mgrCubeHome .mgc { position: relative; display: block; width: 100%; text-align: left; border: 1px solid rgba(15,23,42,.07); border-radius: 22px; padding: 14px 14px 12px; box-shadow: 0 6px 18px rgba(15,23,42,.07); cursor: pointer; overflow: hidden; font-family: inherit; }
-            #mgrCubeHome .mgc .t { font-size: 17px; font-weight: 800; color: #0f172a; line-height: 1.15; }
-            #mgrCubeHome .mgc .chip { display: inline-flex; align-items: center; margin-top: 8px; background: #fff; border: 1px solid rgba(15,23,42,.08); border-radius: 99px; padding: 4px 10px; font-size: 11px; font-weight: 700; color: #334155; box-shadow: 0 1px 2px rgba(15,23,42,.06); }
-            #mgrCubeHome .mgc .art { position: absolute; right: 10px; bottom: 8px; font-size: 40px; opacity: .9; }
-            #mgrCubeHome .mgc .badge { position: absolute; top: 10px; right: 10px; background: #ef4444; color: #fff; font-size: 10px; font-weight: 800; min-width: 17px; height: 17px; border-radius: 99px; display: none; align-items: center; justify-content: center; padding: 0 4px; }
-            #mgrCubeHome .mgc-hero { background: #fff; border: 2px solid #22c55e; margin-bottom: 10px; padding: 18px 14px 16px; }
-            #mgrCubeHome .mgc-hero .t { color: #16a34a; font-size: 19px; }
-            #mgrCubeHome .mgc-hero .chip { background: #dcfce7; border-color: #bbf7d0; color: #15803d; }
-            #mgrCubeHome .mgc-hero .art { font-size: 48px; color: #16a34a; }
-            #mgrCubeHome .mgc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-            #mgrCubeHome .mgc-grid .mgc { min-height: 118px; }
+            .mhvCubeHome { display: none; }
+            .mhvCubeHome .mgc { position: relative; display: block; width: 100%; text-align: left; border: 1px solid rgba(15,23,42,.07); border-radius: 22px; padding: 14px 14px 12px; box-shadow: 0 6px 18px rgba(15,23,42,.07); cursor: pointer; overflow: hidden; font-family: inherit; }
+            .mhvCubeHome .mgc .t { font-size: 17px; font-weight: 800; color: #0f172a; line-height: 1.15; }
+            .mhvCubeHome .mgc .chip { display: inline-flex; align-items: center; margin-top: 8px; background: #fff; border: 1px solid rgba(15,23,42,.08); border-radius: 99px; padding: 4px 10px; font-size: 11px; font-weight: 700; color: #334155; box-shadow: 0 1px 2px rgba(15,23,42,.06); }
+            .mhvCubeHome .mgc .art { position: absolute; right: 10px; bottom: 8px; font-size: 40px; opacity: .9; }
+            .mhvCubeHome .mgc .badge { position: absolute; top: 10px; right: 10px; background: #ef4444; color: #fff; font-size: 10px; font-weight: 800; min-width: 17px; height: 17px; border-radius: 99px; display: none; align-items: center; justify-content: center; padding: 0 4px; }
+            .mhvCubeHome .mgc-hero { background: #fff; border: 2px solid #22c55e; margin-bottom: 10px; padding: 18px 14px 16px; }
+            .mhvCubeHome .mgc-hero .t { color: #16a34a; font-size: 19px; }
+            .mhvCubeHome .mgc-hero .chip { background: #dcfce7; border-color: #bbf7d0; color: #15803d; }
+            .mhvCubeHome .mgc-hero .art { font-size: 48px; color: #16a34a; }
+            .mhvCubeHome .mgc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+            .mhvCubeHome .mgc-grid .mgc { min-height: 118px; }
             .mgc-traffic  { background: linear-gradient(135deg,#dbeafe,#eff6ff); } .mgc-traffic .art  { color: #2563eb; }
             .mgc-staff    { background: linear-gradient(135deg,#e2e8f0,#f8fafc); } .mgc-staff .art    { color: #475569; }
             .mgc-analytics{ background: linear-gradient(135deg,#ccfbf1,#f0fdfa); } .mgc-analytics .art{ color: #0d9488; }
@@ -55957,23 +56043,43 @@ Waitlist (${waitlist.length} people):`;
             .mgc-settings { background: linear-gradient(135deg,#e5e7eb,#f9fafb); } .mgc-settings .art { color: #4b5563; }
 
             /* ---- bottom dock ---- */
-            #mgrDock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6000; display: flex; background: #071a0e; border-top: 2px solid #22c55e; padding: 6px 4px calc(8px + env(safe-area-inset-bottom)); }
-            #mgrDock .mdk { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; border: none; background: none; color: #7fa58d; position: relative; padding: 4px 0; font-family: inherit; cursor: pointer; }
-            #mgrDock .mdk .material-symbols-outlined { font-size: 22px; }
-            #mgrDock .mdk .lbl { font-size: 9px; font-weight: 700; }
-            #mgrDock .mdk.active { color: #22c55e; }
-            #mgrDock .mdk .badge { position: absolute; top: 0; right: calc(50% - 18px); background: #ef4444; color: #fff; font-size: 8px; font-weight: 800; min-width: 13px; height: 13px; border-radius: 99px; display: none; align-items: center; justify-content: center; }
+            .mhvDock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6000; display: flex; background: #071a0e; border-top: 2px solid #22c55e; padding: 6px 4px calc(8px + env(safe-area-inset-bottom)); }
+            .mhvDock .mdk { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; border: none; background: none; color: #7fa58d; position: relative; padding: 4px 0; font-family: inherit; cursor: pointer; }
+            .mhvDock .mdk .material-symbols-outlined { font-size: 22px; }
+            .mhvDock .mdk .lbl { font-size: 9px; font-weight: 700; }
+            .mhvDock .mdk.active { color: #22c55e; }
+            .mhvDock .mdk .badge { position: absolute; top: 0; right: calc(50% - 18px); background: #ef4444; color: #fff; font-size: 8px; font-weight: 800; min-width: 13px; height: 13px; border-radius: 99px; display: none; align-items: center; justify-content: center; }
 
             /* ---- MORE sheet ---- */
             /* above the body-level z9999 FABs so the sheet is never punctured */
-            #mgrMoreDim { position: fixed; inset: 0; z-index: 10000; background: rgba(2,10,7,.5); }
-            #mgrMoreDim.open { display: block; }
-            #mgrMoreSheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10001; background: #fff; border-radius: 22px 22px 0 0; box-shadow: 0 -18px 50px rgba(0,0,0,.35); padding: 14px 14px calc(20px + env(safe-area-inset-bottom)); }
-            #mgrMoreSheet.open { display: block; }
-            #mgrMoreSheet .grab { width: 38px; height: 4px; border-radius: 99px; background: #d7ddda; margin: 0 auto 12px; }
-            #mgrMoreSheet .grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
-            #mgrMoreSheet .s { display: flex; flex-direction: column; align-items: center; gap: 6px; border: 1px solid #e2e8f0; border-radius: 14px; background: #f8fafc; padding: 12px 4px; color: #0f172a; font-size: 11px; font-weight: 700; font-family: inherit; cursor: pointer; }
-            #mgrMoreSheet .s .material-symbols-outlined { font-size: 22px; color: #0f7250; }
+            .mhvDim { position: fixed; inset: 0; z-index: 10000; background: rgba(2,10,7,.5); }
+            .mhvDim.open { display: block; }
+            .mhvSheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10001; background: #fff; border-radius: 22px 22px 0 0; box-shadow: 0 -18px 50px rgba(0,0,0,.35); padding: 14px 14px calc(20px + env(safe-area-inset-bottom)); }
+            .mhvSheet.open { display: block; }
+            .mhvSheet .grab { width: 38px; height: 4px; border-radius: 99px; background: #d7ddda; margin: 0 auto 12px; }
+            .mhvSheet .grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+            .mhvSheet .s { display: flex; flex-direction: column; align-items: center; gap: 6px; border: 1px solid #e2e8f0; border-radius: 14px; background: #f8fafc; padding: 12px 4px; color: #0f172a; font-size: 11px; font-weight: 700; font-family: inherit; cursor: pointer; }
+            .mhvSheet .s .material-symbols-outlined { font-size: 22px; color: #0f7250; }
+
+            /* ---- Pro Shop: same shell (v979) ---- */
+            #proshopDashboard header.bg-slate-900 { background: linear-gradient(180deg,#071a0e,#0c2a16); border-bottom: 2px solid #22c55e; }
+            #proshopDashboard header .flex { flex-wrap: nowrap !important; }
+            #proshopDashboard header h1 { font-size: 14px; }
+            #proshopDashboard header button[onclick*="sendEmergencyAlert"] {
+                width: 32px !important; height: 32px !important; min-width: 0 !important; padding: 0 !important; border-radius: 50% !important;
+                background: #dc2626 !important; border: none !important; color: #fff !important; box-shadow: none !important;
+                display: inline-flex !important; align-items: center; justify-content: center; flex: 0 0 auto;
+            }
+            #proshopDashboard header button[onclick*="sendEmergencyAlert"] .material-symbols-outlined { font-size: 18px; }
+            #proshopDashboard header button[onclick*="logout"] {
+                width: 32px; height: 32px; padding: 0; border-radius: 50%;
+                background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); color: #e7f2ea;
+                display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+            }
+            #proshopDashboard header button[onclick*="logout"] .material-symbols-outlined { font-size: 17px; }
+            #proshopDashboard header button[onclick*="openFullscreenTeeSheet"] { padding: 6px 8px; }
+            #proshopDashboard .tab-navigation { display: none; }
+            #proshopDashboard main { padding-bottom: 96px; }
         }
     </style>
     <div id="managerDashboard" class="screen">
@@ -56056,7 +56162,7 @@ Waitlist (${waitlist.length} people):`;
 
         <main class="w-full px-3 lg:px-6 py-3">
             <!-- MHV-C phone home: cube grid (shown by mgrShowHome() on phones only) -->
-            <div id="mgrCubeHome">
+            <div id="mgrCubeHome" class="mhvCubeHome">
                 <button class="mgc mgc-hero" onclick="mgrOpenSection('overview')">
                     <div class="t" data-i18n="mgr.cube.live">Live Ops</div>
                     <div class="chip" data-i18n="mgr.cube.open">Open dashboard</div>
@@ -56158,8 +56264,8 @@ Waitlist (${waitlist.length} people):`;
         </main>
 
         <!-- MHV-C phone: MORE sheet + bottom dock (display gated to <768px by #mhvcCSS) -->
-        <div id="mgrMoreDim" onclick="mgrCloseMore()"></div>
-        <div id="mgrMoreSheet">
+        <div id="mgrMoreDim" class="mhvDim" onclick="mgrCloseMore()"></div>
+        <div id="mgrMoreSheet" class="mhvSheet">
             <div class="grab"></div>
             <div class="grid">
                 <button class="s" onclick="mgrOpenSection('staff')"><span class="material-symbols-outlined">groups</span><span data-i18n="manager.staff">Staff</span></button>
@@ -56170,7 +56276,7 @@ Waitlist (${waitlist.length} people):`;
                 <button class="s" onclick="mgrOpenSection('settings')"><span class="material-symbols-outlined">settings</span><span data-i18n="common.settings">Settings</span></button>
             </div>
         </div>
-        <nav id="mgrDock">
+        <nav id="mgrDock" class="mhvDock">
             <button class="mdk active" id="mgrDockHome" data-tab="home" onclick="mgrShowHome()"><span class="material-symbols-outlined">dashboard</span><span class="lbl" data-i18n="mgr.dock.home">Home</span></button>
             <button class="mdk" data-tab="traffic" onclick="mgrOpenSection('traffic')"><span class="material-symbols-outlined">map</span><span class="lbl" data-i18n="manager.traffic">Traffic</span></button>
             <button class="mdk" data-tab="cash" onclick="mgrOpenSection('cash')"><span class="material-symbols-outlined">account_balance_wallet</span><span class="lbl" data-i18n="mgr.dock.cash">Cash</span></button>
@@ -56252,6 +56358,47 @@ Waitlist (${waitlist.length} people):`;
         </header>
 
         <main class="px-3 md:px-5 py-4 bg-slate-100 min-h-screen">
+            <!-- MHV-C phone home: cube grid (shown by psShowHome() on phones only) -->
+            <div id="psCubeHome" class="mhvCubeHome">
+                <button class="mgc mgc-hero" onclick="psOpenSection('pos')">
+                    <div class="t" data-i18n="proshop.pos">Point of Sale</div>
+                    <div class="chip" data-i18n="ps.cube.register">Open register</div>
+                    <span class="material-symbols-outlined art">point_of_sale</span>
+                </button>
+                <div class="mgc-grid">
+                    <button class="mgc mgc-traffic" onclick="psOpenSection('teesheet')">
+                        <div class="t" data-i18n="proshop.teesheet">Tee Sheet</div>
+                        <div class="chip" data-i18n="ps.cube.teesheet">Live bookings</div>
+                        <span class="material-symbols-outlined art">calendar_month</span>
+                    </button>
+                    <button class="mgc mgc-reports" onclick="psOpenSection('inventory')">
+                        <div class="t" data-i18n="proshop.inventory">Inventory</div>
+                        <div class="chip" data-i18n="ps.cube.stock">Stock &amp; products</div>
+                        <span class="material-symbols-outlined art">inventory</span>
+                    </button>
+                    <button class="mgc mgc-analytics" onclick="psOpenSection('sales')">
+                        <div class="t" data-i18n="proshop.sales">Sales Reports</div>
+                        <div class="chip" data-i18n="ps.cube.reports">Reports &amp; CSV</div>
+                        <span class="material-symbols-outlined art">trending_up</span>
+                    </button>
+                    <button class="mgc mgc-staff" onclick="psOpenSection('customers')">
+                        <div class="t" data-i18n="proshop.customers">Customers</div>
+                        <div class="chip" data-i18n="ps.cube.customers">Recent players</div>
+                        <span class="material-symbols-outlined art">people</span>
+                    </button>
+                    <button class="mgc mgc-messages" onclick="psOpenSection('messages')">
+                        <div class="t">Messages</div>
+                        <div class="chip" data-i18n="ps.cube.chat">Team chat</div>
+                        <span class="material-symbols-outlined art">chat</span>
+                        <span class="badge" id="psCubeMsgBadge">0</span>
+                    </button>
+                    <button class="mgc mgc-settings" onclick="psOpenSection('settings')">
+                        <div class="t" data-i18n="common.settings">Settings</div>
+                        <div class="chip" data-i18n="ps.cube.setup">Course &amp; tee sheet</div>
+                        <span class="material-symbols-outlined art">settings</span>
+                    </button>
+                </div>
+            </div>
             <!-- Point of Sale Tab -->
             <div id="proshop-pos" class="tab-content active"><div id="ps-pos-body"></div></div>
 
@@ -56279,6 +56426,25 @@ Waitlist (${waitlist.length} people):`;
                 </iframe>
             </div>
         </main>
+
+        <!-- MHV-C phone: MORE sheet + bottom dock (display gated to <768px by #mhvcCSS) -->
+        <div id="psMoreDim" class="mhvDim" onclick="psCloseMore()"></div>
+        <div id="psMoreSheet" class="mhvSheet">
+            <div class="grab"></div>
+            <div class="grid">
+                <button class="s" onclick="psOpenSection('inventory')"><span class="material-symbols-outlined">inventory</span><span data-i18n="proshop.inventory">Inventory</span></button>
+                <button class="s" onclick="psOpenSection('sales')"><span class="material-symbols-outlined">trending_up</span><span data-i18n="proshop.sales">Sales Reports</span></button>
+                <button class="s" onclick="psOpenSection('customers')"><span class="material-symbols-outlined">people</span><span data-i18n="proshop.customers">Customers</span></button>
+                <button class="s" onclick="psOpenSection('settings')"><span class="material-symbols-outlined">settings</span><span data-i18n="common.settings">Settings</span></button>
+            </div>
+        </div>
+        <nav id="psDock" class="mhvDock">
+            <button class="mdk active" id="psDockHome" data-tab="home" onclick="psShowHome()"><span class="material-symbols-outlined">dashboard</span><span class="lbl" data-i18n="mgr.dock.home">Home</span></button>
+            <button class="mdk" data-tab="pos" onclick="psOpenSection('pos')"><span class="material-symbols-outlined">point_of_sale</span><span class="lbl" data-i18n="ps.dock.pos">POS</span></button>
+            <button class="mdk" data-tab="teesheet" onclick="psOpenSection('teesheet')"><span class="material-symbols-outlined">calendar_month</span><span class="lbl" data-i18n="ps.dock.teesheet">Tee Sheet</span></button>
+            <button class="mdk" data-tab="messages" onclick="psOpenSection('messages')"><span class="material-symbols-outlined">chat</span><span class="lbl" data-i18n="mgr.dock.chat">Chat</span><span class="badge" id="psDockMsgBadge">0</span></button>
+            <button class="mdk" id="psDockMore" onclick="psToggleMore()"><span class="material-symbols-outlined">apps</span><span class="lbl" data-i18n="mgr.dock.more">More</span></button>
+        </nav>
     </div>
 
     <!-- Maintenance Dashboard -->

@@ -734,8 +734,11 @@
                 const unread = (data || []).filter(m =>
                     (m.department === 'proshop' || m.msg_type === 'broadcast') &&
                     m.sender_id !== me && !(m.read_by || []).includes(me)).length;
-                const badge = document.getElementById('proshop-msg-badge');
-                if (badge) { badge.textContent = unread > 99 ? '99+' : unread; badge.style.display = unread ? 'flex' : 'none'; }
+                // Tab badge + MHV-C phone mirrors (dock Chat + Messages cube)
+                ['proshop-msg-badge', 'psDockMsgBadge', 'psCubeMsgBadge'].forEach(id => {
+                    const badge = document.getElementById(id);
+                    if (badge) { badge.textContent = unread > 99 ? '99+' : unread; badge.style.display = unread ? 'flex' : 'none'; }
+                });
             } catch (e) { }
         },
         async loadMessages(silent) {
@@ -990,6 +993,12 @@
             if (scr && !scr.classList.contains('active') && typeof ScreenManager !== 'undefined' && ScreenManager.showScreen) {
                 ScreenManager.showScreen('proshopDashboard');
             }
+        } catch (e) { }
+        // MHV-C: any tab switch leaves the phone cube home + syncs the dock
+        try {
+            const psHome = document.getElementById('psCubeHome');
+            if (psHome) psHome.style.display = 'none';
+            if (window.psDockActive) window.psDockActive(tabName);
         } catch (e) { }
         try { TabManager.showTab('proshopDashboard', tabName, event); } catch (e) { console.warn('[PS] showTab', e); }
         setTimeout(() => { try { PS.onTab(tabName); } catch (e) { console.warn('[PS] onTab', e); } }, 50);

@@ -39838,6 +39838,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             const eventSocietyMap = {};     // event_id -> society_id
                             const eventFormatMap = {};      // event_id -> format (stableford vs stroke_play)
                             const eventTitleMap = {};       // event_id -> title (Waltz detection is BY TITLE)
+                            const eventDateMap = {};        // event_id -> event_date (THE day key for event rounds)
                             const societyDivisionsMap = {}; // society_id -> divisions (the real source: payout template)
                             // Normalize a divisions array to {name, minHandicap, maxHandicap}. Handles BOTH
                             // the event-setup shape (minHandicap/maxHandicap) and the payout-template shape
@@ -39885,6 +39886,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         eventSocietyMap[e.id] = e.society_id || null;
                                         eventFormatMap[e.id] = e.format || '';
                                         eventTitleMap[e.id] = e.title || '';
+                                        eventDateMap[e.id] = e.event_date || null;
                                     });
                                 }
                             }
@@ -39900,14 +39902,15 @@ document.addEventListener('DOMContentLoaded', function() {
                                 r._divisions = evDiv || socDiv || null;
                             });
 
-                            // Group by the day the round was PLAYED (played_at/started_at — the QSE/PCE
-                            // writers stamp these to the EVENT date), never completed_at: a paper card
-                            // entered after midnight lands on its own next-day board otherwise.
+                            // Group by the day the round was PLAYED. For event rounds the EVENT's
+                            // date is AUTHORITATIVE — a card entered any time later (even days after)
+                            // still belongs on the event-day board. Casual rounds use
+                            // played_at/started_at; completed_at (= entry time) is last resort only.
                             const playedTs = (r) => r.played_at || r.started_at || r.completed_at;
+                            const localDay = (ts) => { const d = new Date(ts); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
                             const dayGroups = {};
                             recentRounds.forEach(r => {
-                                const d = new Date(playedTs(r));
-                                const dayKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                                const dayKey = (r.society_event_id && eventDateMap[r.society_event_id]) || localDay(playedTs(r));
                                 if (!dayGroups[dayKey]) dayGroups[dayKey] = [];
                                 dayGroups[dayKey].push(r);
                             });
@@ -39927,15 +39930,17 @@ document.addEventListener('DOMContentLoaded', function() {
                                 const day = new Date(dayDate + 'T12:00:00').toLocaleDateString(_lvLocale(), { weekday: 'short', month: 'short', day: 'numeric' });
                                 window._recentRoundsByDay[dayDate] = rounds;
 
-                                // Sub-group by course within each day
+                                // Sub-group by EVENT within each day — every round of one event is ONE
+                                // board no matter what its course_name says; casual rounds group by course.
                                 const courseGroups = {};
                                 rounds.forEach(r => {
-                                    const course = r.course_name || 'Unknown';
-                                    if (!courseGroups[course]) courseGroups[course] = [];
-                                    courseGroups[course].push(r);
+                                    const gk = r.society_event_id ? ('ev:' + r.society_event_id) : ('course:' + (r.course_name || 'Unknown'));
+                                    if (!courseGroups[gk]) courseGroups[gk] = [];
+                                    courseGroups[gk].push(r);
                                 });
 
-                                for (const [courseName, courseRounds] of Object.entries(courseGroups)) {
+                                for (const courseRounds of Object.values(courseGroups)) {
+                                    const courseName = courseRounds[0]?.course_name || 'Unknown';
                                     const shortCourse = courseName.replace(/golf|club|course|country|international/gi, '').trim();
                                     // Get society name from first round in this group that has one
                                     const societyName = courseRounds.find(r => r._societyName)?._societyName || '';
@@ -63065,9 +63070,9 @@ Waitlist (${waitlist.length} people):`;
                                 holes: round.holes_played || 18,
                                 courseRating: round.course_rating || 72.0,
                                 slopeRating: round.slope_rating || 113,
-                                date: (round.completed_at || round.played_at || '').split('T')[0],
+                                date: (round.played_at || round.started_at || round.completed_at || '').split('T')[0],
                                 differential: null,
-                                timestamp: round.completed_at || round.played_at,
+                                timestamp: round.played_at || round.started_at || round.completed_at,
                                 source: 'database',
                                 type: round.type || 'private',
                                 societyEventId: round.society_event_id || null
@@ -63295,8 +63300,8 @@ Waitlist (${waitlist.length} people):`;
                         } else if (dbRounds && dbRounds.length > 0) {
                             // Convert database format to display format
                             const convertedRounds = dbRounds.map(round => {
-                                // FIX: Handle null timestamps - use first valid date or skip
-                                let dateValue = round.completed_at || round.started_at || round.played_at;
+                                // Played date first — completed_at is the ENTRY time and can be days later
+                                let dateValue = round.played_at || round.started_at || round.completed_at;
                                 let dateString;
                                 if (dateValue) {
                                     dateString = dateValue.split('T')[0];
@@ -64153,7 +64158,7 @@ Waitlist (${waitlist.length} people):`;
 
                     // Populate modal with round summary
                     document.getElementById('roundDetail_course').textContent = (round.course_name || round.course || '-');
-                    const dateStr = (round.completed_at || round.played_at || round.started_at);
+                    const dateStr = (round.played_at || round.started_at || round.completed_at);
                     document.getElementById('roundDetail_date').textContent = dateStr ? new Date(dateStr).toLocaleDateString(_lvLocale(), {
                         month: 'short',
                         day: 'numeric',
@@ -64596,7 +64601,7 @@ Waitlist (${waitlist.length} people):`;
                             const change = index > 0 ? round.handicap_used - prevHandicap : 0;
 
                             // FIX: Handle null timestamps - fall back to started_at or played_at
-                            let dateValue = round.completed_at || round.started_at || round.played_at;
+                            let dateValue = round.played_at || round.started_at || round.completed_at;
                             if (!dateValue) {
                                 console.warn('[HandicapProgression] Round missing date:', round.id);
                                 return null; // Skip rounds with no date
@@ -66499,7 +66504,7 @@ Waitlist (${waitlist.length} people):`;
                 const holesEl = document.getElementById('drilldownHoles');
 
                 const course = round.course_name || round.course || 'Unknown Course';
-                const date = new Date(round.completed_at || round.started_at || round.played_at);
+                const date = new Date(round.played_at || round.started_at || round.completed_at);
                 const score = round.total_gross ?? round.total_score ?? round.score ?? '-';
                 const par = round.course_par || 72;
                 const diff = typeof score === 'number' ? score - par : 0;
@@ -148475,7 +148480,7 @@ class OrganizerRoundHistory {
 
             // Date filter
             if (dateFilter !== 'all') {
-                const roundDate = new Date(round.completed_at || round.started_at);
+                const roundDate = new Date(round.played_at || round.started_at || round.completed_at);
                 const daysAgo = parseInt(dateFilter);
                 const cutoffDate = new Date();
                 cutoffDate.setDate(cutoffDate.getDate() - daysAgo);
@@ -148571,7 +148576,7 @@ class OrganizerRoundHistory {
         }
 
         container.innerHTML = courseHtml + summaryHtml + this.filteredRounds.map(round => {
-            const date = new Date(round.completed_at || round.started_at || round.played_at);
+            const date = new Date(round.played_at || round.started_at || round.completed_at);
             const dateStr = date.toLocaleDateString(_lvLocale(), { weekday: 'short', month: 'short', day: 'numeric' });
             const playerName = round._playerName || round.player_name || 'Unknown';
             const courseName = (round.course_name || 'Unknown').replace(/golf|club|country|course|international|resort/gi, '').trim();
@@ -148638,7 +148643,7 @@ class OrganizerRoundHistory {
         const round = this.allRounds.find(r => r.id === roundId);
         if (!round) { window.NotificationManager.show('Round not found', 'error'); return; }
         const who = round._playerName || round.player_name || 'Unknown';
-        const when = new Date(round.completed_at || round.started_at || round.played_at).toLocaleDateString();
+        const when = new Date(round.played_at || round.started_at || round.completed_at).toLocaleDateString();
         if (!confirm(`DELETE ${who}'s round of ${when}?\n\nThis permanently removes the round, its hole scores and its handicap-ledger entry, and cannot be undone.`)) return;
 
         const sb = window.SupabaseDB.client;

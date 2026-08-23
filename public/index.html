@@ -42562,7 +42562,9 @@ Waitlist (${waitlist.length} people):`;
             // GTS1 (Pete 2026-08-09): the golfer split-cube's Tee Sheet half goes STRAIGHT to the
             // upcoming event's tee sheet — same direct path as the Next Round card's TEE SHEET
             // button ("just like in the full mode"), never to the events section when an event
-            // exists. No upcoming registered event → the events tab is the honest destination.
+            // exists. GTS2 (Pete 2026-08-23): not registered ≠ no tee sheet — the cube still
+            // opens a CURRENT published sheet (one → straight in, several → picker); the events
+            // tab is only the fallback when no current sheet exists at all.
             // NOTE: DashboardUpcomingEvents is a top-level const — a global LEXICAL binding, not
             // a window property; checking window.DashboardUpcomingEvents is always undefined and
             // silently rerouted every tap to the events tab (Pete caught it live 2026-08-09).
@@ -42570,7 +42572,104 @@ Waitlist (${waitlist.length} people):`;
                 const e = this._cubeNextEv || this._nextEv;
                 const D = (typeof DashboardUpcomingEvents !== 'undefined') ? DashboardUpcomingEvents : null;
                 if (e && e.id && D) { D.viewTeeSheet(e.id); return; }
+                this._openCurrentSheet(D);
+            },
+
+            // GTS2: no registered upcoming event — offer whatever sheets are CURRENT instead.
+            async _openCurrentSheet(D) {
+                if (this._tsCubeBusy) return;
+                this._tsCubeBusy = true;
+                try {
+                    const list = D ? await this._currentPublishedSheets() : [];
+                    if (list.length === 1) { D.viewTeeSheet(list[0].id); return; }
+                    if (list.length > 1) { this._showSheetPicker(list, D); return; }
+                } catch (err) { console.warn('[GolferCubeInfo] current sheets', err); }
+                finally { this._tsCubeBusy = false; }
                 try { showGolferTab('societyevents'); } catch (err) {}
+            },
+
+            // "Current" = the next 7 days, tee time not yet passed (STRICT fall-off, same rule
+            // as loadEvents above), only events the golfer browse already shows (public, or
+            // private ones they're in — fail closed), and only sheets the organizer PUBLISHED
+            // (event_pairings with real groups — same test as _fillSheetEventChips).
+            async _currentPublishedSheets() {
+                const sb = window.SupabaseDB && window.SupabaseDB.client;
+                const G = window.GolferEventsSystem;
+                if (!sb || !G) return [];
+                if (!(G.allEvents || []).length) await G.loadEvents(false).catch(() => {});
+                const nowMs = Date.now();
+                const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+                const horizon = new Date(t0); horizon.setDate(horizon.getDate() + 7);
+                const cand = (G.allEvents || []).filter(ev => {
+                    if (!ev || !ev.id || !ev.date) return false;
+                    if (ev.isPrivate && !ev.isUserRegistered) return false;
+                    const dstr = String(ev.date).slice(0, 10);
+                    const day = new Date(dstr + 'T00:00:00');
+                    if (isNaN(day.getTime()) || day < t0 || day > horizon) return false;
+                    const tt = ev.startTime || ev.departureTime || '23:59';
+                    const ts = new Date(dstr + 'T' + String(tt).slice(0, 5) + ':00').getTime();
+                    return isNaN(ts) || ts >= nowMs;
+                }).sort((a, b) => (String(a.date) + (a.startTime || '')).localeCompare(String(b.date) + (b.startTime || ''))).slice(0, 25);
+                if (!cand.length) return [];
+                const pr = await sb.from('event_pairings').select('event_id, groups').in('event_id', cand.map(ev => ev.id));
+                const pub = {};
+                (pr.data || []).forEach(p => {
+                    let g = p.groups, has = false;
+                    try {
+                        if (typeof g === 'string') g = JSON.parse(g);
+                        has = Array.isArray(g) ? g.some(x => x && ((x.players || x.playerIds || []).length)) : !!g;
+                    } catch (e2) {}
+                    if (has) pub[p.event_id] = 1;
+                });
+                return cand.filter(ev => pub[ev.id]).slice(0, 10);
+            },
+
+            // Bottom-sheet picker when several current sheets exist. Mounted on document.body
+            // (.screen transforms trap position:fixed) with inline z; the CARD scrolls, not the page.
+            _showSheetPicker(list, D) {
+                try { const old = document.getElementById('gtsSheetPicker'); if (old) old.remove(); } catch (e) {}
+                const tt = (k, fb) => { try { return (typeof _lvT === 'function') ? _lvT(k, fb) : fb; } catch (e) { return fb; } };
+                const loc = (typeof _lvLocale === 'function') ? _lvLocale() : undefined;
+                const esc = (s) => String(s).replace(/</g, '&lt;');
+                const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+                const wrap = document.createElement('div');
+                wrap.id = 'gtsSheetPicker';
+                wrap.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:flex-end;justify-content:center;background:rgba(15,23,42,.55);';
+                const rows = list.map(ev => {
+                    const dstr = String(ev.date).slice(0, 10);
+                    const day = new Date(dstr + 'T00:00:00');
+                    const isToday = day.getTime() === t0.getTime();
+                    let dateLbl = '';
+                    try { dateLbl = isToday ? tt('lightview.today', 'Today') : day.toLocaleDateString(loc, { weekday: 'short', day: 'numeric', month: 'short' }); } catch (e) { dateLbl = dstr; }
+                    const tee = ev.startTime ? String(ev.startTime).slice(0, 5) : '';
+                    const soc = ev.societyName || ev.organizerName || '';
+                    const course = ev.courseName || ev.name || 'Event';
+                    return '<button data-evid="' + esc(ev.id) + '" style="display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;margin-top:8px;cursor:pointer;text-align:left;">' +
+                        '<span class="material-symbols-outlined" style="font-size:20px;color:#15803d;flex-shrink:0;">grid_view</span>' +
+                        '<span style="flex:1;min-width:0;">' +
+                          '<span style="display:block;font-size:13px;font-weight:700;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(course) + '</span>' +
+                          (soc ? '<span style="display:block;font-size:11px;font-weight:600;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(soc) + '</span>' : '') +
+                        '</span>' +
+                        '<span style="flex-shrink:0;text-align:right;">' +
+                          '<span style="display:block;font-size:11px;font-weight:700;color:' + (isToday ? '#15803d' : '#334155') + ';">' + esc(dateLbl) + '</span>' +
+                          (tee ? '<span style="display:block;font-size:11px;font-weight:600;color:#475569;">' + esc(tee) + '</span>' : '') +
+                        '</span>' +
+                    '</button>';
+                }).join('');
+                wrap.innerHTML =
+                    '<div style="width:100%;max-width:440px;background:#f8fafc;border-radius:20px 20px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom));max-height:70vh;display:flex;flex-direction:column;">' +
+                      '<div style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">' +
+                        '<div style="font-size:14px;font-weight:800;color:#0f172a;">' + esc(tt('lightview.selectteesheet', 'Select Tee Sheet')) + '</div>' +
+                        '<button id="gtsSheetPickerX" style="border:none;background:#e2e8f0;color:#334155;border-radius:999px;width:28px;height:28px;font-size:15px;font-weight:700;cursor:pointer;line-height:1;">✕</button>' +
+                      '</div>' +
+                      '<div style="overflow-y:auto;-webkit-overflow-scrolling:touch;">' + rows + '</div>' +
+                    '</div>';
+                document.body.appendChild(wrap);
+                wrap.addEventListener('click', (evt) => {
+                    const b = evt.target.closest('button[data-evid]');
+                    if (b) { wrap.remove(); if (D) D.viewTeeSheet(b.getAttribute('data-evid')); return; }
+                    if (evt.target === wrap || evt.target.closest('#gtsSheetPickerX')) wrap.remove();
+                });
             },
 
             _hasTodayBooking() {

@@ -146985,8 +146985,14 @@ window.PaperCardEntry = {
             // playing handicap enables LIVE net/stableford on the card (v960)
             hcp: (opts.handicap === '' || opts.handicap == null) ? null : window.toPlayingHandicap(opts.handicap),
             // v961: event roster on the card — tap to switch player; 18th hole auto-saves and
-            // rolls to the next unscored player (onPick reopens the card for them)
-            players: Array.isArray(opts.players) ? opts.players.map(function(p){ return { id: p.id, name: p.name, hcp: p.hcp, posted: !!p.posted, gross: p.gross }; }) : null,
+            // rolls to the next unscored player (onPick reopens the card for them).
+            // v962: ALWAYS A–Z by surname (Pete 2026-08-23) — never ranking/division order;
+            // auto-advance walks the same alphabetical order. "Bacon, Randy" sorts on Bacon,
+            // "Billy Shepley" on Shepley (same rule as the hole-by-hole grid).
+            players: Array.isArray(opts.players) ? opts.players.map(function(p){ return { id: p.id, name: p.name, hcp: p.hcp, posted: !!p.posted, gross: p.gross }; }).sort(function(a, b){
+                var sn = function(n){ n = String(n || '').trim(); var c = n.indexOf(','); if (c > 0) return n.slice(0, c).trim(); var w = n.split(/\s+/); return w[w.length - 1] || ''; };
+                return sn(a.name).localeCompare(sn(b.name), undefined, { sensitivity: 'base' }) || String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+            }) : null,
             activeId: opts.activeId != null ? opts.activeId : null,
             onPick: opts.onPick || null,
             autoSave: opts.autoSave !== false,

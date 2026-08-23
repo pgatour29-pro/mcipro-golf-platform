@@ -142077,8 +142077,8 @@ class OrganizerScoringSystem {
             const eventDate = new Date(event.event_date);
             const dateStr = eventDate.toLocaleDateString(_lvLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
 
-            // TODAY tag stays text-only — the colored dots are temporal wayfinding
-            // (see _applyEventDots: 🔴 past / 🟢 today / 🔵 future, on every row).
+            // TODAY tag stays text-only — the colored dots are wayfinding (see _applyEventDots:
+            // EXACTLY three in the whole list, anchored on NOW: 🔵 next / 🟢 today-or-nearest / 🔴 prior).
             const eventDateStr = event.event_date?.split('T')[0];
             const isToday = eventDateStr === todayStr;
 
@@ -142127,23 +142127,28 @@ class OrganizerScoringSystem {
         this._applyEventDots();
     }
 
-    // Dropdown dots are TEMPORAL, not positional (Pete 2026-08-23): every PAST event 🔴,
-    // every FUTURE event 🔵, TODAY's 🟢. Selecting an event never recolors it — a past
-    // event stays red no matter what's picked.
+    // EXACTLY three dots in the whole list — never dot every row (Pete 2026-08-23, twice).
+    // They are a fixed reference frame around NOW: 🟢 today's event (else the nearest
+    // upcoming), 🔵 the event chronologically after it (renders ABOVE in this DESC list),
+    // 🔴 the one before it (below) — up/down + past/current/future at a glance. The frame
+    // NEVER follows the selection: picking a past event must not steal the green dot.
     _applyEventDots() {
         const select = document.getElementById('organizerScoringEventSelect');
         const evs = this.allEvents || [];
         if (!select || !evs.length) return;
+        const dstr = e => String(e.event_date || '').split('T')[0];
         const t = new Date();
         const todayStr = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
-        const dateOf = {};
-        evs.forEach(e => { dateOf[String(e.id)] = String(e.event_date || '').split('T')[0]; });
+        const todayEv = evs.find(e => dstr(e) === todayStr);
+        const fut = evs.filter(e => dstr(e) >= todayStr);   // DESC order → last entry = nearest upcoming
+        const anchorId = String((todayEv && todayEv.id) || (fut.length ? fut[fut.length - 1].id : evs[0].id));
+        const i = evs.findIndex(e => String(e.id) === anchorId);
+        const nextId = i > 0 ? String(evs[i - 1].id) : null;                                    // later date = above
+        const priorId = (i >= 0 && i < evs.length - 1) ? String(evs[i + 1].id) : null;          // earlier date = below
         for (const opt of select.options) {
             if (!opt.value) continue;
-            const d = dateOf[String(opt.value)] || '';
-            const dot = !d ? '' : (d === todayStr ? '🟢 ' : (d < todayStr ? '🔴 ' : '🔵 '));
             const bare = opt.textContent.replace(/^(?:🟢|🔵|🔴)\s*/, '');
-            opt.textContent = dot + bare;
+            opt.textContent = (opt.value === anchorId ? '🟢 ' : opt.value === nextId ? '🔵 ' : opt.value === priorId ? '🔴 ' : '') + bare;
         }
     }
 

@@ -8776,6 +8776,10 @@
                 'lgv2.staff.title': 'Staff & course management',
                 'lgv2.staff.sub': 'PIN-protected access for course and society staff.',
                 'lgv2.staff.note': 'Each role opens with its access PIN. Society organizers pick their society first.',
+                'lgv2.pin.enter': 'Enter PIN code',
+                'lgv2.pin.wrong': 'Incorrect PIN code. Access denied.',
+                'lgv2.pin.back': 'Back',
+                'lgv2.pin.unlock': 'Unlock',
                 'lgv2.role.caddy': 'Caddy',
                 'lgv2.role.manager': 'Manager',
                 'lgv2.role.proshop': 'Pro Shop',
@@ -10816,6 +10820,10 @@
                 'lgv2.staff.title': 'พนักงานและการจัดการสนาม',
                 'lgv2.staff.sub': 'เข้าถึงด้วยรหัส PIN สำหรับพนักงานสนามและก๊วน',
                 'lgv2.staff.note': 'แต่ละบทบาทเข้าด้วยรหัส PIN ผู้จัดก๊วนเลือกก๊วนของตนก่อน',
+                'lgv2.pin.enter': 'กรอกรหัส PIN',
+                'lgv2.pin.wrong': 'รหัส PIN ไม่ถูกต้อง ไม่สามารถเข้าใช้งานได้',
+                'lgv2.pin.back': 'ย้อนกลับ',
+                'lgv2.pin.unlock': 'ปลดล็อก',
                 'lgv2.role.caddy': 'แคดดี้',
                 'lgv2.role.manager': 'ผู้จัดการ',
                 'lgv2.role.proshop': 'โปรช็อป',
@@ -12735,6 +12743,10 @@
                 'lgv2.staff.title': '직원 및 코스 관리',
                 'lgv2.staff.sub': '코스·동호회 직원용 PIN 보호 접근',
                 'lgv2.staff.note': '각 역할은 PIN으로 엽니다. 동호회 운영자는 먼저 동호회를 선택합니다.',
+                'lgv2.pin.enter': 'PIN 코드를 입력하세요',
+                'lgv2.pin.wrong': 'PIN 코드가 올바르지 않습니다. 접근이 거부되었습니다.',
+                'lgv2.pin.back': '뒤로',
+                'lgv2.pin.unlock': '잠금 해제',
                 'lgv2.role.caddy': '캐디',
                 'lgv2.role.manager': '매니저',
                 'lgv2.role.proshop': '프로샵',
@@ -14828,6 +14840,10 @@
                 'lgv2.staff.title': 'スタッフ・コース管理',
                 'lgv2.staff.sub': 'コース・ソサエティスタッフ用のPIN保護アクセス',
                 'lgv2.staff.note': '各ロールはPINで開きます。ソサエティ主催者は先にソサエティを選択します。',
+                'lgv2.pin.enter': 'PINコードを入力',
+                'lgv2.pin.wrong': 'PINコードが正しくありません。アクセスが拒否されました。',
+                'lgv2.pin.back': '戻る',
+                'lgv2.pin.unlock': 'ロック解除',
                 'lgv2.role.caddy': 'キャディ',
                 'lgv2.role.manager': 'マネージャー',
                 'lgv2.role.proshop': 'プロショップ',
@@ -43971,38 +43987,89 @@ Waitlist (${waitlist.length} people):`;
                 }
             }
 
-            // FOR OTHER ROLES: Use simple PIN prompt (caddie, manager, proshop, maintenance)
-            // Get role-specific display name
-            const roleNames = {
-                'caddie': 'Caddy',
-                'manager': 'Manager',
-                'proshop': 'Pro Shop',
-                'maintenance': 'Maintenance'
+            // FOR OTHER ROLES (caddie, manager, proshop, maintenance): in-page PIN panel in the
+            // staff sheet. window.prompt() is BLOCKED in the LINE in-app browser and some Android
+            // WebView/PWA contexts (returns null instantly), which made these buttons silently
+            // dead there — login PIN entry must never depend on a native dialog.
+            const roleMeta = {
+                'caddie':      { name: 'Caddy',       icon: 'badge',           ic: 'lgv2-ic-caddy' },
+                'manager':     { name: 'Manager',     icon: 'manage_accounts', ic: 'lgv2-ic-mgr' },
+                'proshop':     { name: 'Pro Shop',    icon: 'storefront',      ic: 'lgv2-ic-shop' },
+                'maintenance': { name: 'Maintenance', icon: 'grass',           ic: 'lgv2-ic-mnt' }
             };
+            const meta = roleMeta[role] || { name: role, icon: 'lock', ic: '' };
 
-            const roleName = roleNames[role] || role;
-
-            // Prompt for PIN
-            const pin = prompt(`Enter PIN code for ${roleName} access:`);
-
-            if (!pin) {
-                console.log('[loginWithPin] PIN entry cancelled');
+            const panel = document.getElementById('lgv2StaffPin');
+            if (!panel) {
+                // Failsafe if the panel markup is missing: legacy prompt() path
+                const pin = prompt(`Enter PIN code for ${meta.name} access:`);
+                if (!pin) return false;
+                if (pin === '000000') {
+                    try { localStorage.setItem('mcipro_staff_role', role); } catch (e) { }
+                    return window.login(role);
+                }
+                window.NotificationManager.show(micon('cancel') + ' Incorrect PIN code. Access denied.', 'error');
                 return false;
             }
 
-            // Validate PIN (currently using 6789 for all roles)
-            // TODO: Move to database-based validation per role
+            if (window.LoginSheets) LoginSheets.open('staff'); // ensure sheet + dimmer visible (open() resets panel to grid first)
+            window._staffPinRole = role;
+            const grid = document.querySelector('#lgv2SheetStaff .lgv2-staffgrid');
+            const note = document.querySelector('#lgv2SheetStaff .lgv2-pinnote');
+            if (grid) grid.style.display = 'none';
+            if (note) note.style.display = 'none';
+            panel.style.display = 'block';
+            const icWrap = document.getElementById('lgv2StaffPinIc');
+            if (icWrap) icWrap.className = 'ic ' + meta.ic;
+            const iconEl = document.getElementById('lgv2StaffPinIcon');
+            if (iconEl) iconEl.textContent = meta.icon;
+            // Role name: reuse the already-translated chip label when present
+            const chipLbl = document.querySelector(`#lgv2SheetStaff .lgv2-schip[onclick*="${role}"] .lbl`);
+            const nameEl = document.getElementById('lgv2StaffPinRole');
+            if (nameEl) nameEl.textContent = (chipLbl && chipLbl.textContent) || meta.name;
+            const input = document.getElementById('lgv2StaffPinInput');
+            const err = document.getElementById('lgv2StaffPinErr');
+            if (err) err.style.display = 'none';
+            if (input) { input.value = ''; setTimeout(() => input.focus(), 60); }
+            return true;
+        };
+
+        // Staff PIN panel: back to the role grid (does not close the sheet)
+        window.cancelStaffPin = function () {
+            window._staffPinRole = null;
+            const panel = document.getElementById('lgv2StaffPin');
+            const grid = document.querySelector('#lgv2SheetStaff .lgv2-staffgrid');
+            const note = document.querySelector('#lgv2SheetStaff .lgv2-pinnote');
+            const input = document.getElementById('lgv2StaffPinInput');
+            const err = document.getElementById('lgv2StaffPinErr');
+            if (panel) panel.style.display = 'none';
+            if (grid) grid.style.display = '';
+            if (note) note.style.display = '';
+            if (input) input.value = '';
+            if (err) err.style.display = 'none';
+        };
+
+        // Staff PIN panel submit — same validation the old prompt() path used
+        // TODO: Move to database-based validation per role
+        window.submitStaffPin = function () {
+            const role = window._staffPinRole;
+            if (!role) return false;
+            const input = document.getElementById('lgv2StaffPinInput');
+            const err = document.getElementById('lgv2StaffPinErr');
+            const pin = ((input && input.value) || '').trim();
             if (pin === '000000') {
                 console.log('[loginWithPin] PIN correct - granting access to:', role);
                 // Persist so a full page navigation (tee sheet "← Dashboard") restores this
                 // staff session instead of dumping to the login screen. Cleared by logout().
                 try { localStorage.setItem('mcipro_staff_role', role); } catch (e) { }
+                window.cancelStaffPin();
+                if (window.LoginSheets) LoginSheets.close();
                 return window.login(role);
-            } else {
-                console.warn('[loginWithPin] Incorrect PIN for role:', role);
-                NotificationManager.show(micon('cancel') + ' Incorrect PIN code. Access denied.', 'error');
-                return false;
             }
+            console.warn('[loginWithPin] Incorrect PIN for role:', role);
+            if (err) err.style.display = 'block';
+            if (input) { input.value = ''; input.focus(); }
+            return false;
         };
 
     </script>
@@ -44749,6 +44816,19 @@ Waitlist (${waitlist.length} people):`;
         #loginScreen .lgv2-ic-socy{background:#16a34a;} #loginScreen .lgv2-ic-adm{background:#334155;}
         #loginScreen .lgv2-pinnote{margin-top:12px; background:#F4F7F5; border:1px solid rgba(15,23,42,.13); border-radius:11px; padding:10px 12px; font:500 11.5px/1.5 'Instrument Sans',sans-serif; color:#5C6875; display:flex; gap:8px; align-items:flex-start;}
         #loginScreen .lgv2-pinnote .material-symbols-outlined{font-size:16px; color:#16a34a; flex:0 0 auto;}
+        #loginScreen .lgv2-pinpanel{display:none;}
+        #loginScreen .lgv2-pinrole{display:flex; align-items:center; gap:10px; margin-bottom:12px;}
+        #loginScreen .lgv2-pinrole .ic{width:34px; height:34px; border-radius:11px; display:flex; align-items:center; justify-content:center; flex:0 0 auto;}
+        #loginScreen .lgv2-pinrole .ic:not([class*="lgv2-ic-"]){background:#334155;}
+        #loginScreen .lgv2-pinrole .ic .material-symbols-outlined{font-size:19px; color:#fff;}
+        #loginScreen .lgv2-pinrole .nm{font:600 15px/1.2 'Instrument Sans',sans-serif; color:#10151B;}
+        #loginScreen .lgv2-pinrole .hint{font:500 12px/1.3 'Instrument Sans',sans-serif; color:#5C6875;}
+        #loginScreen .lgv2-pininput{width:100%; height:56px; border:1.5px solid rgba(15,23,42,.18); border-radius:14px; text-align:center; font:700 24px/1 'Instrument Sans',sans-serif; letter-spacing:10px; color:#10151B; outline:none; background:#F8FAF9;}
+        #loginScreen .lgv2-pininput:focus{border-color:#16a34a; background:#fff;}
+        #loginScreen .lgv2-pinerr{display:none; margin-top:10px; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; font:600 12.5px/1.45 'Instrument Sans',sans-serif; padding:9px 12px; border-radius:10px;}
+        #loginScreen .lgv2-pinbtns{display:flex; gap:10px; margin-top:14px;}
+        #loginScreen .lgv2-pinbtns .lgv2-btn{margin-top:0; flex:1; height:48px; font-size:14px;}
+        #loginScreen .lgv2-unlock{background:#16a34a; color:#fff; box-shadow:0 8px 20px rgba(22,163,74,.25);}
         @media (min-width:1024px){
           #loginScreen .lgv2-scene{display:none;}
           #loginScreen .lgv2-scene-desk{display:block;}
@@ -44949,6 +45029,19 @@ Waitlist (${waitlist.length} people):`;
                     <button class="lgv2-schip" onclick="loginWithPin('society')"><div class="ic lgv2-ic-socy"><span class="material-symbols-outlined">groups</span></div><span class="lbl" data-i18n="lgv2.role.society">Society Organizer</span></button>
                     <button class="lgv2-schip" onclick="showCourseAdminLogin()"><div class="ic lgv2-ic-adm"><span class="material-symbols-outlined">golf_course</span></div><span class="lbl" data-i18n="lgv2.role.courseadmin">Course Admin</span></button>
                 </div>
+                <!-- In-page staff PIN entry (window.prompt is blocked in the LINE browser / some WebViews) -->
+                <div id="lgv2StaffPin" class="lgv2-pinpanel">
+                    <div class="lgv2-pinrole">
+                        <div class="ic" id="lgv2StaffPinIc"><span class="material-symbols-outlined" id="lgv2StaffPinIcon">lock</span></div>
+                        <div><div class="nm" id="lgv2StaffPinRole">Manager</div><div class="hint" data-i18n="lgv2.pin.enter">Enter PIN code</div></div>
+                    </div>
+                    <input id="lgv2StaffPinInput" class="lgv2-pininput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" onkeydown="if(event.key==='Enter'){event.preventDefault();submitStaffPin();}">
+                    <div id="lgv2StaffPinErr" class="lgv2-pinerr" data-i18n="lgv2.pin.wrong">Incorrect PIN code. Access denied.</div>
+                    <div class="lgv2-pinbtns">
+                        <button type="button" class="lgv2-btn lgv2-ghost" onclick="cancelStaffPin()"><span class="material-symbols-outlined">arrow_back</span><span data-i18n="lgv2.pin.back">Back</span></button>
+                        <button type="button" class="lgv2-btn lgv2-unlock" onclick="submitStaffPin()"><span class="material-symbols-outlined">lock_open</span><span data-i18n="lgv2.pin.unlock">Unlock</span></button>
+                    </div>
+                </div>
                 <div class="lgv2-pinnote">
                     <span class="material-symbols-outlined">lock</span>
                     <span data-i18n="lgv2.staff.note">Each role opens with its access PIN. Society organizers pick their society first.</span>
@@ -45029,6 +45122,8 @@ Waitlist (${waitlist.length} people):`;
                         var c = document.getElementById('lgv2SheetCreate'), s = document.getElementById('lgv2SheetStaff');
                         if (c) c.style.display = (which === 'create') ? 'block' : 'none';
                         if (s) s.style.display = (which === 'staff') ? 'block' : 'none';
+                        // Staff sheet always opens on the role grid (loginWithPin swaps to the PIN panel after)
+                        if (which === 'staff' && window.cancelStaffPin) window.cancelStaffPin();
                     },
                     close: function(){
                         ['lgv2Dimmer','lgv2SheetCreate','lgv2SheetStaff'].forEach(function(id){

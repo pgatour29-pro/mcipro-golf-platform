@@ -142526,7 +142526,7 @@ class OrganizerScoringSystem {
                 <tr class="border-b border-gray-200 hover:bg-gray-50${notStarted ? ' opacity-60' : ''}${isWinner ? ' bg-amber-50' : ''}">
                     <td class="py-2 px-3 font-bold">${isWinner ? '🏆 ' : ''}${position}</td>
                     <td class="py-2 px-3"><span data-golfer-av="${round.golfer_id || ''}" data-golfer-av-nm="${String(this.getPlayerName(round.golfer_id, round) || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="22">${this.getPlayerName(round.golfer_id, round)}</span>${this._twosChip(round.golfer_id)}${this._acesChip(round.golfer_id)}</td>
-                    <td class="py-2 px-3">${window.formatHandicapDisplay(round.handicap_used || 0)}</td>
+                    <td class="py-2 px-3"><span onclick="window.OrganizerScoringSystem.openHcpEditor('${round.golfer_id}')" title="${_lvT('pce.hcp.title','Adjust Handicap')}" style="cursor:pointer;border-bottom:1px dashed #94a3b8;">${window.formatHandicapDisplay(round.handicap_used || 0)} ✎</span></td>
                     <td class="py-2 px-3">${round.total_gross || '-'}</td>
                     <td class="py-2 px-3">${netScore}</td>
                     <td class="py-2 px-3 font-bold">${score}</td>
@@ -142628,7 +142628,7 @@ class OrganizerScoringSystem {
                     <tr class="border-b border-gray-200 hover:bg-gray-50${notStarted ? ' opacity-60' : ''}${isWinner ? ' bg-amber-50' : ''}">
                         <td class="py-2 px-3 font-bold">${isWinner ? '🏆 ' : ''}${position}</td>
                         <td class="py-2 px-3"><span data-golfer-av="${round.golfer_id || ''}" data-golfer-av-nm="${String(this.getPlayerName(round.golfer_id, round) || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="22">${this.getPlayerName(round.golfer_id, round)}</span>${this._twosChip(round.golfer_id)}${this._acesChip(round.golfer_id)}</td>
-                        <td class="py-2 px-3">${window.formatHandicapDisplay(round.handicap_used || 0)}</td>
+                        <td class="py-2 px-3"><span onclick="window.OrganizerScoringSystem.openHcpEditor('${round.golfer_id}')" title="${_lvT('pce.hcp.title','Adjust Handicap')}" style="cursor:pointer;border-bottom:1px dashed #94a3b8;">${window.formatHandicapDisplay(round.handicap_used || 0)} ✎</span></td>
                         <td class="py-2 px-3">${round.total_gross || '-'}</td>
                         <td class="py-2 px-3">${netScore}</td>
                         <td class="py-2 px-3 font-bold">${score}</td>
@@ -143524,6 +143524,59 @@ class OrganizerScoringSystem {
             }
         }
         try { await this.refreshScores(); } catch (e) {}
+    }
+
+    // v965 — GLOBAL organizer hcp quick-edit (Pete: adjust on the fly EVERYWHERE the hcp is
+    // visible, not only inside the card). Body-mounted modal (inline styles — PWA-safe, above
+    // the card overlay, below toasts). Saves the society MANUAL row AND applies to the posted
+    // round immediately (setSocietyHandicap + applyHandicapToEvent). onSaved lets the calling
+    // surface refresh its own copy.
+    openHcpEditor(golferId, onSaved) {
+        const row = (this.leaderboardData || []).find(r => String(r.golfer_id) === String(golferId));
+        const pl = (this.qsePlayersData || []).find(p => String(p.player_id) === String(golferId));
+        const name = (row && this.getPlayerName(row.golfer_id, row)) || (pl && pl.player_name) || golferId;
+        const cur = (row && row.handicap_used != null) ? row.handicap_used : (pl ? pl.handicap : '');
+        const old = document.getElementById('hcpQuickBg'); if (old) old.remove();
+        const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        const bg = document.createElement('div');
+        bg.id = 'hcpQuickBg';
+        bg.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:2147482000;display:flex;align-items:center;justify-content:center;padding:16px;';
+        bg.onclick = (e) => { if (e.target === bg) bg.remove(); };
+        bg.innerHTML = '<div style="background:#fff;width:100%;max-width:360px;border-radius:16px;padding:16px;box-shadow:0 24px 60px rgba(15,23,42,.35);">'+
+            '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">'+
+                '<div style="flex:1;min-width:0;"><div style="font:800 15px/1.2 sans-serif;color:#0f172a;">' + esc(_lvT('pce.hcp.title', 'Adjust Handicap')) + '</div>'+
+                '<div style="font:600 12px/1.4 sans-serif;color:#64748b;margin-top:2px;">' + esc(name) + '</div></div>'+
+                '<button onclick="document.getElementById(\'hcpQuickBg\').remove()" style="border:none;background:#f1f5f9;border-radius:8px;color:#475569;font-size:18px;font-weight:700;padding:2px 10px;cursor:pointer;">✕</button>'+
+            '</div>'+
+            '<div style="display:flex;gap:8px;">'+
+                '<input id="hcpQuickVal" inputmode="decimal" autocomplete="off" value="' + esc(cur) + '" placeholder="' + esc(_lvT('pce.walkon.hcpph', 'HCP (blank = 36)')) + '" style="flex:1;min-width:0;border:2px solid #16a34a;border-radius:10px;padding:10px 12px;font:700 15px/1 monospace;color:#0f172a;background:#f8fafc;outline:none;">'+
+                '<button id="hcpQuickBtn" style="border:none;background:#16a34a;color:#fff;border-radius:10px;padding:10px 16px;font:800 13px/1 sans-serif;cursor:pointer;">' + esc(_lvT('pce.card.save', 'SAVE')) + '</button>'+
+            '</div></div>';
+        document.body.appendChild(bg);
+        const inp = bg.querySelector('#hcpQuickVal'), btn = bg.querySelector('#hcpQuickBtn');
+        const doSave = async () => {
+            const s = String(inp.value || '').trim();
+            const isP = s.startsWith('+');
+            let v = parseFloat(s.replace('+', ''));
+            if (isNaN(v)) { window.NotificationManager.show(_lvT('pce.hcp.bad', 'Enter a handicap number'), 'warning'); return; }
+            if (isP) v = -v;
+            btn.disabled = true; btn.textContent = '…';
+            try {
+                await this.setSocietyHandicap(golferId, v);
+                await this.applyHandicapToEvent(golferId, v);
+                if (pl) pl.handicap = v;
+                bg.remove();
+                window.NotificationManager.show('✓ ' + _lvT('pce.hcp.saved', 'Handicap saved'), 'success', 2000);
+                if (onSaved) { try { onSaved(v); } catch (e) {} }
+            } catch (e) {
+                console.error('[HCP] quick edit', e);
+                btn.disabled = false; btn.textContent = _lvT('pce.card.save', 'SAVE');
+                window.NotificationManager.show(_lvT('pce.hcp.fail', 'Could not save handicap') + ': ' + (e && e.message || ''), 'error', 5000);
+            }
+        };
+        btn.onclick = doSave;
+        inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); doSave(); } else if (e.key === 'Escape') { bg.remove(); } };
+        setTimeout(() => { inp.focus(); try { inp.select(); } catch (e) {} }, 60);
     }
 
     // Per-hole cell colour for the hole-by-hole grid (score vs par).
@@ -147706,7 +147759,7 @@ window.PaperCardEntry = {
             var g = self.groupOf[String(p.player_id)] || '';
             rows += '<div class="pce-nrow pick' + (i === 0 && term ? ' hit' : '') + '" onclick="PaperCardEntry.saveTo(\'' + self._esc(p.player_id) + '\')">'+
                 '<span data-golfer-av="' + self._esc(p.player_id) + '" data-golfer-av-nm="' + self._esc(p.player_name) + '" data-golfer-av-sz="24"></span>'+
-                '<div><div class="nm">' + self._esc(p.player_name) + '</div><div class="sub">HCP ' + (window.formatHandicapDisplay ? window.formatHandicapDisplay(p.handicap) : p.handicap) + '</div></div>'+
+                '<div><div class="nm">' + self._esc(p.player_name) + '</div><div class="sub"><span class="pce-hchip" onclick="event.stopPropagation();PaperCardEntry._hcpEditPce(\'' + self._esc(String(p.player_id).replace(/'/g, '')) + '\')">HCP ' + (window.formatHandicapDisplay ? window.formatHandicapDisplay(p.handicap) : p.handicap) + ' ✎</span></div></div>'+
                 (g ? '<span class="g">' + g + '</span>' : '') + '</div>';
         });
         // Directory hits (players not registered on this event) while searching
@@ -147756,6 +147809,19 @@ window.PaperCardEntry = {
             var fresh = full.querySelector('.pce-names');
             if (fresh) box.replaceWith(fresh);
             try { window._golferChipDecorate && window._golferChipDecorate(host, 24); } catch(e){}
+        });
+    },
+
+    // v965: hcp quick-edit from the organizer Paper Cards name list — routes through the ONE
+    // global editor (OSS.openHcpEditor = society MANUAL save + apply-to-round + board refresh).
+    _hcpEditPce: function(pid){
+        var self = this;
+        var OSS = window.OrganizerScoringSystem;
+        if (!OSS || !OSS.openHcpEditor) return;
+        OSS.openHcpEditor(pid, function(v){
+            var p = (self.players || []).find(function(x){ return String(x.player_id) === String(pid); });
+            if (p) p.handicap = v;
+            self.render();
         });
     },
 

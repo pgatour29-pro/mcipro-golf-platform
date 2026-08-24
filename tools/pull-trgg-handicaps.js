@@ -40,7 +40,7 @@
   const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
   const KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
   const SID = '7c0e4b72-d925-44bc-afda-38259a7ba346'; // Travellers Rest Golf Group
-  const VERSION = 'v786';
+  const VERSION = 'v787';
 
   const H = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };
   const log = (...a) => console.log('[TRGG pull]', ...a);
@@ -124,7 +124,13 @@
   // (it silently froze Richard Moore at 12.3 while the master moved to 12.9, 2026-07-31).
   const lockedIds = new Set(); const lockedKeys = new Set();
   try { const lr = await rest(`society_handicaps?select=golfer_id&calculation_method=eq.MANUAL&society_id=eq.${SID}`); if (lr.ok) (await lr.json()).forEach(x => { if (x.golfer_id) lockedIds.add(x.golfer_id); }); } catch (e) { console.warn('[TRGG pull] locked load failed', e); }
-  const byKey = {}; profs.forEach(p => { const k = nameKey(p.name); if (!k) return; if (lockedIds.has(p.line_user_id)) { lockedKeys.add(k); return; } (byKey[k] = byKey[k] || []).push(p); });
+  // Pete 2026-08-24: a 100% match ALWAYS updates the hcp — a MANUAL directory edit is a stopgap
+  // until the master has the player, not a divorce from it. A locked player therefore still
+  // matches when the name is UNAMBIGUOUS (exactly one profile bears it). The lock only excludes
+  // them when the name is SHARED, where the master value must land on the other (real) member —
+  // the Smith-Mike collision guard (2026-07-07) — because a shared name has no 100% match.
+  const keyCount = {}; profs.forEach(p => { const k = nameKey(p.name); if (k) keyCount[k] = (keyCount[k] || 0) + 1; });
+  const byKey = {}; profs.forEach(p => { const k = nameKey(p.name); if (!k) return; if (lockedIds.has(p.line_user_id) && keyCount[k] > 1) { lockedKeys.add(k); return; } (byKey[k] = byKey[k] || []).push(p); });
   const profById = {}; profs.forEach(p => profById[p.line_user_id] = p);
   const used = {}; let lockedSkipped = 0;
   const aliasMap = {};
@@ -168,6 +174,23 @@
   const byOrd = {}; Object.keys(byKey).forEach(k => byKey[k].forEach(p => { const o = ordKey(p.name); if (o) (byOrd[o] = byOrd[o] || []).push(p); }));
   const usedIds = new Set(); const exactPick = {};
   for (const e of entries) { if (aliasMap[e.key]) continue; const cands = byOrd[ordKey(e.name)] || []; const p = cands.find(x => !usedIds.has(x.line_user_id)); if (p) { usedIds.add(p.line_user_id); exactPick[e.name] = p; } }
+  // First-name variants ("Booton, David" on the site vs profile "Dave Booton") are still a 100%
+  // match when the rest of the name agrees and exactly ONE profile fits (Pete 2026-08-24) —
+  // bridge them instead of duplicating the player or waiting for a hand-typed alias. Every
+  // variant matched this way is saved to trgg_handicap_alias so the next pull hits directly.
+  const NICKS = { dave:'david', davey:'david', mike:'michael', mick:'michael', mickey:'michael',
+    bob:'robert', bobby:'robert', rob:'robert', robbie:'robert', bill:'william', billy:'william', will:'william',
+    jim:'james', jimmy:'james', jamie:'james', joe:'joseph', joey:'joseph', tom:'thomas', tommy:'thomas',
+    tony:'anthony', andy:'andrew', steve:'steven', stephen:'steven', chris:'christopher', dan:'daniel', danny:'daniel',
+    ed:'edward', eddie:'edward', rick:'richard', ricky:'richard', rich:'richard', ron:'ronald', ronnie:'ronald',
+    ken:'kenneth', kenny:'kenneth', greg:'gregory', jeff:'jeffrey', pete:'peter', phil:'philip', phillip:'philip',
+    sam:'samuel', pat:'patrick', paddy:'patrick', nick:'nicholas', alex:'alexander', fred:'frederick', freddie:'frederick',
+    matt:'matthew', larry:'lawrence', terry:'terence', doug:'douglas', stu:'stuart', ray:'raymond', don:'donald',
+    tim:'timothy', gerry:'gerald', jerry:'gerald', vince:'vincent', bernie:'bernard', charlie:'charles', chuck:'charles',
+    harry:'henry', les:'leslie', norm:'norman', stan:'stanley', wally:'walter', walt:'walter', johnny:'john', jon:'john' };
+  const nickKey = s => nameKey(s).split(' ').map(t => NICKS[t] || t).sort().join(' ');
+  const byNick = {}; Object.keys(byKey).forEach(k => byKey[k].forEach(p => { const nk = nickKey(p.name); if (nk) (byNick[nk] = byNick[nk] || []).push(p); }));
+  const aliasIns = [];
   const profUpd = [], shRows = [], newbies = []; let matched = 0;
   const stamp = new Date().toISOString();
   for (const e of entries) {
@@ -175,12 +198,20 @@
     let p = null;
     const aliasId = aliasMap[e.key];
     if (aliasId && profById[aliasId]) {
-      if (lockedIds.has(aliasId)) { lockedSkipped++; continue; }   // manual override — leave it alone
+      // an alias row IS a 100% mapping — it updates even a MANUAL-locked player (Pete 2026-08-24)
       p = profById[aliasId];
       usedIds.add(aliasId);   // later entries must not re-match this profile via exact/key rank
     } else {
       p = exactPick[e.name] || null;
       if (!p) { const list = byKey[e.key] || []; let i = used[e.key] || 0; while (i < list.length) { const c = list[i++]; if (!usedIds.has(c.line_user_id)) { p = c; break; } } used[e.key] = i; if (p) usedIds.add(p.line_user_id); }
+    }
+    if (!p) {
+      const nCands = (byNick[nickKey(e.name)] || []).filter(c => !usedIds.has(c.line_user_id));
+      if (nCands.length === 1) {
+        p = nCands[0]; usedIds.add(p.line_user_id);
+        aliasIns.push({ alias_key: e.key, golfer_id: p.line_user_id, note: 'auto: name-variant of "' + p.name + '" (' + VERSION + ')' });
+        log('name-variant match:', e.name, '→', p.name, '(alias saved)');
+      }
     }
     if (!p) { if (lockedKeys.has(e.key)) { lockedSkipped++; continue; } newbies.push(e); continue; }
     matched++;
@@ -259,6 +290,13 @@
     });
     if (!r.ok) { shErr++; log('society_handicaps upsert error', r.status, await r.text()); }
   }
+  let aliasErr = 0;
+  for (const c of chunk(aliasIns, 100)) {
+    const r = await rest('trgg_handicap_alias?on_conflict=alias_key', {
+      method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(c)
+    });
+    if (!r.ok) { aliasErr += c.length; log('alias save error', r.status, await r.text()); }
+  }
   // push new master handicaps onto upcoming event registrations too (same as paste tool)
   let regSync = 0;
   try { const r = await rest('rpc/sync_upcoming_trgg_reg_handicaps', { method: 'POST', body: '{}' }); if (r.ok) regSync = await r.json(); } catch (e) {}
@@ -268,7 +306,8 @@
     (newProf.length ? `Added NEW: ${newProf.length - newErr}${newErr ? ' (' + newErr + ' FAILED — see console)' : ''}${rosterLinked ? ', ' + rosterLinked + ' linked to their member record' : ''} → in the TRGG Directory as non-members:\n  ` + newbies.slice(0, 20).map(x => x.name).join(', ') + (newbies.length > 20 ? ' …' : '') + '\n' : '') +
     (skippedNew ? `New names SKIPPED (you cancelled): ${skippedNew}\n` : '') +
     `Society rows: ${shRows.length}${shErr ? ' (errors — see console)' : ''}\nUpcoming regs synced: ${regSync}\n` +
-    (lockedSkipped ? `Locked (kept manual): ${lockedSkipped}\n` : '') +
+    (aliasIns.length ? `Name-variant matched: ${aliasIns.length}${aliasErr ? ' (' + aliasErr + ' alias saves FAILED)' : ''}\n` : '') +
+    (lockedSkipped ? `Locked (shared name, kept manual): ${lockedSkipped}\n` : '') +
     (!newProf.length && !skippedNew ? '\nEveryone matched.' : '');
   log(msg); if (newbies.length) console.log('[TRGG pull] Added new:', newbies.map(x => x.name));
   alert(msg);

@@ -134828,8 +134828,37 @@ window.TeeSheet = {
         if (!first && this.eventId) first = list.find(function(e){ return String(e.id)===String(self.eventId); }) || null;
         if (!first) first = list[0];
         this._preferId = null;
+        this._applyEventDots();
         if(first){ sel.value=first.id; this.selectEvent(first.id); }
         else { var b=document.getElementById('teeSheetBody'); if(b) b.innerHTML='<div style="text-align:center;padding:40px;color:var(--t-dim);">No events found.</div>'; }
+    },
+    // EXACTLY three dots in the whole list — the SAME fixed NOW-frame as the Scoring dropdown
+    // (v973 spec, Pete 2026-08-24: global for ALL organizer event dropdowns): 🟢 today's event
+    // (else nearest upcoming, else newest), 🔵 the event chronologically AFTER the anchor,
+    // 🔴 the one BEFORE it. The frame NEVER follows the selection; every other row gets NO dot.
+    _applyEventDots: function(){
+        var sel=document.getElementById('teeSheetEventSel');
+        var list=this._evList||[];
+        if(!sel || !list.length) return;
+        var dstr=function(e){ return String(e.date||e.event_date||'').split('T')[0]; };
+        // This picker's option order is MIXED (upcoming ASC, then recent past DESC, _preferId on
+        // top) — neighbors must come from a chronological view, never from option order.
+        var key=function(e){ return dstr(e)+'T'+String(e.startTime||e.start_time||'23:59').slice(0,5); };
+        var chron=list.slice().sort(function(a,b){ var ka=key(a),kb=key(b); return ka<kb?-1:ka>kb?1:0; });
+        var t=new Date();
+        var todayStr=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+        var anchor=chron.find(function(e){ return dstr(e)===todayStr; }) ||
+                   chron.find(function(e){ return dstr(e)>todayStr; }) ||
+                   chron[chron.length-1];
+        var ai=chron.indexOf(anchor);
+        var anchorId=String(anchor.id);
+        var nextId=ai<chron.length-1?String(chron[ai+1].id):null;
+        var priorId=ai>0?String(chron[ai-1].id):null;
+        for(var i=0;i<sel.options.length;i++){
+            var opt=sel.options[i]; if(!opt.value) continue;
+            var bare=opt.textContent.replace(/^(?:🟢|🔵|🔴)\s*/, '');
+            opt.textContent=(opt.value===anchorId?'🟢 ':opt.value===nextId?'🔵 ':opt.value===priorId?'🔴 ':'')+bare;
+        }
     },
     _renderEventChips: function(){
         var wrap=document.getElementById('tsEvChips'); if(!wrap) return;
@@ -137387,15 +137416,25 @@ const RegistrationsManager = {
             // Resort by date descending for display (newest first)
             const displayEvents = [...events].sort((a, b) => new Date(b.date) - new Date(a.date));
 
+            // EXACTLY three dots in the whole list — the SAME fixed NOW-frame as the Scoring
+            // dropdown (v973 spec, Pete 2026-08-24: global for ALL organizer event dropdowns):
+            // 🟢 today's event (else nearest upcoming, else newest), 🔵 the one chronologically
+            // after it (renders ABOVE — list is DESC), 🔴 the one before it (below). Never dot
+            // every row; the frame never follows the selection. TODAY tag stays text-only.
+            const futs = displayEvents.filter(e => e.date >= todayStr);   // DESC → last = nearest upcoming
+            const anchorEv = displayEvents.find(e => e.date === todayStr) || (futs.length ? futs[futs.length - 1] : displayEvents[0]);
+            const anchorIdx = anchorEv ? displayEvents.findIndex(e => String(e.id) === String(anchorEv.id)) : -1;
+            const anchorId = anchorEv ? String(anchorEv.id) : null;
+            const nextId = anchorIdx > 0 ? String(displayEvents[anchorIdx - 1].id) : null;                                    // later date = above
+            const priorId = (anchorIdx >= 0 && anchorIdx < displayEvents.length - 1) ? String(displayEvents[anchorIdx + 1].id) : null; // earlier date = below
             selector.innerHTML = '<option value="" data-i18n="orgreg2.selevent">-- Select an event --</option>' +
                 displayEvents.map(e => {
                     const dateStr = new Date(e.date).toLocaleDateString(_lvLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
                     // <option> can't render icon spans (the icon name printed as literal "circle").
-                    // Use emoji markers (which DO render in options) so today/upcoming stand out.
+                    // Emoji markers DO render in options.
                     const isToday = e.date === todayStr;
-                    let marker = '';
-                    if (isToday) marker = '🔴 TODAY · ';
-                    else if (e.date > todayStr) marker = '🟢 ';
+                    const dot = String(e.id) === anchorId ? '🟢 ' : String(e.id) === nextId ? '🔵 ' : String(e.id) === priorId ? '🔴 ' : '';
+                    const marker = dot + (isToday ? 'TODAY · ' : '');
                     return `<option value="${e.id}"${isToday ? ' style="background:#fef3c7;color:#92400e;font-weight:600;"' : ''}>${marker}${e.name} - ${dateStr}</option>`;
                 }).join('');
 

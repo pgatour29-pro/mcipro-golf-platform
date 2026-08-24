@@ -100708,12 +100708,18 @@ class SocietyOrganizerManager {
             let societyHandicapsMap = {};
             if (societyId && members.length > 0) {
                 const memberIds = members.map(m => m.golfer_id);
+                // TRGG dual-id trap: handicap rows live under the society_profiles id (7c0e4b72…),
+                // but societyId here can be a legacy login id (17451cf3…) when societyProfile
+                // hasn't loaded — a single .eq() then matches ZERO rows and every player silently
+                // falls back to the universal profile hcp. Query the whole TRGG id family.
+                const TRGG_HCP_IDS = ['7c0e4b72-d925-44bc-afda-38259a7ba346','17451cf3-f499-4aa3-83d7-c206149838c4','17451cf3-8b57-4166-af0a-dd902b7fb1af'];
+                const hcpSocietyIds = TRGG_HCP_IDS.includes(societyId) ? TRGG_HCP_IDS : [societyId];
                 const { data: societyHcps, error: hcpError } = await window.SupabaseDB.client
                     .from('society_handicaps')
                     .select('golfer_id, handicap_index')
-                    .eq('society_id', societyId)
+                    .in('society_id', hcpSocietyIds)
                     .in('golfer_id', memberIds)
-                    .order('last_calculated_at', { ascending: false });
+                    .order('last_calculated_at', { ascending: false, nullsFirst: false });
 
                 if (!hcpError && societyHcps) {
                     // Build map of golfer_id -> society handicap
@@ -108450,6 +108456,19 @@ const TRGGHandicapPaste = {
         {
             const byAlias={};
             entries.forEach(e=>{ const id=aliasMap[e.key]; if(id) (byAlias[id]=byAlias[id]||[]).push(e); });
+            // The list can ALSO carry the member's own record next to a misspelled orphan an alias
+            // maps to the same golfer ("Borrows, Gary" + "Burrows, Gary" → TRGG-GUEST-0107). Fold the
+            // direct-name rows into the alias group so the dedupe keeps ONLY the member's record —
+            // otherwise the orphan's stale value wins the society upsert (last write per golfer)
+            // while the profile write races the other way (2026-08-24, four players split).
+            Object.keys(byAlias).forEach(id=>{
+                const p=profById[id]; if(!p) return;
+                const po=ordKey(p.name), pk=nameKey(p.name);
+                entries.forEach(e=>{
+                    if(aliasMap[e.key] || byAlias[id].includes(e)) return;
+                    if(ordKey(e.name)===po || e.key===pk) byAlias[id].push(e);
+                });
+            });
             Object.keys(byAlias).forEach(id=>{
                 const group=byAlias[id]; if(group.length<2) return;
                 const p=profById[id];

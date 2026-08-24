@@ -40,7 +40,7 @@
   const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
   const KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
   const SID = '7c0e4b72-d925-44bc-afda-38259a7ba346'; // Travellers Rest Golf Group
-  const VERSION = 'v785';
+  const VERSION = 'v786';
 
   const H = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };
   const log = (...a) => console.log('[TRGG pull]', ...a);
@@ -144,6 +144,19 @@
   {
     const byAlias = {};
     entries.forEach(e => { const id = aliasMap[e.key]; if (id) (byAlias[id] = byAlias[id] || []).push(e); });
+    // The site can ALSO list the member's own record next to a misspelled orphan an alias maps
+    // to the same golfer ("Borrows, Gary" 25.6 + "Burrows, Gary" 26.0 → TRGG-GUEST-0107). Fold
+    // the direct-name rows into the alias group so the dedupe keeps ONLY the member's record —
+    // on 2026-08-24 the orphan's stale value won the society upsert (last write per golfer)
+    // while the profile PATCH raced the other way, splitting trgg_handicap from the TRGG row.
+    Object.keys(byAlias).forEach(id => {
+      const p = profById[id]; if (!p) return;
+      const po = ordKey(p.name), pk = nameKey(p.name);
+      entries.forEach(e => {
+        if (aliasMap[e.key] || byAlias[id].includes(e)) return;
+        if (ordKey(e.name) === po || e.key === pk) byAlias[id].push(e);
+      });
+    });
     Object.keys(byAlias).forEach(id => {
       const group = byAlias[id]; if (group.length < 2) return;
       const p = profById[id];

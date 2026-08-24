@@ -20275,9 +20275,114 @@
                 } else {
                     console.log('[Login] last_login_at recorded for', uid);
                 }
+                captureLoginGeo(uid).catch(e => console.warn('[LoginGeo] capture failed:', e));
             } catch (e) {
                 console.warn('[Login] recordUserLogin error:', e);
                 try { sessionStorage.removeItem('mcipro_login_recorded'); } catch (_) {}
+            }
+        }
+
+        // Login geography (2026-08-24). One login_events row per session: IP geo from /api/geo
+        // (Vercel edge headers) for everyone, plus GPS city/country ONLY if the browser
+        // permission is already granted - this never prompts. Precise coordinates are never
+        // stored, city level only. First capture also stamps user_profiles.registration_geo
+        // ("where did this member register from"); an IP-based stamp is upgraded in place
+        // if GPS becomes available in a later session. login_events is INSERT-only under
+        // RLS, so none of this is readable from the browser.
+        async function _geoCityFromCoords(lat, lon) {
+            const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
+            if (!r.ok) throw new Error('reverse geocode HTTP ' + r.status);
+            const d = await r.json();
+            return {
+                gps_country: d.countryName || null,
+                gps_country_code: d.countryCode || null,
+                gps_region: d.principalSubdivision || null,
+                gps_city: d.city || d.locality || null
+            };
+        }
+
+        async function _geoStampRegistration(uid, geo) {
+            if (!geo.country && !geo.city) return;
+            const stamp = {
+                country: geo.country, country_code: geo.country_code || null,
+                region: geo.region, city: geo.city,
+                timezone: geo.timezone || null, source: geo.source,
+                captured_at: new Date().toISOString()
+            };
+            let q = window.SupabaseDB.client.from('user_profiles')
+                .update({ registration_geo: stamp })
+                .eq('line_user_id', uid);
+            // GPS may upgrade an earlier IP-based stamp; IP never overwrites anything.
+            q = geo.source === 'gps'
+                ? q.or('registration_geo.is.null,registration_geo->>source.eq.ip')
+                : q.is('registration_geo', null);
+            const { error } = await q;
+            if (error) console.warn('[LoginGeo] registration_geo stamp failed:', error.message);
+        }
+
+        async function captureLoginGeo(uid) {
+            if (sessionStorage.getItem('mcipro_geo_recorded')) return;
+            sessionStorage.setItem('mcipro_geo_recorded', '1');
+            const row = {
+                line_user_id: uid,
+                browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
+                browser_language: navigator.language || null,
+                user_agent: (navigator.userAgent || '').substring(0, 300) || null
+            };
+            try {
+                const r = await fetch('/api/geo', { cache: 'no-store' });
+                if (r.ok) {
+                    const g = await r.json();
+                    row.ip = g.ip; row.ip_country = g.country; row.ip_region = g.region;
+                    row.ip_city = g.city; row.ip_timezone = g.timezone;
+                }
+            } catch (_) { /* offline /api (e.g. local file) - still record tz/lang */ }
+
+            // GPS only if ALREADY granted (weather widget owns the actual prompt).
+            let gpsNow = null, permStatus = null;
+            try {
+                permStatus = await navigator.permissions.query({ name: 'geolocation' });
+                if (permStatus.state === 'granted') {
+                    const pos = await new Promise((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000, maximumAge: 1800000 });
+                    });
+                    gpsNow = await _geoCityFromCoords(pos.coords.latitude, pos.coords.longitude);
+                    Object.assign(row, gpsNow);
+                }
+            } catch (_) { /* permissions API missing (LINE webview) or position timeout - IP row still goes */ }
+
+            const { error } = await window.SupabaseDB.client.from('login_events').insert(row);
+            if (error) console.warn('[LoginGeo] login_events insert failed:', error.message);
+            else console.log('[LoginGeo] recorded', row.ip_country || '', row.gps_city || row.ip_city || '');
+
+            if (gpsNow) {
+                await _geoStampRegistration(uid, {
+                    country: gpsNow.gps_country, country_code: gpsNow.gps_country_code,
+                    region: gpsNow.gps_region, city: gpsNow.gps_city,
+                    timezone: row.browser_timezone, source: 'gps'
+                });
+            } else {
+                await _geoStampRegistration(uid, {
+                    country: row.ip_country || null, region: row.ip_region || null,
+                    city: row.ip_city || null, timezone: row.ip_timezone || null, source: 'ip'
+                });
+                // First session of a new member: the weather widget prompts AFTER login, so if
+                // permission arrives later this session, upgrade the profile stamp to GPS accuracy.
+                if (permStatus && permStatus.state === 'prompt') {
+                    permStatus.onchange = () => {
+                        if (permStatus.state !== 'granted') return;
+                        navigator.geolocation.getCurrentPosition(async (pos) => {
+                            try {
+                                const g = await _geoCityFromCoords(pos.coords.latitude, pos.coords.longitude);
+                                await _geoStampRegistration(uid, {
+                                    country: g.gps_country, country_code: g.gps_country_code,
+                                    region: g.gps_region, city: g.gps_city,
+                                    timezone: row.browser_timezone, source: 'gps'
+                                });
+                            } catch (e) { console.warn('[LoginGeo] late GPS stamp failed:', e); }
+                        }, () => {}, { timeout: 8000, maximumAge: 1800000 });
+                    };
+                }
             }
         }
 

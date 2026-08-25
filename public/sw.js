@@ -1,7 +1,7 @@
 // SERVICE WORKER - Performance Caching Version
 // Caches static assets for dramatically faster repeat visits
 
-const SW_VERSION = 'mcipro-cache-v991';
+const SW_VERSION = 'mcipro-cache-v992';
 const CACHE_NAME = `mcipro-static-${SW_VERSION}`;
 const RUNTIME_CACHE = `mcipro-runtime-${SW_VERSION}`;
 
@@ -18,7 +18,6 @@ const STATIC_ASSETS = [
     '/supabaseClient.js',
     '/supabase-config.js',
     '/auth-bridge.js',
-    '/caddie_data.js',
     '/society-golf-system.js',
     '/society-golf-combined.js',
     '/society-dashboard-enhanced.js',

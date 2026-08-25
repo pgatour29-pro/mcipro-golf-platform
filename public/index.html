@@ -69676,10 +69676,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 if (!p) {
-                    // Self-provision so every caddie login is wired from day one
+                    // Self-provision so every caddie login is wired from day one.
+                    // v993: course_name is NOT NULL in prod — omitting it made this insert fail
+                    // SILENTLY on every unmatched caddie login (the error was never checked).
                     const { data: created } = await sb.from('caddy_profiles').insert({
                         name: u?.name || u?.displayName || 'Caddy',
                         caddy_number: String(u?.caddyNumber || u?.profileData?.caddyInfo?.caddyNumber || ''),
+                        course_name: u?.profileData?.roleSpecific?.homeClub || u?.profileData?.homeClub || 'Unassigned',
                         user_id: userId,
                         is_active: true
                     }).select('id, caddy_number, course_id, rating, total_reviews, total_rounds, name').single();
@@ -69713,6 +69716,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 try {
                     await this.resolveProfile();
                     this.paintHeader();
+                    // v993: on cold LINE loads the dashboard init can outrun the Supabase client —
+                    // resolveProfile returns null and nothing ever retried, so a real caddie's
+                    // dashboard sat at zeros. Bounded retry; PIN demo sessions (no id) never retry.
+                    if (!this.profile) {
+                        const u = window.AppState?.currentUser;
+                        if ((u?.lineUserId || u?.id) && (this._initRetries = (this._initRetries || 0) + 1) <= 5) {
+                            setTimeout(() => this.loadAll(), 2000);
+                        }
+                        return;
+                    }
                     await Promise.all([
                         this.loadAssignments(),
                         this.loadEarningsFromDB(),

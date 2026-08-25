@@ -42701,15 +42701,19 @@ document.addEventListener('DOMContentLoaded', function() {
             },
 
             // GTS2: no registered upcoming event — offer whatever sheets are CURRENT instead.
+            // GTSPERF: the scrim shows for the sheet search too; the one-sheet branch hands the
+            // still-visible scrim to viewTeeSheet (idempotent show, its finally hides it).
             async _openCurrentSheet(D) {
                 if (this._tsCubeBusy) return;
                 this._tsCubeBusy = true;
+                if (D && D._sheetLoading) D._sheetLoading(true);
                 try {
                     const list = D ? await this._currentPublishedSheets() : [];
                     if (list.length === 1) { D.viewTeeSheet(list[0].id); return; }
-                    if (list.length > 1) { this._showSheetPicker(list, D); return; }
+                    if (list.length > 1) { D._sheetLoading(false); this._showSheetPicker(list, D); return; }
                 } catch (err) { console.warn('[GolferCubeInfo] current sheets', err); }
                 finally { this._tsCubeBusy = false; }
+                if (D && D._sheetLoading) D._sheetLoading(false);
                 try { showGolferTab('societyevents'); } catch (err) {}
             },
 
@@ -43081,10 +43085,33 @@ document.addEventListener('DOMContentLoaded', function() {
             // leaps). The players modal mounts on document.body, so it only needs state: the event,
             // its registrations, and its pairings — fetched in parallel here. Roster empty or anything
             // fails → the old event-detail route as fallback.
+            // GTSPERF (Pete 2026-08-25, "too slow and no sense the sheet is rendering"): a full-screen
+            // loading scrim paints the instant the tap lands, and it ALWAYS comes down — every exit
+            // path hides it plus a 12s failsafe (an invisible/forgotten overlay steals every tap).
+            _sheetLoading(on) {
+                try {
+                    if (this._sheetLoadT) { clearTimeout(this._sheetLoadT); this._sheetLoadT = null; }
+                    const el = document.getElementById('gtsSheetLoading');
+                    if (!on) { if (el) el.remove(); return; }
+                    if (el) return;
+                    const tt = (typeof _lvT === 'function') ? _lvT('lightview.loadingteesheet', 'Loading tee sheet…') : 'Loading tee sheet…';
+                    const w = document.createElement('div');
+                    w.id = 'gtsSheetLoading';
+                    w.style.cssText = 'position:fixed;inset:0;z-index:100002;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.45);';
+                    w.innerHTML = '<div style="background:#fff;border-radius:16px;padding:16px 20px;display:flex;align-items:center;gap:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);">' +
+                        '<div class="animate-spin" style="width:22px;height:22px;border:3px solid #22c55e;border-top-color:transparent;border-radius:50%;flex-shrink:0;"></div>' +
+                        '<div style="font-size:13px;font-weight:700;color:#0f172a;">' + String(tt).replace(/</g, '&lt;') + '</div>' +
+                    '</div>';
+                    document.body.appendChild(w);
+                    this._sheetLoadT = setTimeout(() => { const s = document.getElementById('gtsSheetLoading'); if (s) s.remove(); }, 12000);
+                } catch (e) {}
+            },
+
             async viewTeeSheet(eventId) {
                 const G = window.GolferEventsSystem;
                 const b = document.getElementById('gdbNrTsBtn');
                 if (b) { b.style.opacity = '.55'; b.disabled = true; }
+                this._sheetLoading(true);
                 try {
                     if (G) {
                         // currentEvent must point at THIS event BEFORE the roster load — its stale-load
@@ -43095,14 +43122,29 @@ document.addEventListener('DOMContentLoaded', function() {
                         const pre = (G.allEvents || []).find(x => String(x.id) === String(eventId));
                         const d = (window.GolferCubeInfo && GolferCubeInfo._nextEv) || {};
                         G.currentEvent = pre || { id: eventId, name: d.title || d.course_name || 'Event', courseName: d.course_name, date: d.event_date, startTime: d.start_time, format: d.event_format || d.format };
+                        // GTSPERF: ONE pairings fetch per tap, started NOW — loadRegisteredPlayers,
+                        // loadGolferPairing and openPlayersModal's refresh all reuse this promise
+                        // (each used to refetch the same row: 3 round-trips, one of them serial).
+                        G._pairingsPrefetch = { eventId: eventId, promise: window.SocietyGolfDB.getPairings(eventId) };
                         const evP = (G.allEvents && G.allEvents.length) ? Promise.resolve() : G.loadEvents().catch(() => {});
-                        await Promise.all([evP, G.loadRegisteredPlayers(eventId), G.loadGolferPairing(eventId)]);
-                        const ev = (G.allEvents || []).find(x => String(x.id) === String(eventId));
-                        if (ev) G.currentEvent = ev;
+                        // GTSPERF: the sheet opens on roster+pairings alone. The full browse load
+                        // (getAllPublicEvents — 9 queries over every event) used to sit in this await;
+                        // now it finishes in the background and upgrades currentEvent for downstream
+                        // actions (edit registration / event detail) only while THIS event is current.
+                        await Promise.all([G.loadRegisteredPlayers(eventId), G.loadGolferPairing(eventId)]);
+                        const upgrade = () => {
+                            const ev = (G.allEvents || []).find(x => String(x.id) === String(eventId));
+                            if (ev && G.currentEvent && String(G.currentEvent.id) === String(eventId)) G.currentEvent = ev;
+                        };
+                        upgrade(); evP.then(upgrade);
                         if ((G.currentEventRegistrations || []).length) { G.openPlayersModal(); return; }
                     }
                 } catch (err) { console.warn('[Dashboard] viewTeeSheet direct', err); }
-                finally { if (b) { b.style.opacity = ''; b.disabled = false; } }
+                finally {
+                    if (b) { b.style.opacity = ''; b.disabled = false; }
+                    if (G) G._pairingsPrefetch = null;
+                    this._sheetLoading(false);
+                }
                 this.viewEvent(eventId);   // fallback: empty roster / load failure → event detail
             }
         };
@@ -123045,7 +123087,11 @@ class GolferEventsManager {
 
             // Load the organizer's tee-sheet pairings so the expanded modal can show real groups,
             // and subscribe so any change the organizer makes appears live in the golfer's view.
-            try { this.currentEventPairings = await window.SocietyGolfDB.getPairings(eventId); }
+            // GTSPERF: reuse the tap-time prefetch (viewTeeSheet) instead of a second serial fetch.
+            try {
+                const _pf = this._pairingsPrefetch;
+                this.currentEventPairings = await ((_pf && _pf.eventId === eventId) ? _pf.promise : window.SocietyGolfDB.getPairings(eventId));
+            }
             catch (e) { this.currentEventPairings = null; }
             if (this.currentEvent && this.currentEvent.id !== eventId) return;
             if (!skipSubscribe) this._subscribeGolferRealtime(eventId);
@@ -123237,9 +123283,11 @@ class GolferEventsManager {
         this._fillSheetEventChips();
 
         // Refresh pairings in the background in case the organizer changed them since this event
-        // was opened, then re-render so the modal reflects the latest tee sheet.
+        // was opened, then re-render so the modal reflects the latest tee sheet. GTSPERF: when the
+        // modal opens off a fresh tap the prefetch IS current — reuse it, don't fetch a third time.
         if (event && event.id) {
-            window.SocietyGolfDB.getPairings(event.id).then(p => {
+            const _pf = this._pairingsPrefetch;
+            ((_pf && _pf.eventId === event.id) ? _pf.promise : window.SocietyGolfDB.getPairings(event.id)).then(p => {
                 this.currentEventPairings = p;
                 if (document.getElementById('playersListModal')) this._renderPlayersModalList();
             }).catch(() => {});
@@ -123862,8 +123910,9 @@ class GolferEventsManager {
 
     async loadGolferPairing(eventId) {
         try {
-            // Get pairings for this event
-            const pairings = await window.SocietyGolfDB.getPairings(eventId);
+            // Get pairings for this event (GTSPERF: reuse the tap-time prefetch when present)
+            const _pf = this._pairingsPrefetch;
+            const pairings = await ((_pf && _pf.eventId === eventId) ? _pf.promise : window.SocietyGolfDB.getPairings(eventId));
             const section = document.getElementById('golferPairingSection');
             const content = document.getElementById('golferPairingContent');
 

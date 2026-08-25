@@ -116850,6 +116850,19 @@ const CaddyComms = {
         }).select().single();
         document.getElementById('dayoff-modal')?.remove();
         window.NotificationManager.show((!error && data) ? 'Day-off request sent to the caddy master' : 'Could not send — try again', (!error && data) ? 'success' : 'error');
+        // v999: LINE-connected caddy masters get pinged about the new request (zero today,
+        // works the moment a real caddymaster onboards via LINE)
+        if (!error && data) {
+            try {
+                const { data: cms } = await sb.from('user_profiles').select('line_user_id').eq('role', 'caddymaster').like('line_user_id', 'U%').limit(10);
+                const dates = data.date_from === data.date_to ? data.date_from : `${data.date_from} → ${data.date_to}`;
+                (cms || []).forEach(cm => {
+                    window.SecureDM?.send('CADDY-MASTER-SYSTEM', cm.line_user_id,
+                        `🗓 Day-off request: ${me.name}${me.num ? ' #' + me.num : ''} — ${dates}${reason ? '\n' + reason : ''}\nOpen the Caddy Master dashboard to approve or decline.`)
+                        .catch(() => { });
+                });
+            } catch (e) { }
+        }
     },
 
     requestAssistance() {
@@ -117321,8 +117334,27 @@ const CaddyMasterData = {
         }).eq('id', id).select();
         if (data && data.length) {
             window.NotificationManager.show(approve ? 'Day off approved' : 'Day off declined', 'success');
+            this._pushDayoffDecision(data[0], approve);
             this.refreshDayoffs();
         } else window.NotificationManager.show('Update failed', 'error');
+    },
+
+    // v999 (Pete: "Push it to Line") — decision lands in the caddie's dashboard inbox AND
+    // fires a LINE push (LINE delivers only to connected U… accounts; inbox stores regardless).
+    // PIN caddy-master sessions send AS the CADDY-MASTER-SYSTEM profile (secure-dm validates senders).
+    _pushDayoffDecision(req, approve) {
+        try {
+            if (!req?.caddy_user_id || !window.SecureDM) return;
+            const meId = window.AppState?.currentUser?.lineUserId;
+            const sender = (meId && meId.charAt(0) === 'U') ? meId : 'CADDY-MASTER-SYSTEM';
+            const dates = req.date_from === req.date_to ? req.date_from : `${req.date_from} → ${req.date_to}`;
+            const text = approve
+                ? `✅ Day off APPROVED: ${dates}\n✅ อนุมัติวันหยุด: ${dates}\n— ${this._me().name}`
+                : `❌ Day off DECLINED: ${dates}\n❌ ไม่อนุมัติวันหยุด: ${dates}\n— ${this._me().name}. Please talk to the caddy master.`;
+            window.SecureDM.send(sender, req.caddy_user_id, text)
+                .then(r => console.log('[CaddyMaster] day-off push:', JSON.stringify(r)))
+                .catch(e => console.warn('[CaddyMaster] day-off push failed:', e.message));
+        } catch (e) { console.warn('[CaddyMaster] day-off push:', e.message); }
     },
 
     async refreshDayoffs() {

@@ -103507,7 +103507,9 @@ This action cannot be undone.`);
         // organizer's per-player comp toggle adjusts by the right amount (was subtracting/adding 0).
         const _rsoc = String(ev.societyName || ev.organizerName || ev.title || ev.name || '').toLowerCase();
         const _rIsTRGG = _rsoc.indexOf('trgg') >= 0 || _rsoc.indexOf('travellers rest') >= 0;
-        this._rosterFeesCache = { id: ev.id, transportFee: tFee || 0, competitionFee: cFee || (_rIsTRGG ? 250 : 0) };
+        // Transport falls back to the ฿300 society default like registerPlayer does at billing time —
+        // with 0 here, taking a player off the van from the roster left their ฿300 on the bill.
+        this._rosterFeesCache = { id: ev.id, transportFee: tFee || 300, competitionFee: cFee || (_rIsTRGG ? 250 : 0) };
         return this._rosterFeesCache;
     }
 
@@ -122940,6 +122942,7 @@ class GolferEventsManager {
         if (container) container.innerHTML = '';
         this._editGuestIds = null;
         this._editGuestSR = null;
+        this._editGuestPrev = null;
         document.getElementById('guestSgHint')?.remove();
         if (!this.editingRegistrationId || !this.currentEvent || !container) return;
         try {
@@ -122949,7 +122952,7 @@ class GolferEventsManager {
             const myId = AppState.currentUser?.lineUserId || AppState.currentUser?.userId || localStorage.getItem('line_user_id') || '';
             const guestQ = () => window.SupabaseDB.client
                 .from('event_registrations')
-                .select('id, player_name, handicap, player_id, special_requests')
+                .select('id, player_name, handicap, player_id, special_requests, want_transport, total_fee')
                 .eq('event_id', this.currentEvent.id);
             const [legacyRes, mineRes] = await Promise.all([
                 guestQ().like('player_id', 'GUEST-%'),
@@ -122960,9 +122963,13 @@ class GolferEventsManager {
             if (guestRegs && guestRegs.length > 0) {
                 this._editGuestIds = guestRegs.map(g => g.id);
                 this._editGuestSR = {};
+                this._editGuestPrev = {};
                 const Lg = this._regL || GolferEventsManager.REG_FORM_L10N.en;
                 for (const g of guestRegs) {
                     this._editGuestSR[g.id] = g.special_requests || {};
+                    // Previous transport + stored fee, so saving an edit can adjust the guest's
+                    // total_fee by ±transportFee ONLY when their pill actually changed.
+                    this._editGuestPrev[g.id] = { wantTransport: !!g.want_transport, totalFee: parseFloat(g.total_fee) || 0 };
                     const name = (g.player_name || '').replace(' (Guest)', '');
                     const hcp = g.handicap !== null ? (g.handicap < 0 ? '+' + Math.abs(g.handicap) : g.handicap) : '';
                     const row = document.createElement('div');
@@ -122972,19 +122979,25 @@ class GolferEventsManager {
                     // (otherwise _resolveGuestId re-runs a name search on every edit)
                     if (g.player_id && !String(g.player_id).startsWith('GUEST-')) row.setAttribute('data-line-user-id', g.player_id);
                     row.setAttribute('data-same-group', (g.special_requests && g.special_requests.sameGroup === false) ? '0' : '1');
+                    row.setAttribute('data-transport', g.want_transport ? '1' : '0');
                     row.innerHTML = `
                         <input type="text" value="${name}" placeholder="Guest name" class="guest-name flex-1 px-2 py-1.5 text-sm rounded-lg">
                         <input type="text" value="${hcp}" placeholder="HCP" class="guest-hcp w-16 px-2 py-1.5 text-sm rounded-lg text-center">
                         <button onclick="this.closest('.guest-player-row').remove(); GolferEventsSystem.updateRegistrationTotal();" style="width:34px;height:34px;border-radius:10px;background:var(--g-box);border:none;color:var(--g-red);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;font-size:14px;">✕</button>
-                        <div style="flex:0 0 100%;display:flex;margin-top:-2px;">
+                        <div style="flex:0 0 100%;display:flex;flex-wrap:wrap;gap:6px;margin-top:-2px;">
                             <button type="button" class="guest-sg" onclick="GolferEventsSystem.toggleGuestSameGroup(this)" style="display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 10px;font-size:10.5px;font-weight:700;cursor:pointer;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.35);color:var(--g-grn);">
                                 <span class="material-symbols-outlined" style="font-size:13px;">group</span>
                                 <span class="guest-sg-lbl">${Lg.sgIn}</span>
+                            </button>
+                            <button type="button" class="guest-tr" onclick="GolferEventsSystem.toggleGuestTransport(this)" style="display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 10px;font-size:10.5px;font-weight:700;cursor:pointer;background:var(--g-box);border:1px solid var(--g-hair);color:var(--g-mut);">
+                                <span class="material-symbols-outlined guest-tr-ico" style="font-size:13px;">directions_car</span>
+                                <span class="guest-tr-lbl">${Lg.trOff}</span>
                             </button>
                         </div>
                     `;
                     container.appendChild(row);
                     this._paintGuestSG(row);
+                    this._paintGuestTR(row);
                 }
                 this._updateGuestSgHint();
             }
@@ -123082,6 +123095,7 @@ class GolferEventsManager {
             guestNamePh: 'Search or type name',
             sgIn: 'In my group', sgOut: 'Different group',
             sgHint: 'Groups are usually 4 — the organizer may split your party.',
+            trOn: 'Van transport', trOff: 'Going direct',
             transport: 'Transport', competition: 'Competition',
             rcptBase: 'GREEN + CART + CADDY', rcptTransport: 'TRANSPORT', rcptComp: 'COMPETITION',
             rcptGuest: 'GUEST', rcptTotal: 'TOTAL', rcptYou: 'YOU',
@@ -123102,6 +123116,7 @@ class GolferEventsManager {
             guestNamePh: '이름 검색 또는 입력',
             sgIn: '같은 조', sgOut: '다른 조',
             sgHint: '보통 한 조는 4명입니다 — 주최자가 조를 나눌 수 있습니다.',
+            trOn: '밴 이용', trOff: '개별 이동',
             transport: '교통', competition: '대회비',
             rcptBase: '그린 + 카트 + 캐디', rcptTransport: '교통비', rcptComp: '대회비',
             rcptGuest: '동반자', rcptTotal: '합계', rcptYou: '본인',
@@ -123122,6 +123137,7 @@ class GolferEventsManager {
             guestNamePh: 'ค้นหาหรือพิมพ์ชื่อ',
             sgIn: 'ก๊วนเดียวกัน', sgOut: 'คนละก๊วน',
             sgHint: 'ปกติก๊วนละ 4 คน — ผู้จัดอาจแบ่งกลุ่มของคุณ',
+            trOn: 'ไปรถตู้', trOff: 'เดินทางไปเอง',
             transport: 'การเดินทาง', competition: 'การแข่งขัน',
             rcptBase: 'กรีน + รถ + แคดดี้', rcptTransport: 'ค่าเดินทาง', rcptComp: 'ค่าแข่งขัน',
             rcptGuest: 'แขก', rcptTotal: 'รวม', rcptYou: 'คุณ',
@@ -123142,6 +123158,7 @@ class GolferEventsManager {
             guestNamePh: '名前を検索または入力',
             sgIn: '同じ組', sgOut: '別の組',
             sgHint: '通常は1組4名です — 主催者が組を分ける場合があります。',
+            trOn: '送迎バン利用', trOff: '直接現地へ',
             transport: '送迎', competition: '競技',
             rcptBase: 'グリーン + カート + キャディ', rcptTransport: '送迎費', rcptComp: '競技参加費',
             rcptGuest: 'ゲスト', rcptTotal: '合計', rcptYou: '本人',
@@ -123274,9 +123291,15 @@ class GolferEventsManager {
         const guestRowEls = document.querySelectorAll('.guest-player-row');
         const guestCount = guestRowEls.length;
         const _gTRGG = /trgg|travellers rest/i.test([this.currentEvent.societyName, this.currentEvent.organizerName, this.currentEvent.title, this.currentEvent.name].map(s => s || '').join(' ')) || this.currentEvent.societyId === '7c0e4b72-d925-44bc-afda-38259a7ba346';
-        const plainGuests = _gTRGG ? [...guestRowEls].filter(r => !r.getAttribute('data-line-user-id')).length : 0;
         const guestFeePerPlayer = baseFee + (wantTransport ? transportFee : 0) + (wantCompetition ? competitionFee : 0);
-        const guestsTotal = guestFeePerPlayer * guestCount + plainGuests * 100;
+        // Each guest's transport comes from their OWN pill (a guest can go direct by car while
+        // the host rides the van) — never the host's toggle.
+        let guestsTotal = 0;
+        guestRowEls.forEach(r => {
+            const gT = r.hasAttribute('data-transport') ? r.getAttribute('data-transport') !== '0' : wantTransport;
+            guestsTotal += baseFee + (gT ? transportFee : 0) + (wantCompetition ? competitionFee : 0);
+            if (_gTRGG && !r.getAttribute('data-line-user-id')) guestsTotal += 100;   // flat non-member surcharge
+        });
         // Guest price on the ADD A GUEST button itself, so the cost is clear BEFORE adding one
         const gFee = document.getElementById('rfv1AddGuestFee');
         if (gFee) gFee.textContent = guestFeePerPlayer > 0 ? ('฿' + guestFeePerPlayer.toLocaleString() + ' ' + L.perGuest) : '';
@@ -123598,6 +123621,9 @@ class GolferEventsManager {
         row.className = 'guest-player-row flex flex-wrap items-center gap-2';
         row.style.position = 'relative';
         row.setAttribute('data-same-group', '1');
+        // Per-guest transport (Pete 2026-08-25: a guest can go direct by car while the host rides
+        // the van — never bundle). New rows start on the host's current choice, then toggle freely.
+        row.setAttribute('data-transport', document.getElementById('regWantTransport')?.checked ? '1' : '0');
         const Lg = this._regL || GolferEventsManager.REG_FORM_L10N.en;
         row.innerHTML = `
             <div style="flex:1;position:relative;">
@@ -123606,14 +123632,19 @@ class GolferEventsManager {
             </div>
             <input type="text" placeholder="HCP" class="guest-hcp w-16 px-2 py-1.5 text-sm rounded-lg text-center">
             <button onclick="this.closest('.guest-player-row').remove(); GolferEventsSystem.updateRegistrationTotal();" style="width:34px;height:34px;border-radius:10px;background:var(--g-box);border:none;color:var(--g-red);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;font-size:14px;">✕</button>
-            <div style="flex:0 0 100%;display:flex;margin-top:-2px;">
+            <div style="flex:0 0 100%;display:flex;flex-wrap:wrap;gap:6px;margin-top:-2px;">
                 <button type="button" class="guest-sg" onclick="GolferEventsSystem.toggleGuestSameGroup(this)" style="display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 10px;font-size:10.5px;font-weight:700;cursor:pointer;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.35);color:var(--g-grn);">
                     <span class="material-symbols-outlined" style="font-size:13px;">group</span>
                     <span class="guest-sg-lbl">${Lg.sgIn}</span>
                 </button>
+                <button type="button" class="guest-tr" onclick="GolferEventsSystem.toggleGuestTransport(this)" style="display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 10px;font-size:10.5px;font-weight:700;cursor:pointer;background:var(--g-box);border:1px solid var(--g-hair);color:var(--g-mut);">
+                    <span class="material-symbols-outlined guest-tr-ico" style="font-size:13px;">directions_car</span>
+                    <span class="guest-tr-lbl">${Lg.trOff}</span>
+                </button>
             </div>
         `;
         container.appendChild(row);
+        this._paintGuestTR(row);
         this.updateRegistrationTotal();
     }
 
@@ -123641,6 +123672,33 @@ class GolferEventsManager {
         btn.style.background = on ? 'rgba(34,197,94,0.12)' : 'var(--g-box)';
         btn.style.borderColor = on ? 'rgba(34,197,94,0.35)' : 'var(--g-hair)';
         btn.style.color = on ? 'var(--g-grn)' : 'var(--g-mut)';
+    }
+
+    // Per-guest transport pill (mirrors the same-group pill). ON = guest rides the society van
+    // (billed the transport fee), OFF = guest goes direct by own car. Stored per guest row as
+    // data-transport → each guest's own want_transport, never the host's.
+    toggleGuestTransport(btn) {
+        const row = btn.closest('.guest-player-row');
+        if (!row) return;
+        const on = row.getAttribute('data-transport') !== '0';
+        row.setAttribute('data-transport', on ? '0' : '1');
+        this._paintGuestTR(row);
+        this.updateRegistrationTotal();   // transport fee is per rider — receipt must follow
+    }
+
+    _paintGuestTR(row) {
+        const btn = row.querySelector('.guest-tr');
+        if (!btn) return;
+        const L = this._regL || GolferEventsManager.REG_FORM_L10N.en;
+        const on = row.getAttribute('data-transport') !== '0';
+        const fee = this.currentEvent ? (parseFloat(this.currentEvent.transportFee) || 300) : 0;
+        const lbl = btn.querySelector('.guest-tr-lbl');
+        if (lbl) lbl.textContent = (on ? L.trOn : L.trOff) + (on && fee > 0 ? ' +฿' + fee.toLocaleString() : '');
+        const ico = btn.querySelector('.guest-tr-ico');
+        if (ico) ico.textContent = on ? 'airport_shuttle' : 'directions_car';
+        btn.style.background = on ? 'rgba(37,99,235,0.12)' : 'var(--g-box)';
+        btn.style.borderColor = on ? 'rgba(37,99,235,0.38)' : 'var(--g-hair)';
+        btn.style.color = on ? '#3b82f6' : 'var(--g-mut)';
     }
 
     // Soft capacity hint (never blocks): host + >3 same-group players won't fit a standard 4-ball.
@@ -123737,10 +123795,12 @@ class GolferEventsManager {
             const hcpStr = row.querySelector('.guest-hcp')?.value?.trim() || '';
             const lineUserId = row.getAttribute('data-line-user-id') || null;
             const sameGroup = row.getAttribute('data-same-group') !== '0';
+            // Per-guest transport pill; rows predating the pill have no attr → follow the host.
+            const wantTransport = row.hasAttribute('data-transport') ? row.getAttribute('data-transport') !== '0' : undefined;
             if (name) {
                 const isPlus = hcpStr.startsWith('+');
                 const hcp = isPlus ? -parseFloat(hcpStr.substring(1)) : parseFloat(hcpStr);
-                guests.push({ name, handicap: isNaN(hcp) ? null : hcp, lineUserId, sameGroup });
+                guests.push({ name, handicap: isNaN(hcp) ? null : hcp, lineUserId, sameGroup, wantTransport });
             }
         });
         return guests;
@@ -123922,17 +123982,33 @@ class GolferEventsManager {
         try {
             // Check if we're in edit mode
             if (this.editingRegistrationId) {
+                // Transport is billed per rider — flipping it on an edit must move total_fee by
+                // ±transportFee too (same rule as the organizer's roster toggleTransport), or the
+                // flag and the bill drift apart. Fee default mirrors registerPlayer (300).
+                const _trFee = parseFloat(this.currentEvent?.transportFee) || 300;
+                const _ownUpdate = {
+                    player_name: playerName,
+                    handicap: handicap,
+                    want_transport: wantTransport,
+                    want_competition: wantCompetition,
+                    partner_prefs: partnerPrefs,
+                    caddy_numbers: caddyNumbers
+                };
+                try {
+                    const { data: prevOwn } = await window.SupabaseDB.client
+                        .from('event_registrations')
+                        .select('want_transport, total_fee')
+                        .eq('id', this.editingRegistrationId)
+                        .maybeSingle();
+                    if (prevOwn && !!prevOwn.want_transport !== !!wantTransport && _trFee > 0) {
+                        const cur = parseFloat(prevOwn.total_fee) || 0;
+                        _ownUpdate.total_fee = Math.max(0, wantTransport ? cur + _trFee : cur - _trFee);
+                    }
+                } catch (e) { console.warn('[GolferEvents] transport fee adjust', e); }
                 // UPDATE existing registration
                 const { error: updateError } = await window.SupabaseDB.client
                     .from('event_registrations')
-                    .update({
-                        player_name: playerName,
-                        handicap: handicap,
-                        want_transport: wantTransport,
-                        want_competition: wantCompetition,
-                        partner_prefs: partnerPrefs,
-                        caddy_numbers: caddyNumbers
-                    })
+                    .update(_ownUpdate)
                     .eq('id', this.editingRegistrationId);
 
                 if (updateError) throw updateError;
@@ -123979,12 +124055,20 @@ class GolferEventsManager {
 
                     const rowLineUserId = row.getAttribute('data-line-user-id') || null;
                     const rowSameGroup = row.getAttribute('data-same-group') !== '0';
+                    // Each guest's transport = their OWN pill (rows predating the pill follow the host)
+                    const rowTransport = row.hasAttribute('data-transport') ? row.getAttribute('data-transport') !== '0' : wantTransport;
                     const resolvedId = await this._resolveGuestId(rowLineUserId, name);
                     const isRealProfile = !String(resolvedId).startsWith('GUEST-');   // matched a directory profile
 
                     if (existingId) {
-                        const updateData = { player_name: await this._guestDisplayName(name, resolvedId), handicap: hcpVal, want_transport: wantTransport, want_competition: wantCompetition };
+                        const updateData = { player_name: await this._guestDisplayName(name, resolvedId), handicap: hcpVal, want_transport: rowTransport, want_competition: wantCompetition };
                         if (isRealProfile) updateData.player_id = resolvedId;
+                        // Transport flipped vs what's stored → move the guest's total_fee by ±transportFee
+                        // (same rule as the organizer's roster toggle; _trFee defined above).
+                        const prevG = (this._editGuestPrev && this._editGuestPrev[existingId]) || null;
+                        if (prevG && prevG.wantTransport !== rowTransport && _trFee > 0) {
+                            updateData.total_fee = Math.max(0, rowTransport ? prevG.totalFee + _trFee : prevG.totalFee - _trFee);
+                        }
                         // Merge sameGroup into the row's existing special_requests (cached at form load) so
                         // hostId/van/payment keys survive the update.
                         const prevSR = (this._editGuestSR && this._editGuestSR[existingId]) || {};
@@ -123998,13 +124082,14 @@ class GolferEventsManager {
                             playerName: await this._guestDisplayName(name, resolvedId),
                             playerId: resolvedId,
                             handicap: hcpVal !== null ? hcpVal : 36,
-                            wantTransport, wantCompetition, partnerPrefs: [], caddyNumbers: '',
+                            wantTransport: rowTransport, wantCompetition, partnerPrefs: [], caddyNumbers: '',
                             specialRequests: Object.assign({ sameGroup: rowSameGroup }, (AppState.currentUser?.lineUserId) ? { hostId: AppState.currentUser.lineUserId } : {})
                         });
                         _newGuestIds.push(resolvedId);
                     }
                 }
                 this._editGuestIds = null;
+                this._editGuestPrev = null;
                 // Late add onto an already-saved tee sheet → new guests place themselves NOW
                 // (host's group first, else first open seat, else a new group).
                 await this._ensureBookingPlacement(this.currentEvent.id, _newGuestIds);
@@ -124159,7 +124244,8 @@ class GolferEventsManager {
                             playerName: await this._guestDisplayName(guest.name, resolvedId),
                             playerId: resolvedId,
                             handicap: guest.handicap !== null ? guest.handicap : 36,
-                            wantTransport: wantTransport,
+                            // Guest's own transport pill; legacy callers without the field follow the host
+                            wantTransport: guest.wantTransport === undefined ? wantTransport : !!guest.wantTransport,
                             wantCompetition: wantCompetition,
                             partnerPrefs: [],
                             caddyNumbers: '',

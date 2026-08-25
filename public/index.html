@@ -36397,6 +36397,13 @@ document.addEventListener('DOMContentLoaded', function() {
             // Check if this is a Supabase caddy booking
             const isSupabaseCaddyBooking = itemId.startsWith('caddy_booking_');
 
+            // v996 (Pete): ONLY Caddy Master / Management / Pro Shop may alter caddy bookings —
+            // golfers ask the course instead of self-cancelling the caddy assignment.
+            if (isSupabaseCaddyBooking && !window.canAlterCaddyBookings?.()) {
+                window.NotificationManager.show('Caddy bookings are managed by the course — please contact the Pro Shop or Caddy Master to change this', 'error');
+                return;
+            }
+
             if (!confirm('Are you sure you want to cancel this booking?')) {
                 return;
             }
@@ -36473,6 +36480,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
         async function saveScheduleItemChanges(itemId, itemType, modal, supabaseId = '') {
             const isSupabaseCaddyBooking = itemId.startsWith('caddy_booking_') || supabaseId;
+
+            // v996 (Pete): caddy booking alterations are staff-only (Caddy Master / Management / Pro Shop)
+            if (isSupabaseCaddyBooking && !window.canAlterCaddyBookings?.()) {
+                window.NotificationManager.show('Caddy bookings are managed by the course — please contact the Pro Shop or Caddy Master to change this', 'error');
+                return;
+            }
 
             if (isSupabaseCaddyBooking && supabaseId) {
                 // Update Supabase caddy_bookings
@@ -116877,6 +116890,14 @@ console.log('[CaddyComms] ✅ Module loaded');
 // ==================================================================
 // CADDY MASTER DASHBOARD DATA (CMV1 v995) — real data only, no mocks
 // ==================================================================
+// v996 (Pete): ONLY caddy master, golf management and proshop may alter caddy
+// bookings. THE one shared rule — every alter surface must check it. Caddies and
+// golfers view only. (UI-level until Auth Phase 2 gives RLS real role identity.)
+window.canAlterCaddyBookings = function () {
+    const role = window.AppState?.currentUser?.role;
+    return ['caddymaster', 'manager', 'golf_course_manager', 'proshop'].includes(role);
+};
+
 const CaddyMasterData = {
     roster: [],
     todayRows: [],
@@ -116907,7 +116928,7 @@ const CaddyMasterData = {
         const seq = ++this._loadSeq;
         try {
             const [roster, today, reqs, room] = await Promise.all([
-                sb.from('caddy_profiles').select('caddy_number,name,course_name,rating,total_reviews,total_rounds,availability_status,is_active,photo_url').eq('is_mock', false).order('course_name').order('caddy_number').limit(500),
+                sb.from('caddy_profiles').select('id,caddy_number,name,course_name,rating,total_reviews,total_rounds,availability_status,is_active,photo_url').eq('is_mock', false).order('course_name').order('caddy_number').limit(500),
                 sb.from('caddy_bookings').select('id,booking_date,tee_time,start_time,caddie_name,golfer_name,status,course_name,payment_amount').eq('booking_date', this._today()).order('created_at', { ascending: true }).limit(200),
                 sb.from('caddy_assistance_requests').select('*').neq('status', 'resolved').order('created_at', { ascending: false }).limit(100),
                 sb.from('caddy_room_messages').select('*').order('created_at', { ascending: false }).limit(80)
@@ -116999,14 +117020,88 @@ const CaddyMasterData = {
             confirmed: 'bg-green-100 text-green-700', pending: 'bg-amber-100 text-amber-700',
             in_progress: 'bg-blue-100 text-blue-700', completed: 'bg-gray-200 text-gray-700', cancelled: 'bg-red-100 text-red-700'
         };
-        list.innerHTML = this.todayRows.map(b => `
-            <div class="bg-white border border-gray-200 rounded-xl p-3 flex items-center justify-between gap-2">
-                <div class="min-w-0">
-                    <div class="font-medium text-gray-900 text-sm truncate">${this._esc(b.tee_time || b.start_time || '—')} · ${this._esc(b.caddie_name || 'Unassigned')}</div>
-                    <div class="text-xs text-gray-500 truncate">${this._esc(b.golfer_name || '')}${b.course_name ? ' · ' + this._esc(b.course_name) : ''}</div>
+        // v996: alter controls render ONLY for authorized roles (caddymaster/manager/proshop)
+        const canAlter = window.canAlterCaddyBookings?.() === true;
+        list.innerHTML = this.todayRows.map(b => {
+            const open = b.status !== 'completed' && b.status !== 'cancelled';
+            const actions = (canAlter && open) ? `
+                <div class="flex gap-1 mt-2 pt-2 border-t border-gray-100">
+                    ${b.status === 'pending' ? `<button onclick="CaddyMasterData.confirmBooking('${b.id}')" class="px-2 py-1 rounded-lg text-xs font-semibold bg-green-100 text-green-800">Confirm</button>` : ''}
+                    <button onclick="CaddyMasterData.openReassign('${b.id}')" class="px-2 py-1 rounded-lg text-xs font-semibold bg-blue-100 text-blue-800">Reassign</button>
+                    <button onclick="CaddyMasterData.cancelBooking('${b.id}')" class="px-2 py-1 rounded-lg text-xs font-semibold bg-red-100 text-red-700">Cancel</button>
+                </div>` : '';
+            return `
+            <div class="bg-white border border-gray-200 rounded-xl p-3">
+                <div class="flex items-center justify-between gap-2">
+                    <div class="min-w-0">
+                        <div class="font-medium text-gray-900 text-sm truncate">${this._esc(b.tee_time || b.start_time || '—')} · ${this._esc(b.caddie_name || 'Unassigned')}</div>
+                        <div class="text-xs text-gray-500 truncate">${this._esc(b.golfer_name || '')}${b.course_name ? ' · ' + this._esc(b.course_name) : ''}</div>
+                    </div>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold flex-shrink-0 ${pill[b.status] || 'bg-gray-100 text-gray-600'}">${this._esc((b.status || '—').toUpperCase())}</span>
                 </div>
-                <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold flex-shrink-0 ${pill[b.status] || 'bg-gray-100 text-gray-600'}">${this._esc((b.status || '—').toUpperCase())}</span>
-            </div>`).join('');
+                ${actions}
+            </div>`;
+        }).join('');
+    },
+
+    async refreshToday() {
+        const sb = this._sb(); if (!sb) return;
+        const { data } = await sb.from('caddy_bookings').select('id,booking_date,tee_time,start_time,caddie_name,golfer_name,status,course_name,payment_amount').eq('booking_date', this._today()).order('created_at', { ascending: true }).limit(200);
+        this.todayRows = data || [];
+        this.renderToday();
+        this.renderStats();
+    },
+
+    async confirmBooking(id) {
+        if (!window.canAlterCaddyBookings()) { window.NotificationManager.show('Only Caddy Master, Management or Pro Shop can alter bookings', 'error'); return; }
+        const sb = this._sb(); if (!sb) return;
+        const { data } = await sb.from('caddy_bookings').update({ status: 'confirmed', confirmed_at: new Date().toISOString(), confirmed_by: this._me().name }).eq('id', id).select();
+        if (data && data.length) { window.NotificationManager.show('Booking confirmed', 'success'); this.refreshToday(); }
+        else window.NotificationManager.show('Update failed — booking not changed', 'error');
+    },
+
+    async cancelBooking(id) {
+        if (!window.canAlterCaddyBookings()) { window.NotificationManager.show('Only Caddy Master, Management or Pro Shop can alter bookings', 'error'); return; }
+        if (!confirm('Cancel this caddy booking?')) return;
+        const sb = this._sb(); if (!sb) return;
+        const { data } = await sb.from('caddy_bookings').update({ status: 'cancelled', cancelled_at: new Date().toISOString(), cancellation_reason: 'Cancelled by ' + this._me().name }).eq('id', id).select();
+        if (data && data.length) { window.NotificationManager.show('Booking cancelled', 'success'); this.refreshToday(); }
+        else window.NotificationManager.show('Update failed — booking not changed', 'error');
+    },
+
+    // Reassign picker — index-based binding (names never go inside onclick attributes)
+    _reassignList: null,
+    openReassign(bookingId) {
+        if (!window.canAlterCaddyBookings()) { window.NotificationManager.show('Only Caddy Master, Management or Pro Shop can alter bookings', 'error'); return; }
+        const b = this.todayRows.find(x => x.id === bookingId); if (!b) return;
+        const sameCourse = this.roster.filter(r => r.is_active !== false && (!b.course_name || !r.course_name || r.course_name === b.course_name));
+        this._reassignList = sameCourse.length ? sameCourse : this.roster.filter(r => r.is_active !== false);
+        document.getElementById('cm-reassign-modal')?.remove();
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4';
+        modal.id = 'cm-reassign-modal';
+        modal.innerHTML = `
+            <div class="bg-white rounded-2xl max-w-sm w-full p-5 max-h-[80vh] flex flex-col">
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-lg font-bold text-gray-900">Reassign caddy</h3>
+                    <button onclick="document.getElementById('cm-reassign-modal').remove()" class="text-gray-400 hover:text-gray-600"><span class="material-symbols-outlined">close</span></button>
+                </div>
+                <p class="text-xs text-gray-500 mb-3">${this._esc(b.tee_time || b.start_time || '')} · ${this._esc(b.golfer_name || '')} — currently ${this._esc(b.caddie_name || 'unassigned')}</p>
+                <div class="overflow-y-auto space-y-1 flex-1">
+                    ${this._reassignList.map((r, i) => `<button onclick="CaddyMasterData.reassignIdx('${bookingId}', ${i})" class="w-full text-left p-2 rounded-lg border border-gray-200 hover:bg-green-50 flex items-center justify-between gap-2"><span class="text-sm text-gray-900 truncate">#${this._esc(r.caddy_number || '—')} ${this._esc(r.name)}</span><span class="text-xs text-gray-500 flex-shrink-0">${this._esc(r.course_name || '')}</span></button>`).join('') || '<div class="text-center text-gray-500 py-6 text-sm">No caddies in the roster yet</div>'}
+                </div>
+            </div>`;
+        document.body.appendChild(modal); // body-mounted: .screen transforms trap position:fixed
+    },
+
+    async reassignIdx(bookingId, i) {
+        const r = this._reassignList?.[i]; if (!r) return;
+        if (!window.canAlterCaddyBookings()) return;
+        const sb = this._sb(); if (!sb) return;
+        const { data } = await sb.from('caddy_bookings').update({ caddy_id: r.id, caddie_name: r.name }).eq('id', bookingId).select();
+        document.getElementById('cm-reassign-modal')?.remove();
+        if (data && data.length) { window.NotificationManager.show(`Reassigned to ${r.name}`, 'success'); this.refreshToday(); }
+        else window.NotificationManager.show('Update failed — booking not changed', 'error');
     },
 
     _reqMeta(t) {
@@ -117150,6 +117245,7 @@ const CaddyMasterData = {
                 }
                 this.refreshRequests();
             })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'caddy_bookings' }, () => this.refreshToday())
             .subscribe();
     }
 };

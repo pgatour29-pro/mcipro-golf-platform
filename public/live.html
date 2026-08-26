@@ -726,42 +726,131 @@
         }
 
         // Real pars for the hole-by-hole grid. scores rows only carry par for PLAYED holes,
-        // so every unplayed hole rendered the "P4" placeholder — a Thru-0 card showed all-P4
-        // on par-74 St Andrews 2000 with its two par-6s (Pete, 2026-08-22). Fetch the course's
-        // true pars once per course and fill the gaps. Tee pick = same ladder as the scoring
-        // engine (white* first — St Andrews stores white1/white2, no plain "white").
+        // so every unplayed hole rendered the "P4" placeholder. Three-layer resolution — the
+        // base-id lookup alone is NOT enough: multi-nine combos ("Khao Kheow CC (C+A)") stamp
+        // the BASE course_id on cards but store NO course_holes rows under it (only per-nine /
+        // pair slugs like khao_kheow_c, khao_kheow_b_with_a, laem_chabang_ab), so combo rounds
+        // still showed all-P4 after the v952 fix (Pete, 2026-08-26 Khao Kheow C+A).
+        //   1) course_holes under the card's course_id (plain 18-hole courses);
+        //   2) parse the (X+Y) nines from course_name and stitch the per-nine/pair slugs;
+        //   3) holes still unknown fill from pars saved with scores on other cards at the same
+        //      combo — most recent card first, and today's other groups pool in automatically.
+        // Tee pick = the engine's ladder (white* first — St Andrews stores white1/white2).
+        // Partial maps are NOT cached, so a live board refines as more holes get played.
         const _courseParsCache = {};
-        async function getCourseParMap(courseId) {
-            if (!courseId) return null;
-            if (_courseParsCache[courseId] !== undefined) return _courseParsCache[courseId];
-            let map = null;
-            try {
+        function _parKeyOf(sc) { return (sc.course_id || '') + '|' + (sc.course_name || ''); }
+        async function getCourseParMap(courseId, courseName) {
+            if (!courseId && !courseName) return null;
+            const cacheKey = (courseId || '') + '|' + (courseName || '');
+            if (_courseParsCache[cacheKey] !== undefined) return _courseParsCache[cacheKey];
+            const map = new Array(18).fill(null);
+            const complete = () => map.every(p => p != null);
+
+            const teePick = (rows) => {
+                const byTee = {};
+                (rows || []).forEach(h => { const t = String(h.tee_marker || '').toLowerCase(); (byTee[t] = byTee[t] || []).push(h); });
+                const names = Object.keys(byTee);
+                if (!names.length) return [];
+                const pick = names.filter(t => t.startsWith('white')).sort()[0]
+                    || (byTee.yellow && 'yellow') || (byTee.blue && 'blue')
+                    || names.sort((a, b) => byTee[b].length - byTee[a].length)[0];
+                return byTee[pick] || [];
+            };
+            const fillFrom = (rows, offset) => {
+                teePick(rows).forEach(h => {
+                    const i = offset + h.hole_number - 1;
+                    if (i >= 0 && i < 18 && map[i] == null) map[i] = h.par;
+                });
+            };
+
+            const nines = /\(([^+()]+)\+([^+()]+)\)/.exec(courseName || '');
+
+            const baseFill = async () => {
                 const { data: holes } = await supabaseClient
                     .from('course_holes')
                     .select('hole_number, par, tee_marker')
                     .eq('course_id', courseId)
                     .order('hole_number');
-                if (holes && holes.length) {
-                    const byTee = {};
-                    holes.forEach(h => { const t = String(h.tee_marker || '').toLowerCase(); (byTee[t] = byTee[t] || []).push(h); });
-                    const names = Object.keys(byTee);
-                    const pick = names.filter(t => t.startsWith('white')).sort()[0]
-                        || (byTee.yellow && 'yellow') || (byTee.blue && 'blue')
-                        || names.sort((a, b) => byTee[b].length - byTee[a].length)[0];
-                    const rows = pick ? byTee[pick] : holes;
-                    map = new Array(18).fill(null);
-                    rows.forEach(h => { if (h.hole_number >= 1 && h.hole_number <= 18 && map[h.hole_number - 1] == null) map[h.hole_number - 1] = h.par; });
+                fillFrom(holes, 0);
+            };
+
+            const slugFill = async () => {
+                const slug = s => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+                const f = slug(nines[1]), b = slug(nines[2]);
+                const base = courseId || slug(courseName.split('(')[0] || '');
+                const cands = [
+                    `${base}_${f}${b}`, `${base}_${b}${f}`,
+                    `${base}_${f}`, `${base}_${f}_with_${b}`,
+                    `${base}_${b}`, `${base}_${b}_with_${f}`
+                ];
+                const { data: rows } = await supabaseClient
+                    .from('course_holes')
+                    .select('course_id, hole_number, par, tee_marker')
+                    .in('course_id', cands)
+                    .order('hole_number');
+                const byId = {};
+                (rows || []).forEach(h => { (byId[h.course_id] = byId[h.course_id] || []).push(h); });
+                const pair = byId[`${base}_${f}${b}`] || byId[`${base}_${b}${f}`];
+                if (pair) fillFrom(pair, 0);
+                else {
+                    fillFrom(byId[`${base}_${f}`] || byId[`${base}_${f}_with_${b}`], 0);
+                    fillFrom(byId[`${base}_${b}`] || byId[`${base}_${b}_with_${f}`], 9);
+                }
+            };
+
+            const historyFill = async () => {
+                // Combo signature match must span name drift ("Khao Kheow CC (C+A)" vs
+                // "Khao Kheow Country Club (C+A)") without crossing venues — anchor on the
+                // first TWO words + the exact (X+Y). Non-combo names match exactly.
+                let cardsQ = supabaseClient.from('scorecards').select('id, created_at')
+                    .order('created_at', { ascending: false, nullsFirst: false }).limit(30);
+                if (nines) {
+                    const prefix = (courseName.split('(')[0] || '').trim().split(/\s+/).slice(0, 2).join(' ');
+                    cardsQ = cardsQ.ilike('course_name', `${prefix}%(${nines[1].trim()}+${nines[2].trim()})%`);
+                } else {
+                    cardsQ = cardsQ.eq('course_name', courseName);
+                }
+                const { data: scs } = await cardsQ;
+                if (!scs || !scs.length) return;
+                const order = {};
+                scs.forEach((x, i) => { order[x.id] = i; });
+                const { data: srows } = await supabaseClient
+                    .from('scores')
+                    .select('scorecard_id, hole_number, par')
+                    .in('scorecard_id', scs.map(x => x.id));
+                (srows || [])
+                    .sort((a, b) => order[a.scorecard_id] - order[b.scorecard_id])
+                    .forEach(s => {
+                        const i = s.hole_number - 1;
+                        if (i >= 0 && i < 18 && map[i] == null && s.par) map[i] = s.par;
+                    });
+            };
+
+            try {
+                if (nines) {
+                    // Combo: base-id rows are the LAST resort — a base id can hold a
+                    // DIFFERENT 18 than the nines being played (Burapha, 2026-08-18).
+                    await slugFill();
+                    if (!complete() && courseName) await historyFill();
+                    if (!complete() && courseId) await baseFill();
+                } else {
+                    if (courseId) await baseFill();
+                    if (!complete() && courseName) await historyFill();
                 }
             } catch (e) { console.warn('[Live] course par fetch failed', e); }
-            _courseParsCache[courseId] = map;
-            return map;
+
+            const result = map.some(p => p != null) ? map : null;
+            if (result && complete()) _courseParsCache[cacheKey] = result;
+            return result;
         }
 
-        // Prefetch par maps for a set of scorecards, keyed by course_id
+        // Prefetch par maps for a set of scorecards, keyed by course_id|course_name
         async function getParMapsFor(scorecards) {
             const maps = {};
-            for (const cid of [...new Set((scorecards || []).map(s => s.course_id).filter(Boolean))]) {
-                maps[cid] = await getCourseParMap(cid);
+            for (const sc of (scorecards || [])) {
+                const k = _parKeyOf(sc);
+                if (k === '|' || maps[k] !== undefined) continue;
+                maps[k] = await getCourseParMap(sc.course_id, sc.course_name);
             }
             return maps;
         }
@@ -772,7 +861,7 @@
             const { data: scorecards, error } = await supabaseClient
                 .from('scorecards')
                 .select(`
-                    id, player_id, player_name, total_gross, total_net, status, created_at, scoring_format, group_id, course_id,
+                    id, player_id, player_name, total_gross, total_net, status, created_at, scoring_format, group_id, course_id, course_name,
                     scores (hole_number, gross_score, net_score, stableford_points, par)
                 `)
                 .eq('event_id', eventId);
@@ -796,7 +885,7 @@
                 const { data: extraCards } = await supabaseClient
                     .from('scorecards')
                     .select(`
-                        id, player_id, player_name, total_gross, total_net, status, created_at, scoring_format, group_id, course_id,
+                        id, player_id, player_name, total_gross, total_net, status, created_at, scoring_format, group_id, course_id, course_name,
                         scores (hole_number, gross_score, net_score, stableford_points, par)
                     `)
                     .is('event_id', null)
@@ -854,7 +943,7 @@
                     }
                 }
                 // Unplayed holes: real course pars, not the P4 placeholder
-                const parMap = parMaps[sc.course_id];
+                const parMap = parMaps[_parKeyOf(sc)];
                 if (parMap) for (let i = 0; i < 18; i++) { if (holePars[i] == null) holePars[i] = parMap[i]; }
 
                 return {
@@ -919,7 +1008,7 @@
             const { data: scorecards, error } = await supabaseClient
                 .from('scorecards')
                 .select(`
-                    id, player_id, player_name, created_at, course_id,
+                    id, player_id, player_name, created_at, course_id, course_name,
                     scores (hole_number, gross_score, stableford_points, par)
                 `)
                 .in('player_id', entrantIds)
@@ -957,7 +1046,7 @@
                         holePars[score.hole_number - 1] = score.par || 4;
                     }
                 }
-                const pMap = poolParMaps[sc.course_id];
+                const pMap = poolParMaps[_parKeyOf(sc)];
                 if (pMap) for (let i = 0; i < 18; i++) { if (holePars[i] == null) holePars[i] = pMap[i]; }
 
                 playerScores[sc.player_id] = {
@@ -991,7 +1080,7 @@
             const { data: scorecards, error } = await supabaseClient
                 .from('scorecards')
                 .select(`
-                    id, player_id, player_name, created_at, scoring_format, group_id, course_id,
+                    id, player_id, player_name, created_at, scoring_format, group_id, course_id, course_name,
                     scores (hole_number, gross_score, net_score, stableford_points, par)
                 `)
                 .eq('group_id', groupId)
@@ -1011,7 +1100,7 @@
                         holePars[score.hole_number - 1] = score.par || 4;
                     }
                 }
-                const cMap = casualParMaps[sc.course_id];
+                const cMap = casualParMaps[_parKeyOf(sc)];
                 if (cMap) for (let i = 0; i < 18; i++) { if (holePars[i] == null) holePars[i] = cMap[i]; }
 
                 return {

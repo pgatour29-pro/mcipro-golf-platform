@@ -6561,7 +6561,13 @@
         body.theme-light #tradCardView { --tcv-card:#FFFEF9; --tcv-line:rgba(27,94,63,0.5); --tcv-ink:#17221C;
             --tcv-mut:#425148; --tcv-grid:rgba(27,94,63,0.24); --tcv-green:#15683C; --tcv-chip:#1B5E3F;
             --tcv-red:#A63220; --tcv-blue:#1A53AD; --tcv-key:#FBF8F0; }
-        #tradCardView .tradv-strip { display:flex; align-items:center; gap:5px; margin-bottom:7px; }
+        /* wrap is a BLEED GUARD: this row is full at 360px, so anything added to it (or a wider
+           translated label) must drop to a second line, never off the right edge. */
+        #tradCardView .tradv-strip { display:flex; flex-wrap:wrap; align-items:center; gap:5px; margin-bottom:7px; }
+        /* sits inside the chip's <b>, whose colour the theme forces with !important — restate both */
+        #tradCardView .tradv-holechip b .tradv-nines { font:700 8.5px/1 'JetBrains Mono',monospace; font-style:normal;
+            letter-spacing:0.04em; background:#16a34a !important; color:#ffffff !important; border-radius:999px;
+            padding:2px 5px; margin-left:5px; vertical-align:middle; }
         #tradCardView .tradv-chev { width:30px; height:40px; flex:none; border-radius:10px; background:var(--tcv-key);
             border:1.5px solid var(--tcv-line); color:var(--tcv-ink); font:300 19px/1 'Outfit',sans-serif; cursor:pointer; }
         #tradCardView .tradv-holechip { flex:none; display:flex; flex-direction:column; align-items:flex-start; gap:3px;
@@ -52657,7 +52663,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <button id="tradNineF" onclick="LiveScorecardManager.tradSetNine('front')">F9</button>
                                     <button id="tradNineB" onclick="LiveScorecardManager.tradSetNine('back')">B9</button>
                                 </div>
-                                <span id="tradPlayingNines" style="display:none;flex:none;margin-left:6px;padding:1px 7px;border-radius:999px;font:800 10px/1.5 'JetBrains Mono',monospace;background:#22c55e;color:#fff;white-space:nowrap;"></span>
                                 <span style="flex:1;"></span>
                                 <button class="tradv-mini tradv-keyswap" onclick="LiveScorecardManager.setScorecardView('classic')" title="Keypad view">
                                     <span class="material-symbols-outlined">dialpad</span>
@@ -86255,13 +86260,14 @@ class LiveScorecardSystem {
 
         // Which nines this round is on — the player picked them (and can change them mid-round),
         // so it is stamped on courseData.name and must be visible while scoring, not just implied.
+        // (TRADV shows the nines inside its hole chip — its strip has no spare width on a 360px
+        // phone, and an extra fixed-width item there pushes END off the screen edge.)
         const _pn = window.CourseNines.split(this.courseData?.name || '');
-        ['scv3PlayingNines', 'tradPlayingNines'].forEach(id => {
-            const el = document.getElementById(id);
-            if (!el) return;
-            el.textContent = _pn.nines || '';
-            el.style.display = _pn.nines ? '' : 'none';
-        });
+        const _pnEl = document.getElementById('scv3PlayingNines');
+        if (_pnEl) {
+            _pnEl.textContent = _pn.nines || '';
+            _pnEl.style.display = _pn.nines ? '' : 'none';
+        }
 
         // Mid-round back-9 change control (Plutaluang only)
         this.ensureBackNineControl();
@@ -88655,7 +88661,12 @@ class LiveScorecardSystem {
         const chip = document.getElementById('tradHoleChip');
         if (chip) {
             const hd = this.getHoleData(this.currentHole);
-            chip.innerHTML = '<b>' + _lvT('scorecard.hole', 'Hole').toUpperCase() + ' ' + this.currentHole + '</b>' +
+            // Nines ride on the chip's TITLE line: the chip is a column, so its width is the wider
+            // of the two lines, and the title line is the short one — this shows the combination
+            // without widening the strip (which has no spare width at 360px).
+            const _tn = window.CourseNines.split(this.courseData?.name || '').nines;
+            chip.innerHTML = '<b>' + _lvT('scorecard.hole', 'Hole').toUpperCase() + ' ' + this.currentHole +
+                (_tn ? '<i class="tradv-nines">' + _tn + '</i>' : '') + '</b>' +
                 '<s>PAR ' + (hd?.par || 4) + ' · SI ' + (hd?.stroke_index || hd?.strokeIndex || this.currentHole) + '</s>';
         }
         const nf = document.getElementById('tradNineF'), nb = document.getElementById('tradNineB');

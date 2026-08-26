@@ -378,6 +378,28 @@
         //   3) holes still unknown fill from pars saved with scores on other cards at the same
         //      combo — most recent card first. Tee pick = the engine's white*-first ladder.
         // Partial maps are NOT cached, so mid-round views refine as more holes get played.
+        // The nines actually being played come from the players' scorecards — the organizer's
+        // event course label is only the default; players can change nines on-course in real
+        // time. Latest combo-stamped card wins.
+        function playingCourseName(cards){
+            const named = (cards || []).filter(sc => sc && sc.course_name)
+                .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+            const combo = named.find(sc => /\([^+()]+\+[^+()]+\)/.test(sc.course_name));
+            return (combo || named[0] || {}).course_name || '';
+        }
+        function splitCourseNines(name){
+            const m = /\(([^+()]+)\+([^+()]+)\)/.exec(name || '');
+            if (!m) return { base:(name || '').trim(), nines:'' };
+            return {
+                base:(name || '').replace(m[0], '').replace(/\s{2,}/g, ' ').trim(),
+                nines:`${m[1].trim()}+${m[2].trim()}`
+            };
+        }
+        function ninesChipHtml(nines){
+            return nines
+                ? `<span style="display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:800;background:#22c55e;color:#fff;white-space:nowrap;vertical-align:middle;">Nines: ${esc(nines)}</span>`
+                : '';
+        }
         const _courseParsCache = {};
         async function getCourseParMap(courseId, courseName){
             if (!courseId && !courseName) return null;
@@ -795,7 +817,9 @@
                     event, results, entries: ordered, teamBoards, twos, aces, divisions,
                     officialTwos: winnings.filter(w => w.category==='2s_pot'),
                     officialAces: winnings.filter(w => w.category==='hio_pot'),
-                    scoreType, published: results.length > 0
+                    scoreType, published: results.length > 0,
+                    // what the field ACTUALLY played (nines included) — beats event.course_name
+                    playedCourse: playingCourseName(cards)
                 };
                 renderEvent();
             } catch(e){
@@ -1030,8 +1054,11 @@
             document.getElementById('evTitle').textContent = stripPrefix(d.event.title, soc);
             const fmtLabel = (d.teamBoards && d.teamBoards.labels.length) ? d.teamBoards.labels.join(' + ')
                 : (d.scoreType==='stroke_play' ? 'Stroke Play' : 'Stableford');
-            document.getElementById('evMeta').textContent =
-                fmtDate(d.event.event_date) + (d.event.course_name ? ' · ' + d.event.course_name : '') + ' · ' + fmtLabel;
+            const played = splitCourseNines(d.playedCourse || d.event.course_name || '');
+            document.getElementById('evMeta').innerHTML =
+                esc(fmtDate(d.event.event_date)) +
+                (played.base ? ' · ' + esc(played.base) + ninesChipHtml(played.nines) : '') +
+                ' · ' + esc(fmtLabel);
             document.getElementById('evPlayers').textContent = String(d.entries.length || d.results.length || 0);
             document.getElementById('evFinalBadge').classList.toggle('hidden', !d.published);
             document.getElementById('evFinalBadge').textContent = d.published ? rt('final') : rt('unpublished');

@@ -18364,6 +18364,28 @@
 
         // Live In-Round Leaderboard — floating bottom sheet for players on the course
         let liveLeaderboardOpen = false;
+        // Which NINES are being played (combo venues) — the truth is the players' scorecards
+        // / live courseData, stamped "Course (F+B)". The organizer's event course label is
+        // only the default: players pick and can CHANGE the nines on-course in real time,
+        // so every score surface derives its label from the cards, never the event row.
+        window.CourseNines = {
+            split(name) {
+                const m = /\(([^+()]+)\+([^+()]+)\)/.exec(name || '');
+                if (!m) return { base: (name || '').trim(), nines: '' };
+                return {
+                    base: (name || '').replace(m[0], '').replace(/\s{2,}/g, ' ').trim(),
+                    nines: m[1].trim() + '+' + m[2].trim()
+                };
+            },
+            // Latest combo-stamped card wins — mid-round nine changes restamp on the next save
+            fromCards(cards) {
+                const named = (cards || []).filter(c => c && c.course_name)
+                    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+                const combo = named.find(c => /\([^+()]+\+[^+()]+\)/.test(c.course_name));
+                return (combo || named[0] || {}).course_name || '';
+            }
+        };
+
         function toggleLiveLeaderboard() {
             liveLeaderboardOpen = !liveLeaderboardOpen;
             let sheet = document.getElementById('liveLeaderboardSheet');
@@ -18374,9 +18396,11 @@
                     sheet.style.cssText = 'position:fixed;bottom:0;left:0;right:0;height:85vh;background:white;border-radius:16px 16px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,0.15);z-index:9999;overflow:hidden;display:flex;flex-direction:column;';
                     sheet.innerHTML = `
                         <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #e2e8f0;background:#f8fafc;">
-                            <div style="display:flex;align-items:center;gap:8px;">
+                            <div style="display:flex;align-items:center;gap:8px;min-width:0;">
                                 <span style="font-size:18px;"><span class="material-symbols-outlined" style="font-size:inherit;vertical-align:middle;line-height:1;">emoji_events</span></span>
-                                <span style="font-weight:700;font-size:15px;color:#0f172a;">Live Leaderboard</span>
+                                <span style="font-weight:700;font-size:15px;color:#0f172a;white-space:nowrap;">Live Leaderboard</span>
+                                <span id="liveLbNines" style="display:none;flex:none;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:800;background:#22c55e;color:#fff;white-space:nowrap;"></span>
+                                <span id="liveLbCourse" style="font-size:11px;font-weight:600;color:#64748b;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
                             </div>
                             <button onclick="toggleLiveLeaderboard()" style="background:none;border:none;cursor:pointer;padding:4px;">
                                 <span class="material-symbols-outlined" style="color:#6b7280;">close</span>
@@ -18439,7 +18463,7 @@
                     const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
                     const { data } = await window.SupabaseDB.client
                         .from('scorecards')
-                        .select('player_id, player_name, group_id, created_at, scoring_format, scores(hole_number, gross_score, stableford_points, par)')
+                        .select('player_id, player_name, group_id, created_at, scoring_format, course_name, scores(hole_number, gross_score, stableford_points, par)')
                         .eq('event_id', eventId)
                         .gte('created_at', since)
                         .neq('status', 'abandoned');
@@ -18452,7 +18476,7 @@
                     const since = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString();
                     const { data } = await window.SupabaseDB.client
                         .from('scorecards')
-                        .select('player_id, player_name, group_id, created_at, scoring_format, scores(hole_number, gross_score, stableford_points, par)')
+                        .select('player_id, player_name, group_id, created_at, scoring_format, course_name, scores(hole_number, gross_score, stableford_points, par)')
                         .eq('course_id', course)
                         .is('event_id', null)
                         .gte('created_at', since)
@@ -18461,11 +18485,23 @@
                 } else if (groupId) {
                     const { data } = await window.SupabaseDB.client
                         .from('scorecards')
-                        .select('player_id, player_name, group_id, created_at, scoring_format, scores(hole_number, gross_score, stableford_points, par)')
+                        .select('player_id, player_name, group_id, created_at, scoring_format, course_name, scores(hole_number, gross_score, stableford_points, par)')
                         .eq('group_id', groupId)
                         .neq('status', 'abandoned');
                     scorecards = data || [];
                 }
+
+                // Header: the course + nines ACTUALLY in play, from the live cards themselves
+                // (falls back to this device's courseData — also player-selected truth).
+                const _lbPlayed = window.CourseNines.split(
+                    window.CourseNines.fromCards(scorecards) || mgr?.courseData?.name || '');
+                const _lbNinesEl = document.getElementById('liveLbNines');
+                const _lbCourseEl = document.getElementById('liveLbCourse');
+                if (_lbNinesEl) {
+                    _lbNinesEl.textContent = _lbPlayed.nines ? 'Nines: ' + _lbPlayed.nines : '';
+                    _lbNinesEl.style.display = _lbPlayed.nines ? '' : 'none';
+                }
+                if (_lbCourseEl) _lbCourseEl.textContent = _lbPlayed.base || '';
 
                 if (scorecards.length === 0) {
                     content.innerHTML = '<p style="text-align:center;color:#9ca3af;padding:20px;">No players yet</p>';
@@ -52621,6 +52657,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <button id="tradNineF" onclick="LiveScorecardManager.tradSetNine('front')">F9</button>
                                     <button id="tradNineB" onclick="LiveScorecardManager.tradSetNine('back')">B9</button>
                                 </div>
+                                <span id="tradPlayingNines" style="display:none;flex:none;margin-left:6px;padding:1px 7px;border-radius:999px;font:800 10px/1.5 'JetBrains Mono',monospace;background:#22c55e;color:#fff;white-space:nowrap;"></span>
                                 <span style="flex:1;"></span>
                                 <button class="tradv-mini tradv-keyswap" onclick="LiveScorecardManager.setScorecardView('classic')" title="Keypad view">
                                     <span class="material-symbols-outlined">dialpad</span>
@@ -52654,6 +52691,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <div class="scv3-holeinfo">
                                 <div class="scv3-meta-row">
                                     <span id="currentHoleInfo" class="scv3-meta">Par 4 · 385y · SI 10</span>
+                                    <span id="scv3PlayingNines" style="display:none;flex:none;margin-left:6px;padding:1px 7px;border-radius:999px;font:800 10px/1.5 'JetBrains Mono',monospace;background:#22c55e;color:#fff;white-space:nowrap;"></span>
                                     <span style="flex:1;"></span>
                                     <button onclick="LiveScorecardManager.completeRound('end')" class="scv3-end" style="flex:none;">END</button>
                                 </div>
@@ -60382,6 +60420,8 @@ document.addEventListener('DOMContentLoaded', function() {
                             <span class="material-symbols-outlined text-green-600">leaderboard</span>
                             Live Leaderboard
                             <span id="leaderboardLiveIndicator" class="text-xs text-green-600 ml-2">● LIVE</span>
+                            <span id="orgLbNines" class="text-xs font-extrabold text-white bg-green-500 px-2 py-0.5 rounded-full" style="display:none;"></span>
+                            <span id="orgLbCourse" class="text-xs font-semibold text-gray-600"></span>
                         </h3>
                         <div class="flex gap-2">
                             <button onclick="window.PaperCardEntry.open()" class="text-sm px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700">
@@ -86213,6 +86253,16 @@ class LiveScorecardSystem {
         // never be the part that gets cut (Pete 2026-07-09)
         document.getElementById('currentHoleInfo').textContent = `Par ${par} · SI ${strokeIndex}${yardageText}`;
 
+        // Which nines this round is on — the player picked them (and can change them mid-round),
+        // so it is stamped on courseData.name and must be visible while scoring, not just implied.
+        const _pn = window.CourseNines.split(this.courseData?.name || '');
+        ['scv3PlayingNines', 'tradPlayingNines'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = _pn.nines || '';
+            el.style.display = _pn.nines ? '' : 'none';
+        });
+
         // Mid-round back-9 change control (Plutaluang only)
         this.ensureBackNineControl();
 
@@ -101059,6 +101109,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 return;
             }
             this._combo = null;
+            this._comboName = '';
             if (nines) nines.classList.add('hidden');
             if (emptyTxt) emptyTxt.textContent = 'Select a course to enter scores';
             if (!courseId) { hideGrid(); return; }
@@ -101113,6 +101164,10 @@ document.addEventListener('DOMContentLoaded', async function() {
                     return;
                 }
                 this.courseHoles = d.holes.map(h => ({ hole_number: h.hole_number, par: h.par, stroke_index: h.handicap }));
+                // Keep the "(Front+Back)" stamp for the SAVE. Without it the row lands under the
+                // bare venue name and every board — pars, stroke indexes, the nines label —
+                // falls back to the wrong card (the 2026-08-26 Khao Kheow A+A field).
+                this._comboName = d.name || '';
                 this._paintHoles();
             } catch (err) {
                 console.error('[RoundPostScore]', err);
@@ -101233,7 +101288,10 @@ document.addEventListener('DOMContentLoaded', async function() {
                 const scId = `rps_${Date.now()}_${Math.random().toString(36).substr(2,9)}`;
                 // Canonical full course name — dropdown labels are short ("Pattaya CC") and
                 // community surfaces group rounds by course_name string, so drift splits boards.
-                const cName = (window.scorecardProfileLoader?.getCourseDisplayName?.(courseId))
+                // A combo round MUST keep its "(Front+Back)" suffix — it is the only record of
+                // which nines were played, and every par/SI resolver keys off it.
+                const cName = this._comboName
+                    || (window.scorecardProfileLoader?.getCourseDisplayName?.(courseId))
                     || document.getElementById('rpsCourseSel').selectedOptions[0]?.textContent || courseId;
                 const tG = scores.reduce((s,h)=>s+h.gross_score,0);
                 const tN = scores.reduce((s,h)=>s+h.net_score,0);
@@ -145301,6 +145359,8 @@ class OrganizerScoringSystem {
         // over the newly-selected one. Only the newest refresh for the current event may paint.
         const _forEventId = this.currentEventId;
         const _seq = (this._refreshSeq = (this._refreshSeq || 0) + 1);
+        // per-event, never bleed the previous event's venue/nines into this board
+        if (this._playedForEventId !== _forEventId) { this._playedCourseName = ''; this._playedForEventId = _forEventId; }
 
         try {
             // Load player profiles first if not cached
@@ -145354,6 +145414,8 @@ class OrganizerScoringSystem {
                     }
                     const uniqueScorecards = Array.from(bestByPlayer.values());
                     console.log(`[OrganizerScoring] ✅ Loaded ${scorecards.length} scorecards, deduplicated to ${uniqueScorecards.length} unique players (best card per player)`);
+                    // The nines the FIELD is actually playing — off their cards, not the event row.
+                    this._playedCourseName = window.CourseNines.fromCards(uniqueScorecards) || this._playedCourseName;
 
                     // Transform scorecards to match rounds format for rendering
                     leaderboardData = this.transformScorecardsToLeaderboard(uniqueScorecards);
@@ -145373,6 +145435,7 @@ class OrganizerScoringSystem {
                 console.error('[OrganizerScoring] ❌ Error loading rounds:', error);
             } else if (rounds && rounds.length > 0) {
                 console.log(`[OrganizerScoring] ✅ Loaded ${rounds.length} archived rounds`);
+                if (!this._playedCourseName) this._playedCourseName = window.CourseNines.fromCards(rounds);
 
                 // Merge rounds data, preferring live scorecards over archived rounds
                 const existingPlayerIds = new Set(leaderboardData.map(d => d.golfer_id || d.player_id));
@@ -145416,6 +145479,7 @@ class OrganizerScoringSystem {
             await this._updateAces();        // HIO: detect gross 1s (holes-in-one) BEFORE render too
             if (_seq !== this._refreshSeq || _forEventId !== this.currentEventId) return;
             this.renderLeaderboard();
+            this._renderPlayedNines();
             this.updateStats();
             this._renderTwosBand();
             this._renderTwosPanel();
@@ -145426,6 +145490,22 @@ class OrganizerScoringSystem {
         } catch (error) {
             console.error('[OrganizerScoring] Error in refreshScores:', error);
         }
+    }
+
+    // Name the course AND the nines the field is actually playing, right on the board header.
+    // Source is the players' cards (this._playedCourseName) — never the event row, which carries
+    // the organizer's default and is often just a title like "KHAO KHEOW MONTHLY MEDAL STROKE".
+    _renderPlayedNines() {
+        const ninesEl = document.getElementById('orgLbNines');
+        const courseEl = document.getElementById('orgLbCourse');
+        if (!ninesEl && !courseEl) return;
+        const ev = (this.allEvents || []).find(e => String(e.id) === String(this.currentEventId));
+        const played = window.CourseNines.split(this._playedCourseName || (ev && ev.course_name) || '');
+        if (ninesEl) {
+            ninesEl.textContent = played.nines ? 'Nines: ' + played.nines : '';
+            ninesEl.style.display = played.nines ? '' : 'none';
+        }
+        if (courseEl) courseEl.textContent = played.base || '';
     }
 
     /**
@@ -146919,7 +146999,10 @@ class OrganizerScoringSystem {
         document.getElementById('editScorePlayerName').textContent = this.getPlayerName(round.golfer_id, round);
         document.getElementById('editScorePlayerHandicap').textContent = window.formatHandicapDisplay(round.handicap_used || 0);
         document.getElementById('editScoreEventName').textContent = event?.title || 'Unknown';
-        document.getElementById('editScoreCourseName').textContent = event?.course_name || event?.courseName || event?.course || round.course_name || 'Unknown';
+        // The CARD says which course and nines this score was made on — the event row is the
+        // organizer's default and can name a different (or no) combination entirely.
+        document.getElementById('editScoreCourseName').textContent =
+            round.course_name || this._playedCourseName || event?.course_name || event?.courseName || event?.course || 'Unknown';
 
         // Identify WHERE this player's per-hole scores actually live before pre-filling the grid.
         // Live-scorecard leaderboard rows carry is_live + an embedded scores[] array, and their
@@ -149673,22 +149756,36 @@ class OrganizerScoringSystem {
     _eventNinesCfg(ev) {
         try { return (window.PaperCardEntry && PaperCardEntry._nineVenue) ? PaperCardEntry._nineVenue(ev || {}) : null; } catch (e) { return null; }
     }
-    setEventNines(eventId, cfg, f, b, data) {
-        this._eventCombo = { eventId: String(eventId), cfg, f, b, holes: data.holes, name: data.name, comboId: data.comboId };
+    setEventNines(eventId, cfg, f, b, data, source) {
+        this._eventCombo = { eventId: String(eventId), cfg, f, b, holes: data.holes, name: data.name, comboId: data.comboId, source: source || 'manual' };
         this._ninesTriedFor = String(eventId);
+        this._ninesCheckedAt = this._ninesCheckedAt || {};
+        // A manual pick is provisional: re-ask the DB on the next resolve so a player who has
+        // since picked the nines on the course still wins.
+        this._ninesCheckedAt[String(eventId)] = (source === 'players') ? Date.now() : 0;
         try { localStorage.setItem('eventNines_' + eventId, JSON.stringify({ f, b })); } catch (e) {}
         this._qseCourseCache = null;
     }
     async resolveEventNines(eventId) {
         if (!eventId) return null;
         const eid = String(eventId);
-        if (this._eventCombo && this._eventCombo.eventId === eid) return this._eventCombo;
-        if (this._ninesTriedFor === eid) return null;   // looked already this session, nothing picked yet
+        // Pete's HARD RULE: once the PLAYERS have picked the nines on the course, THAT is what
+        // the organizer scores off. So neither a manual pick nor a "nothing found" answer may be
+        // cached for the session — players start rounds long after the organizer first opens the
+        // event. (2026-08-26 TRGG Khao Kheow: the players' C+A cards were in the DB from 01:46;
+        // the organizer's paper cards still went in at 07:36 as A+A, and because A+A repeats one
+        // nine's stroke indexes, 16 of 32 players were given the wrong shots.)
+        const _now = Date.now();
+        this._ninesCheckedAt = this._ninesCheckedAt || {};
+        const _fresh = (_now - (this._ninesCheckedAt[eid] || 0)) < 60000;
+        if (_fresh && this._eventCombo && this._eventCombo.eventId === eid) return this._eventCombo;
+        if (_fresh && this._ninesTriedFor === eid) return null;
         this._ninesTriedFor = eid;
+        this._ninesCheckedAt[eid] = _now;
         const ev = (this.allEvents || []).find(e => String(e.id) === eid) || this.qseEventData || this.currentEvent || {};
         const cfg = this._eventNinesCfg(ev);
         if (!cfg) return null;                          // standard 18-hole course — nothing to sync
-        let f = null, b = null;
+        let f = null, b = null, _src = 'manual';
         try {
             const sb = window.SupabaseDB.client;
             // Pete's rule: PLAYERS are the first line of information — anyone live-scoring in the
@@ -149700,7 +149797,7 @@ class OrganizerScoringSystem {
             ]);
             const nm = (sc.data && sc.data[0] && sc.data[0].course_name) || (rd.data && rd.data[0] && rd.data[0].course_name) || '';
             const m = nm.match(/\(([^+()]+)\+([^()]+)\)/);
-            if (m) { f = m[1].trim(); b = m[2].trim(); }
+            if (m) { f = m[1].trim(); b = m[2].trim(); _src = sc.data && sc.data[0] ? 'players' : 'rounds'; }
         } catch (e) {}
         if (!f || !b) { try { const s = JSON.parse(localStorage.getItem('eventNines_' + eventId) || 'null'); if (s && s.f && s.b) { f = s.f; b = s.b; } } catch (e) {} }
         if (!f || !b) return null;
@@ -149715,7 +149812,7 @@ class OrganizerScoringSystem {
         if (!fv || !bv) return null;
         const data = window.PaperCardEntry ? await PaperCardEntry._comboFetch(cfg, fv, bv) : null;
         if (!data) return null;
-        this.setEventNines(eid, cfg, fv, bv, data);
+        this.setEventNines(eid, cfg, fv, bv, data, _src);
         return this._eventCombo;
     }
     // ===== EVENT COURSE — GLOBAL SYNC (Pete 2026-08-21) =====
@@ -150630,10 +150727,29 @@ window.PaperCardEntry = {
             }
             if (!cd || !cd.holes || !cd.holes.length) return null;
             var holes = cd.holes.slice().sort(function(a, b){ return (a.hole_number || a.number || 0) - (b.hole_number || b.number || 0); });
-            return {
-                comboId: cd.id || null, name: cd.name || null,
-                holes: holes.map(function(h, i){ return { hole_number: i + 1, par: h.par || 4, handicap: (h.stroke_index != null ? h.stroke_index : (h.handicap != null ? h.handicap : i + 1)) }; })
-            };
+            var out = holes.map(function(h, i){ return { hole_number: i + 1, par: h.par || 4, handicap: (h.stroke_index != null ? h.stroke_index : (h.handicap != null ? h.handicap : i + 1)) }; });
+            // A card's stroke indexes MUST be a unique 1-18. The per-nine rows are stored
+            // pre-paired (one nine holds the odd SIs, its partner the even ones), so pairing a
+            // nine with itself — or with a partner from the same odd/even set — yields each SI
+            // TWICE. The per-hole allocator gives a shot to every hole with SI <= handicap, so
+            // duplicates hand out up to 2 extra shots per player, silently. That is exactly how
+            // the 2026-08-26 TRGG Khao Kheow field got posted as (A+A) with 16 of 32 players
+            // on the wrong shot count. Re-rank to a proper 1-18 before anyone scores on it.
+            var seen = {}, dup = false;
+            for (var k = 0; k < out.length; k++) {
+                var si = out[k].handicap;
+                if (si == null || si < 1 || si > 18 || seen[si]) { dup = true; break; }
+                seen[si] = 1;
+            }
+            if (dup || out.length !== 18) {
+                console.warn('[PCE] combo SI not unique 1-18 — re-ranking', out.map(function(h){ return h.handicap; }).join(','));
+                var f9 = out.filter(function(h){ return h.hole_number <= 9; });
+                var b9 = out.filter(function(h){ return h.hole_number > 9; });
+                var bySi = function(a, b){ return (a.handicap || 9) - (b.handicap || 9); };
+                f9.slice().sort(bySi).forEach(function(h, i){ h.handicap = (i * 2) + 1; });
+                b9.slice().sort(bySi).forEach(function(h, i){ h.handicap = (i * 2) + 2; });
+            }
+            return { comboId: cd.id || null, name: cd.name || null, holes: out };
         } catch(e) { console.error('[PCE] combo fetch', e); return null; }
         finally {
             if (fe) fe.value = prevF; if (be) be.value = prevB;
@@ -150641,6 +150757,28 @@ window.PaperCardEntry = {
         }
     },
     _loadCombo: async function(){
+        // Pete's HARD RULE: once the PLAYERS have picked the nines on the course, that is what the
+        // organizer scores off — their pick is not a suggestion the organizer may override. If a
+        // manual pick disagrees with what the field is actually playing, snap to the players' nines
+        // and say so. (2026-08-26 Khao Kheow: players on C+A since 01:46, paper cards entered as
+        // A+A at 07:36 — wrong pars on 1-9 and 16 of 32 players given the wrong shots.)
+        if (!this._snapping) {
+            try {
+                var oss = window.OrganizerScoringSystem;
+                var picked = oss ? await oss.resolveEventNines(this.event.id) : null;
+                if (picked && picked.source === 'players' && picked.f && picked.b &&
+                    (String(picked.f) !== String(this.nineF) || String(picked.b) !== String(this.nineB))) {
+                    this._snapping = true;
+                    try {
+                        this.nineF = picked.f; this.nineB = picked.b;
+                        window.NotificationManager.show('The players are scoring ' + (picked.name || 'a different combination') + ' — switched to their nines.', 'warning', 8000);
+                        await this._loadCombo();
+                    } finally { this._snapping = false; }
+                    this.render();
+                    return;
+                }
+            } catch(e){}
+        }
         var d = await this._comboFetch(this.nineSel, this.nineF, this.nineB);
         if (!d) { this.courseData = null; this.comboName = null; window.NotificationManager.show(_lvT('pce.toast.combofail','Could not load that nine combination'), 'error'); return; }
         this.courseData = { comboId: d.comboId, holes: d.holes };

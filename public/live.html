@@ -739,6 +739,28 @@
         // Partial maps are NOT cached, so a live board refines as more holes get played.
         const _courseParsCache = {};
         function _parKeyOf(sc) { return (sc.course_id || '') + '|' + (sc.course_name || ''); }
+        // The nines actually being played come from the players' scorecards — the organizer's
+        // event course label is only the default; players can change nines on-course in real
+        // time. Latest combo-stamped card wins.
+        function playingCourseName(cards) {
+            const named = (cards || []).filter(sc => sc && sc.course_name)
+                .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+            const combo = named.find(sc => /\([^+()]+\+[^+()]+\)/.test(sc.course_name));
+            return (combo || named[0] || {}).course_name || '';
+        }
+        function splitCourseNines(name) {
+            const m = /\(([^+()]+)\+([^+()]+)\)/.exec(name || '');
+            if (!m) return { base: (name || '').trim(), nines: '' };
+            return {
+                base: (name || '').replace(m[0], '').replace(/\s{2,}/g, ' ').trim(),
+                nines: `${m[1].trim()}+${m[2].trim()}`
+            };
+        }
+        function ninesChipHtml(nines) {
+            return nines
+                ? `<span class="ml-1 px-2 py-0.5 rounded-full text-xs font-extrabold bg-green-500 text-white align-middle whitespace-nowrap">Nines: ${nines}</span>`
+                : '';
+        }
         async function getCourseParMap(courseId, courseName) {
             if (!courseId && !courseName) return null;
             const cacheKey = (courseId || '') + '|' + (courseName || '');
@@ -995,6 +1017,7 @@
 
             // Team-format standings (Waltz / Scramble / Match Play) ride along on the array
             leaderboard.teamBoards = await buildTeamBoards(uniqueScorecards, eventId);
+            leaderboard.courseName = playingCourseName(uniqueScorecards);
 
             return leaderboard;
         }
@@ -1073,7 +1096,9 @@
                 }
             }
 
-            return Object.values(playerScores).sort((a, b) => b.total_stableford - a.total_stableford);
+            const poolBoard = Object.values(playerScores).sort((a, b) => b.total_stableford - a.total_stableford);
+            poolBoard.courseName = playingCourseName(Object.values(bestScorecardByPlayer));
+            return poolBoard;
         }
 
         // NEW: Get casual round leaderboard (for public live spectatable rounds)
@@ -1124,6 +1149,7 @@
             // Sort by stableford points
             leaderboard.sort((a, b) => b.total_stableford - a.total_stableford);
             leaderboard.teamBoards = await buildTeamBoards(scorecards, null);
+            leaderboard.courseName = playingCourseName(scorecards);
             return leaderboard;
         }
 
@@ -1359,7 +1385,8 @@
 
         // NEW: Render casual round card (for public live spectatable rounds)
         function renderCasualRoundCard(round, leaderboard) {
-            const courseName = round.course_name || 'Golf Course';
+            const casualPlayed = splitCourseNines(leaderboard.courseName || round.course_name || '');
+            const courseName = casualPlayed.base || 'Golf Course';
             const startTime = new Date(round.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const teamBoards = leaderboard.teamBoards || null;
             const teamHtml = renderTeamBoardsHtml(teamBoards);
@@ -1375,7 +1402,7 @@
                             <div class="flex items-center gap-2">
                                 <span class="material-symbols-outlined text-2xl">visibility</span>
                                 <div>
-                                    <h3 class="text-lg font-bold">${courseName}</h3>
+                                    <h3 class="text-lg font-bold">${courseName}${ninesChipHtml(casualPlayed.nines)}</h3>
                                     <p class="text-red-100 text-sm">${gameLabel}</p>
                                 </div>
                             </div>
@@ -1581,6 +1608,9 @@
                 ? teamBoards.labels.join(' + ')
                 : (formatLabels[format] || 'Stableford');
             const teamHtml = renderTeamBoardsHtml(teamBoards);
+            // Course label: the players' scorecards are the truth (they pick/change the
+            // nines on-course); the event row is only the organizer's default.
+            const played = splitCourseNines(leaderboard.courseName || event.course_name || '');
 
             return `
                 <div id="event-card-${event.id}" class="bg-white rounded-lg shadow-sm mb-4 overflow-hidden">
@@ -1591,7 +1621,7 @@
                                     <h2 class="font-bold text-lg">${event.title}</h2>
                                     ${isArchived ? `<span class="text-xs bg-amber-500 text-white px-2 py-0.5 rounded-full">ARCHIVED</span>` : '<span class="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full live-badge">LIVE</span>'}
                                 </div>
-                                <p class="${isArchived ? 'text-gray-300' : 'text-blue-200'} text-sm">${societyName} - ${event.course_name || 'Golf Course'}</p>
+                                <p class="${isArchived ? 'text-gray-300' : 'text-blue-200'} text-sm">${societyName} - ${played.base || 'Golf Course'}${ninesChipHtml(played.nines)}</p>
                                 <p class="${isArchived ? 'text-gray-400' : 'text-blue-300'} text-xs mt-1">${dateDisplay} • ${formatLabel}</p>
                             </div>
                             <div class="text-right">
@@ -1619,6 +1649,9 @@
             };
             const config = typeConfig[pool.type] || typeConfig.stableford;
             const dateDisplay = formatDate(pool.date_iso);
+            // Pools carry no course column — the entrants' scorecards say where (and which
+            // nines) the game is actually being played.
+            const poolPlayed = splitCourseNines(leaderboard.courseName || '');
 
             return `
                 <div id="pool-card-${pool.id}" class="bg-white rounded-lg shadow-sm mb-4 overflow-hidden">
@@ -1631,7 +1664,7 @@
                                         <h2 class="font-bold">${pool.name}</h2>
                                         ${isArchived ? `<span class="text-xs bg-amber-500 text-white px-2 py-0.5 rounded-full">ARCHIVED</span>` : '<span class="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full live-badge">LIVE</span>'}
                                     </div>
-                                    <p class="${isArchived ? 'text-gray-300' : `text-${config.color}-200`} text-sm">${config.label} Competition</p>
+                                    <p class="${isArchived ? 'text-gray-300' : `text-${config.color}-200`} text-sm">${config.label} Competition${poolPlayed.base ? ' — ' + poolPlayed.base : ''}${ninesChipHtml(poolPlayed.nines)}</p>
                                     <p class="${isArchived ? 'text-gray-400' : `text-${config.color}-300`} text-xs">${dateDisplay}</p>
                                 </div>
                             </div>

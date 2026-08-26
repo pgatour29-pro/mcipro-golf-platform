@@ -776,25 +776,26 @@
 
             const slugFill = async () => {
                 const slug = s => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
-                const f = slug(nines[1]), b = slug(nines[2]);
+                // "Sugar Cane" must also match a 'sugarcane' slug — try separator-less too
+                const variants = s => [...new Set([s, s.replace(/_/g, '')])];
+                const fv = variants(slug(nines[1])), bv = variants(slug(nines[2]));
                 const base = courseId || slug(courseName.split('(')[0] || '');
-                const cands = [
-                    `${base}_${f}${b}`, `${base}_${b}${f}`,
-                    `${base}_${f}`, `${base}_${f}_with_${b}`,
-                    `${base}_${b}`, `${base}_${b}_with_${f}`
-                ];
+                const pairC = fv.flatMap(a => bv.flatMap(c => [`${base}_${a}${c}`, `${base}_${c}${a}`]));
+                const frontC = [...fv.map(a => `${base}_${a}`), ...fv.flatMap(a => bv.map(c => `${base}_${a}_with_${c}`))];
+                const backC = [...bv.map(c => `${base}_${c}`), ...bv.flatMap(c => fv.map(a => `${base}_${c}_with_${a}`))];
                 const { data: rows } = await supabaseClient
                     .from('course_holes')
                     .select('course_id, hole_number, par, tee_marker')
-                    .in('course_id', cands)
+                    .in('course_id', [...new Set([...pairC, ...frontC, ...backC])])
                     .order('hole_number');
                 const byId = {};
                 (rows || []).forEach(h => { (byId[h.course_id] = byId[h.course_id] || []).push(h); });
-                const pair = byId[`${base}_${f}${b}`] || byId[`${base}_${b}${f}`];
+                const firstHit = list => { for (const c of list) if (byId[c]) return byId[c]; return null; };
+                const pair = firstHit(pairC);
                 if (pair) fillFrom(pair, 0);
                 else {
-                    fillFrom(byId[`${base}_${f}`] || byId[`${base}_${f}_with_${b}`], 0);
-                    fillFrom(byId[`${base}_${b}`] || byId[`${base}_${b}_with_${f}`], 9);
+                    fillFrom(firstHit(frontC), 0);
+                    fillFrom(firstHit(backC), 9);
                 }
             };
 

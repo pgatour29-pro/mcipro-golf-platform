@@ -145837,7 +145837,12 @@ class OrganizerScoringSystem {
         switch (format) {
             case 'stableford':
                 return round.total_stableford || 0;
+            // Medal = NET stroke play (Pete 2026-08-26) — the published score IS the net.
+            // ('stroke_play' aliased: the organizer selector says 'strokeplay', society_events
+            // says 'stroke_play', and both reach here.)
             case 'strokeplay':
+            case 'stroke_play':
+                return round.total_net || 0;
             case 'scramble':
                 return round.total_gross || 0;
             case 'nassau':
@@ -146194,7 +146199,9 @@ class OrganizerScoringSystem {
         if (f === 'nassau') { return ((a.format_scores&&a.format_scores.nassau&&a.format_scores.nassau.total)||999) - ((b.format_scores&&b.format_scores.nassau&&b.format_scores.nassau.total)||999); }
         if (f === 'skins') { return ((b.format_scores&&b.format_scores.skins&&b.format_scores.skins.holes_won)||0) - ((a.format_scores&&a.format_scores.skins&&a.format_scores.skins.holes_won)||0); }
         if (higher) { var d = (b.total_stableford||0) - (a.total_stableford||0); if (d) return d; }
-        else { var d2 = (a.total_gross||999) - (b.total_gross||999); if (d2) return d2; }
+        else if (f === 'scramble') { var ds = (a.total_gross||999) - (b.total_gross||999); if (ds) return ds; }
+        // Medal = NET stroke play (Pete 2026-08-26): lowest net wins, gross breaks ties.
+        else { var d2 = (a.total_net||999) - (b.total_net||999) || (a.total_gross||999) - (b.total_gross||999); if (d2) return d2; }
         var ca = a._cb || {}, cb = b._cb || {};
         var keys = higher ? ['sb9','sb6','sb3','sb1'] : ['gr9','gr6','gr3','gr1'];
         for (var i=0; i<keys.length; i++){

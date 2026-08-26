@@ -988,17 +988,14 @@
 
             // Sort based on format
             if (format === 'stroke_play') {
-                // Stroke play: lowest gross wins, but only compare players with same holes played fairly
-                // Players with more holes should generally be ahead of those with fewer
+                // Medal = NET stroke play (Pete 2026-08-26): lowest NET wins, gross breaks ties.
+                // Players further round still rank above those with fewer holes.
                 leaderboard.sort((a, b) => {
-                    // If same holes played, sort by gross (lower is better)
                     if (a.holes_played === b.holes_played) {
-                        return a.total_gross - b.total_gross;
+                        return (a.total_net - b.total_net) || (a.total_gross - b.total_gross);
                     }
-                    // Players with more holes played come first (they're further along)
-                    // Among those, lower gross per hole is better
-                    const aAvg = a.holes_played > 0 ? a.total_gross / a.holes_played : 999;
-                    const bAvg = b.holes_played > 0 ? b.total_gross / b.holes_played : 999;
+                    const aAvg = a.holes_played > 0 ? a.total_net / a.holes_played : 999;
+                    const bAvg = b.holes_played > 0 ? b.total_net / b.holes_played : 999;
                     if (a.holes_played > b.holes_played) return -1;
                     if (b.holes_played > a.holes_played) return 1;
                     return aAvg - bAvg;
@@ -1697,7 +1694,7 @@
                 const playerId = entry.player_id || ('player-' + i);
 
                 if (isStrokePlay) {
-                    // Stroke Play: Show gross score
+                    // Medal: NET is the ranking figure, gross shown alongside it
                     return `
                         <tr class="${isLeader ? 'winner-row font-bold' : 'border-b border-gray-100'}">
                             <td class="py-3 px-4 text-center">${i + 1}</td>
@@ -1709,9 +1706,10 @@
                                 </span>
                             </td>
                             <td class="py-3 px-4 text-center">${entry.holes_played}</td>
-                            <td class="py-3 px-4 text-center font-bold text-blue-600">${entry.total_gross}</td>
+                            <td class="py-3 px-4 text-center text-gray-600">${entry.total_gross}</td>
+                            <td class="py-3 px-4 text-center font-bold text-blue-600">${entry.total_net}</td>
                         </tr>
-                        ${renderHoleDetails(entry, 4, playerId)}
+                        ${renderHoleDetails(entry, 5, playerId)}
                     `;
                 } else {
                     // Stableford: Show points
@@ -1740,7 +1738,9 @@
                             <th class="py-2 px-4 text-center">Pos</th>
                             <th class="py-2 px-4 text-left">Player</th>
                             <th class="py-2 px-4 text-center">Thru</th>
-                            <th class="py-2 px-4 text-center">${isStrokePlay ? 'Gross' : 'Pts'}</th>
+                            ${isStrokePlay
+                                ? '<th class="py-2 px-4 text-center">Gross</th><th class="py-2 px-4 text-center">Net</th>'
+                                : '<th class="py-2 px-4 text-center">Pts</th>'}
                         </tr>
                     </thead>
                     <tbody>${rows}</tbody>

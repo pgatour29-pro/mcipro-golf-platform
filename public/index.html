@@ -77911,6 +77911,26 @@ class LiveScorecardSystem {
 
     async checkForActiveRound() {
         let state = this.loadRoundState();
+        // Saved local state can describe a round that was already ended/abandoned elsewhere
+        // (another device, a groupmate's finish, or a discarded false start). The DB is the
+        // source of truth — if MY card is no longer in_progress, drop the local copy silently
+        // instead of nagging "Unfinished Round Found" on every app open.
+        if (state && state.players && state.players.length > 0) {
+            try {
+                const me = this._deviceUser();
+                const myCard = state.scorecards?.[me];
+                if (myCard && !String(myCard).startsWith('local_') && window.SupabaseDB?.client) {
+                    const { data: row } = await window.SupabaseDB.client.from('scorecards')
+                        .select('status').eq('id', myCard).maybeSingle();
+                    // Only act on a POSITIVE read — a network hiccup must not wipe a live round.
+                    if (row && row.status !== 'in_progress') {
+                        console.log('[LiveScorecard] Saved round is already', row.status, 'in DB — clearing stale local state');
+                        this.clearRoundState();
+                        state = null;
+                    }
+                }
+            } catch (e) { /* keep state — offline mid-round must still resume */ }
+        }
         // Nothing saved on THIS device — see if I'm a player in a round someone else started.
         if (!state || !state.players || state.players.length === 0) {
             state = await this._findMyLiveRoundInDb();
@@ -77986,8 +78006,30 @@ class LiveScorecardSystem {
                 resolve(true);
             };
 
-            document.getElementById('discardRoundBtn').onclick = () => {
+            document.getElementById('discardRoundBtn').onclick = async () => {
                 if (confirm('Are you sure? This will permanently delete the unfinished round.')) {
+                    // Discard must kill the DB rows too — clearing localStorage alone left the
+                    // scorecards in_progress, so _findMyLiveRoundInDb resurrected this exact
+                    // prompt on the next app open (Khao Kheow, 2026-08-27: 4 nags for one round).
+                    try {
+                        const sb = window.SupabaseDB?.client;
+                        if (sb) {
+                            const anyScores = Object.values(state.scoresCache || {})
+                                .some(ph => ph && Object.keys(ph).length > 0);
+                            const me = this._deviceUser();
+                            // Group has scores → someone may still be playing; only drop MY card.
+                            // Zero scores anywhere → dead false start; clear the whole group so
+                            // groupmates don't inherit the same nag.
+                            const ids = anyScores
+                                ? [state.scorecards?.[me]]
+                                : Object.values(state.scorecards || {});
+                            const dbIds = ids.filter(id => id && !String(id).startsWith('local_'));
+                            if (dbIds.length) {
+                                await sb.from('scorecards').update({ status: 'abandoned' })
+                                    .in('id', dbIds).eq('status', 'in_progress');
+                            }
+                        }
+                    } catch (e) { console.warn('[LiveScorecard] Discard: DB abandon failed (non-fatal):', e); }
                     this.clearRoundState();
                     document.body.removeChild(modal);
                     resolve(false);
@@ -89839,6 +89881,23 @@ class LiveScorecardSystem {
             // No scores entered - ask user if they want to abandon
             const abandon = confirm('No scores were entered.\n\nDo you want to abandon this round?');
             if (abandon) {
+                // Mark the cards abandoned in the DB too (same as the incomplete-round path
+                // below) — this branch was localStorage-only, leaving in_progress rows that
+                // fed the "Unfinished Round Found" prompt for 18h and sat on live boards.
+                try {
+                    if (window.SupabaseDB?.client) {
+                        const abandonIds = Object.values(this.scorecards || {}).filter(id => id && !String(id).startsWith('local_'));
+                        if (abandonIds.length) {
+                            await window.SupabaseDB.client.from('scorecards').update({ status: 'abandoned' }).in('id', abandonIds);
+                        }
+                        const _pids = (this.players || []).map(p => String(p.lineUserId || p.id)).filter(Boolean);
+                        if (this.eventId && _pids.length) {
+                            await window.SupabaseDB.client.from('scorecards').update({ status: 'abandoned' })
+                                .eq('event_id', this.eventId).in('player_id', _pids).eq('status', 'in_progress');
+                        }
+                        console.log('[LiveScorecard] 🚫 Zero-score round abandoned — scorecards marked abandoned in DB');
+                    }
+                } catch (e) { console.warn('[LiveScorecard] Failed to mark scorecards abandoned:', e); }
                 this.clearRoundState();
                 this.stopAutoSaveTimer();
                 this.lastScoreTime = null;

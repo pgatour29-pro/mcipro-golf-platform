@@ -42803,15 +42803,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
             setPill(id, text) {
                 try {
-                    const el = document.getElementById(id);
-                    if (!el || !text) return;
-                    el.removeAttribute('data-i18n');   // stop the i18n pass from reverting our value
-                    el.textContent = text;
-                    el.classList.add('cube-live');     // mobile shows .mt-2.cube-live even though plain .mt-2 pills are hidden
-                    // Cleaner read (matches the approved look): drop the static subtitle on cubes that now carry live info.
-                    const btn = el.closest('button');
-                    const p = btn && btn.querySelector('p');
-                    if (p) p.style.display = 'none';
+                    if (!text) return;
+                    // v1015: also update class-based mirror copies — the lite grid duplicates
+                    // main-grid cubes WITHOUT id reuse (v848), so its pills carry class="<id>".
+                    const els = new Set([document.getElementById(id), ...document.querySelectorAll('.' + id)]);
+                    els.forEach(el => {
+                        if (!el) return;
+                        el.removeAttribute('data-i18n');   // stop the i18n pass from reverting our value
+                        el.textContent = text;
+                        el.classList.add('cube-live');     // mobile shows .mt-2.cube-live even though plain .mt-2 pills are hidden
+                        // Cleaner read (matches the approved look): drop the static subtitle on cubes that now carry live info.
+                        const btn = el.closest('button');
+                        const p = btn && btn.querySelector('p');
+                        if (p) p.style.display = 'none';
+                    });
                 } catch (e) {}
             },
             ballLabel(n) { n = parseInt(n) || 0; return n > 1 ? n + '-ball' : (n === 1 ? 'Solo' : ''); },
@@ -43805,14 +43810,17 @@ document.addEventListener('DOMContentLoaded', function() {
             },
 
             setBadge(id, count, threshold) {
-                const el = document.getElementById(id);
-                if (!el) return;
-                if (count > 0) {
-                    el.textContent = count;
-                    el.style.display = 'flex';
-                } else {
-                    el.style.display = 'none';
-                }
+                // v1015: id copy + class-based mirrors (lite-grid cubes carry class="<id>", no id reuse)
+                const els = new Set([document.getElementById(id), ...document.querySelectorAll('.' + id)]);
+                els.forEach(el => {
+                    if (!el) return;
+                    if (count > 0) {
+                        el.textContent = count;
+                        el.style.display = 'flex';
+                    } else {
+                        el.style.display = 'none';
+                    }
+                });
             }
         };
         window.DashboardBadges = DashboardBadges;
@@ -46906,7 +46914,7 @@ document.addEventListener('DOMContentLoaded', function() {
                              paint path) repaints it with the resolved SOCIETY hcp — without it the
                              cube kept whatever AppState held at first paint (the universal). -->
                         <div id="cubeHandicapValue" class="user-handicap" style="font-size:32px;font-weight:800;color:#16a34a;line-height:1;position:relative;z-index:2;margin-top:4px;">--</div>
-                        <div class="cube-pill" data-i18n="lightview.viewhistory">View round history</div>
+                        <div class="cube-pill cubeInfoHistory" data-i18n="lightview.viewhistory">View round history</div>
                     </button>
                     <!-- GTS1 (Pete 2026-08-09): one cell, TWO buttons — Society Events top, Tee Sheet
                          bottom going STRAIGHT to the upcoming event's sheet (Full-mode button path) -->
@@ -46940,36 +46948,38 @@ document.addEventListener('DOMContentLoaded', function() {
                          minus History (the Handicap cube above already opens round history). No id reuse:
                          id-based badges stay on the main grid copies; lite badges would need class hooks. -->
                     <button onclick="SocietyResultsHub.open()" class="card-hover metric-card cube-poster cube-compact" style="--p1:#f4e6c8;--p2:#fcf6e9">
+                        <span class="resultsCubeBadge" style="display:none;position:absolute;top:8px;right:8px;background:#ef4444;color:#fff;font-size:11px;font-weight:800;min-width:20px;height:20px;border-radius:10px;align-items:center;justify-content:center;padding:0 6px;box-shadow:0 1px 5px rgba(0,0,0,.3);z-index:3;line-height:1;">0</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuTrophy"/></svg></div>
                         <h3 class="text-base font-bold text-gray-900 mb-1" data-i18n="golfer.eventresults">Event Results</h3>
                         <div class="cube-pill" data-i18n="golfer.eventresults.view">View Results</div>
                     </button>
                     <button onclick="showGolferTab('messages', event)" class="card-hover metric-card cube-poster cube-compact" style="--p1:#dbe4f0;--p2:#f2f6fb">
+                        <span class="messagesCubeBadge" style="display:none;position:absolute;top:8px;right:8px;background:#ef4444;color:#fff;font-size:11px;font-weight:800;min-width:20px;height:20px;border-radius:10px;align-items:center;justify-content:center;padding:0 6px;box-shadow:0 1px 5px rgba(0,0,0,.3);z-index:3;line-height:1;">0</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuChat"/></svg></div>
                         <h3 class="text-base font-bold text-gray-900 mb-1" data-i18n="golfer.messages">Messages</h3>
-                        <div class="cube-pill" data-i18n="messages.viewall">View All</div>
+                        <div class="cube-pill messagesCubeStatus" data-i18n="messages.viewall">View All</div>
                     </button>
                     <button onclick="goToCaddieBooking()" class="card-hover metric-card cube-poster cube-compact" style="--p1:#d8ecef;--p2:#f1f9fa">
                         <span class="absolute top-1 right-1 text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded z-[2]">Coming Soon</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuBag"/></svg></div>
                         <h3 class="text-base font-bold text-gray-900 mb-1" data-i18n="golfer.caddy">Caddy</h3>
-                        <div class="cube-pill" data-i18n="golfer.caddy.booknow">Book Now</div>
+                        <div class="cube-pill cubeInfoCaddy" data-i18n="golfer.caddy.booknow">Book Now</div>
                     </button>
                     <button onclick="showGolferTab('food', event)" class="card-hover metric-card cube-poster cube-compact" style="--p1:#f6e7d4;--p2:#fdf7ef">
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuCloche"/></svg></div>
                         <h3 class="text-base font-bold text-gray-900 mb-1" data-i18n="golfer.foodorders">Food &amp; Orders</h3>
-                        <div class="cube-pill" onclick="event.stopPropagation(); showGolferTab('status', event)" data-i18n="golfer.orders.viewstatus">View Status</div>
+                        <div class="cube-pill cubeInfoOrders" onclick="event.stopPropagation(); showGolferTab('status', event)" data-i18n="golfer.orders.viewstatus">View Status</div>
                     </button>
                     <button onclick="window.open('/live.html', '_blank')" class="card-hover metric-card cube-poster cube-compact" style="--p1:#fadde0;--p2:#fdf2f3">
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuLiveTv"/></svg></div>
                         <h3 class="text-base font-bold text-gray-900 mb-1" data-i18n="golfer.spectatelive">Spectate Live</h3>
-                        <div class="cube-pill" data-i18n="lightview.watchnow">Watch Now</div>
+                        <div class="cube-pill cubeInfoLive" data-i18n="lightview.watchnow">Watch Now</div>
                     </button>
                     <button onclick="showGolferTab('booking', event)" class="card-hover metric-card cube-poster cube-compact" style="--p1:#d9efe1;--p2:#f2faf5">
                         <span class="absolute top-1 right-1 text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded z-[2]">Coming Soon</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuTee"/></svg></div>
                         <h3 class="text-base font-bold text-gray-900 mb-1" data-i18n="golfer.teetime">Tee Time</h3>
-                        <div class="cube-pill" data-i18n="golfer.teetime.available">Available Now</div>
+                        <div class="cube-pill cubeInfoTeeTime" data-i18n="golfer.teetime.available">Available Now</div>
                     </button>
                 </div>
 
@@ -115385,16 +115395,20 @@ const MessagesSystem = {
         }
 
         // Update cube badge (on dashboard) + organizer messages menu badge
+        // v1015: id copy + class mirrors (lite-grid Messages cube carries class copies, no id reuse)
         ['messagesCubeBadge', 'orgMessagesMenuBadge'].forEach(id => {
-            const b = document.getElementById(id);
-            if (!b) return;
-            if (total > 0) { b.textContent = badgeText; b.style.display = 'inline-flex'; }
-            else { b.style.display = 'none'; }
+            const copies = new Set([document.getElementById(id), ...document.querySelectorAll('.' + id)]);
+            copies.forEach(b => {
+                if (!b) return;
+                if (total > 0) { b.textContent = badgeText; b.style.display = 'inline-flex'; }
+                else { b.style.display = 'none'; }
+            });
         });
 
         // Update cube status text
-        const cubeStatus = document.getElementById('messagesCubeStatus');
-        if (cubeStatus) {
+        const statusCopies = new Set([document.getElementById('messagesCubeStatus'), ...document.querySelectorAll('.messagesCubeStatus')]);
+        statusCopies.forEach(cubeStatus => {
+            if (!cubeStatus) return;
             if (total > 0) {
                 cubeStatus.textContent = `${total} New`;
                 cubeStatus.classList.remove('bg-blue-50', 'text-blue-700');
@@ -115404,7 +115418,7 @@ const MessagesSystem = {
                 cubeStatus.classList.remove('bg-red-50', 'text-red-700');
                 cubeStatus.classList.add('bg-blue-50', 'text-blue-700');
             }
-        }
+        });
     },
 
     // ========== UTILITIES ==========

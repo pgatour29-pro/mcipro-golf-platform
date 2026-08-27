@@ -23769,6 +23769,8 @@
         }
 
         async function submitCourseRequest() {
+            // Double-tap = one request row, not two (upload round-trip leaves a long window)
+            if (submitCourseRequest._busy) return;
             const courseName = document.getElementById('courseRequestName').value.trim();
             const location = document.getElementById('courseRequestLocation').value.trim();
             const notes = document.getElementById('courseRequestNotes').value.trim();
@@ -23797,6 +23799,7 @@
                 file = new File([modResult.processedBlob], file.name, { type: modResult.processedBlob.type });
             }
 
+            submitCourseRequest._busy = true;
             try {
                 LoadingManager.show('Submitting request...');
 
@@ -23853,6 +23856,8 @@
                 console.error('[CourseRequest] Error:', error);
                 LoadingManager.hide();
                 NotificationManager.show(error.message || 'Failed to submit request', 'error');
+            } finally {
+                submitCourseRequest._busy = false;
             }
         }
 
@@ -69204,6 +69209,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Save the score to history
             async saveScore() {
+                // Double-tap = one rounds row, not two
+                if (this._savingScore) return;
                 const courseName = document.getElementById('photoExtractedCourse').value;
                 const datePlayed = document.getElementById('photoExtractedDate').value;
                 const eventId = document.getElementById('photoEventSelect').value || null;
@@ -69233,6 +69240,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
 
+                this._savingScore = true;
                 try {
                     const currentUser = window.currentLineUser || window.golferData;
                     if (!currentUser?.lineUserId) {
@@ -69327,6 +69335,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 } catch (err) {
                     console.error('[PhotoScore] Save error:', err);
                     showNotification('Failed to save score: ' + err.message, 'error');
+                } finally {
+                    this._savingScore = false;
                 }
             }
         }
@@ -115892,65 +115902,59 @@ const MessagesSystem = {
                 return;
             }
 
-            // Get last message and member count for each group
-            const groupsHtml = await Promise.all(groups.map(async (group) => {
-                // Get last message
-                const { data: lastMsgs } = await window.SupabaseDB.client
+            // Batched fetches — the old version ran up to 5 queries PER GROUP (last msg,
+            // sender profile, member count, read row, unread count) ≈ 70 queries for 14
+            // groups. Now 4 total. Last-message + unread derive from ONE newest-first
+            // window (500 rows across all groups — plenty at current volume; unread counts
+            // beyond the window would undercount, revisit if group traffic explodes).
+            const seq = this._groupsSeq = (this._groupsSeq || 0) + 1;
+            const [msgsRes, membersRes, readsRes] = await Promise.all([
+                window.SupabaseDB.client
                     .from('group_chat_messages')
-                    .select('message_text, sender_line_id, created_at')
-                    .eq('group_id', group.id)
+                    .select('group_id, message_text, sender_line_id, created_at')
+                    .in('group_id', groupIds)
                     .order('created_at', { ascending: false })
-                    .limit(1);
-
-                const lastMsg = lastMsgs && lastMsgs.length > 0 ? lastMsgs[0] : null;
-
-                // Get sender name for last message
-                let lastMsgSenderName = '';
-                if (lastMsg) {
-                    if (lastMsg.sender_line_id === this.userLineId) {
-                        lastMsgSenderName = 'You';
-                    } else {
-                        const { data: senderProfile } = await window.SupabaseDB.client
-                            .from('user_profiles')
-                            .select('name')
-                            .eq('line_user_id', lastMsg.sender_line_id)
-                            .single();
-                        lastMsgSenderName = senderProfile?.name?.split(' ')[0] || 'Someone'; // First name only
-                    }
-                }
-
-                // Get member count
-                const { count: memberCount } = await window.SupabaseDB.client
+                    .limit(500),
+                window.SupabaseDB.client
                     .from('group_chat_members')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('group_id', group.id);
-
-                // Get unread count for this group
-                let unreadCount = 0;
-                const { data: lastRead } = await window.SupabaseDB.client
+                    .select('group_id')
+                    .in('group_id', groupIds),
+                window.SupabaseDB.client
                     .from('group_chat_reads')
-                    .select('last_read_at')
-                    .eq('group_id', group.id)
+                    .select('group_id, last_read_at')
                     .eq('reader_line_id', this.userLineId)
-                    .single();
+                    .in('group_id', groupIds)
+            ]);
+            if (seq !== this._groupsSeq) return;
 
-                if (lastRead && lastRead.last_read_at) {
-                    const { count } = await window.SupabaseDB.client
-                        .from('group_chat_messages')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('group_id', group.id)
-                        .neq('sender_line_id', this.userLineId)
-                        .gt('created_at', lastRead.last_read_at);
-                    unreadCount = count || 0;
-                } else if (lastMsg) {
-                    // Never read - count all messages not from user
-                    const { count } = await window.SupabaseDB.client
-                        .from('group_chat_messages')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('group_id', group.id)
-                        .neq('sender_line_id', this.userLineId);
-                    unreadCount = count || 0;
+            const lastMsgMap = {}, unreadMap = {}, lastReadMap = {}, memberCountMap = {};
+            (readsRes.data || []).forEach(r => { lastReadMap[r.group_id] = new Date(r.last_read_at); });
+            (msgsRes.data || []).forEach(m => {
+                if (!lastMsgMap[m.group_id]) lastMsgMap[m.group_id] = m; // newest-first ⇒ first seen = latest
+                if (m.sender_line_id !== this.userLineId) {
+                    const lr = lastReadMap[m.group_id];
+                    if (!lr || new Date(m.created_at) > lr) unreadMap[m.group_id] = (unreadMap[m.group_id] || 0) + 1;
                 }
+            });
+            (membersRes.data || []).forEach(r => { memberCountMap[r.group_id] = (memberCountMap[r.group_id] || 0) + 1; });
+
+            // Sender first names for previews — one batched lookup
+            const senderIds = [...new Set(Object.values(lastMsgMap).map(m => m.sender_line_id).filter(id => id && id !== this.userLineId))];
+            const senderNameMap = {};
+            if (senderIds.length > 0) {
+                const { data: senders } = await window.SupabaseDB.client
+                    .from('user_profiles')
+                    .select('line_user_id, name')
+                    .in('line_user_id', senderIds);
+                (senders || []).forEach(s => senderNameMap[s.line_user_id] = s.name?.split(' ')[0] || 'Someone');
+            }
+            if (seq !== this._groupsSeq) return;
+
+            const groupsHtml = groups.map((group) => {
+                const lastMsg = lastMsgMap[group.id] || null;
+                const lastMsgSenderName = lastMsg ? (lastMsg.sender_line_id === this.userLineId ? 'You' : (senderNameMap[lastMsg.sender_line_id] || 'Someone')) : '';
+                const memberCount = memberCountMap[group.id] || 0;
+                const unreadCount = unreadMap[group.id] || 0;
 
                 const isAdmin = roleMap[group.id] === 'admin';
                 const timeAgo = lastMsg ? this.formatTimeAgo(lastMsg.created_at) : 'No messages';
@@ -115971,7 +115975,7 @@ const MessagesSystem = {
                             ${unreadCount > 0 ? `<div class="scv3msg-cbadge">${unreadCount}</div>` : ''}
                         </div>
                     </div>`;
-            }));
+            });
 
             container.innerHTML = groupsHtml.join('');
 
@@ -116545,11 +116549,13 @@ window.EventNoticeBoard = {
         var sb = this._sb(), me = this._me(); var set = new Set();
         if (!sb || !me || !annIds || !annIds.length) return set;
         try {
-            for (var i = 0; i < annIds.length; i += 50) {
-                var chunk = annIds.slice(i, i + 50);
-                var r = await sb.from('event_announcement_reads').select('announcement_id').eq('reader_line_id', me).in('announcement_id', chunk);
-                (r.data || []).forEach(function (x) { set.add(x.announcement_id); });
-            }
+            // 50-id chunks fetched in PARALLEL (the serial loop stacked round trips)
+            var chunks = [];
+            for (var i = 0; i < annIds.length; i += 50) chunks.push(annIds.slice(i, i + 50));
+            var results = await Promise.all(chunks.map(function (chunk) {
+                return sb.from('event_announcement_reads').select('announcement_id').eq('reader_line_id', me).in('announcement_id', chunk);
+            }));
+            results.forEach(function (r) { (r.data || []).forEach(function (x) { set.add(x.announcement_id); }); });
         } catch (e) { console.warn('[NoticeBoard] readSet', e); }
         return set;
     },
@@ -116559,11 +116565,13 @@ window.EventNoticeBoard = {
         var sb = this._sb(), me = this._me(), out = {};
         if (!sb || !me || !eventIds || !eventIds.length) return out;
         try {
+            var chunks = [];
+            for (var i = 0; i < eventIds.length; i += 50) chunks.push(eventIds.slice(i, i + 50));
+            var results = await Promise.all(chunks.map(function (chunk) {
+                return sb.from('event_announcements').select('id,event_id').in('event_id', chunk);
+            }));
             var anns = [];
-            for (var i = 0; i < eventIds.length; i += 50) {
-                var r = await sb.from('event_announcements').select('id,event_id').in('event_id', eventIds.slice(i, i + 50));
-                anns = anns.concat(r.data || []);
-            }
+            results.forEach(function (r) { anns = anns.concat(r.data || []); });
             if (!anns.length) return out;
             var readSet = await this._readSet(anns.map(function (a) { return a.id; }));
             anns.forEach(function (a) { if (!readSet.has(a.id)) out[a.event_id] = (out[a.event_id] || 0) + 1; });
@@ -116593,8 +116601,8 @@ window.EventNoticeBoard = {
         var els = document.querySelectorAll('.enb-card[data-enb-event]');
         if (!els.length) return;
         var ids = [...new Set([...els].map(function (e) { return e.getAttribute('data-enb-event'); }).filter(Boolean))];
-        var ann = await this.unreadByEvent(ids);
-        var rep = await this.playerThreadUnreadByEvent(ids);
+        var counts = await Promise.all([this.unreadByEvent(ids), this.playerThreadUnreadByEvent(ids)]);
+        var ann = counts[0], rep = counts[1];
         ids.forEach(function (id) {
             var b = document.getElementById('enbBadge-' + id);
             if (!b) return;
@@ -116855,12 +116863,17 @@ window.EventNoticeBoard = {
         var sb = this._sb(), me = this._me(), out = {};
         if (!sb || !me || !eventIds || !eventIds.length) return out;
         try {
+            var chunks = [];
+            for (var i = 0; i < eventIds.length; i += 50) chunks.push(eventIds.slice(i, i + 50));
+            // both tables, all chunks, ONE parallel wave (was 2 serial awaits per chunk)
+            var waves = await Promise.all(chunks.map(function (chunk) {
+                return Promise.all([
+                    sb.from('event_private_messages').select('event_id,sender_line_id,sender_role,created_at').eq('player_line_id', me).in('event_id', chunk),
+                    sb.from('event_private_reads').select('event_id,last_read_at').eq('player_line_id', me).eq('reader_line_id', me).in('event_id', chunk)
+                ]);
+            }));
             var msgs = [], reads = [];
-            for (var i = 0; i < eventIds.length; i += 50) {
-                var chunk = eventIds.slice(i, i + 50);
-                msgs = msgs.concat(((await sb.from('event_private_messages').select('event_id,sender_line_id,sender_role,created_at').eq('player_line_id', me).in('event_id', chunk)).data) || []);
-                reads = reads.concat(((await sb.from('event_private_reads').select('event_id,last_read_at').eq('player_line_id', me).eq('reader_line_id', me).in('event_id', chunk)).data) || []);
-            }
+            waves.forEach(function (w) { msgs = msgs.concat(w[0].data || []); reads = reads.concat(w[1].data || []); });
             var rmap = {}; reads.forEach(function (r) { rmap[r.event_id] = new Date(r.last_read_at).getTime(); });
             // count ORGANIZER replies (by role, not sender id — one account can be both player and org)
             msgs.forEach(function (m) {
@@ -116876,12 +116889,17 @@ window.EventNoticeBoard = {
         var sb = this._sb(), me = this._me(), out = {};
         if (!sb || !me || !eventIds || !eventIds.length) return out;
         try {
+            var chunks = [];
+            for (var i = 0; i < eventIds.length; i += 50) chunks.push(eventIds.slice(i, i + 50));
+            // both tables, all chunks, ONE parallel wave (was 2 serial awaits per chunk)
+            var waves = await Promise.all(chunks.map(function (chunk) {
+                return Promise.all([
+                    sb.from('event_private_messages').select('event_id,player_line_id,sender_line_id,created_at').in('event_id', chunk),
+                    sb.from('event_private_reads').select('event_id,player_line_id,last_read_at').eq('reader_line_id', 'org:' + me).in('event_id', chunk)
+                ]);
+            }));
             var msgs = [], reads = [];
-            for (var i = 0; i < eventIds.length; i += 50) {
-                var chunk = eventIds.slice(i, i + 50);
-                msgs = msgs.concat(((await sb.from('event_private_messages').select('event_id,player_line_id,sender_line_id,created_at').in('event_id', chunk)).data) || []);
-                reads = reads.concat(((await sb.from('event_private_reads').select('event_id,player_line_id,last_read_at').eq('reader_line_id', 'org:' + me).in('event_id', chunk)).data) || []);
-            }
+            waves.forEach(function (w) { msgs = msgs.concat(w[0].data || []); reads = reads.concat(w[1].data || []); });
             var rmap = {}; reads.forEach(function (r) { rmap[r.event_id + '|' + r.player_line_id] = new Date(r.last_read_at).getTime(); });
             // a message counts as unread-for-organizer when the player sent it (sender == player_line_id) after the org's last read of that thread
             msgs.forEach(function (m) { if (m.sender_line_id === m.player_line_id && new Date(m.created_at).getTime() > (rmap[m.event_id + '|' + m.player_line_id] || 0)) out[m.event_id] = (out[m.event_id] || 0) + 1; });

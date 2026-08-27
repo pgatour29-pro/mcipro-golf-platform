@@ -117460,9 +117460,12 @@ const ManagerComms = {
                 <div class="bg-blue-600 text-white p-4 flex items-center justify-between">
                     <div class="flex items-center gap-3">
                         <span class="material-symbols-outlined">groups</span>
-                        <h3 class="font-semibold">${deptNames[dept] || dept}</h3>
+                        <div>
+                            <h3 class="font-semibold">${deptNames[dept] || dept}</h3>
+                            ${['caddy-master', 'all-staff'].includes(dept) ? '<p class="text-xs text-white/75">Caddy Room — all caddies + caddy master see this</p>' : ''}
+                        </div>
                     </div>
-                    <button onclick="document.getElementById('dept-chat-modal').remove()" class="text-white/80 hover:text-white">
+                    <button onclick="ManagerComms.closeDeptChat()" class="text-white/80 hover:text-white">
                         <span class="material-symbols-outlined">close</span>
                     </button>
                 </div>
@@ -117484,13 +117487,112 @@ const ManagerComms = {
             </div>
         `;
         document.body.appendChild(modal);
+        this._initDeptChat(dept);
     },
 
-    sendDeptMessage(dept) {
+    // Departments with REAL recipients today route to the Caddy Room (caddie fleet + caddy
+    // master). The rest have ZERO staff accounts (no staff registration yet) — they get an
+    // honest disabled state, not a chat that pretends to deliver (this pane's old disease).
+    _LIVE_DEPTS: ['caddy-master', 'all-staff'],
+    _deptChan: null,
+    _deptIds: null,
+
+    async _initDeptChat(dept) {
+        const box = document.getElementById('dept-chat-messages');
         const input = document.getElementById('dept-chat-input');
-        if (input?.value?.trim()) {
-            NotificationManager.show('Message sent', 'success');
+        if (!box) return;
+
+        if (!this._LIVE_DEPTS.includes(dept)) {
+            box.innerHTML = '<div class="text-center text-gray-500 py-8">' +
+                '<span class="material-symbols-outlined text-4xl mb-2">person_off</span>' +
+                '<p class="font-medium">No staff accounts in this department yet</p>' +
+                '<p class="text-sm mt-1">Staff registration hasn\'t launched — messages here would reach no one. This channel goes live when staff sign-up ships.</p></div>';
+            if (input) input.disabled = true;
+            return;
+        }
+
+        const sb = window.SupabaseDB?.client;
+        if (!sb) { box.innerHTML = '<div class="text-center text-gray-500 py-8">Not connected — try again in a moment.</div>'; return; }
+        this._deptIds = new Set();
+        box.innerHTML = '<div class="text-center text-gray-400 py-8 text-sm">Loading…</div>';
+        try {
+            const { data } = await sb.from('caddy_room_messages').select('*').order('created_at', { ascending: false }).limit(80);
+            const open = document.getElementById('dept-chat-messages');
+            if (open !== box) return; // modal was closed/reopened while loading
+            box.innerHTML = '';
+            (data || []).reverse().forEach(m => this._renderDeptMsg(m, false));
+            if (!(data || []).length) {
+                box.innerHTML = '<div class="text-center text-gray-500 py-8" id="dept-chat-empty"><span class="material-symbols-outlined text-4xl mb-2">chat</span><p>No messages in the Caddy Room yet</p><p class="text-sm mt-1">Start the conversation</p></div>';
+            }
+            box.scrollTop = box.scrollHeight;
+        } catch (e) {
+            console.warn('[ManagerComms] dept chat load', e);
+            box.innerHTML = '<div class="text-center text-gray-500 py-8">Failed to load messages</div>';
+        }
+
+        // realtime: remove any prior channel FIRST (same-name reuse crashes)
+        try { if (this._deptChan) { sb.removeChannel(this._deptChan); this._deptChan = null; } } catch (e) {}
+        this._deptChan = sb.channel('mgr_dept_room')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'caddy_room_messages' }, (p) => {
+                this._renderDeptMsg(p.new, true);
+            })
+            .subscribe();
+    },
+
+    _renderDeptMsg(m, scroll) {
+        if (!m) return;
+        if (!this._deptIds) this._deptIds = new Set();
+        if (this._deptIds.has(m.id)) return;
+        this._deptIds.add(m.id);
+        const box = document.getElementById('dept-chat-messages');
+        if (!box) return;
+        document.getElementById('dept-chat-empty')?.remove();
+        const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        let t = ''; try { t = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch (e) {}
+        const me = (window.AppState && AppState.currentUser) || {};
+        const mine = m.sender_role === 'manager' && (!me.lineUserId || m.sender_user_id === me.lineUserId || m.sender_user_id === 'MANAGER');
+        const html = mine
+            ? `<div class="flex justify-end mb-2"><div class="bg-blue-600 text-white rounded-lg p-2 max-w-xs"><p class="text-sm">${esc(m.message)}</p><p class="text-xs text-blue-200 mt-1">${t}</p></div></div>`
+            : `<div class="flex items-start gap-2 mb-2"><div class="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0">${esc(m.caddy_number || (m.sender_name || '?').slice(0, 2).toUpperCase())}</div><div class="bg-gray-100 rounded-lg p-2 max-w-xs"><p class="text-xs font-medium text-gray-700">${esc(m.sender_name)}${m.caddy_number ? ' #' + esc(m.caddy_number) : ''}</p><p class="text-sm text-gray-800">${esc(m.message)}</p><p class="text-xs text-gray-400 mt-1">${t}</p></div></div>`;
+        box.insertAdjacentHTML('beforeend', html);
+        if (scroll) box.scrollTop = box.scrollHeight;
+    },
+
+    closeDeptChat() {
+        try {
+            const sb = window.SupabaseDB?.client;
+            if (sb && this._deptChan) sb.removeChannel(this._deptChan);
+        } catch (e) {}
+        this._deptChan = null;
+        this._deptIds = null;
+        document.getElementById('dept-chat-modal')?.remove();
+    },
+
+    async sendDeptMessage(dept) {
+        if (this._deptSending) return; // double-tap = one row
+        if (!this._LIVE_DEPTS.includes(dept)) return;
+        const input = document.getElementById('dept-chat-input');
+        const text = input?.value?.trim();
+        if (!text) return;
+        const sb = window.SupabaseDB?.client;
+        if (!sb) { alert('Not connected — try again in a moment.'); return; }
+        const user = (window.AppState && AppState.currentUser) || {};
+        this._deptSending = true;
+        try {
+            const { data, error } = await sb.from('caddy_room_messages').insert({
+                sender_user_id: user.lineUserId || 'MANAGER',
+                sender_name: (user.name || user.displayName || 'Manager') + ' (Manager)',
+                sender_role: 'manager',
+                message: text
+            }).select().single();
+            if (error) throw error;
             input.value = '';
+            this._renderDeptMsg(data, true);
+        } catch (err) {
+            console.error('[ManagerComms] dept send', err);
+            alert('Message failed to send — try again.'); // text stays in the input
+        } finally {
+            this._deptSending = false;
         }
     },
 

@@ -59,11 +59,14 @@ export async function listRooms() {
 
 export async function fetchMessages(roomId, limit = 50) {
   const supabase = await getSupabaseClient();
+  // Descending + limit = the NEWEST N rows, reversed back to chronological for display.
+  // Ascending + limit returned the OLDEST N — once a room outgrew the window, all recent
+  // messages (including ones sent seconds ago) were invisible on open.
   const { data, error } = await supabase
     .from('chat_messages')
     .select('*')
     .eq('room_id', roomId)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
     .limit(limit);
 
   if (error) {
@@ -72,7 +75,7 @@ export async function fetchMessages(roomId, limit = 50) {
   }
 
   console.log('[Chat] Raw messages from DB:', data);
-  return (data || []).map(m => normalizeMessage(m));
+  return (data || []).reverse().map(m => normalizeMessage(m));
 }
 
 export function normalizeMessage(m) {

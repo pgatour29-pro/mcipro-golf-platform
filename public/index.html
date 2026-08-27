@@ -115407,7 +115407,9 @@ const MessagesSystem = {
         document.getElementById('compose-selected-recipient').style.display = 'none';
     },
 
+    _composeSending: false,
     async sendComposedMessage() {
+        if (this._composeSending) return;
         const type = document.getElementById('compose-type').value;
         const messageText = document.getElementById('compose-message').value.trim();
 
@@ -115416,6 +115418,7 @@ const MessagesSystem = {
             return;
         }
 
+        this._composeSending = true;
         try {
             if (type === 'dm') {
                 if (!this.selectedRecipient) {
@@ -115423,8 +115426,12 @@ const MessagesSystem = {
                     return;
                 }
 
-                // Send DM via secure Edge Function (also triggers LINE push)
-                await window.SecureDM.send(this.userLineId, this.selectedRecipient.lineId, messageText);
+                // Send DM via secure Edge Function (also triggers LINE push).
+                // The edge fn reports failures as {error} in the JSON body WITHOUT a
+                // throw — ignoring the result showed "sent" for messages that never
+                // inserted and destroyed the text with the modal.
+                const dmResult = await window.SecureDM.send(this.userLineId, this.selectedRecipient.lineId, messageText);
+                if (dmResult?.error) throw new Error(dmResult.error);
 
                 NotificationManager.show('Message sent!', 'success');
                 this.closeComposeModal();
@@ -115444,7 +115451,7 @@ const MessagesSystem = {
                     return;
                 }
 
-                await window.SupabaseDB.client
+                const { error: annError } = await window.SupabaseDB.client
                     .from('announcements')
                     .insert({
                         society_id: societyId,
@@ -115453,6 +115460,7 @@ const MessagesSystem = {
                         message_text: messageText,
                         priority: priority
                     });
+                if (annError) throw annError;
 
                 // Send LINE push notification instantly
                 this.sendLinePushNotification('announcement', {
@@ -115533,6 +115541,11 @@ const MessagesSystem = {
         } catch (err) {
             console.error('[MessagesSystem] Error sending message:', err);
             NotificationManager.show('Failed to send message', 'error');
+            // NotificationManager is a no-op on most builds — the user MUST get real
+            // feedback, and the modal stays open so their text survives for a retry.
+            alert('Message failed to send — your text is still in the box. Try again.');
+        } finally {
+            this._composeSending = false;
         }
     },
 
@@ -116733,10 +116746,16 @@ window.EventNoticeBoard = {
         this._subThread(this._threadCtx);
     },
 
+    _threadSeq: 0,
     async refreshThread() {
         var c = this._threadCtx; if (!c) return;
+        // Stale-response guard: open, post-send reconcile and the realtime INSERT handler
+        // all call this — a slower stale fetch painting last erases the just-sent bubble
+        // (same class as the MessagesSystem loadMessages race).
+        var seq = ++this._threadSeq;
         var me = this._me();
         var msgs = await this.threadMessages(c.eventId, c.playerLineId);
+        if (seq !== this._threadSeq || this._threadCtx !== c) return;
         var body = document.getElementById('enbThreadBody'); if (!body) return;
         if (!msgs.length) {
             body.innerHTML = '<div id="enbThreadEmptyState" style="text-align:center;color:#94a3b8;font-size:13px;padding:30px 12px;">' + (c.role === 'player' ? this._t('notice.askprompt', 'Ask the organizer a question about this event. Only they will see it.') : this._t('notice.noplayermsg', 'No messages from this player yet.')) + '</div>';
@@ -116761,16 +116780,23 @@ window.EventNoticeBoard = {
         await this.markThreadRead(c.eventId, c.playerLineId, c.role);
     },
 
+    _threadSending: false,
     async sendThreadMessage() {
+        if (this._threadSending) return;               // double-tap = one send, not two rows
         var c = this._threadCtx; if (!c) return;
         var inp = document.getElementById('enbThreadInput'); if (!inp) return;
         var txt = inp.value.trim(); if (!txt) return;
         inp.value = '';
         this._appendThreadBubble(txt);                 // optimistic: my bubble appears instantly
-        var saved = await this.sendThread(c.eventId, c.playerLineId, txt, c.role);
-        if (saved) { await this.refreshThread(); }     // reconcile from DB (replaces the optimistic bubble)
-        else { inp.value = txt; }                        // restore on failure
-        if (c.role === 'org') { try { this.renderOrganizerThreads(); } catch (e) {} }
+        this._threadSending = true;
+        try {
+            var saved = await this.sendThread(c.eventId, c.playerLineId, txt, c.role);
+            if (saved) { await this.refreshThread(); }     // reconcile from DB (replaces the optimistic bubble)
+            else if (!inp.value.trim()) { inp.value = txt; } // restore on failure (don't clobber newer typing)
+            if (c.role === 'org') { try { this.renderOrganizerThreads(); } catch (e) {} }
+        } finally {
+            this._threadSending = false;
+        }
     },
 
     // optimistic outgoing bubble — instant feedback before the insert returns
@@ -152498,7 +152524,7 @@ showOrganizerTab = function(tabName) {
     <!-- Professional Chat System Initialization -->
     <script type="module">
         // Import new chat system modules - Static timestamp for cache busting
-        import { initChat, subscribeGlobalMessages } from '/chat/chat-system-full.js?v=chfix953';
+        import { initChat, subscribeGlobalMessages } from '/chat/chat-system-full.js?v=chfix1019';
         import { openOrCreateDM, updateUnreadBadge } from '/chat/chat-database-functions.js?v=3624a8df';
 
         // Initialize chat when chat button is clicked

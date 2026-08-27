@@ -1,5 +1,5 @@
 // Full chat UI glue (vanilla JS) wired to Supabase helpers
-import { openOrCreateDM, listRooms, fetchMessages, sendMessage, subscribeToConversation, markRead, typing, subscribeTyping, getUnreadCount, updateUnreadBadge, deleteRoom, archiveRoom, unarchiveRoom, isRoomArchived, getGroupReadCount, getGroupLatestReadCount, subscribeToReadReceipts } from './chat-database-functions.js?v=c00b0504';
+import { openOrCreateDM, listRooms, fetchMessages, sendMessage, subscribeToConversation, markRead, typing, subscribeTyping, getUnreadCount, updateUnreadBadge, deleteRoom, archiveRoom, unarchiveRoom, isRoomArchived, getGroupReadCount, getGroupLatestReadCount, subscribeToReadReceipts } from './chat-database-functions.js?v=v1019';
 import { getSupabaseClient } from './supabaseClient.js?v=c00b0504';
 import { ensureSupabaseSessionWithLIFF } from './auth-bridge-v2.js?v=c00b0504';
 
@@ -176,10 +176,22 @@ function processIncomingMessage(message) {
         addRoomToSidebar(message.room_id);
       }
     }
-    updateUnreadBadge();
+    scheduleUnreadBadgeUpdate();
   }
 
   return true; // Message processed
+}
+
+// Debounced global-badge recompute: processIncomingMessage fires per message, and during a
+// backfill burst hundreds of messages each triggered a full N-room unread recount. One
+// trailing recount per burst is enough.
+let _badgeDebounceTimer = null;
+function scheduleUnreadBadgeUpdate() {
+  if (_badgeDebounceTimer) return;
+  _badgeDebounceTimer = setTimeout(() => {
+    _badgeDebounceTimer = null;
+    try { updateUnreadBadge(); } catch (e) { /* best-effort */ }
+  }, 400);
 }
 
 // Simple concurrency limiter to avoid overwhelming Supabase
@@ -390,6 +402,13 @@ async function openConversation(conversationId) {
     console.log('[Chat] ✅ #messages element found on retry');
   }
 
+  // Stale-open guard: if the user tapped ANOTHER room while the awaits above ran, this
+  // opener must not clear/paint — the newer open owns the DOM and the dedup set now.
+  if (state.currentConversationId !== conversationId) {
+    console.log('[Chat] openConversation superseded, aborting paint for', conversationId);
+    return;
+  }
+
   listEl.innerHTML = '';
   seenMessageIds.clear(); // Reset dedup set for new conversation
 
@@ -402,6 +421,13 @@ async function openConversation(conversationId) {
   // Fetch messages
   const initial = await fetchMessages(conversationId, 100);
   console.log('[Chat] Fetched', initial.length, 'messages');
+
+  // Re-check after the fetch round-trip — a slower fetch for a room the user has already
+  // left must not append its messages into the room that is now open.
+  if (state.currentConversationId !== conversationId) {
+    console.log('[Chat] openConversation superseded post-fetch, dropping', conversationId);
+    return;
+  }
 
   // CRITICAL FIX: Render all messages at once using DocumentFragment (10x faster on mobile!)
   if (initial.length > 0) {
@@ -581,9 +607,12 @@ async function sendCurrent() {
   input.value = '';
 
   try {
-    // Send to database
+    // Send to database. sendMessage returns FALSE (without throwing) when its rate
+    // limiter suppresses the send — treating that as success left a fake bubble on
+    // screen for a message that was never inserted.
     console.log('[Chat] 💾 Calling sendMessage API...');
-    await sendMessage(state.currentConversationId, body);
+    const sent = await sendMessage(state.currentConversationId, body);
+    if (sent === false) throw new Error('Another send is still in progress — try again.');
     console.log('[Chat] ✅ Message sent successfully to database');
 
     // Update sidebar read counts for groups (new message = 0 reads initially)
@@ -600,8 +629,8 @@ async function sendCurrent() {
     const tempEl = document.querySelector(`[data-temp-id="${tempId}"]`);
     if (tempEl) tempEl.remove();
 
-    // Restore input
-    input.value = body;
+    // Restore input — but never clobber text the user typed while the send was in flight
+    if (!input.value.trim()) input.value = body;
 
     alert('❌ Message failed to send: ' + (error.message || 'Unknown error'));
   }
@@ -1808,8 +1837,10 @@ async function backfillMissedMessages(reason = 'auto') {
     let totalMessages = 0;
     const PAGE_SIZE = 50;
 
-    // Backfill each room using its own last_seen_timestamp
-    for (const roomId of roomIds) {
+    // Backfill rooms through the concurrency limiter — the old sequential for-loop was
+    // one serial round-trip chain per room (15 rooms ≈ seconds of stall on mobile), and
+    // it fired on every visibility/focus/online/pageshow resume.
+    await limit(4, roomIds.map(roomId => async () => {
       const lastSeen = getLastSeenTimestamp(roomId, cachedUserId);
 
       let hasMore = true;
@@ -1854,7 +1885,7 @@ async function backfillMissedMessages(reason = 'auto') {
           break;
         }
       }
-    }
+    }));
 
     console.log(`[Chat] ⚡ Backfill: ${totalMessages} msgs in ${Date.now() - startTime}ms (reason: ${reason})`);
   } catch (error) {

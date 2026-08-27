@@ -86,8 +86,18 @@ window.ContentModeration = (function() {
         lastMessageText: '',
         lastMessageTime: 0,
         MAX_MESSAGES_PER_MINUTE: 10,
-        DUPLICATE_WINDOW_MS: 30000
+        // Double-tap protection ONLY. The text is recorded at VALIDATE time (before the
+        // send even runs), so a long window blocks legitimate retries after a failed
+        // send — 30s locked users out of a message that never actually sent.
+        DUPLICATE_WINDOW_MS: 3000
     };
+
+    // Forget the last recorded message so a retry after a FAILED send is never
+    // flagged as a duplicate. Senders call this from their failure path.
+    function clearLastMessage() {
+        rateLimitState.lastMessageText = '';
+        rateLimitState.lastMessageTime = 0;
+    }
 
     /**
      * Check text for profanity across all languages
@@ -1294,6 +1304,7 @@ window.ContentModeration = (function() {
         stripExif,
         processImage,
         checkRateLimit,
+        clearLastMessage,
         CHAR_LIMITS,
 
         // Phase 2

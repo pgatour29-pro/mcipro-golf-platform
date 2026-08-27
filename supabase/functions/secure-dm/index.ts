@@ -21,7 +21,7 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
 
   try {
-    const { action, user_id, recipient_id, message_text, limit } = await req.json();
+    const { action, user_id, recipient_id, message_text, message_id, limit } = await req.json();
 
     if (!user_id) return json({ error: "Missing user_id" }, 400, origin);
 
@@ -58,11 +58,14 @@ Deno.serve(async (req: Request) => {
       // Read specific conversation between two users
       if (!recipient_id) return json({ error: "Missing recipient_id" }, 400, origin);
 
+      // Descending + limit = the NEWEST N rows (the client re-sorts ascending for display).
+      // Ascending + limit returned the OLDEST N — once a thread outgrew the window, newly
+      // sent messages never appeared in it again.
       const { data, error } = await supabase
         .from("direct_messages")
         .select("*")
         .or(`and(sender_line_id.eq.${user_id},recipient_line_id.eq.${recipient_id}),and(sender_line_id.eq.${recipient_id},recipient_line_id.eq.${user_id})`)
-        .order("created_at", { ascending: true })
+        .order("created_at", { ascending: false })
         .limit(limit || 100);
 
       if (error) return json({ error: error.message }, 500, origin);
@@ -117,8 +120,8 @@ Deno.serve(async (req: Request) => {
       return json({ data }, 200, origin);
 
     } else if (action === "delete") {
-      // Delete — only allow deleting own messages
-      const { message_id } = await req.json().catch(() => ({}));
+      // Delete — only allow deleting own messages. (message_id comes from the ONE
+      // req.json() parse above — the body can't be read twice.)
       if (!message_id) return json({ error: "Missing message_id" }, 400, origin);
 
       // Verify ownership

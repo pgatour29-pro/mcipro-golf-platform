@@ -114719,26 +114719,38 @@ const MessagesSystem = {
         document.getElementById('msg-content-direct').classList.add('hidden');
         document.getElementById('conversation-view').classList.remove('hidden');
 
-        // Get partner profile
-        const { data: profile } = await window.SupabaseDB.client
+        // Header paints from the profile WITHOUT holding up the messages fetch —
+        // awaiting it here added a full round-trip of LOADING… before the thread.
+        const avEl = document.getElementById('conv-avatar');
+        avEl.src = '';
+        avEl.style.display = '';
+        document.getElementById('conv-name').textContent = '…';
+        document.getElementById('conv-subtitle').textContent = 'Direct Message';
+        window.SupabaseDB.client
             .from('user_profiles')
             .select('name, profile_data')
             .eq('line_user_id', partnerId)
-            .single();
-
-        const avEl = document.getElementById('conv-avatar');
-        avEl.src = profile?.profile_data?.linePictureUrl || profile?.profile_data?.pictureUrl || '';
-        avEl.style.display = '';
-        document.getElementById('conv-name').textContent = profile?.name || 'Unknown';
-        document.getElementById('conv-subtitle').textContent = 'Direct Message';
+            .single()
+            .then(({ data: profile }) => {
+                if (this.currentConversation?.type !== 'dm' || this.currentConversation?.id !== partnerId) return;
+                avEl.src = profile?.profile_data?.linePictureUrl || profile?.profile_data?.pictureUrl || '';
+                document.getElementById('conv-name').textContent = profile?.name || 'Unknown';
+            }, () => {});
 
         this._subscribeThread();
         await this.loadMessages();
     },
 
+    _msgSeq: 0,
     async loadMessages(markAsRead = true) {
         const container = document.getElementById('messages-container');
         if (!container || !this.currentConversation) return;
+        // Race guard: the 15s poll, the realtime refresh and the post-send reload all call
+        // this concurrently — only the NEWEST call may paint, else a stale response
+        // overwrites the thread and just-sent messages vanish until the next refresh.
+        const conv = this.currentConversation;
+        const seq = ++this._msgSeq;
+        const stale = () => seq !== this._msgSeq || this.currentConversation !== conv;
 
         const hadContent = !!container.querySelector('.scv3msg-msg');
         if (!hadContent) container.innerHTML = '<div class="scv3msg-loading">LOADING…</div>';
@@ -114760,15 +114772,6 @@ const MessagesSystem = {
                 if (error) throw error;
                 messages = data || [];
 
-                // Only mark as read if explicitly requested (not on auto-refresh)
-                if (markAsRead) {
-                    const hasUnread = messages.some(m => m.recipient_line_id === this.userLineId && !m.is_read);
-                    if (hasUnread) {
-                        await window.SecureDM.markRead(this.userLineId, partnerId);
-                        await this.refreshUnreadCounts();
-                    }
-                }
-
             } else if (this.currentConversation.type === 'event') {
                 const eventId = this.currentConversation.id;
                 const { data, error } = await window.SupabaseDB.client
@@ -114779,18 +114782,6 @@ const MessagesSystem = {
 
                 if (error) throw error;
                 messages = data || [];
-
-                // Only update read timestamp if explicitly requested (not on auto-refresh)
-                if (markAsRead) {
-                    await window.SupabaseDB.client
-                        .from('event_message_reads')
-                        .upsert({
-                            event_id: eventId,
-                            reader_line_id: this.userLineId,
-                            last_read_at: new Date().toISOString()
-                        }, { onConflict: 'event_id,reader_line_id' });
-                    await this.refreshUnreadCounts();
-                }
 
             } else if (this.currentConversation.type === 'group') {
                 const groupId = this.currentConversation.id;
@@ -114809,20 +114800,9 @@ const MessagesSystem = {
 
                 if (error) throw error;
                 messages = data || [];
-
-                // Only update read timestamp if explicitly requested (not on auto-refresh)
-                if (markAsRead) {
-                    await window.SupabaseDB.client
-                        .from('group_chat_reads')
-                        .upsert({
-                            group_id: groupId,
-                            reader_line_id: this.userLineId,
-                            last_read_at: new Date().toISOString()
-                        }, { onConflict: 'group_id,reader_line_id' });
-                    await this.refreshUnreadCounts();
-                }
             }
 
+            if (stale()) return;
             console.log('[MessagesSystem] Total messages to render:', messages.length);
             if (messages.length === 0) {
                 container.innerHTML = '<div class="scv3msg-empty">No messages yet. Start the conversation!</div>';
@@ -114839,6 +114819,8 @@ const MessagesSystem = {
                     .in('line_user_id', senderIds);
                 (profiles || []).forEach(p => profileMap[p.line_user_id] = p);
             }
+
+            if (stale()) return;
 
             // SCV3MSG bubbles (approved model): day dividers, glass/green bubbles,
             // mono meta with ✓ sent / ✓✓ read ticks.
@@ -114893,9 +114875,45 @@ const MessagesSystem = {
                 this.updateGroupReadReceipts(this.currentConversation.id);
             }
 
+            // Mark-read runs AFTER the paint, fire-and-forget — the badge recount must
+            // never hold up showing the thread.
+            if (markAsRead) this._markConversationRead(conv, messages);
+
         } catch (err) {
             console.error('[MessagesSystem] Error loading messages:', err);
-            container.innerHTML = '<div class="scv3msg-empty">Failed to load messages</div>';
+            if (!stale()) container.innerHTML = '<div class="scv3msg-empty">Failed to load messages</div>';
+        }
+    },
+
+    // Persist read-state for an open conversation, then refresh badges. Called after the
+    // thread renders; opening a chat used to block on this whole chain before painting.
+    async _markConversationRead(conv, messages) {
+        try {
+            if (conv.type === 'dm') {
+                const hasUnread = messages.some(m => m.recipient_line_id === this.userLineId && !m.is_read);
+                if (!hasUnread) return;
+                await window.SecureDM.markRead(this.userLineId, conv.id);
+            } else if (conv.type === 'event') {
+                await window.SupabaseDB.client
+                    .from('event_message_reads')
+                    .upsert({
+                        event_id: conv.id,
+                        reader_line_id: this.userLineId,
+                        last_read_at: new Date().toISOString()
+                    }, { onConflict: 'event_id,reader_line_id' });
+            } else if (conv.type === 'group') {
+                await window.SupabaseDB.client
+                    .from('group_chat_reads')
+                    .upsert({
+                        group_id: conv.id,
+                        reader_line_id: this.userLineId,
+                        last_read_at: new Date().toISOString()
+                    }, { onConflict: 'group_id,reader_line_id' });
+            }
+            await this.refreshUnreadCounts();
+            this.updateBadge();
+        } catch (err) {
+            console.warn('[MessagesSystem] mark-read error:', err);
         }
     },
 
@@ -114947,7 +114965,11 @@ const MessagesSystem = {
         });
     },
 
+    _sending: false,
     async sendMessage() {
+        // In-flight guard: a second tap (or Enter repeat) while the edge fn round-trip is
+        // pending must not fire a second send.
+        if (this._sending) return;
         const input = document.getElementById('message-input');
         const text = input?.value?.trim();
         if (!text || !this.currentConversation) return;
@@ -114985,6 +115007,7 @@ const MessagesSystem = {
             container.scrollTop = container.scrollHeight;
         }
 
+        this._sending = true;
         try {
             let result;
             if (this.currentConversation.type === 'dm') {
@@ -115044,6 +115067,8 @@ const MessagesSystem = {
             input.value = text;
             NotificationManager.show('Failed to send message', 'error');
             alert('Message failed to send — check your connection and try again.');
+        } finally {
+            this._sending = false;
         }
     },
 
@@ -115531,78 +115556,81 @@ const MessagesSystem = {
     },
 
     // ========== UNREAD COUNTS & BADGE ==========
+    _refreshingCounts: false,
     async refreshUnreadCounts() {
+        // Overlap guard: the 15s poll, the dm_badge realtime callback and every mark-read
+        // path all call this — on a slow connection cycles must not stack.
+        if (this._refreshingCounts) return;
+        this._refreshingCounts = true;
         try {
-            // Count unread announcements
-            let announcementCount = 0;
-            if (this.mySocieties.length > 0) {
+            const countAnnouncements = async () => {
+                if (this.mySocieties.length === 0) return 0;
                 const societyIds = this.mySocieties.map(s => s.id);
-                const { data: allAnnouncements } = await window.SupabaseDB.client
-                    .from('announcements')
-                    .select('id')
-                    .in('society_id', societyIds);
-
-                const { data: readAnnouncements } = await window.SupabaseDB.client
-                    .from('announcement_reads')
-                    .select('announcement_id')
-                    .eq('reader_line_id', this.userLineId);
-
+                const [{ data: allAnnouncements }, { data: readAnnouncements }] = await Promise.all([
+                    window.SupabaseDB.client
+                        .from('announcements')
+                        .select('id')
+                        .in('society_id', societyIds),
+                    window.SupabaseDB.client
+                        .from('announcement_reads')
+                        .select('announcement_id')
+                        .eq('reader_line_id', this.userLineId)
+                ]);
                 const readIds = new Set((readAnnouncements || []).map(r => r.announcement_id));
-                announcementCount = (allAnnouncements || []).filter(a => !readIds.has(a.id)).length;
-            }
+                return (allAnnouncements || []).filter(a => !readIds.has(a.id)).length;
+            };
 
-            // Count unread DMs via secure Edge Function
-            const unreadResult = await window.SecureDM.unreadCount(this.userLineId);
-            const dmCount = unreadResult.count || 0;
+            const countDms = async () => {
+                const unreadResult = await window.SecureDM.unreadCount(this.userLineId);
+                return unreadResult.count || 0;
+            };
 
-            // Count unread event messages (simplified - just check if any newer than last read)
-            let eventCount = 0;
-            // This is complex, skip for now - can be implemented later
-
-            // Count unread group messages
-            let groupCount = 0;
-            try {
-                // Get groups user is member of
+            const countGroups = async () => {
                 const { data: myGroups } = await window.SupabaseDB.client
                     .from('group_chat_members')
                     .select('group_id')
                     .eq('member_line_id', this.userLineId);
+                if (!myGroups || myGroups.length === 0) return 0;
+                const groupIds = myGroups.map(g => g.group_id);
 
-                if (myGroups && myGroups.length > 0) {
-                    const groupIds = myGroups.map(g => g.group_id);
+                const { data: lastReads } = await window.SupabaseDB.client
+                    .from('group_chat_reads')
+                    .select('group_id, last_read_at')
+                    .eq('reader_line_id', this.userLineId)
+                    .in('group_id', groupIds);
 
-                    // Get last read times for each group
-                    const { data: lastReads } = await window.SupabaseDB.client
-                        .from('group_chat_reads')
-                        .select('group_id, last_read_at')
-                        .eq('reader_line_id', this.userLineId)
-                        .in('group_id', groupIds);
+                const lastReadMap = {};
+                (lastReads || []).forEach(r => {
+                    lastReadMap[r.group_id] = r.last_read_at;
+                });
 
-                    const lastReadMap = {};
-                    (lastReads || []).forEach(r => {
-                        lastReadMap[r.group_id] = r.last_read_at;
-                    });
-
-                    // Count messages newer than last read in each group
-                    for (const groupId of groupIds) {
-                        const lastRead = lastReadMap[groupId];
-                        let query = window.SupabaseDB.client
-                            .from('group_chat_messages')
-                            .select('*', { count: 'exact', head: true })
-                            .eq('group_id', groupId)
-                            .neq('sender_line_id', this.userLineId);
-
-                        if (lastRead) {
-                            query = query.gt('created_at', lastRead);
-                        }
-
-                        const { count } = await query;
-                        groupCount += (count || 0);
+                // Per-group counts in PARALLEL — the old sequential for-loop was
+                // groupCount round-trips back to back (14 groups = seconds per cycle)
+                const counts = await Promise.all(groupIds.map(groupId => {
+                    let query = window.SupabaseDB.client
+                        .from('group_chat_messages')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('group_id', groupId)
+                        .neq('sender_line_id', this.userLineId);
+                    if (lastReadMap[groupId]) {
+                        query = query.gt('created_at', lastReadMap[groupId]);
                     }
-                }
-            } catch (err) {
-                console.warn('[MessagesSystem] Error counting group unread:', err);
-            }
+                    return query.then(({ count }) => count || 0, () => 0);
+                }));
+                return counts.reduce((a, b) => a + b, 0);
+            };
+
+            // Count unread event messages (simplified - just check if any newer than last read)
+            const eventCount = 0; // This is complex, skip for now - can be implemented later
+
+            const [announcementCount, dmCount, groupCount] = await Promise.all([
+                countAnnouncements().catch(() => 0),
+                countDms().catch(() => 0),
+                countGroups().catch(err => {
+                    console.warn('[MessagesSystem] Error counting group unread:', err);
+                    return 0;
+                })
+            ]);
 
             this.unreadCounts = {
                 announcements: announcementCount || 0,
@@ -115617,6 +115645,8 @@ const MessagesSystem = {
 
         } catch (err) {
             console.error('[MessagesSystem] Error refreshing unread counts:', err);
+        } finally {
+            this._refreshingCounts = false;
         }
     },
 
@@ -115884,17 +115914,20 @@ const MessagesSystem = {
         gAv.style.display = '';
         document.getElementById('conv-name').textContent = groupName;
 
-        // Get member count
-        const { count } = await window.SupabaseDB.client
+        // Member count fills in async — don't hold up the messages fetch for it
+        document.getElementById('conv-subtitle').textContent = '';
+        window.SupabaseDB.client
             .from('group_chat_members')
             .select('*', { count: 'exact', head: true })
-            .eq('group_id', groupId);
-        document.getElementById('conv-subtitle').textContent = `${count || 0} members`;
+            .eq('group_id', groupId)
+            .then(({ count }) => {
+                if (this.currentConversation?.type !== 'group' || this.currentConversation?.id !== groupId) return;
+                document.getElementById('conv-subtitle').textContent = `${count || 0} members`;
+            }, () => {});
 
         // Load messages (markAsRead = true marks as read and refreshes counts)
         this._subscribeThread();
         await this.loadMessages();
-        this.updateBadge();
     },
 
     // ========== CREATE GROUP MODAL ==========

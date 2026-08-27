@@ -117339,11 +117339,12 @@ const ManagerComms = {
                     <div>
                         <label class="form-label">Recipients</label>
                         <select id="broadcast-recipients" class="form-select">
-                            <option value="all-staff">All Staff</option>
-                            <option value="caddies">Caddies Only</option>
-                            <option value="proshop">Pro Shop Only</option>
-                            <option value="maintenance">Maintenance Only</option>
-                            <option value="all-golfers">All Golfers (Course-wide)</option>
+                            <!-- Only audiences that actually have reachable accounts today.
+                                 Pro Shop / Maintenance return when staff registration exists
+                                 (see project_line_staff_auth: no staff signup entry yet). -->
+                            <option value="all-staff">All Staff (Caddy Room)</option>
+                            <option value="caddies">Caddies (Caddy Room)</option>
+                            <option value="all-golfers">All Golfers (LINE-connected)</option>
                         </select>
                     </div>
                     <div>
@@ -117368,18 +117369,77 @@ const ManagerComms = {
         document.body.appendChild(modal);
     },
 
+    // REAL broadcast (was a stub that toasted success and sent NOTHING).
+    // Staff/caddies → ONE Caddy Room post (existing realtime channel + badges reach every
+    // caddie + the caddy master). All-golfers → dashboard-inbox DM via SecureDM (+ LINE
+    // push for connected users) to profiles with REAL U… ids only — a DM row stored for a
+    // placeholder import id can never be read, so it is noise, not delivery.
     async sendBroadcast() {
+        if (this._broadcastSending) return;
         const recipients = document.getElementById('broadcast-recipients')?.value;
         const priority = document.getElementById('broadcast-priority')?.value;
-        const message = document.getElementById('broadcast-message')?.value;
+        const message = document.getElementById('broadcast-message')?.value?.trim();
 
-        if (!message?.trim()) {
-            NotificationManager.show('Please enter a message', 'error');
+        if (!message) {
+            alert('Please enter a message.');
             return;
         }
 
-        NotificationManager.show(`Broadcast sent to ${recipients}`, 'success');
-        document.getElementById('broadcast-modal')?.remove();
+        const prefix = priority === 'urgent' ? '🔴 URGENT — ' : priority === 'important' ? '🟠 IMPORTANT — ' : '';
+        const text = prefix + message;
+        const user = (window.AppState && AppState.currentUser) || {};
+        const senderId = user.lineUserId || '';
+        const senderName = user.name || user.displayName || 'Manager';
+        const sb = window.SupabaseDB?.client;
+        if (!sb) { alert('Not connected — try again in a moment.'); return; }
+
+        this._broadcastSending = true;
+        try {
+            const summary = [];
+
+            if (recipients === 'caddies' || recipients === 'all-staff') {
+                const { error } = await sb.from('caddy_room_messages').insert({
+                    sender_user_id: senderId || 'MANAGER',
+                    sender_name: senderName + ' (Manager)',
+                    sender_role: 'manager',
+                    message: text
+                });
+                if (error) throw new Error('Caddy Room post failed: ' + error.message);
+                summary.push('Caddy Room');
+            }
+
+            if (recipients === 'all-golfers') {
+                if (!senderId.startsWith('U')) {
+                    throw new Error('Golfer broadcasts need a LINE-logged-in manager session (PIN sessions cannot sign messages).');
+                }
+                const { data: golfers, error: gErr } = await sb
+                    .from('user_profiles')
+                    .select('line_user_id')
+                    .eq('role', 'golfer')
+                    .like('line_user_id', 'U%');
+                if (gErr) throw gErr;
+                const ids = (golfers || []).map(g => g.line_user_id).filter(id => id && id !== senderId);
+                if (!ids.length) throw new Error('No LINE-connected golfers found.');
+                let ok = 0, fail = 0;
+                const CHUNK = 5;
+                for (let i = 0; i < ids.length; i += CHUNK) {
+                    const results = await Promise.all(ids.slice(i, i + CHUNK).map(id =>
+                        window.SecureDM.send(senderId, id, text).then(r => !(r && r.error), () => false)
+                    ));
+                    results.forEach(o => o ? ok++ : fail++);
+                }
+                if (ok === 0) throw new Error('All golfer sends failed.');
+                summary.push(ok + ' golfer inboxes' + (fail ? ' (' + fail + ' failed)' : ''));
+            }
+
+            document.getElementById('broadcast-modal')?.remove();
+            alert('Broadcast delivered: ' + summary.join(' + ') + '.');
+        } catch (err) {
+            console.error('[ManagerComms] Broadcast error:', err);
+            alert('Broadcast failed — your text is still in the box.\n' + (err.message || err));
+        } finally {
+            this._broadcastSending = false;
+        }
     },
 
     openDeptChat(dept) {

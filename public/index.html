@@ -9048,6 +9048,8 @@
                 'lgv2.demo': '2-MIN DEMO',
                 'lgv2.demo.long': 'WATCH THE 2-MIN DEMO — GOLF COURSE PARTNERS',
                 'lgv2.shareqr': 'SHARE — QR CODE',
+                'lgv2.install.android': 'INSTALL APP — ANDROID',
+                'lgv2.install.iphone': 'INSTALL APP — IPHONE',
                 'lgv2.continue.line': 'Continue with LINE',
                 'lgv2.biometrics': 'Biometrics',
                 'lgv2.createaccount': 'New here? Create account',
@@ -11177,6 +11179,8 @@
                 'lgv2.demo': 'เดโม 2 นาที',
                 'lgv2.demo.long': 'ชมเดโม 2 นาที — พาร์ทเนอร์สนามกอล์ฟ',
                 'lgv2.shareqr': 'แชร์ — QR CODE',
+                'lgv2.install.android': 'ติดตั้งแอป — ANDROID',
+                'lgv2.install.iphone': 'ติดตั้งแอป — IPHONE',
                 'lgv2.continue.line': 'เข้าสู่ระบบด้วย LINE',
                 'lgv2.biometrics': 'ไบโอเมตริก',
                 'lgv2.createaccount': 'ผู้ใช้ใหม่? สร้างบัญชี',
@@ -13185,6 +13189,8 @@
                 'lgv2.demo': '2분 데모',
                 'lgv2.demo.long': '2분 데모 보기 — 골프장 파트너',
                 'lgv2.shareqr': '공유 — QR 코드',
+                'lgv2.install.android': '앱 설치 — 안드로이드',
+                'lgv2.install.iphone': '앱 설치 — 아이폰',
                 'lgv2.continue.line': 'LINE으로 계속하기',
                 'lgv2.biometrics': '생체 인식',
                 'lgv2.createaccount': '처음이신가요? 계정 만들기',
@@ -15367,6 +15373,8 @@
                 'lgv2.demo': '2分デモ',
                 'lgv2.demo.long': '2分デモを見る — ゴルフ場パートナー',
                 'lgv2.shareqr': '共有 — QRコード',
+                'lgv2.install.android': 'インストール — Android',
+                'lgv2.install.iphone': 'インストール — iPhone',
                 'lgv2.continue.line': 'LINEで続ける',
                 'lgv2.biometrics': '生体認証',
                 'lgv2.createaccount': 'はじめての方? アカウント作成',
@@ -45727,6 +45735,12 @@ document.addEventListener('DOMContentLoaded', function() {
         @media (max-height:700px){
           #loginScreen .lgv2-brand{margin-top:18px;}
           #loginScreen .lgv2-stats{margin-top:12px;}
+          /* 5-chip stack must clear the dock on short screens — compact rows, start higher */
+          #loginScreen .lgv2-chips{top:42%; gap:6px;}
+          #loginScreen .lgv2-demochip{padding:5px 10px 5px 5px;}
+          #loginScreen .lgv2-demochip .p{width:20px; height:20px;}
+          #loginScreen .lgv2-demochip .p .material-symbols-outlined{font-size:12px;}
+          #loginScreen .lgv2-demochip .lbl{font-size:8.5px;}
         }
         </style>
         <div class="lgv2-root">
@@ -45802,6 +45816,14 @@ document.addEventListener('DOMContentLoaded', function() {
                         <button class="lgv2-demochip" onclick="showShareQrModal()">
                             <div class="p"><span class="material-symbols-outlined">qr_code_2</span></div>
                             <span class="lbl" data-i18n="lgv2.shareqr">SHARE — QR CODE</span>
+                        </button>
+                        <button class="lgv2-demochip" onclick="showInstallAppModal('android')">
+                            <div class="p"><span class="material-symbols-outlined">android</span></div>
+                            <span class="lbl" data-i18n="lgv2.install.android">INSTALL APP — ANDROID</span>
+                        </button>
+                        <button class="lgv2-demochip" onclick="showInstallAppModal('iphone')">
+                            <div class="p"><span class="material-symbols-outlined">phone_iphone</span></div>
+                            <span class="lbl" data-i18n="lgv2.install.iphone">INSTALL APP — IPHONE</span>
                         </button>
                     </div>
                 </div>
@@ -46131,7 +46153,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
             <div id="installModalContent" class="p-6 overflow-y-auto flex-1 min-h-0">
-                <!-- One-tap install button (shown when browser prompt available) -->
+                <!-- Platform toggle — preselected by the login chip tapped (or device auto-detect) -->
+                <div class="flex gap-1 mb-5 bg-gray-100 rounded-xl p-1">
+                    <button id="instTabAndroid" onclick="window._instSelectPlatform('android')" class="flex-1 py-2.5 rounded-lg font-bold text-sm flex items-center justify-center gap-1.5 transition-colors">
+                        <span class="material-symbols-outlined" style="font-size:18px;">android</span><span>Android</span>
+                    </button>
+                    <button id="instTabIphone" onclick="window._instSelectPlatform('iphone')" class="flex-1 py-2.5 rounded-lg font-bold text-sm flex items-center justify-center gap-1.5 transition-colors">
+                        <span class="material-symbols-outlined" style="font-size:18px;">phone_iphone</span><span>iPhone</span>
+                    </button>
+                </div>
+
+                <!-- One-tap install button (Android tab, when the browser prompt is available) -->
                 <div id="installModalOneTap" style="display: none;" class="mb-6">
                     <button onclick="window.MciProInstall && window.MciProInstall.trigger()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center space-x-2 transition-all shadow-lg text-lg">
                         <span class="material-symbols-outlined">download</span>
@@ -46139,50 +46171,42 @@ document.addEventListener('DOMContentLoaded', function() {
                     </button>
                 </div>
 
-                <!-- QR: scan with another phone's camera to open & install -->
-                <div class="mb-6 text-center">
+                <div id="instSecAndroid">
+                    <ol id="androidSteps" class="text-sm text-gray-700 space-y-2 ml-6 list-decimal">
+                    </ol>
+                </div>
+                <div id="instSecIphone">
+                    <ol id="iphoneSteps" class="text-sm text-gray-700 space-y-2 ml-6 list-decimal">
+                    </ol>
+                </div>
+
+                <!-- QR: secondary — lets a desktop visitor open the site on their phone -->
+                <hr class="border-gray-200 my-6">
+                <div class="text-center">
                     <div class="inline-block bg-white border-2 border-green-200 rounded-2xl p-3 shadow-sm">
                         <img src="mycaddipro-qr.png?v=20260625" alt="Scan to open MyCaddiPro" style="display:block;width:190px;height:190px;" />
                     </div>
                     <p id="installQrCaption" class="mt-3 text-sm font-semibold text-gray-800">Scan with your phone camera</p>
                     <p id="installQrSub" class="text-xs text-gray-500">Opens in your browser — then install</p>
                 </div>
-                <hr class="border-gray-200 mb-6">
-
-                <div class="space-y-6">
-                    <div>
-                        <h3 class="font-bold text-gray-900 mb-3 flex items-center space-x-2">
-                            <span class="material-symbols-outlined text-green-600">android</span>
-                            <span>Android (Chrome)</span>
-                        </h3>
-                        <ol id="androidSteps" class="text-sm text-gray-700 space-y-2 ml-6 list-decimal">
-                        </ol>
-                    </div>
-                    <hr class="border-gray-200">
-                    <div>
-                        <h3 class="font-bold text-gray-900 mb-3 flex items-center space-x-2">
-                            <span class="material-symbols-outlined text-gray-600">phone_iphone</span>
-                            <span>iPhone (Safari)</span>
-                        </h3>
-                        <ol id="iphoneSteps" class="text-sm text-gray-700 space-y-2 ml-6 list-decimal">
-                        </ol>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
 
     <script>
-    window.showInstallAppModal = function() {
+    window.showInstallAppModal = function(platform) {
         // The login .screen uses a CSS transform, which traps this position:fixed modal and shoves
         // it off-screen. Move it to <body> so it positions relative to the viewport (same fix the
         // promo video modal uses). Idempotent — only moves once.
         const _instModal = document.getElementById('installAppModal');
         if (_instModal && _instModal.parentElement !== document.body) document.body.appendChild(_instModal);
 
-        // If browser has native install prompt, try that first
-        if (window.MciProInstall && window.MciProInstall.hasPrompt()) {
-            document.getElementById('installModalOneTap').style.display = 'block';
+        // The login chips pass the platform explicitly; other callers (Create-account sheet)
+        // auto-detect the device. iPadOS Safari reports MacIntel + multi-touch, not "iPad".
+        if (platform !== 'android' && platform !== 'iphone') {
+            const _ua = navigator.userAgent || '';
+            const _isiOS = /iPhone|iPad|iPod/.test(_ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            platform = _isiOS ? 'iphone' : 'android';
         }
 
         // Translate install modal based on current language
@@ -46266,7 +46290,25 @@ document.addEventListener('DOMContentLoaded', function() {
         const _qrCap = document.getElementById('installQrCaption'); if (_qrCap && txt.qr) _qrCap.textContent = txt.qr;
         const _qrSub = document.getElementById('installQrSub'); if (_qrSub && txt.qrSub) _qrSub.textContent = txt.qrSub;
 
+        window._instSelectPlatform(platform);
         document.getElementById('installAppModal').classList.remove('hidden');
+    };
+
+    // Android/iPhone toggle inside the install modal — shows one platform's steps at a time.
+    // The one-tap native install button only makes sense on the Android tab (iOS has no prompt).
+    window._instSelectPlatform = function(p) {
+        const and = (p === 'android');
+        document.getElementById('instSecAndroid').style.display = and ? '' : 'none';
+        document.getElementById('instSecIphone').style.display = and ? 'none' : '';
+        document.getElementById('installModalOneTap').style.display =
+            (and && window.MciProInstall && window.MciProInstall.hasPrompt()) ? 'block' : 'none';
+        [[document.getElementById('instTabAndroid'), and],
+         [document.getElementById('instTabIphone'), !and]].forEach(function(pair) {
+            pair[0].classList.toggle('bg-white', pair[1]);
+            pair[0].classList.toggle('shadow', pair[1]);
+            pair[0].classList.toggle('text-gray-900', pair[1]);
+            pair[0].classList.toggle('text-gray-500', !pair[1]);
+        });
     };
     </script>
 

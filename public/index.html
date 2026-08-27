@@ -5861,6 +5861,33 @@
         body.theme-light #golfer-messages .scv3msg-conv.unread { border-color:rgba(22,163,74,.4); }
         body.theme-light #golfer-messages .scv3msg-cname { color:#10151B; }
         body.theme-light #golfer-messages .scv3msg-ctime { color:#8A94A0; }
+        /* IRMA — in-round message alert: banner + reply popup over live scoring.
+           Solid colors on purpose — must read on both the light and TRADV-dark round UIs. */
+        #irmaBanner { position:fixed; top:64px; left:50%; transform:translateX(-50%); z-index:11500;
+            display:flex; align-items:center; gap:10px; max-width:min(94vw,420px);
+            background:#0c3b22; color:#fff; border:1px solid rgba(74,222,128,.5); border-radius:999px;
+            padding:8px 8px 8px 14px; box-shadow:0 8px 24px rgba(0,0,0,.35); }
+        #irmaBanner.hidden { display:none; }
+        #irmaBanner .irma-txt { flex:1; min-width:0; font:500 12px/1.35 'Instrument Sans',sans-serif; overflow:hidden; }
+        #irmaBanner .irma-who { font:700 10px/1 'JetBrains Mono',monospace; letter-spacing:.08em; color:#4ade80; text-transform:uppercase; display:block; margin-bottom:2px; }
+        #irmaBanner .irma-prev { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:48vw; }
+        #irmaBanner button { border:none; cursor:pointer; border-radius:999px; font:700 11px/1 'JetBrains Mono',monospace; letter-spacing:.06em; flex-shrink:0; }
+        #irmaBanner .irma-view { background:#16a34a; color:#fff; padding:9px 14px; }
+        #irmaBanner .irma-x { background:rgba(255,255,255,.12); color:#fff; width:32px; height:32px; display:flex; align-items:center; justify-content:center; }
+        #irmaPopup { position:fixed; inset:0; z-index:11600; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(5,10,8,.55); }
+        #irmaPopup.hidden { display:none; }
+        #irmaPopup .irma-card { display:flex; flex-direction:column; width:100%; max-width:360px; max-height:72vh; background:#fff; border-radius:18px; overflow:hidden; box-shadow:0 16px 48px rgba(0,0,0,.4); }
+        #irmaPopup .irma-head { display:flex; align-items:center; gap:10px; padding:12px 14px; background:#0c3b22; color:#fff; flex-shrink:0; }
+        #irmaPopup .irma-head .n { flex:1; min-width:0; font:700 14px/1.2 'Instrument Sans',sans-serif; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        #irmaPopup .irma-head button { background:rgba(255,255,255,.15); border:none; color:#fff; width:30px; height:30px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+        #irmaPopup .irma-body { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px; background:#f1f5f9; }
+        #irmaPopup .irma-m { max-width:80%; margin-bottom:8px; padding:8px 12px; border-radius:14px; font:400 13px/1.4 'Instrument Sans',sans-serif; overflow-wrap:break-word; }
+        #irmaPopup .irma-m.them { background:#fff; color:#111827; border:1px solid #e2e8f0; margin-right:auto; }
+        #irmaPopup .irma-m.me { background:#16a34a; color:#fff; margin-left:auto; }
+        #irmaPopup .irma-m.pending { opacity:.6; }
+        #irmaPopup .irma-foot { display:flex; gap:8px; padding:10px 12px; border-top:1px solid #e2e8f0; background:#fff; flex-shrink:0; }
+        #irmaPopup .irma-foot input { flex:1; min-width:0; border:1px solid #cbd5e1; border-radius:999px; padding:9px 14px; font:400 14px/1.2 'Instrument Sans',sans-serif; color:#111827; background:#fff; }
+        #irmaPopup .irma-foot button { background:#16a34a; border:none; color:#fff; width:40px; height:40px; border-radius:50%; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
         /* announcement cards */
         #golfer-messages .scv3msg-ann { position:relative; overflow:hidden; cursor:pointer;
             background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:14px 14px 12px; margin-bottom:8px; }
@@ -114150,7 +114177,9 @@ const MessagesSystem = {
             if (this._unreadChannel) { try { sb.removeChannel(this._unreadChannel); } catch (e) {} this._unreadChannel = null; }
             var self = this;
             this._unreadChannel = sb.channel('dm_badge_' + this.userLineId)
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages', filter: 'recipient_line_id=eq.' + this.userLineId }, function(){
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages', filter: 'recipient_line_id=eq.' + this.userLineId }, function(p){
+                    // Mid-round: surface the DM as an in-scoring banner/popup (IRMA)
+                    try { if (window.InRoundMsgAlert) InRoundMsgAlert.onIncoming(p && p.new); } catch (e) {}
                     self.refreshUnreadCounts().then(function(){ self.updateBadge(); }).catch(function(){});
                     // SCV3MSG live list: a new DM moves its conversation up with the fresh preview
                     try {
@@ -116238,6 +116267,147 @@ const MessagesSystem = {
 
 // Make globally available
 window.MessagesSystem = MessagesSystem;
+
+// ===== IRMA — In-Round Message Alert =====
+// New DM while the golfer is mid-round on the scorecard tab → dismissible banner; VIEW opens
+// a reply popup WITHOUT leaving live scoring. Purely additive UI over the scoring page —
+// never touches the scoring engine. Everywhere else the normal Messages badge behavior runs.
+window.InRoundMsgAlert = {
+    _sender: null, _senderName: '', _popupFor: null, _seq: 0, _sending: false,
+
+    _me() {
+        return (window.MessagesSystem && MessagesSystem.userLineId) ||
+               (window.AppState && AppState.currentUser && AppState.currentUser.lineUserId) || null;
+    },
+    _esc(s) { return (window.MessagesSystem ? MessagesSystem.escapeHtml(s || '') : String(s || '')); },
+    _inRound() {
+        try {
+            var gd = document.getElementById('golferDashboard');
+            if (!gd || !gd.classList.contains('round-active')) return false;
+            var sc = document.getElementById('golfer-scorecard');
+            return !!(sc && sc.classList.contains('active'));
+        } catch (e) { return false; }
+    },
+
+    _ensureDom() {
+        if (!document.getElementById('irmaBanner')) {
+            var b = document.createElement('div');
+            b.id = 'irmaBanner'; b.className = 'hidden';
+            b.innerHTML = '<div class="irma-txt"><span class="irma-who" id="irmaWho"></span><span class="irma-prev" id="irmaPrev"></span></div>' +
+                '<button class="irma-view" onclick="InRoundMsgAlert.openPopup()">VIEW</button>' +
+                '<button class="irma-x" onclick="InRoundMsgAlert.dismiss()"><span class="material-symbols-outlined" style="font-size:18px;">close</span></button>';
+            document.body.appendChild(b);
+        }
+        if (!document.getElementById('irmaPopup')) {
+            var p = document.createElement('div');
+            p.id = 'irmaPopup'; p.className = 'hidden';
+            p.innerHTML = '<div class="irma-card">' +
+                '<div class="irma-head"><div class="n" id="irmaName"></div>' +
+                '<button onclick="InRoundMsgAlert.closePopup()"><span class="material-symbols-outlined" style="font-size:18px;">close</span></button></div>' +
+                '<div class="irma-body" id="irmaBody"></div>' +
+                '<div class="irma-foot"><input id="irmaInput" placeholder="Reply…" onkeypress="if(event.key===\'Enter\') InRoundMsgAlert.send()">' +
+                '<button onclick="InRoundMsgAlert.send()"><span class="material-symbols-outlined" style="font-size:18px;">send</span></button></div></div>';
+            document.body.appendChild(p);
+        }
+    },
+
+    async _senderNameFor(id) {
+        try {
+            var res = await window.SupabaseDB.client.from('user_profiles').select('name').eq('line_user_id', id).single();
+            return (res.data && res.data.name) || 'New message';
+        } catch (e) { return 'New message'; }
+    },
+
+    async onIncoming(rec) {
+        try {
+            if (!rec || !rec.sender_line_id || !this._inRound()) return;
+            var me = this._me();
+            if (rec.recipient_line_id && me && rec.recipient_line_id !== me) return;
+            // popup already open on this sender → live-update the thread instead of a banner
+            if (this._popupFor === rec.sender_line_id) { this._loadThread(); return; }
+            this._sender = rec.sender_line_id;
+            this._senderName = await this._senderNameFor(rec.sender_line_id);
+            this._ensureDom();
+            document.getElementById('irmaWho').textContent = this._senderName;
+            document.getElementById('irmaPrev').textContent = rec.message_text || 'New message';
+            document.getElementById('irmaBanner').classList.remove('hidden');
+        } catch (e) { console.warn('[IRMA] onIncoming', e); }
+    },
+
+    dismiss() { var b = document.getElementById('irmaBanner'); if (b) b.classList.add('hidden'); },
+
+    openPopup() {
+        if (!this._sender) return;
+        this._ensureDom();
+        this.dismiss();
+        this._popupFor = this._sender;
+        document.getElementById('irmaName').textContent = this._senderName;
+        document.getElementById('irmaBody').innerHTML = '<div style="text-align:center;color:#94a3b8;font:500 11px/1 \'JetBrains Mono\',monospace;padding:20px 0;">LOADING…</div>';
+        document.getElementById('irmaPopup').classList.remove('hidden');
+        this._loadThread();
+    },
+
+    closePopup() {
+        this._popupFor = null;
+        var p = document.getElementById('irmaPopup'); if (p) p.classList.add('hidden');
+    },
+
+    async _loadThread() {
+        var me = this._me(), partner = this._popupFor;
+        if (!me || !partner) return;
+        var seq = ++this._seq;
+        try {
+            var r = await window.SecureDM.readConversation(me, partner, 30);
+            if (seq !== this._seq || this._popupFor !== partner) return; // stale response — newer load owns the DOM
+            var msgs = (r.data || []).slice().sort(function (a, b) { return new Date(a.created_at) - new Date(b.created_at); });
+            var body = document.getElementById('irmaBody'); if (!body) return;
+            var self = this;
+            body.innerHTML = msgs.length ? msgs.map(function (m) {
+                return '<div class="irma-m ' + (m.sender_line_id === me ? 'me' : 'them') + '">' + self._esc(m.message_text) + '</div>';
+            }).join('') : '<div style="text-align:center;color:#94a3b8;font:400 12px/1.4 sans-serif;padding:20px 0;">No messages yet</div>';
+            body.scrollTop = body.scrollHeight;
+            // mark read in the background — badge math must never hold up the popup
+            window.SecureDM.markRead(me, partner).then(function () {
+                if (window.MessagesSystem) MessagesSystem.refreshUnreadCounts().then(function () { MessagesSystem.updateBadge(); }).catch(function () {});
+            }).catch(function () {});
+        } catch (e) { console.warn('[IRMA] loadThread', e); }
+    },
+
+    async send() {
+        if (this._sending) return;
+        var me = this._me(), partner = this._popupFor;
+        var inp = document.getElementById('irmaInput');
+        if (!me || !partner || !inp) return;
+        var txt = inp.value.trim(); if (!txt) return;
+        if (window.ContentModeration) {
+            var check = ContentModeration.validateChatMessage(txt);
+            if (!check.valid) { alert(check.error); return; }
+        }
+        inp.value = '';
+        var body = document.getElementById('irmaBody');
+        var pend = null;
+        if (body) {
+            pend = document.createElement('div');
+            pend.className = 'irma-m me pending';
+            pend.textContent = txt;
+            body.appendChild(pend);
+            body.scrollTop = body.scrollHeight;
+        }
+        this._sending = true;
+        try {
+            var r = await window.SecureDM.send(me, partner, txt);
+            if (r && r.error) throw new Error(r.error);
+            this._loadThread();
+        } catch (e) {
+            if (pend) pend.remove();
+            if (!inp.value.trim()) inp.value = txt;
+            try { if (window.ContentModeration && ContentModeration.clearLastMessage) ContentModeration.clearLastMessage(); } catch (e2) {}
+            alert('Message failed to send — try again.');
+        } finally {
+            this._sending = false;
+        }
+    }
+};
 console.log('[MessagesSystem] ✅ Module loaded');
 
 // ==================================================================

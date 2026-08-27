@@ -114654,10 +114654,14 @@ const MessagesSystem = {
         if (!container) return;
 
         container.innerHTML = '<div class="scv3msg-loading">LOADING…</div>';
+        // Stale-list guard: tab switches AND the dm_badge realtime callback both repaint
+        // this list — a slower stale response must not land over a fresher one.
+        const seq = this._listSeq = (this._listSeq || 0) + 1;
 
         try {
             // Get all DMs via secure Edge Function
             const dmResult = await window.SecureDM.readAll(this.userLineId, 200);
+            if (seq !== this._listSeq) return;
             const messages = dmResult.data || [];
             const error = dmResult.error ? { message: dmResult.error } : null;
 
@@ -114693,6 +114697,7 @@ const MessagesSystem = {
 
             const profileMap = {};
             (profiles || []).forEach(p => profileMap[p.line_user_id] = p);
+            if (seq !== this._listSeq) return;
 
             // Render conversations
             const sortedConvos = Object.values(conversations).sort((a, b) =>
@@ -114729,7 +114734,7 @@ const MessagesSystem = {
 
         } catch (err) {
             console.error('[MessagesSystem] Error loading conversations:', err);
-            container.innerHTML = `<div class="scv3msg-empty">Failed to load conversations</div>`;
+            if (seq === this._listSeq) container.innerHTML = `<div class="scv3msg-empty">Failed to load conversations</div>`;
         }
     },
 
@@ -115665,16 +115670,46 @@ const MessagesSystem = {
                 return counts.reduce((a, b) => a + b, 0);
             };
 
-            // Count unread event messages (simplified - just check if any newer than last read)
-            const eventCount = 0; // This is complex, skip for now - can be implemented later
+            // Unread event-chat messages — SAME semantics as the Events tab list
+            // (loadEventGroups): registered events from the last 7 days + future, messages
+            // from others newer than event_message_reads. Was hardcoded 0 — the Events chip
+            // never lit up, one more way the counts disagreed.
+            const countEvents = async () => {
+                const { data: regs } = await window.SupabaseDB.client
+                    .from('event_registrations')
+                    .select('event_id, society_events!inner(event_date)')
+                    .eq('player_id', this.userLineId)
+                    .gte('society_events.event_date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+                if (!regs || regs.length === 0) return 0;
+                const eventIds = regs.map(r => r.event_id);
+                const [{ data: evMsgs }, { data: evReads }] = await Promise.all([
+                    window.SupabaseDB.client
+                        .from('event_group_messages')
+                        .select('event_id, created_at')
+                        .in('event_id', eventIds)
+                        .neq('sender_line_id', this.userLineId),
+                    window.SupabaseDB.client
+                        .from('event_message_reads')
+                        .select('event_id, last_read_at')
+                        .eq('reader_line_id', this.userLineId)
+                        .in('event_id', eventIds)
+                ]);
+                const evReadMap = {};
+                (evReads || []).forEach(r => evReadMap[r.event_id] = new Date(r.last_read_at));
+                return (evMsgs || []).filter(m => {
+                    const lr = evReadMap[m.event_id];
+                    return !lr || new Date(m.created_at) > lr;
+                }).length;
+            };
 
-            const [announcementCount, dmCount, groupCount] = await Promise.all([
+            const [announcementCount, dmCount, groupCount, eventCount] = await Promise.all([
                 countAnnouncements().catch(() => 0),
                 countDms().catch(() => 0),
                 countGroups().catch(err => {
                     console.warn('[MessagesSystem] Error counting group unread:', err);
                     return 0;
-                })
+                }),
+                countEvents().catch(() => 0)
             ]);
 
             this.unreadCounts = {
@@ -118275,18 +118310,24 @@ const CaddyComms = {
     },
 
     async sendRoomMessage() {
+        if (this._roomSending) return; // double-tap = one row, not two fanned to every caddy
         const input = document.getElementById('cd-room-input');
         const text = input?.value?.trim();
         if (!text) return;
         const sb = window.SupabaseDB?.client;
         if (!sb) return;
         const me = this._ident();
-        const { data, error } = await sb.from('caddy_room_messages').insert({
-            sender_user_id: me.id, sender_name: me.name, sender_role: 'caddie', caddy_number: me.num, message: text
-        }).select().single();
-        if (error) { window.NotificationManager.show('Message failed to send', 'error'); return; }
-        input.value = '';
-        this._appendRoomMsg(data, true);
+        this._roomSending = true;
+        try {
+            const { data, error } = await sb.from('caddy_room_messages').insert({
+                sender_user_id: me.id, sender_name: me.name, sender_role: 'caddie', caddy_number: me.num, message: text
+            }).select().single();
+            if (error) { window.NotificationManager.show('Message failed to send', 'error'); return; }
+            input.value = '';
+            this._appendRoomMsg(data, true);
+        } finally {
+            this._roomSending = false;
+        }
     }
 };
 window.CaddyComms = CaddyComms;
@@ -118843,17 +118884,23 @@ const CaddyMasterData = {
     },
 
     async sendRoom() {
+        if (this._roomSending) return; // double-tap (Enter repeat) = one row, not two
         const input = document.getElementById('cm-room-input');
         const text = input?.value?.trim();
         if (!text) return;
         const sb = this._sb(); if (!sb) return;
         const me = this._me();
-        const { data, error } = await sb.from('caddy_room_messages')
-            .insert({ sender_user_id: me.id, sender_name: me.name, sender_role: 'caddymaster', message: text })
-            .select().single();
-        if (error) { window.NotificationManager.show('Message failed to send', 'error'); return; }
-        input.value = '';
-        this.appendRoom(data);
+        this._roomSending = true;
+        try {
+            const { data, error } = await sb.from('caddy_room_messages')
+                .insert({ sender_user_id: me.id, sender_name: me.name, sender_role: 'caddymaster', message: text })
+                .select().single();
+            if (error) { window.NotificationManager.show('Message failed to send', 'error'); return; }
+            input.value = '';
+            this.appendRoom(data);
+        } finally {
+            this._roomSending = false;
+        }
     },
 
     subscribeRealtime() {
@@ -131836,34 +131883,46 @@ const GolferEventRegManager = {
         if (eventDate) fullMessage += `📅 ${eventDate}\n`;
         fullMessage += `${'─'.repeat(30)}\n\n${messageText}`;
 
-        this.closeBroadcastModal();
+        // Modal stays OPEN until at least one push succeeds — closing first destroyed the
+        // organizer's text when every push failed. Double-fire guard; pushes go out in
+        // parallel chunks (the serial per-player loop took ~25s for a 60-player field).
+        if (this._broadcastSending) return;
+        this._broadcastSending = true;
         NotificationManager.show(`Sending to ${playerLineIds.length} players...`, 'info');
 
         let successCount = 0;
         let failCount = 0;
 
-        for (const lineUserId of playerLineIds) {
-            try {
-                const response = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        type: 'system_alert',
-                        recipient_id: lineUserId,
-                        message: fullMessage
-                    })
-                });
-                if (response.ok) successCount++;
-                else failCount++;
-            } catch (err) {
-                failCount++;
+        try {
+            const CHUNK = 5;
+            for (let i = 0; i < playerLineIds.length; i += CHUNK) {
+                const results = await Promise.all(playerLineIds.slice(i, i + CHUNK).map(async (lineUserId) => {
+                    try {
+                        const response = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                type: 'system_alert',
+                                recipient_id: lineUserId,
+                                message: fullMessage
+                            })
+                        });
+                        return response.ok;
+                    } catch (err) {
+                        return false;
+                    }
+                }));
+                results.forEach(ok => ok ? successCount++ : failCount++);
             }
+        } finally {
+            this._broadcastSending = false;
         }
 
         if (successCount > 0) {
+            this.closeBroadcastModal();
             alert(`Sent to ${successCount} players!${failCount > 0 ? ` (${failCount} failed)` : ''}`);
         } else {
-            alert('Failed to send message.');
+            alert('Failed to send message — your text is still in the box. Try again.');
         }
     },
 
@@ -142642,45 +142701,52 @@ const RegistrationsManager = {
         fullMessage += `${'─'.repeat(30)}\n\n`;
         fullMessage += messageText;
 
-        // Send to each player
+        // Modal stays OPEN until at least one push succeeds — closing first destroyed the
+        // organizer's text when every push failed. Double-fire guard; pushes go out in
+        // parallel chunks (the serial per-player loop took ~25s for a 60-player field).
+        if (this._broadcastSending) return;
+        this._broadcastSending = true;
+
         let successCount = 0;
         let failCount = 0;
-
-        this.closeBroadcastModal();
 
         // Show sending indicator
         if (typeof NotificationManager !== 'undefined') {
             NotificationManager.show(`Sending message to ${playerLineIds.length} players...`, 'info');
         }
 
-        for (const lineUserId of playerLineIds) {
-            try {
-                const response = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        type: 'system_alert',
-                        recipient_id: lineUserId,
-                        message: fullMessage
-                    })
-                });
-
-                if (response.ok) {
-                    successCount++;
-                } else {
-                    failCount++;
-                    console.warn(`[Broadcast] Failed to send to ${lineUserId}:`, await response.text());
-                }
-            } catch (err) {
-                failCount++;
-                console.error(`[Broadcast] Error sending to ${lineUserId}:`, err);
+        try {
+            const CHUNK = 5;
+            for (let i = 0; i < playerLineIds.length; i += CHUNK) {
+                const results = await Promise.all(playerLineIds.slice(i, i + CHUNK).map(async (lineUserId) => {
+                    try {
+                        const response = await fetch('https://pyeeplwsnupmhgbguwqs.supabase.co/functions/v1/line-push-notification', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                type: 'system_alert',
+                                recipient_id: lineUserId,
+                                message: fullMessage
+                            })
+                        });
+                        if (!response.ok) console.warn(`[Broadcast] Failed to send to ${lineUserId}:`, await response.text());
+                        return response.ok;
+                    } catch (err) {
+                        console.error(`[Broadcast] Error sending to ${lineUserId}:`, err);
+                        return false;
+                    }
+                }));
+                results.forEach(ok => ok ? successCount++ : failCount++);
             }
+        } finally {
+            this._broadcastSending = false;
         }
 
         if (successCount > 0) {
+            this.closeBroadcastModal();
             alert('Message sent to ' + successCount + ' players!' + (failCount > 0 ? '\n\nWARNING: ' + failCount + ' failed (may not have LINE linked)' : ''));
         } else {
-            alert('Failed to send message to any players.');
+            alert('Failed to send message to any players — your text is still in the box. Try again.');
         }
 
         console.log(`[Broadcast] Complete: ${successCount} success, ${failCount} failed`);
@@ -152694,7 +152760,7 @@ showOrganizerTab = function(tabName) {
     <!-- Professional Chat System Initialization -->
     <script type="module">
         // Import new chat system modules - Static timestamp for cache busting
-        import { initChat, subscribeGlobalMessages } from '/chat/chat-system-full.js?v=chfix1019';
+        import { initChat, subscribeGlobalMessages } from '/chat/chat-system-full.js?v=chfix1021';
         import { openOrCreateDM, updateUnreadBadge } from '/chat/chat-database-functions.js?v=3624a8df';
 
         // Initialize chat when chat button is clicked

@@ -209,7 +209,7 @@ async function limit(concurrency, tasks) {
   await Promise.all(starters);
 }
 
-function renderMessage(m, currentUserId) {
+function renderMessage(m, currentUserId, skipReceipt = false) {
   // Use provided userId instead of fetching for every message (HUGE mobile performance win!)
   const isSelf = m.sender_id === currentUserId;
 
@@ -253,8 +253,12 @@ function renderMessage(m, currentUserId) {
     readReceipt.textContent = '...'; // Placeholder while loading
     messageContainer.appendChild(readReceipt);
 
-    // Async load read count (don't block render)
-    loadReadReceiptForMessage(m.id, m.room_id, m.created_at, currentUserId);
+    // Async load read count (don't block render). Skipped during bulk render — openConversation
+    // fires a single (debounced) updateAllReadReceipts() after the whole fragment is appended,
+    // instead of ~100 parallel queries at open time.
+    if (!skipReceipt) {
+      loadReadReceiptForMessage(m.id, m.room_id, m.created_at, currentUserId);
+    }
   }
 
   wrapper.appendChild(messageContainer);
@@ -286,13 +290,27 @@ async function loadReadReceiptForMessage(messageId, roomId, createdAt, senderId)
 
 /**
  * Update all visible read receipts (called when someone reads messages)
+ * Trailing-debounced: fired on every read-receipt realtime event, so without this one member
+ * opening a big thread would detonate a burst of per-message count queries on every device.
+ * (Mirrors the scheduleUnreadBadgeUpdate debounce pattern.)
  */
-async function updateAllReadReceipts() {
+let _readReceiptTimer = null;
+function updateAllReadReceipts() {
+  if (_readReceiptTimer) return;
+  _readReceiptTimer = setTimeout(() => {
+    _readReceiptTimer = null;
+    try { _flushReadReceipts(); } catch (e) { /* best-effort */ }
+  }, 600);
+}
+
+async function _flushReadReceipts() {
   if (state.currentRoomType !== 'group' || !state.currentConversationId || !cachedUserId) {
     return;
   }
 
-  const readReceipts = document.querySelectorAll('.read-receipt');
+  // Cap: only repaint the last 30 receipts — older ones are off-screen and stale-tolerant, so
+  // processing every placeholder just multiplies queries (100-message thread = 100 queries).
+  const readReceipts = Array.from(document.querySelectorAll('.read-receipt')).slice(-30);
   for (const el of readReceipts) {
     const messageId = el.id.replace('read-receipt-', '');
     const msgWrapper = document.querySelector(`[data-mid="${messageId}"]`);
@@ -434,9 +452,11 @@ async function openConversation(conversationId) {
     const fragment = document.createDocumentFragment();
     initial.forEach(m => {
       rememberId(m.id); // Track with memory cap
-      fragment.appendChild(renderMessage(m, cachedUserId));
+      fragment.appendChild(renderMessage(m, cachedUserId, true)); // skip per-message receipt fan-out
     });
     listEl.appendChild(fragment);
+    // One debounced pass over the just-rendered own-messages instead of one query per message.
+    updateAllReadReceipts();
   }
 
   listEl.scrollTop = listEl.scrollHeight;
@@ -562,6 +582,9 @@ async function openConversation(conversationId) {
   } catch (e) { /* ignore */ }
 }
 
+// In-flight guard: clearing input.value before the await was the only thing preventing a
+// double-send; this closes the gap if the composer fires twice before sendMessage resolves.
+let _sendInFlight = false;
 async function sendCurrent() {
   console.log('[Chat] 📤 sendCurrent called');
   const input = document.querySelector('#composer');
@@ -574,6 +597,11 @@ async function sendCurrent() {
 
   if (!state.currentConversationId) {
     console.error('[Chat] ❌ No conversation selected!');
+    return;
+  }
+
+  if (_sendInFlight) {
+    console.warn('[Chat] ⚠️ Send already in flight, ignoring');
     return;
   }
 
@@ -606,6 +634,7 @@ async function sendCurrent() {
   // Clear input immediately for better UX
   input.value = '';
 
+  _sendInFlight = true;
   try {
     // Send to database. sendMessage returns FALSE (without throwing) when its rate
     // limiter suppresses the send — treating that as success left a fake bubble on
@@ -633,6 +662,8 @@ async function sendCurrent() {
     if (!input.value.trim()) input.value = body;
 
     alert('❌ Message failed to send: ' + (error.message || 'Unknown error'));
+  } finally {
+    _sendInFlight = false;
   }
 }
 
@@ -684,6 +715,7 @@ async function queryContactsServer(q) {
       .from('profiles')
       .select('id, display_name, username, line_user_id')
       .or(`display_name.ilike.%${q}%,username.ilike.%${q}%,line_user_id.ilike.%${q}%`)
+      .order('display_name')
       .limit(25)
       .abortSignal(searchAbortCtrl.signal);
     if (error) throw error;
@@ -870,10 +902,23 @@ function createRoomListItem(room, userId) {
  * Refresh sidebar with current rooms (respecting archive filter)
  * OPTIMIZED: Uses cached data if available, only fetches if needed
  */
+// Stale-repaint guard: concurrent callers (archive toggle, folder toggles, createGroup) can
+// interleave so a slower rebuild lands after a newer one's. Each call takes a sequence number
+// and bails after every await / before any DOM mutation once a newer call has started.
+let _sidebarSeq = 0;
 async function refreshSidebar(forceFetch = false) {
+  const seq = ++_sidebarSeq;
   const supabase = await getSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
+  if (seq !== _sidebarSeq) return;
+
+  // Reuse cachedUserId instead of an auth round-trip on every repaint (mirror other functions)
+  if (!cachedUserId || cachedUserId === 'null') {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (seq !== _sidebarSeq) return;
+    cachedUserId = user?.id;
+  }
+  const userId = cachedUserId;
+  if (!userId) return;
 
   const sidebar = document.querySelector('#conversations');
   if (!sidebar) return;
@@ -886,8 +931,10 @@ async function refreshSidebar(forceFetch = false) {
     const { data, error: roomsError } = await supabase
       .from('chat_room_members')
       .select('room_id, chat_rooms!inner(id, type, title, created_by)')
-      .eq('user_id', user.id)
-      .eq('status', 'approved');
+      .eq('user_id', userId)
+      .eq('status', 'approved')
+      .order('room_id').limit(100); // Deterministic order + higher cap (no created_at column)
+    if (seq !== _sidebarSeq) return;
 
     if (roomsError) {
       console.error('[Chat] Error loading rooms:', roomsError);
@@ -903,6 +950,7 @@ async function refreshSidebar(forceFetch = false) {
   }
 
   // Clear sidebar
+  if (seq !== _sidebarSeq) return;
   sidebar.innerHTML = '';
 
   // Separate archived and non-archived rooms
@@ -912,7 +960,7 @@ async function refreshSidebar(forceFetch = false) {
   userRooms?.forEach(membership => {
     const room = membership.chat_rooms;
     if (!room) return;
-    if (isRoomArchived(room.id, user.id)) {
+    if (isRoomArchived(room.id, userId)) {
       archivedRooms.push(room);
     } else {
       nonArchivedRooms.push(room);
@@ -921,7 +969,7 @@ async function refreshSidebar(forceFetch = false) {
 
   // Render non-archived rooms
   nonArchivedRooms.forEach(room => {
-    const li = createRoomListItem(room, user.id);
+    const li = createRoomListItem(room, userId);
     sidebar.appendChild(li);
   });
 
@@ -956,7 +1004,7 @@ async function refreshSidebar(forceFetch = false) {
     // Show archived rooms if expanded
     if (state.privateExpanded) {
       archivedRooms.forEach(room => {
-        const li = createRoomListItem(room, user.id);
+        const li = createRoomListItem(room, userId);
         li.style.background = '#f9fafb'; // Slightly different background
         sidebar.appendChild(li);
       });
@@ -1313,7 +1361,12 @@ function updateCreateButton() {
   btn.style.opacity = ok ? '1' : '0.4';
 }
 
+// Double-tap guard: without this, two quick taps fire two create_group_room RPCs = two groups.
+let _creatingGroup = false;
 async function createGroup() {
+  if (_creatingGroup) return;
+  _creatingGroup = true;
+
   const creatorId = state.currentUserId || cachedUserId;
   const memberIds = [...groupState.selected];
 
@@ -1343,6 +1396,8 @@ async function createGroup() {
   } catch (err) {
     console.error('[Chat] Group creation failed:', err);
     alert('❌ Failed to create group: ' + (err.message || 'Unknown error'));
+  } finally {
+    _creatingGroup = false;
   }
 }
 
@@ -1377,9 +1432,12 @@ async function approveMember(roomId, userId) {
       .eq('user_id', userId);
     if (error) throw error;
 
-    await supabase.from('chat_messages').insert({
-      room_id: roomId, sender: state.currentUserId, content: `approved a new member.`
+    // System message — best-effort; don't throw on failure (the approval already succeeded).
+    const senderId = state.currentUserId || cachedUserId; // mirror createGroup's fallback
+    const { error: msgError } = await supabase.from('chat_messages').insert({
+      room_id: roomId, sender: senderId, content: `approved a new member.`
     });
+    if (msgError) console.error('[Chat] Failed to post approval system message:', msgError);
 
     console.log('[Chat] ✅ Member approved');
   } catch (err) {
@@ -1502,14 +1560,14 @@ export async function initChat() {
       .select('room_id, chat_rooms!inner(id, type, title, created_by)')
       .eq('user_id', user.id)
       .eq('status', 'approved')
-      .limit(20), // Limit to 20 most recent rooms for speed
+      .order('room_id').limit(100), // Deterministic order + higher cap (chat_room_members has no created_at column)
 
     // Load contacts from profiles table
     supabase
       .from('profiles')
       .select('id, display_name, username, line_user_id')
       .neq('id', user.id)
-      .order('display_name').limit(100) // Limit to 100 contacts for fast load
+      .order('display_name').limit(500) // Limit to 500 contacts for fast load
   ]);
 
   const { data: userRooms, error: roomsError} = roomsResult;

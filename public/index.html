@@ -4754,6 +4754,28 @@
         #scSection_nine .shotgun-hint { display: none; }
         #scSection_nine:has(input[value="back"]:checked) .shotgun-hint { display: block; }
 
+        /* --- 🗺️ map-as-you-play (v1027): golfer creates the course card during a live round --- */
+        #maypOfferCard { background:#fffbeb; border:1.5px solid #f59e0b; border-radius:12px; padding:10px 12px; margin-top:8px; }
+        #maypHoleCard { margin:8px 12px 0; }
+        .mayp-card { background:#fffdf5; border:1.5px solid #f59e0b; border-radius:14px; padding:10px 11px; }
+        .mayp-lbl { font-size:10px; font-weight:800; color:#b45309; letter-spacing:0.06em; margin-bottom:6px; }
+        .mayp-parrow { display:flex; gap:7px; }
+        .mayp-par { flex:1; text-align:center; border:1.5px solid #d1d5db; background:#fff; border-radius:11px; padding:8px 0; font-size:16px; font-weight:900; color:#374151; cursor:pointer; }
+        .mayp-par.on { background:#16a34a; border-color:#15803d; color:#fff; }
+        .mayp-duo { display:flex; gap:8px; margin-top:8px; }
+        .mayp-mini { flex:1; min-width:0; border:1.5px solid #d1d5db; border-radius:11px; padding:6px 10px; background:#fff; display:flex; align-items:center; justify-content:space-between; gap:6px; cursor:pointer; }
+        .mayp-mini.unset { border-style:dashed; border-color:#f59e0b; }
+        .mayp-mini .k { font-size:9.5px; font-weight:800; color:#6b7280; letter-spacing:0.04em; }
+        .mayp-mini .v { font-size:15px; font-weight:900; color:#111827; white-space:nowrap; }
+        .mayp-mini input { width:56px; min-width:0; border:none; outline:none; font-size:15px; font-weight:900; text-align:right; background:transparent; color:#111827; }
+        .mayp-sigrid { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+        .mayp-si { flex:0 0 calc(16.66% - 5px); text-align:center; border:1.5px solid #d1d5db; border-radius:8px; padding:6px 0; font-size:12.5px; font-weight:800; color:#374151; background:#fff; cursor:pointer; }
+        .mayp-si.on { background:#16a34a; border-color:#15803d; color:#fff; }
+        .mayp-si.used { background:#f3f4f6; color:#9ca3af; border-color:#e5e7eb; }
+        .mayp-chips { display:flex; align-items:center; gap:6px; background:#fffbeb; border:1.5px solid #fcd34d; border-radius:999px; padding:6px 12px; cursor:pointer; overflow:hidden; }
+        .mayp-chips .c { font-size:12px; font-weight:800; color:#92400e; white-space:nowrap; }
+        .mayp-note { font-size:10px; color:#92400e; margin-top:6px; line-height:1.4; }
+
         /* --- games chips --- */
         #scoringFormatContainer { gap: 9px !important; }
         #scoringFormatContainer .scoring-format-label {
@@ -51320,6 +51342,8 @@ document.addEventListener('DOMContentLoaded', function() {
                             <p class="text-xs text-slate-500 mt-1" data-i18n="scorecard.course.data.note">Course data loads only when you start round</p>
                             <!-- Course Request Prompt -->
                             <p class="text-[10px] text-amber-400 mt-1">Can't find your course? <button onclick="OCRCourseCreator.openModal()" class="font-semibold underline">Quick Add with Photo</button> or <button onclick="openCourseRequestModal()" class="font-semibold underline">Submit a request</button></p>
+                            <!-- 🗺️ MAP-AS-YOU-PLAY (v1027): painted by _maypProbe when the selected course has no course_holes rows -->
+                            <div id="maypOfferCard" style="display:none;"></div>
                         </div>
 
                         <!-- Society Selection for Handicaps — HIDDEN: the round society is auto-set from the
@@ -77251,6 +77275,12 @@ class LiveScorecardSystem {
         this.holeOrder = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18]; // Hole play order
         this.currentHoleIndex = 0; // Index into holeOrder array
         this.latestHoleIndex = 0; // Furthest hole reached (for "Return to Current" button)
+        // 🗺️ MAP-AS-YOU-PLAY (v1027): golfer creates the course card during a live round
+        this.mapMode = false;       // true = this round is mapping a course with no card in the DB
+        this.maypSetHoles = {};     // hole# -> {par,si,yds:true} — fields the golfer EXPLICITLY set (vs seeded defaults)
+        this._maypSaved = false;    // course_holes upsert completed for this round
+        this._maypSkipped = false;  // golfer chose to finish without saving the card
+        this._maypOffer = null;     // courseId currently offered for mapping in the setup section
         this._tradSel = null;  // TRADV: selected {pid, hole} grid cell (null = follow the engine's rotation)
         this._tradNine = null; // TRADV: explicit F9/B9 override (null = follow the current hole)
         this.loadedEvents = []; // Cache of loaded events for isPrivate/society lookup
@@ -77490,6 +77520,10 @@ class LiveScorecardSystem {
             timerPaused: this.timerPaused,
             timerPausedAt: this.timerPausedAt,
             bitsGame: this.bitsGame,
+            mapMode: this.mapMode || false,
+            maypSetHoles: this.maypSetHoles || {},
+            maypSaved: this._maypSaved || false,
+            maypSkipped: this._maypSkipped || false,
             savedAt: new Date().toISOString()
         };
 
@@ -77559,6 +77593,11 @@ class LiveScorecardSystem {
         this.selectedTeeMarker = state.selectedTeeMarker || 'white';
         this.holeOrder = state.holeOrder || [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
         this.startingNine = state.startingNine || 'front';
+        // 🗺️ MAP-AS-YOU-PLAY: a mapping round resumes as a mapping round (courseData carries the mapped holes)
+        this.mapMode = state.mapMode || false;
+        this.maypSetHoles = state.maypSetHoles || {};
+        this._maypSaved = state.maypSaved || false;
+        this._maypSkipped = state.maypSkipped || false;
         this.scorecards = state.scorecards || {};
         // Card ownership (v884) travels with the restored state; a DB join (v886) carries the
         // live controlled_by values, then claims this device's own card so the joiner can score.
@@ -80492,6 +80531,9 @@ class LiveScorecardSystem {
                 // Load tee markers dynamically based on selected course
                 await this.loadTeeMarkersForCourse(courseSelect.value);
 
+                // 🗺️ MAP-AS-YOU-PLAY: offer mapping when this course has ZERO course_holes rows
+                this._maypProbe(val).catch(e => console.warn('[MAYP] probe', e));
+
                 // Initialize pin sheet manager for selected course
                 if (courseSelect.value && window.PinSheetManager) {
                     const courseOption = courseSelect.options[courseSelect.selectedIndex];
@@ -81279,6 +81321,318 @@ class LiveScorecardSystem {
         }
         this._ninesPick = null;
         document.getElementById('scNinesOverlay')?.remove();
+    }
+
+    // ================= 🗺️ MAP-AS-YOU-PLAY (v1027) =================
+    // A course in the dropdown with ZERO course_holes rows can be mapped during a live round:
+    // the golfer sets Par (required), Stroke Index and Yardage hole by hole on an inline card
+    // that collapses to a chip row once set (Pete picked mockups A+C, 2026-08-28). On Finish, a
+    // review overlay upserts the full 18 into course_holes for every golfer. NON-combo venues
+    // only — the 14 _comboConfig venues keep their nine_hole loaders. SI seeds as the hole
+    // number so the card is unique 1–18 from birth; picking a taken SI SWAPS with that hole.
+
+    async _maypProbe(courseId) {
+        const card = document.getElementById('maypOfferCard');
+        this._maypOffer = null;
+        if (card) { card.style.display = 'none'; card.innerHTML = ''; }
+        if (!courseId || this._comboConfig()[courseId] || !window.SupabaseDB?.client) return;
+        const seq = (this._maypProbeSeq = (this._maypProbeSeq || 0) + 1);
+        let count = null;
+        try {
+            const res = await window.SupabaseDB.client
+                .from('course_holes')
+                .select('hole_number', { count: 'exact', head: true })
+                .eq('course_id', courseId);
+            if (res.error) return;
+            count = res.count;
+        } catch (e) { return; }
+        // Stale probe (course changed mid-query) or data exists → no offer
+        if (seq !== this._maypProbeSeq) return;
+        if (count === null || count > 0) return;
+        if (document.getElementById('scorecardCourseSelect')?.value !== courseId) return;
+        this._maypOffer = courseId;
+        if (!card) return;
+        const tt = (k, fb) => { try { return (typeof _lvT === 'function') ? _lvT(k, fb) : fb; } catch (e) { return fb; } };
+        const name = document.getElementById('scorecardCourseSelect')?.selectedOptions?.[0]?.textContent?.trim() || courseId;
+        card.innerHTML = `
+            <div style="display:flex;align-items:center;gap:7px;font-size:13px;font-weight:800;color:#92400e;margin-bottom:3px;">
+                <span class="material-symbols-outlined" style="font-size:19px;">map</span>
+                <span>${tt('scorecard.mayp.offer.title', 'No scorecard on file — map it as you play')}</span>
+            </div>
+            <div style="font-size:12px;color:#78350f;line-height:1.5;">
+                ${tt('scorecard.mayp.offer.body', '{course} has no hole data in the system yet. Start your round and set each hole’s Par, Index & Yardage as you play — scoring works as normal, and when you finish the full card is saved for every golfer. Teeing off on 10? Set “Starting Nine” below.').replace('{course}', name)}
+            </div>`;
+        card.style.display = 'block';
+    }
+
+    _ensureMaypHost() {
+        let host = document.getElementById('maypHoleCard');
+        if (!host) {
+            const strip = document.getElementById('holeInfoStrip');
+            if (!strip || !strip.parentElement) return null;
+            host = document.createElement('div');
+            host.id = 'maypHoleCard';
+            strip.insertAdjacentElement('afterend', host);
+        }
+        return host;
+    }
+
+    _renderMaypCard() {
+        if (!this.mapMode) { document.getElementById('maypHoleCard')?.remove(); return; }
+        const host = this._ensureMaypHost();
+        if (!host) return;
+        const tt = (k, fb) => { try { return (typeof _lvT === 'function') ? _lvT(k, fb) : fb; } catch (e) { return fb; } };
+        const hole = this.currentHole;
+        // Arriving on a different hole resets the editor's expand state (auto-expands when par unset)
+        if (this._maypCardHole !== hole) { this._maypCardHole = hole; this._maypExpanded = false; this._maypSiOpen = false; }
+        const hd = this.getHoleData(hole) || {};
+        const set = this.maypSetHoles[hole] || {};
+        const mapped = (this.courseData?.holes || []).filter(x => x.par).length;
+        const expanded = !hd.par || this._maypExpanded;
+        if (!expanded) {
+            host.innerHTML = `
+                <div class="mayp-chips" onclick="LiveScorecardManager.maypExpand()">
+                    <span class="material-symbols-outlined" style="font-size:16px;color:#b45309;">map</span>
+                    <span class="c">Par ${hd.par}</span><span class="c">·</span>
+                    <span class="c">SI ${hd.stroke_index}${set.si ? '' : '*'}</span><span class="c">·</span>
+                    <span class="c">${hd.yardage > 0 ? hd.yardage + 'y' : '—y'}</span>
+                    <span style="flex:1;"></span>
+                    <span class="c" style="opacity:.75;">${mapped}/18</span>
+                    <span class="material-symbols-outlined" style="font-size:15px;color:#b45309;">edit</span>
+                </div>`;
+            return;
+        }
+        const pars = [3, 4, 5, 6].map(p =>
+            `<div class="mayp-par${hd.par === p ? ' on' : ''}" onclick="LiveScorecardManager.maypSetPar(${p})">${p}</div>`).join('');
+        host.innerHTML = `
+            <div class="mayp-card">
+                <div class="mayp-lbl">🗺️ ${tt('scorecard.mayp.card.title', 'THIS HOLE’S CARD — TAP TO SET')} <span style="float:right;">${mapped}/18</span></div>
+                <div class="mayp-parrow">${pars}</div>
+                <div class="mayp-duo">
+                    <div class="mayp-mini${set.si ? '' : ' unset'}" onclick="LiveScorecardManager.maypToggleSI()">
+                        <span class="k">${tt('scorecard.mayp.index', 'INDEX')}</span><span class="v">${hd.stroke_index}${set.si ? '' : '*'} ▾</span>
+                    </div>
+                    <div class="mayp-mini${hd.yardage > 0 ? '' : ' unset'}" onclick="this.querySelector('input')?.focus()">
+                        <span class="k">${tt('scorecard.mayp.yards', 'YARDS')}</span>
+                        <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" value="${hd.yardage > 0 ? hd.yardage : ''}" placeholder="—"
+                               onchange="LiveScorecardManager.maypSetYds(this.value)" onclick="event.stopPropagation()">
+                    </div>
+                </div>
+                ${this._maypSiOpen ? this._maypSiGridHTML(hole) : ''}
+                ${hd.par
+                    ? `<div style="text-align:right;margin-top:8px;"><button onclick="LiveScorecardManager.maypCollapse()" style="border:none;background:#16a34a;color:#fff;font-size:12px;font-weight:800;border-radius:999px;padding:6px 14px;cursor:pointer;">${tt('scorecard.mayp.done', 'Done ✓')}</button></div>`
+                    : `<div class="mayp-note">${tt('scorecard.mayp.parreq', 'Par is required to move on — index & yards can be fixed anytime. * = auto value, tap to set.')}</div>`}
+            </div>`;
+    }
+
+    _maypSiGridHTML(hole) {
+        const holes = this.courseData?.holes || [];
+        const chips = [];
+        for (let k = 1; k <= 18; k++) {
+            const owner = holes.find(x => Number(x.stroke_index) === k);
+            const ownerNum = owner ? Number(owner.hole_number) : null;
+            const isMine = ownerNum === Number(hole);
+            const lockedElsewhere = ownerNum && !isMine && this.maypSetHoles[ownerNum]?.si;
+            chips.push(`<div class="mayp-si${isMine ? ' on' : ''}${lockedElsewhere ? ' used' : ''}" ${lockedElsewhere ? `title="Hole ${ownerNum}"` : `onclick="LiveScorecardManager.maypPickSI(${k})"`}>${k}</div>`);
+        }
+        return `<div class="mayp-sigrid">${chips.join('')}</div><div class="mayp-note">1 = hardest hole · grey = already set on another hole</div>`;
+    }
+
+    maypExpand() { this._maypExpanded = true; this._renderMaypCard(); }
+    maypCollapse() { this._maypExpanded = false; this._maypSiOpen = false; this._renderMaypCard(); }
+    maypToggleSI() { this._maypSiOpen = !this._maypSiOpen; this._renderMaypCard(); }
+
+    maypSetPar(p) {
+        const hd = this.getHoleData(this.currentHole);
+        if (!hd) return;
+        const changed = hd.par !== p;
+        hd.par = p;
+        (this.maypSetHoles[this.currentHole] = this.maypSetHoles[this.currentHole] || {}).par = true;
+        this._maypExpanded = true; // stay open for SI/yards until Done
+        this._maypAfterEdit(changed);
+        this.renderHole();
+    }
+
+    maypPickSI(k) {
+        const hole = this.currentHole;
+        const mine = this.getHoleData(hole);
+        if (!mine) return;
+        const other = (this.courseData?.holes || []).find(x =>
+            Number(x.stroke_index) === k && Number(x.hole_number) !== Number(hole));
+        if (other) {
+            if (this.maypSetHoles[Number(other.hole_number)]?.si) {
+                window.NotificationManager.show(`SI ${k} is already set on hole ${other.hole_number} — change it there first`, 'warning');
+                return;
+            }
+            other.stroke_index = mine.stroke_index; // swap keeps the card unique 1–18 by construction
+        }
+        const changed = mine.stroke_index !== k;
+        mine.stroke_index = k;
+        (this.maypSetHoles[hole] = this.maypSetHoles[hole] || {}).si = true;
+        this._maypSiOpen = false;
+        this._maypExpanded = true;
+        this._maypAfterEdit(changed);
+        this.renderHole();
+    }
+
+    maypSetYds(v) {
+        const hd = this.getHoleData(this.currentHole);
+        if (!hd) return;
+        const y = parseInt(String(v).replace(/\D/g, ''), 10);
+        hd.yardage = (y && y > 0 && y < 800) ? y : 0;
+        if (hd.yardage) (this.maypSetHoles[this.currentHole] = this.maypSetHoles[this.currentHole] || {}).yds = true;
+        this._maypExpanded = true;
+        this._maypAfterEdit(false);
+        this.renderHole();
+    }
+
+    _maypAfterEdit(rescore) {
+        if (this.debouncedSaveRoundState) this.debouncedSaveRoundState(); else this.saveRoundState();
+        if (rescore) {
+            // Par/SI edits must re-stamp already-saved scores — same ONE-engine sweep
+            // changeBackNine uses. Debounced so tapping through 3→4→5 fires one sweep, not three.
+            clearTimeout(this._maypRecalcT);
+            this._maypRecalcT = setTimeout(() => {
+                try { this.recomputeScoresForCourseChange(); } catch (e) { console.warn('[MAYP] recompute', e); }
+            }, 2500);
+        }
+    }
+
+    _showMaypReview() {
+        document.getElementById('maypReviewOverlay')?.remove();
+        const tt = (k, fb) => { try { return (typeof _lvT === 'function') ? _lvT(k, fb) : fb; } catch (e) { return fb; } };
+        const div = document.createElement('div');
+        div.id = 'maypReviewOverlay';
+        div.style.cssText = 'position:fixed;inset:0;z-index:11450;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;padding:16px;';
+        div.innerHTML = `
+            <div style="width:100%;max-width:380px;max-height:88vh;overflow-y:auto;background:#ffffff;border-radius:18px;padding:18px 16px;box-shadow:0 24px 60px rgba(0,0,0,0.35);">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+                    <span class="material-symbols-outlined" style="font-size:22px;color:#16a34a;">map</span>
+                    <div style="font-size:17px;font-weight:800;color:#0f172a;">${tt('scorecard.mayp.review.title', 'Course mapped 🎉')}</div>
+                    <span style="margin-left:auto;font-size:9.5px;font-weight:800;background:#fffbeb;border:1px solid #fcd34d;color:#b45309;border-radius:999px;padding:3px 8px;white-space:nowrap;">${tt('scorecard.mayp.review.badge', 'PLAYER-MAPPED')}</span>
+                </div>
+                <div id="maypRevSub" style="font-size:12.5px;color:#475569;margin-bottom:10px;"></div>
+                <div id="maypRevTable"></div>
+                <div id="maypRevChecks" style="font-size:12px;font-weight:700;color:#166534;line-height:1.7;margin:10px 2px;"></div>
+                <button id="maypRevSave" onclick="LiveScorecardManager.maypSaveCourse()" style="width:100%;padding:13px 8px;border-radius:12px;border:none;background:#16a34a;color:#ffffff;font-size:15px;font-weight:800;cursor:pointer;"></button>
+                <div style="text-align:center;margin-top:9px;">
+                    <button onclick="LiveScorecardManager.maypFinishWithoutSaving()" style="border:none;background:none;color:#94a3b8;font-size:11.5px;font-weight:700;text-decoration:underline;cursor:pointer;">${tt('scorecard.mayp.review.skip', 'Finish round without saving the course')}</button>
+                </div>
+                <div style="text-align:center;font-size:10.5px;color:#94a3b8;margin-top:7px;line-height:1.45;">${tt('scorecard.mayp.review.note', 'Saved for every golfer · tap a row to fix that hole')}</div>
+            </div>`;
+        div.addEventListener('click', e => { if (e.target === div) LiveScorecardManager._closeMaypReview(); });
+        document.body.appendChild(div);
+        this._maypReviewSync();
+    }
+
+    _maypReviewSync() {
+        const holes = (this.courseData?.holes || []).slice().sort((a, b) => Number(a.hole_number) - Number(b.hole_number));
+        const missing = holes.filter(x => !x.par).map(x => Number(x.hole_number));
+        const parTotal = holes.reduce((s, x) => s + (Number(x.par) || 0), 0);
+        const ydsTotal = holes.reduce((s, x) => s + (x.yardage > 0 ? Number(x.yardage) : 0), 0);
+        const sub = document.getElementById('maypRevSub');
+        if (sub) sub.textContent = `${this.courseData?.name || this.courseData?.id || ''} · ${(this.selectedTeeMarker || 'white')} tees · ${18 - missing.length}/18 holes · Par ${parTotal}${ydsTotal ? ' · ' + ydsTotal + 'y' : ''}`;
+        const half = (from) => {
+            let rows = '';
+            for (let i = from; i < from + 9 && i < holes.length; i++) {
+                const x = holes[i];
+                const miss = !x.par;
+                rows += `<div onclick="LiveScorecardManager.maypReviewGoHole(${Number(x.hole_number)})" style="display:flex;gap:4px;padding:3px 4px;border-radius:6px;cursor:pointer;${miss ? 'background:#fffbeb;' : ''}font-size:11px;font-weight:700;color:#0f172a;">
+                    <span style="width:18px;color:#64748b;">${x.hole_number}</span>
+                    <span style="width:26px;text-align:center;${miss ? 'color:#b45309;font-weight:900;' : ''}">${x.par || '—'}</span>
+                    <span style="width:26px;text-align:center;color:#475569;">${x.stroke_index}</span>
+                    <span style="flex:1;text-align:right;color:#475569;">${x.yardage > 0 ? x.yardage : '—'}</span>
+                </div>`;
+            }
+            return `<div style="flex:1;min-width:0;border:1px solid #e2e8f0;border-radius:10px;padding:6px 4px;">
+                <div style="display:flex;gap:4px;padding:0 4px 4px;font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:0.04em;">
+                    <span style="width:18px;">H</span><span style="width:26px;text-align:center;">PAR</span><span style="width:26px;text-align:center;">SI</span><span style="flex:1;text-align:right;">YDS</span>
+                </div>${rows}</div>`;
+        };
+        const tbl = document.getElementById('maypRevTable');
+        if (tbl) tbl.innerHTML = `<div style="display:flex;gap:8px;">${half(0)}${half(9)}</div>`;
+        const siOk = new Set(holes.map(x => Number(x.stroke_index))).size === holes.length;
+        const checks = document.getElementById('maypRevChecks');
+        if (checks) checks.innerHTML = [
+            missing.length ? `<span style="color:#b45309;">⚠ ${missing.length} hole${missing.length > 1 ? 's' : ''} missing par (${missing.join(', ')}) — tap a row to fix</span>` : '✓ Every hole has a par',
+            siOk ? '✓ All 18 stroke indexes unique' : '<span style="color:#b45309;">⚠ Duplicate stroke indexes — fix before saving</span>',
+            `✓ Par ${parTotal}${ydsTotal ? ' · ' + ydsTotal + ' yards' : ''}`
+        ].join('<br>');
+        const btn = document.getElementById('maypRevSave');
+        if (btn) {
+            btn.disabled = !!missing.length || !siOk || holes.length !== 18;
+            btn.style.opacity = btn.disabled ? '0.5' : '1';
+            btn.textContent = btn.disabled ? 'Fix the flagged holes first' : 'Save course & finish round';
+        }
+    }
+
+    maypReviewGoHole(n) {
+        this._closeMaypReview();
+        try { this.goToHole(n); } catch (e) {}
+        this._maypCardHole = n;
+        this._maypExpanded = true;
+        this._renderMaypCard();
+    }
+
+    maypFinishWithoutSaving() {
+        if (!confirm('Finish the round WITHOUT saving the course card?\n\nThe holes you mapped will not be stored for other golfers.')) return;
+        this._maypSkipped = true;
+        this.saveRoundState();
+        this._closeMaypReview();
+        this.completeRound('finish');
+    }
+
+    async maypSaveCourse() {
+        if (this._maypSaving) return;
+        const btn = document.getElementById('maypRevSave');
+        try {
+            this._maypSaving = true;
+            if (btn) { btn.disabled = true; btn.textContent = 'Saving course…'; }
+            const courseId = this.courseData?.id;
+            const tee = (this.selectedTeeMarker || 'white').toLowerCase();
+            const holes = (this.courseData?.holes || []).filter(x => x.par);
+            if (!courseId || holes.length !== 18) throw new Error('incomplete card');
+            const rows = holes.map(x => ({
+                course_id: courseId,
+                hole_number: Number(x.hole_number),
+                tee_marker: tee,
+                par: Number(x.par),
+                stroke_index: Number(x.stroke_index),
+                yardage: x.yardage > 0 ? Number(x.yardage) : null
+            }));
+            // courses row FIRST — course_holes.course_id has an FK to courses.id (verified live
+            // 2026-08-28: 23503 without it). ignoreDuplicates: an existing row is never clobbered.
+            const cRes = await window.SupabaseDB.client.from('courses')
+                .upsert([{ id: courseId, name: this.courseData?.name || courseId, total_holes: 18, par: rows.reduce((s, r) => s + r.par, 0) }],
+                        { onConflict: 'id', ignoreDuplicates: true });
+            if (cRes.error) throw cRes.error;
+            const { data, error } = await window.SupabaseDB.client
+                .from('course_holes')
+                .upsert(rows, { onConflict: 'course_id,hole_number,tee_marker' })
+                .select('hole_number');
+            if (error) throw error;
+            // RLS silently blocking the write would "succeed" with 0 rows — verify the count
+            if (!data || data.length < 18) throw new Error(`only ${data?.length || 0}/18 holes saved`);
+            try {
+                localStorage.removeItem(`mcipro_course_${courseId}`);
+                localStorage.removeItem(`mcipro_course_version_${courseId}`);
+            } catch (e) {}
+            this._maypSaved = true;
+            this.saveRoundState();
+            window.NotificationManager.show('Course card saved — every golfer can use it now 🎉', 'success');
+            this._closeMaypReview();
+            this.completeRound('finish');
+        } catch (e) {
+            console.error('[MAYP] save failed', e);
+            window.NotificationManager.show('Could not save the course card — check connection and try again', 'error');
+            this._maypReviewSync();
+        } finally {
+            this._maypSaving = false;
+        }
+    }
+
+    _closeMaypReview() {
+        document.getElementById('maypReviewOverlay')?.remove();
     }
 
     async loadEvents() {
@@ -85823,6 +86177,13 @@ class LiveScorecardSystem {
         // instead of dead-ending with "select the nines" while the nines ARE selected
         // (Orlando @ Phoenix 2026-08-17, Blue tee). Every early exit here must clear
         // the overlay or the 30s "timed out" toast fires on top of the real error.
+        // 🗺️ MAP-AS-YOU-PLAY: a fresh start is never a mapping round unless the zero-holes
+        // branch below turns it on — stale flags from a previous mapping round must not bleed in.
+        this.mapMode = false;
+        this.maypSetHoles = {};
+        this._maypSaved = false;
+        this._maypSkipped = false;
+
         const comboCfg = this._comboConfig()[courseId];
         if (comboCfg) {
             const comboName = document.getElementById('scorecardCourseSelect')?.selectedOptions?.[0]?.textContent?.trim() || courseId;
@@ -85871,10 +86232,27 @@ class LiveScorecardSystem {
                 return;
             }
             if (!this.courseData.holes || this.courseData.holes.length === 0) {
-                removeLoading();
-                clearTimeout(timeoutId);
-                NotificationManager.show('No hole data found for this course/tee. Please check course setup.', 'error');
-                return;
+                if (this._maypOffer === courseId) {
+                    // 🗺️ MAP-AS-YOU-PLAY: no card in the DB — build placeholder holes and let the
+                    // golfer create the card during the round. SI seeds as the hole number so the
+                    // card is unique 1–18 from birth; par stays null until the golfer sets it.
+                    const mTee = (this.selectedTeeMarker || teeMarker || 'white').toLowerCase();
+                    this.courseData.holes = Array.from({ length: 18 }, (_, i) => ({
+                        hole_number: i + 1, par: null, stroke_index: i + 1, yardage: 0, tee_marker: mTee
+                    }));
+                    this.mapMode = true;
+                    // loadCourseData just cached the EMPTY courseData — poison for the next load, drop it
+                    try {
+                        localStorage.removeItem(`mcipro_course_${courseId}`);
+                        localStorage.removeItem(`mcipro_course_version_${courseId}`);
+                    } catch (e) {}
+                    console.log('[MAYP] Mapping round started for', courseId, 'tee', mTee);
+                } else {
+                    removeLoading();
+                    clearTimeout(timeoutId);
+                    NotificationManager.show('No hole data found for this course/tee. Please check course setup.', 'error');
+                    return;
+                }
             }
         }
 
@@ -86702,6 +87080,10 @@ class LiveScorecardSystem {
         // SI before yardage: the meta span ellipsizes on narrow phones, and SI must
         // never be the part that gets cut (Pete 2026-07-09)
         document.getElementById('currentHoleInfo').textContent = `Par ${par} · SI ${strokeIndex}${yardageText}`;
+        // 🗺️ MAP-AS-YOU-PLAY: never show the par-4 default as fact while the hole is unmapped
+        if (this.mapMode && !holeData?.par) {
+            document.getElementById('currentHoleInfo').textContent = `Par — · SI ${strokeIndex}${yardageText}`;
+        }
 
         // Which nines this round is on — the player picked them (and can change them mid-round),
         // so it is stamped on courseData.name and must be visible while scoring, not just implied.
@@ -86733,6 +87115,9 @@ class LiveScorecardSystem {
         if (groupScoreHoleNum) groupScoreHoleNum.textContent = this.currentHole;
         if (groupScorePar) groupScorePar.textContent = par;
         if (groupScoreIndex) groupScoreIndex.textContent = strokeIndex;
+        // 🗺️ MAP-AS-YOU-PLAY: inline mapping card under the hole strip (removes itself when off)
+        if (this.mapMode && groupScorePar && !holeData?.par) groupScorePar.textContent = '—';
+        this._renderMaypCard();
 
         // v896 BACKSTOP: the keypad must never be aimed at a card this device cannot write.
         // Whatever set currentPlayerId — a restored state, a stale rotation, a card that just
@@ -89726,6 +90111,16 @@ class LiveScorecardSystem {
             this.autoAdvanceTimeout = null;
         }
 
+        // 🗺️ MAP-AS-YOU-PLAY: par is the one required field per hole — no par, no advancing.
+        // (Auto-advance also lands here, so a scored-but-unmapped hole stays put with guidance.)
+        if (this.mapMode && this.currentHoleIndex < 17 && !this.getHoleData(this.currentHole)?.par) {
+            this._maypCardHole = this.currentHole;
+            this._maypExpanded = true;
+            this._renderMaypCard();
+            window.NotificationManager.show(`Set the par for hole ${this.currentHole} first — tap 3, 4, 5 or 6 on the mapping card`, 'warning');
+            return;
+        }
+
         // Use holeOrder array for navigation (supports back-9-first shotgun starts)
         if (this.currentHoleIndex < 17) {
             this.currentHoleIndex++;
@@ -90133,6 +90528,14 @@ class LiveScorecardSystem {
 
 
     async completeRound(source = 'finish') {
+        // 🗺️ MAP-AS-YOU-PLAY: before the round saves, the mapped card gets its review-and-save
+        // moment. The overlay's buttons re-enter completeRound with _maypSaved/_maypSkipped set,
+        // so this fires exactly once per finish. END/abandon ('end') never saves a card.
+        if (source === 'finish' && this.mapMode && !this._maypSaved && !this._maypSkipped) {
+            this._showMaypReview();
+            return;
+        }
+
         // Guard: a shot logged with a yardage but no club is half-recorded. Don't let it
         // slip through on Finish — point the user back to the hole to add the club.
         if (source === 'finish') {
@@ -93360,6 +93763,17 @@ class LiveScorecardSystem {
         this._ninesPromptQueued = null;
         this._ninesPick = null;
         document.getElementById('scNinesOverlay')?.remove();
+        // 🗺️ MAP-AS-YOU-PLAY: mapping state dies with the round (abandoned map = not saved)
+        this.mapMode = false;
+        this.maypSetHoles = {};
+        this._maypSaved = false;
+        this._maypSkipped = false;
+        this._maypExpanded = false;
+        this._maypSiOpen = false;
+        this._maypCardHole = null;
+        clearTimeout(this._maypRecalcT);
+        document.getElementById('maypHoleCard')?.remove();
+        document.getElementById('maypReviewOverlay')?.remove();
 
         // Show start section
         document.getElementById('scorecardStartSection').style.display = 'block';

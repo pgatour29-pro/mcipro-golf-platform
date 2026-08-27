@@ -72959,15 +72959,18 @@ const AdminSystem = {
             this._activityLastRound = lastRoundDate;
             this._activityLastEvent = lastEventDate;
 
-            // Build TRUE last activity date per user (most recent of: real login, round played, event registered).
-            // IMPORTANT: do NOT use updated_at as an activity signal — it is bumped by ANY profile write
-            // (global/bulk handicap updates, admin edits, background syncs), which falsely lights users up as
-            // "Online" even though they never opened the app. Use last_login_at + genuine engagement only.
+            // Last Active = SELF-LOGINS ONLY (Pete 2026-08-27): rounds and event registrations are
+            // routinely created FOR a player by the organizer (paper card entry) or the group's
+            // scorer, so they must NOT count as the player being on the app. last_login_at is
+            // written only when the user themself opens the app authenticated (recordUserLogin,
+            // once per browser session). Fallback = created_at (signup is itself an in-app login;
+            // profiles predating last_login_at tracking show inactive, which is honest).
+            // IMPORTANT: do NOT use updated_at as an activity signal — it is bumped by ANY profile
+            // write (global/bulk handicap updates, admin edits, background syncs).
             const trueLastActive = {};
             users.forEach(u => {
                 const uid = u.line_user_id;
-                const dates = [u.last_login_at, lastRoundDate[uid], lastEventDate[uid]].filter(Boolean).map(d => new Date(d));
-                trueLastActive[uid] = dates.length > 0 ? new Date(Math.max(...dates)) : new Date(u.created_at);
+                trueLastActive[uid] = new Date(u.last_login_at || u.created_at);
             });
             this._activityTrueLastActive = trueLastActive;
 
@@ -73119,7 +73122,8 @@ const AdminSystem = {
             const events = ec[uid] || 0;
 
             const createdDate = new Date(user.created_at);
-            // True activity = most recent of: real login, last round, or last event (NOT updated_at — see loadUserActivityData)
+            // True activity = the user's own logins ONLY — never rounds/events posted on their behalf,
+            // never updated_at (see loadUserActivityData)
             const tla = window.AdminSystem?._activityTrueLastActive || {};
             const updatedDate = tla[uid] || new Date(user.created_at);
             const isNew = createdDate >= weekAgo;

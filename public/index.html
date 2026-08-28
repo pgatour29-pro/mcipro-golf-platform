@@ -29350,9 +29350,15 @@ Sent from Login Page`;
             }
             const _drawer = document.getElementById('mobileDrawer');
             if (_drawer && _drawer.classList.contains('open')) { try { closeMobileDrawer(); } catch (e) {} return; }
-            // If mainContent overlay is visible (caddie booking module etc), close it first
+            // If mainContent overlay is visible (caddie booking module etc), close it first.
+            // v1032: step back INSIDE the caddy booking module first (open modal → roster →
+            // course list) — hiding the whole overlay from any depth ejected users out of the
+            // module entirely, leaving the header back button as the only working navigation.
             const mainContent = document.getElementById('mainContent');
             if (mainContent && mainContent.style.display !== 'none') {
+                if (window.GolferCaddyBooking && GolferCaddyBooking.canBack && GolferCaddyBooking.canBack()) {
+                    try { if (GolferCaddyBooking.back()) return; } catch (e) {}
+                }
                 mainContent.style.display = 'none';
                 return;
             }
@@ -112670,12 +112676,42 @@ const GolferCaddyBooking = {
         }
     },
 
+    // Universal back button support: the bottom-left back button must step back INSIDE
+    // this module (open modal → roster → course list) — dashboardGoBack only hides the
+    // #mainContent overlay once we're already at the course-list root.
+    canBack() {
+        const mc = document.getElementById('mainContent');
+        if (!mc || mc.style.display === 'none') return false;
+        if (document.getElementById('caddyBookingModal') ||
+            document.getElementById('caddyWaitlistModal') ||
+            document.getElementById('caddyProfileModal')) return true;
+        return this._view === 'roster' || this._view === 'bookings';
+    },
+
+    back() {
+        const modal = document.getElementById('caddyBookingModal') ||
+                      document.getElementById('caddyWaitlistModal') ||
+                      document.getElementById('caddyProfileModal');
+        if (modal) { modal.remove(); return true; }
+        if (this._view === 'bookings') {
+            // Mirrors the page's own "Back to Caddies" header button.
+            this.showCaddyBookingPage(this.currentCourse || null);
+            return true;
+        }
+        if (this._view === 'roster') {
+            this.showCaddyBookingPage();
+            return true;
+        }
+        return false;
+    },
+
     renderCourseSelector() {
         const container = document.getElementById('mainContent');
         if (!container) return;
 
         // Show mainContent as overlay (has position: fixed and z-index: 1000)
         container.style.display = 'block';
+        this._view = 'courses';
 
         container.innerHTML = `
             <div class="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-4 pt-4 md:py-12 relative overflow-hidden">
@@ -112978,6 +113014,7 @@ const GolferCaddyBooking = {
 
         // Show mainContent as overlay (has position: fixed and z-index: 1000)
         container.style.display = 'block';
+        this._view = 'roster';
 
         container.innerHTML = `
             <div class="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 py-10 px-4 relative overflow-hidden">
@@ -113204,7 +113241,7 @@ const GolferCaddyBooking = {
         const totalRounds = caddy.total_rounds || 0;
 
         const modal = `
-            <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[2000]" onclick="if(event.target === this) this.remove()">
+            <div id="caddyProfileModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[2000]" onclick="if(event.target === this) this.remove()">
                 <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
                     <!-- Header -->
                     <div class="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
@@ -113874,7 +113911,7 @@ const GolferCaddyBooking = {
         const today = new Date().toISOString().split('T')[0];
 
         const modal = `
-            <div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[2000]" onclick="if(event.target === this) this.remove()">
+            <div id="caddyWaitlistModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[2000]" onclick="if(event.target === this) this.remove()">
                 <div class="bg-white rounded-2xl max-w-md w-full">
                     <!-- Header -->
                     <div class="bg-gradient-to-r from-orange-600 to-orange-500 text-white p-6 rounded-t-2xl">
@@ -114024,6 +114061,7 @@ const GolferCaddyBooking = {
 
         // Show mainContent as overlay (has position: fixed and z-index: 1000)
         container.style.display = 'block';
+        this._view = 'bookings';
 
         container.innerHTML = `
             <div class="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 py-8 px-4">

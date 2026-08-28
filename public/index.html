@@ -51333,17 +51333,18 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <option value="highlands_cm">Highlands Golf & Spa Resort (Chiang Mai)</option>
                                     <option value="alpine_cm">Alpine Golf Club & Resort (Chiang Mai)</option>
                                     </optgroup>
-                                    <!-- 🗺️ MAP-AS-YOU-PLAY (v1028): venue not in the list → golfer names it and maps
-                                         the card during the round. '__addnew__' is already excluded by every venue-list
-                                         copier (EventCourseSelect / ScheduleCreator / pin sheets); golfer-created courses
-                                         insert ABOVE this row so it stays last. -->
-                                    <option value="__addnew__">➕ Course not listed? Map a new course</option>
                                 </select>
                                 <button onclick="LiveScorecardManager.openCourseLibrary()" class="px-3 py-2.5 text-white rounded-xl hover:opacity-90 flex items-center justify-center gap-1 flex-shrink-0 transition-all shadow-sm" style="min-width: 70px; background: linear-gradient(135deg, #0f172a, #1e293b);">
                                     <span class="material-symbols-outlined text-sm">library_books</span>
                                     <span class="hidden sm:inline text-sm" data-i18n="scorecard.manage">Manage</span>
                                 </button>
                             </div>
+                            <!-- 🗺️ MAP-AS-YOU-PLAY (v1030): standing entry — Pete: ALWAYS visible, never a
+                                 dropdown option. Opens the name form in #maypOfferCard below. -->
+                            <button onclick="LiveScorecardManager._maypNewCourseForm()" class="mt-2 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[13px] font-bold" style="border:1.5px dashed #f59e0b;color:#b45309;background:rgba(245,158,11,0.08);">
+                                <span class="material-symbols-outlined" style="font-size:18px;">add_location_alt</span>
+                                Map a new course
+                            </button>
                             <p class="text-xs text-slate-500 mt-1" data-i18n="scorecard.course.data.note">Course data loads only when you start round</p>
                             <!-- Course Request Prompt -->
                             <p class="text-[10px] text-amber-400 mt-1">Can't find your course? <button onclick="OCRCourseCreator.openModal()" class="font-semibold underline">Quick Add with Photo</button> or <button onclick="openCourseRequestModal()" class="font-semibold underline">Submit a request</button></p>
@@ -80525,15 +80526,6 @@ class LiveScorecardSystem {
                     if (el) el.style.display = (val === key) ? 'block' : 'none';
                 }
 
-                // 🗺️ MAP-AS-YOU-PLAY (v1028): "Course not listed" row — collect the name, then
-                // re-enter this handler with a fresh course id. The select resets to empty so the
-                // readiness border stays RED until a real course is chosen.
-                if (val === '__addnew__') {
-                    courseSelect.value = '';
-                    this._maypNewCourseForm();
-                    return;
-                }
-
                 // ⛳ Multi-nine venue on a society event → one-time "confirm your nines" popup.
                 // The organizer's booking is pre-selected but the golfer's pick is what scores
                 // (players' on-course nines are BINDING — the A+A paper-card incident rule).
@@ -81379,9 +81371,10 @@ class LiveScorecardSystem {
         card.style.display = 'block';
     }
 
-    // 🗺️ v1028: "Course not listed" → name form in the offer-card slot. Creating it adds a
-    // dropdown option with a fresh slug id and re-dispatches 'change', which runs the normal
-    // zero-holes probe → mapping offer. Nothing touches the DB until the round's card is saved.
+    // 🗺️ v1028→v1030: opened by the standing "Map a new course" button in the course section
+    // (Pete: ALWAYS visible, never a dropdown option). Name form in the offer-card slot;
+    // creating it adds a dropdown option with a fresh slug id and re-dispatches 'change',
+    // which runs the normal zero-holes probe → mapping offer. No DB writes until card save.
     _maypNewCourseForm() {
         const card = document.getElementById('maypOfferCard');
         if (!card) return;

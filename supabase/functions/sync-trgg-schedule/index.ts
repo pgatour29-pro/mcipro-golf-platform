@@ -208,7 +208,15 @@ interface ExistingRow {
   status: string | null;
   description: string | null;
   created_at: string;
+  sync_source: string | null;
+  organizer_override: boolean | null;
 }
+
+// Provenance stamp on rows this sync creates or adopts. Website-primary rule
+// (Pete, 2026-08-29): the website wins for stamped rows unless the organizer
+// overrode them (DB trigger sets organizer_override on client edits); rows the
+// sync never stamped (special series, field splits) are never touched.
+const SYNC_SOURCE = 'trgg_website';
 
 // Far courses carry a ฿400 bus fee (fuel + tolls); locals ride the ฿300 default
 // (stored 0 → every fee surface falls back to 300). Mirrors
@@ -270,7 +278,7 @@ Deno.serve(async (req) => {
     // UUIDs, so society_id alone misses rows and re-inserts them as duplicates.
     const { data: existingEvents, error: existErr } = await supabase
       .from('society_events')
-      .select('id, society_id, event_date, course_name, title, start_time, departure_time, entry_fee, transport_fee, format, status, description, created_at')
+      .select('id, society_id, event_date, course_name, title, start_time, departure_time, entry_fee, transport_fee, format, status, description, created_at, sync_source, organizer_override')
       .or(`society_id.eq.${TRGG_SOCIETY_ID},title.ilike.TRGG*`)
       .gte('event_date', todayBkk);
 
@@ -310,6 +318,15 @@ Deno.serve(async (req) => {
     const duplicatesRemoved: Array<{ date: string; id: string; title: string }> = [];
     const errors: string[] = [];
 
+    // Rows accounted for by this run (canonical, second waves, removed dups,
+    // organizer-owned dates) — anything sync-stamped and NOT in here afterwards
+    // is stale (course swapped away / date dropped on the website).
+    const matchedIds = new Set<string>();
+    // date → the row that now represents the website's event, so stale rows'
+    // registrations can follow the schedule change.
+    const canonicalByDate = new Map<string, string>();
+    const organizerKept: Array<{ date: string; id: string; title: string }> = [];
+
     const normTime = (t: string | null | undefined) => (t || '').slice(0, 5); // HH:MM vs HH:MM:SS
 
     // Societies legitimately run several events on one date (high-season splits
@@ -334,7 +351,18 @@ Deno.serve(async (req) => {
     };
 
     for (const evt of events) {
+      // Organizer override wins over the website: only a sync-stamped row can
+      // carry the flag (DB trigger), i.e. the organizer reshaped the website's
+      // slot for this date — leave the whole date alone.
+      const overridden = (byDate.get(evt.date) || []).find(r => r.organizer_override);
+      if (overridden) {
+        for (const r of byDate.get(evt.date) || []) matchedIds.add(r.id);
+        organizerKept.push({ date: evt.date, id: overridden.id, title: overridden.title });
+        continue;
+      }
+
       const rows = (byDate.get(evt.date) || []).filter(r => matchesEvent(r, evt));
+      for (const r of rows) matchedIds.add(r.id);
 
       // Build title
       let title = evt.event_type === 'Regular'
@@ -360,18 +388,23 @@ Deno.serve(async (req) => {
         entry_fee: evt.green_fee,
         // Far course = ฿400 bus; locals store 0 (the ฿300 fallback governs)
         transport_fee: isFarCourse(`${evt.course_name} ${title}`) ? 400 : 0,
+        sync_source: SYNC_SOURCE,
       };
 
       if (rows.length === 0) {
-        // Insert new
-        const { error } = await supabase
+        // Insert new (id captured so a stale same-date row can hand over its
+        // registrations in the course-swap phase below)
+        const { data: ins, error } = await supabase
           .from('society_events')
-          .insert(eventData);
+          .insert(eventData)
+          .select('id')
+          .single();
 
         if (error) {
           errors.push(`Insert ${evt.date} ${evt.course_name}: ${error.message}`);
         } else {
           inserted++;
+          if (ins?.id) canonicalByDate.set(evt.date, String(ins.id));
         }
         continue;
       }
@@ -384,6 +417,7 @@ Deno.serve(async (req) => {
         (regCounts.get(b.id) || 0) - (regCounts.get(a.id) || 0) ||
         a.created_at.localeCompare(b.created_at)
       )[0];
+      canonicalByDate.set(evt.date, canonical.id);
 
       // An organizer cancellation wins over the website — never resurrect
       if ((canonical.status || '') === 'cancelled') {
@@ -409,7 +443,11 @@ Deno.serve(async (req) => {
           (canonical.description || '') !== eventData.description ||
           (canonical.format || '') !== eventData.format ||
           (canonical.status || '') !== eventData.status ||
-          (canonical.society_id || '') !== TRGG_SOCIETY_ID;
+          (canonical.society_id || '') !== TRGG_SOCIETY_ID ||
+          // Adopt: stamp provenance on rows that match the website but were
+          // written by another path (scheduler/legacy). LINE-silent — the
+          // notify trigger only fires when date/time/course actually change.
+          (canonical.sync_source || '') !== SYNC_SOURCE;
 
         if (!changed) {
           unchanged++;
@@ -459,7 +497,78 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log('[TRGG Sync] Done:', { inserted, updated, unchanged, duplicatesRemoved: duplicatesRemoved.length, errors: errors.length });
+    // ── Course-swap / removed-event cleanup (website-primary rule) ──────────
+    // A sync-stamped, non-overridden, non-cancelled row that no website event
+    // claimed this run is stale: the website swapped its course or dropped the
+    // date. Its linked data follows the date's new canonical row, then it's
+    // deleted (DELETE has no LINE trigger). Rows the sync never stamped —
+    // special series, field splits, organizer-created events — are invisible
+    // here by construction. Range-guarded so a partial page parse can't reach
+    // beyond the dates it actually saw; the events.length floor guards a
+    // near-empty parse.
+    const staleRemoved: Array<{ date: string; id: string; title: string }> = [];
+    const staleKept: string[] = [];
+    if (events.length >= 5) {
+      const maxWebDate = events.reduce((m, e) => (e.date > m ? e.date : m), todayBkk);
+      const staleRows = ((existingEvents || []) as ExistingRow[]).filter(r =>
+        !matchedIds.has(r.id) &&
+        r.sync_source === SYNC_SOURCE &&
+        !r.organizer_override &&
+        (r.status || '') !== 'cancelled' &&
+        r.event_date >= todayBkk && r.event_date <= maxWebDate
+      );
+
+      // Linked-data counts — a stale row with data but no replacement row is
+      // kept for the organizer to resolve, never silently orphaned.
+      const linkCounts = new Map<string, number>();
+      if (staleRows.length > 0) {
+        const staleIds = staleRows.map(r => r.id);
+        for (const table of ['event_registrations', 'event_pairings', 'event_announcements']) {
+          const { data } = await supabase.from(table).select('event_id').in('event_id', staleIds);
+          for (const row of data || []) {
+            const k = String(row.event_id);
+            linkCounts.set(k, (linkCounts.get(k) || 0) + 1);
+          }
+        }
+      }
+
+      for (const row of staleRows) {
+        const replacementId = canonicalByDate.get(row.event_date);
+        const links = linkCounts.get(row.id) || 0;
+
+        if (links > 0 && !replacementId) {
+          staleKept.push(`${row.event_date} "${row.title}" no longer on website but has ${links} linked record(s) and no replacement — left for organizer`);
+          continue;
+        }
+
+        if (links > 0 && replacementId) {
+          let repointFailed = false;
+          for (const table of ['event_registrations', 'event_pairings', 'event_announcements']) {
+            const { error } = await supabase
+              .from(table)
+              .update({ event_id: replacementId })
+              .eq('event_id', row.id);
+            if (error) {
+              errors.push(`Repoint ${table} ${row.id}→${replacementId}: ${error.message}`);
+              repointFailed = true;
+            }
+          }
+          if (repointFailed) continue; // keep the row rather than orphan its data
+        }
+
+        const { error: delErr } = await supabase
+          .from('society_events')
+          .delete()
+          .eq('id', row.id);
+        if (delErr) {
+          errors.push(`Delete stale ${row.event_date} ${row.title}: ${delErr.message}`);
+        } else {
+          staleRemoved.push({ date: row.event_date, id: row.id, title: row.title });
+        }
+      }
+    }
+
+    console.log('[TRGG Sync] Done:', { inserted, updated, unchanged, duplicatesRemoved: duplicatesRemoved.length, staleRemoved: staleRemoved.length, organizerKept: organizerKept.length, errors: errors.length });
 
     return cors(json(200, {
       success: true,
@@ -470,6 +579,9 @@ Deno.serve(async (req) => {
       updated,
       unchanged,
       duplicates_removed: duplicatesRemoved.length > 0 ? duplicatesRemoved : undefined,
+      stale_removed: staleRemoved.length > 0 ? staleRemoved : undefined,
+      stale_kept: staleKept.length > 0 ? staleKept : undefined,
+      organizer_kept: organizerKept.length > 0 ? organizerKept : undefined,
       warnings: warnings.length > 0 ? warnings : undefined,
       errors: errors.length > 0 ? errors : undefined,
       events: events.map(e => ({ date: e.date, course: e.course_name, type: e.event_type, tee: e.tee_time })),

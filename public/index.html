@@ -51333,6 +51333,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <option value="highlands_cm">Highlands Golf & Spa Resort (Chiang Mai)</option>
                                     <option value="alpine_cm">Alpine Golf Club & Resort (Chiang Mai)</option>
                                     </optgroup>
+                                    <!-- 🗺️ MAP-AS-YOU-PLAY (v1028): venue not in the list → golfer names it and maps
+                                         the card during the round. '__addnew__' is already excluded by every venue-list
+                                         copier (EventCourseSelect / ScheduleCreator / pin sheets); golfer-created courses
+                                         insert ABOVE this row so it stays last. -->
+                                    <option value="__addnew__">➕ Course not listed? Map a new course</option>
                                 </select>
                                 <button onclick="LiveScorecardManager.openCourseLibrary()" class="px-3 py-2.5 text-white rounded-xl hover:opacity-90 flex items-center justify-center gap-1 flex-shrink-0 transition-all shadow-sm" style="min-width: 70px; background: linear-gradient(135deg, #0f172a, #1e293b);">
                                     <span class="material-symbols-outlined text-sm">library_books</span>
@@ -70334,7 +70339,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const currentVal = dst.value;
             dst.innerHTML = '<option value="">-- Select Course --</option>';
             Array.from(src.options).forEach(opt => {
-                if (!opt.value) return;
+                if (!opt.value || opt.value === '__addnew__') return;
                 const clone = opt.cloneNode(true);
                 dst.appendChild(clone);
             });
@@ -80520,6 +80525,15 @@ class LiveScorecardSystem {
                     if (el) el.style.display = (val === key) ? 'block' : 'none';
                 }
 
+                // 🗺️ MAP-AS-YOU-PLAY (v1028): "Course not listed" row — collect the name, then
+                // re-enter this handler with a fresh course id. The select resets to empty so the
+                // readiness border stays RED until a real course is chosen.
+                if (val === '__addnew__') {
+                    courseSelect.value = '';
+                    this._maypNewCourseForm();
+                    return;
+                }
+
                 // ⛳ Multi-nine venue on a society event → one-time "confirm your nines" popup.
                 // The organizer's booking is pre-selected but the golfer's pick is what scores
                 // (players' on-course nines are BINDING — the A+A paper-card incident rule).
@@ -81363,6 +81377,72 @@ class LiveScorecardSystem {
                 ${tt('scorecard.mayp.offer.body', '{course} has no hole data in the system yet. Start your round and set each hole’s Par, Index & Yardage as you play — scoring works as normal, and when you finish the full card is saved for every golfer. Teeing off on 10? Set “Starting Nine” below.').replace('{course}', name)}
             </div>`;
         card.style.display = 'block';
+    }
+
+    // 🗺️ v1028: "Course not listed" → name form in the offer-card slot. Creating it adds a
+    // dropdown option with a fresh slug id and re-dispatches 'change', which runs the normal
+    // zero-holes probe → mapping offer. Nothing touches the DB until the round's card is saved.
+    _maypNewCourseForm() {
+        const card = document.getElementById('maypOfferCard');
+        if (!card) return;
+        this._maypOffer = null;
+        const tt = (k, fb) => { try { return (typeof _lvT === 'function') ? _lvT(k, fb) : fb; } catch (e) { return fb; } };
+        card.innerHTML = `
+            <div style="display:flex;align-items:center;gap:7px;font-size:13px;font-weight:800;color:#92400e;margin-bottom:3px;">
+                <span class="material-symbols-outlined" style="font-size:19px;">add_location_alt</span>
+                <span>${tt('scorecard.mayp.new.title', 'Map a new course')}</span>
+            </div>
+            <div style="font-size:12px;color:#78350f;line-height:1.5;margin-bottom:8px;">
+                ${tt('scorecard.mayp.new.body', 'Type the course name exactly as the club writes it. You’ll set each hole’s Par, Index & Yardage as you play — when you finish, the full card is saved for every golfer.')}
+            </div>
+            <input id="maypNewCourseName" type="text" maxlength="60" autocomplete="off"
+                   placeholder="${tt('scorecard.mayp.new.ph', 'Course name — e.g. Emerald Golf Club')}"
+                   style="width:100%;box-sizing:border-box;border:1.5px solid #f59e0b;border-radius:10px;padding:9px 10px;font-size:14px;background:#fffdf5;color:#78350f;margin-bottom:8px;"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault();LiveScorecardManager.maypCreateCourse();}">
+            <div style="display:flex;gap:8px;">
+                <button onclick="LiveScorecardManager.maypCreateCourse()" style="flex:1;min-width:0;border:none;background:#16a34a;color:#ffffff;font-size:13px;font-weight:800;border-radius:10px;padding:9px 8px;cursor:pointer;">${tt('scorecard.mayp.new.create', 'Add course & map it')}</button>
+                <button onclick="LiveScorecardManager.maypCancelNewCourse()" style="flex-shrink:0;border:1.5px solid #d6d3d1;background:#ffffff;color:#57534e;font-size:13px;font-weight:700;border-radius:10px;padding:9px 12px;cursor:pointer;">${tt('scorecard.mayp.new.cancel', 'Cancel')}</button>
+            </div>`;
+        card.style.display = 'block';
+        setTimeout(() => document.getElementById('maypNewCourseName')?.focus(), 50);
+    }
+
+    maypCancelNewCourse() {
+        const card = document.getElementById('maypOfferCard');
+        if (card) { card.style.display = 'none'; card.innerHTML = ''; }
+    }
+
+    maypCreateCourse() {
+        const input = document.getElementById('maypNewCourseName');
+        const name = (input?.value || '').trim().replace(/\s+/g, ' ');
+        if (name.length < 3) {
+            window.NotificationManager.show('Type the course name first (at least 3 letters)', 'warning');
+            input?.focus();
+            return;
+        }
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        if (!slug) {
+            window.NotificationManager.show('Course name needs some letters or numbers', 'warning');
+            input?.focus();
+            return;
+        }
+        const sel = document.getElementById('scorecardCourseSelect');
+        if (!sel) return;
+        let opt = Array.from(sel.options).find(o => o.value === slug);
+        if (opt) {
+            window.NotificationManager.show(`${opt.textContent.trim()} is already in the list — selected it for you`, 'info');
+        } else {
+            opt = document.createElement('option');
+            opt.value = slug;
+            opt.textContent = name;
+            // golfer-created courses sit at the bottom, above the "map a new course" row
+            const sentinel = Array.from(sel.options).find(o => o.value === '__addnew__');
+            if (sentinel) sel.insertBefore(opt, sentinel); else sel.appendChild(opt);
+        }
+        this.maypCancelNewCourse();
+        sel.value = slug;
+        // run the full course-change pipeline: tee markers, pin sheets, zero-holes probe → offer
+        sel.dispatchEvent(new Event('change'));
     }
 
     _ensureMaypHost() {
@@ -86241,6 +86321,11 @@ class LiveScorecardSystem {
                         hole_number: i + 1, par: null, stroke_index: i + 1, yardage: 0, tee_marker: mTee
                     }));
                     this.mapMode = true;
+                    // v1028: golfer-created course ids have no profile, so the display-name fallback
+                    // is the raw slug — the dropdown label (the name the golfer typed) is the real
+                    // name, and it's what maypSaveCourse writes to courses.name.
+                    const _maypOptName = document.getElementById('scorecardCourseSelect')?.selectedOptions?.[0]?.textContent?.trim();
+                    if (_maypOptName) this.courseData.name = _maypOptName;
                     // loadCourseData just cached the EMPTY courseData — poison for the next load, drop it
                     try {
                         localStorage.removeItem(`mcipro_course_${courseId}`);
@@ -100847,6 +100932,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             const postSelect = document.getElementById('postScoreCourseSelect');
             if (mainSelect && postSelect) {
                 postSelect.innerHTML = mainSelect.innerHTML;
+                postSelect.querySelector('option[value="__addnew__"]')?.remove();
             }
             // Set default date to today
             const dateInput = document.getElementById('postScoreDate');
@@ -101660,7 +101746,9 @@ document.addEventListener('DOMContentLoaded', async function() {
                     const sel = document.getElementById(selId);
                     if (sel) {
                         const clone = option.cloneNode(true);
-                        sel.appendChild(clone);
+                        // keep the "map a new course" row last in the live-scoring dropdown
+                        const sentinel = sel.querySelector('option[value="__addnew__"]');
+                        if (sentinel) sel.insertBefore(clone, sentinel); else sel.appendChild(clone);
                     }
                 });
 
@@ -101701,7 +101789,10 @@ document.addEventListener('DOMContentLoaded', async function() {
             // Populate course dropdown from main scorecard select
             const src = document.getElementById('scorecardCourseSelect');
             const dst = document.getElementById('rpsCourseSel');
-            if (src && dst) dst.innerHTML = src.innerHTML;
+            if (src && dst) {
+                dst.innerHTML = src.innerHTML;
+                dst.querySelector('option[value="__addnew__"]')?.remove();
+            }
             // Default date = today
             const d = document.getElementById('rpsDate');
             if (d) d.value = new Date().toISOString().split('T')[0];

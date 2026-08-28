@@ -203,10 +203,20 @@ interface ExistingRow {
   start_time: string | null;
   departure_time: string | null;
   entry_fee: number | string | null;
+  transport_fee: number | string | null;
   format: string | null;
   status: string | null;
   description: string | null;
   created_at: string;
+}
+
+// Far courses carry a ฿400 bus fee (fuel + tolls); locals ride the ฿300 default
+// (stored 0 → every fee surface falls back to 300). Mirrors
+// EventCourseSelect._farCourse in public/index.html — keep the two lists in sync.
+const FAR_COURSES = ['khao k', 'mountain shadow', 'bangpra', 'bangpakong', 'royal lakeside', 'pleasant valley', 'greenwood', 'pattavia', 'pattana', 'treasure hill'];
+function isFarCourse(name: string): boolean {
+  const n = (name || '').toLowerCase();
+  return FAR_COURSES.some(k => n.includes(k));
 }
 
 Deno.serve(async (req) => {
@@ -260,7 +270,7 @@ Deno.serve(async (req) => {
     // UUIDs, so society_id alone misses rows and re-inserts them as duplicates.
     const { data: existingEvents, error: existErr } = await supabase
       .from('society_events')
-      .select('id, society_id, event_date, course_name, title, start_time, departure_time, entry_fee, format, status, description, created_at')
+      .select('id, society_id, event_date, course_name, title, start_time, departure_time, entry_fee, transport_fee, format, status, description, created_at')
       .or(`society_id.eq.${TRGG_SOCIETY_ID},title.ilike.TRGG*`)
       .gte('event_date', todayBkk);
 
@@ -348,6 +358,8 @@ Deno.serve(async (req) => {
               : 'stableford',
         status: 'published',
         entry_fee: evt.green_fee,
+        // Far course = ฿400 bus; locals store 0 (the ฿300 fallback governs)
+        transport_fee: isFarCourse(`${evt.course_name} ${title}`) ? 400 : 0,
       };
 
       if (rows.length === 0) {
@@ -377,6 +389,14 @@ Deno.serve(async (req) => {
       if ((canonical.status || '') === 'cancelled') {
         unchanged++;
       } else {
+        // Transport fee: only HEAL a far course still on the default (0/300) up
+        // to 400 — an organizer's manual value (anything else) always wins
+        const curTransport = Number(canonical.transport_fee || 0);
+        eventData.transport_fee =
+          eventData.transport_fee === 400 && (curTransport === 0 || curTransport === 300)
+            ? 400
+            : curTransport;
+
         // Only write when something actually differs — a blind update every sync
         // run re-fires LINE notifications on the trigger's watched columns
         const changed =
@@ -385,6 +405,7 @@ Deno.serve(async (req) => {
           normTime(canonical.start_time) !== normTime(eventData.start_time) ||
           normTime(canonical.departure_time) !== normTime(eventData.departure_time) ||
           Number(canonical.entry_fee || 0) !== Number(eventData.entry_fee || 0) ||
+          Number(canonical.transport_fee || 0) !== Number(eventData.transport_fee || 0) ||
           (canonical.description || '') !== eventData.description ||
           (canonical.format || '') !== eventData.format ||
           (canonical.status || '') !== eventData.status ||

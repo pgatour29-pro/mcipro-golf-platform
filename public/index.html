@@ -29391,6 +29391,13 @@ Sent from Login Page`;
 
         // Dashboard back button — go to previous page/tab
         function dashboardGoBack() {
+            // v1034: IRMA reply popup is body-mounted and global (any screen) — back must
+            // close it first, not navigate the screen underneath it.
+            const _irmaP = document.getElementById('irmaPopup');
+            if (_irmaP && !_irmaP.classList.contains('hidden')) {
+                try { InRoundMsgAlert.closePopup(); } catch (e) {}
+                return;
+            }
             // FGV1 (v801): kitchen overlay sits above everything — back closes it first.
             const _kq = document.getElementById('kitchenQueueOverlay');
             if (_kq && _kq.style.display === 'block') {
@@ -117221,10 +117228,11 @@ const MessagesSystem = {
 // Make globally available
 window.MessagesSystem = MessagesSystem;
 
-// ===== IRMA — In-Round Message Alert =====
-// New DM while the golfer is mid-round on the scorecard tab → dismissible banner; VIEW opens
-// a reply popup WITHOUT leaving live scoring. Purely additive UI over the scoring page —
-// never touches the scoring engine. Everywhere else the normal Messages badge behavior runs.
+// ===== IRMA — Incoming Message Alert =====
+// v1034: GLOBAL — a new DM anywhere in the open app → dismissible banner; VIEW opens a reply
+// popup WITHOUT leaving the current screen. Suppressed only when that sender's conversation is
+// already open in Messages (the thread channel paints it inline). Purely additive UI — never
+// touches the scoring engine. Badge behavior runs regardless.
 window.InRoundMsgAlert = {
     _sender: null, _senderName: '', _popupFor: null, _seq: 0, _sending: false,
 
@@ -117233,12 +117241,14 @@ window.InRoundMsgAlert = {
                (window.AppState && AppState.currentUser && AppState.currentUser.lineUserId) || null;
     },
     _esc(s) { return (window.MessagesSystem ? MessagesSystem.escapeHtml(s || '') : String(s || '')); },
-    _inRound() {
+    _viewingThread(senderId) {
+        // Sender's conversation already open in Messages → the open-thread channel paints
+        // the message inline; a banner on top of it would be noise.
         try {
-            var gd = document.getElementById('golferDashboard');
-            if (!gd || !gd.classList.contains('round-active')) return false;
-            var sc = document.getElementById('golfer-scorecard');
-            return !!(sc && sc.classList.contains('active'));
+            var cc = window.MessagesSystem && MessagesSystem.currentConversation;
+            if (!cc || cc.type !== 'dm' || cc.id !== senderId) return false;
+            var cv = document.getElementById('conversation-view');
+            return !!(cv && !cv.classList.contains('hidden'));
         } catch (e) { return false; }
     },
 
@@ -117273,11 +117283,12 @@ window.InRoundMsgAlert = {
 
     async onIncoming(rec) {
         try {
-            if (!rec || !rec.sender_line_id || !this._inRound()) return;
+            if (!rec || !rec.sender_line_id) return;
             var me = this._me();
             if (rec.recipient_line_id && me && rec.recipient_line_id !== me) return;
             // popup already open on this sender → live-update the thread instead of a banner
             if (this._popupFor === rec.sender_line_id) { this._loadThread(); return; }
+            if (this._viewingThread(rec.sender_line_id)) return;
             this._sender = rec.sender_line_id;
             this._senderName = await this._senderNameFor(rec.sender_line_id);
             this._ensureDom();

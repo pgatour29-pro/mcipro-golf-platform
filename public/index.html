@@ -117061,16 +117061,27 @@ const MessagesSystem = {
             return;
         }
 
-        resultsContainer.innerHTML = available.slice(0, 30).map(p => {
+        // Rows are listener-bound like the DM recipient picker (v1036/v1037): inline onclick
+        // died on quoted names (escapeHtml leaves apostrophes raw) and on mid-tap repaints.
+        const rows = available.slice(0, 30);
+        resultsContainer.innerHTML = rows.map((p, i) => {
             const name = p.name || p.profile_data?.displayName || 'Unknown';
             const avatar = p.profile_data?.linePictureUrl || p.profile_data?.pictureUrl || `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2240%22>${(name)[0].toUpperCase()}</text></svg>`;
             return `
-                <div onclick="MessagesSystem.addGroupMember('${p.line_user_id}', '${this.escapeHtml(name)}')"
+                <div data-gmidx="${i}"
                      class="flex items-center p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0">
                     <img src="${avatar}" class="w-8 h-8 rounded-full mr-2" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2250%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2240%22>?</text></svg>'">
                     <span class="text-sm font-medium">${this.escapeHtml(name)}</span>
                 </div>`;
         }).join('');
+        const self = this;
+        resultsContainer.querySelectorAll('[data-gmidx]').forEach(el => {
+            el.addEventListener('pointerdown', e => e.preventDefault());
+            el.addEventListener('click', () => {
+                const p = rows[+el.dataset.gmidx];
+                if (p) self.addGroupMember(p.line_user_id, p.name || (p.profile_data && p.profile_data.displayName) || 'Unknown');
+            });
+        });
         resultsContainer.style.display = 'block';
     },
 

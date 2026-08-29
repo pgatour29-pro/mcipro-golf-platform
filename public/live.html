@@ -14,6 +14,7 @@
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
         }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
         .winner-row { background: linear-gradient(90deg, #fef3c7 0%, #fde68a 50%, #fef3c7 100%); }
         .player-name { cursor: pointer; }
         .player-name:hover { text-decoration: underline; color: #059669; }
@@ -1493,6 +1494,8 @@
             if (detailRow) {
                 const isExpanded = detailRow.classList.toggle('show');
                 if (icon) icon.classList.toggle('expanded');
+                const btn = document.querySelector('.player-name[data-player-id="' + playerId + '"]');
+                if (btn) btn.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
                 if (isExpanded) {
                     expandedPlayers.add(playerId);
                 } else {
@@ -1509,6 +1512,8 @@
                 if (detailRow) {
                     detailRow.classList.add('show');
                     if (icon) icon.classList.add('expanded');
+                    const btn = document.querySelector('.player-name[data-player-id="' + playerId + '"]');
+                    if (btn) btn.setAttribute('aria-expanded', 'true');
                 }
             });
         }
@@ -1522,6 +1527,17 @@
                     togglePlayerDetails(playerId);
                 }
             }
+        });
+
+        // 2.1.1 — role="button" spans need the keyboard activation a real button gets for free.
+        document.addEventListener('keydown', function(e) {
+            if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+            const playerName = e.target.closest('.player-name');
+            if (!playerName) return;
+            const playerId = playerName.getAttribute('data-player-id');
+            if (!playerId) return;
+            e.preventDefault();
+            togglePlayerDetails(playerId);
         });
 
         // Get score class based on score vs par
@@ -1699,8 +1715,8 @@
                         <tr class="${isLeader ? 'winner-row font-bold' : 'border-b border-gray-100'}">
                             <td class="py-3 px-4 text-center">${i + 1}</td>
                             <td class="py-3 px-4">
-                                <span class="player-name flex items-center gap-1" data-player-id="${playerId}" style="cursor:pointer;">
-                                    <span class="material-symbols-outlined text-sm expand-icon" id="icon-${playerId}">expand_more</span>
+                                <span class="player-name flex items-center gap-1" data-player-id="${playerId}" role="button" tabindex="0" aria-expanded="false" aria-controls="details-${playerId}" style="cursor:pointer;">
+                                    <span class="material-symbols-outlined text-sm expand-icon" id="icon-${playerId}" aria-hidden="true">expand_more</span>
                                     <span data-golfer-av="${escTeamHtml(entry.player_id || '').replace(/"/g, '&quot;')}" data-golfer-av-nm="${escTeamHtml(entry.player_name).replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${entry.player_name}</span>
                                     ${isLeader ? '<span class="ml-2">🏆</span>' : ''}
                                 </span>
@@ -1717,8 +1733,8 @@
                         <tr class="${isLeader ? 'winner-row font-bold' : 'border-b border-gray-100'}">
                             <td class="py-3 px-4 text-center">${i + 1}</td>
                             <td class="py-3 px-4">
-                                <span class="player-name flex items-center gap-1" data-player-id="${playerId}" style="cursor:pointer;">
-                                    <span class="material-symbols-outlined text-sm expand-icon" id="icon-${playerId}">expand_more</span>
+                                <span class="player-name flex items-center gap-1" data-player-id="${playerId}" role="button" tabindex="0" aria-expanded="false" aria-controls="details-${playerId}" style="cursor:pointer;">
+                                    <span class="material-symbols-outlined text-sm expand-icon" id="icon-${playerId}" aria-hidden="true">expand_more</span>
                                     <span data-golfer-av="${escTeamHtml(entry.player_id || '').replace(/"/g, '&quot;')}" data-golfer-av-nm="${escTeamHtml(entry.player_name).replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${entry.player_name}</span>
                                     ${isLeader ? '<span class="ml-2">🏆</span>' : ''}
                                 </span>
@@ -1733,14 +1749,15 @@
 
             return `
                 <table class="w-full text-sm">
+                    <caption class="sr-only">Leaderboard standings</caption>
                     <thead class="bg-gray-50 border-b">
                         <tr class="text-gray-600">
-                            <th class="py-2 px-4 text-center">Pos</th>
-                            <th class="py-2 px-4 text-left">Player</th>
-                            <th class="py-2 px-4 text-center">Thru</th>
+                            <th scope="col" class="py-2 px-4 text-center">Pos</th>
+                            <th scope="col" class="py-2 px-4 text-left">Player</th>
+                            <th scope="col" class="py-2 px-4 text-center">Thru</th>
                             ${isStrokePlay
-                                ? '<th class="py-2 px-4 text-center">Gross</th><th class="py-2 px-4 text-center">Net</th>'
-                                : '<th class="py-2 px-4 text-center">Pts</th>'}
+                                ? '<th scope="col" class="py-2 px-4 text-center">Gross</th><th scope="col" class="py-2 px-4 text-center">Net</th>'
+                                : '<th scope="col" class="py-2 px-4 text-center">Pts</th>'}
                         </tr>
                     </thead>
                     <tbody>${rows}</tbody>
@@ -1773,8 +1790,8 @@
                     <tr class="${wonTotal ? 'winner-row' : 'border-b border-gray-100'}">
                         <td class="py-3 px-3 text-center font-semibold">${i + 1}</td>
                         <td class="py-3 px-3">
-                            <span class="player-name flex items-center gap-1" data-player-id="${playerId}" style="cursor:pointer;">
-                                <span class="material-symbols-outlined text-sm expand-icon" id="icon-${playerId}">expand_more</span>
+                            <span class="player-name flex items-center gap-1" data-player-id="${playerId}" role="button" tabindex="0" aria-expanded="false" aria-controls="details-${playerId}" style="cursor:pointer;">
+                                <span class="material-symbols-outlined text-sm expand-icon" id="icon-${playerId}" aria-hidden="true">expand_more</span>
                                 <span data-golfer-av="${escTeamHtml(entry.player_id || '').replace(/"/g, '&quot;')}" data-golfer-av-nm="${escTeamHtml(entry.player_name).replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${entry.player_name}</span>
                             </span>
                         </td>

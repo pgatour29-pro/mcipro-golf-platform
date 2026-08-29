@@ -58,9 +58,13 @@
         .hole-par { color:var(--sub); font-size:9px; }
         .hole-tot { font-weight:800; background:var(--band); }
         .hole-score { background:var(--cell); border:1px solid var(--cell-line); }
+        /* 1.4.1 — every state carries a non-colour cue as well as its background:
+           eagle = circle + outer ring, birdie = circle, double = 2px inner ring,
+           bogey = 2px dark inner ring (added). Rings are inset box-shadows, not borders,
+           so the cell keeps its exact dimensions. */
         .score-eagle { background:#3b82f6; color:#fff; border-radius:50%; font-weight:bold; box-shadow:0 0 0 2px #1d4ed8; }
         .score-birdie { background:#60a5fa; color:#fff; border-radius:50%; font-weight:bold; }
-        .score-bogey { background:#ef4444; color:#fff; font-weight:bold; }
+        .score-bogey { background:#ef4444; color:#fff; font-weight:bold; box-shadow:inset 0 0 0 2px #7f1d1d; }
         .score-double { background:#991b1b; color:#fff; font-weight:bold; box-shadow:inset 0 0 0 2px #fca5a5; }
         .score-two { box-shadow:0 0 0 2px var(--green) !important; }
         .score-ace { background:var(--gold); color:#fff; border-radius:50%; font-weight:bold; box-shadow:0 0 0 2px #b45309 !important; }
@@ -92,7 +96,11 @@
         body.embed header { display:none; }
         body.embed main { padding-left:0; padding-right:0; }
 
-        .icon-btn { border:1px solid var(--line); background:var(--card); color:var(--sub); border-radius:10px; width:34px; height:34px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+        .icon-btn { position:relative; border:1px solid var(--line); background:var(--card); color:var(--sub); border-radius:10px; width:34px; height:34px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+        /* 2.5.8 — grow the touch target to 44x44 without changing the painted button.
+           The header gap is 8px, so a 5px bleed still leaves 3px clear of the next target. */
+        .icon-btn::before { content:''; position:absolute; inset:-5px; }
+        .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
         .lang-btn { border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:10px; height:34px; padding:0 10px; font-size:12px; font-weight:800; cursor:pointer; }
         .scroll-x { overflow-x:auto; -webkit-overflow-scrolling:touch; }
         .division-band { font-size:12.5px; font-weight:800; color:var(--ink); background:var(--band); border-radius:8px; padding:7px 11px; margin:12px 0 6px; }
@@ -1172,8 +1180,8 @@
                     <tr class="${showPlaces && pos===1 ? 'winner-row' : ''}">
                         <td class="text-center" style="font-weight:800;color:${showPlaces && pos<=3?'var(--gold)':'var(--sub)'};">${showPlaces ? medal(pos) : '-'}</td>
                         <td>
-                            <span class="${hasHoles ? 'player-btn' : ''}" ${hasHoles ? `data-player-id="${pid}"` : ''}>
-                                ${hasHoles ? `<span class="msym expand-icon" id="icon-${pid}">expand_more</span>` : ''}
+                            <span class="${hasHoles ? 'player-btn' : ''}" ${hasHoles ? `data-player-id="${pid}" role="button" tabindex="0" aria-expanded="false" aria-controls="details-${pid}"` : ''}>
+                                ${hasHoles ? `<span class="msym expand-icon" id="icon-${pid}" aria-hidden="true">expand_more</span>` : ''}
                                 <span data-golfer-av="${esc(en.player_id||'')}" data-golfer-av-nm="${esc(en.player_name)}" data-golfer-av-sz="18">${esc(en.player_name)}</span>
                                 ${twosCount ? `<span style="font-size:9.5px;font-weight:800;color:var(--green);border:1px solid var(--green);border-radius:999px;padding:0 6px;">2s ×${twosCount}</span>` : ''}
                             </span>
@@ -1191,13 +1199,14 @@
                     return rowFor(en, pos);
                 }).join('');
                 return `<div class="scroll-x"><table class="res-table" style="min-width:480px;">
+                    <caption class="sr-only">${esc(rt('tabField'))}</caption>
                     <thead><tr>
-                        <th class="text-center" style="width:44px;">${esc(rt('pos'))}</th>
-                        <th class="text-left">${esc(rt('player'))}</th>
-                        <th class="text-center">${esc(rt('hcp'))}</th>
-                        <th class="text-center">${esc(rt('gross'))}</th>
-                        <th class="text-center">${esc(rt('net'))}</th>
-                        <th class="text-center">${esc(rt('pts'))}</th>
+                        <th scope="col" class="text-center" style="width:44px;">${esc(rt('pos'))}</th>
+                        <th scope="col" class="text-left">${esc(rt('player'))}</th>
+                        <th scope="col" class="text-center">${esc(rt('hcp'))}</th>
+                        <th scope="col" class="text-center">${esc(rt('gross'))}</th>
+                        <th scope="col" class="text-center">${esc(rt('net'))}</th>
+                        <th scope="col" class="text-center">${esc(rt('pts'))}</th>
                     </tr></thead>
                     <tbody>${rows}</tbody>
                 </table></div>`;
@@ -1302,18 +1311,33 @@
             if (!row) return;
             const on = row.classList.toggle('show');
             if (icon) icon.classList.toggle('expanded', on);
+            const btn = document.querySelector('.player-btn[data-player-id="'+pid+'"]');
+            if (btn) btn.setAttribute('aria-expanded', on ? 'true' : 'false');
             if (on) expandedPlayers.add(pid); else expandedPlayers.delete(pid);
         }
         function restoreExpandedState(){
             expandedPlayers.forEach(pid => {
                 const row = document.getElementById('details-'+pid);
                 const icon = document.getElementById('icon-'+pid);
-                if (row){ row.classList.add('show'); if (icon) icon.classList.add('expanded'); }
+                if (row){
+                    row.classList.add('show');
+                    if (icon) icon.classList.add('expanded');
+                    const btn = document.querySelector('.player-btn[data-player-id="'+pid+'"]');
+                    if (btn) btn.setAttribute('aria-expanded', 'true');
+                }
             });
         }
         document.addEventListener('click', function(e){
             const p = e.target.closest('.player-btn');
             if (p && p.getAttribute('data-player-id')) togglePlayerDetails(p.getAttribute('data-player-id'));
+        });
+        // 2.1.1 — role="button" spans need the keyboard activation a real button gets for free.
+        document.addEventListener('keydown', function(e){
+            if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+            const p = e.target.closest('.player-btn');
+            if (!p || !p.getAttribute('data-player-id')) return;
+            e.preventDefault();
+            togglePlayerDetails(p.getAttribute('data-player-id'));
         });
 
         // --- 2s tab: this event's 2s + the society's par-3 2s race over the period ---
@@ -1696,10 +1720,11 @@
                             <div class="sub" style="font-size:11px;">${esc(rt('scrambleSub'))}</div>
                         </div>
                         <div class="scroll-x"><table class="res-table">
+                            <caption class="sr-only">${esc(rt('scrambleTitle'))}</caption>
                             <thead><tr>
-                                <th class="text-center">${esc(rt('pos'))}</th><th class="text-left">${esc(rt('team'))}</th>
-                                <th class="text-center">${esc(rt('hcp'))}</th>
-                                <th class="text-center">${esc(rt('gross'))}</th><th class="text-center">${esc(rt('net'))}</th>
+                                <th scope="col" class="text-center">${esc(rt('pos'))}</th><th scope="col" class="text-left">${esc(rt('team'))}</th>
+                                <th scope="col" class="text-center">${esc(rt('hcp'))}</th>
+                                <th scope="col" class="text-center">${esc(rt('gross'))}</th><th scope="col" class="text-center">${esc(rt('net'))}</th>
                             </tr></thead>
                             <tbody>${teamBoards.scramble.map((tm,i) => {
                                 const canX = !!(tm.holeGross && tm.holeGross.some(v => v != null));
@@ -1707,7 +1732,7 @@
                                 return `
                                 <tr class="${showPlaces && i===0 && tm.started!==false?'winner-row':''}">
                                     <td class="text-center" style="font-weight:800;">${tm.started===false?'–':(i+1)}${showPlaces && i===0 && tm.started!==false?' 🏆':''}</td>
-                                    <td><span class="${canX?'player-btn':''}" ${canX?`data-player-id="${tid}"`:''}>${canX?`<span class="msym expand-icon" id="icon-${tid}">expand_more</span>`:''}${esc(tm.name)}</span></td>
+                                    <td><span class="${canX?'player-btn':''}" ${canX?`data-player-id="${tid}" role="button" tabindex="0" aria-expanded="false" aria-controls="details-${tid}"`:''}>${canX?`<span class="msym expand-icon" id="icon-${tid}" aria-hidden="true">expand_more</span>`:''}${esc(tm.name)}</span></td>
                                     <td class="text-center sub">${tm.teamHcp!=null?tm.teamHcp:'-'}</td>
                                     <td class="text-center">${tm.gross||'-'}</td>
                                     <td class="text-center" style="font-weight:800;color:var(--green);">${tm.net||'-'}</td>

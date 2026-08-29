@@ -55,9 +55,28 @@
         .podium-1 { background: var(--pod1-bg); border: 2px solid var(--pod1-bd); }
         .podium-2 { background: var(--pod2-bg); border: 2px solid var(--pod2-bd); }
         .podium-3 { background: var(--pod3-bg); border: 2px solid var(--pod3-bd); }
-        .player-row { display: flex; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); transition: background 0.2s; cursor: pointer; }
+        /* Standings table. Was a stack of flex divs; now a real <table> for 1.3.1 (row/column
+           association). table-layout:fixed + the widths below reproduce the old flex tracks
+           EXACTLY: 12px gutter + 28px badge | rest | 50 | 40 | 35 + 12px gutter. */
+        .poy-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        .poy-table th { font-size: 10px; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 0; border-bottom: 1px solid var(--line2); }
+        .poy-table td { padding: 10px 0; vertical-align: middle; }
+        .poy-table .c-pos { width: 40px; padding-left: 12px; text-align: center; }
+        .poy-table td.c-pos { line-height: 0; }
+        .poy-table .c-player { padding-left: 8px; text-align: left; }
+        .poy-table .c-pts { width: 50px; text-align: center; font-size: 15px; font-weight: 700; color: var(--green); }
+        .poy-table .c-rnds { width: 40px; text-align: center; font-size: 12px; color: var(--sub); }
+        .poy-table .c-avg { width: 47px; padding-right: 12px; text-align: center; font-size: 12px; color: var(--sub); }
+        .poy-table th.c-pts, .poy-table th.c-rnds, .poy-table th.c-avg { font-size: 10px; font-weight: 700; color: var(--faint); }
+        .poy-table .c-detail { padding: 0; }
+        .player-row { border-bottom: 1px solid var(--line); transition: background 0.2s; cursor: pointer; }
         .player-row:hover { background: var(--hover); }
-        .pos-badge { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; font-size: 12px; font-weight: 700; flex-shrink: 0; background: var(--badge-bg); color: var(--badge-ink); }
+        /* Real <button> so the expand is keyboard operable (2.1.1/4.1.2) without putting
+           role="button" on the <tr> — that would strip the row/cell table semantics. Styled
+           to be indistinguishable from the plain div it replaced. */
+        .poy-name-btn { display: block; width: 100%; min-width: 0; background: none; border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+        .pos-badge { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; font-size: 12px; font-weight: 700; line-height: 1; flex-shrink: 0; background: var(--badge-bg); color: var(--badge-ink); }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
         .score-pill { display: inline-block; padding: 2px 6px; border-radius: 6px; font-size: 11px; font-weight: 600; margin: 1px; }
         .score-pill.high { background: var(--pill-high-bg); color: var(--pill-high-ink); }
         .score-pill.mid { background: var(--pill-mid-bg); color: var(--pill-mid-ink); }
@@ -237,13 +256,18 @@
 
         // Header
         let html = `
-            <div style="display:flex;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line2);font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:0.5px;">
-                <span style="width:28px;text-align:center;">#</span>
-                <span style="flex:1;padding-left:8px;">Player</span>
-                <span style="width:50px;text-align:center;">Pts</span>
-                <span style="width:40px;text-align:center;">Rnds</span>
-                <span style="width:35px;text-align:center;">Avg</span>
-            </div>
+            <table class="poy-table">
+                <caption class="sr-only">Player of the Year standings</caption>
+                <thead>
+                    <tr>
+                        <th scope="col" class="c-pos">#</th>
+                        <th scope="col" class="c-player">Player</th>
+                        <th scope="col" class="c-pts">Pts</th>
+                        <th scope="col" class="c-rnds">Rnds</th>
+                        <th scope="col" class="c-avg">Avg</th>
+                    </tr>
+                </thead>
+                <tbody>
         `;
 
         list.forEach((p, idx) => {
@@ -252,29 +276,37 @@
                 : '';
 
             html += `
-                <div class="player-row" onclick="toggleDetail('detail-${idx}')">
-                    <span class="pos-badge" style="${posStyle}">${p.pos}</span>
-                    <div style="flex:1;padding-left:8px;min-width:0;">
-                        <div style="font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.display_name}</div>
-                        <div style="font-size:10px;color:var(--faint);">Best: ${p.best_score}</div>
-                    </div>
-                    <span style="width:50px;text-align:center;font-size:15px;font-weight:700;color:var(--green);">${p.pts}</span>
-                    <span style="width:40px;text-align:center;font-size:12px;color:var(--sub);">${p.total_rounds}</span>
-                    <span style="width:35px;text-align:center;font-size:12px;color:var(--sub);">${p.avg_score}</span>
-                </div>
-                <div id="detail-${idx}" class="detail-panel">
-                    <div style="font-size:11px;color:var(--sub);margin-bottom:6px;">Top ${p.rounds} scores counted${p.total_rounds > p.rounds ? ` (of ${p.total_rounds} played)` : ''}</div>
-                    <div style="display:flex;flex-wrap:wrap;gap:3px;">
-                        ${(p.scores || []).map(s => `<span class="score-pill ${getScoreClass(s)}">${s}</span>`).join('')}
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px;">
-                        <div style="font-size:10px;color:var(--faint);">Best: <span style="color:var(--good);font-weight:600;">${p.best_score}</span></div>
-                        <div style="font-size:10px;color:var(--faint);">Worst: <span style="color:var(--bad);font-weight:600;">${p.worst_score}</span></div>
-                        <div style="font-size:10px;color:var(--faint);">Avg: <span style="color:var(--info);font-weight:600;">${p.avg_score}</span></div>
-                    </div>
-                </div>
+                <tr class="player-row" onclick="toggleDetail('detail-${idx}')">
+                    <td class="c-pos"><span class="pos-badge" style="${posStyle}">${p.pos}</span></td>
+                    <td class="c-player">
+                        <button type="button" class="poy-name-btn" aria-expanded="false" aria-controls="detail-${idx}" onclick="event.stopPropagation();toggleDetail('detail-${idx}');">
+                            <span style="display:block;font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.display_name}</span>
+                            <span style="display:block;font-size:10px;color:var(--faint);">Best: ${p.best_score}</span>
+                        </button>
+                    </td>
+                    <td class="c-pts">${p.pts}</td>
+                    <td class="c-rnds">${p.total_rounds}</td>
+                    <td class="c-avg">${p.avg_score}</td>
+                </tr>
+                <tr>
+                    <td class="c-detail" colspan="5">
+                        <div id="detail-${idx}" class="detail-panel">
+                            <div style="font-size:11px;color:var(--sub);margin-bottom:6px;">Top ${p.rounds} scores counted${p.total_rounds > p.rounds ? ` (of ${p.total_rounds} played)` : ''}</div>
+                            <div style="display:flex;flex-wrap:wrap;gap:3px;">
+                                ${(p.scores || []).map(s => `<span class="score-pill ${getScoreClass(s)}">${s}</span>`).join('')}
+                            </div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px;">
+                                <div style="font-size:10px;color:var(--faint);">Best: <span style="color:var(--good);font-weight:600;">${p.best_score}</span></div>
+                                <div style="font-size:10px;color:var(--faint);">Worst: <span style="color:var(--bad);font-weight:600;">${p.worst_score}</span></div>
+                                <div style="font-size:10px;color:var(--faint);">Avg: <span style="color:var(--info);font-weight:600;">${p.avg_score}</span></div>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
             `;
         });
+
+        html += `</tbody></table>`;
 
         if (capped) {
             html += `<button onclick="poyExpandAll()" style="display:block;width:100%;padding:13px;background:none;border:none;border-top:1px solid var(--line2);color:var(--green);font-size:13px;font-weight:700;cursor:pointer;">Show all ${players.length} players</button>`;
@@ -290,7 +322,11 @@
 
     function toggleDetail(id) {
         const el = document.getElementById(id);
-        if (el) el.classList.toggle('open');
+        if (!el) return;
+        const open = el.classList.toggle('open');
+        // Keep the row's expand button in sync (4.1.2)
+        const btn = document.querySelector('.poy-name-btn[aria-controls="' + id + '"]');
+        if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
     }
 
     function filterPlayers() {

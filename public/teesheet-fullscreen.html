@@ -118,6 +118,7 @@
       gap: 4px;
     }
     .date-nav button {
+      position: relative;
       background: rgba(255,255,255,0.1);
       border: none;
       color: #fff;
@@ -127,6 +128,13 @@
       cursor: pointer;
       font-size: 18px;
       transition: background 0.15s;
+    }
+    /* 2.5.8 — 32px painted, 44px touch target. Nearest neighbour is the (non-interactive)
+       date display across a 12px gap, so a 6px bleed leaves 6px clear. */
+    .date-nav button::before {
+      content: '';
+      position: absolute;
+      inset: -6px;
     }
     .date-nav button:hover {
       background: rgba(255,255,255,0.2);
@@ -344,6 +352,24 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    /* 1.4.1 — booking type was signalled by the left border colour alone. Add a compact
+       letter tag so the type survives greyscale / colour blindness. Regular gets no tag.
+       Sized under the 12px line strut (line-height:1, vertical-align:middle) so the pill
+       height is unchanged. */
+    .booking-pill.vip .golfer-name::after { content: 'V'; }
+    .booking-pill.society .golfer-name::after { content: 'S'; }
+    .booking-pill.tournament .golfer-name::after { content: 'T'; }
+    .booking-pill.vip .golfer-name::after,
+    .booking-pill.society .golfer-name::after,
+    .booking-pill.tournament .golfer-name::after {
+      margin-left: 4px;
+      font-size: 9px;
+      font-weight: 600;
+      line-height: 1;
+      letter-spacing: 0.5px;
+      vertical-align: middle;
+      opacity: 0.85;
+    }
     .booking-pill .caddy-badge {
       font-size: 10px;
       color: var(--brand);
@@ -511,6 +537,7 @@
       margin-bottom: 0;
     }
     .golfer-row .remove-golfer {
+      position: relative;
       width: 36px;
       height: 36px;
       background: #ef4444;
@@ -519,6 +546,13 @@
       color: #fff;
       cursor: pointer;
       flex-shrink: 0;
+    }
+    /* 2.5.8 — 36px painted, 44px touch target. The row gap is 10px, so a 4px bleed
+       stays clear of the caddy input beside it. */
+    .golfer-row .remove-golfer::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
     }
     .add-golfer-btn {
       display: flex;
@@ -1005,6 +1039,22 @@
     }
 
     // ==================== RENDER ====================
+    // Escape a value destined for an HTML attribute (aria-label / title carry golfer names).
+    function attr(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Spoken/hover name for each booking type — pairs with the letter tag in the CSS so the
+    // type is never colour-only (1.4.1).
+    const BOOKING_TYPE_LABEL = {
+      regular: 'Regular booking',
+      vip: 'VIP booking',
+      society: 'Society booking',
+      tournament: 'Tournament booking'
+    };
+
     function render() {
       const layout = getLayout();
       const startM = minutes('06:00');
@@ -1050,14 +1100,19 @@
           const courseClass = `course-${col.course.toLowerCase()}`;
 
           let cellContent = '';
+          const cellNames = [];
           if (slotBookings.length === 0) {
-            cellContent = '<div class="empty-slot">+</div>';
+            cellContent = `<div class="empty-slot" role="button" tabindex="0" aria-label="Add booking at ${attr(timeStr)}">+</div>`;
           } else {
             slotBookings.forEach(b => {
               const golfers = b.golfers || [];
               const name = golfers.length > 0 ? golfers[0].name : (b.name || 'Player');
               const extra = golfers.length > 1 ? ` +${golfers.length - 1}` : '';
               const caddy = (golfers.length > 0 && golfers[0].caddyNumber) ? `${caddyPhotoByNumber(golfers[0].caddyNumber, 14)}C${golfers[0].caddyNumber}` : '';
+              const allNames = golfers.length > 0
+                ? golfers.map(g => g.name).filter(Boolean).join(', ')
+                : (b.name || 'Player');
+              cellNames.push(allNames);
 
               let groupClass = '';
               if (b.groupId && b.groupTotal > 1) {
@@ -1067,8 +1122,12 @@
                 else groupClass += 'range-middle';
               }
 
+              const bType = b.bookingType || 'regular';
               cellContent += `
-                <div class="booking-pill ${b.bookingType || 'regular'} ${groupClass}" data-id="${b.id}">
+                <div class="booking-pill ${bType} ${groupClass}" data-id="${b.id}"
+                     role="button" tabindex="0"
+                     title="${attr(BOOKING_TYPE_LABEL[bType] || BOOKING_TYPE_LABEL.regular)}"
+                     aria-label="Edit ${attr(BOOKING_TYPE_LABEL[bType] || BOOKING_TYPE_LABEL.regular)} at ${attr(timeStr)} — ${attr(allNames)}">
                   <div class="golfer-name">${name}<span class="extra-count">${extra}</span></div>
                   ${caddy ? `<div class="caddy-badge">${caddy}</div>` : ''}
                 </div>
@@ -1076,7 +1135,10 @@
             });
           }
 
-          row.innerHTML += `<div class="slot-cell ${courseClass}" data-time="${timeStr}" data-col="${idx}" data-course="${col.course}" data-tee="${col.tee}">${cellContent}</div>`;
+          const cellLabel = cellNames.length
+            ? `${timeStr} ${col.course}-${col.tee} — ${cellNames.join('; ')}`
+            : `${timeStr} ${col.course}-${col.tee} — add booking`;
+          row.innerHTML += `<div class="slot-cell ${courseClass}" data-time="${timeStr}" data-col="${idx}" data-course="${col.course}" data-tee="${col.tee}" role="button" tabindex="0" aria-label="${attr(cellLabel)}">${cellContent}</div>`;
         });
 
         el.gridBody.appendChild(row);
@@ -1084,8 +1146,8 @@
 
       // Add click handlers
       el.gridBody.querySelectorAll('.slot-cell').forEach(cell => {
-        cell.addEventListener('click', (e) => {
-          const pill = e.target.closest('.booking-pill');
+        const activate = (target) => {
+          const pill = target.closest('.booking-pill');
           if (pill) {
             const bookingId = pill.dataset.id;
             const booking = bookings.find(b => b.id === bookingId);
@@ -1098,6 +1160,14 @@
               col: parseInt(cell.dataset.col)
             });
           }
+        };
+        cell.addEventListener('click', (e) => activate(e.target));
+        // 2.1.1 — the cell / pill / empty slot are role="button" divs, so Enter and Space
+        // have to be wired by hand.
+        cell.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+          e.preventDefault();
+          activate(e.target);
         });
       });
     }

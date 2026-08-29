@@ -116315,6 +116315,24 @@ const MessagesSystem = {
         }
     },
 
+    // THE one recipient query — searchRecipients dropdown and the send-time auto-resolve
+    // must stay on the same engine or they'll disagree about who a typed name means.
+    async _recipientSearch(query) {
+        let _mq = window.SupabaseDB.client
+            .from('user_profiles')
+            .select('line_user_id, name, profile_data')
+            .neq('line_user_id', this.userLineId);
+        // Platform name matching: any word order + nicknames ("peter" finds "Pete")
+        (window.sanitizeSearch ? sanitizeSearch(query) : query).split(/\s+/).filter(Boolean)
+            .forEach(w => { _mq = _mq.or(window.nickOrClauses(w)); });
+        const { data: profiles, error } = await _mq.limit(10);
+        if (error) throw error;
+        return profiles || [];
+    },
+    _recipientAvatar(p) {
+        return (p.profile_data && (p.profile_data.linePictureUrl || p.profile_data.pictureUrl)) || '';
+    },
+
     async searchRecipients() {
         const query = document.getElementById('compose-search').value.trim();
         const resultsContainer = document.getElementById('compose-search-results');
@@ -116327,29 +116345,35 @@ const MessagesSystem = {
         // Debounce
         clearTimeout(this.searchTimeout);
         this.searchTimeout = setTimeout(async () => {
+            const seq = (this._searchSeq = (this._searchSeq || 0) + 1);
             try {
-                let _mq = window.SupabaseDB.client
-                    .from('user_profiles')
-                    .select('line_user_id, name, profile_data')
-                    .neq('line_user_id', this.userLineId);
-                // Platform name matching: any word order + nicknames ("peter" finds "Pete")
-                (window.sanitizeSearch ? sanitizeSearch(query) : query).split(/\s+/).filter(Boolean)
-                    .forEach(w => { _mq = _mq.or(window.nickOrClauses(w)); });
-                const { data: profiles, error } = await _mq.limit(10);
+                const profiles = await this._recipientSearch(query);
+                if (seq !== this._searchSeq) return;   // stale response — a newer search owns the DOM
+                if (this.selectedRecipient) return;    // picked while in flight — don't reopen over the chip
 
-                if (error) throw error;
-
-                if (!profiles || profiles.length === 0) {
+                if (profiles.length === 0) {
                     resultsContainer.innerHTML = '<div class="p-3 text-gray-500 text-center">No members found</div>';
                 } else {
-                    resultsContainer.innerHTML = profiles.map(p => `
-                        <div class="flex items-center p-2 hover:bg-gray-50 cursor-pointer"
-                             onclick="MessagesSystem.selectRecipient('${p.line_user_id}', '${this.escapeHtml(p.name)}', '${p.profile_data?.linePictureUrl || p.profile_data?.pictureUrl || ''}')">
-                            <img src="${p.profile_data?.linePictureUrl || p.profile_data?.pictureUrl || ''}" class="w-8 h-8 rounded-full mr-2 bg-gray-200"
+                    // Rows are bound via listeners, NOT inline onclick: names/avatars with
+                    // quotes broke the attribute JS, and inline handlers died silently when
+                    // a later repaint swapped the node mid-tap.
+                    resultsContainer.innerHTML = profiles.map((p, i) => `
+                        <div class="flex items-center p-2 hover:bg-gray-50 cursor-pointer" data-ridx="${i}">
+                            <img src="${this._recipientAvatar(p)}" class="w-8 h-8 rounded-full mr-2 bg-gray-200"
                                  onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/></svg>'">
                             <span class="font-medium">${this.escapeHtml(p.name)}</span>
                         </div>
                     `).join('');
+                    const self = this;
+                    resultsContainer.querySelectorAll('[data-ridx]').forEach(el => {
+                        // preventDefault keeps the input focused: on phones the tap otherwise
+                        // blurs the keyboard closed and the reflow moves the row off the finger.
+                        el.addEventListener('pointerdown', e => e.preventDefault());
+                        el.addEventListener('click', () => {
+                            const p = profiles[+el.dataset.ridx];
+                            if (p) self.selectRecipient(p.line_user_id, p.name, self._recipientAvatar(p));
+                        });
+                    });
                 }
                 resultsContainer.style.display = 'block';
             } catch (err) {
@@ -116390,7 +116414,22 @@ const MessagesSystem = {
         try {
             if (type === 'dm') {
                 if (!this.selectedRecipient) {
+                    // Do it FOR them: a typed name whose row-tap never registered (mid-tap
+                    // repaint / keyboard-close reflow) still resolves at send time — an
+                    // unambiguous match is used directly instead of dead-ending the user.
+                    const typed = (document.getElementById('compose-search').value || '').trim();
+                    if (typed.length >= 2) {
+                        const matches = await this._recipientSearch(typed).catch(() => null);
+                        if (matches) {
+                            const exact = matches.filter(m => (m.name || '').trim().toLowerCase() === typed.toLowerCase());
+                            const pick = matches.length === 1 ? matches[0] : (exact.length === 1 ? exact[0] : null);
+                            if (pick) this.selectRecipient(pick.line_user_id, pick.name, this._recipientAvatar(pick));
+                        }
+                    }
+                }
+                if (!this.selectedRecipient) {
                     NotificationManager.show('Please select a recipient', 'error');
+                    alert('Tap a name in the "To" list to choose who this goes to.');
                     return;
                 }
 

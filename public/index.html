@@ -17941,11 +17941,27 @@
             // Show biometric login button on login screen if credentials exist
             async checkAndShowButton() {
                 if (!this.isSupported()) return;
-                const hasCreds = await this.hasCredentials();
                 const btn = document.getElementById('biometricLoginBtn');
-                if (btn && hasCreds) {
+                if (!btn) return;
+                const hasCreds = await this.hasCredentials();
+                if (hasCreds) {
                     btn.style.display = 'flex';
+                    return;
                 }
+                // FRESH-PARTITION PASSKEY (2026-08-29): the installed iOS app gets its own
+                // storage, so localStorage creds registered in Safari are invisible here —
+                // but the passkey itself lives in the platform keychain and works for this
+                // domain from EITHER context. Show the button anyway on installed apps and
+                // iOS Safari (never inside LINE); authenticate() falls back to a
+                // discoverable sign-in that identifies the user from the passkey itself.
+                try {
+                    if (window.PWAInstallGate && !PWAInstallGate.isLINE() &&
+                        (PWAInstallGate.isStandalone() || PWAInstallGate.isIOSSafari()) &&
+                        PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable &&
+                        await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()) {
+                        btn.style.display = 'flex';
+                    }
+                } catch (e) { /* keep button hidden */ }
             },
 
             // Offer biometric registration after successful login
@@ -18079,11 +18095,7 @@
             // Authenticate with biometric credential
             async authenticate() {
                 const credIdB64 = localStorage.getItem('mcipro_biometric_cred_id');
-                const storedUserId = localStorage.getItem('mcipro_biometric_user_id');
-                if (!credIdB64 || !storedUserId) {
-                    NotificationManager.show('No biometric credentials found. Please log in with LINE or Google first.', 'warning');
-                    return;
-                }
+                let storedUserId = localStorage.getItem('mcipro_biometric_user_id');
 
                 try {
                     LoadingManager.show('Verifying identity...');
@@ -18092,22 +18104,27 @@
                     const challenge = new Uint8Array(32);
                     crypto.getRandomValues(challenge);
 
-                    // Convert stored credential ID back to ArrayBuffer
-                    const credIdRaw = Uint8Array.from(atob(credIdB64), c => c.charCodeAt(0));
+                    // Stored credential on this partition → fast targeted assertion.
+                    // No stored credential (fresh partition, e.g. the installed iOS app that
+                    // never shares Safari's localStorage) → DISCOVERABLE sign-in: omit
+                    // allowCredentials so the platform keychain offers this domain's passkeys,
+                    // and register() stamped user.id = the account id, so the assertion's
+                    // userHandle tells us WHO this is with zero local state (2026-08-29).
+                    const publicKey = {
+                        challenge: challenge,
+                        userVerification: 'required',
+                        timeout: 60000
+                    };
+                    if (credIdB64 && storedUserId) {
+                        publicKey.allowCredentials = [{
+                            id: Uint8Array.from(atob(credIdB64), c => c.charCodeAt(0)),
+                            type: 'public-key',
+                            transports: ['internal']
+                        }];
+                    }
 
                     // Request biometric verification
-                    const assertion = await navigator.credentials.get({
-                        publicKey: {
-                            challenge: challenge,
-                            allowCredentials: [{
-                                id: credIdRaw,
-                                type: 'public-key',
-                                transports: ['internal']
-                            }],
-                            userVerification: 'required',
-                            timeout: 60000
-                        }
-                    });
+                    const assertion = await navigator.credentials.get({ publicKey: publicKey });
 
                     if (!assertion) {
                         LoadingManager.hide();
@@ -18115,24 +18132,59 @@
                         return;
                     }
 
+                    if (!storedUserId) {
+                        const uh = assertion.response && assertion.response.userHandle;
+                        if (uh && uh.byteLength) storedUserId = new TextDecoder().decode(uh);
+                        // Real account ids: LINE 'U…', 'KAKAO-…', 'GOOGLE-…' (register() encodes them)
+                        if (!storedUserId || !/^(U|KAKAO-|GOOGLE-)/.test(storedUserId)) {
+                            LoadingManager.hide();
+                            NotificationManager.show('This passkey has no account attached. Log in with LINE once, enable biometrics, then use it here.', 'warning');
+                            return;
+                        }
+                        console.log('[Biometric] Discoverable passkey identified user:', storedUserId);
+                    }
+
                     console.log('[Biometric] ✅ Verification successful, loading user:', storedUserId);
 
-                    // Load user profile from Supabase
-                    const res = await fetch(`${this.SUPABASE_URL}/rest/v1/user_profiles?line_user_id=eq.${storedUserId}&select=*`, {
-                        headers: {
-                            'apikey': this.SUPABASE_KEY,
-                            'Authorization': `Bearer ${this.SUPABASE_KEY}`
+                    // Load user profile from Supabase — FAIL-CLOSED like v1040: only a
+                    // confirmed 200 + JSON array is an answer; a dropped fetch must not
+                    // wipe the stored passkey binding or dead-end the login.
+                    let data = null;
+                    for (let attempt = 0; attempt < 3 && !Array.isArray(data); attempt++) {
+                        if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 1000));
+                        try {
+                            const res = await fetch(`${this.SUPABASE_URL}/rest/v1/user_profiles?line_user_id=eq.${encodeURIComponent(storedUserId)}&select=*`, {
+                                headers: {
+                                    'apikey': this.SUPABASE_KEY,
+                                    'Authorization': `Bearer ${this.SUPABASE_KEY}`
+                                }
+                            });
+                            if (res.ok) data = await res.json();
+                            else console.warn('[Biometric] Profile lookup HTTP', res.status, '(attempt', attempt + 1, 'of 3)');
+                        } catch (fetchErr) {
+                            console.warn('[Biometric] Profile lookup failed (attempt ' + (attempt + 1) + ' of 3):', fetchErr);
                         }
-                    });
-                    const data = await res.json();
+                    }
 
-                    if (!data || data.length === 0) {
+                    if (!Array.isArray(data)) {
+                        LoadingManager.hide();
+                        NotificationManager.show('Connection problem — please try again.', 'error');
+                        return;
+                    }
+
+                    if (data.length === 0) {
                         LoadingManager.hide();
                         NotificationManager.show('Account not found. Please log in with LINE or Google.', 'error');
                         localStorage.removeItem('mcipro_biometric_cred_id');
                         localStorage.removeItem('mcipro_biometric_user_id');
                         return;
                     }
+
+                    // Persist the binding on THIS partition so the next login is instant
+                    try {
+                        localStorage.setItem('mcipro_biometric_cred_id', btoa(String.fromCharCode(...new Uint8Array(assertion.rawId))));
+                        localStorage.setItem('mcipro_biometric_user_id', storedUserId);
+                    } catch (e) { /* non-fatal */ }
 
                     const userProfile = data[0];
                     const userName = localStorage.getItem('mcipro_biometric_user_name') || userProfile.name || 'User';
@@ -22571,6 +22623,12 @@
                     // "Maybe later" session snooze); don't double-fire it here.
                     setTimeout(() => {
                         if (window.PWAInstallGate && PWAInstallGate.isInstalled() && !PWAInstallGate.isLINE() && typeof BiometricAuth !== 'undefined') {
+                            BiometricAuth.offerRegistration();
+                        } else if (window.PWAInstallGate && PWAInstallGate.isIOSSafari() && typeof BiometricAuth !== 'undefined') {
+                            // iOS Safari (2026-08-29): enrolling here creates an iCloud passkey
+                            // the INSTALLED app can use via discoverable login — the only
+                            // reliable way into the app partition on iOS, where the LINE OAuth
+                            // return always lands back in Safari, never in the app.
                             BiometricAuth.offerRegistration();
                         } else if (!(window.PWAInstallGate && PWAInstallGate.isMobile()) && typeof BiometricAuth !== 'undefined') {
                             // Desktop (or gate unavailable): offer biometrics as before.

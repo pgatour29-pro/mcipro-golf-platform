@@ -22211,24 +22211,105 @@
             static async setUserFromLineProfile(profile) {
                 const lineUserId = profile.userId;
 
-                // Query Supabase REST API DIRECTLY (bypass client issues)
+                // Query Supabase REST API DIRECTLY (bypass client issues).
+                // FAIL-CLOSED (2026-08-29): only a confirmed 200 + JSON array counts as an
+                // answer. One dropped fetch on flaky mobile data used to fall through to the
+                // NEW-USER matching branch below — registered members got the "Find Your
+                // Existing Profile / I'm New — Create Profile" registration modals on every
+                // re-login, and completing them overwrites the real profile (Alondo, iPhone).
                 let userProfile = null;
-                try {
-                    const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
-                    const SUPABASE_KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
-
-                    const res = await fetch(`${SUPABASE_URL}/rest/v1/user_profiles?line_user_id=eq.${lineUserId}&select=*`, {
-                        headers: {
-                            'apikey': SUPABASE_KEY,
-                            'Authorization': `Bearer ${SUPABASE_KEY}`
+                let lookupConfirmed = false;
+                const SUPABASE_URL = 'https://pyeeplwsnupmhgbguwqs.supabase.co';
+                const SUPABASE_KEY = 'sb_publishable_JUC1GzlfviBUyy8LeEpSkA_Xc8tgRC9';
+                for (let attempt = 0; attempt < 4 && !lookupConfirmed; attempt++) {
+                    if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 1200));
+                    try {
+                        const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+                        const timer = ctrl ? setTimeout(() => ctrl.abort(), 8000) : null;
+                        const res = await fetch(`${SUPABASE_URL}/rest/v1/user_profiles?line_user_id=eq.${lineUserId}&select=*`, {
+                            headers: {
+                                'apikey': SUPABASE_KEY,
+                                'Authorization': `Bearer ${SUPABASE_KEY}`
+                            },
+                            signal: ctrl ? ctrl.signal : undefined
+                        });
+                        if (timer) clearTimeout(timer);
+                        if (!res.ok) {
+                            console.warn('[LINE] Profile lookup HTTP', res.status, '(attempt', attempt + 1, 'of 4)');
+                            continue;
                         }
-                    });
-                    const data = await res.json();
-                    if (data && data.length > 0) {
-                        userProfile = data[0];
+                        const data = await res.json();
+                        if (Array.isArray(data)) {
+                            lookupConfirmed = true;
+                            if (data.length > 0) userProfile = data[0];
+                        }
+                    } catch (err) {
+                        console.warn('[LINE] Profile lookup failed (attempt ' + (attempt + 1) + ' of 4):', err);
                     }
-                } catch (err) {
-                    console.error('[LINE] Direct query failed:', err);
+                }
+
+                // Lookup never got a definitive answer (Supabase unreachable). LINE just
+                // verified WHO this is via OAuth, so if this device has a cached profile for
+                // this exact line_user_id, sign them in from cache — the dashboard's own
+                // loaders refresh everything once the connection recovers. Never route a
+                // failed lookup into the new-user registration flow.
+                if (!lookupConfirmed && !userProfile) {
+                    try {
+                        const cachedSummary = (JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]'))
+                            .find(p => p && (p.lineUserId === lineUserId || p.userId === lineUserId));
+                        if (cachedSummary) {
+                            const cachedKey = UserIDSystem.getProfileKey(cachedSummary.role || 'golfer', lineUserId);
+                            const cachedFull = JSON.parse(localStorage.getItem(cachedKey) || 'null') || {};
+                            console.warn('[LINE] Lookup unconfirmed — signing in from cached device profile:', cachedSummary.name);
+                            localStorage.setItem('line_user_id', lineUserId);
+                            AppState.currentUser = {
+                                role: cachedSummary.role || 'golfer',
+                                name: cachedSummary.name || profile.displayName,
+                                username: cachedSummary.username || cachedSummary.name || profile.displayName || 'User',
+                                lineId: lineUserId,
+                                lineUserId: lineUserId,
+                                userId: lineUserId,
+                                avatar: profile.pictureUrl,
+                                email: cachedSummary.email,
+                                phone: cachedSummary.phone,
+                                handicap: cachedSummary.handicap ?? cachedFull.handicap ?? null,
+                                membershipLevel: (cachedSummary.role || 'golfer') === 'golfer' ? 'premium' : 'staff',
+                                joinDate: new Date().toISOString(),
+                                stats: {},
+                                permissions: this.getPermissions(cachedSummary.role || 'golfer'),
+                                profileData: { line_user_id: lineUserId, role: cachedSummary.role || 'golfer', name: cachedSummary.name, username: cachedSummary.username, profile_data: cachedFull },
+                                golfInfo: cachedFull.golfInfo || {},
+                                organizationInfo: cachedFull.organizationInfo || {},
+                                personalInfo: cachedFull.personalInfo || {},
+                                professionalInfo: cachedFull.professionalInfo || {}
+                            };
+                            AppState.session = {
+                                isAuthenticated: true,
+                                authMethod: 'line_cached_fallback',
+                                loginTime: new Date().toISOString()
+                            };
+                            try { window.logClientError && window.logClientError('login_lookup_fallback', {
+                                message: 'Profile lookup unreachable after 4 attempts — signed in from device cache',
+                                source: 'setUserFromLineProfile'
+                            }); } catch (e) {}
+                            return;
+                        }
+                    } catch (cacheErr) {
+                        console.warn('[LINE] Cached-profile fallback failed:', cacheErr);
+                    }
+                    // No cache on this device either — bounce back to the login screen so the
+                    // user can simply retry. Showing the registration/matching modals here is
+                    // the one thing we must never do: the account EXISTS, we just couldn't ask.
+                    window.__loginLookupUnreachable = true; // callers: not a first-timer, don't alert
+                    console.error('[LINE] Profile lookup unreachable and no cached profile — returning to login');
+                    try { window.logClientError && window.logClientError('login_lookup_unreachable', {
+                        message: 'Profile lookup unreachable after 4 attempts, no device cache — user returned to login',
+                        source: 'setUserFromLineProfile'
+                    }); } catch (e) {}
+                    LoadingManager.hide();
+                    if (window.resetLoginClick) window.resetLoginClick();
+                    try { ScreenManager.showScreen('loginScreen'); } catch (e) {}
+                    return;
                 }
 
                 // Guest migration removed for simplicity
@@ -26708,7 +26789,12 @@
                                                       document.getElementById('manualProfileSearchModal') ||
                                                       document.getElementById('oauthMemberLinkModal') ||
                                                       document.getElementById('oauthManualSearchModal');
-                            if (!identityModalOpen) {
+                            // Lookup-unreachable (fail-closed path) is NOT a first-timer — the
+                            // account exists, Supabase was unreachable. Login screen is already
+                            // back with the button reset; the "no account linked" alert would lie.
+                            if (window.__loginLookupUnreachable) {
+                                window.__loginLookupUnreachable = false;
+                            } else if (!identityModalOpen) {
                                 try { alert('Sign-in note: you authenticated with ' + provider + ', but no MyCaddiPro account is linked to this ID yet. Please screenshot this message and send it to support.'); } catch(e){}
                             }
                             LoadingManager.hide();
@@ -26949,6 +27035,7 @@
                 // This runs BEFORE LIFF init to avoid 8+ second wait
                 // ============================================================
                 let sessionRestoredImmediately = false;
+                let restoreDefinitiveNoProfile = false; // true only when the DB answered "0 rows"
                 const savedLineUserIdImmediate = localStorage.getItem('line_user_id');
 
                 if (savedLineUserIdImmediate && !oauthProcessed) {
@@ -26968,11 +27055,22 @@
                         }
 
                         if (window.SupabaseDB?.ready) {
-                            const { data: userProfile, error } = await window.SupabaseDB.client
-                                .from('user_profiles')
-                                .select('*')
-                                .eq('line_user_id', savedLineUserIdImmediate)
-                                .single();
+                            // RESTORE RETRY (2026-08-29): one dropped query on slow mobile data
+                            // used to dump a logged-in user straight onto the login screen
+                            // ("keeps getting kicked out" — Alondo, iPhone). Retry before giving
+                            // up, and only treat a definitive 0-rows answer as "no profile".
+                            let userProfile = null, error = null;
+                            for (let rAttempt = 0; rAttempt < 3; rAttempt++) {
+                                if (rAttempt > 0) await new Promise(r => setTimeout(r, 1200));
+                                ({ data: userProfile, error } = await window.SupabaseDB.client
+                                    .from('user_profiles')
+                                    .select('*')
+                                    .eq('line_user_id', savedLineUserIdImmediate)
+                                    .single());
+                                if (userProfile && !error) break;
+                                if (error && error.code === 'PGRST116') { restoreDefinitiveNoProfile = true; break; }
+                                console.warn('[INIT] Restore query attempt', rAttempt + 1, 'of 3 failed:', error?.message || 'no data');
+                            }
 
                             if (userProfile && !error) {
                                 console.log('[INIT] ✅ IMMEDIATE session restore SUCCESS for:', userProfile.name);
@@ -27082,6 +27180,68 @@
                         }
                     } catch (err) {
                         console.warn('[INIT] Immediate session restore error:', err);
+                    }
+                }
+
+                // CACHED-PROFILE FALLBACK (2026-08-29): line_user_id is present but the network
+                // never gave an answer (Supabase not ready in time / query kept failing on slow
+                // mobile data). This device has already been signed in as this user — restore
+                // the session from the cached profile instead of bouncing to the login screen
+                // ("keeps getting kicked out"). Skipped when the DB definitively answered that
+                // the profile no longer exists, and after an explicit logout.
+                if (!sessionRestoredImmediately && savedLineUserIdImmediate && !oauthProcessed &&
+                    !restoreDefinitiveNoProfile && !AppState.session?.isAuthenticated &&
+                    !sessionStorage.getItem('__user_logged_out')) {
+                    try {
+                        const cachedSummary = (JSON.parse(localStorage.getItem('mcipro_user_profiles') || '[]'))
+                            .find(p => p && (p.lineUserId === savedLineUserIdImmediate || p.userId === savedLineUserIdImmediate));
+                        if (cachedSummary) {
+                            const cachedKey = UserIDSystem.getProfileKey(cachedSummary.role || 'golfer', savedLineUserIdImmediate);
+                            const cachedFull = JSON.parse(localStorage.getItem(cachedKey) || 'null') || {};
+                            console.warn('[INIT] Network restore failed — restoring session from device cache for:', cachedSummary.name);
+                            AppState.currentUser = {
+                                role: cachedSummary.role || 'golfer',
+                                name: cachedSummary.name,
+                                username: cachedSummary.username || cachedSummary.name,
+                                lineId: savedLineUserIdImmediate,
+                                lineUserId: savedLineUserIdImmediate,
+                                userId: savedLineUserIdImmediate,
+                                avatar: cachedFull.linePictureUrl || null,
+                                email: cachedSummary.email,
+                                phone: cachedSummary.phone,
+                                handicap: cachedSummary.handicap ?? cachedFull.handicap ?? null,
+                                membershipLevel: (cachedSummary.role || 'golfer') === 'golfer' ? 'premium' : 'staff',
+                                joinDate: new Date().toISOString(),
+                                stats: {},
+                                permissions: LineAuthentication.getPermissions(cachedSummary.role || 'golfer'),
+                                profileData: { line_user_id: savedLineUserIdImmediate, role: cachedSummary.role || 'golfer', name: cachedSummary.name, username: cachedSummary.username, profile_data: cachedFull },
+                                golfInfo: cachedFull.golfInfo || {},
+                                organizationInfo: cachedFull.organizationInfo || {},
+                                personalInfo: cachedFull.personalInfo || {},
+                                professionalInfo: cachedFull.professionalInfo || {}
+                            };
+                            AppState.session = {
+                                isAuthenticated: true,
+                                authMethod: 'cached_offline_restore',
+                                loginTime: new Date().toISOString()
+                            };
+                            sessionRestoredImmediately = true;
+                            try { window.logClientError && window.logClientError('restore_cached_fallback', {
+                                message: 'Network restore failed — session restored from device cache',
+                                source: 'immediateSessionRestore'
+                            }); } catch (e) {}
+                            LineAuthentication.redirectToDashboard();
+                            // Data loads below self-heal once the connection is back
+                            setTimeout(() => {
+                                try {
+                                    if (typeof SimpleCloudSync !== 'undefined') SimpleCloudSync.loadFromCloud().catch(() => {});
+                                    if (typeof UserInterface !== 'undefined') UserInterface.updateUserDisplays();
+                                    if (typeof ProfileSystem !== 'undefined') ProfileSystem.initializeDashboard();
+                                } catch (e) {}
+                            }, 1500);
+                        }
+                    } catch (cacheErr) {
+                        console.warn('[INIT] Cached-profile restore fallback failed:', cacheErr);
                     }
                 }
 

@@ -5910,6 +5910,15 @@
         #irmaPopup .irma-foot { display:flex; gap:8px; padding:10px 12px; border-top:1px solid #e2e8f0; background:#fff; flex-shrink:0; }
         #irmaPopup .irma-foot input { flex:1; min-width:0; border:1px solid #cbd5e1; border-radius:999px; padding:9px 14px; font:400 14px/1.2 'Instrument Sans',sans-serif; color:#111827; background:#fff; }
         #irmaPopup .irma-foot button { background:#16a34a; border:none; color:#fff; width:40px; height:40px; border-radius:50%; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
+        /* ENB ALERT (v1038) — event-notice popup; the banner itself is IRMA's shared pill */
+        #enbAlertPopup { position:fixed; inset:0; z-index:11600; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(5,10,8,.55); }
+        #enbAlertPopup .enba-card { display:flex; flex-direction:column; width:100%; max-width:360px; max-height:72vh; background:#fff; border-radius:18px; overflow:hidden; box-shadow:0 16px 48px rgba(0,0,0,.4); }
+        #enbAlertPopup .enba-head { display:flex; align-items:center; gap:10px; padding:12px 14px; background:#0c3b22; color:#fff; flex-shrink:0; }
+        #enbAlertPopup .enba-head .n { flex:1; min-width:0; font:700 14px/1.2 'Instrument Sans',sans-serif; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        #enbAlertPopup .enba-head button { background:rgba(255,255,255,.15); border:none; color:#fff; width:30px; height:30px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+        #enbAlertPopup .enba-body { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px 14px; background:#f1f5f9; font:400 14px/1.5 'Instrument Sans',sans-serif; color:#111827; white-space:pre-wrap; overflow-wrap:break-word; }
+        #enbAlertPopup .enba-foot { display:flex; padding:10px 12px; border-top:1px solid #e2e8f0; background:#fff; flex-shrink:0; }
+        #enbAlertPopup .enba-got { flex:1; background:#16a34a; border:none; color:#fff; border-radius:999px; padding:11px 0; font:700 12px/1 'JetBrains Mono',monospace; letter-spacing:.08em; cursor:pointer; }
         /* announcement cards */
         #golfer-messages .scv3msg-ann { position:relative; overflow:hidden; cursor:pointer;
             background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:14px 14px 12px; margin-bottom:8px; }
@@ -21063,6 +21072,9 @@
                         // v1035 STANDING RULE: NOTHING overlays the login page — kill any
                         // message banner/reply popup left open by the session that just ended.
                         try { if (window.InRoundMsgAlert) { InRoundMsgAlert.dismiss(); InRoundMsgAlert.closePopup(); } } catch (e) {}
+                        // v1038: same rule for the event notice-board surfaces
+                        try { if (window.EventMsgAlert) EventMsgAlert.closePopup(); } catch (e) {}
+                        try { if (window.EventNoticeBoard) { EventNoticeBoard.closeThread(); EventNoticeBoard.closeOrganizer(); } } catch (e) {}
                     }
 
                     // Update navigation state
@@ -29429,6 +29441,12 @@ Sent from Login Page`;
             // to NavHistory — leaving the modal stuck on top of a new screen, or ejecting the organizer to
             // login. Close whichever is open and stop.
             const _ovl = [
+                // v1038: ENB alert popup + notice-board modals are body-mounted overlays,
+                // now reachable from ANY screen via the global banner — back closes them
+                // first (v1032 rule; enbThreadModal/enbOrgModal were never registered).
+                ['enbAlertPopup',     function(){ EventMsgAlert.closePopup(); }],
+                ['enbThreadModal',    function(){ EventNoticeBoard.closeThread(); }],
+                ['enbOrgModal',       function(){ EventNoticeBoard.closeOrganizer(); }],
                 ['orgLiteRegModal',   function(){ OrgLiteRegistrations.back(); }],
                 ['arrivalsModal',     function(){ ArrivalsPage.close(); }],
                 ['pairingsModal',     function(){ SocietyOrganizerSystem.closePairingsModal(); }],
@@ -117288,6 +117306,7 @@ window.MessagesSystem = MessagesSystem;
 // touches the scoring engine. Badge behavior runs regardless.
 window.InRoundMsgAlert = {
     _sender: null, _senderName: '', _popupFor: null, _seq: 0, _sending: false,
+    _genericView: null, // v1038: when set, VIEW runs this instead of the DM reply popup (ENB alerts share the banner)
 
     _me() {
         return (window.MessagesSystem && MessagesSystem.userLineId) ||
@@ -117348,15 +117367,32 @@ window.InRoundMsgAlert = {
             this._sender = rec.sender_line_id;
             this._senderName = await this._senderNameFor(rec.sender_line_id);
             this._ensureDom();
+            this._genericView = null; // DM banner reclaims the VIEW button
             document.getElementById('irmaWho').textContent = this._senderName;
             document.getElementById('irmaPrev').textContent = rec.message_text || 'New message';
             document.getElementById('irmaBanner').classList.remove('hidden');
         } catch (e) { console.warn('[IRMA] onIncoming', e); }
     },
 
+    // v1038: generic banner host — same pill, caller-supplied VIEW action (used by EventMsgAlert)
+    showBanner(who, preview, onView) {
+        this._ensureDom();
+        this._genericView = (typeof onView === 'function') ? onView : null;
+        document.getElementById('irmaWho').textContent = who || 'New message';
+        document.getElementById('irmaPrev').textContent = preview || '';
+        document.getElementById('irmaBanner').classList.remove('hidden');
+    },
+
     dismiss() { var b = document.getElementById('irmaBanner'); if (b) b.classList.add('hidden'); },
 
     openPopup() {
+        if (this._genericView) {
+            var view = this._genericView;
+            this._genericView = null;
+            this.dismiss();
+            try { view(); } catch (e) { console.warn('[IRMA] generic view', e); }
+            return;
+        }
         if (!this._sender) return;
         this._ensureDom();
         this.dismiss();
@@ -117426,6 +117462,150 @@ window.InRoundMsgAlert = {
         } finally {
             this._sending = false;
         }
+    }
+};
+
+// ===== ENB ALERT (v1038) — global banner for Event Notice Board traffic =====
+// Mirrors IRMA/the DM toast: organizer NOTICES → registered golfers; player questions →
+// that event's organizer; organizer replies → that golfer — on ANY screen while the app
+// is open, so nothing sits unseen until the 15s poll. Shares IRMA's banner pill (VIEW
+// routes through showBanner); VIEW opens the EXISTING ENB surfaces (thread modal marks
+// read itself; notices get a GOT IT popup that writes event_announcement_reads).
+// Suppressed when that exact thread/organizer modal is already open (their per-modal
+// channels paint inline) and ALWAYS on the login page (FUCKUPS #33).
+window.EventMsgAlert = {
+    _channel: null, _started: false,
+
+    _me() {
+        return (window.EventNoticeBoard && EventNoticeBoard._me && EventNoticeBoard._me()) ||
+               (window.AppState && AppState.currentUser && AppState.currentUser.lineUserId) || null;
+    },
+    _loginActive() {
+        var ls = document.getElementById('loginScreen');
+        return !!(ls && ls.classList.contains('active'));
+    },
+
+    start() {
+        try {
+            var sb = window.SupabaseDB && SupabaseDB.client;
+            if (!sb || this._started) return;
+            this._started = true;
+            var self = this;
+            try { if (this._channel) sb.removeChannel(this._channel); } catch (e) {}
+            this._channel = sb.channel('enb_alert_global')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'event_private_messages' },
+                    function (p) { self._onThreadMsg(p && p.new).catch(function () {}); })
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'event_announcements' },
+                    function (p) { self._onNotice(p && p.new).catch(function () {}); })
+                .subscribe();
+        } catch (e) { console.warn('[ENBAlert] start', e); }
+    },
+
+    async _eventTitle(eventId) {
+        try {
+            var r = await SupabaseDB.client.from('society_events').select('title').eq('id', eventId).single();
+            return (r.data && r.data.title) || 'Event';
+        } catch (e) { return 'Event'; }
+    },
+    async _iOrganize(eventId) {
+        try {
+            var me = this._me(); if (!me) return false;
+            // cheap first: the society dashboard I have open already lists its events
+            try {
+                var evs = window.SocietyOrganizerSystem && SocietyOrganizerSystem.events;
+                if (evs && evs.some && evs.some(function (e) { return e && e.id === eventId; })) return true;
+            } catch (e) {}
+            var sb = SupabaseDB.client;
+            var ev = await sb.from('society_events').select('society_id,organizer_id').eq('id', eventId).single();
+            if (!ev.data) return false;
+            if (ev.data.organizer_id === me) return true;
+            if (!ev.data.society_id) return false;
+            var sp = await sb.from('society_profiles').select('id').eq('id', ev.data.society_id).eq('organizer_id', me).limit(1);
+            return !!(sp.data && sp.data.length);
+        } catch (e) { return false; }
+    },
+    async _amRegistered(eventId) {
+        try {
+            var me = this._me(); if (!me) return false;
+            var r = await SupabaseDB.client.from('event_registrations').select('id').eq('event_id', eventId).eq('player_id', me).limit(1);
+            return !!(r.data && r.data.length);
+        } catch (e) { return false; }
+    },
+
+    async _onThreadMsg(rec) {
+        if (!rec || !rec.event_id || !rec.sender_line_id || !rec.player_line_id) return;
+        if (this._loginActive()) return;
+        var me = this._me();
+        if (!me || rec.sender_line_id === me) return;
+        // that exact thread already open → its per-modal channel paints it inline
+        var ctx = window.EventNoticeBoard && EventNoticeBoard._threadCtx;
+        if (ctx && ctx.eventId === rec.event_id && ctx.playerLineId === rec.player_line_id) return;
+        // legacy rows have no sender_role — same fallback the unread counters use
+        var fromOrg = rec.sender_role === 'org' || (!rec.sender_role && rec.sender_line_id !== rec.player_line_id);
+        if (fromOrg) {
+            if (rec.player_line_id !== me) return; // organizer replied — only the thread owner hears it
+            var title = await this._eventTitle(rec.event_id);
+            InRoundMsgAlert.showBanner(title, rec.message || 'New message', function () {
+                EventNoticeBoard.openPlayerThread(rec.event_id, title);
+            });
+        } else {
+            if (!(await this._iOrganize(rec.event_id))) return;
+            // organizer modal for this event open → _subOrg already repaints its thread list
+            if (window.EventNoticeBoard && EventNoticeBoard._orgEventId === rec.event_id) return;
+            var t = await this._eventTitle(rec.event_id);
+            var pname = rec.sender_name || 'Player';
+            InRoundMsgAlert.showBanner(pname + ' · ' + t, rec.message || 'New message', function () {
+                EventNoticeBoard.openOrgThread(rec.event_id, rec.player_line_id, pname);
+            });
+        }
+    },
+
+    async _onNotice(rec) {
+        if (!rec || !rec.event_id || !rec.message || !rec.id) return;
+        if (this._loginActive()) return;
+        var me = this._me();
+        if (!me || rec.author_line_id === me) return;
+        if (!(await this._amRegistered(rec.event_id))) return;
+        var title = await this._eventTitle(rec.event_id);
+        var self = this;
+        InRoundMsgAlert.showBanner(title + ' · NOTICE', rec.message, function () { self._openNotice(rec, title); });
+    },
+
+    _ensurePopup() {
+        if (document.getElementById('enbAlertPopup')) return;
+        var p = document.createElement('div');
+        p.id = 'enbAlertPopup'; p.style.display = 'none';
+        p.innerHTML = '<div class="enba-card">' +
+            '<div class="enba-head"><div class="n" id="enbaTitle"></div>' +
+            '<button onclick="EventMsgAlert.closePopup()"><span class="material-symbols-outlined" style="font-size:18px;">close</span></button></div>' +
+            '<div class="enba-body" id="enbaBody"></div>' +
+            '<div class="enba-foot"><button class="enba-got" id="enbaGotBtn">GOT IT</button></div></div>';
+        document.body.appendChild(p);
+    },
+    _openNotice(rec, title) {
+        this._ensurePopup();
+        document.getElementById('enbaTitle').textContent = title;
+        // textContent — notices are untrusted text, never innerHTML
+        document.getElementById('enbaBody').textContent = (rec.author_name ? rec.author_name + ':\n\n' : '') + rec.message;
+        var self = this;
+        document.getElementById('enbaGotBtn').onclick = function () {
+            var me = self._me();
+            if (me) {
+                SupabaseDB.client.from('event_announcement_reads').upsert(
+                    { announcement_id: rec.id, reader_line_id: me, read_at: new Date().toISOString() },
+                    { onConflict: 'announcement_id,reader_line_id' }
+                ).then(function () {
+                    try { EventNoticeBoard.hydratePlayerEventsCube(); } catch (e) {}
+                    try { EventNoticeBoard.hydrateCards(); } catch (e) {}
+                }).catch(function () {});
+            }
+            self.closePopup();
+        };
+        document.getElementById('enbAlertPopup').style.display = 'flex';
+    },
+    closePopup() {
+        var p = document.getElementById('enbAlertPopup');
+        if (p) p.style.display = 'none';
     }
 };
 console.log('[MessagesSystem] ✅ Module loaded');
@@ -118269,10 +118449,12 @@ window.EventNoticeBoard = {
     initGolfer() {
         try { this.refreshGolfer(); this.hydrateCards(); this.hydratePlayerEventsCube(); } catch (e) {}
         this._startPoll();
+        try { if (window.EventMsgAlert) EventMsgAlert.start(); } catch (e) {} // v1038 global alerts
     },
     initOrganizer() {
         try { this.hydrateOrgButtons(); this.hydrateOrgEventsTab(); } catch (e) {}
         this._startPoll();
+        try { if (window.EventMsgAlert) EventMsgAlert.start(); } catch (e) {} // v1038 global alerts
     }
 };
 

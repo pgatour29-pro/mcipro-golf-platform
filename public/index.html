@@ -21060,6 +21060,9 @@
                     // Re-show login screen if it was hidden by the session gate
                     if (screenId === 'loginScreen') {
                         targetScreen.style.removeProperty('display');
+                        // v1035 STANDING RULE: NOTHING overlays the login page — kill any
+                        // message banner/reply popup left open by the session that just ended.
+                        try { if (window.InRoundMsgAlert) { InRoundMsgAlert.dismiss(); InRoundMsgAlert.closePopup(); } } catch (e) {}
                     }
 
                     // Update navigation state
@@ -117284,6 +117287,9 @@ window.InRoundMsgAlert = {
     async onIncoming(rec) {
         try {
             if (!rec || !rec.sender_line_id) return;
+            // STANDING RULE: NOTHING overlays the login page — no toasts, no popups, ever.
+            var ls = document.getElementById('loginScreen');
+            if (ls && ls.classList.contains('active')) return;
             var me = this._me();
             if (rec.recipient_line_id && me && rec.recipient_line_id !== me) return;
             // popup already open on this sender → live-update the thread instead of a banner

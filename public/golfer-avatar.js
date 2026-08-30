@@ -13,7 +13,7 @@ if (!window._golferPhotoMap) window._golferPhotoMap = async function(ids){
     for (var i=0; i<need.length; i+=200){
       var chunk = need.slice(i, i+200);
       var r = await sb.from('user_profiles').select('line_user_id, profile_data').in('line_user_id', chunk);
-      (r.data||[]).forEach(function(p){ cache[p.line_user_id] = (p.profile_data && p.profile_data.linePictureUrl) || ''; });
+      (r.data||[]).forEach(function(p){ var pd = p.profile_data || {}; cache[p.line_user_id] = (pd.media && pd.media.profilePhoto) || pd.linePictureUrl || ''; });
       chunk.forEach(function(id){ if(cache[id]===undefined) cache[id]=''; });
     }
   }catch(e){}

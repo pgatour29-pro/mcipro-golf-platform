@@ -22241,7 +22241,30 @@
                     if (!lineUserId || lineUserId[0] !== 'U') return;
                     if (typeof liff === 'undefined' || !window.SupabaseDB?.client) return;
                     try { await liff.init({ liffId: LineConfig.liffId }); } catch (e) { /* already-initialized is fine */ }
-                    if (typeof liff.isLoggedIn !== 'function' || !liff.isLoggedIn()) return;
+                    if (typeof liff.isLoggedIn !== 'function') return;
+                    if (!liff.isLoggedIn()) {
+                        // v1043 ACTIVE HEAL: inside the LINE client a directly-opened page is
+                        // NOT LIFF-logged-in (only a liff.login() on this device storage does
+                        // that — see the in-app login-screen branch), so the v911 passive heal
+                        // never ran for daily in-LINE users with an empty stored photo. Do ONE
+                        // seamless in-client liff.login() bounce (no QR — same mechanism as the
+                        // login screen's isInClient branch); on return the restore re-runs this
+                        // heal with a live LIFF session and the photo persists. The guard flag
+                        // is set BEFORE the redirect so this can never loop, and it only fires
+                        // when the profile has no photo from ANY source.
+                        const pd0 = profileData || {};
+                        const hasAnyPhoto = (pd0.media && pd0.media.profilePhoto) || pd0.linePictureUrl;
+                        if (!hasAnyPhoto
+                            && location.origin === 'https://mycaddipro.com' // www-vs-apex trap: never bounce a www session onto the apex origin
+                            && typeof liff.isInClient === 'function' && liff.isInClient()
+                            && typeof liff.login === 'function'
+                            && !localStorage.getItem('mcipro_liff_photo_heal_v1')) {
+                            localStorage.setItem('mcipro_liff_photo_heal_v1', '1');
+                            console.log('[AvatarHeal] in-client LIFF re-auth for photo backfill');
+                            liff.login({ redirectUri: 'https://mycaddipro.com/' });
+                        }
+                        return;
+                    }
                     const lp = await liff.getProfile();
                     // Shared-device guard: only write when the LIFF session belongs to this account
                     if (!lp || lp.userId !== lineUserId || !lp.pictureUrl) return;

@@ -21221,6 +21221,8 @@
                         // v1038: same rule for the event notice-board surfaces
                         try { if (window.EventMsgAlert) EventMsgAlert.closePopup(); } catch (e) {}
                         try { if (window.EventNoticeBoard) { EventNoticeBoard.closeThread(); EventNoticeBoard.closeOrganizer(); } } catch (e) {}
+                        // v1055: sticky Great Shot toasts (par-3 twos) have no auto-dismiss
+                        try { if (window.GreatShotToast) GreatShotToast.sweep(); } catch (e) {}
                     }
 
                     // Update navigation state
@@ -21990,6 +21992,12 @@
                             console.log('[TabManager] Food menu re-rendered at 1000ms');
                         }
                     }, 1000);
+                }
+
+                // Sticky Great Shot toasts (par-3 twos, v1055) must not follow the
+                // golfer off the scoring tab — sweep on any other golfer tab.
+                if (dashboardId === 'golferDashboard' && tabName !== 'scorecard') {
+                    try { window.GreatShotToast?.sweep(); } catch (e) {}
                 }
 
                 // Initialize Live Scorecard tab when shown
@@ -101355,6 +101363,9 @@ window.GreatShotToast = {
         let prize = '';
         if (t.society && t.kind === 'two') prize = '<div class="gshot-prize">🏆&nbsp;' + this._esc(tt('scorecard.gshot.prize2s', 'Society 2s — prize at the presentation')) + '</div>';
         if (t.society && t.kind === 'ace') prize = '<div class="gshot-prize">🏆&nbsp;' + this._esc(tt('scorecard.gshot.prizeace', 'Hole-in-one — prize at the presentation')) + '</div>';
+        // Par-3 twos STAY until the user taps them closed (Pete 2026-08-31) —
+        // no auto-dismiss timer and no drain bar; ✕/tap is the only way out.
+        const sticky = t.kind === 'two';
         host.innerHTML = '<div class="gshot-toast ' + cls + '">' +
             '<div class="gshot-row"><div class="gshot-badge">' + icons[t.kind] + '</div>' +
             '<div class="gshot-main"><div class="gshot-title">' + this._esc(titles[t.kind]) +
@@ -101362,13 +101373,22 @@ window.GreatShotToast = {
             '<div class="gshot-body">' + body + '</div>' +
             (meta || rare ? '<div class="gshot-meta">' + meta + rare + '</div>' : '') + '</div>' +
             '<div class="gshot-close">✕</div></div>' + prize +
-            '<div class="gshot-bar"><i style="animation-duration:' + t.ms + 'ms;"></i></div></div>';
+            (sticky ? '' : '<div class="gshot-bar"><i style="animation-duration:' + t.ms + 'ms;"></i></div>') + '</div>';
         host.classList.add('on');
         const el = host.firstElementChild;
         requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
         const done = () => this._dismiss(el);
-        el._gsTimer = setTimeout(done, t.ms);
+        if (!sticky) el._gsTimer = setTimeout(done, t.ms);
         el.addEventListener('click', done);
+    },
+
+    // A toast (now possibly sticky) must never outlive the scoring page — called on
+    // golfer tab switches and the login screen's overlay kill. Dismissing re-pumps,
+    // but _pump's visibility gate keeps anything from popping off-page.
+    sweep() {
+        const host = document.getElementById('gshotHost');
+        const el = host && host.firstElementChild;
+        if (el) this._dismiss(el);
     },
 
     _dismiss(el) {

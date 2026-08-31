@@ -81320,6 +81320,9 @@ class LiveScorecardSystem {
                         if (hcps && hcps.length > 0 && !pl.manualOverride) {
                             pl.societyHandicaps = hcps;
                             pl.handicap = this.getHandicapForSociety(hcps, selectedSociety);
+                            // Keep any already-created game configs in step — a format ticked
+                            // before this async refresh lands would freeze the old handicap
+                            this.propagateHandicapToGameConfigs(pl.id, pl.handicap);
                             this.renderPlayersList();
                         }
                     }).catch(() => {});
@@ -84552,6 +84555,9 @@ class LiveScorecardSystem {
         if (isNaN(finalValue)) finalValue = 0;
 
         this.gameConfigs[format].handicaps[playerId] = finalValue;
+        // Explicit per-game edit — the only value allowed to diverge from player.handicap
+        // (survives the startRound re-seed and the round-completion stableford recompute)
+        (this.gameConfigs[format].explicitHcp = this.gameConfigs[format].explicitHcp || {})[playerId] = true;
         console.log(`[GameConfig] Set ${playerId} handicap to ${finalValue} for ${format} (input: ${value})`);
     }
 
@@ -87245,9 +87251,11 @@ class LiveScorecardSystem {
             // Always update player list and handicaps with current values
             this.gameConfigs[format].players = this.players.map(p => p.id);
             this.players.forEach(p => {
-                // Only set if not already manually configured in game config panel
-                if (this.gameConfigs[format].handicaps[p.id] === undefined ||
-                    this.gameConfigs[format].handicaps[p.id] === null) {
+                // Re-seed from the society-resolved player handicap. Config values are stale
+                // snapshots from whenever the format was first ticked (a default-18 seed here
+                // survived to round completion and wrote a wrong rounds.total_stableford);
+                // only an explicit game-config-panel edit (setGameHandicap) keeps its value.
+                if (!this.gameConfigs[format].explicitHcp?.[p.id]) {
                     this.gameConfigs[format].handicaps[p.id] = p.handicap;
                 }
             });
@@ -91695,7 +91703,13 @@ class LiveScorecardSystem {
                                     handicapForStableford = this.calculateTeamHandicap();
                                 }
                             } else {
-                                handicapForStableford = this.getGameHandicap('stableford', player.id);
+                                // rounds.total_stableford must be consistent with handicap_used and
+                                // total_net (both written from player.handicap below) — the gameConfig
+                                // value can be a stale pre-resolution snapshot (e.g. default 18).
+                                // Only an explicit per-game edit may diverge.
+                                handicapForStableford = this.gameConfigs?.stableford?.explicitHcp?.[player.id]
+                                    ? this.getGameHandicap('stableford', player.id)
+                                    : (player.handicap ?? this.getGameHandicap('stableford', player.id));
                             }
                             formatScores.stableford = engine.calculateStablefordTotal(
                                 scoresArray,

@@ -54425,9 +54425,20 @@ document.addEventListener('DOMContentLoaded', function() {
                     const course = courseEl?.value?.trim() || '';
                     const notes = notesEl?.value?.trim() || '';
 
-                    // Save to notebook
-                    const userId = AppState?.currentUser?.lineUserId;
+                    // Save to notebook. localStorage fallback like CaddyNotebook.addEntry —
+                    // AppState.currentUser may not be hydrated yet and gating on it alone
+                    // makes the Add button a silent no-op (booking-sync-audit pattern).
+                    const userId = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
                     if (!userId) { NotificationManager.show('Please log in', 'warning'); return; }
+
+                    // Course is REQUIRED — same rule as the mobile Add form: a caddy number only
+                    // means something AT a course; course-less rows render as "no course" dupes.
+                    if (!course) {
+                        if (courseEl) courseEl.style.borderColor = '#ef4444';
+                        NotificationManager.show('Pick the course — caddy numbers repeat across courses', 'warning');
+                        return;
+                    }
+                    if (courseEl) courseEl.style.borderColor = '';
 
                     const entries = await CaddyNotebook.getEntries();
                     // Match on caddy number AND course. Caddy numbers repeat across courses, so #15 at
@@ -54442,12 +54453,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (course) updates.course_name = course;
                         if (notes) updates.notes = notes;
                         updates.updated_at = new Date().toISOString();
-                        await window.SupabaseDB.client.from('caddy_notebook').update(updates).eq('id', existing.id);
+                        const { error } = await window.SupabaseDB.client.from('caddy_notebook').update(updates).eq('id', existing.id);
+                        // Supabase reports failures in the result, not by throwing — swallowing
+                        // it cleared the form and toasted "added" for a caddy that never saved.
+                        if (error) { NotificationManager.show('Could not save caddy: ' + error.message, 'error'); return; }
                     } else {
-                        await window.SupabaseDB.client.from('caddy_notebook').insert([{
+                        const { error } = await window.SupabaseDB.client.from('caddy_notebook').insert([{
                             golfer_id: userId, caddy_number: caddyNum,
                             caddy_name: name, course_name: course, notes: notes
                         }]);
+                        if (error) { NotificationManager.show('Could not save caddy: ' + error.message, 'error'); return; }
                     }
                     CaddyNotebook._entries = null;
 

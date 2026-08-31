@@ -31555,7 +31555,7 @@ Sent from Login Page`;
                                 courses: info.course ? [info.course] : [],
                                 lastDate: info.lastDate,
                                 isRegular: info.count >= 1
-                            })).sort((a, b) => b.count - a.count);
+                            })).sort((a, b) => b.count - a.count || String(b.lastDate || '').localeCompare(String(a.lastDate || '')));
                             console.log(`[Caddy Organizer] Built caddy history: ${this.caddyHistory.length} caddy+course entries from ${regs.length} registrations`);
                         }
                     } catch(e) { console.warn('[Caddy Organizer] Caddy history error:', e); }
@@ -31588,7 +31588,11 @@ Sent from Login Page`;
                             };
                             this.caddyHistory.push(byKey[key]);
                         });
-                        this.caddyHistory.sort((a, b) => b.count - a.count);
+                        // Tie-break equal counts by recency so a caddy added TODAY surfaces near the
+                        // top instead of drowning at position 70+ behind ancient one-round caddies
+                        // (Pete added pat #91 and could only find the OTHER #91 from May — read it
+                        // as his add landing at the wrong course).
+                        this.caddyHistory.sort((a, b) => b.count - a.count || String(b.lastDate || '').localeCompare(String(a.lastDate || '')));
                     } catch(e) {}
 
                     console.log(`[Caddy Organizer] Loaded ${this.userPreferences.length} preferences, ${this.caddyHistory?.length || 0} from history`);
@@ -31843,6 +31847,14 @@ Sent from Login Page`;
                 const container = document.getElementById('caddyCardsContainer');
                 if (!container) return;
 
+                // caddyHistory is built once at init — a caddy saved since then doesn't exist in it,
+                // so the tab shows pre-add data (the "I added #91 to Bangpakong and it landed in
+                // Pleasant Valley" illusion: HIS card missing, the other course's #91 still there).
+                if (this._historyDirty) {
+                    this._historyDirty = false;
+                    await this.loadUserPreferences();
+                }
+
                 let history = this.caddyHistory || [];
                 if (regularsOnly) history = history.filter(h => h.isRegular);
                 if (this.currentCourse) history = history.filter(h => this.courseMatch(h.courses[0] || ''));
@@ -31876,6 +31888,16 @@ Sent from Login Page`;
                     const rawCourse = (h.courses[0] || '').replace(/'/g, "\\'");
                     const regularBadge = h.isRegular ? '<span class="mcv1-tag grn">Regular</span>' : '';
                     const nbEntry = notebookByKey[h.number + '@@' + this.normalizeCourse(h.courses[0] || '').toLowerCase().trim()];
+                    // Same number ≠ same person: a bare "Caddy #91 · Pleasant Valley" card reads as
+                    // the golfer's own #91 saved elsewhere ("my add landed at the wrong course").
+                    // When the number IS in the notebook at a different course, say so explicitly.
+                    let elsewhereHint = '';
+                    if (!nbEntry) {
+                        const other = notebookEntries.find(e => e.caddy_number && String(parseInt(e.caddy_number)) === String(h.number) && e.course_name);
+                        if (other && this.normalizeCourse(other.course_name).toLowerCase().trim() !== this.normalizeCourse(h.courses[0] || '').toLowerCase().trim()) {
+                            elsewhereHint = `<div class="mcv1-sub" style="color:#94a3b8;font-style:italic;">Different caddy — your saved #${h.number}${other.caddy_name ? ' (' + other.caddy_name + ')' : ''} is at ${other.course_name}</div>`;
+                        }
+                    }
                     const hasNote = nbEntry && nbEntry.notes;
                     const notePreview = hasNote ? `<div class="mcv1-note">"${nbEntry.notes}"</div>` : '';
                     const stars = nbEntry?.rating ? '<span class="mcv1-stars">' + '★'.repeat(nbEntry.rating) + '</span>' : '';
@@ -31888,6 +31910,7 @@ Sent from Login Page`;
                             <div class="flex-1 min-w-0">
                                 <div class="mcv1-nm"><span>${nbEntry && nbEntry.caddy_name ? nbEntry.caddy_name + ' · #' + h.number : 'Caddy #' + h.number}</span>${stars}</div>
                                 <div class="mcv1-sub">Used ${h.count}x${lastDate ? ' · Last ' + lastDate : ''}${coursesStr ? ' · ' + coursesStr : ''}</div>
+                                ${elsewhereHint}
                                 ${regularBadge ? '<div class="mcv1-tags">' + regularBadge + '</div>' : ''}
                             </div>
                             <div class="mcv1-rounds"><span class="n">${h.count}</span><span class="k">Rounds</span></div>
@@ -45035,6 +45058,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (error) throw error;
                     }
                     this._entries = null;
+                    try { CaddyOrganizerSystem._historyDirty = true; } catch(e) {}
                     this._editingId = null;
                     this._editingPhotoUrl = '';
                     ['notebookCaddyNumber','notebookCaddyName','notebookCaddyCourse','notebookCaddyNotes','notebookCaddyTip','notebookCaddyLanguage','notebookCaddyRecommendedBy'].forEach(id => {
@@ -45058,6 +45082,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         .delete().eq('id', id).eq('golfer_id', userId);
                     if (error) throw error;
                     this._entries = null;
+                    try { CaddyOrganizerSystem._historyDirty = true; } catch(e) {}
                     await this.render();
                     if (window.NotificationManager) NotificationManager.show('Caddy removed', 'success');
                 } catch(e) {
@@ -54465,6 +54490,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (error) { NotificationManager.show('Could not save caddy: ' + error.message, 'error'); return; }
                     }
                     CaddyNotebook._entries = null;
+                    try { CaddyOrganizerSystem._historyDirty = true; } catch(e) {}
 
                     // Add to drag-drop list if not already there
                     const existingCaddy = this.caddies.find(c => c.number === caddyNum);
@@ -111962,19 +111988,19 @@ const CourseAdminSystem = {
 
             return `
                 <tr class="hover:bg-gray-50">
-                    <td class="px-4 py-3 text-sm font-medium text-gray-900">${caddy.id.slice(0,6)}</td>
-                    <td class="px-4 py-3 text-sm text-gray-900">${caddy.photo_url ? `<img src="${caddy.photo_url}" style="display:inline-block;width:24px;height:24px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px;" onerror="this.style.display='none'" alt="">` : ''}${caddy.name}</td>
+                    <td class="px-4 py-3 text-sm font-medium text-gray-900">${caddy.caddy_number ? '#' + caddy.caddy_number : caddy.id.slice(0,6)}</td>
+                    <td class="px-4 py-3 text-sm text-gray-900">${caddy.photo_url ? `<img src="${caddy.photo_url}" style="display:inline-block;width:24px;height:24px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px;" onerror="this.style.display='none'" alt="">` : ''}${caddy.name || ''}</td>
                     <td class="px-4 py-3 text-sm text-gray-900">
                         <div class="flex items-center gap-1">
                             <span class="material-symbols-outlined text-yellow-500" style="font-size: 16px;">star</span>
-                            ${4.5}
+                            ${caddy.rating != null ? caddy.rating : '—'}
                         </div>
                     </td>
-                    <td class="px-4 py-3 text-sm text-gray-600 hidden md:table-cell">${5} years</td>
+                    <td class="px-4 py-3 text-sm text-gray-600 hidden md:table-cell">${caddy.experience_years != null ? caddy.experience_years + ' years' : '—'}</td>
                     <td class="px-4 py-3 text-sm text-gray-600 hidden lg:table-cell">${caddy.specialty || 'General'}</td>
                     <td class="px-4 py-3">
                         <span class="px-2 py-1 text-xs font-medium rounded-full ${statusBadge}">
-                            ${caddy.availability_status.replace('_', ' ')}
+                            ${(caddy.availability_status || 'available').replace('_', ' ')}
                         </span>
                     </td>
                     <td class="px-4 py-3 text-sm whitespace-nowrap">
@@ -112199,7 +112225,7 @@ const CourseAdminSystem = {
         const caddy = this.allCaddies.find(c => c.id === caddyId);
         if (!caddy) return;
 
-        alert(`Edit Caddy Modal - Coming Soon!\n\nEditing: ${caddy.name}\n\nYou'll be able to update:\n- Name\n- Rating\n- Experience\n- Specialty\n- Languages`);
+        this._showCaddyFormModal(caddyId);
     },
 
     async deleteCaddy(caddyId) {
@@ -112212,7 +112238,7 @@ const CourseAdminSystem = {
         const caddy = this.allCaddies.find(c => c.id === caddyId);
         if (!caddy) return;
 
-        if (!confirm(`Delete Caddy?\n\nAre you sure you want to permanently delete:\n${caddy.name} (#${caddy.id.slice(0,6)})\n\nThis action cannot be undone.`)) {
+        if (!confirm(`Delete Caddy?\n\nAre you sure you want to permanently delete:\n${caddy.name || 'unnamed'} (#${caddy.caddy_number || caddy.id.slice(0,6)})\n\nThis action cannot be undone.`)) {
             return;
         }
 
@@ -112642,7 +112668,99 @@ const CourseAdminSystem = {
 
     openAddCaddyModal() {
         // Both Super Admin and Staff can add caddies
-        alert('Add Caddy Modal - Coming Soon!\n\nThis will open a form to add a new caddy to your course.');
+        this._showCaddyFormModal(null);
+    },
+
+    _showCaddyFormModal(caddyId) {
+        const caddy = caddyId ? this.allCaddies.find(c => c.id === caddyId) : null;
+        document.getElementById('caddyFormModal')?.remove();
+        const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        const statuses = [['available', 'Available'], ['booked', 'Booked'], ['off_duty', 'Off Duty'], ['on_break', 'On Break']];
+        const cur = (caddy && caddy.availability_status) || 'available';
+        const overlay = document.createElement('div');
+        overlay.id = 'caddyFormModal';
+        overlay.className = 'fixed inset-0 bg-black/50 z-[10000] flex items-center justify-center p-4';
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+        overlay.innerHTML = `
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-md" onclick="event.stopPropagation()">
+                <div class="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-bold text-gray-900">${caddy ? 'Edit Caddy' : 'Add Caddy'} <span class="text-sm font-normal text-gray-500">· ${esc(this.courseName || '')}</span></h3>
+                    <button onclick="document.getElementById('caddyFormModal').remove()" class="text-gray-400 hover:text-gray-600"><span class="material-symbols-outlined">close</span></button>
+                </div>
+                <div class="p-5 space-y-3">
+                    <div id="cafError" style="display:none;" class="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
+                    <div class="flex gap-3">
+                        <div style="width:110px;flex:0 0 auto;">
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">Caddy #</label>
+                            <input id="cafNumber" inputmode="numeric" maxlength="4" value="${esc(caddy?.caddy_number)}" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none">
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">Name</label>
+                            <input id="cafName" value="${esc(caddy?.name)}" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Phone (optional)</label>
+                        <input id="cafPhone" inputmode="tel" value="${esc(caddy?.phone)}" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Specialty (optional)</label>
+                        <input id="cafSpecialty" value="${esc(caddy?.specialty)}" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Status</label>
+                        <select id="cafStatus" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 focus:outline-none">
+                            ${statuses.map(([v, l]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${l}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+                <div class="px-5 py-4 border-t border-gray-200 flex justify-end gap-2">
+                    <button onclick="document.getElementById('caddyFormModal').remove()" class="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50">Cancel</button>
+                    <button onclick="CourseAdminSystem.saveCaddyFormModal(${caddyId ? `'${caddyId}'` : 'null'})" class="btn-primary">${caddy ? 'Save Changes' : 'Add Caddy'}</button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        setTimeout(() => document.getElementById(caddy ? 'cafName' : 'cafNumber')?.focus(), 50);
+    },
+
+    async saveCaddyFormModal(caddyId) {
+        const num = (document.getElementById('cafNumber')?.value || '').trim().replace(/\D/g, '');
+        const name = (document.getElementById('cafName')?.value || '').trim();
+        const phone = (document.getElementById('cafPhone')?.value || '').trim();
+        const specialty = (document.getElementById('cafSpecialty')?.value || '').trim();
+        const status = document.getElementById('cafStatus')?.value || 'available';
+        const errEl = document.getElementById('cafError');
+        const fail = msg => { if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; } };
+        if (!num) { fail('Caddy number is required'); return; }
+        if (!name) { fail('Name is required'); return; }
+        const fields = {
+            caddy_number: String(parseInt(num)), name: name, phone: phone || null,
+            specialty: specialty || null, availability_status: status,
+            updated_at: new Date().toISOString()
+        };
+        try {
+            if (caddyId) {
+                const { error } = await window.SupabaseDB.client
+                    .from('caddy_profiles').update(fields).eq('id', caddyId);
+                if (error) throw error;
+            } else {
+                // Same number twice at one course = two rows for one person in every picker
+                const dup = this.allCaddies.find(c => c.caddy_number && String(parseInt(c.caddy_number)) === String(parseInt(num)));
+                if (dup) { fail(`#${parseInt(num)} already exists at this course (${dup.name || 'unnamed'}) — edit that row instead`); return; }
+                const { error } = await window.SupabaseDB.client
+                    .from('caddy_profiles').insert({
+                        ...fields, course_id: this.currentCourseId, course_name: this.courseName || null,
+                        is_active: true, is_mock: false, created_by: 'course_admin'
+                    });
+                if (error) throw error;
+            }
+            document.getElementById('caddyFormModal')?.remove();
+            await this.loadCaddies();
+            await this.loadStats();
+        } catch (e) {
+            console.error('[CourseAdmin] Caddy save error:', e);
+            fail('Save failed: ' + (e.message || e));
+        }
     },
 
     openManualBookingModal() {

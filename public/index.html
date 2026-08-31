@@ -127327,7 +127327,9 @@ class GolferEventsManager {
             rcptBase: 'GREEN + CART + CADDY', rcptTransport: 'TRANSPORT', rcptComp: 'COMPETITION',
             rcptGuest: 'GUEST', rcptTotal: 'TOTAL', rcptYou: 'YOU',
             submitReg: 'Confirm', submitReq: 'Submit Request', updateReg: 'Update',
-            unregister: 'Unregister', regPlayers: 'Registered Players'
+            unregister: 'Unregister', regPlayers: 'Registered Players',
+            busyReg: 'Registering…', busyUpdate: 'Saving changes…', busyReq: 'Sending request…',
+            busyCancel: 'Cancelling registration…', busyWl: 'Joining waitlist…', busyWait: 'Please wait'
         },
         ko: {
             header: '등록', playerName: '이름 *', handicap: '핸디캡 *',
@@ -127351,7 +127353,9 @@ class GolferEventsManager {
             rcptBase: '그린 + 카트 + 캐디', rcptTransport: '교통비', rcptComp: '대회비',
             rcptGuest: '동반자', rcptTotal: '합계', rcptYou: '본인',
             submitReg: '확인', submitReq: '참가 신청', updateReg: '수정',
-            unregister: '등록 취소', regPlayers: '등록 선수'
+            unregister: '등록 취소', regPlayers: '등록 선수',
+            busyReg: '등록 중…', busyUpdate: '저장 중…', busyReq: '신청 전송 중…',
+            busyCancel: '등록 취소 중…', busyWl: '대기자 등록 중…', busyWait: '잠시만 기다려 주세요'
         },
         th: {
             header: 'ลงทะเบียน', playerName: 'ชื่อผู้เล่น *', handicap: 'แฮนดิแคป *',
@@ -127375,7 +127379,9 @@ class GolferEventsManager {
             rcptBase: 'กรีน + รถ + แคดดี้', rcptTransport: 'ค่าเดินทาง', rcptComp: 'ค่าแข่งขัน',
             rcptGuest: 'แขก', rcptTotal: 'รวม', rcptYou: 'คุณ',
             submitReg: 'ยืนยัน', submitReq: 'ส่งคำขอ', updateReg: 'แก้ไข',
-            unregister: 'ยกเลิกลงทะเบียน', regPlayers: 'ผู้เล่นที่ลงทะเบียน'
+            unregister: 'ยกเลิกลงทะเบียน', regPlayers: 'ผู้เล่นที่ลงทะเบียน',
+            busyReg: 'กำลังลงทะเบียน…', busyUpdate: 'กำลังบันทึก…', busyReq: 'กำลังส่งคำขอ…',
+            busyCancel: 'กำลังยกเลิก…', busyWl: 'กำลังเข้ารายชื่อรอ…', busyWait: 'กรุณารอสักครู่'
         },
         ja: {
             header: '登録', playerName: '氏名 *', handicap: 'ハンディキャップ *',
@@ -127399,7 +127405,9 @@ class GolferEventsManager {
             rcptBase: 'グリーン + カート + キャディ', rcptTransport: '送迎費', rcptComp: '競技参加費',
             rcptGuest: 'ゲスト', rcptTotal: '合計', rcptYou: '本人',
             submitReg: '確認', submitReq: '参加リクエスト', updateReg: '更新',
-            unregister: '登録をキャンセル', regPlayers: '登録プレーヤー'
+            unregister: '登録をキャンセル', regPlayers: '登録プレーヤー',
+            busyReg: '登録中…', busyUpdate: '保存中…', busyReq: '送信中…',
+            busyCancel: 'キャンセル中…', busyWl: 'キャンセル待ちに登録中…', busyWait: 'しばらくお待ちください'
         }
     };
 
@@ -127609,6 +127617,49 @@ class GolferEventsManager {
             } catch (e) {}
             evc.innerHTML = '<span>' + esc(where) + '</span>' + (when ? '<span>' + esc(when) + '</span>' : '');
         }
+    }
+
+    // ===== Registration busy overlay — the submit path is several sequential network round-trips
+    // (own reg + per-guest resolve/insert + tee-sheet placement); with zero feedback users read it
+    // as frozen and start tapping cancel/back mid-write. Full-screen so it also swallows stray
+    // taps. Golf scene per Pete: ball rolls the green and drops in the cup, on repeat, until the
+    // writes finish. Failsafe timer clears it so a hung request can never lock the app. =====
+    _regBusyShow(label, sub) {
+        this._regBusyHide();
+        const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const d = document.createElement('div');
+        d.id = 'regBusyOverlay';
+        d.style.cssText = 'position:fixed;inset:0;z-index:100060;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:24px;';
+        d.innerHTML = '<style>'
+            + '@keyframes rbMove{0%{transform:translate(0,0);opacity:1}55%{transform:translate(122px,0);opacity:1}65%{transform:translate(122px,3px);opacity:1}76%{transform:translate(122px,16px);opacity:0}100%{transform:translate(122px,16px);opacity:0}}'
+            + '@keyframes rbSpin{to{transform:rotate(360deg)}}'
+            + '@keyframes rbWave{0%,100%{transform:skewY(0deg)}50%{transform:skewY(-8deg)}}'
+            + '#regBusyOverlay .rbTurf{position:absolute;left:0;right:0;bottom:0;height:12px;border-radius:6px;background:linear-gradient(180deg,#22c55e,#15803d)}'
+            + '#regBusyOverlay .rbPole{position:absolute;right:22px;bottom:10px;width:2px;height:42px;background:#64748b;border-radius:1px}'
+            + '#regBusyOverlay .rbFlag{position:absolute;right:6px;top:8px;width:0;height:0;border-top:6px solid transparent;border-bottom:6px solid transparent;border-left:16px solid #ef4444;transform-origin:left center;animation:rbWave 1.2s ease-in-out infinite;animation-duration:1.2s !important;animation-iteration-count:infinite !important}'
+            + '#regBusyOverlay .rbCup{position:absolute;right:15px;bottom:9px;width:16px;height:4px;background:#0f172a;border-radius:50%}'
+            /* animation-duration/iteration !important: the global mobile-perf + reduced-motion
+               rules flatten ALL animations to 0.01ms×1 on phones — same "essential motion"
+               carve-out the app already grants .animate-spin, or the ball freezes at the tee. */
+            + '#regBusyOverlay .rbMove{position:absolute;left:8px;bottom:11px;width:14px;height:14px;animation:rbMove 2s cubic-bezier(.35,.7,.45,1) infinite;animation-duration:2s !important;animation-iteration-count:infinite !important}'
+            + '#regBusyOverlay .rbBall{width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ffffff 55%,#d7dee8 100%);box-shadow:inset -1px -2px 3px rgba(15,23,42,.18);position:relative;animation:rbSpin .55s linear infinite;animation-duration:.55s !important;animation-iteration-count:infinite !important}'
+            + '#regBusyOverlay .rbBall::after{content:"";position:absolute;left:3px;top:6px;width:3px;height:3px;border-radius:50%;background:#b6c2d2}'
+            + '</style>'
+            + '<div style="background:#fff;border-radius:18px;padding:22px 26px 20px;display:flex;flex-direction:column;align-items:center;gap:10px;box-shadow:0 12px 40px rgba(0,0,0,.35);max-width:300px;text-align:center;">'
+            + '<div style="position:relative;width:160px;height:60px;overflow:hidden;">'
+            + '<div class="rbTurf"></div><div class="rbPole"></div><div class="rbFlag"></div><div class="rbCup"></div>'
+            + '<div class="rbMove"><div class="rbBall"></div></div>'
+            + '</div>'
+            + '<div style="font-size:16px;font-weight:800;color:#0f172a;">' + esc(label) + '</div>'
+            + (sub ? '<div style="font-size:13px;color:#64748b;">' + esc(sub) + '</div>' : '')
+            + '</div>';
+        document.body.appendChild(d);
+        this._regBusyT = setTimeout(() => this._regBusyHide(), 40000);
+    }
+    _regBusyHide() {
+        if (this._regBusyT) { clearTimeout(this._regBusyT); this._regBusyT = null; }
+        const d = document.getElementById('regBusyOverlay');
+        if (d) d.remove();
     }
 
     // ===== RFV2 identity poster strip — avatar + name + HCP pill; tap opens the inputs =====
@@ -128292,6 +128343,13 @@ class GolferEventsManager {
     }
 
     async completeRegistration(playerName, handicap, caddyNumbers, partnerPrefs, wantTransport, wantCompetition, guestPlayers = []) {
+        // Re-entry guard + busy overlay: a second tap during the awaits would re-run the guest
+        // inserts (fresh GUEST-* ids = duplicate rows). Cleared in the finally on every path.
+        if (this._regSubmitting) return;
+        this._regSubmitting = true;
+        const _bL = this._regL || GolferEventsManager.REG_FORM_L10N.en;
+        const _bPriv = !!(this.currentEvent && this.currentEvent.creatorType === 'golfer' && this.currentEvent.isPrivate);
+        this._regBusyShow(this.editingRegistrationId ? _bL.busyUpdate : (_bPriv ? _bL.busyReq : _bL.busyReg), _bL.busyWait);
         try {
             // Check if we're in edit mode
             if (this.editingRegistrationId) {
@@ -128599,6 +128657,9 @@ class GolferEventsManager {
         } catch (error) {
             console.error('[GolferEventsSystem] Registration error:', error);
             NotificationManager.show(`${this.editingRegistrationId ? 'Update' : 'Registration'} failed: ${error.message}`, 'error', 4000);
+        } finally {
+            this._regSubmitting = false;
+            this._regBusyHide();
         }
     }
 
@@ -128749,6 +128810,13 @@ class GolferEventsManager {
             return;
         }
 
+        // Busy overlay: hcp resolution + duplicate check + insert = multiple round-trips of
+        // silence on slow connections. Native prompt() fallbacks still render above it.
+        if (this._regSubmitting) return;
+        this._regSubmitting = true;
+        const _bL = this._regL || GolferEventsManager.REG_FORM_L10N.en;
+        this._regBusyShow(_bL.busyWl, _bL.busyWait);
+
         try {
             // Get player name and handicap
             const playerName = currentUser.name || prompt('Enter your name:');
@@ -128829,6 +128897,9 @@ class GolferEventsManager {
         } catch (error) {
             console.error('[GolferEvents] Error joining waitlist:', error);
             NotificationManager.show('Failed to join waitlist: ' + error.message, 'error');
+        } finally {
+            this._regSubmitting = false;
+            this._regBusyHide();
         }
     }
 
@@ -129024,6 +129095,14 @@ class GolferEventsManager {
 
         if (!confirmed) return;
 
+        // Same busy treatment as registering — unregister is a chain of round-trips (own row,
+        // hostId-linked guests, pairings prune, join requests, invites, caddy bookings) and
+        // looked dead until the toast. Overlay also blocks a second unregister tap mid-delete.
+        if (this._regSubmitting) return;
+        this._regSubmitting = true;
+        const _bL = this._regL || GolferEventsManager.REG_FORM_L10N.en;
+        this._regBusyShow(_bL.busyCancel, _bL.busyWait);
+
         try {
             // First, get the registration details to find the event_id and player_id
             const { data: registration, error: fetchError } = await window.SupabaseDB.client
@@ -129146,6 +129225,9 @@ class GolferEventsManager {
         } catch (error) {
             console.error('[GolferEventsSystem] Error deleting registration:', error);
             if (window.NotificationManager && window.NotificationManager.show) window.NotificationManager.show(t('toast.unreg.fail') + error.message, 'error', 4000);
+        } finally {
+            this._regSubmitting = false;
+            this._regBusyHide();
         }
     }
 

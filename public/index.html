@@ -78843,8 +78843,9 @@ class LiveScorecardSystem {
                 this.societyProfilesCache = data || [];
             }
 
-            // Load current user's handicaps for all societies
-            const currentUserId = window.AppState?.currentUser?.lineUserId;
+            // Load current user's handicaps for all societies (localStorage fallback —
+            // AppState can still be hydrating during login restore, same as loadEvents)
+            const currentUserId = window.AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
             console.log(`[LiveScorecard] Loading society options for user: ${currentUserId}`);
 
             if (currentUserId) {
@@ -80980,7 +80981,7 @@ class LiveScorecardSystem {
             await this.loadEvents();
         } catch (err) {
             console.error('[LiveScorecard] Failed to load events:', err);
-            NotificationManager.show('Could not load events — you can still start a practice round', 'warning');
+            window.NotificationManager.show('Could not load events — you can still start a practice round', 'warning');
         }
 
         // Auto-sync offline data when connection is restored
@@ -82296,7 +82297,12 @@ class LiveScorecardSystem {
         // Check which events user is registered for
         let registeredEventIds = new Set();
         try {
-            const userId = AppState?.currentUser?.lineUserId;
+            // localStorage fallback is LOAD-BEARING (same class as booking sync v659 +
+            // getAllPublicEvents Query 3): during login restore AppState.currentUser can
+            // still be empty when this runs — without the fallback the reg check silently
+            // returns nothing, firstRegisteredTodayId stays null, and a registered golfer
+            // lands on Play Golf with NO society event (Carl, 2026-08-31 Pattaya CC).
+            const userId = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
             if (userId && window.SupabaseDB?.client) {
                 const { data: regs } = await window.SupabaseDB.client
                     .from('event_registrations')

@@ -103,7 +103,11 @@ building, not after.
   `auto_update_society_handicaps_on_round` (round completions). ANCHORED drift only applies
   to golfers with NO locked/MANUAL TRGG row. A MANUAL-pinned universal blocks IMPORT cascades
   only; a MANUAL TRGG edit (Players Directory / organizer editors) pushes its VALUE through
-  the pin without changing the pin's method. SQL:
+  the pin without changing the pin's method. The trigger ALSO pushes the TRGG value into
+  `event_registrations.handicap` + `event_pairings` players jsonb for TRGG events dated
+  today-or-later (Asia/Bangkok) — event rosters update at WRITE time, never wait for a
+  tee-sheet open; past events keep the hcp they were played off (retro-apply = Summary ✎).
+  SQL: `sql/trgg_hcp_writes_push_upcoming_regs_20260901.sql` on top of
   `sql/manual_trgg_edit_syncs_globally_20260901.sql` (supersedes the 20260818/20260824 files —
   those contain a regressed scramble gate, see FUCKUPS #37; never author a DB function from a
   repo .sql file, pull live prosrc). Never re-add independent universal drift for TRGG members.

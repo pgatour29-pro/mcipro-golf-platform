@@ -41219,18 +41219,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (lbYear) lbYear.textContent = currentYear;
 
                 if (lbGrid) {
-                    // Build "Recent Best Rounds" card (last 4 event days, newest first)
+                    // Build "Recent Best Rounds" card (last 5 EVENTS, newest first)
                     let todayCard = '';
                     try {
                         const today = new Date();
-                        // Look back 14 days to capture last 4 event days
-                        let lookbackDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 14).toISOString();
+                        // Look back 30 days to capture the last 5 events. limit(250) not 40 —
+                        // one full-field event alone is ~40 rounds, so a small cap starves the
+                        // board down to 1-2 events no matter how many days are kept.
+                        let lookbackDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30).toISOString();
                         let { data: recentRounds } = await window.SupabaseDB.client
                             .from('rounds')
                             .select('id, golfer_id, player_name, total_gross, total_stableford, course_name, completed_at, played_at, started_at, society_event_id, scramble_config, team_size, handicap_used')
                             .gte('completed_at', lookbackDate)
                             .gte('total_gross', 55).lt('total_gross', 200)
-                            .order('completed_at', { ascending: false }).limit(40);
+                            .order('completed_at', { ascending: false }).limit(250);
                         // If no recent rounds, look back 60 days to always show something
                         if (!recentRounds || recentRounds.length === 0) {
                             lookbackDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 60).toISOString();
@@ -41239,7 +41241,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 .select('id, golfer_id, player_name, total_gross, total_stableford, course_name, completed_at, played_at, started_at, society_event_id, scramble_config, team_size, handicap_used')
                                 .gte('completed_at', lookbackDate)
                                 .gte('total_gross', 55).lt('total_gross', 200)
-                                .order('completed_at', { ascending: false }).limit(40);
+                                .order('completed_at', { ascending: false }).limit(250);
                             recentRounds = fallback.data;
                         }
                         if (recentRounds && recentRounds.length > 0) {
@@ -41331,8 +41333,16 @@ document.addEventListener('DOMContentLoaded', function() {
                             // Sort each day's rounds best-first BY EVENT FORMAT (stableford = points desc, stroke play = gross asc)
                             Object.values(dayGroups).forEach(g => g.sort((a, b) => window.CommunityScore.sortKey(a) - window.CommunityScore.sortKey(b)));
 
-                            // Keep only the last 4 PLAYED days, newest first (keys sort lexically)
-                            const dayEntries = Object.entries(dayGroups).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 4);
+                            // Keep the newest PLAYED days until the last 5 EVENTS are on the
+                            // board (casual course boards ride along on the days they share).
+                            const sortedDayEntries = Object.entries(dayGroups).sort((a, b) => b[0].localeCompare(a[0]));
+                            const dayEntries = [];
+                            const seenEventIds = new Set();
+                            for (const dayEntry of sortedDayEntries) {
+                                if (seenEventIds.size >= 5) break;
+                                dayEntries.push(dayEntry);
+                                dayEntry[1].forEach(r => { if (r.society_event_id) seenEventIds.add(r.society_event_id); });
+                            }
 
                             let allRows = '';
                             let globalRank = 0;

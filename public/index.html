@@ -122590,8 +122590,15 @@ const LiveRoundsBadge = {
                 tileBadge.textContent = count;
                 tileBadge.style.display = count > 0 ? 'flex' : 'none';
             }
-            const livePill = document.getElementById('cubeInfoLive');
-            if (livePill) livePill.textContent = count > 0 ? (count + ' in play') : 'None live now';
+            // The Spectate pill exists TWICE: #cubeInfoLive (light tile) + .cubeInfoLive (compact
+            // grid — the main-dashboard copy). setPill writes both and strips data-i18n so the
+            // i18n pass can't revert the text; writing only the id copy leaves the visible cube stale.
+            const pillText = count > 0 ? (count + ' in play') : 'None live now';
+            if (window.GolferCubeInfo && GolferCubeInfo.setPill) {
+                GolferCubeInfo.setPill('cubeInfoLive', pillText);
+            } else {
+                document.querySelectorAll('#cubeInfoLive, .cubeInfoLive').forEach(el => { el.textContent = pillText; });
+            }
         } catch (err) {
             console.error('[LiveRoundsBadge] Error updating count:', err);
         }

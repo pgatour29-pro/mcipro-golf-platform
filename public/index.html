@@ -99128,7 +99128,10 @@ class LiveScorecardSystem {
         }
 
         // Fetch scores for all entrants via scorecards table (today's scores for THIS course only)
-        const today = new Date().toISOString().split('T')[0];
+        // Local day as UTC instants — created_at stores UTC; a naive date string window drops
+        // cards created before 07:00 Thai time onto "yesterday".
+        const poolDayStart = new Date(); poolDayStart.setHours(0, 0, 0, 0);
+        const poolDayEnd = new Date(poolDayStart.getTime() + 86400000);
         let playerScores = {};
         let perHoleByPlayer = {};
         try {
@@ -99138,8 +99141,8 @@ class LiveScorecardSystem {
                 .from('scorecards')
                 .select('id, player_id, course_id, created_at')
                 .in('player_id', entrantIds)
-                .gte('created_at', today + 'T00:00:00')
-                .lte('created_at', today + 'T23:59:59');
+                .gte('created_at', poolDayStart.toISOString())
+                .lt('created_at', poolDayEnd.toISOString());
 
             // Filter by course if pool has course_id
             if (pool.course_id) {
@@ -122530,7 +122533,10 @@ const LiveRoundsBadge = {
 
     async updateCount() {
         try {
-            const today = new Date().toISOString().split('T')[0];
+            // "Today" must be the LOCAL day as UTC instants — created_at stores UTC, so a naive
+            // `${date}T00:00:00` window hides Thai rounds started before 07:00 local.
+            const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(dayStart.getTime() + 86400000);
 
             // Query for active spectatable rounds today
             const { data, error } = await window.SupabaseDB.client
@@ -122538,8 +122544,8 @@ const LiveRoundsBadge = {
                 .select('group_id', { count: 'exact', head: false })
                 .eq('is_live_spectatable', true)
                 .eq('status', 'in_progress')
-                .gte('created_at', `${today}T00:00:00`)
-                .lte('created_at', `${today}T23:59:59`);
+                .gte('created_at', dayStart.toISOString())
+                .lt('created_at', dayEnd.toISOString());
 
             if (error) {
                 console.error('[LiveRoundsBadge] Query error:', error);
@@ -122576,6 +122582,16 @@ const LiveRoundsBadge = {
                     mobileBadge.style.display = 'none';
                 }
             }
+
+            // Light-view tile badge — GolferCubeInfo.badgeNum('liveRoundsBadgeTile') feeds the
+            // cube pill, so this write is what makes Light view show live rounds at all.
+            const tileBadge = document.getElementById('liveRoundsBadgeTile');
+            if (tileBadge) {
+                tileBadge.textContent = count;
+                tileBadge.style.display = count > 0 ? 'flex' : 'none';
+            }
+            const livePill = document.getElementById('cubeInfoLive');
+            if (livePill) livePill.textContent = count > 0 ? (count + ' in play') : 'None live now';
         } catch (err) {
             console.error('[LiveRoundsBadge] Error updating count:', err);
         }

@@ -289,6 +289,15 @@
             return `${year}-${month}-${day}`;
         }
 
+        // A local calendar day as UTC instants for created_at filters — created_at stores UTC,
+        // so naive `${date}T00:00:00` strings compare as UTC and hide rounds started before
+        // 07:00 Thai time. No dateStr = today.
+        function localDayWindow(dateStr) {
+            const start = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date();
+            if (!dateStr) start.setHours(0, 0, 0, 0);
+            return { startIso: start.toISOString(), endIso: new Date(start.getTime() + 86400000).toISOString() };
+        }
+
         // Check if a date is in the past
         function isPastDate(dateStr) {
             const today = getToday();
@@ -639,6 +648,7 @@
                 const todayEvents = allEvents.filter(e => e.event_date === today);
 
                 // NEW: Get today's public casual rounds (live spectatable)
+                const todayWin = localDayWindow();
                 const { data: publicRounds, error: roundsError } = await supabaseClient
                     .from('scorecards')
                     .select(`
@@ -647,8 +657,8 @@
                     `)
                     .eq('is_live_spectatable', true)
                     .eq('status', 'in_progress')
-                    .gte('created_at', `${today}T00:00:00`)
-                    .lte('created_at', `${today}T23:59:59`)
+                    .gte('created_at', todayWin.startIso)
+                    .lt('created_at', todayWin.endIso)
                     .order('created_at', { ascending: false });
 
                 if (roundsError) {
@@ -905,7 +915,7 @@
                     .select('player_id')
                     .eq('event_id', eventId);
                 const regIds = evRegsError ? null : new Set((evRegs || []).map(r => String(r.player_id)));
-                const today = getToday();
+                const extraWin = localDayWindow();
                 const { data: extraCards } = await supabaseClient
                     .from('scorecards')
                     .select(`
@@ -914,8 +924,8 @@
                     `)
                     .is('event_id', null)
                     .ilike('course_name', `%${event.course_name.split(' ')[0]}%`)
-                    .gte('created_at', `${today}T00:00:00`)
-                    .lte('created_at', `${today}T23:59:59`)
+                    .gte('created_at', extraWin.startIso)
+                    .lt('created_at', extraWin.endIso)
                     .neq('status', 'abandoned');
 
                 // Merge, avoiding duplicates by player_id — registered golfers only
@@ -1025,7 +1035,7 @@
             const entrantIds = (pool.pool_entrants || []).map(e => e.player_id);
             if (entrantIds.length === 0) return [];
 
-            const poolDate = pool.date_iso;
+            const poolWin = localDayWindow(pool.date_iso);
 
             const { data: scorecards, error } = await supabaseClient
                 .from('scorecards')
@@ -1034,8 +1044,8 @@
                     scores (hole_number, gross_score, stableford_points, par)
                 `)
                 .in('player_id', entrantIds)
-                .gte('created_at', poolDate + 'T00:00:00')
-                .lte('created_at', poolDate + 'T23:59:59');
+                .gte('created_at', poolWin.startIso)
+                .lt('created_at', poolWin.endIso);
 
             if (error || !scorecards) return [];
 

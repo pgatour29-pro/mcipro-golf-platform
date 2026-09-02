@@ -223,6 +223,26 @@ eq('normalizeDuplicateSI: hcp 9 on the normalized card = 9 strokes (was 18 via t
     eq('engine surface: every engine.X() used by LiveScorecardSystem exists', missing, []);
 }
 
+
+// =========================================================
+// v1074: match play plays off the DIFFERENCE
+// =========================================================
+eq('relativeMatchHandicaps: 19 vs 2 → [17, 0]', E.relativeMatchHandicaps([19, 2]), [17, 0]);
+eq('relativeMatchHandicaps: +2 vs 5 → [0, 7]', E.relativeMatchHandicaps(['+2', 5]), [0, 7]);
+eq('relativeMatchHandicaps: four-ball 12/18/6/20 → [6,12,0,14]', E.relativeMatchHandicaps([12, 18, 6, 20]), [6, 12, 0, 14]);
+{
+    // A hcp 19 vs B hcp 2 on an SI 1-18 par-4 card: A shoots 5 on SI 2, 4 elsewhere; B 4 everywhere.
+    // Full-handicap allocation halved this hole wrongly in A's favour being lost (A 1 shot, B 1 shot);
+    // playing off the difference (17) A gets a shot on SI 2 and B none → hole HALVED, A never loses it.
+    const aScores = sc(Array.from({ length: 18 }, (_, i) => (H[i].stroke_index === 2 ? 5 : 4)));
+    const bScores = sc(Array(18).fill(4));
+    // Just the SI-2 hole (hole 2 on this card): off the difference A gets a shot there, B none → HALVED.
+    // (Full handicaps gave A 1 shot and B 1 shot → A net 4 vs B net 3 → A LOST the hole.)
+    const r = E.calculateMatchPlay1v1(aScores, bScores, H, true, 19, 2, false, 1, 2);
+    eq('1v1 difference: A(19) 5 vs B(2) 4 on SI 2 is HALVED (A gets the shot, B none)', r.player1Up, 0);
+    const rFull = E.calculateMatchPlay1v1(sc(Array(18).fill(4)), sc(Array(18).fill(4)), H, true, 10, 10, false, 18, 1);
+    eq('1v1 equal handicaps: all square (no strokes either way)', rFull.player1Up, 0);
+}
 // ---- report ----
 console.log(`\nScoring engine tests: ${pass} passed, ${fail} failed`);
 if (fail) { console.log('\n' + failures.join('\n')); process.exit(1); }

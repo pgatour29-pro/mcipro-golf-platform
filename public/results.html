@@ -345,8 +345,9 @@
             const out = raw.map((d,i) => ({
                 name: (d && d.name) || ('Division ' + (i+1)),
                 min: parseFloat(d && d.minHandicap!=null ? d.minHandicap : (d && d.min!=null ? d.min : 0)) || 0,
-                max: parseFloat(d && d.maxHandicap!=null ? d.maxHandicap : (d && d.max!=null ? d.max : 999))
-            })).filter(d => isFinite(d.max));
+                // blank / null / NaN max = open-ended — the old isFinite filter DELETED that division
+                max: (() => { const v = (d && d.maxHandicap != null) ? d.maxHandicap : ((d && d.max != null) ? d.max : 999); const n = parseFloat(v); return (v === '' || v === null || !isFinite(n)) ? Infinity : n; })()
+            }));
             return out.length ? out : null;
         }
         function divisionForHandicap(hcpIndex, divisions){

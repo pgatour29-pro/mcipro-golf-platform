@@ -256,8 +256,10 @@ class TimeWindowedLeaderboards {
                     endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
             }
 
-            const startDateStr = startDate.toISOString().split('T')[0];
-            const endDateStr = endDate.toISOString().split('T')[0];
+            // Local calendar dates — toISOString() on a local midnight is the PREVIOUS day in Bangkok (UTC+7)
+            const _ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            const startDateStr = _ymd(startDate);
+            const endDateStr = _ymd(endDate);
 
             // Use the current society filter if not explicitly provided
             const filterSociety = societyFilter || this.currentSociety;
@@ -531,8 +533,8 @@ class TimeWindowedLeaderboards {
             container.innerHTML = `
                 <div class="text-center py-8 text-gray-500">
                     <span class="material-symbols-outlined text-5xl mb-3 text-gray-300">leaderboard</span>
-                    <p class="font-medium">No rounds played yet this period</p>
-                    <p class="text-sm mt-2">Complete a round to appear on the leaderboard!</p>
+                    <p class="font-medium">No published results for this period yet</p>
+                    <p class="text-sm mt-2">Standings appear once the organizer publishes an event's results.</p>
                 </div>
             `;
             return;

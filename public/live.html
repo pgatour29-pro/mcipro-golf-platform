@@ -282,6 +282,8 @@
 
         // Get today's date in YYYY-MM-DD format (LOCAL timezone, not UTC)
         function getToday() {
+            // Events happen in Thailand: "today" is the Bangkok calendar day, whatever the viewer's clock says
+            try { return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }); } catch (e) {}
             const now = new Date();
             const year = now.getFullYear();
             const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -355,7 +357,7 @@
                 // Get events from last 30 days
                 const thirtyDaysAgo = new Date();
                 thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-                const cutoffDate = thirtyDaysAgo.toISOString().split('T')[0];
+                const cutoffDate = (() => { try { return thirtyDaysAgo.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }); } catch (e) { return thirtyDaysAgo.toISOString().split('T')[0]; } })();
 
                 const { data: events, error: eventError } = await supabaseClient
                     .from('society_events')
@@ -916,6 +918,8 @@
                     .eq('event_id', eventId);
                 const regIds = evRegsError ? null : new Set((evRegs || []).map(r => String(r.player_id)));
                 const extraWin = localDayWindow();
+                const _nameKey2 = n => String(n || '').toLowerCase().replace(/\([^)]*\)/g, ' ').trim().split(/\s+/).slice(0, 2).join(' ');
+                const _evKey2 = _nameKey2(event.course_name) || String(event.course_name || '').split(' ')[0];
                 const { data: extraCards } = await supabaseClient
                     .from('scorecards')
                     .select(`
@@ -923,7 +927,7 @@
                         scores (hole_number, gross_score, net_score, stableford_points, par)
                     `)
                     .is('event_id', null)
-                    .ilike('course_name', `%${event.course_name.split(' ')[0]}%`)
+                    .ilike('course_name', `%${_evKey2}%`)   // first-TWO-words key: "Royal Lakeside", not "%Royal%"
                     .gte('created_at', extraWin.startIso)
                     .lt('created_at', extraWin.endIso)
                     .neq('status', 'abandoned');
@@ -931,6 +935,7 @@
                 // Merge, avoiding duplicates by player_id — registered golfers only
                 const existingPlayerIds = new Set((scorecards || []).map(s => s.player_id));
                 (extraCards || []).forEach(sc => {
+                    if (_nameKey2(sc.course_name) !== _evKey2) return;   // same venue only (two-word key)
                     if (regIds && regIds.has(String(sc.player_id)) && !existingPlayerIds.has(sc.player_id)) {
                         scorecards.push(sc);
                         existingPlayerIds.add(sc.player_id);

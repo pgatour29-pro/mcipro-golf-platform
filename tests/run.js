@@ -175,6 +175,54 @@ check('Waltz teams: tee-sheet trio + walk-on merged into one team, stray unassig
     wTeams.teams.length === 1 && wTeams.teams[0].length === 4 && wTeams.unassigned.length === 1 && wTeams.unassigned[0].golfer_id === 'stray',
     JSON.stringify({ teams: wTeams.teams.map(t => t.map(r => r.golfer_id)), unassigned: wTeams.unassigned.map(r => r.golfer_id) }));
 
+
+// =========================================================
+// v1072 sweep: per-hole Stableford helper, duplicate-SI cards, allocator parity, engine surface
+// =========================================================
+eq('calculateStablefordPoints: 5 on par 4, SI 7, hcp 18 = 2 (one stroke)', E.calculateStablefordPoints(5, 4, 7, 18), 2);
+eq('calculateStablefordPoints: 4 on par 4, SI 18, hcp +2 = 1 (gives a stroke back)', E.calculateStablefordPoints(4, 4, 18, '+2'), 1);
+eq('calculateStablefordPoints: 4 on par 4, SI 1, hcp 36 = 4 (two strokes)', E.calculateStablefordPoints(4, 4, 1, 36), 4);
+eq('calculateStablefordPoints: blank/0 gross = 0 points', E.calculateStablefordPoints(0, 4, 1, 10), 0);
+
+// A per-nine card (SI 1-9 twice) stored under one course id — siam_plantation in prod
+const dupSI = [5,8,3,4,9,2,1,7,6, 8,7,5,2,6,4,9,3,1];
+const dupHoles = dupSI.map((s, i) => ({ hole_number: i + 1, par: 4, stroke_index: s, yardage: i < 9 ? 400 : 380 }));
+check('normalizeDuplicateSI: remaps a duplicated 1-9/1-9 card', E.normalizeDuplicateSI(dupHoles) === true);
+eq('normalizeDuplicateSI: result is a unique 1-18', [...new Set(dupHoles.map(h => h.stroke_index))].length, 18);
+check('normalizeDuplicateSI: longer nine (front) takes the odd SI', dupHoles.slice(0, 9).every(h => h.stroke_index % 2 === 1));
+const cleanHoles = holes(null, null);
+check('normalizeDuplicateSI: a clean 1-18 card is untouched', E.normalizeDuplicateSI(cleanHoles) === false && cleanHoles.every((h, i) => h.stroke_index === i + 1));
+eq('normalizeDuplicateSI: hcp 9 on the normalized card = 9 strokes (was 18 via the SI<=n formula)',
+    Object.values(E.allocHandicapShots(dupHoles, 9)).reduce((a, b) => a + b, 0), 9);
+
+// Allocator parity: rank-based allocHandicapShots must equal the SI formula saveScore uses, for every
+// handicap the app sees, on a unique 1-18 card (the formula is only valid there — hence the normalizer).
+{
+    let mismatches = 0;
+    const card = holes(null, null);
+    for (const h of [0, 1, 5, 9, 12, 17, 18, 19, 26, 36, 37, 54, '+1', '+2', -3]) {
+        const shots = E.allocHandicapShots(card, h);
+        const php = typeof h === 'string' ? -parseFloat(h.slice(1)) : h;
+        const full = Math.floor(Math.abs(php) / 18), rem = Math.abs(php) % 18;
+        for (const hh of card) {
+            const f = php >= 0 ? full + (hh.stroke_index <= rem ? 1 : 0) : -(full + (hh.stroke_index > (18 - rem) ? 1 : 0));
+            if ((shots[hh.hole] || 0) !== f) mismatches++;
+        }
+    }
+    eq('allocator parity: allocHandicapShots == saveScore SI formula on a 1-18 card (15 handicaps × 18 holes)', mismatches, 0);
+}
+
+// Engine surface: every engine.X( call inside LiveScorecardSystem must exist (calculateStablefordPoints
+// was called for months without existing — every Aggregate round died in saveRoundToHistory).
+{
+    const html = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'index.html'), 'utf8');
+    const a = html.indexOf('class LiveScorecardSystem {'), b = html.indexOf('window.LiveScorecardManager = new');
+    const names = new Set(); const re = /\bengine\.(\w+)\(/g; let m;
+    while ((m = re.exec(html.slice(a, b)))) names.add(m[1]);
+    const missing = [...names].filter(n => typeof E[n] !== 'function');
+    eq('engine surface: every engine.X() used by LiveScorecardSystem exists', missing, []);
+}
+
 // ---- report ----
 console.log(`\nScoring engine tests: ${pass} passed, ${fail} failed`);
 if (fail) { console.log('\n' + failures.join('\n')); process.exit(1); }

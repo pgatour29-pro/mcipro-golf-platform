@@ -89285,32 +89285,35 @@ class LiveScorecardSystem {
         }
 
         const pinData = window.PinSheetManager.getPinForHole(this.currentHole);
-        const indicator = document.getElementById('holePinIndicator');
-        const dot = document.getElementById('holePinDot');
-
-        if (!indicator || !dot) {
-            return;
-        }
-
-        if (!pinData) {
-            indicator.style.display = 'none'; // inline style — .hidden class can't override the inline display
-            return;
-        }
 
         // Resolve the dot's position (0-1). Prefer stored coords; fall back to
         // parsing the position label (e.g. "back-right") so the dot always shows.
-        let x = Number(pinData.x_position), y = Number(pinData.y_position);
-        const valid = (v) => (typeof v === 'number' && v >= 0 && v <= 1);
-        if (!valid(x) || !valid(y)) {
-            const label = pinData.position_label || pinData.description || '';
-            const p = (label && window.PinSheetManager.parsePosition) ? window.PinSheetManager.parsePosition(label) : { x: 0.5, y: 0.5 };
-            x = p.x; y = p.y;
+        let x = 0.5, y = 0.5;
+        if (pinData) {
+            x = Number(pinData.x_position); y = Number(pinData.y_position);
+            const valid = (v) => (typeof v === 'number' && v >= 0 && v <= 1);
+            if (!valid(x) || !valid(y)) {
+                const label = pinData.position_label || pinData.description || '';
+                const p = (label && window.PinSheetManager.parsePosition) ? window.PinSheetManager.parsePosition(label) : { x: 0.5, y: 0.5 };
+                x = p.x; y = p.y;
+            }
         }
 
-        indicator.style.display = 'flex';
-        dot.style.display = '';   // FIX: ensure the dot is visible (was left hidden by a prior no-pin hole)
-        dot.style.left = `${(x * 100).toFixed(1)}%`;
-        dot.style.top = `${(y * 100).toFixed(1)}%`;
+        // v1067: BOTH copies — SCV3 keypad header + TRADV strip (the TRADV view shipped
+        // without the pin at all; write every mirror, verify every mirror).
+        [['holePinIndicator', 'holePinDot'], ['tradPinIndicator', 'tradPinDot']].forEach(([indId, dotId]) => {
+            const indicator = document.getElementById(indId);
+            const dot = document.getElementById(dotId);
+            if (!indicator || !dot) return;
+            if (!pinData) {
+                indicator.style.display = 'none'; // inline style — .hidden class can't override the inline display
+                return;
+            }
+            indicator.style.display = 'flex';
+            dot.style.display = '';   // FIX: ensure the dot is visible (was left hidden by a prior no-pin hole)
+            dot.style.left = `${(x * 100).toFixed(1)}%`;
+            dot.style.top = `${(y * 100).toFixed(1)}%`;
+        });
     }
 
     getPlayerScore(playerId, holeNumber) {
@@ -90251,7 +90254,15 @@ class LiveScorecardSystem {
         const lg = document.getElementById('tradLegend');
         if (lg) lg.innerHTML = '<span><span class="lb">○ ' + _lvT('scorecard.trad.birdie', 'Birdie+') + '</span>&nbsp;&nbsp;' +
             '<span class="lr">□ ' + _lvT('scorecard.trad.bogey', 'Bogey+') + '</span></span>' +
+            // v1067 pin location — TRADV shipped without the pin the SCV3 header has. The
+            // strip has NO spare width at 360px (END wraps — verified), so the mirror lives
+            // here in the legend row; same ids updatePinPositionIndicator drives.
+            '<span id="tradPinIndicator" style="display:none;align-items:center;" title="Pin location">' +
+            '<span style="width:20px;height:20px;border-radius:50%;background:rgba(16,185,129,0.4);position:relative;display:block;">' +
+            '<span id="tradPinDot" style="width:7px;height:7px;background:#f87171;border:1px solid rgba(255,255,255,0.6);border-radius:50%;position:absolute;transform:translate(-50%,-50%);display:block;"></span>' +
+            '</span></span>' +
             '<span>' + _lvT('scorecard.trad.tapcell', 'Tap any cell to edit') + '</span>';
+        this.updatePinPositionIndicator();
         this._renderTradEntry(target, isStableford);
     }
     _renderTradEntry(target, isStableford) {

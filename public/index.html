@@ -133772,17 +133772,23 @@ class GolferEventsManager {
             try {
                 console.log('[Badge Poll] Checking for user:', currentUserId);
 
-                // Count registrations for current user
+                // Count registrations for current user. Plain GET + limit(1) (not a HEAD): a HEAD
+                // count through the service worker / LINE WebView failed on cold load for Pete
+                // (2026-09-02, "Badge poll error" toast on every open). A background poll must
+                // never nag: errors are console-only, and a transient failure is retried by the
+                // next 10s tick.
                 const { count, error } = await window.SupabaseDB.client
                     .from('event_registrations')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('player_id', currentUserId);
+                    .select('id', { count: 'exact' })
+                    .eq('player_id', currentUserId)
+                    .limit(1);
 
                 if (error) {
-                    console.error('[Badge Poll] Query error:', error);
-                    NotificationManager.show('Badge poll error: ' + error.message, 'error', 3000);
+                    this._badgePollFails = (this._badgePollFails || 0) + 1;
+                    if (this._badgePollFails === 1 || this._badgePollFails % 30 === 0) console.warn('[Badge Poll] Query error (silent, will retry):', error.message || error);
                     return;
                 }
+                this._badgePollFails = 0;
 
                 const lastCount = parseInt(localStorage.getItem(LAST_COUNT_KEY) || '-1');
                 console.log('[Badge Poll] DB count:', count, '| Stored count:', lastCount);

@@ -41209,9 +41209,14 @@ document.addEventListener('DOMContentLoaded', function() {
                             const name = p.display_name || p.name;
                             if (!name || name === 'Unknown') return;
 
-                            // Get universal handicap from multiple sources (0 is a valid handicap — no || chain)
+                            // Get universal handicap from multiple sources (0 is a valid handicap — no || chain).
+                            // A bare "0" in profile_data with NO handicap_index is an untouched profile default
+                            // (JOA's organizer login carries golfInfo "0" next to a real 3.9 society row) — not a
+                            // scratch golfer. Count profile_data zeros only when handicap_index is actually set.
+                            const _hiSet = p.handicap_index !== null && p.handicap_index !== undefined && !isNaN(parseFloat(p.handicap_index));
                             const profileHcps = [p.handicap_index, p.profile_data?.handicap, p.profile_data?.golfInfo?.handicap]
-                                .map(v => parseFloat(v));
+                                .map(v => parseFloat(v))
+                                .filter((v, i) => i === 0 || _hiSet || v !== 0);
 
                             // Get society handicap
                             const societyHcp = societyHcpMap[p.line_user_id] ?? NaN;

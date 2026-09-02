@@ -9860,6 +9860,9 @@
                 'qreg.partner1.none': 'No partner — organizer will pair me',
                 'qreg.max3': 'Up to 3 players',
                 'qreg.ingroup': 'In group',
+                'qreg.grpfull': 'Full',
+                'qreg.grpof': 'Group of {n}',
+                'qreg.grpmax': 'Groups are max {n} players',
                 'qreg.editreg': 'Edit My Registration',
                 'qreg.regevent': 'Register for Event',
                 'regedit.notfound': 'Could not find your registration — please try again',
@@ -10969,6 +10972,9 @@
                 'qreg.partner1.none': 'ยังไม่มีคู่ — ให้ผู้จัดจับคู่',
                 'qreg.max3': 'เลือกได้สูงสุด 3 คน',
                 'qreg.ingroup': 'จัดกลุ่มแล้ว',
+                'qreg.grpfull': 'เต็มแล้ว',
+                'qreg.grpof': 'กลุ่ม {n} คน',
+                'qreg.grpmax': 'กลุ่มละไม่เกิน {n} คน',
                 'qreg.editreg': 'แก้ไขการลงทะเบียนของฉัน',
                 'qreg.regevent': 'ลงทะเบียนเข้าร่วม',
                 'regedit.notfound': 'ไม่พบการลงทะเบียนของคุณ — กรุณาลองอีกครั้ง',
@@ -14283,6 +14289,9 @@
                 'qreg.partner1.none': '파트너 없음 — 주최자가 배정',
                 'qreg.max3': '최대 3명까지',
                 'qreg.ingroup': '조 배정됨',
+                'qreg.grpfull': '마감',
+                'qreg.grpof': '{n}인 조',
+                'qreg.grpmax': '한 조 최대 {n}명',
                 'qreg.editreg': '내 등록 수정',
                 'qreg.regevent': '이벤트 등록',
                 'regedit.notfound': '등록 정보를 찾을 수 없습니다 — 다시 시도해 주세요',
@@ -15229,6 +15238,9 @@
                 'qreg.partner1.none': 'パートナーなし — 主催者にお任せ',
                 'qreg.max3': '最大3人まで',
                 'qreg.ingroup': '組分け済み',
+                'qreg.grpfull': '満員',
+                'qreg.grpof': '{n}人組',
+                'qreg.grpmax': '1組は最大{n}人まで',
                 'qreg.editreg': '登録内容を編集',
                 'qreg.regevent': 'イベントに登録',
                 'regedit.notfound': '登録が見つかりません — もう一度お試しください',
@@ -125666,21 +125678,24 @@ class GolferEventsManager {
         let pool = others;
         if (s2) { try { pool = this._scramble2Eligible(others, ctx.myId) || []; } catch (e) { pool = others; } }
         if (!pool.length) return;
-        const assigned = this._partnerAssignedIds(ctx.pairing || null);
-        // Quick-reg only opens for the UNREGISTERED (registered taps route to editMyRegistration),
-        // so the current user can't be in any unit — every unit member is locked here.
-        const unitLocked = this._partnerUnitLockedIds(others, ctx.myId);
+        // v1070: only FULL groups lock ("Full"); an open 2/3-ball shows "Group of N" and a tap JOINS
+        // it. Quick-reg only opens for the UNREGISTERED (registered taps route to editMyRegistration),
+        // so the current user is never inside a group here.
+        const cap = this._partnerGroupCap(ctx.pairing || null);
+        const grpMap = this._partnerGroupMap(others, ctx.myId, ctx.pairing || null);
         const esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
         const hcpTag = function (r) {
             return (r.handicap !== null && r.handicap !== undefined && r.handicap !== '')
                 ? '<span class="h">' + window.formatHandicapDisplay(r.handicap) + '</span>' : '';
         };
-        const inGrpTag = '<span class="h">' + esc(_lvT('qreg.ingroup', 'In group')) + '</span>';
+        const fullTag = '<span class="h">' + esc(_lvT('qreg.grpfull', 'Full')) + '</span>';
+        const grpOf = n => '<span class="h">' + esc(_lvT('qreg.grpof', 'Group of {n}').replace('{n}', n)) + '</span>';
         const chips = pool.map(r => {
             if (s2) return '<label class="qr-pch"><input type="radio" name="qrS2Partner" value="' + esc(r.playerId) + '"><span data-golfer-av="' + esc(r.playerId) + '" data-golfer-av-nm="' + esc(r.playerName) + '" data-golfer-av-sz="18">' + esc(r.playerName) + '</span>' + hcpTag(r) + '</label>';
-            const grouped = assigned.has(String(r.playerId)) || assigned.has(String(r.id)) ||
-                unitLocked.has(String(r.playerId)) || unitLocked.has(String(r.id));
-            return '<label class="qr-pch' + (grouped ? ' is-grp' : '') + '"><input type="checkbox" class="qr-pref" value="' + esc(r.id) + '" data-name="' + esc(r.playerName) + '"' + (grouped ? ' disabled' : ' onchange="GolferEventsSystem._qrLimit(this)"') + '><span data-golfer-av="' + esc(r.playerId) + '" data-golfer-av-nm="' + esc(r.playerName) + '" data-golfer-av-sz="18">' + esc(r.playerName) + '</span>' + hcpTag(r) + (grouped ? inGrpTag : '') + '</label>';
+            const info = grpMap.get(String(r.playerId)) || grpMap.get(String(r.id)) || null;
+            const grouped = !!(info && !info.mine && info.size >= cap);
+            const openGrp = !!(info && !info.mine && !grouped);
+            return '<label class="qr-pch' + (grouped ? ' is-grp' : '') + '"><input type="checkbox" class="qr-pref" value="' + esc(r.id) + '" data-name="' + esc(r.playerName) + '"' + (grouped ? ' disabled' : ' onchange="GolferEventsSystem._qrLimit(this)"') + '><span data-golfer-av="' + esc(r.playerId) + '" data-golfer-av-nm="' + esc(r.playerName) + '" data-golfer-av-sz="18">' + esc(r.playerName) + '</span>' + hcpTag(r) + (grouped ? fullTag : (openGrp ? grpOf(info.size) : '')) + '</label>';
         }).join('');
         slot.style.cssText = 'padding:0 18px;';
         slot.innerHTML =
@@ -125733,14 +125748,15 @@ class GolferEventsManager {
         }
     }
 
-    // Max-3 guard for the quick-register "play with" chips (a foursome = you + 3).
+    // Group-size guard for the quick-register "play with" chips: me + each pick + everyone already
+    // attached to that pick (their unit / seated group) must fit the cap. v1070 — was a flat "up to
+    // 3", which let a tap on one member of a 3-ball make a 5-ball.
     _qrLimit(cb) {
         const box = document.getElementById('scv3gTransportAsk');
+        const ctx = this._pendingReg;
         if (!box || !cb.checked) return;
-        if (box.querySelectorAll('.qr-pref:checked').length > 3) {
-            cb.checked = false;
-            if (window.NotificationManager) window.NotificationManager.show(_lvT('qreg.max3', 'Up to 3 players'), 'info');
-        }
+        const ids = Array.from(box.querySelectorAll('.qr-pref:checked')).map(x => x.value);
+        this._partnerPickGuard(cb, ids, (ctx && ctx.others) || [], ctx && ctx.myId, (ctx && ctx.pairing) || null);
     }
 
     // Batch-load MY group + tee chip for registered events (one query) — fills event._myGroupChip
@@ -128019,22 +128035,116 @@ class GolferEventsManager {
         }
     }
 
-    // Once the organizer's tee sheet has a player placed in a SAVED group, a partner pick can no
-    // longer move them (units/prefs act on the way IN only) — so every partner picker grays them
-    // out (Pete 2026-08-04). Shape-tolerant per the dual pairing UIs: groups may be
-    // [{players:[{playerId,…}]}] or [[{id,…}]]; member ids live in playerId or id, and candidates
-    // match on either reg.playerId or reg.id (dual-id trap). Pass a pairing explicitly (quick-reg
-    // fetches its own); no arg = this.currentEventPairings (detail modal / players modal context).
+    // ── Group-join rules for the partner pickers (Pete 2026-09-02, v1070) ────────────────────
+    // A group only closes when it is FULL. A play-together unit (someone's partner picks / a host's
+    // booking party) or a SAVED tee-sheet group with open seats stays pickable — tapping one of its
+    // members is exactly how a player JOINS that group: the pick chains into the unit (union-find in
+    // PlayTogetherUnits), so the organizer's pool shows one bigger block. Before v1070 the v883 rule
+    // locked every unit member for outsiders regardless of size, so a 2-man pair (Patrick+Niklas,
+    // TRGG Treasure Hill 2026-09-05) could never be joined by anyone. Cap = pairing.groupSize
+    // (4 unless the organizer set otherwise). Pass a pairing explicitly (quick-reg fetches its own);
+    // undefined = this.currentEventPairings (detail modal / players modal context).
+    _partnerGroupCap(pairing) {
+        try {
+            const p = (pairing === undefined) ? this.currentEventPairings : pairing;
+            const n = parseInt(p && p.groupSize, 10);
+            return (n >= 2 && n <= 6) ? n : 4;
+        } catch (e) { return 4; }
+    }
+
+    // Every registrant's CURRENT group = saved tee-sheet group ∪ play-together unit, merged by player
+    // id → Map keyed by BOTH reg.playerId and reg.id (dual-id trap) to { size, pids:Set, mine }.
+    // mine = the group already contains `myId` (my own unit stays tappable so editing my picks works).
+    _partnerGroupMap(regs, myId, pairing) {
+        const map = new Map();
+        try {
+            regs = regs || [];
+            const byPid = {};
+            const merge = ids => {
+                const set = new Set();
+                ids.forEach(pid => { set.add(pid); const s = byPid[pid]; if (s) s.forEach(x => set.add(x)); });
+                set.forEach(pid => { byPid[pid] = set; });
+            };
+            const toPid = raw => {
+                const k = String(raw);
+                const hit = regs.find(r => String(r.playerId) === k || String(r.id) === k);
+                return hit ? String(hit.playerId) : k;
+            };
+            // 1) SAVED tee-sheet groups. Shape-tolerant per the dual pairing UIs: groups may be
+            //    [{players:[{playerId,…}]}] or [[{id,…}]]; member ids live in playerId or id.
+            const p = (pairing === undefined) ? this.currentEventPairings : pairing;
+            const groups = p && p.groups;
+            if (Array.isArray(groups)) groups.forEach(g => {
+                const members = Array.isArray(g) ? g : ((g && Array.isArray(g.players)) ? g.players : []);
+                const pids = [];
+                members.forEach(m => {
+                    if (!m) return;
+                    const raw = (m.playerId != null && m.playerId !== '') ? m.playerId : m.id;
+                    if (raw != null && raw !== '') pids.push(toPid(raw));
+                });
+                if (pids.length) merge(pids);
+            });
+            // 2) play-together units (partner picks + booking parties) — all regs treated as pooled.
+            if (window.PlayTogetherUnits) (PlayTogetherUnits.units(regs, regs) || []).forEach(u => merge(u.map(m => String(m.playerId))));
+            regs.forEach(r => {
+                const set = byPid[String(r.playerId)];
+                if (!set) return;
+                const info = { size: set.size, pids: set, mine: (myId != null && myId !== '') && set.has(String(myId)) };
+                map.set(String(r.playerId), info);
+                if (r.id != null && r.id !== '') map.set(String(r.id), info);
+            });
+        } catch (e) { console.warn('[GolferEvents] partner group map', e); }
+        return map;
+    }
+
+    // Would my picks (checked reg-row ids) + me + everyone already attached to each pick still fit
+    // the cap? Picking one member of a 3-ball is ONE tap but fills the 4th seat.
+    _partnerPickFits(pickedRegIds, regs, myId, pairing) {
+        const cap = this._partnerGroupCap(pairing);
+        const map = this._partnerGroupMap(regs, myId, pairing);
+        const pids = new Set();
+        if (myId != null && myId !== '') pids.add(String(myId));
+        (pickedRegIds || []).forEach(id => {
+            const info = map.get(String(id));
+            if (info) { info.pids.forEach(x => pids.add(x)); return; }
+            const hit = (regs || []).find(r => String(r.id) === String(id) || String(r.playerId) === String(id));
+            pids.add(hit ? String(hit.playerId) : String(id));
+        });
+        return { fits: pids.size <= cap, size: pids.size, cap };
+    }
+
+    // Shared chip-tap guard for BOTH pickers: unchecks the tap that would overfill the group.
+    _partnerPickGuard(cb, checkedIds, regs, myId, pairing) {
+        if (!cb || !cb.checked) return true;
+        const r = this._partnerPickFits(checkedIds, regs, myId, pairing);
+        if (r.fits) return true;
+        cb.checked = false;
+        if (window.NotificationManager) window.NotificationManager.show(_lvT('qreg.grpmax', 'Groups are max {n} players').replace('{n}', r.cap), 'info');
+        return false;
+    }
+
+    // Full-form (RFV1) "PLAY WITH" chip tap.
+    _pfLimit(cb) {
+        const ids = Array.from(document.querySelectorAll('#partnerPrefsContainer .partner-pref-checkbox:checked')).map(x => x.value);
+        this._partnerPickGuard(cb, ids, this.currentEventRegistrations || [], AppState.currentUser?.lineUserId, undefined);
+    }
+
+    // Members of FULL saved tee-sheet groups (size ≥ cap) — an open 2/3-ball stays joinable
+    // (v1070). Shape-tolerant per the dual pairing UIs: groups may be [{players:[{playerId,…}]}] or
+    // [[{id,…}]]; member ids live in playerId or id, and candidates match on either reg.playerId or
+    // reg.id (dual-id trap). Legacy modal picker (showRegFormInModal) reads this alone; the SCV3G
+    // pickers read _partnerGroupMap directly.
     _partnerAssignedIds(pairing) {
         const set = new Set();
         try {
+            const cap = this._partnerGroupCap(pairing);
             const p = (pairing === undefined) ? this.currentEventPairings : pairing;
             const groups = p && p.groups;
             if (!Array.isArray(groups)) return set;
             groups.forEach(g => {
-                const members = Array.isArray(g) ? g : ((g && Array.isArray(g.players)) ? g.players : []);
+                const members = (Array.isArray(g) ? g : ((g && Array.isArray(g.players)) ? g.players : [])).filter(Boolean);
+                if (members.length < cap) return;   // open seats → joinable, not locked
                 members.forEach(m => {
-                    if (!m) return;
                     if (m.playerId != null && m.playerId !== '') set.add(String(m.playerId));
                     if (m.id != null && m.id !== '') set.add(String(m.id));
                 });
@@ -128043,14 +128153,15 @@ class GolferEventsManager {
         return set;
     }
 
-    // Pete (2026-08-11): players already locked into a play-together unit (someone's partner picks
-    // or a host's booking party) are off the menu for everyone OUTSIDE that unit — same "In group"
-    // gray as a seated player. Units CONTAINING me stay tappable so editing my own picks works.
-    _partnerUnitLockedIds(regs, myId) {
+    // Members of FULL play-together units (size ≥ cap) that do NOT contain me. v883 locked every
+    // unit member; v1070 only the full ones — see the block comment above.
+    _partnerUnitLockedIds(regs, myId, pairing) {
         const set = new Set();
         try {
             if (!window.PlayTogetherUnits) return set;
+            const cap = this._partnerGroupCap(pairing);
             (PlayTogetherUnits.units(regs || [], regs || []) || []).forEach(u => {
+                if (u.length < cap) return;
                 if (u.some(m => String(m.playerId) === String(myId))) return;
                 u.forEach(m => {
                     if (m.playerId != null && m.playerId !== '') set.add(String(m.playerId));
@@ -128131,20 +128242,23 @@ class GolferEventsManager {
             });
         } catch (e) {}
 
-        // SCV3G: tappable player chips (frame 2), not a checkbox list. Players already placed in a
-        // saved tee-sheet group OR spoken for by another play-together unit are grayed out.
-        const assigned = this._partnerAssignedIds();
-        const unitLocked = this._partnerUnitLockedIds(registrations, currentUserId);
-        const inGrpTag = _lvT('qreg.ingroup', 'In group');
+        // SCV3G: tappable player chips (frame 2), not a checkbox list. v1070: only members of a FULL
+        // group (saved tee-sheet group or play-together unit at the cap) are grayed out "Full"; a
+        // member of an open 2/3-ball shows "Group of N" and tapping them JOINS that group.
+        const cap = this._partnerGroupCap();
+        const grpMap = this._partnerGroupMap(registrations, currentUserId);
+        const fullTag = _lvT('qreg.grpfull', 'Full');
+        const grpOfTag = _lvT('qreg.grpof', 'Group of {n}');
         container.innerHTML = otherPlayers.map(reg => {
-            const grouped = assigned.has(String(reg.playerId)) || assigned.has(String(reg.id)) ||
-                unitLocked.has(String(reg.playerId)) || unitLocked.has(String(reg.id));
+            const info = grpMap.get(String(reg.playerId)) || grpMap.get(String(reg.id)) || null;
+            const grouped = !!(info && !info.mine && info.size >= cap);
+            const openGrp = !!(info && !info.mine && !grouped);
             return `
             <label class="scv3g-pch${grouped ? ' is-grp' : ''}">
-                <input type="checkbox" class="partner-pref-checkbox" value="${reg.id}" data-name="${reg.playerName}"${grouped ? ' disabled' : (myPicked.has(String(reg.id)) ? ' checked' : '')}>
+                <input type="checkbox" class="partner-pref-checkbox" value="${reg.id}" data-name="${reg.playerName}"${grouped ? ' disabled' : (myPicked.has(String(reg.id)) ? ' checked' : '')} onchange="GolferEventsSystem._pfLimit(this)">
                 <span data-golfer-av="${reg.playerId || ''}" data-golfer-av-nm="${String(reg.playerName || '').replace(/"/g, '&quot;')}" data-golfer-av-sz="18">${reg.playerName}</span>
                 ${reg.handicap !== null && reg.handicap !== undefined ? `<span class="h">${window.formatHandicapDisplay(reg.handicap)}</span>` : ''}
-                ${grouped ? `<span class="h">${inGrpTag}</span>` : ''}
+                ${grouped ? `<span class="h">${fullTag}</span>` : (openGrp ? `<span class="h">${grpOfTag.replace('{n}', info.size)}</span>` : '')}
             </label>
         `;
         }).join('');

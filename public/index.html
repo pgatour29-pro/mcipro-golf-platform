@@ -78319,6 +78319,38 @@ class LiveScorecardSystem {
         // never saw scores written elsewhere (caddy marking, self-scorers, takeover).
         try { this.subscribeToUpdates(); } catch (e) { console.warn('[LiveScorecard] resume subscribe failed:', e); }
 
+        // v1069 adopt a DB-side event link on RESUME: if this round's card was linked to
+        // an event AFTER start (organizer/live-ops fix, or a mate's device linked it),
+        // the local state still says eventId null — the leaderboard then runs the CASUAL
+        // course board, which excludes every event card INCLUDING our own (Bob Newman,
+        // TRGG Bangpakong 2026-09-02: full board on everyone else's phone, empty on his).
+        // Completion also posts to the event only if this.eventId is set. DB card = truth.
+        if (!this.eventId && window.SupabaseDB?.client) {
+            (async () => {
+                try {
+                    const myId = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
+                    if (!myId) return;
+                    const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+                    const { data: myCards } = await window.SupabaseDB.client
+                        .from('scorecards')
+                        .select('event_id, created_at')
+                        .eq('player_id', myId)
+                        .eq('status', 'in_progress')
+                        .gte('created_at', d0.toISOString())
+                        .order('created_at', { ascending: false })
+                        .limit(1);
+                    const dbEventId = myCards?.[0]?.event_id || null;
+                    if (dbEventId && !this.eventId) {
+                        this.eventId = dbEventId;
+                        this.roundType = 'society';
+                        this.isPrivateRound = false;
+                        console.log(`[LiveScorecard] 🎯 v1069 resume adopted event link from DB card: ${dbEventId}`);
+                        try { if (typeof refreshLiveLeaderboard === 'function') refreshLiveLeaderboard(); } catch (e) {}
+                    }
+                } catch (e) { console.warn('[LiveScorecard] resume event-link adopt skipped:', e); }
+            })();
+        }
+
         // v1068 pin sheets on RESUME (mirror of startRound's init): only startRound ever
         // initialized PinSheetManager, so every mid-round app reopen killed the pin dot
         // on BOTH scoring views even with a sheet uploaded for today.

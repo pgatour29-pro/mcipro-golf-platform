@@ -22364,11 +22364,12 @@
                     }
                 }, deferDelay);
 
-                // Initialize Marketplace badge (pending offers count)
+                // Initialize 19th Hole badges (new listings + responses) — v1078: session-wide
+                // poll + realtime, no longer a one-shot that ran before the user id was known
                 setTimeout(() => {
-                    if (typeof MarketplaceSystem !== 'undefined' && MarketplaceSystem.refreshOfferCounts) {
-                        MarketplaceSystem.refreshOfferCounts();
-                        console.log('[Dashboard] Marketplace badge initialized');
+                    if (typeof MarketplaceSystem !== 'undefined' && MarketplaceSystem.startAutoRefresh) {
+                        MarketplaceSystem.startAutoRefresh();
+                        console.log('[Dashboard] Marketplace badges initialized');
                     }
                 }, deferDelay + 1000);
 
@@ -45277,6 +45278,23 @@ document.addEventListener('DOMContentLoaded', function() {
                     localStorage.setItem('mcipro_results_seen', new Date().toISOString());
                     if (window.DashboardBadges) DashboardBadges.setBadge('resultsCubeBadge', 0);
                 }
+                // v1078: 19th Hole — entering stamps "seen" (outer badges clear) but keeps the
+                // in-page chip counts for this visit (_sessionSeen); leaving drops them.
+                const mkp = window.MarketplaceSystem;
+                if (mkp) {
+                    if (tab === 'marketplace') {
+                        if (!mkp._onTab) {
+                            mkp._onTab = true;
+                            mkp._sessionSeen = localStorage.getItem('mcipro_mkp_seen') || new Date(Date.now() - 7*24*60*60*1000).toISOString();
+                            localStorage.setItem('mcipro_mkp_seen', new Date().toISOString());
+                            mkp.refreshBadges();
+                        }
+                    } else if (mkp._onTab) {
+                        mkp._onTab = false;
+                        mkp._sessionSeen = null;
+                        mkp.refreshBadges();
+                    }
+                }
                 return origShowGolferTab(tab, evt);
             };
         }
@@ -48225,8 +48243,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     <!-- RIGHT: Hamburger only on mobile, full buttons on desktop -->
                     <div class="flex items-center">
                         <!-- Mobile: Just the hamburger -->
-                        <button class="md:hidden flex-shrink-0 p-1.5 rounded-lg hover:bg-gray-100 transition-colors" onclick="openMobileDrawer('golfer')" aria-label="Menu">
+                        <button class="md:hidden relative flex-shrink-0 p-1.5 rounded-lg hover:bg-gray-100 transition-colors" onclick="openMobileDrawer('golfer')" aria-label="Menu">
                             <span class="material-symbols-outlined text-xl text-gray-700">menu</span>
+                            <!-- v1078: 19th Hole total (new listings + responses) — class mirror of #marketplaceBadge -->
+                            <span class="marketplaceBadge" style="display:none; position:absolute; top:-3px; right:-3px; background:#ef4444; color:#fff; font-size:9px; font-weight:800; line-height:14px; padding:0 4px; border-radius:8px; min-width:16px; justify-content:center; align-items:center;">0</span>
                         </button>
                     </div>
                     <div class="hidden md:flex items-center justify-end flex-shrink-0 md:ml-3 gap-2 flex-nowrap">
@@ -49666,6 +49686,7 @@ document.addEventListener('DOMContentLoaded', function() {
                   .mkp-scope .mkp-tab{ flex:1; display:flex; align-items:center; justify-content:center; gap:5px; padding:9px 2px; border-radius:9px; font:700 10px/1 'JetBrains Mono',monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--mkp-sub); background:none; border:none; cursor:pointer; white-space:nowrap; }
                   .mkp-scope .mkp-tab .material-symbols-outlined{ font-size:15px; }
                   .mkp-scope .mkp-tab.mkp-on{ background:var(--mkp-green); color:#fff; }
+                  .mkp-scope .mkp-tab.mkp-on .mkp-bdgr, .mkp-scope .mkp-cat.mkp-on .mkp-bdgr{ background:#fff; color:var(--mkp-green); }
                   /* sponsored */
                   .mkp-scope .mkp-ad{ padding:10px 12px 11px; margin-bottom:12px; }
                   .mkp-scope .mkp-ad-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
@@ -49863,10 +49884,12 @@ document.addEventListener('DOMContentLoaded', function() {
                         <button class="mkp-tile" style="--tw:#d9efe1" onclick="showGolferTab('marketplace', event); setTimeout(() => MarketplaceSystem.filterByCategory('golf_equipment'), 100)">
                             <div class="tl" data-i18n="hole19.gear">Gear</div>
                             <div class="mkp-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuGear"/></svg></div>
+                            <span id="dashboard-gear-badge" class="mkp-bdgr" style="display: none;">0</span>
                         </button>
                         <button class="mkp-tile" style="--tw:#d8ecef" onclick="showGolferTab('marketplace', event); setTimeout(() => MarketplaceSystem.filterByCategory('services'), 100)">
                             <div class="tl" data-i18n="hole19.services">Services</div>
                             <div class="mkp-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuTools"/></svg></div>
+                            <span id="dashboard-services-badge" class="mkp-bdgr" style="display: none;">0</span>
                         </button>
                         <button class="mkp-tile" style="--tw:#f4e6c8" onclick="MarketplaceSystem.openCreateModal()">
                             <div class="tl" data-i18n="hole19.sell">Sell</div>
@@ -50391,6 +50414,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="mkp-tabs">
                         <button onclick="MarketplaceSystem.showSubTab('browse')" id="market-tab-browse" class="mkp-tab mkp-on">
                             <span class="material-symbols-outlined">search</span>Browse
+                            <span id="browse-badge" class="mkp-bdgr" style="display: none;">0</span>
                         </button>
                         <button onclick="MarketplaceSystem.showSubTab('mylistings')" id="market-tab-mylistings" class="mkp-tab">
                             <span class="material-symbols-outlined">inventory_2</span>Mine
@@ -50441,12 +50465,15 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </button>
                                 <button type="button" onclick="MarketplaceSystem.filterByCategory('golf_equipment', event)" id="cat-filter-golf_equipment" class="mkp-cat">
                                     <span class="material-symbols-outlined">sports_golf</span>Golf
+                                    <span id="cat-badge-golf_equipment" class="mkp-bdgr" style="display: none;">0</span>
                                 </button>
                                 <button type="button" onclick="MarketplaceSystem.filterByCategory('services', event)" id="cat-filter-services" class="mkp-cat">
                                     <span class="material-symbols-outlined">handyman</span>Services
+                                    <span id="cat-badge-services" class="mkp-bdgr" style="display: none;">0</span>
                                 </button>
                                 <button type="button" onclick="MarketplaceSystem.filterByCategory('general', event)" id="cat-filter-general" class="mkp-cat">
                                     <span class="material-symbols-outlined">category</span>General
+                                    <span id="cat-badge-general" class="mkp-bdgr" style="display: none;">0</span>
                                 </button>
                             </div>
                         </div>
@@ -50497,6 +50524,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             </button>
                             <button onclick="MarketplaceSystem.showOfferTab('sent')" id="offers-tab-sent" class="mkp-offtab">
                                 Sent
+                                <span id="sent-count" class="mkp-bdgr" style="display: none;">0</span>
                             </button>
                         </div>
                         <div id="offers-received-list">
@@ -122356,10 +122384,9 @@ const MarketplaceSystem = {
     },
 
     startAutoRefresh() {
-        if (this.refreshInterval) clearInterval(this.refreshInterval);
-        this.refreshInterval = setInterval(async () => {
-            await this.refreshOfferCounts();
-        }, 30000);
+        this.refreshBadges();
+        if (this.refreshInterval) return;
+        this.refreshInterval = setInterval(() => this.refreshBadges(), 60000);
     },
 
     // ========== SPONSORED ADS ==========
@@ -122716,6 +122743,10 @@ const MarketplaceSystem = {
             sentList.classList.remove('hidden');
             receivedList.classList.add('hidden');
             this.loadSentOffers();
+            // v1078: seller responses to MY offers are "seen" once the Sent list is opened
+            localStorage.setItem('mcipro_mkp_offers_seen', new Date().toISOString());
+            this._setBadge('sent-count', 0);
+            this.refreshBadges();
         }
     },
 
@@ -123415,6 +123446,7 @@ const MarketplaceSystem = {
             }
 
             this.loadReceivedOffers();
+            this.refreshBadges();
         } catch (err) {
             console.error('[Marketplace] Error responding to offer:', err);
             NotificationManager.show('Failed to respond to offer', 'error');
@@ -123431,6 +123463,7 @@ const MarketplaceSystem = {
             if (error) throw error;
             NotificationManager.show('Offer withdrawn', 'success');
             this.loadSentOffers();
+            this.refreshBadges();
         } catch (err) {
             console.error('[Marketplace] Error withdrawing offer:', err);
             NotificationManager.show('Failed to withdraw offer', 'error');
@@ -123661,55 +123694,113 @@ const MarketplaceSystem = {
         }
     },
 
-    // ========== OFFER COUNTS & BADGE ==========
-    async refreshOfferCounts() {
-        try {
-            const { data: myListings } = await window.SupabaseDB.client
-                .from('marketplace_listings')
-                .select('id')
-                .eq('seller_line_id', this.userLineId);
+    // ========== BADGES: new listings + responses (v1078) ==========
+    // "New items/services" = ACTIVE listings by OTHER members since the golfer last opened the
+    // 19th Hole (`mcipro_mkp_seen`, default 7 days). "Responses" = pending offers/questions on
+    // MY listings (until I accept/decline) + MY offers a seller accepted/declined since I last
+    // opened Sent (`mcipro_mkp_offers_seen`). Outer surfaces count vs the live stamp; the
+    // in-page chips count vs `_sessionSeen` (the stamp before this visit) so they stay
+    // informative while the golfer is on the tab. Every badge id also paints class mirrors.
+    _uid() {
+        return this.userLineId || AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id') || null;
+    },
 
-            if (!myListings?.length) {
-                this.updateOfferBadges(0);
-                return;
+    async refreshBadges() {
+        const sb = window.SupabaseDB?.client;
+        const uid = this._uid();
+        if (!sb || !uid) return;
+        try {
+            const weekAgo = new Date(Date.now() - 7*24*60*60*1000).toISOString();
+            const seen = localStorage.getItem('mcipro_mkp_seen') || weekAgo;
+            const innerSince = this._sessionSeen || seen;           // always <= seen
+            const offersSeen = localStorage.getItem('mcipro_mkp_offers_seen') || weekAgo;
+
+            const [freshRes, mineRes, sentRes] = await Promise.all([
+                sb.from('marketplace_listings').select('category, created_at')
+                    .eq('status', 'active').neq('seller_line_id', uid)
+                    .gt('created_at', innerSince).limit(1000),
+                sb.from('marketplace_listings').select('id').eq('seller_line_id', uid),
+                sb.from('marketplace_offers').select('id', { count: 'exact', head: true })
+                    .eq('buyer_line_id', uid).in('status', ['accepted', 'declined'])
+                    .gt('updated_at', offersSeen)
+            ]);
+
+            let received = 0;
+            const ids = (mineRes.data || []).map(l => l.id);
+            if (ids.length) {
+                const { count } = await sb.from('marketplace_offers')
+                    .select('id', { count: 'exact', head: true })
+                    .in('listing_id', ids).eq('status', 'pending');
+                received = count || 0;
             }
 
-            const listingIds = myListings.map(l => l.id);
-            const { count } = await window.SupabaseDB.client
-                .from('marketplace_offers')
-                .select('*', { count: 'exact', head: true })
-                .in('listing_id', listingIds)
-                .eq('status', 'pending');
-
-            this.updateOfferBadges(count || 0);
+            const tally = (fromIso) => {
+                const fromMs = new Date(fromIso).getTime();
+                const c = { golf_equipment: 0, services: 0, general: 0, total: 0 };
+                (freshRes.data || []).forEach(l => {
+                    if (new Date(l.created_at).getTime() <= fromMs) return;
+                    c[l.category] = (c[l.category] || 0) + 1;
+                    c.total++;
+                });
+                return c;
+            };
+            this.paintBadges({ outer: tally(seen), inner: tally(innerSince), received, sentResp: sentRes.count || 0 });
+            this._subscribeBadges(uid);
         } catch (err) {
-            console.warn('[Marketplace] Error refreshing offer counts:', err);
+            console.warn('[Marketplace] Error refreshing badges:', err);
         }
     },
 
-    updateOfferBadges(count) {
-        const tabBadge = document.getElementById('marketplaceBadge');
-        if (tabBadge) {
-            tabBadge.textContent = count;
-            tabBadge.style.display = count > 0 ? 'inline' : 'none';
-        }
+    paintBadges({ outer, inner, received, sentResp }) {
+        const responses = received + sentResp;
+        // outer: desktop tab + mobile hamburger/drawer (class mirrors) — everything new + everything waiting on you
+        this._setBadge('marketplaceBadge', outer.total + responses);
+        // overview band tiles
+        this._setBadge('dashboard-gear-badge', outer.golf_equipment);
+        this._setBadge('dashboard-services-badge', outer.services);
+        this._setBadge('dashboard-offers-badge', responses);
+        // inside the 19th Hole page
+        this._setBadge('browse-badge', inner.total);
+        this._setBadge('cat-badge-golf_equipment', inner.golf_equipment);
+        this._setBadge('cat-badge-services', inner.services);
+        this._setBadge('cat-badge-general', inner.general);
+        this._setBadge('offers-badge', responses);
+        this._setBadge('received-count', received);
+        this._setBadge('sent-count', sentResp);
+    },
 
-        const offersBadge = document.getElementById('offers-badge');
-        if (offersBadge) {
-            offersBadge.textContent = count;
-            offersBadge.style.display = count > 0 ? 'inline' : 'none';
-        }
+    _setBadge(key, n) {
+        const els = new Set([document.getElementById(key), ...document.querySelectorAll('.' + key)]);
+        const txt = n > 99 ? '99+' : String(n);
+        els.forEach(el => {
+            if (!el) return;
+            if (n > 0) {
+                el.textContent = txt;
+                el.style.display = 'inline-flex';
+                el.style.justifyContent = 'center';
+                el.style.alignItems = 'center';
+            } else {
+                el.style.display = 'none';
+            }
+        });
+    },
 
-        const receivedBadge = document.getElementById('received-count');
-        if (receivedBadge) {
-            receivedBadge.textContent = count;
-            receivedBadge.style.display = count > 0 ? 'inline' : 'none';
-        }
-
-        const dashboardBadge = document.getElementById('dashboard-offers-badge');
-        if (dashboardBadge) {
-            dashboardBadge.textContent = count;
-            dashboardBadge.style.display = count > 0 ? 'inline' : 'none';
+    // Realtime: a new listing or any offer change re-counts (debounced). Tables were added to
+    // the supabase_realtime publication on 2026-09-03; the 60s poll is the fallback.
+    _subscribeBadges(uid) {
+        const sb = window.SupabaseDB?.client;
+        if (!sb || this._badgeChannel) return;
+        try {
+            const bump = () => {
+                clearTimeout(this._badgeBumpT);
+                this._badgeBumpT = setTimeout(() => this.refreshBadges(), 800);
+            };
+            this._badgeChannel = sb.channel('mkp_badge_' + uid)
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'marketplace_listings' }, bump)
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'marketplace_offers' }, bump)
+                .subscribe();
+        } catch (e) {
+            console.warn('[Marketplace] badge realtime subscribe failed:', e);
         }
     },
 
@@ -156654,7 +156745,7 @@ showOrganizerTab = function(tabName) {
 
                 <button class="drawer-link" onclick="showGolferTab('schedule', event); closeMobileDrawer();"><span class="material-symbols-outlined">calendar_month</span><span data-i18n="golfer.schedule">Schedule</span></button>
 
-                <button class="drawer-link" onclick="showGolferTab('marketplace', event); closeMobileDrawer();" style="background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; border-radius: 8px;"><span class="material-symbols-outlined">storefront</span><span>19th Hole</span></button>
+                <button class="drawer-link" onclick="showGolferTab('marketplace', event); closeMobileDrawer();" style="background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; border-radius: 8px;"><span class="material-symbols-outlined">storefront</span><span>19th Hole</span><span class="marketplaceBadge" style="display:none; margin-left:auto; background:#fbbf24; color:#7f1d1d; font-size:10px; font-weight:800; line-height:16px; padding:0 6px; border-radius:9px; min-width:18px; justify-content:center; align-items:center;">0</span></button>
 
                 <button class="drawer-link" onclick="showGolferTab('food', event); closeMobileDrawer();"><span class="material-symbols-outlined">restaurant</span><span data-i18n="golfer.food">Food & Dining</span></button>
 

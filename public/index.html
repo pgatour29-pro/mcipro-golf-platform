@@ -87232,6 +87232,45 @@ class LiveScorecardSystem {
         this._shared = null;  // reset cross-device settlement cache for the new round
         if (this._pressChannel) { try { window.SupabaseDB?.client?.removeChannel(this._pressChannel); } catch (e) {} this._pressChannel = null; }
 
+        // v1066 auto-attach (Pete 2026-09-02: "He didn't need to pick the event. He is
+        // on the tee sheet"): a golfer REGISTERED for a society event TODAY at THIS
+        // course is playing THAT event — never depend on the dropdown. Skipped if they
+        // already posted that event today (a post-event casual round stays casual).
+        // Any lookup failure ⇒ round starts unchanged — never block a tee time.
+        if (!this.eventId) {
+            try {
+                const uid = AppState?.currentUser?.lineUserId || localStorage.getItem('line_user_id');
+                const nk = n => (n || '').toLowerCase().replace(/\([^)]*\)/g, ' ').trim().split(/\s+/).slice(0, 2).join(' ');
+                const courseKey = nk(this.courseData?.name);
+                if (uid && courseKey && window.SupabaseDB?.client) {
+                    const d = new Date();
+                    const todayLocal = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    const { data: todayEvents } = await window.SupabaseDB.client
+                        .from('society_events')
+                        .select('id, title, course_name')
+                        .eq('event_date', todayLocal)
+                        .neq('status', 'cancelled');
+                    for (const ev of (todayEvents || [])) {
+                        if (!ev.course_name || nk(ev.course_name) !== courseKey) continue;
+                        const { data: reg } = await window.SupabaseDB.client
+                            .from('event_registrations')
+                            .select('player_id')
+                            .eq('event_id', ev.id)
+                            .eq('player_id', uid)
+                            .limit(1);
+                        if (!reg || !reg.length) continue;
+                        if (await this._roundAlreadyPosted(ev.id)) continue;
+                        this.eventId = ev.id;
+                        this.roundType = 'society';
+                        this.isPrivateRound = false;
+                        this.selectedEventData = this.loadedEvents?.find(e => e.id === ev.id) || this.selectedEventData;
+                        console.log(`[LiveScorecard] 🎯 v1066 auto-attach: registered event "${ev.title}" (${ev.id}) at this course today`);
+                        break;
+                    }
+                }
+            } catch (e) { console.warn('[LiveScorecard] Event auto-attach skipped:', e); }
+        }
+
         console.log(`[LiveScorecard] Starting round at ${this.courseData.name} with formats: ${this.scoringFormats.join(', ')} (Type: ${this.roundType})`);
 
         // CRITICAL FIX: Refresh all player handicaps BEFORE creating scorecards

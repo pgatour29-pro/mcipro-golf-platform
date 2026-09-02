@@ -78318,6 +78318,22 @@ class LiveScorecardSystem {
         // Resume must LIVE-FOLLOW like a fresh start: without this, a reopened device
         // never saw scores written elsewhere (caddy marking, self-scorers, takeover).
         try { this.subscribeToUpdates(); } catch (e) { console.warn('[LiveScorecard] resume subscribe failed:', e); }
+
+        // v1068 pin sheets on RESUME (mirror of startRound's init): only startRound ever
+        // initialized PinSheetManager, so every mid-round app reopen killed the pin dot
+        // on BOTH scoring views even with a sheet uploaded for today.
+        if (window.PinSheetManager) {
+            window.PinSheetManager.currentPinData = null;
+            window.PinSheetManager.currentCourseName = this.courseData?.name || null;
+            window.PinSheetManager.currentCourseId = this.courseData?.id || null;
+            if (window.PinSheetManager.currentCourseName) {
+                window.PinSheetManager.loadPinPositions().catch(err => {
+                    console.error('[LiveScorecard] Error loading pin positions on resume:', err);
+                });
+            } else {
+                this.updatePinPositionIndicator();
+            }
+        }
     }
 
     // Re-pull course par/SI/yardage from the DB into the live round (stale-table fix).

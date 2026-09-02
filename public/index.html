@@ -18831,6 +18831,39 @@
                         .gte('created_at', since)
                         .neq('status', 'abandoned');
                     scorecards = data || [];
+                    // v1065 rescue (mirror of live.html v954): a REGISTERED golfer who started
+                    // from Play Golf without picking the event (event_id null) still belongs on
+                    // this event's board. Regs unreadable ⇒ NO merge (fail closed). Course must
+                    // match — id, or first-two-words of name (name drift; two words so nearby
+                    // venues can't cross) — so a member's casual round elsewhere can't ride in.
+                    try {
+                        const { data: regs, error: regErr } = await window.SupabaseDB.client
+                            .from('event_registrations')
+                            .select('player_id')
+                            .eq('event_id', eventId);
+                        const regIds = (!regErr && regs) ? regs.map(r => r.player_id).filter(Boolean) : [];
+                        if (regIds.length && regIds.length <= 500) {
+                            const refCourseId = mgr?.courseId || mgr?.courseData?.id || null;
+                            const nameKey = n => (n || '').toLowerCase().replace(/\([^)]*\)/g, ' ').trim().split(/\s+/).slice(0, 2).join(' ');
+                            const refNameKey = nameKey(scorecards[0]?.course_name || mgr?.courseData?.name);
+                            const nowLb = new Date();
+                            const dayStart = new Date(nowLb.getFullYear(), nowLb.getMonth(), nowLb.getDate(), 0, 0, 0, 0).toISOString();
+                            const { data: extras } = await window.SupabaseDB.client
+                                .from('scorecards')
+                                .select('player_id, player_name, group_id, created_at, scoring_format, course_id, course_name, scores(hole_number, gross_score, stableford_points, par)')
+                                .is('event_id', null)
+                                .in('player_id', regIds)
+                                .gte('created_at', dayStart)
+                                .neq('status', 'abandoned');
+                            const onBoard = new Set(scorecards.map(sc => sc.player_id));
+                            (extras || []).forEach(sc => {
+                                if (onBoard.has(sc.player_id)) return;
+                                const idMatch = refCourseId && sc.course_id && sc.course_id === refCourseId;
+                                const nmMatch = refNameKey && nameKey(sc.course_name) === refNameKey;
+                                if (idMatch || nmMatch) scorecards.push(sc);
+                            });
+                        }
+                    } catch (e) { /* rescue is best-effort — never break the event board */ }
                 } else if (mgr?.courseId || mgr?.courseData?.id) {
                     // Non-event "open" leaderboard: EVERY non-event player at this course today
                     // (any singles/pairings) — runs as an unsanctioned course+date tournament.

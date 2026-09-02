@@ -354,7 +354,27 @@
             const h = parseFloat(hcpIndex);
             if (!isFinite(h)) return null;
             for (const d of divisions){ if (h >= d.min && h <= d.max) return d.name; }
-            return null;
+            // v1071: SNAP to the nearest band instead of leaving the player unflighted — same as
+            // GolfDivisions.indexFor on the organizer board. Bands are handicap cut-offs taken from
+            // the field (e.g. 0–17 / 18–999), so a plus handicap (-0.3) or a late entry in the gap
+            // (17.5) used to fall through to a blank, division-less group on this page.
+            let best = null, bd = Infinity;
+            divisions.forEach(d => { const dd = h < d.min ? (d.min - h) : (h - d.max); if (dd < bd) { bd = dd; best = d; } });
+            return best ? best.name : null;
+        }
+        // TRGG hands-off flighting — the SAME math as GolfDivisions.build in index.html (keep in
+        // sync): sort the field's handicap indexes, equal halves, ceil so an odd field's extra player
+        // lands in Division 1, cut-off = the boundary handicap; under 10 players = a single division.
+        function autoFlightDivisions(handicaps, n){
+            n = n || 2;
+            const h = (handicaps || []).map(x => parseFloat(x)).filter(x => isFinite(x)).sort((a,b) => a-b);
+            if (h.length < 10 || h.length < n) return null;
+            const total = h.length, divs = [];
+            for (let k = 0; k < n; k++){
+                const s = Math.ceil(k*total/n), e = Math.ceil((k+1)*total/n);
+                divs.push({ name: 'Division ' + (k+1), min: (k === 0 ? 0 : h[s]), max: (k === n-1 ? 999 : h[e-1]) });
+            }
+            return divs;
         }
 
         // ---------- State ----------
@@ -820,6 +840,23 @@
 
                 const teamBoards = await buildTeamBoards(unique, eventId, event, (regRes && regRes.data) || []);
                 if (seq !== state.evSeq) return;
+
+                // TRGG ALWAYS runs 2 handicap divisions (v1071, Pete 2026-09-02). The organizer's
+                // Scoring page computes + SAVES the balanced split when it is opened — but this page
+                // renders before anyone opens Scoring (Bangpakong 2026-09-02: 22 registered, 4 rounds
+                // in, society_events.divisions still NULL → one combined board). Flight the same field
+                // the scoring board balances (registered + scored, deduped) with the same engine so
+                // both surfaces agree; display-only, nothing written. Team-scored events stay ONE board.
+                if (!divisions && !teamBoards && /trgg|travellers/i.test(String(event.title || ''))) {
+                    const pool = new Map();
+                    ((regRes && regRes.data) || []).forEach(r => {
+                        if (!r.player_id || String(r.status || '').toLowerCase() === 'cancelled') return;
+                        pool.set(String(r.player_id), r.handicap);
+                    });
+                    entries.forEach(en => { if (!pool.has(String(en.player_id))) pool.set(String(en.player_id), en.hcpIndex); });
+                    divisions = autoFlightDivisions([...pool.values()], 2);
+                    if (divisions) entries.forEach(en => { if (!en.division) en.division = divisionForHandicap(en.hcpIndex, divisions) || null; });
+                }
                 state.loadingEventId = null;
 
                 state.eventData = {

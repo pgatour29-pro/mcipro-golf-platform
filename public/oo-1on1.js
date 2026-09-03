@@ -26,6 +26,10 @@
    privilege set by JOA or me"): membership is enforced in the DB (oo_is_member = active row + fresh PIN);
    members see a PIN sheet on entry (oo_verify_pin, 8 tries / 15 min); admins set/rotate the PIN and can
    grant access to any MyCaddiPro user directly from Members (no invite link needed). Admins bypass the PIN.
+   v1097 DISCOVER (Pete: "needs to be better… at the same level of MyCaddiPro or likes of Tinder"): photo-first
+   swipe deck (right = save, left = pass, tap = profile, photo tap-zones, undo), date presets, Saved list
+   (oo_likes), profile with photo carousel + reviews, ratings after completed rounds (oo_reviews), partners see
+   "Saved by N members" + their reviews. SQL: sql/oo_discover_20260903.sql.
    ===================================================================================== */
 (function () {
   'use strict';
@@ -197,14 +201,15 @@
   /* signed URLs for the PRIVATE bucket (cache 50 min; the policy is the gate, never a public URL) */
   var _signed = {};
   async function signedUrls(paths) {
-    var need = paths.filter(function (p) { return p && !(_signed[p] && _signed[p].exp > Date.now()); });
+    var direct = function (p) { return /^(data:|https?:)/.test(String(p || '')); };   /* already a URL — pass through */
+    var need = paths.filter(function (p) { return p && !direct(p) && !(_signed[p] && _signed[p].exp > Date.now()); });
     if (need.length) {
       try {
         var r = await sb().storage.from('oo-media').createSignedUrls(need, 3600);
         (r.data || []).forEach(function (row, i) { if (row && row.signedUrl) _signed[need[i]] = { url: row.signedUrl, exp: Date.now() + 50 * 60000 }; });
       } catch (e) { console.warn('[1on1] signed urls', e); }
     }
-    var out = {}; paths.forEach(function (p) { out[p] = _signed[p] ? _signed[p].url : null; }); return out;
+    var out = {}; paths.forEach(function (p) { out[p] = direct(p) ? p : (_signed[p] ? _signed[p].url : null); }); return out;
   }
 
   /* push through the EXISTING channels: KAKAO- ids → kakao-push, LINE U… → line-push-notification system_alert.
@@ -315,6 +320,30 @@
   };
   Object.keys(DICT4).forEach(function (l) { Object.assign(DICT[l], DICT4[l]); });
   try { if (typeof translations !== 'undefined') Object.keys(DICT4).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT4[l]); }); } catch (e) {}
+  var DICT5 = {
+    en: { 'oo.dk.tomorrow': 'Tomorrow', 'oo.dk.weekend': 'This weekend', 'oo.dk.nextweek': 'Next week', 'oo.dk.pick': 'Pick dates', 'oo.dk.swipe': 'Swipe → save · ← pass', 'oo.dk.of': '{i} of {n}',
+      'oo.dk.end': "That's everyone free for these dates.", 'oo.dk.change': 'Change dates', 'oo.dk.seesaved': 'See saved', 'oo.dk.pass': 'Pass', 'oo.dk.undo': 'Undo', 'oo.dk.save': 'Save', 'oo.dk.saved': 'Saved', 'oo.dk.unsave': 'Remove',
+      'oo.seg.liked': 'Saved', 'oo.cube.liked.chip': '{n} saved', 'oo.lk.none': 'No saved partners yet. Swipe right on someone you like.', 'oo.cube.find.chip': 'Swipe to browse',
+      'oo.rv.rate': 'Rate', 'oo.rv.edit': 'Edit rating', 'oo.rv.title': 'How was the round with {name}?', 'oo.rv.comment': 'Comment (optional)', 'oo.rv.send': 'Send rating', 'oo.rv.thanks': 'Thanks — rating saved', 'oo.rv.reviews': 'Reviews', 'oo.rv.none': 'No ratings yet',
+      'oo.rv.n': '{n} ratings', 'oo.rv.together': '{n} rounds together', 'oo.rv.member': 'Member', 'oo.cube.savedby': 'Saved by {n} members', 'oo.err.not_played_yet': 'You can rate after the round.', 'oo.err.bad_rating': 'Pick 1 to 5 stars.', 'oo.pf.new': 'New' },
+    th: { 'oo.dk.tomorrow': 'พรุ่งนี้', 'oo.dk.weekend': 'สุดสัปดาห์นี้', 'oo.dk.nextweek': 'สัปดาห์หน้า', 'oo.dk.pick': 'เลือกวัน', 'oo.dk.swipe': 'ปัดขวา บันทึก · ปัดซ้าย ข้าม', 'oo.dk.of': '{i} จาก {n}',
+      'oo.dk.end': 'ครบทุกคนที่ว่างในวันดังกล่าวแล้ว', 'oo.dk.change': 'เปลี่ยนวัน', 'oo.dk.seesaved': 'ดูที่บันทึก', 'oo.dk.pass': 'ข้าม', 'oo.dk.undo': 'ย้อนกลับ', 'oo.dk.save': 'บันทึก', 'oo.dk.saved': 'บันทึกแล้ว', 'oo.dk.unsave': 'นำออก',
+      'oo.seg.liked': 'ที่บันทึก', 'oo.cube.liked.chip': 'บันทึก {n}', 'oo.lk.none': 'ยังไม่มีคู่เล่นที่บันทึก ปัดขวาคนที่ชอบ', 'oo.cube.find.chip': 'ปัดเพื่อดู',
+      'oo.rv.rate': 'ให้คะแนน', 'oo.rv.edit': 'แก้คะแนน', 'oo.rv.title': 'รอบกับ {name} เป็นอย่างไร?', 'oo.rv.comment': 'ความเห็น (ไม่บังคับ)', 'oo.rv.send': 'ส่งคะแนน', 'oo.rv.thanks': 'ขอบคุณ — บันทึกคะแนนแล้ว', 'oo.rv.reviews': 'รีวิว', 'oo.rv.none': 'ยังไม่มีคะแนน',
+      'oo.rv.n': '{n} คะแนน', 'oo.rv.together': 'เล่นด้วยกัน {n} รอบ', 'oo.rv.member': 'สมาชิก', 'oo.cube.savedby': 'สมาชิกบันทึก {n} คน', 'oo.err.not_played_yet': 'ให้คะแนนได้หลังจบรอบ', 'oo.err.bad_rating': 'เลือก 1 ถึง 5 ดาว', 'oo.pf.new': 'ใหม่' },
+    ko: { 'oo.dk.tomorrow': '내일', 'oo.dk.weekend': '이번 주말', 'oo.dk.nextweek': '다음 주', 'oo.dk.pick': '날짜 선택', 'oo.dk.swipe': '오른쪽 저장 · 왼쪽 넘김', 'oo.dk.of': '{n}명 중 {i}',
+      'oo.dk.end': '이 날짜에 가능한 파트너를 모두 보셨습니다.', 'oo.dk.change': '날짜 변경', 'oo.dk.seesaved': '저장 목록', 'oo.dk.pass': '넘김', 'oo.dk.undo': '되돌리기', 'oo.dk.save': '저장', 'oo.dk.saved': '저장됨', 'oo.dk.unsave': '삭제',
+      'oo.seg.liked': '저장', 'oo.cube.liked.chip': '저장 {n}명', 'oo.lk.none': '저장한 파트너가 없습니다. 마음에 들면 오른쪽으로 넘기세요.', 'oo.cube.find.chip': '스와이프로 찾기',
+      'oo.rv.rate': '평가', 'oo.rv.edit': '평가 수정', 'oo.rv.title': '{name}님과의 라운딩은 어땠나요?', 'oo.rv.comment': '한마디 (선택)', 'oo.rv.send': '평가 보내기', 'oo.rv.thanks': '감사합니다 — 평가가 저장되었습니다', 'oo.rv.reviews': '후기', 'oo.rv.none': '아직 평가가 없습니다',
+      'oo.rv.n': '평가 {n}개', 'oo.rv.together': '함께 {n}라운드', 'oo.rv.member': '회원', 'oo.cube.savedby': '회원 {n}명이 저장', 'oo.err.not_played_yet': '라운딩 후에 평가할 수 있습니다.', 'oo.err.bad_rating': '별점 1~5를 선택하세요.', 'oo.pf.new': '신규' },
+    ja: { 'oo.dk.tomorrow': '明日', 'oo.dk.weekend': '今週末', 'oo.dk.nextweek': '来週', 'oo.dk.pick': '日程を選ぶ', 'oo.dk.swipe': '右 保存 · 左 スキップ', 'oo.dk.of': '{n}人中{i}',
+      'oo.dk.end': 'この日程で空いている同伴者はすべて表示しました。', 'oo.dk.change': '日程を変更', 'oo.dk.seesaved': '保存を見る', 'oo.dk.pass': 'スキップ', 'oo.dk.undo': '戻す', 'oo.dk.save': '保存', 'oo.dk.saved': '保存済', 'oo.dk.unsave': '削除',
+      'oo.seg.liked': '保存', 'oo.cube.liked.chip': '保存{n}人', 'oo.lk.none': '保存した同伴者はまだいません。気に入ったら右にスワイプ。', 'oo.cube.find.chip': 'スワイプで探す',
+      'oo.rv.rate': '評価', 'oo.rv.edit': '評価を編集', 'oo.rv.title': '{name}さんとのラウンドはいかがでしたか？', 'oo.rv.comment': 'コメント（任意）', 'oo.rv.send': '評価を送る', 'oo.rv.thanks': 'ありがとうございます — 評価を保存しました', 'oo.rv.reviews': 'レビュー', 'oo.rv.none': '評価はまだありません',
+      'oo.rv.n': '評価{n}件', 'oo.rv.together': '一緒に{n}ラウンド', 'oo.rv.member': '会員', 'oo.cube.savedby': '会員{n}人が保存', 'oo.err.not_played_yet': 'ラウンド後に評価できます。', 'oo.err.bad_rating': '星1〜5を選んでください。', 'oo.pf.new': '新規' }
+  };
+  Object.keys(DICT5).forEach(function (l) { Object.assign(DICT[l], DICT5[l]); });
+  try { if (typeof translations !== 'undefined') Object.keys(DICT5).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT5[l]); }); } catch (e) {}
 
   /* ---------- CSS ---------- */
   var CSS = '#g3Rail .g3-it[data-act="oo"]{display:none}#golferDashboard.oo-on #g3Rail .g3-it[data-act="oo"]{display:flex}' +
@@ -340,6 +369,18 @@
     '.oo-row{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid #f1f5f9}.oo-row:first-child{border-top:0}.oo-row .av{width:44px;height:44px;border-radius:12px;background:#e2e8f0;flex:0 0 44px;display:flex;align-items:center;justify-content:center;font-weight:800;color:#475569;overflow:hidden}.oo-row .av img{width:100%;height:100%;object-fit:cover}' +
     '.oo-kv{font-size:12px;color:#475569}.oo-kv b{color:#0f172a}' +
     '.oo-pin{max-width:420px;margin:0 auto}.oo-pin input{font-size:24px;letter-spacing:.35em;text-align:center;font-weight:800}' +
+'.oo-fr{display:flex;gap:6px;overflow-x:auto;align-items:center;padding-bottom:2px}.oo-fc{flex:0 0 auto;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:999px;padding:6px 11px;font-size:12.5px;font-weight:700;white-space:nowrap}.oo-fc.on{background:#16a34a;border-color:#16a34a;color:#fff}.oo-fin{flex:1 1 120px;min-width:120px;min-height:34px;padding:6px 10px;border-radius:999px}' +
+    '.oo-dk{position:relative;height:min(50vh,520px);max-width:420px;margin:0 auto}@media(min-width:768px){.oo-dk{height:min(64vh,560px)}}.oo-cd{position:absolute;inset:0;border-radius:22px;overflow:hidden;background:#fff;box-shadow:0 8px 28px rgba(15,23,42,.18);touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab}' +
+    '.oo-cd[data-pos="1"]{transform:scale(.96) translateY(10px)}.oo-cd[data-pos="2"]{transform:scale(.92) translateY(20px)}.oo-cd .ph{position:absolute;inset:0;background:#e2e8f0}.oo-cd .ph img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}.oo-cd .ini{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:64px;font-weight:800;color:#64748b;background:linear-gradient(160deg,#dcfce7,#e2e8f0)}' +
+    '.oo-cd .dots{position:absolute;top:8px;left:10px;right:10px;display:flex;gap:4px;z-index:3}.oo-cd .dots i{flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.45)}.oo-cd .dots i.on{background:#fff}' +
+    '.oo-cd .zone{position:absolute;top:0;bottom:38%;width:50%;z-index:1}.oo-cd .zone.l{left:0}.oo-cd .zone.r{right:0}' +
+    '.oo-cd .stamp{position:absolute;top:22px;padding:6px 12px;border:3px solid;border-radius:8px;font-weight:900;font-size:22px;letter-spacing:.06em;text-transform:uppercase;opacity:0;z-index:4;background:rgba(255,255,255,.85)}.oo-cd .stamp.like{left:16px;color:#16a34a;border-color:#16a34a;transform:rotate(-14deg)}.oo-cd .stamp.nope{right:16px;color:#dc2626;border-color:#dc2626;transform:rotate(14deg)}' +
+    '.oo-cd .info{position:absolute;left:0;right:0;bottom:0;padding:70px 16px 16px;background:linear-gradient(180deg,rgba(15,23,42,0),rgba(15,23,42,.82) 55%);color:#fff;z-index:2}.oo-cd .nm{font-size:26px;font-weight:800;line-height:1.05}.oo-cd .nm .hv{color:#f87171;font-size:20px}.oo-cd .sub{font-size:13px;opacity:.92;margin-top:2px}.oo-cd .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}' +
+    '.oo-cd .st{font-size:13px;font-weight:800;color:#fde68a}.oo-cd .st.new{color:#bbf7d0}.oo-cd .st small{font-weight:600;opacity:.85}.oo-cd .tg{font-size:12px;background:rgba(34,197,94,.35);border-radius:999px;padding:2px 8px;font-weight:700}.oo-cd .lg{font-size:11px;font-weight:700;background:rgba(255,255,255,.22);border-radius:999px;padding:2px 8px}.oo-cd .rt{margin-left:auto;font-weight:800;font-size:15px;color:#bbf7d0}' +
+        '.oo-acts{display:flex;justify-content:center;align-items:center;gap:12px;margin-top:10px}.oo-acts .a{width:52px;height:52px;border-radius:50%;border:1px solid #e2e8f0;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(15,23,42,.10);cursor:pointer}.oo-acts .a .material-symbols-outlined{font-size:28px}.oo-acts .a.nope{color:#dc2626}.oo-acts .a.like{color:#16a34a}.oo-acts .a.undo{width:44px;height:44px;color:#64748b}.oo-acts .a.undo .material-symbols-outlined{font-size:22px}.oo-acts .a:disabled{opacity:.35}.oo-acts .a.book{width:auto;border-radius:999px;padding:0 22px;background:#16a34a;border-color:#16a34a;color:#fff;font-weight:800;font-size:15px}' +
+    '.oo-car{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;border-radius:16px;background:#e2e8f0;aspect-ratio:4/5;max-height:520px;-webkit-overflow-scrolling:touch}.oo-car .s{flex:0 0 100%;scroll-snap-align:start;display:flex;align-items:center;justify-content:center}.oo-car .s img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}.oo-car .s.ini{font-size:64px;font-weight:800;color:#64748b;background:linear-gradient(160deg,#dcfce7,#e2e8f0)}' +
+    '.oo-cdots{display:flex;justify-content:center;gap:5px;margin:8px 0 10px}.oo-cdots i{width:6px;height:6px;border-radius:50%;background:#cbd5e1}.oo-cdots i.on{background:#16a34a}' +
+    '.oo-pfbar{display:flex;gap:8px;margin-top:12px}.oo-pfbar .oo-btn.on{border-color:#dc2626;color:#dc2626;background:#fef2f2}' +
     '.oo-kpi{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}@media(min-width:768px){.oo-kpi{grid-template-columns:repeat(4,minmax(0,1fr))}}' +
     '.oo-two{display:grid;grid-template-columns:1fr;gap:10px}@media(min-width:1024px){.oo-two{grid-template-columns:minmax(0,3fr) minmax(0,2fr);align-items:start}}' +
     '#golferDashboard:not(.oo-on) #ooCube,#golferDashboard:not(.oo-on) .ooCube{display:none !important}';  /* the grids set display:flex with id+class specificity — hide must out-rank it; the on-state simply lets the grid CSS apply */
@@ -353,7 +394,7 @@
     side: 'member', view: 'home', stack: [], _sub: 'members',
     partners: [], sel: null, selMedia: [], bookings: [], courses: null, events: null,
     cad: { profile: null, partner: null, bookings: [], media: [], blackouts: [] },
-    _chan: null, _cadChan: null, _seq: 0, _mineAt: 0, _mineLoading: null, _admLoading: null,
+    _chan: null, _cadChan: null, _seq: 0, _searchSeq: 0, _searched: false, _rvAt: 0, selReviews: [], _mineAt: 0, _mineLoading: null, _admLoading: null,
 
     /* ---------- identity ---------- */
     async refreshMe(force) {
@@ -481,6 +522,8 @@
       try { var b = await sb().from('oo_bookings').select('*, oo_members(display_name)').eq('partner_id', pid).order('date_from', { ascending: false }).limit(200); this.cad.bookings = b.data || []; } catch (e) { this.cad.bookings = []; }
       try { var m = await sb().from('oo_media').select('*').eq('partner_id', pid).neq('status', 'removed').order('sort_order').order('created_at'); this.cad.media = m.data || []; } catch (e) { this.cad.media = []; }
       try { var k = await sb().from('oo_blackouts').select('*').eq('partner_id', pid).order('date_from'); this.cad.blackouts = k.data || []; } catch (e) { this.cad.blackouts = []; }
+      try { this.cad.savedBy = await rpc('oo_partner_saved_count'); } catch (e) { this.cad.savedBy = null; }
+      try { var rv = await sb().from('oo_reviews').select('rating, comment, created_at, status').eq('partner_id', pid).order('created_at', { ascending: false }).limit(50); this.cad.reviews = rv.data || []; } catch (e) { this.cad.reviews = []; }
     },
 
     /* =====================================================================================
@@ -504,7 +547,7 @@
       if (this.side === 'member' && this.needsPin()) this.nav('browse'); else if (this.isPhone()) this.home(); else this.nav(this.defaultView());
       try { window.scrollTo(0, 0); } catch (e) {}
       /* data in the background; the shell is already on screen. Stale results (user left / re-entered) are dropped. */
-      var load = this.side === 'member' ? this.loadMine() : (this.side === 'partner' ? this.cadLoad() : this.admLoad());
+      var load = this.side === 'member' ? Promise.all([this.loadMine(), this.loadLiked()]) : (this.side === 'partner' ? this.cadLoad() : this.admLoad());
       Promise.resolve(load).then(function () { if (seq !== self._seq || !self.isOpen()) return; self.paintShell(); if (self.view !== 'home') self.render(); }).catch(function () {});
       if ((Date.now() - this._meAt) > 15000) this.refreshMe().then(function () { if (seq !== self._seq || !self.isOpen()) return; if (self.view !== 'home') self.render(); }).catch(function () {});
     },
@@ -585,7 +628,7 @@
       } else if (P) {
         home = '<button type="button" class="mgc mgc-hero" onclick="mhvGo(\'oo\',\'requests\')"><div class="t">' + esc(T('oo.seg.requests', 'Requests')) + '</div><div class="chip" id="ooHomeReqChip">' + esc(T('oo.cube.req.none', 'Nothing waiting')) + '</div>' + art('cuClip') + '<span class="badge" id="ooHomeReqBadge">0</span></button><div class="mgc-grid">' +
           cube('calendar', '#f4e6c8', '#fcf6e9', T('oo.seg.calendar', 'Calendar'), 'ooHomeCalChip', T('oo.cube.cal.chip', 'Booked dates'), 'cuCal') +
-          cube('profile', '#e2e7ec', '#f5f7f9', T('oo.seg.profile', 'Profile'), null, T('oo.cube.profile.chip', 'Rate, days, bio'), 'cuPlayers') +
+          cube('profile', '#e2e7ec', '#f5f7f9', T('oo.seg.profile', 'Profile'), 'ooHomeProfChip', T('oo.cube.profile.chip', 'Rate, days, bio'), 'cuPlayers') +
           cube('photos', '#dbeafe', '#eff6ff', T('oo.seg.photos', 'Photos & posts'), 'ooHomePhotoChip', TT('oo.cube.photos.chip', { n: 0, m: 0 }), 'cuCard') +
           cube('earnings', '#f6e7d4', '#fdf7ef', T('oo.seg.earnings', 'Earnings'), 'ooHomeEarnChip', T('oo.cube.earn.chip', 'Accepted × rate'), 'cuTag') +
           cube('messages', '#dbe4f0', '#f2f6fb', T('oo.cube.msgs', 'Messages'), null, T('oo.cube.msgs.partner', 'Chat with members'), 'cuChat') + '</div>';
@@ -593,15 +636,16 @@
         dock = [['requests', 'inbox', 'oo.seg.requests', 'Requests', 'ooDockReqBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar'], ['profile', 'person', 'oo.seg.profile', 'Profile']];
         more = [['photos', 'photo_library', 'oo.seg.photos', 'Photos & posts'], ['earnings', 'payments', 'oo.seg.earnings', 'Earnings'], ['messages', 'chat', 'oo.cube.msgs', 'Messages'], ['exit', 'logout', 'oo.exit', 'Back to my dashboard']];
       } else {
-        home = '<button type="button" class="mgc mgc-hero" onclick="mhvGo(\'oo\',\'browse\')"><div class="t">' + esc(T('oo.cube.open', 'Find a partner')) + '</div><div class="chip" id="ooHomeFindChip">' + esc(T('oo.cube.find.chip', 'Pick dates · browse')) + '</div>' + art('cuPlayers') + '</button><div class="mgc-grid">' +
+        home = '<button type="button" class="mgc mgc-hero" onclick="mhvGo(\'oo\',\'browse\')"><div class="t">' + esc(T('oo.cube.open', 'Find a partner')) + '</div><div class="chip" id="ooHomeFindChip">' + esc(T('oo.cube.find.chip', 'Swipe to browse')) + '</div>' + art('cuPlayers') + '</button><div class="mgc-grid">' +
+          cube('liked', '#fee2e2', '#fff1f2', T('oo.seg.liked', 'Saved'), 'ooHomeLikedChip', TT('oo.cube.liked.chip', { n: (this.liked || []).length }), 'cuTrophy') +
           cube('mine', '#dbeafe', '#eff6ff', T('oo.seg.mine', 'My bookings'), 'ooHomeMineChip', T('oo.cube.mine.chip', 'Requests & upcoming'), 'cuClip', 'ooHomeMineBadge') +
           cube('calendar', '#f4e6c8', '#fcf6e9', T('oo.seg.calendar', 'Calendar'), 'ooHomeCalChip', T('oo.cube.cal.chip', 'Booked dates'), 'cuCal') +
           cube('messages', '#dbe4f0', '#f2f6fb', T('oo.cube.msgs', 'Messages'), null, T('oo.cube.msgs.member', 'Chat with partners'), 'cuChat') +
           (admin ? '<button type="button" class="mgc" style="--p1:#e2e7ec;--p2:#f5f7f9" onclick="OneOnOne.enter(\'admin\')"><div class="t">' + esc(T('oo.seg.admin', 'Admin')) + '</div><div class="chip" id="ooHomeAdmChip">' + esc(T('oo.cube.admin.chip', 'Approvals & invites')) + '</div>' + art('cuCog') + '<span class="badge" id="ooHomeAdmBadge">0</span></button>' : '') + '</div>';
-        tabs = [['browse', 'search', 'oo.seg.browse', 'Browse'], ['mine', 'receipt_long', 'oo.seg.mine', 'My bookings', 'ooTabMineBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar']];
+        tabs = [['browse', 'search', 'oo.seg.browse', 'Browse'], ['liked', 'favorite', 'oo.seg.liked', 'Saved'], ['mine', 'receipt_long', 'oo.seg.mine', 'My bookings', 'ooTabMineBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar']];
         if (admin) tabs.push(['admin', 'admin_panel_settings', 'oo.seg.admin', 'Admin', 'ooTabAdmBadge']);
-        dock = [['browse', 'search', 'oo.seg.browse', 'Browse'], ['mine', 'receipt_long', 'oo.dock.bookings', 'Bookings', 'ooDockMineBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar']];
-        more = [['messages', 'chat', 'oo.cube.msgs', 'Messages']].concat(admin ? [['admin', 'admin_panel_settings', 'oo.seg.admin', 'Admin']] : []).concat([['exit', 'logout', 'oo.exit', 'Back to my dashboard']]);
+        dock = [['browse', 'search', 'oo.seg.browse', 'Browse'], ['liked', 'favorite', 'oo.seg.liked', 'Saved'], ['mine', 'receipt_long', 'oo.dock.bookings', 'Bookings', 'ooDockMineBadge']];
+        more = [['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar'], ['messages', 'chat', 'oo.cube.msgs', 'Messages']].concat(admin ? [['admin', 'admin_panel_settings', 'oo.seg.admin', 'Admin']] : []).concat([['exit', 'logout', 'oo.exit', 'Back to my dashboard']]);
       }
       el = document.getElementById('ooCubeHome'); if (el) el.innerHTML = home;
       el = document.getElementById('ooTabsRow'); if (el) el.innerHTML = tabs.map(function (t) {
@@ -641,6 +685,7 @@
         set('ooHomeCalChip', d1 ? TT('oo.cube.cal.n', { n: d1 }) : T('oo.cube.cal.none', 'No booked dates'));
         var ph = (this.cad.media || []).filter(function (m) { return m.kind === 'photo'; }).length, po = (this.cad.media || []).filter(function (m) { return m.kind === 'post'; }).length;
         set('ooHomePhotoChip', TT('oo.cube.photos.chip', { n: ph, m: po }));
+        if (this.cad.savedBy != null) set('ooHomeProfChip', TT('oo.cube.savedby', { n: this.cad.savedBy }));
         var unpaid = (this.cad.bookings || []).filter(function (b) { return (b.status === 'accepted' || b.status === 'completed') && b.payment_status !== 'paid'; }).reduce(function (a, b) { return a + (Number(b.fee_quoted) || 0); }, 0);
         set('ooHomeEarnChip', unpaid ? T('oo.earn.unpaid', 'Unpaid') + ' ' + money(unpaid, 'THB') : T('oo.cube.earn.chip', 'Accepted × rate'));
         return;
@@ -652,6 +697,7 @@
       ['ooHomeMineBadge', 'ooDockMineBadge', 'ooTabMineBadge'].forEach(function (id) { badge(id, n); });
       var d2 = bookedDays(this.bookings);
       set('ooHomeCalChip', d2 ? TT('oo.cube.cal.n', { n: d2 }) : T('oo.cube.cal.none', 'No booked dates'));
+      set('ooHomeLikedChip', TT('oo.cube.liked.chip', { n: (this.liked || []).length }));
       if (me.admin && document.getElementById('ooHomeAdmChip')) {
         var self2 = this; var applyAdm = function () {
           var st2 = self2.adm.stats || self2.admStats(); var pend2 = st2.members_pending + st2.partners_pending;
@@ -725,6 +771,7 @@
       var gate = this.gateHtml();
       if (gate) { root.innerHTML = gate; return; }
       if (v === 'mine') return this.renderMine();
+      if (v === 'liked') return this.renderLiked();
       if (v === 'calendar') return this.renderMemberCalendar();
       if (v === 'partner' && this.sel) return this.renderPartner();
       if (v === 'book' && this.sel) return this.renderBook();
@@ -733,21 +780,52 @@
     cadRender() { return this.render(); },     /* legacy names used by the action handlers below */
     cadGo(v) { return this.nav(v); },
 
-    /* ---------- MEMBER: browse ---------- */
-    q: { from: null, to: null, course: '', lang: '' },
+    /* =====================================================================================
+       MEMBER: DISCOVER (v1097) — photo-first swipe deck. Right = save, left = pass, tap = profile.
+       Dates first (presets), then the deck for partners free on those dates. Saved partners live in
+       oo_likes; ratings after completed rounds in oo_reviews (oo_search returns both).
+       ===================================================================================== */
+    q: { from: null, to: null, course: '', lang: '', preset: 'tomorrow' },
+    deck: { i: 0, hist: [], media: {}, loading: false, drag: null },
+    liked: [],
+    presetRange(k) {
+      var t = today(); var d = new Date(t + 'T00:00:00'); var dow = (d.getDay() + 6) % 7; /* mon=0 */
+      if (k === 'weekend') { var sat = addDays(t, (5 - dow + 7) % 7 || 7); if (dow === 5) sat = t; if (dow === 6) sat = t; return [sat, addDays(sat, dow === 6 ? 0 : 1)]; }
+      if (k === 'nextweek') { var mon = addDays(t, (7 - dow) % 7 || 7); return [mon, addDays(mon, 6)]; }
+      var tm = addDays(t, 1); return [tm, tm];
+    },
+    setPreset(k) {
+      var q = this.q; q.preset = k;
+      if (k !== 'pick') { var r = this.presetRange(k); q.from = r[0]; q.to = r[1]; this.search(); }
+      else this.renderBrowse();
+    },
+    applyPick() {
+      var q = this.q; q.from = (document.getElementById('ooFrom') || {}).value || q.from; q.to = (document.getElementById('ooTo') || {}).value || q.from; if (q.to < q.from) q.to = q.from; q.preset = 'pick'; this.search();
+    },
+    setLang(l) { this.q.lang = this.q.lang === l ? '' : l; this.search(); },
+    setCourse(v) { this.q.course = String(v || '').trim(); clearTimeout(this._courseT); var self = this; this._courseT = setTimeout(function () { self.search(); }, 400); },
+    filtersHtml() {
+      var q = this.q; var self = this;
+      var chip = function (on, onclick, label) { return '<button type="button" class="oo-fc' + (on ? ' on' : '') + '" onclick="' + onclick + '">' + esc(label) + '</button>'; };
+      var h = '<div class="oo-fr">' +
+        chip(q.preset === 'tomorrow', "OneOnOne.setPreset('tomorrow')", T('oo.dk.tomorrow', 'Tomorrow')) +
+        chip(q.preset === 'weekend', "OneOnOne.setPreset('weekend')", T('oo.dk.weekend', 'This weekend')) +
+        chip(q.preset === 'nextweek', "OneOnOne.setPreset('nextweek')", T('oo.dk.nextweek', 'Next week')) +
+        chip(q.preset === 'pick', "OneOnOne.setPreset('pick')", (q.preset === 'pick' && q.from ? fmtRange(q.from, q.to) : T('oo.dk.pick', 'Pick dates'))) + '</div>';
+      if (q.preset === 'pick') h += '<div class="oo-card" style="margin-top:8px"><div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end">' +
+        '<label class="oo-kv">' + esc(T('oo.from', 'From')) + '<input class="oo-in" type="date" id="ooFrom" value="' + (q.from || addDays(today(), 1)) + '" min="' + today() + '" max="' + addDays(today(), 89) + '"></label>' +
+        '<label class="oo-kv">' + esc(T('oo.to', 'To')) + '<input class="oo-in" type="date" id="ooTo" value="' + (q.to || q.from || addDays(today(), 1)) + '" min="' + today() + '" max="' + addDays(today(), 89) + '"></label>' +
+        '<button type="button" class="oo-btn pri" onclick="OneOnOne.applyPick()">' + esc(T('oo.search', 'Search')) + '</button></div></div>';
+      h += '<div class="oo-fr" style="margin-top:8px">' + ['Korean', 'English', 'Japanese'].map(function (l) { return chip(q.lang === l, "OneOnOne.setLang('" + l + "')", l); }).join('') +
+        '<input class="oo-in oo-fin" id="ooCourse" list="ooCourseList" value="' + esc(q.course) + '" placeholder="' + esc(T('oo.course', 'Course')) + '" oninput="OneOnOne.setCourse(this.value)"><datalist id="ooCourseList"></datalist></div>';
+      return h;
+    },
     renderBrowse() {
-      var root = document.getElementById('ooRoot');
-      var q = this.q; if (!q.from) { q.from = addDays(today(), 1); q.to = q.from; }
-      var h = '<div class="oo-card"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
-        '<label class="oo-kv">' + esc(T('oo.from', 'From')) + '<input class="oo-in" type="date" id="ooFrom" value="' + q.from + '" min="' + today() + '" max="' + addDays(today(), 89) + '"></label>' +
-        '<label class="oo-kv">' + esc(T('oo.to', 'To')) + '<input class="oo-in" type="date" id="ooTo" value="' + q.to + '" min="' + today() + '" max="' + addDays(today(), 89) + '"></label>' +
-        '<label class="oo-kv">' + esc(T('oo.course', 'Course')) + '<input class="oo-in" id="ooCourse" list="ooCourseList" value="' + esc(q.course) + '" placeholder="' + esc(T('oo.any', 'Any')) + '"><datalist id="ooCourseList"></datalist></label>' +
-        '<label class="oo-kv">' + esc(T('oo.language', 'Language')) + '<select class="oo-in" id="ooLang"><option value="">' + esc(T('oo.any', 'Any')) + '</option>' + LANGS.map(function (l) { return '<option value="' + l + '"' + (q.lang === l ? ' selected' : '') + '>' + l + '</option>'; }).join('') + '</select></label>' +
-        '</div><div style="display:flex;justify-content:flex-end;margin-top:8px"><button type="button" class="oo-btn pri" onclick="OneOnOne.search()">' + esc(T('oo.search', 'Search')) + '</button></div></div>' +
-        '<div id="ooResults" style="margin-top:12px">' + (this.partners.length ? '' : '<div class="oo-kv" style="text-align:center;padding:16px">' + esc(T('oo.pickdates', DICT.en['oo.pickdates'])) + '</div>') + '</div>';
-      root.innerHTML = h;
+      var root = document.getElementById('ooRoot'); var q = this.q;
+      if (!q.from) { var r = this.presetRange(q.preset || 'tomorrow'); q.from = r[0]; q.to = r[1]; }
+      root.innerHTML = this.filtersHtml() + '<div id="ooDeck" style="margin-top:10px">' + (this.partners.length || this.deck.loading ? '' : '<div class="oo-kv" style="text-align:center;padding:16px">' + esc(T('oo.pickdates', DICT.en['oo.pickdates'])) + '</div>') + '</div>';
       this.fillCourses();
-      if (this.partners.length) this.paintResults();
+      if (this.partners.length) this.paintDeck(); else if (!this._searched) this.search();
     },
     async fillCourses() {
       try {
@@ -756,69 +834,217 @@
       } catch (e) {}
     },
     async search() {
-      var q = this.q;
-      q.from = (document.getElementById('ooFrom') || {}).value || q.from; q.to = (document.getElementById('ooTo') || {}).value || q.from;
-      if (q.to < q.from) q.to = q.from;
-      q.course = ((document.getElementById('ooCourse') || {}).value || '').trim(); q.lang = (document.getElementById('ooLang') || {}).value || '';
-      var box = document.getElementById('ooResults'); if (box) box.innerHTML = '<div class="oo-kv" style="text-align:center;padding:16px">…</div>';
+      var q = this.q; this._searched = true; var seq = ++this._searchSeq; var self = this;
+      this.deck.loading = true; this.deck.i = 0; this.deck.hist = []; this.partners = [];
+      if (this.view === 'browse') { this.renderBrowse(); var box = document.getElementById('ooDeck'); if (box) box.innerHTML = '<div class="oo-kv" style="text-align:center;padding:24px">…</div>'; }
       try {
-        this.partners = await rpc('oo_search', { p_from: q.from, p_to: q.to, p_course: q.course || null, p_lang: q.lang || null }) || [];
-        this.paintResults();
-      } catch (e) { if (box) box.innerHTML = '<div class="oo-card" style="border-color:#fca5a5">' + esc(errMsg(e)) + '</div>'; }
+        var rows = await rpc('oo_search', { p_from: q.from, p_to: q.to, p_course: q.course || null, p_lang: q.lang || null }) || [];
+        if (seq !== this._searchSeq) return;
+        this.partners = rows; this.deck.loading = false;
+        if (this.view === 'browse') this.paintDeck();
+        this.prefetchMedia(rows.slice(0, 3).map(function (p) { return p.id; }));
+      } catch (e) { this.deck.loading = false; var b2 = document.getElementById('ooDeck'); if (b2) b2.innerHTML = '<div class="oo-card" style="border-color:#fca5a5">' + esc(errMsg(e)) + '</div>'; }
     },
-    async paintResults() {
-      var box = document.getElementById('ooResults'); if (!box) return;
-      if (!this.partners.length) { box.innerHTML = '<div class="oo-kv" style="text-align:center;padding:16px">' + esc(T('oo.noresults', DICT.en['oo.noresults'])) + '</div>'; return; }
-      var urls = await signedUrls(this.partners.map(function (p) { return p.cover_path; }).filter(Boolean));
-      var n = dayCount(this.q.from, this.q.to);
-      box.innerHTML = '<div class="oo-kv" style="margin-bottom:8px"><b>' + esc(fmtRange(this.q.from, this.q.to)) + '</b> · ' + esc(n === 1 ? T('oo.day', '1 day') : TT('oo.days', { n: n })) + '</div><div class="oo-grid">' +
-        this.partners.map(function (p) {
-          var img = p.cover_path && urls[p.cover_path];
-          return '<button type="button" class="oo-pc" onclick="OneOnOne.openPartner(\'' + p.id + '\')">' +
-            '<div class="ph">' + (img ? '<img src="' + esc(img) + '" alt="">' : esc(initials(p.display_name))) + '</div>' +
-            '<div class="bd"><div class="nm">' + esc(p.display_name) + '</div>' +
-            '<div class="sub">' + esc(p.home_course_name || '') + (p.handicap != null ? ' · ' + esc(T('oo.hcp', 'HCP')) + ' ' + esc(p.handicap) : '') + '</div>' +
-            '<div>' + (p.languages || []).slice(0, 3).map(function (l) { return '<span class="oo-chip">' + esc(l) + '</span>'; }).join('') + '</div>' +
-            '<div class="sub" style="margin-top:4px">' + (p.day_rate != null ? '<b style="color:#15803d">' + esc(money(p.day_rate, p.currency)) + '</b>' + esc(T('oo.perday', '/day')) + ' · ' : '') + esc(TT('oo.photos', { n: p.photo_count || 0 })) + '</div></div></button>';
-        }).join('') + '</div>';
+    /* photos for the next cards: cover first, then the rest — signed URLs cached by signedUrls() */
+    async prefetchMedia(ids) {
+      var need = ids.filter(function (id) { return id && !OO.deck.media[id]; }); if (!need.length) return;
+      try {
+        var r = await sb().from('oo_media').select('id, partner_id, storage_path, sort_order').in('partner_id', need).eq('kind', 'photo').eq('status', 'visible').order('sort_order');
+        var by = {}; (r.data || []).forEach(function (m) { if (!m.storage_path) return; (by[m.partner_id] = by[m.partner_id] || []).push(m); });
+        var paths = []; need.forEach(function (id) { (by[id] || []).forEach(function (m) { paths.push(m.storage_path); }); });
+        var urls = await signedUrls(paths);
+        need.forEach(function (id) {
+          var p = OO.partners.find(function (x) { return x.id === id; }) || {};
+          var list = (by[id] || []).slice().sort(function (a, b) { return (a.id === p.cover_media_id ? -1 : 0) - (b.id === p.cover_media_id ? -1 : 0); });
+          OO.deck.media[id] = list.map(function (m) { return urls[m.storage_path]; }).filter(Boolean);
+        });
+        this.paintDeckPhotos();
+      } catch (e) { console.warn('[1on1] media', e); }
     },
-    backChip() { return '<button type="button" class="oo-btn" style="margin-bottom:10px" onclick="OneOnOne.back()">‹ ' + esc(this.side === 'admin' ? T('oo.back', 'Back') : T('oo.back.browse', 'Back to results')) + '</button>'; },
+    cardHtml(p, idx, pos) {
+      var urls = this.deck.media[p.id]; var img = urls && urls[0];
+      var photoIdx = p._photo || 0; if (urls && urls[photoIdx]) img = urls[photoIdx];
+      var n = (urls && urls.length) || p.photo_count || 0;
+      var dots = n > 1 ? '<div class="dots">' + Array.apply(null, Array(Math.min(n, 8))).map(function (_, i) { return '<i' + (i === photoIdx ? ' class="on"' : '') + '></i>'; }).join('') + '</div>' : '';
+      var stars = p.rating_n ? '<span class="st">★ ' + esc(p.rating_avg) + ' <small>(' + p.rating_n + ')</small></span>' : '<span class="st new">' + esc(T('oo.pf.new', 'New')) + '</span>';
+      return '<div class="oo-cd" data-idx="' + idx + '" data-pos="' + pos + '" style="z-index:' + (10 - pos) + '">' +
+        '<div class="ph">' + (img ? '<img src="' + esc(img) + '" alt="" draggable="false">' : '<div class="ini">' + esc(initials(p.display_name)) + '</div>') + dots +
+        '<div class="zone l"></div><div class="zone r"></div>' +
+        '<div class="stamp like">' + esc(T('oo.dk.save', 'Save')) + '</div><div class="stamp nope">' + esc(T('oo.dk.pass', 'Pass')) + '</div>' +
+        '<div class="info"><div class="nm">' + esc(p.display_name) + (p.liked ? ' <span class="hv">♥</span>' : '') + '</div>' +
+        '<div class="sub">' + esc(p.home_course_name || '') + (p.handicap != null ? ' · ' + esc(T('oo.hcp', 'HCP')) + ' ' + esc(p.handicap) : '') + '</div>' +
+        '<div class="row">' + stars + (p.rounds_together ? '<span class="tg">' + esc(TT('oo.rv.together', { n: p.rounds_together })) + '</span>' : '') + '</div>' +
+        '<div class="row">' + (p.languages || []).slice(0, 3).map(function (l) { return '<span class="lg">' + esc(l) + '</span>'; }).join('') + (p.day_rate != null ? '<span class="rt">' + esc(money(p.day_rate, p.currency)) + esc(T('oo.perday', '/day')) + '</span>' : '') + '</div>' +
+        '</div></div></div>';
+    },
+    paintDeck() {
+      var box = document.getElementById('ooDeck'); if (!box) return;
+      var d = this.deck; var list = this.partners; var i = d.i;
+      if (!list.length) { box.innerHTML = '<div class="oo-card" style="text-align:center;padding:24px"><div style="font-size:15px;font-weight:800">' + esc(T('oo.noresults', DICT.en['oo.noresults'])) + '</div><div class="oo-kv" style="margin-top:6px">' + esc(fmtRange(this.q.from, this.q.to)) + '</div></div>'; return; }
+      if (i >= list.length) {
+        box.innerHTML = '<div class="oo-card" style="text-align:center;padding:24px"><div style="font-size:15px;font-weight:800">' + esc(T('oo.dk.end', DICT.en['oo.dk.end'])) + '</div><div class="oo-kv" style="margin:6px 0 12px">' + esc(fmtRange(this.q.from, this.q.to)) + ' · ' + list.length + '</div>' +
+          '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button type="button" class="oo-btn" onclick="OneOnOne.deckUndo()">↶ ' + esc(T('oo.dk.undo', 'Undo')) + '</button><button type="button" class="oo-btn" onclick="OneOnOne.setPreset(\'pick\')">' + esc(T('oo.dk.change', 'Change dates')) + '</button><button type="button" class="oo-btn pri" onclick="OneOnOne.nav(\'liked\')">♥ ' + esc(T('oo.dk.seesaved', 'See saved')) + '</button></div></div>';
+        return;
+      }
+      var cards = ''; for (var k = 2; k >= 0; k--) { if (list[i + k]) cards += this.cardHtml(list[i + k], i + k, k); }
+      box.innerHTML = '<div class="oo-kv" style="display:flex;justify-content:space-between;margin-bottom:6px"><span>' + esc(TT('oo.dk.of', { i: i + 1, n: list.length })) + ' · <b>' + esc(fmtRange(this.q.from, this.q.to)) + '</b></span><span>' + esc(T('oo.dk.swipe', DICT.en['oo.dk.swipe'])) + '</span></div>' +
+        '<div class="oo-dk">' + cards + '</div>' +
+        '<div class="oo-acts"><button type="button" class="a nope" aria-label="' + esc(T('oo.dk.pass', 'Pass')) + '" onclick="OneOnOne.deckSwipe(\'left\')"><span class="material-symbols-outlined">close</span></button>' +
+        '<button type="button" class="a undo" aria-label="' + esc(T('oo.dk.undo', 'Undo')) + '" onclick="OneOnOne.deckUndo()"' + (d.hist.length ? '' : ' disabled') + '><span class="material-symbols-outlined">undo</span></button>' +
+        '<button type="button" class="a like" aria-label="' + esc(T('oo.dk.save', 'Save')) + '" onclick="OneOnOne.deckSwipe(\'right\')"><span class="material-symbols-outlined">favorite</span></button>' +
+        '<button type="button" class="a book" onclick="OneOnOne.openBook(\'' + list[i].id + '\')">' + esc(T('oo.book', 'Book')) + '</button></div>';
+      this.bindTopCard();
+      this.prefetchMedia(list.slice(i, i + 3).map(function (p) { return p.id; }));
+    },
+    paintDeckPhotos() {
+      var self = this;
+      document.querySelectorAll('#ooDeck .oo-cd').forEach(function (el) {
+        var p = self.partners[parseInt(el.getAttribute('data-idx'), 10)]; if (!p) return;
+        var urls = self.deck.media[p.id]; if (!urls || !urls.length) return;
+        var ph = el.querySelector('.ph'); var img = ph && ph.querySelector('img'); var idx = p._photo || 0;
+        if (!img) { var ini = ph.querySelector('.ini'); if (ini) { var im = document.createElement('img'); im.src = urls[idx] || urls[0]; im.alt = ''; im.draggable = false; ph.replaceChild(im, ini); } }
+        if (urls.length > 1 && !ph.querySelector('.dots')) { var dd = document.createElement('div'); dd.className = 'dots'; dd.innerHTML = urls.slice(0, 8).map(function (_, i) { return '<i' + (i === idx ? ' class="on"' : '') + '></i>'; }).join(''); ph.appendChild(dd); }
+      });
+    },
+    cyclePhoto(p, dir) {
+      var urls = this.deck.media[p.id]; if (!urls || urls.length < 2) return;
+      p._photo = ((p._photo || 0) + dir + urls.length) % urls.length;
+      var el = document.querySelector('#ooDeck .oo-cd[data-pos="0"]'); if (!el) return;
+      var img = el.querySelector('.ph img'); if (img) img.src = urls[p._photo];
+      el.querySelectorAll('.dots i').forEach(function (d, i) { d.classList.toggle('on', i === p._photo); });
+    },
+    bindTopCard() {
+      var el = document.querySelector('#ooDeck .oo-cd[data-pos="0"]'); if (!el) return; var self = this; var d = this.deck; var p = this.partners[d.i];
+      var st = null;
+      var onDown = function (ev) { if (ev.button != null && ev.button !== 0) return; st = { x: ev.clientX, y: ev.clientY, t: Date.now(), moved: false }; el.setPointerCapture && el.setPointerCapture(ev.pointerId); el.style.transition = 'none'; };
+      var onMove = function (ev) {
+        if (!st) return; var dx = ev.clientX - st.x, dy = ev.clientY - st.y; if (Math.abs(dx) > 6 || Math.abs(dy) > 6) st.moved = true;
+        el.style.transform = 'translate(' + dx + 'px,' + (dy * 0.4) + 'px) rotate(' + (dx / 22) + 'deg)';
+        var k = Math.min(1, Math.abs(dx) / 90); el.querySelector('.stamp.like').style.opacity = dx > 0 ? k : 0; el.querySelector('.stamp.nope').style.opacity = dx < 0 ? k : 0;
+      };
+      var onUp = function (ev) {
+        if (!st) return; var dx = ev.clientX - st.x; var s0 = st; st = null;
+        if (!s0.moved) {
+          var r = el.getBoundingClientRect(); var fx = (ev.clientX - r.left) / r.width; var inPhoto = (ev.clientY - r.top) < r.height * 0.62;
+          if (inPhoto && self.deck.media[p.id] && self.deck.media[p.id].length > 1) { self.cyclePhoto(p, fx < 0.5 ? -1 : 1); return; }
+          self.openPartner(p.id); return;
+        }
+        if (Math.abs(dx) >= 90) { self.flyOut(el, dx > 0 ? 'right' : 'left'); return; }
+        el.style.transition = 'transform .25s ease'; el.style.transform = ''; el.querySelector('.stamp.like').style.opacity = 0; el.querySelector('.stamp.nope').style.opacity = 0;
+      };
+      el.addEventListener('pointerdown', onDown); el.addEventListener('pointermove', onMove); el.addEventListener('pointerup', onUp); el.addEventListener('pointercancel', onUp);
+    },
+    flyOut(el, dir) {
+      var self = this; el.style.transition = 'transform .3s ease, opacity .3s ease'; el.style.transform = 'translate(' + (dir === 'right' ? 1 : -1) * (window.innerWidth + 200) + 'px,-40px) rotate(' + (dir === 'right' ? 25 : -25) + 'deg)'; el.style.opacity = '0';
+      setTimeout(function () { self.commitSwipe(dir); }, 260);
+    },
+    deckSwipe(dir) { var el = document.querySelector('#ooDeck .oo-cd[data-pos="0"]'); if (!el) return; var st = el.querySelector('.stamp.' + (dir === 'right' ? 'like' : 'nope')); if (st) st.style.opacity = 1; this.flyOut(el, dir); },
+    async commitSwipe(dir) {
+      var d = this.deck; var p = this.partners[d.i]; if (!p) return;
+      d.hist.push({ i: d.i, dir: dir, wasLiked: !!p.liked }); d.i++;
+      this.paintDeck();
+      if (dir === 'right' && !p.liked) await this.like(p.id, true);
+    },
+    async deckUndo() {
+      var d = this.deck; var h = d.hist.pop(); if (!h) return; d.i = h.i; var p = this.partners[h.i];
+      this.paintDeck();
+      if (h.dir === 'right' && !h.wasLiked && p && p.liked) await this.like(p.id, false);
+    },
+    async like(pid, on) {
+      var p = this.partners.find(function (x) { return x.id === pid; }) || (this.liked || []).find(function (x) { return x.id === pid; }); var self = this;
+      try {
+        if (on) { var r = await sb().from('oo_likes').insert({ member_id: uid(), partner_id: pid }); if (r.error && String(r.error.code) !== '23505') throw r.error; }
+        else { var r2 = await sb().from('oo_likes').delete().eq('member_id', uid()).eq('partner_id', pid); if (r2.error) throw r2.error; }
+        if (p) p.liked = !!on; if (this.sel && this.sel.id === pid) this.sel.liked = !!on;
+        this.liked = on ? (this.liked.some(function (x) { return x.id === pid; }) ? this.liked : (p ? [Object.assign({}, p, { liked: true })].concat(this.liked) : this.liked)) : this.liked.filter(function (x) { return x.id !== pid; });
+        this.paintShell();
+        var hv = document.querySelector('#ooPfLike'); if (hv) { hv.classList.toggle('on', !!on); hv.querySelector('span:last-child').textContent = on ? T('oo.dk.saved', 'Saved') : T('oo.dk.save', 'Save'); }
+        if (this.view === 'liked') this.render();
+        if (on) toast('♥ ' + T('oo.dk.saved', 'Saved'), 'success');
+      } catch (e) { toast(errMsg(e), 'error'); }
+    },
+    openBook(pid) { var p = this.partners.find(function (x) { return x.id === pid; }) || (this.liked || []).find(function (x) { return x.id === pid; }); if (!p) return; this.sel = p; this.go('book'); },
 
-    /* partner detail */
+    /* ---------- MEMBER: saved partners ---------- */
+    async loadLiked() { try { this.liked = await rpc('oo_liked') || []; } catch (e) { this.liked = this.liked || []; } return this.liked; },
+    async renderLiked() {
+      var root = document.getElementById('ooRoot'); root.innerHTML = '<div class="oo-kv" style="text-align:center;padding:16px">…</div>';
+      await this.loadLiked(); var list = this.liked; var self = this;
+      if (!list.length) { root.innerHTML = '<div class="oo-card" style="text-align:center;padding:24px"><div style="font-size:15px;font-weight:800">' + esc(T('oo.lk.none', DICT.en['oo.lk.none'])) + '</div><div style="margin-top:10px"><button type="button" class="oo-btn pri" onclick="OneOnOne.nav(\'browse\')">' + esc(T('oo.cube.open', 'Find a partner')) + '</button></div></div>'; return; }
+      var urls = await signedUrls(list.map(function (p) { return p.cover_path; }).filter(Boolean));
+      root.innerHTML = '<div class="oo-grid">' + list.map(function (p) {
+        var img = p.cover_path && urls[p.cover_path];
+        return '<div class="oo-pc"><div class="ph" style="cursor:pointer" onclick="OneOnOne.openPartner(\'' + p.id + '\')">' + (img ? '<img src="' + esc(img) + '" alt="">' : esc(initials(p.display_name))) + '</div>' +
+          '<div class="bd"><div class="nm">' + esc(p.display_name) + ' <span style="color:#dc2626">♥</span></div><div class="sub">' + esc(p.home_course_name || '') + (p.rating_n ? ' · ★ ' + esc(p.rating_avg) + ' (' + p.rating_n + ')' : '') + '</div>' +
+          '<div class="sub" style="margin-top:4px">' + (p.day_rate != null ? '<b style="color:#15803d">' + esc(money(p.day_rate, p.currency)) + '</b>' + esc(T('oo.perday', '/day')) : '') + '</div>' +
+          '<div style="display:flex;gap:6px;margin-top:8px"><button type="button" class="oo-btn pri" style="flex:1" onclick="OneOnOne.openBook(\'' + p.id + '\')">' + esc(T('oo.book', 'Book')) + '</button><button type="button" class="oo-btn" onclick="OneOnOne.like(\'' + p.id + '\', false)">' + esc(T('oo.dk.unsave', 'Remove')) + '</button></div></div></div>';
+      }).join('') + '</div>';
+    },
+
+    /* ---------- MEMBER: partner profile (carousel + reviews) ---------- */
     async openPartner(id) {
-      var p = this.partners.find(function (x) { return x.id === id; });
+      var p = this.partners.find(function (x) { return x.id === id; }) || (this.liked || []).find(function (x) { return x.id === id; });
       if (!p) { try { var r = await sb().from('oo_partners').select('*').eq('id', id).maybeSingle(); p = r.data; } catch (e) {} }
       if (!p) return;
-      this.sel = p; this.selMedia = [];
+      this.sel = p; this.selMedia = []; this.selReviews = [];
       try { var m = await sb().from('oo_media').select('*').eq('partner_id', id).eq('status', 'visible').order('sort_order').order('created_at'); this.selMedia = m.data || []; } catch (e) {}
+      try { var rv = await sb().from('oo_reviews').select('rating, comment, created_at').eq('partner_id', id).eq('status', 'visible').order('created_at', { ascending: false }).limit(20); this.selReviews = rv.data || []; } catch (e) {}
       this.go('partner');
     },
+    starsHtml(n) { n = Math.round(Number(n) || 0); var h = ''; for (var i = 1; i <= 5; i++) h += '<span style="color:' + (i <= n ? '#f59e0b' : '#d1d5db') + '">★</span>'; return h; },
     async renderPartner() {
-      var root = document.getElementById('ooRoot'); var p = this.sel;
+      var root = document.getElementById('ooRoot'); var p = this.sel; var A = this.side === 'admin';
       var photos = this.selMedia.filter(function (m) { return m.kind === 'photo' && m.storage_path; });
       var posts = this.selMedia.filter(function (m) { return m.kind === 'post'; });
       var urls = await signedUrls(photos.map(function (m) { return m.storage_path; }));
-      var cover = (photos.find(function (m) { return m.id === p.cover_media_id; }) || photos[0]);
-      var left = '<div class="oo-card"><div style="display:flex;gap:12px;align-items:flex-start">' +
-        '<div style="width:96px;height:120px;border-radius:12px;background:#e2e8f0;overflow:hidden;flex:0 0 96px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:24px;color:#475569">' + (cover && urls[cover.storage_path] ? '<img src="' + esc(urls[cover.storage_path]) + '" style="width:100%;height:100%;object-fit:cover" alt="">' : esc(initials(p.display_name))) + '</div>' +
-        '<div style="flex:1;min-width:0"><div style="font-weight:800;font-size:18px">' + esc(p.display_name) + '</div>' +
-        '<div class="oo-kv">' + esc(T('oo.home', 'Home course')) + ': <b>' + esc(p.home_course_name || '—') + '</b></div>' +
-        (p.handicap != null ? '<div class="oo-kv">' + esc(T('oo.hcp', 'HCP')) + ': <b>' + esc(p.handicap) + '</b></div>' : '') +
-        '<div class="oo-kv">' + esc(T('oo.langs', 'Languages')) + ': ' + (p.languages || []).map(function (l) { return '<span class="oo-chip">' + esc(l) + '</span>'; }).join('') + '</div>' +
-        (p.day_rate != null ? '<div class="oo-kv" style="margin-top:4px">' + esc(T('oo.rate', 'Day rate')) + ': <b style="color:#15803d;font-size:15px">' + esc(money(p.day_rate, p.currency)) + '</b></div>' : '') +
-        '</div></div>' +
-        (this.side === 'admin'
-          ? '<div style="display:flex;gap:8px;margin-top:12px;align-items:center">' + this.admChip(p.status) + (p.status === 'approved' ? '<button type="button" class="oo-btn warn" onclick="OneOnOne.admPartner(\'' + p.id + '\', \'suspended\', null)">' + esc(T('oo.adm.suspend', 'Suspend')) + '</button>' : '<button type="button" class="oo-btn pri" onclick="OneOnOne.admPartner(\'' + p.id + '\', \'approved\', \'' + esc(p.user_id) + '\')">' + esc(T(p.status === 'pending' ? 'oo.adm.approve' : 'oo.adm.reactivate', 'Approve')) + '</button>') + '</div></div>'
-          : '<div style="display:flex;gap:8px;margin-top:12px"><button type="button" class="oo-btn pri" style="flex:1" onclick="OneOnOne.go(\'book\')">' + esc(T('oo.book', 'Book')) + ' · ' + esc(fmtRange(this.q.from, this.q.to)) + '</button></div></div>');
-      if (p.bio) left += '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.bio', 'About')) + '</h4><div style="font-size:14px;white-space:pre-wrap">' + esc(p.bio) + '</div></div>';
-      if ((p.courses_known || []).length || p.area_tips) left += '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.tips', 'Local knowledge')) + '</h4>' +
+      photos.sort(function (a, b) { return (a.id === p.cover_media_id ? -1 : 0) - (b.id === p.cover_media_id ? -1 : 0); });
+      var slides = photos.map(function (m) { return urls[m.storage_path]; }).filter(Boolean);
+      var car = slides.length
+        ? '<div class="oo-car" id="ooCar" onscroll="OneOnOne.carDots(this)">' + slides.map(function (u) { return '<div class="s"><img src="' + esc(u) + '" alt="" onclick="try{CaddyNotebook.viewPhoto(\'' + esc(u) + '\')}catch(e){}"></div>'; }).join('') + '</div>' + (slides.length > 1 ? '<div class="oo-cdots" id="ooCarDots">' + slides.map(function (_, i) { return '<i' + (i === 0 ? ' class="on"' : '') + '></i>'; }).join('') + '</div>' : '')
+        : '<div class="oo-car"><div class="s ini">' + esc(initials(p.display_name)) + '</div></div>';
+      var rating = p.rating_n ? '<div class="oo-kv" style="font-size:14px">' + this.starsHtml(p.rating_avg) + ' <b>' + esc(p.rating_avg) + '</b> · ' + esc(TT('oo.rv.n', { n: p.rating_n })) + '</div>' : '<div class="oo-kv">' + esc(T('oo.rv.none', 'No ratings yet')) + '</div>';
+      var head = '<div class="oo-card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div style="min-width:0"><div style="font-weight:800;font-size:22px;line-height:1.1">' + esc(p.display_name) + '</div>' +
+        '<div class="oo-kv" style="margin-top:4px">' + esc(p.home_course_name || '—') + (p.handicap != null ? ' · ' + esc(T('oo.hcp', 'HCP')) + ' <b>' + esc(p.handicap) + '</b>' : '') + '</div>' + rating +
+        (p.rounds_together ? '<div class="oo-kv" style="color:#15803d;font-weight:700">' + esc(TT('oo.rv.together', { n: p.rounds_together })) + '</div>' : '') + '</div>' +
+        (p.day_rate != null ? '<div style="text-align:right;flex:0 0 auto"><div style="font-weight:800;font-size:20px;color:#15803d">' + esc(money(p.day_rate, p.currency)) + '</div><div class="oo-kv">' + esc(T('oo.perday', '/day').replace('/', '')) + '</div></div>' : '') + '</div>' +
+        '<div style="margin-top:8px">' + (p.languages || []).map(function (l) { return '<span class="oo-chip">' + esc(l) + '</span>'; }).join('') + '</div>' +
+        (A ? '<div style="display:flex;gap:8px;margin-top:12px;align-items:center">' + this.admChip(p.status) + (p.status === 'approved' ? '<button type="button" class="oo-btn warn" onclick="OneOnOne.admPartner(\'' + p.id + '\', \'suspended\', null)">' + esc(T('oo.adm.suspend', 'Suspend')) + '</button>' : '<button type="button" class="oo-btn pri" onclick="OneOnOne.admPartner(\'' + p.id + '\', \'approved\', \'' + esc(p.user_id) + '\')">' + esc(T(p.status === 'pending' ? 'oo.adm.approve' : 'oo.adm.reactivate', 'Approve')) + '</button>') + '</div>'
+          : '<div class="oo-pfbar"><button type="button" id="ooPfLike" class="oo-btn' + (p.liked ? ' on' : '') + '" onclick="OneOnOne.like(\'' + p.id + '\', ' + (p.liked ? 'false' : 'true') + ')"><span>♥</span> <span>' + esc(p.liked ? T('oo.dk.saved', 'Saved') : T('oo.dk.save', 'Save')) + '</span></button><button type="button" class="oo-btn pri" style="flex:1" onclick="OneOnOne.go(\'book\')">' + esc(T('oo.book', 'Book')) + ' · ' + esc(fmtRange(this.q.from, this.q.to)) + '</button></div>') + '</div>';
+      var body = '';
+      if (p.bio) body += '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.bio', 'About')) + '</h4><div style="font-size:14px;white-space:pre-wrap">' + esc(p.bio) + '</div></div>';
+      if ((p.courses_known || []).length || p.area_tips) body += '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.tips', 'Local knowledge')) + '</h4>' +
         ((p.courses_known || []).length ? '<div class="oo-kv" style="margin-bottom:6px">' + esc(T('oo.knows', 'Courses I know')) + ': ' + p.courses_known.map(function (c) { return '<span class="oo-chip">' + esc(c) + '</span>'; }).join('') + '</div>' : '') +
         (p.area_tips ? '<div style="font-size:14px;white-space:pre-wrap">' + esc(p.area_tips) + '</div>' : '') + '</div>';
-      var right = '';
-      if (photos.length) right += '<div class="oo-card"><h4>' + esc(T('oo.gallery', 'Photos')) + '</h4><div class="oo-gal">' + photos.map(function (m) { return '<div class="g">' + (urls[m.storage_path] ? '<img src="' + esc(urls[m.storage_path]) + '" alt="' + esc(m.caption || '') + '" loading="lazy">' : '') + '</div>'; }).join('') + '</div></div>';
-      if (posts.length) right += '<div class="oo-card"' + (photos.length ? ' style="margin-top:10px"' : '') + '><h4>' + esc(T('oo.posts', 'Posts')) + '</h4>' + posts.map(function (m) { return '<div style="padding:8px 0;border-top:1px solid #f1f5f9"><div style="font-weight:700">' + esc(m.caption || '') + '</div><div style="font-size:13px;white-space:pre-wrap;color:#334155">' + esc(m.body || '') + '</div></div>'; }).join('') + '</div>';
-      root.innerHTML = this.backChip() + (right ? '<div class="oo-two"><div>' + left + '</div><div>' + right + '</div></div>' : left);
+      if (posts.length) body += '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.posts', 'Posts')) + '</h4>' + posts.map(function (m) { return '<div style="padding:8px 0;border-top:1px solid #f1f5f9"><div style="font-weight:700">' + esc(m.caption || '') + '</div><div style="font-size:13px;white-space:pre-wrap;color:#334155">' + esc(m.body || '') + '</div></div>'; }).join('') + '</div>';
+      var self = this; var rvs = this.selReviews || [];
+      if (rvs.length) body += '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.rv.reviews', 'Reviews')) + ' · ' + rvs.length + '</h4>' + rvs.map(function (r) { return '<div style="padding:8px 0;border-top:1px solid #f1f5f9"><div>' + self.starsHtml(r.rating) + ' <span class="oo-kv">' + esc(T('oo.rv.member', 'Member')) + ' · ' + esc(self.fmtDate(r.created_at)) + '</span></div>' + (r.comment ? '<div style="font-size:13px;color:#334155;white-space:pre-wrap">' + esc(r.comment) + '</div>' : '') + '</div>'; }).join('') + '</div>';
+      root.innerHTML = this.backChip() + '<div class="oo-two"><div>' + car + head + '</div><div>' + body + '</div></div>';
     },
+    carDots(el) { var w = el.clientWidth || 1; var i = Math.round(el.scrollLeft / w); document.querySelectorAll('#ooCarDots i').forEach(function (d, k) { d.classList.toggle('on', k === i); }); },
+
+    /* ---------- MEMBER: rating a completed round ---------- */
+    rateSheet(bookingId) {
+      var b = this.bookings.find(function (x) { return x.id === bookingId; }); if (!b) return; var self = this; var cur = (b._review && b._review.rating) || 0;
+      var w = document.createElement('div'); w.id = 'ooAsk';
+      w.style.cssText = 'position:fixed;inset:0;z-index:99990;background:rgba(15,23,42,.55);display:flex;align-items:flex-end;justify-content:center;padding:12px';
+      w.innerHTML = '<div style="background:#fff;border-radius:16px;width:100%;max-width:440px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.25)">' +
+        '<div style="font-weight:800;color:#0f172a;margin-bottom:10px">' + esc(TT('oo.rv.title', { name: (b.oo_partners && b.oo_partners.display_name) || '' })) + '</div>' +
+        '<div id="ooStars" style="display:flex;gap:6px;justify-content:center;font-size:34px;margin:6px 0 10px">' + [1, 2, 3, 4, 5].map(function (i) { return '<button type="button" data-v="' + i + '" style="background:none;border:0;color:' + (i <= cur ? '#f59e0b' : '#d1d5db') + ';font-size:34px;line-height:1;cursor:pointer">★</button>'; }).join('') + '</div>' +
+        '<textarea id="ooRvText" rows="3" placeholder="' + esc(T('oo.rv.comment', 'Comment (optional)')) + '" style="width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:10px;font-size:15px;color:#0f172a">' + esc((b._review && b._review.comment) || '') + '</textarea>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px"><button type="button" id="ooRvNo" class="oo-btn">' + esc(T('oo.cancel', 'Cancel')) + '</button><button type="button" id="ooRvOk" class="oo-btn pri">' + esc(T('oo.rv.send', 'Send rating')) + '</button></div></div>';
+      document.body.appendChild(w); var val = cur;
+      w.querySelectorAll('#ooStars button').forEach(function (btn) { btn.onclick = function () { val = parseInt(btn.getAttribute('data-v'), 10); w.querySelectorAll('#ooStars button').forEach(function (x) { x.style.color = parseInt(x.getAttribute('data-v'), 10) <= val ? '#f59e0b' : '#d1d5db'; }); }; });
+      var done = function () { try { w.remove(); } catch (e) {} };
+      w.querySelector('#ooRvNo').onclick = done; w.addEventListener('click', function (ev) { if (ev.target === w) done(); });
+      w.querySelector('#ooRvOk').onclick = async function () {
+        if (!val) return;
+        try { var row = await rpc('oo_review', { p_booking: bookingId, p_rating: val, p_comment: (w.querySelector('#ooRvText').value || '').trim() || null }); b._review = row; done(); toast(T('oo.rv.thanks', 'Thanks — rating saved'), 'success'); self.render(); } catch (e) { toast(errMsg(e), 'error'); }
+      };
+    },
+    async loadMyReviews() {
+      try { var r = await sb().from('oo_reviews').select('booking_id, rating, comment').eq('member_id', uid()); var by = {}; (r.data || []).forEach(function (x) { by[x.booking_id] = x; }); (this.bookings || []).forEach(function (b) { b._review = by[b.id] || null; }); } catch (e) {}
+    },
+    backChip() { return '<button type="button" class="oo-btn" style="margin-bottom:10px" onclick="OneOnOne.back()">‹ ' + esc(this.side === 'admin' ? T('oo.back', 'Back') : T('oo.back.browse', 'Back to results')) + '</button>'; },
 
     /* booking form */
     async renderBook() {
@@ -883,6 +1109,7 @@
     async renderMine() {
       var root = document.getElementById('ooRoot');
       if (!this._mineAt) { root.innerHTML = '<div class="oo-kv" style="text-align:center;padding:16px">…</div>'; await this.loadMine(); }
+      if (!this._rvAt || (Date.now() - this._rvAt) > 60000) { await this.loadMyReviews(); this._rvAt = Date.now(); }
       else if ((Date.now() - this._mineAt) > 60000) { var self = this; this.loadMine().then(function () { if (self.isOpen() && self.view === 'mine') { self.paintCube(); self.paintShell(); self.render(); } }); }
       var h = '<div class="oo-card">';
       if (!this.bookings.length) h += '<div class="oo-kv" style="text-align:center;padding:16px">' + esc(T('oo.nobookings', 'No bookings yet.')) + '</div>';
@@ -912,6 +1139,7 @@
       if (open && !(side === 'partner' && b.status === 'requested')) h += '<button type="button" class="oo-btn warn" onclick="OneOnOne.cancel(\'' + b.id + '\', \'' + side + '\')">' + esc(T('oo.cancel', 'Cancel')) + '</button>';
       if (side === 'partner' && b.status === 'accepted') h += '<button type="button" class="oo-btn" onclick="OneOnOne.mark(\'' + b.id + '\', \'' + (b.payment_status === 'paid' ? 'unpaid' : 'paid') + '\', null)">' + esc(T(b.payment_status === 'paid' ? 'oo.markunpaid' : 'oo.markpaid', 'Mark paid')) + '</button>' + (b.date_to <= today() ? '<button type="button" class="oo-btn" onclick="OneOnOne.mark(\'' + b.id + '\', null, true)">' + esc(T('oo.complete', 'Mark completed')) + '</button>' : '');
       if (b.status === 'accepted' && otherId) h += '<button type="button" class="oo-btn" onclick="OneOnOne.dm(\'' + esc(otherId) + '\')">' + esc(T('oo.message', 'Message')) + '</button>';
+      if (side === 'member' && (b.status === 'completed' || (b.status === 'accepted' && b.date_to < today()))) h += '<button type="button" class="oo-btn" style="color:#b45309;border-color:#fcd34d" onclick="OneOnOne.rateSheet(\'' + b.id + '\')">' + (b._review ? '★ ' + esc(b._review.rating) + ' · ' + esc(T('oo.rv.edit', 'Edit rating')) : '★ ' + esc(T('oo.rv.rate', 'Rate'))) + '</button>';
       if (otherId && b.status !== 'requested') h += '<button type="button" class="oo-btn" style="color:#64748b" onclick="OneOnOne.report(\'' + b.id + '\', \'' + esc(otherId) + '\')">' + esc(T('oo.report', 'Report')) + '</button>';
       return h + '</div></div></div>';
     },
@@ -991,8 +1219,12 @@
       catch (e) { toast(errMsg(e), 'error'); if (btn) btn.disabled = false; }
     },
     cadRenderProfile(banner) {
-      var root = document.getElementById('ooRoot'); var p = this.cad.partner;
-      root.innerHTML = banner + '<div class="oo-card" style="max-width:720px"><h4>' + esc(T('oo.seg.profile', 'Profile')) + '</h4>' + this.profileFormHtml(p) + '<div style="display:flex;justify-content:flex-end;margin-top:10px"><button type="button" class="oo-btn pri" onclick="OneOnOne.saveProfile()">' + esc(T('oo.save', 'Save')) + '</button></div></div>';
+      var root = document.getElementById('ooRoot'); var p = this.cad.partner; var self = this;
+      var rv = (this.cad.reviews || []).filter(function (r) { return r.status === 'visible'; }); var avg = rv.length ? (rv.reduce(function (a, r) { return a + r.rating; }, 0) / rv.length).toFixed(1) : null;
+      var stats = '<div class="oo-kpi" style="margin-bottom:10px"><div class="oo-card" style="text-align:center"><div class="oo-kv">' + esc(T('oo.rv.reviews', 'Reviews')) + '</div><div style="font-size:22px;font-weight:800;color:#b45309">' + (avg ? '★ ' + avg : '—') + '</div><div class="oo-kv">' + esc(TT('oo.rv.n', { n: rv.length })) + '</div></div>' +
+        '<div class="oo-card" style="text-align:center"><div class="oo-kv">' + esc(T('oo.dk.saved', 'Saved')) + '</div><div style="font-size:22px;font-weight:800;color:#dc2626">♥ ' + esc(this.cad.savedBy != null ? this.cad.savedBy : '—') + '</div><div class="oo-kv">' + esc(TT('oo.cube.savedby', { n: this.cad.savedBy || 0 })) + '</div></div></div>';
+      var reviews = rv.length ? '<div class="oo-card" style="margin-top:10px;max-width:720px"><h4>' + esc(T('oo.rv.reviews', 'Reviews')) + '</h4>' + rv.map(function (r) { return '<div style="padding:8px 0;border-top:1px solid #f1f5f9"><div>' + self.starsHtml(r.rating) + ' <span class="oo-kv">' + esc(T('oo.rv.member', 'Member')) + ' · ' + esc(self.fmtDate(r.created_at)) + '</span></div>' + (r.comment ? '<div style="font-size:13px;color:#334155;white-space:pre-wrap">' + esc(r.comment) + '</div>' : '') + '</div>'; }).join('') + '</div>' : '';
+      root.innerHTML = banner + stats + '<div class="oo-card" style="max-width:720px"><h4>' + esc(T('oo.seg.profile', 'Profile')) + '</h4>' + this.profileFormHtml(p) + '<div style="display:flex;justify-content:flex-end;margin-top:10px"><button type="button" class="oo-btn pri" onclick="OneOnOne.saveProfile()">' + esc(T('oo.save', 'Save')) + '</button></div></div>' + reviews;
       this.fillCourses();
     },
     async cadRenderPhotos(banner) {

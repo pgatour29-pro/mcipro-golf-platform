@@ -12,6 +12,8 @@
    band 88->72px; cubes are exactly their row (1.0's min-height:150px spilled into row 2 on 768px-tall
    screens); the home no longer locks to the viewport - it flows and the page scrolls; every card
    (This week / Live now / Handicap / Messages) has an expand toggle (persisted in localStorage g3xp).
+   v1088 (Pete): every score in the Handicap card (sparkline bar + expanded row) opens Round History with that
+   round's detail modal (G3Desk.openRound -> showGolferTab('rounds') + GolfScoreSystem.viewRoundDetails).
    ========================================================================== */
 (function () {
   'use strict';
@@ -144,7 +146,7 @@
   "#g3Hcp.xp .g3-hcpl{display:block}\n" +
   ".g3-xp{flex:none;width:28px;height:28px;border-radius:8px;border:1px solid #DDE5DE;background:#fff;color:#425148;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;margin-left:2px;font-family:inherit}\n" +
   ".g3-xp .material-symbols-outlined{font-size:18px}\n.g3-xp:hover{background:#F3F6F3;color:#17221C}\n.g3-card.xp .g3-xp{background:#E7F7EC;color:#15803d;border-color:#BFE3C9}\n" +
-  ".g3-hcpl{margin-top:10px;border-top:1px solid #DDE5DE;padding-top:6px}\n.g3-hcpl .g3-tbl td,.g3-hcpl .g3-tbl th{padding:5px 6px;font-size:12.5px}\n.g3-hcpl .g3-tbl th{position:static}\n.g3-hcpl .g3-tbl tr{cursor:default}\n.g3-hcpl .g3-tbl td.nm{font-family:'Instrument Sans',sans-serif;font-size:12.5px;font-weight:600;max-width:150px;overflow:hidden;text-overflow:ellipsis}\n" +
+  ".g3-hcpl{margin-top:10px;border-top:1px solid #DDE5DE;padding-top:6px}\n.g3-hcpl .g3-tbl td,.g3-hcpl .g3-tbl th{padding:5px 6px;font-size:12.5px}\n.g3-hcpl .g3-tbl th{position:static}\n.g3-hcpl .g3-tbl tr{cursor:pointer}\n.g3-hcpl .g3-tbl td.nm{font-family:'Instrument Sans',sans-serif;font-size:12.5px;font-weight:600;max-width:150px;overflow:hidden;text-overflow:ellipsis}\n" +
   ".g3-pill{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap;background:#E9EFEA;color:#425148}\n" +
   ".g3-pill.turf{background:#E7F7EC;color:#15803d}.g3-pill.solid{background:#15803d;color:#fff}.g3-pill.signal{background:#FBE9E5;color:#8F2E20}.g3-pill.sky{background:#E7EEFB;color:#1A53AD}.g3-pill.brass{background:#FBF3E1;color:#8A5F0E}\n" +
   ".g3-pill.live{background:#B3402F;color:#fff}.g3-pill.live:before{content:'';width:7px;height:7px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.35)}\n" +
@@ -164,7 +166,7 @@
   ".g3-row .tx .s{font-size:12.5px;color:#425148;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n" +
   ".g3-row .rt{flex:none;text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px}\n" +
   ".g3-row .rt .v{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-weight:600;font-size:14px}.g3-row .rt .k{font-size:11px;color:#6B7A70;font-weight:600}\n" +
-  ".g3-spark{display:flex;align-items:flex-end;gap:3px;height:34px}.g3-spark i{flex:1;background:#22c55e;border-radius:2px 2px 0 0;opacity:.85;min-height:3px}.g3-spark i.lo{opacity:.35}\n" +
+  ".g3-spark{display:flex;align-items:flex-end;gap:3px;height:34px}.g3-spark i{flex:1;background:#22c55e;border-radius:2px 2px 0 0;opacity:.85;min-height:3px;cursor:pointer}.g3-spark i.lo{opacity:.35}.g3-spark i:hover{opacity:1;background:#15803d}\n" +
   ".g3-kv{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:13.5px;margin-top:10px}.g3-kv dt{color:#6B7A70;font-weight:600}.g3-kv dd{font-weight:600;margin:0;font-family:'JetBrains Mono',ui-monospace,Menlo,monospace}\n" +
   ".g3-empty{padding:18px 14px;text-align:center;color:#425148;font-size:13.5px}\n" +
   "#golferDashboard.g3 .g3-hcpv.user-handicap{display:inline-flex;align-items:center;height:24px;margin:0;padding:0 4px 0 10px;border-radius:999px;border:0;font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-weight:800;font-size:13px;line-height:1;color:#15803d;background:#E7F7EC;box-shadow:inset 0 0 0 1px rgba(21,128,61,.3);white-space:nowrap;flex:none}\n" +
@@ -293,6 +295,14 @@
       var b = card.querySelector('.g3-xp');
       if (b) { var lbl = on ? T('g3.collapse', 'Collapse') : T('g3.expand', 'Expand'); b.title = lbl; b.setAttribute('aria-label', lbl); b.setAttribute('aria-expanded', on ? 'true' : 'false'); var ic = b.querySelector('.material-symbols-outlined'); if (ic) ic.textContent = on ? 'expand_less' : 'expand_more'; }
       try { var m = JSON.parse(localStorage.getItem('g3xp') || '{}') || {}; if (on) m[id] = 1; else delete m[id]; localStorage.setItem('g3xp', JSON.stringify(m)); } catch (e) {}
+    },
+
+    /* v1088: a score in the Handicap card opens Round History + that round's detail modal (the same path the tab's rows use) */
+    openRound: function (id, ev) {
+      try { if (ev) ev.stopPropagation(); } catch (e) {}
+      if (!id) return;
+      try { showGolferTab('rounds', ev); } catch (e) { console.warn('[G3Desk] openRound tab', e); }
+      setTimeout(function () { try { if (window.GolfScoreSystem && GolfScoreSystem.viewRoundDetails) GolfScoreSystem.viewRoundDetails(id); } catch (e) { console.warn('[G3Desk] openRound', e); } }, 150);
     },
 
     go: function (tab, act, ev) {
@@ -471,7 +481,7 @@
     loadHcp: async function () {
       var body = document.getElementById('g3HcpBody'), me = uid(), db = sb(); if (!body || !me || !db) return;
       try {
-        var r = await db.from('rounds').select('total_gross, total_stableford, played_at, created_at, course_name').eq('golfer_id', me).order('created_at', { ascending: false }).limit(500);
+        var r = await db.from('rounds').select('id, total_gross, total_stableford, played_at, created_at, course_name').eq('golfer_id', me).order('created_at', { ascending: false }).limit(500);
         var rows = (r.data || []).filter(function (x) { return x.total_gross && x.total_gross > 0; });
         if (!rows.length) { body.innerHTML = '<div class="g3-empty">' + esc(T('g3.norounds', 'No rounds posted yet')) + '</div>'; return; }
         var last = rows.slice(0, 12).reverse();
@@ -479,13 +489,13 @@
         var mx = Math.max.apply(null, pts.concat([1])), mn = Math.min.apply(null, pts);
         var best = Math.min.apply(null, rows.map(function (x) { return x.total_gross; }));
         var top8 = pts.slice().sort(function (a, b) { return b - a; }).slice(0, 8);
-        var bars = last.map(function (x, i) { var p = pts[i], h = Math.max(8, Math.round(100 * (p - (mn > 4 ? mn - 4 : 0)) / Math.max(1, mx - (mn > 4 ? mn - 4 : 0)))); var hi = top8.indexOf(p) >= 0; if (hi) top8.splice(top8.indexOf(p), 1); return '<i class="' + (hi ? '' : 'lo') + '" style="height:' + h + '%" title="' + esc((x.played_at || x.created_at || '').slice(0, 10)) + ' · ' + p + ' pts · ' + x.total_gross + '"></i>'; }).join('');
+        var bars = last.map(function (x, i) { var p = pts[i], h = Math.max(8, Math.round(100 * (p - (mn > 4 ? mn - 4 : 0)) / Math.max(1, mx - (mn > 4 ? mn - 4 : 0)))); var hi = top8.indexOf(p) >= 0; if (hi) top8.splice(top8.indexOf(p), 1); return '<i class="' + (hi ? '' : 'lo') + '" style="height:' + h + '%" title="' + esc((x.played_at || x.created_at || '').slice(0, 10)) + ' · ' + p + ' pts · ' + x.total_gross + '" onclick="G3Desk.openRound(\'' + esc(x.id) + '\', event)"></i>'; }).join('');
         var avg = pts.length ? Math.round(pts.reduce(function (a, b) { return a + b; }, 0) / pts.length) : 0;
         body.innerHTML = '<div class="g3-spark">' + bars + '</div><div style="display:flex;justify-content:space-between;font-size:13px;margin-top:8px;color:#425148"><span>' + esc(T('g3.last', 'Last')) + ' ' + last.length + ' · ' + esc(T('g3.best', 'best')) + ' ' + best + '</span><span style="color:#15803d;font-weight:700">' + avg + ' ' + esc(T('g3.pts', 'pts')) + ' avg</span></div>' +
           '<dl class="g3-kv"><dt>' + esc(T('g3.rounds', 'rounds')) + '</dt><dd>' + (r.data || []).length + '</dd><dt>' + esc(T('g3.best', 'best')) + '</dt><dd>' + best + '</dd></dl>' +
           /* expanded: the same last-12 rounds the sparkline draws, newest first */
           '<div class="g3-hcpl"><table class="g3-tbl"><thead><tr><th>' + esc(T('g3.date', 'Date')) + '</th><th>' + esc(T('g3.course', 'Course')) + '</th><th class="mono">' + esc(T('g3.gross', 'Gross')) + '</th><th class="mono">' + esc(T('g3.pts', 'pts')) + '</th></tr></thead><tbody>' +
-          last.slice().reverse().map(function (x) { var d = ''; try { d = new Date(String(x.played_at || x.created_at || '').slice(0, 10) + 'T00:00:00').toLocaleDateString(loc(), { day: 'numeric', month: 'short' }); } catch (e) { d = String(x.played_at || x.created_at || '').slice(0, 10); } return '<tr><td style="font-weight:700">' + esc(d) + '</td><td class="nm">' + esc(x.course_name || '') + '</td><td class="mono">' + esc(x.total_gross) + '</td><td class="mono">' + (parseInt(x.total_stableford) || 0) + '</td></tr>'; }).join('') +
+          last.slice().reverse().map(function (x) { var d = ''; try { d = new Date(String(x.played_at || x.created_at || '').slice(0, 10) + 'T00:00:00').toLocaleDateString(loc(), { day: 'numeric', month: 'short' }); } catch (e) { d = String(x.played_at || x.created_at || '').slice(0, 10); } return '<tr onclick="G3Desk.openRound(\'' + esc(x.id) + '\', event)" title="' + esc(T('g3.roundhistory', 'Round history')) + '"><td style="font-weight:700">' + esc(d) + '</td><td class="nm">' + esc(x.course_name || '') + '</td><td class="mono">' + esc(x.total_gross) + '</td><td class="mono">' + (parseInt(x.total_stableford) || 0) + '</td></tr>'; }).join('') +
           '</tbody></table></div>';
       } catch (err) { console.warn('[G3Desk] hcp', err); body.innerHTML = ''; }
     },

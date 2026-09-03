@@ -284,19 +284,27 @@
     en: { 'oo.adm.overview': 'Overview', 'oo.adm.asmember': 'Browse as member', 'oo.adm.needs': 'Needs you', 'oo.adm.allclear': 'All clear', 'oo.adm.active': 'Active', 'oo.adm.pending': 'Pending',
       'oo.adm.approved': 'Approved', 'oo.adm.suspended': 'Suspended', 'oo.adm.expired': 'Expired', 'oo.adm.all': 'All', 'oo.adm.open': 'Open', 'oo.adm.reviewed': 'Reviewed', 'oo.adm.actioned': 'Actioned', 'oo.adm.dismissed': 'Dismissed', 'oo.adm.closed': 'Closed',
       'oo.adm.search': 'Search name or id', 'oo.adm.new': 'New', 'oo.adm.share': 'Share', 'oo.adm.since': 'Since', 'oo.adm.view': 'View', 'oo.adm.suspendmember': 'Suspend member', 'oo.adm.suspendpartner': 'Suspend partner',
-      'oo.adm.codes': '{n} open codes', 'oo.adm.newphotos': '{n} new photos', 'oo.adm.approvedn': '{n} approved', 'oo.adm.activen': '{n} active', 'oo.adm.openn': '{n} open', 'oo.adm.upcomingn': '{n} upcoming', 'oo.back': 'Back' },
+      'oo.adm.codes': '{n} open codes', 'oo.adm.newphotos': '{n} new photos', 'oo.adm.approvedn': '{n} approved', 'oo.adm.activen': '{n} active', 'oo.adm.openn': '{n} open', 'oo.adm.upcomingn': '{n} upcoming', 'oo.back': 'Back',
+      'oo.adm.removed': 'Removed', 'oo.adm.deactivate': 'Deactivate', 'oo.adm.restore': 'Restore', 'oo.adm.deactivated': 'Member deactivated',
+      'oo.adm.deactivate.q': 'Deactivate {name}? Their 1on1 cube disappears on their next reload or login. Open bookings are cancelled.' },
     th: { 'oo.adm.overview': 'ภาพรวม', 'oo.adm.asmember': 'ดูแบบสมาชิก', 'oo.adm.needs': 'รอดำเนินการ', 'oo.adm.allclear': 'ไม่มีค้าง', 'oo.adm.active': 'ใช้งาน', 'oo.adm.pending': 'รออนุมัติ',
       'oo.adm.approved': 'อนุมัติแล้ว', 'oo.adm.suspended': 'ถูกระงับ', 'oo.adm.expired': 'หมดอายุ', 'oo.adm.all': 'ทั้งหมด', 'oo.adm.open': 'เปิด', 'oo.adm.reviewed': 'ตรวจแล้ว', 'oo.adm.actioned': 'ดำเนินการแล้ว', 'oo.adm.dismissed': 'ยกคำร้อง', 'oo.adm.closed': 'ปิดแล้ว',
       'oo.adm.search': 'ค้นหาชื่อหรือไอดี', 'oo.adm.new': 'ใหม่', 'oo.adm.share': 'แชร์', 'oo.adm.since': 'ตั้งแต่', 'oo.adm.view': 'ดู', 'oo.adm.suspendmember': 'ระงับสมาชิก', 'oo.adm.suspendpartner': 'ระงับคู่เล่น',
-      'oo.adm.codes': 'รหัสใช้ได้ {n}', 'oo.adm.newphotos': 'รูปใหม่ {n}', 'oo.adm.approvedn': 'อนุมัติแล้ว {n}', 'oo.adm.activen': 'ใช้งาน {n}', 'oo.adm.openn': 'เปิด {n}', 'oo.adm.upcomingn': 'กำลังมา {n}', 'oo.back': 'กลับ' },
+      'oo.adm.codes': 'รหัสใช้ได้ {n}', 'oo.adm.newphotos': 'รูปใหม่ {n}', 'oo.adm.approvedn': 'อนุมัติแล้ว {n}', 'oo.adm.activen': 'ใช้งาน {n}', 'oo.adm.openn': 'เปิด {n}', 'oo.adm.upcomingn': 'กำลังมา {n}', 'oo.back': 'กลับ',
+      'oo.adm.removed': 'ถูกลบ', 'oo.adm.deactivate': 'ยกเลิกสมาชิก', 'oo.adm.restore': 'คืนสิทธิ์', 'oo.adm.deactivated': 'ยกเลิกสมาชิกแล้ว',
+      'oo.adm.deactivate.q': 'ยกเลิกสมาชิก {name}? คิวบ์ 1on1 จะหายไปเมื่อเขาโหลดหน้าใหม่หรือเข้าสู่ระบบครั้งถัดไป การจองที่ค้างอยู่จะถูกยกเลิก' },
     ko: { 'oo.adm.overview': '개요', 'oo.adm.asmember': '회원으로 보기', 'oo.adm.needs': '처리 필요', 'oo.adm.allclear': '모두 처리됨', 'oo.adm.active': '활성', 'oo.adm.pending': '대기',
       'oo.adm.approved': '승인됨', 'oo.adm.suspended': '정지됨', 'oo.adm.expired': '만료', 'oo.adm.all': '전체', 'oo.adm.open': '미처리', 'oo.adm.reviewed': '검토됨', 'oo.adm.actioned': '조치됨', 'oo.adm.dismissed': '기각', 'oo.adm.closed': '종료',
       'oo.adm.search': '이름 또는 ID 검색', 'oo.adm.new': '신규', 'oo.adm.share': '공유', 'oo.adm.since': '가입', 'oo.adm.view': '보기', 'oo.adm.suspendmember': '회원 정지', 'oo.adm.suspendpartner': '파트너 정지',
-      'oo.adm.codes': '사용 가능 코드 {n}개', 'oo.adm.newphotos': '새 사진 {n}장', 'oo.adm.approvedn': '승인 {n}명', 'oo.adm.activen': '활성 {n}명', 'oo.adm.openn': '미처리 {n}건', 'oo.adm.upcomingn': '예정 {n}건', 'oo.back': '뒤로' },
+      'oo.adm.codes': '사용 가능 코드 {n}개', 'oo.adm.newphotos': '새 사진 {n}장', 'oo.adm.approvedn': '승인 {n}명', 'oo.adm.activen': '활성 {n}명', 'oo.adm.openn': '미처리 {n}건', 'oo.adm.upcomingn': '예정 {n}건', 'oo.back': '뒤로',
+      'oo.adm.removed': '삭제됨', 'oo.adm.deactivate': '비활성화', 'oo.adm.restore': '복원', 'oo.adm.deactivated': '회원이 비활성화되었습니다',
+      'oo.adm.deactivate.q': '{name} 회원을 비활성화할까요? 다음 새로고침 또는 로그인 시 1on1 큐브가 사라집니다. 진행 중인 예약은 취소됩니다.' },
     ja: { 'oo.adm.overview': '概要', 'oo.adm.asmember': '会員として見る', 'oo.adm.needs': '対応が必要', 'oo.adm.allclear': '対応待ちなし', 'oo.adm.active': '有効', 'oo.adm.pending': '保留',
       'oo.adm.approved': '承認済', 'oo.adm.suspended': '停止中', 'oo.adm.expired': '期限切れ', 'oo.adm.all': 'すべて', 'oo.adm.open': '未処理', 'oo.adm.reviewed': '確認済', 'oo.adm.actioned': '対応済', 'oo.adm.dismissed': '却下', 'oo.adm.closed': '終了',
       'oo.adm.search': '名前またはIDで検索', 'oo.adm.new': '新規', 'oo.adm.share': '共有', 'oo.adm.since': '登録', 'oo.adm.view': '表示', 'oo.adm.suspendmember': '会員を停止', 'oo.adm.suspendpartner': '同伴者を停止',
-      'oo.adm.codes': '有効コード{n}件', 'oo.adm.newphotos': '新しい写真{n}枚', 'oo.adm.approvedn': '承認済{n}名', 'oo.adm.activen': '有効{n}名', 'oo.adm.openn': '未処理{n}件', 'oo.adm.upcomingn': '予定{n}件', 'oo.back': '戻る' }
+      'oo.adm.codes': '有効コード{n}件', 'oo.adm.newphotos': '新しい写真{n}枚', 'oo.adm.approvedn': '承認済{n}名', 'oo.adm.activen': '有効{n}名', 'oo.adm.openn': '未処理{n}件', 'oo.adm.upcomingn': '予定{n}件', 'oo.back': '戻る',
+      'oo.adm.removed': '削除済', 'oo.adm.deactivate': '無効化', 'oo.adm.restore': '復元', 'oo.adm.deactivated': '会員を無効化しました',
+      'oo.adm.deactivate.q': '{name}を無効化しますか？次回の再読み込みまたはログイン時に1on1キューブが消えます。進行中の予約はキャンセルされます。' }
   };
   Object.keys(DICT3).forEach(function (l) { Object.assign(DICT[l], DICT3[l]); });
   try { if (typeof translations !== 'undefined') Object.keys(DICT3).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT3[l]); }); } catch (e) {}
@@ -356,7 +364,7 @@
     '.oo-tb{position:absolute;top:-2px;right:-2px;background:#ef4444;color:#fff;font-size:10px;font-weight:800;min-width:16px;height:16px;border-radius:99px;align-items:center;justify-content:center;padding:0 4px}' +
     '@media(max-width:767px){#ooDashboard .oo-hdr .ib-desk{display:none}#ooDashboard main{padding-bottom:96px}body:has(#ooDashboard.active) #dashboardBackBtn,body:has(#ooDashboard.active) #globalScrollToTopBtn{bottom:88px !important}}' +
     '.oo-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px;color:#0f172a}.oo-card h4{font-weight:800;font-size:14px;margin:0 0 8px}' +
-    '.oo-seg{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}.oo-seg button{flex:0 0 auto;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700;white-space:nowrap}' +
+    '.oo-seg{display:flex;flex-wrap:wrap;gap:6px;padding-bottom:2px}.oo-seg button{flex:0 0 auto;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700;white-space:nowrap}' +
     '.oo-seg button.on{background:#16a34a;border-color:#16a34a;color:#fff}' +
     '.oo-in{width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:8px 10px;font-size:14px;color:#0f172a;background:#fff;min-height:40px}' +
     '.oo-btn{border-radius:10px;padding:8px 12px;font-size:13px;font-weight:700;border:1px solid #cbd5e1;background:#fff;color:#334155;white-space:nowrap}.oo-btn.pri{background:#16a34a;border-color:#16a34a;color:#fff}.oo-btn.warn{background:#fff;border-color:#fca5a5;color:#b91c1c}' +
@@ -447,7 +455,7 @@
       var me = await this.refreshMe(true);
       if (seq !== this._initSeq) return;
       var dash = document.getElementById('golferDashboard');
-      var on = !!(me && me.signed_in && (me.member || me.admin));
+      var on = !!(me && me.signed_in && ((me.member && me.member.status !== 'removed') || me.admin));   /* v1099: removed = no member */
       if (!on && !(me && me.signed_in)) {
         /* no JWT (yet): still show the cube to admins/members so they can log out + in; the gate explains */
         try { var vis = await rpc('oo_cube_visible', { p_uid: uid() }); if (vis === true) { on = true; this._needsRelogin = true; } } catch (e) {}
@@ -712,7 +720,7 @@
       var me = this.me || {};
       if (!me.signed_in) return '<div class="oo-card" style="border-color:#fcd34d;background:#fffbeb">' + esc(T('oo.signin.msg', DICT.en['oo.signin.msg'])) + '</div>';
       if (me.admin && !me.member) return '';
-      var m = me.member; if (!m) return '<div class="oo-card">' + esc(T('oo.err.not_a_member', DICT.en['oo.err.not_a_member'])) + '</div>';
+      var m = me.member; if (!m || m.status === 'removed') return '<div class="oo-card">' + esc(T('oo.err.not_a_member', DICT.en['oo.err.not_a_member'])) + '</div>';
       if (m.status === 'active' && this.needsPin()) return this.pinHtml();
       if (m.status === 'pending') return '<div class="oo-card" style="border-color:#fcd34d;background:#fffbeb">' + esc(T('oo.pending.msg', DICT.en['oo.pending.msg'])) + '</div>';
       if (m.status === 'suspended') return '<div class="oo-card" style="border-color:#fca5a5;background:#fef2f2">' + esc(T('oo.suspended.msg', DICT.en['oo.suspended.msg'])) + '</div>';
@@ -1344,7 +1352,7 @@
     },
     async admRefresh() { await this.admLoad(); this.paintShell(); this.render(); },
     admChip(status) {
-      var cls = { pending: 'bg-amber-50 text-amber-800', active: 'bg-green-50 text-green-700', approved: 'bg-green-50 text-green-700', suspended: 'bg-red-50 text-red-700', expired: 'bg-gray-100 text-gray-700',
+      var cls = { pending: 'bg-amber-50 text-amber-800', active: 'bg-green-50 text-green-700', approved: 'bg-green-50 text-green-700', suspended: 'bg-red-50 text-red-700', expired: 'bg-gray-100 text-gray-700', removed: 'bg-slate-700 text-white',
         open: 'bg-amber-50 text-amber-800', reviewed: 'bg-sky-50 text-sky-700', actioned: 'bg-green-50 text-green-700', dismissed: 'bg-gray-100 text-gray-700' }[status] || 'bg-gray-100 text-gray-700';
       return '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full ' + cls + '">' + esc(T('oo.adm.' + status, status)) + '</span>';
     },
@@ -1401,9 +1409,14 @@
 
     /* --- members --- */
     admMemberRow(m) {
-      var act = m.status === 'active'
-        ? '<button type="button" class="oo-btn warn" onclick="OneOnOne.admMember(\'' + esc(m.user_id) + '\', \'suspended\')">' + esc(T('oo.adm.suspend', 'Suspend')) + '</button>'
-        : '<button type="button" class="oo-btn pri" onclick="OneOnOne.admMember(\'' + esc(m.user_id) + '\', \'active\')">' + esc(T(m.status === 'pending' ? 'oo.adm.approve' : 'oo.adm.reactivate', 'Approve')) + '</button>';
+      /* v1099: Deactivate = remove (status 'removed') — cube gone on the member's next reload/login; Restore re-grants */
+      var id = esc(m.user_id);
+      var act = m.status === 'removed'
+        ? '<button type="button" class="oo-btn pri" onclick="OneOnOne.admMember(\'' + id + '\', \'active\')">' + esc(T('oo.adm.restore', 'Restore')) + '</button>'
+        : (m.status === 'active'
+          ? '<button type="button" class="oo-btn warn" onclick="OneOnOne.admMember(\'' + id + '\', \'suspended\')">' + esc(T('oo.adm.suspend', 'Suspend')) + '</button>'
+          : '<button type="button" class="oo-btn pri" onclick="OneOnOne.admMember(\'' + id + '\', \'active\')">' + esc(T(m.status === 'pending' ? 'oo.adm.approve' : 'oo.adm.reactivate', 'Approve')) + '</button>') +
+          '<button type="button" class="oo-btn" style="color:#b91c1c;border-color:#fca5a5" onclick="OneOnOne.admDeactivate(\'' + id + '\')">' + esc(T('oo.adm.deactivate', 'Deactivate')) + '</button>';
       return '<div class="oo-row"><div class="av">' + esc(initials(m.display_name || m.user_id)) + '</div><div style="flex:1;min-width:0">' +
         '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div style="font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(m.display_name || m.user_id) + '</div>' + this.admChip(m.status) + '</div>' +
         '<div class="oo-kv" style="overflow-wrap:anywhere">' + esc(m.user_id) + ' · ' + esc(T('oo.adm.since', 'Since')) + ' ' + esc(this.fmtDate(m.created_at)) + (m.expires_at ? ' · ' + esc(T('oo.adm.expires', 'Expires')) + ' ' + esc(m.expires_at) : '') + (m.invite_code ? ' · ' + esc(m.invite_code) : '') + '</div>' +
@@ -1411,12 +1424,12 @@
     },
     admMembersListHtml() {
       var a = this.adm; var f = a.f.members; var q = a.f.q;
-      var rows = a.members.filter(function (m) { return f === 'all' || m.status === f; }).filter(function (m) { return !q || String(m.display_name || '').toLowerCase().indexOf(q) >= 0 || String(m.user_id).toLowerCase().indexOf(q) >= 0; });
+      var rows = a.members.filter(function (m) { return f === 'all' ? m.status !== 'removed' : m.status === f; }).filter(function (m) { return !q || String(m.display_name || '').toLowerCase().indexOf(q) >= 0 || String(m.user_id).toLowerCase().indexOf(q) >= 0; });
       return rows.length ? rows.map(this.admMemberRow, this).join('') : this.admNone();
     },
     admRenderMembers() {
       var root = document.getElementById('ooRoot'); var a = this.adm; var s = a.stats || this.admStats();
-      root.innerHTML = this.admAccessHtml() + this.admFilters('members', [['pending', T('oo.adm.pending', 'Pending'), s.members_pending], ['active', T('oo.adm.active', 'Active'), s.members_active], ['suspended', T('oo.suspended', 'Suspended')], ['all', T('oo.adm.all', 'All')]]) +
+      root.innerHTML = this.admAccessHtml() + this.admFilters('members', [['pending', T('oo.adm.pending', 'Pending'), s.members_pending], ['active', T('oo.adm.active', 'Active'), s.members_active], ['suspended', T('oo.suspended', 'Suspended')], ['removed', T('oo.adm.removed', 'Removed')], ['all', T('oo.adm.all', 'All')]]) +
         this.admSearchBox() + '<div class="oo-card" id="ooAdmList">' + this.admMembersListHtml() + '</div>';
       this.admPinInfo();
     },
@@ -1452,7 +1465,7 @@
         box.innerHTML = rows.length ? rows.map(function (u) {
           var m = self.adm.members.find(function (x) { return x.user_id === u.line_user_id; });
           return '<div class="oo-row" style="align-items:center"><div class="av">' + esc(initials(u.display_name || u.name || u.line_user_id)) + '</div><div style="flex:1;min-width:0"><div style="font-weight:800">' + esc(u.display_name || u.name || '') + '</div><div class="oo-kv" style="overflow-wrap:anywhere">' + esc(u.line_user_id) + (u.role ? ' · ' + esc(u.role) : '') + '</div></div>' +
-            (m ? self.admChip(m.status) : '<button type="button" class="oo-btn pri" onclick="OneOnOne.admGrant(\'' + esc(u.line_user_id) + '\')">' + esc(T('oo.adm.grant.btn', 'Grant')) + '</button>') + '</div>';
+            (m && m.status !== 'removed' ? self.admChip(m.status) : '<button type="button" class="oo-btn pri" onclick="OneOnOne.admGrant(\'' + esc(u.line_user_id) + '\')">' + esc(T('oo.adm.grant.btn', 'Grant')) + '</button>') + '</div>';
         }).join('') : '<div class="oo-kv">' + esc(T('oo.adm.grant.none', 'No users found')) + '</div>';
       } catch (e) { box.innerHTML = '<div class="oo-kv">' + esc(errMsg(e)) + '</div>'; }
     },
@@ -1566,6 +1579,14 @@
     },
 
     /* --- actions (all admin-gated RPCs) --- */
+    /* v1099: Deactivate = remove the member (Pete: "so that when they log back in or reload the 1on1 cube is gone").
+       The RPC also cancels the member's open bookings; the reason (optional) is kept in oo_members.notes. */
+    async admDeactivate(user) {
+      var m = (this.adm.members || []).find(function (x) { return x.user_id === user; });
+      var reason = await confirmSheet(TT('oo.adm.deactivate.q', { name: (m && m.display_name) || user }), T('oo.adm.deactivate', 'Deactivate'));
+      if (reason === null) return;
+      try { await rpc('oo_admin_set_member', { p_user: user, p_status: 'removed', p_expires: null, p_notes: reason || null }); toast(T('oo.adm.deactivated', 'Member deactivated'), 'success'); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); }
+    },
     async admMember(user, status) { try { await rpc('oo_admin_set_member', { p_user: user, p_status: status, p_expires: null, p_notes: null }); if (status === 'active') push(user, 'oo.push.member_ok', {}); toast(T('oo.saved', 'Saved'), 'success'); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } },
     async admPartner(id, status, userId) { try { await rpc('oo_admin_set_partner', { p_partner: id, p_status: status, p_active: null }); if (status === 'approved' && userId) push(userId, 'oo.push.partner_ok', {}); toast(T('oo.saved', 'Saved'), 'success'); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } },
     async admMedia(id, status) { try { await rpc('oo_admin_set_media', { p_media: id, p_status: status }); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } },

@@ -201,7 +201,7 @@
     { tab: 'schedule', icon: 'calendar_month', k: 'g3.schedule', fb: 'Schedule' },
     { act: 'teesheet', icon: 'view_list', k: 'g3.teesheet', fb: 'Tee sheet' },
     { tab: 'caddies', icon: 'person_pin_circle', k: 'g3.caddies', fb: 'Caddies' },
-    { tab: 'oo', icon: 'handshake', k: 'oo.title', fb: '1on1', badge: 'ooCubeBadge' }, /* 1on1 (v1089): CSS-hidden unless #golferDashboard.oo-on */
+    { act: 'oo', icon: 'handshake', k: 'oo.title', fb: '1on1', badge: 'ooCubeBadge' }, /* 1on1 (v1089→v1091): opens the 1on1 dashboard screen; CSS-hidden unless #golferDashboard.oo-on */
     { tab: 'messages', icon: 'chat', k: 'g3.messages', fb: 'Messages', badge: 'messagesBadge' },
     { tab: 'marketplace', icon: 'storefront', k: null, fb: '19th Hole', badge: 'marketplaceBadge' },
     { tab: 'food', icon: 'restaurant', k: 'g3.food', fb: 'Food' },
@@ -312,6 +312,7 @@
         if (act === 'live') { window.open('/live.html', '_blank'); return; }
         if (act === 'results') { if (window.SocietyResultsHub) SocietyResultsHub.open(); return; }
         if (act === 'teesheet') { if (window.GolferCubeInfo) GolferCubeInfo.openTeeSheetCube(); return; }
+        if (act === 'oo') { if (window.OneOnOne) OneOnOne.open(); return; } /* 1on1 (v1091): its own screen, not a golfer tab */
         if (tab) showGolferTab(tab, ev);
       } catch (e) { console.warn('[G3Desk] go', e); }
     },

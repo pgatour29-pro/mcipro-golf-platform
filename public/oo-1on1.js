@@ -1,19 +1,24 @@
 /* =====================================================================================
-   1on1 (oo-1on1.js) — JOA enterprise private playing-partner booking. v1089 (2026-09-03).
+   1on1 (oo-1on1.js) — JOA enterprise private playing-partner booking. v1089 → v1091 (2026-09-03).
    Spec: project-memory/2026-09-03 1on1 Spec.md · DB: sql/oo_schema_20260903.sql
 
    Members  = approved Korean golfers (normal golfer profiles). Invite link ?oo=CODE is the ONLY door.
-   Partners = caddies who opt in from their caddie dashboard (1on1 tab). Can decline + cancel.
+   Partners = caddies who opt in from their caddie dashboard. Can decline + cancel.
    Bookings = a DATE RANGE anchored to a course / society event. State changes = SECURITY DEFINER RPCs.
    Everything here rides the Auth v2 session (RLS keyed on the line_id claim) — anon sees nothing.
 
-   Surfaces: golfer cube (#ooCube / .ooCube) + tab #golfer-oo (#ooRoot)  ·  caddie tab #caddie-1on1
-   (#ooCadRoot) + cube badge #cadCube1on1Badge  ·  admin segment inside the golfer tab (oo_admins).
+   v1091 STRUCTURE (Pete: "the dashboard needs to be structured differently"): 1on1 is its OWN
+   dashboard screen `#ooDashboard` — the same MHV shell as the caddie dashboard (green app bar,
+   phone cube home + bottom dock + More sheet, desktop tab strip). ONE screen, TWO personas:
+   OneOnOne.enter('member') from the golfer cube / desktop rail, OneOnOne.enter('partner') from
+   the caddie cube / tab / drawer. The golfer + caddie dashboards keep ONLY those entry points.
+   Views — member: browse → partner → book · mine · calendar · admin(oo_admins) · messages(exits)
+           partner: requests · calendar · profile · photos · earnings · messages(exits)
+   Back (FAB / hardware / header ◀) = OneOnOne.handleBack(): ask sheet → More sheet → internal
+   view stack → phone cube home → exit to the dashboard that opened it.
    ===================================================================================== */
 (function () {
   'use strict';
-
-  /* ---------- i18n (EN/TH/KO/JA at parity; merged into the app dicts at load) ---------- */
   var DICT = {
     en: {
       'oo.title': '1on1', 'oo.cube.desc': 'Private playing partners', 'oo.cube.pending': 'Pending approval',
@@ -234,20 +239,57 @@
   }
   function confirmSheet(title, okLabel) { return ask(title, T('oo.reason', 'Reason (optional)'), { ok: okLabel || 'OK', allowEmpty: true }).then(function (v) { return v === null ? null : v; }); }
 
+
+  /* ---------- v1091 shell strings (EN/TH/KO/JA parity) ---------- */
+  var DICT2 = {
+    en: { 'oo.sub': 'JOA · Private playing partners', 'oo.dock.home': 'Home', 'oo.more': 'More', 'oo.exit': 'Back to my dashboard', 'oo.role.admin': 'Admin',
+      'oo.cube.find.chip': 'Pick dates · browse', 'oo.cube.mine.chip': 'Requests & upcoming', 'oo.cube.cal.chip': 'Booked dates', 'oo.cube.cal.none': 'No booked dates', 'oo.cube.cal.n': '{n} days booked',
+      'oo.cube.msgs': 'Messages', 'oo.cube.msgs.member': 'Chat with partners', 'oo.cube.msgs.partner': 'Chat with members', 'oo.cube.admin.chip': 'Approvals & invites', 'oo.cube.admin.n': '{n} to approve',
+      'oo.cube.req.chip': '{n} waiting', 'oo.cube.req.none': 'Nothing waiting', 'oo.seg.photos': 'Photos & posts', 'oo.cube.profile.chip': 'Rate, days, bio', 'oo.cube.earn.chip': 'Accepted × rate',
+      'oo.cube.photos.chip': '{n} photos · {m} posts', 'oo.back.browse': 'Back to results', 'oo.dock.bookings': 'Bookings', 'oo.upcoming.title': 'Upcoming' },
+    th: { 'oo.sub': 'JOA · คู่เล่นส่วนตัว', 'oo.dock.home': 'หน้าหลัก', 'oo.more': 'เพิ่มเติม', 'oo.exit': 'กลับแดชบอร์ดของฉัน', 'oo.role.admin': 'ผู้ดูแล',
+      'oo.cube.find.chip': 'เลือกวัน · ค้นหา', 'oo.cube.mine.chip': 'คำขอและกำลังมา', 'oo.cube.cal.chip': 'วันที่จองแล้ว', 'oo.cube.cal.none': 'ยังไม่มีวันที่จอง', 'oo.cube.cal.n': 'จองแล้ว {n} วัน',
+      'oo.cube.msgs': 'ข้อความ', 'oo.cube.msgs.member': 'แชทกับคู่เล่น', 'oo.cube.msgs.partner': 'แชทกับสมาชิก', 'oo.cube.admin.chip': 'อนุมัติและคำเชิญ', 'oo.cube.admin.n': 'รออนุมัติ {n}',
+      'oo.cube.req.chip': 'รอ {n} รายการ', 'oo.cube.req.none': 'ไม่มีคำขอใหม่', 'oo.seg.photos': 'รูปและโพสต์', 'oo.cube.profile.chip': 'ราคา วัน เกี่ยวกับฉัน', 'oo.cube.earn.chip': 'ตอบรับ × ราคาต่อวัน',
+      'oo.cube.photos.chip': '{n} รูป · {m} โพสต์', 'oo.back.browse': 'กลับไปผลค้นหา', 'oo.dock.bookings': 'การจอง', 'oo.upcoming.title': 'กำลังมาถึง' },
+    ko: { 'oo.sub': 'JOA · 프라이빗 라운딩 파트너', 'oo.dock.home': '홈', 'oo.more': '더보기', 'oo.exit': '내 대시보드로', 'oo.role.admin': '관리자',
+      'oo.cube.find.chip': '날짜 선택 · 찾기', 'oo.cube.mine.chip': '요청 및 예정', 'oo.cube.cal.chip': '예약된 날짜', 'oo.cube.cal.none': '예약된 날짜 없음', 'oo.cube.cal.n': '예약 {n}일',
+      'oo.cube.msgs': '메시지', 'oo.cube.msgs.member': '파트너와 채팅', 'oo.cube.msgs.partner': '회원과 채팅', 'oo.cube.admin.chip': '승인 및 초대', 'oo.cube.admin.n': '승인 대기 {n}건',
+      'oo.cube.req.chip': '대기 {n}건', 'oo.cube.req.none': '새 요청 없음', 'oo.seg.photos': '사진·게시글', 'oo.cube.profile.chip': '요금·요일·소개', 'oo.cube.earn.chip': '수락 × 1일 요금',
+      'oo.cube.photos.chip': '사진 {n}장 · 게시글 {m}개', 'oo.back.browse': '검색 결과로', 'oo.dock.bookings': '예약', 'oo.upcoming.title': '예정' },
+    ja: { 'oo.sub': 'JOA · プライベート同伴者', 'oo.dock.home': 'ホーム', 'oo.more': 'その他', 'oo.exit': 'ダッシュボードへ戻る', 'oo.role.admin': '管理',
+      'oo.cube.find.chip': '日程を選んで検索', 'oo.cube.mine.chip': 'リクエストと予定', 'oo.cube.cal.chip': '予約日', 'oo.cube.cal.none': '予約日なし', 'oo.cube.cal.n': '予約{n}日',
+      'oo.cube.msgs': 'メッセージ', 'oo.cube.msgs.member': '同伴者とチャット', 'oo.cube.msgs.partner': '会員とチャット', 'oo.cube.admin.chip': '承認と招待', 'oo.cube.admin.n': '承認待ち{n}件',
+      'oo.cube.req.chip': '{n}件待ち', 'oo.cube.req.none': '新しいリクエストなし', 'oo.seg.photos': '写真と投稿', 'oo.cube.profile.chip': '料金・曜日・紹介', 'oo.cube.earn.chip': '承諾 × 1日料金',
+      'oo.cube.photos.chip': '写真{n}枚 · 投稿{m}件', 'oo.back.browse': '検索結果へ戻る', 'oo.dock.bookings': '予約', 'oo.upcoming.title': '予定' }
+  };
+  Object.keys(DICT2).forEach(function (l) { Object.assign(DICT[l], DICT2[l]); });
+  try { if (typeof translations !== 'undefined') Object.keys(DICT2).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT2[l]); }); } catch (e) {}
+
   /* ---------- CSS ---------- */
-  var CSS = '#g3Rail .g3-it[data-tab="oo"]{display:none}#golferDashboard.oo-on #g3Rail .g3-it[data-tab="oo"]{display:flex}' +
+  var CSS = '#g3Rail .g3-it[data-act="oo"]{display:none}#golferDashboard.oo-on #g3Rail .g3-it[data-act="oo"]{display:flex}' +
+    /* the 1on1 screen shell (v1091): green app bar on every width, MHV cube home/dock/sheet on phones (generic .mhv* rules in index.html) */
+    '#ooDashboard{background:#f1f5f9;min-height:100vh}' +
+    '#ooDashboard .oo-hdr{background:linear-gradient(180deg,#071a0e,#0c2a16);border-bottom:2px solid #22c55e;color:#fff}' +
+    '#ooDashboard .oo-hdr .ib{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#e7f2ea;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;cursor:pointer}' +
+    '#ooDashboard .oo-hdr .role{font-size:11px;font-weight:800;border-radius:999px;padding:4px 10px;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.35);color:#4ade80;white-space:nowrap}' +
+    '#ooTabs{background:#f8fafb;border-bottom:1px solid rgba(0,0,0,.06)}#ooTabs .tab-button{border-radius:10px;font-size:13px;padding:8px 14px;border-bottom:0}' +
+    '.oo-tb{position:absolute;top:-2px;right:-2px;background:#ef4444;color:#fff;font-size:10px;font-weight:800;min-width:16px;height:16px;border-radius:99px;align-items:center;justify-content:center;padding:0 4px}' +
+    '@media(max-width:767px){#ooDashboard .oo-hdr .ib-desk{display:none}#ooDashboard main{padding-bottom:96px}body:has(#ooDashboard.active) #dashboardBackBtn,body:has(#ooDashboard.active) #globalScrollToTopBtn{bottom:88px !important}}' +
+    '.oo-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px;color:#0f172a}.oo-card h4{font-weight:800;font-size:14px;margin:0 0 8px}' +
     '.oo-seg{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}.oo-seg button{flex:0 0 auto;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700;white-space:nowrap}' +
     '.oo-seg button.on{background:#16a34a;border-color:#16a34a;color:#fff}' +
-    '.oo-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px;color:#0f172a}.oo-card h4{font-weight:800;font-size:14px;margin:0 0 8px}' +
     '.oo-in{width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:8px 10px;font-size:14px;color:#0f172a;background:#fff;min-height:40px}' +
     '.oo-btn{border-radius:10px;padding:8px 12px;font-size:13px;font-weight:700;border:1px solid #cbd5e1;background:#fff;color:#334155;white-space:nowrap}.oo-btn.pri{background:#16a34a;border-color:#16a34a;color:#fff}.oo-btn.warn{background:#fff;border-color:#fca5a5;color:#b91c1c}' +
     '.oo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}@media(min-width:768px){.oo-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(min-width:1280px){.oo-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}' +
     '.oo-pc{background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;text-align:left;color:#0f172a;display:block;width:100%}.oo-pc .ph{aspect-ratio:4/5;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:28px;color:#475569;overflow:hidden}.oo-pc .ph img{width:100%;height:100%;object-fit:cover}' +
     '.oo-pc .bd{padding:8px 10px}.oo-pc .nm{font-weight:800;font-size:14px}.oo-pc .sub{font-size:12px;color:#475569}.oo-chip{display:inline-block;font-size:11px;font-weight:700;background:#f1f5f9;color:#334155;border-radius:999px;padding:2px 8px;margin:2px 2px 0 0}' +
-    '.oo-gal{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.oo-gal .g{position:relative;aspect-ratio:1;background:#e2e8f0;border-radius:10px;overflow:hidden}.oo-gal .g img{width:100%;height:100%;object-fit:cover}.oo-gal .g .cv{position:absolute;left:6px;top:6px;background:#16a34a;color:#fff;font-size:10px;font-weight:800;border-radius:999px;padding:2px 6px}' +
+    '.oo-gal{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}@media(min-width:768px){.oo-gal{grid-template-columns:repeat(4,minmax(0,1fr))}}.oo-gal .g{position:relative;aspect-ratio:1;background:#e2e8f0;border-radius:10px;overflow:hidden}.oo-gal .g img{width:100%;height:100%;object-fit:cover}.oo-gal .g .cv{position:absolute;left:6px;top:6px;background:#16a34a;color:#fff;font-size:10px;font-weight:800;border-radius:999px;padding:2px 6px}' +
     '.oo-cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;font-size:11px}.oo-cal .d{aspect-ratio:1;border-radius:6px;display:flex;align-items:center;justify-content:center;background:#f8fafc;color:#0f172a;border:1px solid #e2e8f0}.oo-cal .d.o{opacity:.35}.oo-cal .d.bk{background:#16a34a;color:#fff;border-color:#16a34a}.oo-cal .d.rq{background:#fde68a;border-color:#fcd34d}.oo-cal .d.off{background:#e2e8f0;color:#64748b}.oo-cal .h{font-weight:800;color:#475569;text-align:center}' +
+    '.oo-months{display:grid;grid-template-columns:1fr;gap:10px}@media(min-width:768px){.oo-months{grid-template-columns:repeat(3,minmax(0,1fr))}}' +
     '.oo-row{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid #f1f5f9}.oo-row:first-child{border-top:0}.oo-row .av{width:44px;height:44px;border-radius:12px;background:#e2e8f0;flex:0 0 44px;display:flex;align-items:center;justify-content:center;font-weight:800;color:#475569;overflow:hidden}.oo-row .av img{width:100%;height:100%;object-fit:cover}' +
     '.oo-kv{font-size:12px;color:#475569}.oo-kv b{color:#0f172a}' +
+    '.oo-two{display:grid;grid-template-columns:1fr;gap:10px}@media(min-width:1024px){.oo-two{grid-template-columns:minmax(0,3fr) minmax(0,2fr);align-items:start}}' +
     '#golferDashboard:not(.oo-on) #ooCube,#golferDashboard:not(.oo-on) .ooCube{display:none !important}';  /* the grids set display:flex with id+class specificity — hide must out-rank it; the on-state simply lets the grid CSS apply */
   try { var st = document.createElement('style'); st.id = 'oo1on1CSS'; st.textContent = CSS; document.head.appendChild(st); } catch (e) {}
 
@@ -256,9 +298,9 @@
      ===================================================================================== */
   var OO = {
     me: null, _meAt: 0,
-    view: 'browse', stack: [], _sub: 'members',
+    side: 'member', view: 'home', stack: [], _sub: 'members',
     partners: [], sel: null, selMedia: [], bookings: [], courses: null, events: null,
-    cad: { profile: null, partner: null, bookings: [], media: [], blackouts: [], view: 'requests' },
+    cad: { profile: null, partner: null, bookings: [], media: [], blackouts: [] },
     _chan: null, _cadChan: null,
 
     /* ---------- identity ---------- */
@@ -287,7 +329,7 @@
       }
     },
 
-    /* ---------- GOLFER side ---------- */
+    /* ---------- GOLFER dashboard hooks (entry cube + realtime); the 1on1 screen itself is further down ---------- */
     async initGolfer() {
       this.captureInvite();
       await this.redeemPending();
@@ -306,9 +348,11 @@
       var up = (this.bookings || []).filter(function (b) { return b.status === 'accepted' && b.date_to >= today(); }).length;
       if (up) txt = TT('oo.cube.upcoming', { n: up });
       try { GolferCubeInfo.setPill('cubeInfo1on1', txt); } catch (e) {}
+      try { DashboardBadges.setBadge('ooCubeBadge', this.unseenResponses()); } catch (e) {}
+    },
+    unseenResponses() {
       var seen = 0; try { seen = parseInt(localStorage.getItem('oo_seen_' + uid()) || '0', 10) || 0; } catch (e) {}
-      var n = (this.bookings || []).filter(function (b) { return b.responded_at && new Date(b.responded_at).getTime() > seen && (b.status === 'accepted' || b.status === 'declined'); }).length;
-      try { DashboardBadges.setBadge('ooCubeBadge', n); } catch (e) {}
+      return (this.bookings || []).filter(function (b) { return b.responded_at && new Date(b.responded_at).getTime() > seen && (b.status === 'accepted' || b.status === 'declined'); }).length;
     },
     subscribeMember() {
       var c = sb(); var me = uid(); if (!c || !me) return;
@@ -316,30 +360,204 @@
       var self = this;
       try {
         this._chan = c.channel('oo_member_' + me)
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'oo_bookings', filter: 'member_id=eq.' + me }, function () { self.loadMine().then(function () { self.paintCube(); if (self.view === 'mine') self.render(); }); })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'oo_bookings', filter: 'member_id=eq.' + me }, function () {
+            self.loadMine().then(function () { self.paintCube(); if (self.isOpen() && self.side === 'member') { self.paintShell(); if (self.view === 'mine' || self.view === 'calendar') self.render(); } });
+          })
           .subscribe();
       } catch (e) { console.warn('[1on1] realtime', e); }
       this.loadMine().then(function () { self.paintCube(); });
     },
-    open() { try { showGolferTab('oo', null); } catch (e) {} },
-    async onTab() {
-      var root = document.getElementById('ooRoot'); if (!root) return;
-      await this.refreshMe();
-      try { localStorage.setItem('oo_seen_' + uid(), String(Date.now())); } catch (e) {}
-      try { DashboardBadges.setBadge('ooCubeBadge', 0); } catch (e) {}
-      if (this.view === 'admin') this.renderAdmin(); else this.render();
-    },
-    canBack() { return this.stack.length > 0; },
-    back() { var v = this.stack.pop(); if (!v) return false; this.view = v; if (v === 'admin') this.renderAdmin(); else this.render(); return true; },
-    go(view, pushHistory) { if (pushHistory !== false && view !== this.view) this.stack.push(this.view); this.view = view; if (view === 'admin') this.renderAdmin(); else this.render(); try { window.scrollTo(0, 0); } catch (e) {} },
+    open() { return this.enter('member'); },
+    onTab() { return this.enter('member'); },          /* legacy hook names (v1089 tab era) */
+    onCaddieTab() { return this.enter('partner'); },
 
-    segHtml() {
-      var me = this.me || {}; var h = '<div class="oo-seg" style="margin-bottom:10px">';
-      var b = function (v, k, fb) { return '<button type="button" class="' + (OO.view === v || (v === 'browse' && (OO.view === 'partner' || OO.view === 'book')) ? 'on' : '') + '" onclick="OneOnOne.go(\'' + v + '\', false)">' + esc(T(k, fb)) + '</button>'; };
-      h += b('browse', 'oo.seg.browse', 'Browse') + b('mine', 'oo.seg.mine', 'My bookings');
-      if (me.admin) h += b('admin', 'oo.seg.admin', 'Admin');
-      return h + '</div>';
+    /* ---------- CADDIE dashboard hooks (entry cube/tab badges + realtime) ---------- */
+    async initCaddie(profile) {
+      this.cad.profile = profile || null;
+      this.captureInvite();
+      await this.redeemPending();
+      await this.refreshMe(true);
+      await this.cadLoad();
+      this.cadBadge();
+      this.subscribePartner();
+      if (this.isOpen() && this.side === 'partner') { this.paintShell(); this.render(); }
     },
+    cadBadge() {
+      var n = (this.cad.bookings || []).filter(function (b) { return b.status === 'requested' && b.date_from >= today(); }).length;
+      ['cadCube1on1Badge', 'cadTab1on1Badge'].forEach(function (id) { var el = document.getElementById(id); if (el) { el.textContent = n; el.style.display = n ? 'inline-flex' : 'none'; } });
+    },
+    subscribePartner() {
+      var c = sb(); var me = this.me; if (!c || !me || !me.partner) return;
+      try { if (this._cadChan) { c.removeChannel(this._cadChan); this._cadChan = null; } } catch (e) {}
+      var self = this;
+      try {
+        this._cadChan = c.channel('oo_partner_' + me.partner.id)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'oo_bookings', filter: 'partner_id=eq.' + me.partner.id }, function () {
+            self.cadLoad().then(function () { self.cadBadge(); if (self.isOpen() && self.side === 'partner') { self.paintShell(); self.render(); } });
+          })
+          .subscribe();
+      } catch (e) { console.warn('[1on1] realtime partner', e); }
+    },
+    async cadLoad() {
+      var me = this.me; this.cad.partner = me && me.partner || null;
+      if (!this.cad.partner) { this.cad.bookings = []; this.cad.media = []; this.cad.blackouts = []; return; }
+      var pid = this.cad.partner.id;
+      try { var b = await sb().from('oo_bookings').select('*, oo_members(display_name)').eq('partner_id', pid).order('date_from', { ascending: false }).limit(200); this.cad.bookings = b.data || []; } catch (e) { this.cad.bookings = []; }
+      try { var m = await sb().from('oo_media').select('*').eq('partner_id', pid).neq('status', 'removed').order('sort_order').order('created_at'); this.cad.media = m.data || []; } catch (e) { this.cad.media = []; }
+      try { var k = await sb().from('oo_blackouts').select('*').eq('partner_id', pid).order('date_from'); this.cad.blackouts = k.data || []; } catch (e) { this.cad.blackouts = []; }
+    },
+
+    /* =====================================================================================
+       THE 1on1 SCREEN (v1091) — #ooDashboard: app bar · cube home (phone) · dock · tab strip (desktop)
+       ===================================================================================== */
+    isPhone() { try { return window.mgrIsPhone ? mgrIsPhone() : window.matchMedia('(max-width: 767px)').matches; } catch (e) { return false; } },
+    isOpen() { var s = document.getElementById('ooDashboard'); return !!(s && s.classList.contains('active')); },
+    defaultView() { return this.side === 'partner' ? 'requests' : 'browse'; },
+    group(v) { return (v === 'partner' || v === 'book') ? 'browse' : v; },
+
+    async enter(side) {
+      this.side = side === 'partner' ? 'partner' : 'member';
+      this.stack = []; this.sel = null; this.view = 'home';
+      if (!document.getElementById('ooDashboard')) return;
+      try { ScreenManager.showScreen('ooDashboard'); } catch (e) { console.warn('[1on1] showScreen', e); return; }
+      var root = document.getElementById('ooRoot'); if (root) root.innerHTML = '<div class="oo-kv" style="text-align:center;padding:16px">…</div>';
+      await this.refreshMe();
+      if (this.side === 'member') await this.loadMine(); else await this.cadLoad();
+      this.buildShell();
+      this.paintShell();
+      if (this.isPhone()) this.home(); else this.nav(this.defaultView());
+      try { window.scrollTo(0, 0); } catch (e) {}
+    },
+    /* leave to the dashboard that opened us; the screen's own NavHistory entries are dropped so the
+       golfer/caddie back button behaves as if 1on1 was never visited */
+    exit(tab) {
+      var target = this.side === 'partner' ? 'caddieDashboard' : 'golferDashboard';
+      try { mhvCloseMore('oo'); } catch (e) {}
+      try { while (NavHistory.stack.length > 1 && NavHistory.stack[NavHistory.stack.length - 1].screen === 'ooDashboard') NavHistory.stack.pop(); NavHistory._navigating = true; } catch (e) {}
+      try { ScreenManager.showScreen(target); } catch (e) { console.warn('[1on1] exit', e); }
+      try { NavHistory._navigating = false; NavHistory.updateBtn(); } catch (e) {}
+      this.view = 'home';
+      if (tab) { try { if (target === 'golferDashboard') showGolferTab(tab, null); else showCaddyTab(tab); } catch (e) {} }
+    },
+    home() {
+      if (!this.isPhone()) return this.nav(this.defaultView());
+      try { mhvHome('oo'); } catch (e) {}
+      this.view = 'home'; this.stack = []; this.syncNav();
+    },
+    /* mhvGo('oo', view) (cubes/dock) and the desktop tab strip both land here */
+    nav(view, keepStack) {
+      if (view === 'default' || view === 'home' || view === 'overview') view = this.defaultView();
+      if (view === 'messages') { this.exit('messages'); return; }
+      if (view === 'exit') { this.exit(); return; }
+      if (!keepStack) this.stack = [];
+      this.view = view;
+      var h = document.getElementById('ooCubeHome'); if (h) h.style.display = 'none';
+      var pane = document.getElementById('ooPane'); if (pane) pane.classList.add('active');
+      try { mhvCloseMore('oo'); } catch (e) {}
+      if (view === 'mine') { try { localStorage.setItem('oo_seen_' + uid(), String(Date.now())); } catch (e) {} this.paintCube(); this.paintShell(); }
+      this.syncNav();
+      this.render();
+      try { window.scrollTo(0, 0); } catch (e) {}
+    },
+    /* internal browse → partner → book steps (kept on a stack so back walks them) */
+    go(view, pushHistory) { if (pushHistory !== false && view !== this.view) this.stack.push(this.view); this.view = view; this.syncNav(); this.render(); try { window.scrollTo(0, 0); } catch (e) {} },
+    canBack() { return this.stack.length > 0; },
+    back() { var v = this.stack.pop(); if (!v) return false; this.view = v; this.syncNav(); this.render(); return true; },
+    /* the ONE back handler: FAB, hardware back (dashboardGoBack) and the header ◀ */
+    handleBack() {
+      var ask = document.getElementById('ooAsk'); if (ask) { try { ask.remove(); } catch (e) {} return true; }
+      var sheet = document.getElementById('ooMoreSheet'); if (sheet && sheet.classList.contains('open')) { try { mhvCloseMore('oo'); } catch (e) {} return true; }
+      if (this.stack.length) { this.back(); return true; }
+      if (this.isPhone() && this.view !== 'home') { this.home(); return true; }
+      this.exit(); return true;
+    },
+    syncNav() {
+      var g = this.view === 'home' ? 'home' : this.group(this.view);
+      document.querySelectorAll('#ooTabsRow .tab-button[data-view]').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-view') === g); });
+      try { mhvDockSet('oo', g); } catch (e) {}
+    },
+
+    /* cubes / dock / More sheet / tab strip for the persona that entered (rebuilt on every enter — cheap) */
+    buildShell() {
+      var me = this.me || {}; var P = this.side === 'partner'; var admin = !!me.admin;
+      var role = P ? T('oo.adm.partner', 'Partner') : (admin && !me.member ? T('oo.role.admin', 'Admin') : T('oo.adm.member', 'Member'));
+      var el = document.getElementById('ooHdrRole'); if (el) el.textContent = role;
+      el = document.getElementById('ooHdrSub'); if (el) el.textContent = T('oo.sub', DICT.en['oo.sub']);
+      var art = function (id) { return '<div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#' + id + '"/></svg></div>'; };
+      var cube = function (view, p1, p2, title, chipId, chipTxt, artId, badgeId) {
+        return '<button type="button" class="mgc" style="--p1:' + p1 + ';--p2:' + p2 + '" onclick="mhvGo(\'oo\',\'' + view + '\')"><div class="t">' + esc(title) + '</div><div class="chip"' + (chipId ? ' id="' + chipId + '"' : '') + '>' + esc(chipTxt) + '</div>' + art(artId) + (badgeId ? '<span class="badge" id="' + badgeId + '">0</span>' : '') + '</button>';
+      };
+      var home, tabs, dock, more;
+      if (P) {
+        home = '<button type="button" class="mgc mgc-hero" onclick="mhvGo(\'oo\',\'requests\')"><div class="t">' + esc(T('oo.seg.requests', 'Requests')) + '</div><div class="chip" id="ooHomeReqChip">' + esc(T('oo.cube.req.none', 'Nothing waiting')) + '</div>' + art('cuClip') + '<span class="badge" id="ooHomeReqBadge">0</span></button><div class="mgc-grid">' +
+          cube('calendar', '#f4e6c8', '#fcf6e9', T('oo.seg.calendar', 'Calendar'), 'ooHomeCalChip', T('oo.cube.cal.chip', 'Booked dates'), 'cuCal') +
+          cube('profile', '#e2e7ec', '#f5f7f9', T('oo.seg.profile', 'Profile'), null, T('oo.cube.profile.chip', 'Rate, days, bio'), 'cuPlayers') +
+          cube('photos', '#dbeafe', '#eff6ff', T('oo.seg.photos', 'Photos & posts'), 'ooHomePhotoChip', TT('oo.cube.photos.chip', { n: 0, m: 0 }), 'cuCard') +
+          cube('earnings', '#f6e7d4', '#fdf7ef', T('oo.seg.earnings', 'Earnings'), 'ooHomeEarnChip', T('oo.cube.earn.chip', 'Accepted × rate'), 'cuTag') +
+          cube('messages', '#dbe4f0', '#f2f6fb', T('oo.cube.msgs', 'Messages'), null, T('oo.cube.msgs.partner', 'Chat with members'), 'cuChat') + '</div>';
+        tabs = [['requests', 'inbox', 'oo.seg.requests', 'Requests', 'ooTabReqBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar'], ['profile', 'person', 'oo.seg.profile', 'Profile'], ['photos', 'photo_library', 'oo.seg.photos', 'Photos & posts'], ['earnings', 'payments', 'oo.seg.earnings', 'Earnings']];
+        dock = [['requests', 'inbox', 'oo.seg.requests', 'Requests', 'ooDockReqBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar'], ['profile', 'person', 'oo.seg.profile', 'Profile']];
+        more = [['photos', 'photo_library', 'oo.seg.photos', 'Photos & posts'], ['earnings', 'payments', 'oo.seg.earnings', 'Earnings'], ['messages', 'chat', 'oo.cube.msgs', 'Messages'], ['exit', 'logout', 'oo.exit', 'Back to my dashboard']];
+      } else {
+        home = '<button type="button" class="mgc mgc-hero" onclick="mhvGo(\'oo\',\'browse\')"><div class="t">' + esc(T('oo.cube.open', 'Find a partner')) + '</div><div class="chip" id="ooHomeFindChip">' + esc(T('oo.cube.find.chip', 'Pick dates · browse')) + '</div>' + art('cuPlayers') + '</button><div class="mgc-grid">' +
+          cube('mine', '#dbeafe', '#eff6ff', T('oo.seg.mine', 'My bookings'), 'ooHomeMineChip', T('oo.cube.mine.chip', 'Requests & upcoming'), 'cuClip', 'ooHomeMineBadge') +
+          cube('calendar', '#f4e6c8', '#fcf6e9', T('oo.seg.calendar', 'Calendar'), 'ooHomeCalChip', T('oo.cube.cal.chip', 'Booked dates'), 'cuCal') +
+          cube('messages', '#dbe4f0', '#f2f6fb', T('oo.cube.msgs', 'Messages'), null, T('oo.cube.msgs.member', 'Chat with partners'), 'cuChat') +
+          (admin ? cube('admin', '#e2e7ec', '#f5f7f9', T('oo.seg.admin', 'Admin'), 'ooHomeAdmChip', T('oo.cube.admin.chip', 'Approvals & invites'), 'cuCog', 'ooHomeAdmBadge') : '') + '</div>';
+        tabs = [['browse', 'search', 'oo.seg.browse', 'Browse'], ['mine', 'receipt_long', 'oo.seg.mine', 'My bookings', 'ooTabMineBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar']];
+        if (admin) tabs.push(['admin', 'admin_panel_settings', 'oo.seg.admin', 'Admin', 'ooTabAdmBadge']);
+        dock = [['browse', 'search', 'oo.seg.browse', 'Browse'], ['mine', 'receipt_long', 'oo.dock.bookings', 'Bookings', 'ooDockMineBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar']];
+        more = [['messages', 'chat', 'oo.cube.msgs', 'Messages']].concat(admin ? [['admin', 'admin_panel_settings', 'oo.seg.admin', 'Admin']] : []).concat([['exit', 'logout', 'oo.exit', 'Back to my dashboard']]);
+      }
+      el = document.getElementById('ooCubeHome'); if (el) el.innerHTML = home;
+      el = document.getElementById('ooTabsRow'); if (el) el.innerHTML = tabs.map(function (t) {
+        return '<button type="button" class="tab-button relative" data-view="' + t[0] + '" onclick="OneOnOne.nav(\'' + t[0] + '\')"><span class="material-symbols-outlined text-sm">' + t[1] + '</span><span>' + esc(T(t[2], t[3])) + '</span>' + (t[4] ? '<span id="' + t[4] + '" class="oo-tb" style="display:none">0</span>' : '') + '</button>';
+      }).join('') + '<button type="button" class="tab-button" style="margin-left:auto" onclick="OneOnOne.exit()"><span class="material-symbols-outlined text-sm">logout</span><span>' + esc(T('oo.exit', 'Back to my dashboard')) + '</span></button>';
+      el = document.getElementById('ooDock'); if (el) el.innerHTML = '<button type="button" class="mdk active" data-tab="home" onclick="mhvHome(\'oo\')"><span class="material-symbols-outlined">dashboard</span><span class="lbl">' + esc(T('oo.dock.home', 'Home')) + '</span></button>' +
+        dock.map(function (d) { return '<button type="button" class="mdk" data-tab="' + d[0] + '" onclick="mhvGo(\'oo\',\'' + d[0] + '\')"><span class="material-symbols-outlined">' + d[1] + '</span><span class="lbl">' + esc(T(d[2], d[3])) + '</span>' + (d[4] ? '<span class="badge" id="' + d[4] + '">0</span>' : '') + '</button>'; }).join('') +
+        '<button type="button" class="mdk" id="ooDockMore" onclick="mhvMore(\'oo\')"><span class="material-symbols-outlined">apps</span><span class="lbl">' + esc(T('oo.more', 'More')) + '</span></button>';
+      el = document.querySelector('#ooMoreSheet .grid'); if (el) el.innerHTML = more.map(function (m) {
+        return '<button type="button" class="s" onclick="' + (m[0] === 'exit' ? 'OneOnOne.exit()' : 'mhvGo(\'oo\',\'' + m[0] + '\')') + '"><span class="material-symbols-outlined">' + m[1] + '</span><span>' + esc(T(m[2], m[3])) + '</span></button>';
+      }).join('');
+    },
+    /* chips + badges on the cubes / dock / tabs from the loaded data */
+    async paintShell() {
+      if (!document.getElementById('ooDashboard')) return;
+      var me = this.me || {};
+      var set = function (id, txt) { var el = document.getElementById(id); if (el && txt != null) el.textContent = txt; };
+      var badge = function (id, n) { var el = document.getElementById(id); if (el) { el.textContent = n; el.style.display = n ? 'inline-flex' : 'none'; } };
+      var bookedDays = function (rows) { var d = 0; (rows || []).forEach(function (b) { if (b.status === 'accepted' && b.date_to >= today()) d += dayCount(b.date_from < today() ? today() : b.date_from, b.date_to); }); return d; };
+      if (this.side === 'partner') {
+        var pend = (this.cad.bookings || []).filter(function (b) { return b.status === 'requested' && b.date_from >= today(); }).length;
+        set('ooHomeReqChip', pend ? TT('oo.cube.req.chip', { n: pend }) : T('oo.cube.req.none', 'Nothing waiting'));
+        ['ooHomeReqBadge', 'ooDockReqBadge', 'ooTabReqBadge'].forEach(function (id) { badge(id, pend); });
+        var d1 = bookedDays(this.cad.bookings);
+        set('ooHomeCalChip', d1 ? TT('oo.cube.cal.n', { n: d1 }) : T('oo.cube.cal.none', 'No booked dates'));
+        var ph = (this.cad.media || []).filter(function (m) { return m.kind === 'photo'; }).length, po = (this.cad.media || []).filter(function (m) { return m.kind === 'post'; }).length;
+        set('ooHomePhotoChip', TT('oo.cube.photos.chip', { n: ph, m: po }));
+        var unpaid = (this.cad.bookings || []).filter(function (b) { return (b.status === 'accepted' || b.status === 'completed') && b.payment_status !== 'paid'; }).reduce(function (a, b) { return a + (Number(b.fee_quoted) || 0); }, 0);
+        set('ooHomeEarnChip', unpaid ? T('oo.earn.unpaid', 'Unpaid') + ' ' + money(unpaid, 'THB') : T('oo.cube.earn.chip', 'Accepted × rate'));
+        return;
+      }
+      var up = (this.bookings || []).filter(function (b) { return b.status === 'accepted' && b.date_to >= today(); }).length;
+      var req = (this.bookings || []).filter(function (b) { return b.status === 'requested' && b.date_to >= today(); }).length;
+      set('ooHomeMineChip', up ? TT('oo.cube.upcoming', { n: up }) : (req ? TT('oo.cube.req.chip', { n: req }) : T('oo.cube.mine.chip', 'Requests & upcoming')));
+      var n = this.unseenResponses();
+      ['ooHomeMineBadge', 'ooDockMineBadge', 'ooTabMineBadge'].forEach(function (id) { badge(id, n); });
+      var d2 = bookedDays(this.bookings);
+      set('ooHomeCalChip', d2 ? TT('oo.cube.cal.n', { n: d2 }) : T('oo.cube.cal.none', 'No booked dates'));
+      if (me.admin && document.getElementById('ooHomeAdmChip')) {
+        try {
+          var c = sb();
+          var m = await c.from('oo_members').select('user_id', { count: 'exact', head: true }).eq('status', 'pending');
+          var p = await c.from('oo_partners').select('id', { count: 'exact', head: true }).eq('status', 'pending');
+          var pend2 = (m.count || 0) + (p.count || 0);
+          set('ooHomeAdmChip', pend2 ? TT('oo.cube.admin.n', { n: pend2 }) : T('oo.cube.admin.chip', 'Approvals & invites'));
+          ['ooHomeAdmBadge', 'ooTabAdmBadge'].forEach(function (id) { badge(id, pend2); });
+        } catch (e) {}
+      }
+    },
+
     gateHtml() {
       var me = this.me || {};
       if (!me.signed_in) return '<div class="oo-card" style="border-color:#fcd34d;background:#fffbeb">' + esc(T('oo.signin.msg', DICT.en['oo.signin.msg'])) + '</div>';
@@ -351,24 +569,41 @@
       return '';
     },
 
+    /* ONE render entry for both personas */
     async render() {
       var root = document.getElementById('ooRoot'); if (!root) return;
+      var v = this.view; var me = this.me || {};
+      if (this.side === 'partner') {
+        if (!me.signed_in) { root.innerHTML = '<div class="oo-card" style="border-color:#fcd34d;background:#fffbeb">' + esc(T('oo.signin.msg', DICT.en['oo.signin.msg'])) + '</div>'; return; }
+        if (!me.partner) return this.cadRenderOptin();
+        var p = me.partner;
+        var banner = p.status === 'approved' ? '<div class="oo-kv" style="margin-bottom:8px;color:#15803d;font-weight:700">' + esc(T('oo.approved', 'Approved — visible to members')) + '</div>'
+          : p.status === 'suspended' ? '<div class="oo-card" style="border-color:#fca5a5;background:#fef2f2;margin-bottom:8px">' + esc(T('oo.suspended', 'Suspended')) + '</div>'
+          : '<div class="oo-card" style="border-color:#fcd34d;background:#fffbeb;margin-bottom:8px">' + esc(T('oo.awaiting', 'Awaiting approval')) + '</div>';
+        if (v === 'calendar') return this.cadRenderCalendar(banner);
+        if (v === 'profile') return this.cadRenderProfile(banner);
+        if (v === 'photos') return this.cadRenderPhotos(banner);
+        if (v === 'earnings') return this.cadRenderEarnings(banner);
+        return this.cadRenderRequests(banner);
+      }
+      if (v === 'admin') return this.renderAdmin();
       var gate = this.gateHtml();
-      var me = this.me || {};
-      if (gate && !(me.admin && this.view === 'admin')) { root.innerHTML = this.segHtml() + gate; return; }
-      if (this.view === 'mine') return this.renderMine();
-      if (this.view === 'partner' && this.sel) return this.renderPartner();
-      if (this.view === 'book' && this.sel) return this.renderBook();
+      if (gate) { root.innerHTML = gate; return; }
+      if (v === 'mine') return this.renderMine();
+      if (v === 'calendar') return this.renderMemberCalendar();
+      if (v === 'partner' && this.sel) return this.renderPartner();
+      if (v === 'book' && this.sel) return this.renderBook();
       return this.renderBrowse();
     },
+    cadRender() { return this.render(); },     /* legacy names used by the action handlers below */
+    cadGo(v) { return this.nav(v); },
 
-    /* browse */
+    /* ---------- MEMBER: browse ---------- */
     q: { from: null, to: null, course: '', lang: '' },
     renderBrowse() {
       var root = document.getElementById('ooRoot');
       var q = this.q; if (!q.from) { q.from = addDays(today(), 1); q.to = q.from; }
-      var h = this.segHtml();
-      h += '<div class="oo-card"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+      var h = '<div class="oo-card"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
         '<label class="oo-kv">' + esc(T('oo.from', 'From')) + '<input class="oo-in" type="date" id="ooFrom" value="' + q.from + '" min="' + today() + '" max="' + addDays(today(), 89) + '"></label>' +
         '<label class="oo-kv">' + esc(T('oo.to', 'To')) + '<input class="oo-in" type="date" id="ooTo" value="' + q.to + '" min="' + today() + '" max="' + addDays(today(), 89) + '"></label>' +
         '<label class="oo-kv">' + esc(T('oo.course', 'Course')) + '<input class="oo-in" id="ooCourse" list="ooCourseList" value="' + esc(q.course) + '" placeholder="' + esc(T('oo.any', 'Any')) + '"><datalist id="ooCourseList"></datalist></label>' +
@@ -412,6 +647,7 @@
             '<div class="sub" style="margin-top:4px">' + (p.day_rate != null ? '<b style="color:#15803d">' + esc(money(p.day_rate, p.currency)) + '</b>' + esc(T('oo.perday', '/day')) + ' · ' : '') + esc(TT('oo.photos', { n: p.photo_count || 0 })) + '</div></div></button>';
         }).join('') + '</div>';
     },
+    backChip() { return '<button type="button" class="oo-btn" style="margin-bottom:10px" onclick="OneOnOne.back()">‹ ' + esc(T('oo.back.browse', 'Back to results')) + '</button>'; },
 
     /* partner detail */
     async openPartner(id) {
@@ -428,8 +664,7 @@
       var posts = this.selMedia.filter(function (m) { return m.kind === 'post'; });
       var urls = await signedUrls(photos.map(function (m) { return m.storage_path; }));
       var cover = (photos.find(function (m) { return m.id === p.cover_media_id; }) || photos[0]);
-      var h = this.segHtml() +
-        '<div class="oo-card"><div style="display:flex;gap:12px;align-items:flex-start">' +
+      var left = '<div class="oo-card"><div style="display:flex;gap:12px;align-items:flex-start">' +
         '<div style="width:96px;height:120px;border-radius:12px;background:#e2e8f0;overflow:hidden;flex:0 0 96px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:24px;color:#475569">' + (cover && urls[cover.storage_path] ? '<img src="' + esc(urls[cover.storage_path]) + '" style="width:100%;height:100%;object-fit:cover" alt="">' : esc(initials(p.display_name))) + '</div>' +
         '<div style="flex:1;min-width:0"><div style="font-weight:800;font-size:18px">' + esc(p.display_name) + '</div>' +
         '<div class="oo-kv">' + esc(T('oo.home', 'Home course')) + ': <b>' + esc(p.home_course_name || '—') + '</b></div>' +
@@ -438,13 +673,14 @@
         (p.day_rate != null ? '<div class="oo-kv" style="margin-top:4px">' + esc(T('oo.rate', 'Day rate')) + ': <b style="color:#15803d;font-size:15px">' + esc(money(p.day_rate, p.currency)) + '</b></div>' : '') +
         '</div></div>' +
         '<div style="display:flex;gap:8px;margin-top:12px"><button type="button" class="oo-btn pri" style="flex:1" onclick="OneOnOne.go(\'book\')">' + esc(T('oo.book', 'Book')) + ' · ' + esc(fmtRange(this.q.from, this.q.to)) + '</button></div></div>';
-      if (p.bio) h += '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.bio', 'About')) + '</h4><div style="font-size:14px;white-space:pre-wrap">' + esc(p.bio) + '</div></div>';
-      if ((p.courses_known || []).length || p.area_tips) h += '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.tips', 'Local knowledge')) + '</h4>' +
+      if (p.bio) left += '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.bio', 'About')) + '</h4><div style="font-size:14px;white-space:pre-wrap">' + esc(p.bio) + '</div></div>';
+      if ((p.courses_known || []).length || p.area_tips) left += '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.tips', 'Local knowledge')) + '</h4>' +
         ((p.courses_known || []).length ? '<div class="oo-kv" style="margin-bottom:6px">' + esc(T('oo.knows', 'Courses I know')) + ': ' + p.courses_known.map(function (c) { return '<span class="oo-chip">' + esc(c) + '</span>'; }).join('') + '</div>' : '') +
         (p.area_tips ? '<div style="font-size:14px;white-space:pre-wrap">' + esc(p.area_tips) + '</div>' : '') + '</div>';
-      if (photos.length) h += '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.gallery', 'Photos')) + '</h4><div class="oo-gal">' + photos.map(function (m) { return '<div class="g">' + (urls[m.storage_path] ? '<img src="' + esc(urls[m.storage_path]) + '" alt="' + esc(m.caption || '') + '" loading="lazy">' : '') + '</div>'; }).join('') + '</div></div>';
-      if (posts.length) h += '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.posts', 'Posts')) + '</h4>' + posts.map(function (m) { return '<div style="padding:8px 0;border-top:1px solid #f1f5f9"><div style="font-weight:700">' + esc(m.caption || '') + '</div><div style="font-size:13px;white-space:pre-wrap;color:#334155">' + esc(m.body || '') + '</div></div>'; }).join('') + '</div>';
-      root.innerHTML = h;
+      var right = '';
+      if (photos.length) right += '<div class="oo-card"><h4>' + esc(T('oo.gallery', 'Photos')) + '</h4><div class="oo-gal">' + photos.map(function (m) { return '<div class="g">' + (urls[m.storage_path] ? '<img src="' + esc(urls[m.storage_path]) + '" alt="' + esc(m.caption || '') + '" loading="lazy">' : '') + '</div>'; }).join('') + '</div></div>';
+      if (posts.length) right += '<div class="oo-card"' + (photos.length ? ' style="margin-top:10px"' : '') + '><h4>' + esc(T('oo.posts', 'Posts')) + '</h4>' + posts.map(function (m) { return '<div style="padding:8px 0;border-top:1px solid #f1f5f9"><div style="font-weight:700">' + esc(m.caption || '') + '</div><div style="font-size:13px;white-space:pre-wrap;color:#334155">' + esc(m.body || '') + '</div></div>'; }).join('') + '</div>';
+      root.innerHTML = this.backChip() + (right ? '<div class="oo-two"><div>' + left + '</div><div>' + right + '</div></div>' : left);
     },
 
     /* booking form */
@@ -457,8 +693,7 @@
           this.events = (r.data || []).map(function (x) { return x.society_events; }).filter(function (e) { return e && e.event_date >= today(); }).sort(function (a, b) { return a.event_date < b.event_date ? -1 : 1; });
         } catch (e) {}
       }
-      var n = dayCount(q.from, q.to);
-      var h = this.segHtml() + '<div class="oo-card"><h4>' + esc(T('oo.book', 'Book')) + ' · ' + esc(p.display_name) + '</h4>' +
+      var h = this.backChip() + '<div class="oo-card" style="max-width:640px"><h4>' + esc(T('oo.book', 'Book')) + ' · ' + esc(p.display_name) + '</h4>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
         '<label class="oo-kv">' + esc(T('oo.from', 'From')) + '<input class="oo-in" type="date" id="ooBFrom" value="' + q.from + '" min="' + today() + '" max="' + addDays(today(), 89) + '" onchange="OneOnOne.recalc()"></label>' +
         '<label class="oo-kv">' + esc(T('oo.to', 'To')) + '<input class="oo-in" type="date" id="ooBTo" value="' + q.to + '" min="' + today() + '" max="' + addDays(today(), 89) + '" onchange="OneOnOne.recalc()"></label>' +
@@ -487,28 +722,35 @@
     },
     async submitBook() {
       var btn = document.getElementById('ooBSend'); if (btn) btn.disabled = true;
-      var p = this.sel; var self = this;
+      var p = this.sel;
       try {
         var f = document.getElementById('ooBFrom').value, t = document.getElementById('ooBTo').value || f;
         var ev = (document.getElementById('ooBEvent') || {}).value || null;
         var row = await rpc('oo_book', { p_partner: p.id, p_from: f, p_to: t, p_course_name: (document.getElementById('ooBCourse').value || '').trim() || null, p_course_id: null, p_event: ev, p_holes: parseInt(document.getElementById('ooBHoles').value, 10) || 18, p_tee: document.getElementById('ooBTee').value || null, p_notes: (document.getElementById('ooBNotes').value || '').trim() || null });
         toast(T('oo.requested.ok', DICT.en['oo.requested.ok']), 'success');
         push(p.user_id, 'oo.push.requested', { name: (window.AppState && AppState.currentUser && (AppState.currentUser.displayName || AppState.currentUser.name)) || 'Member', range: fmtRange(row.date_from, row.date_to), course: row.course_name || '' });
-        this.stack = []; await this.loadMine(); this.paintCube(); this.go('mine', false);
+        await this.loadMine(); this.paintCube(); this.nav('mine');
       } catch (e) { toast(errMsg(e), 'error'); if (btn) btn.disabled = false; }
     },
 
-    /* my bookings */
+    /* ---------- MEMBER: my bookings + calendar ---------- */
     async loadMine() {
       try { var r = await sb().from('oo_bookings').select('*, oo_partners(display_name, home_course_name, user_id, cover_media_id)').eq('member_id', uid()).order('date_from', { ascending: false }).limit(100); this.bookings = r.data || []; } catch (e) { this.bookings = []; }
       return this.bookings;
     },
     async renderMine() {
       var root = document.getElementById('ooRoot'); await this.loadMine();
-      var h = this.segHtml() + '<div class="oo-card">';
+      var h = '<div class="oo-card">';
       if (!this.bookings.length) h += '<div class="oo-kv" style="text-align:center;padding:16px">' + esc(T('oo.nobookings', 'No bookings yet.')) + '</div>';
       else h += this.bookings.map(function (b) { return OO.bookingRow(b, 'member'); }).join('');
       root.innerHTML = h + '</div>';
+    },
+    renderMemberCalendar() {
+      var root = document.getElementById('ooRoot'); var marks = {};
+      this.bookings.forEach(function (b) { if (b.status === 'accepted') markRange(marks, b.date_from, b.date_to, 'bk'); else if (b.status === 'requested') markRange(marks, b.date_from, b.date_to, 'rq'); });
+      var up = this.bookings.filter(function (b) { return (b.status === 'accepted' || b.status === 'requested') && b.date_to >= today(); }).sort(function (a, b) { return a.date_from < b.date_from ? -1 : 1; });
+      root.innerHTML = this.legendHtml(false) + this.monthsHtml(marks, DAYS) +
+        (up.length ? '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.upcoming.title', 'Upcoming')) + '</h4>' + up.map(function (b) { return OO.bookingRow(b, 'member'); }).join('') + '</div>' : '');
     },
     bookingRow(b, side) {
       var other = side === 'member' ? (b.oo_partners && b.oo_partners.display_name) : (b.oo_members && b.oo_members.display_name);
@@ -534,10 +776,13 @@
       var reason = await confirmSheet(T('oo.cancelq', 'Cancel this booking?'), T('oo.cancel', 'Cancel')); if (reason === null) return;
       try {
         var row = await rpc('oo_cancel', { p_booking: id, p_reason: reason || null });
-        var b = (side === 'member' ? this.bookings : this.cad.bookings).find(function (x) { return x.id === id; }) || {};
-        var to = side === 'member' ? (b.oo_partners && b.oo_partners.user_id) : b.member_id;
+        var pool = side === 'partner' ? this.cad.bookings : (side === 'member' ? this.bookings : this.adm.bookings);
+        var b = (pool || []).find(function (x) { return x.id === id; }) || {};
+        var to = side === 'partner' ? b.member_id : (b.oo_partners && b.oo_partners.user_id);
         push(to, 'oo.push.cancelled', { name: (window.AppState && AppState.currentUser && (AppState.currentUser.displayName || AppState.currentUser.name)) || '', range: fmtRange(row.date_from, row.date_to) });
-        if (side === 'member') { await this.loadMine(); this.paintCube(); this.render(); } else { await this.cadLoad(); this.cadRender(); }
+        if (side === 'member') { await this.loadMine(); this.paintCube(); this.paintShell(); this.render(); }
+        else if (side === 'partner') { await this.cadLoad(); this.cadBadge(); this.paintShell(); this.render(); }
+        else this.renderAdmin();
       } catch (e) { toast(errMsg(e), 'error'); }
     },
     async report(bookingId, targetId) {
@@ -545,60 +790,26 @@
       try { var r = await sb().from('oo_reports').insert({ reporter_id: uid(), target_user_id: targetId, booking_id: bookingId, reason: text.slice(0, 200), details: text }).select('id'); if (r.error) throw r.error; toast(T('oo.reported', 'Report sent'), 'success'); } catch (e) { toast(errMsg(e), 'error'); }
     },
 
-    /* ---------- CADDIE (partner) side ---------- */
-    async initCaddie(profile) {
-      this.cad.profile = profile || null;
-      this.captureInvite();
-      await this.redeemPending();
-      await this.refreshMe(true);
-      await this.cadLoad();
-      this.cadBadge();
-      this.subscribePartner();
-      if (document.getElementById('caddie-1on1') && document.getElementById('caddie-1on1').classList.contains('active')) this.cadRender();
+    /* ---------- shared calendar pieces ---------- */
+    legendHtml(withOff) {
+      return '<div class="oo-kv" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px"><span><span class="oo-chip" style="background:#16a34a;color:#fff">&nbsp;</span> ' + esc(T('oo.legend.booked', 'Booked')) + '</span><span><span class="oo-chip" style="background:#fde68a">&nbsp;</span> ' + esc(T('oo.legend.requested', 'Requested')) + '</span>' +
+        (withOff ? '<span><span class="oo-chip">&nbsp;</span> ' + esc(T('oo.legend.off', 'Unavailable')) + '</span>' : '') + '</div>';
     },
-    async onCaddieTab() { await this.refreshMe(); await this.cadLoad(); this.cadRender(); },
-    cadBadge() {
-      var n = (this.cad.bookings || []).filter(function (b) { return b.status === 'requested' && b.date_from >= today(); }).length;
-      ['cadCube1on1Badge', 'cadTab1on1Badge'].forEach(function (id) { var el = document.getElementById(id); if (el) { el.textContent = n; el.style.display = n ? 'inline-flex' : 'none'; } });
+    monthsHtml(marks, days) {
+      var months = ''; var base = new Date(); base.setDate(1);
+      for (var m = 0; m < 3; m++) {
+        var d0 = new Date(base.getFullYear(), base.getMonth() + m, 1); var title = d0.toLocaleDateString(loc(), { month: 'long', year: 'numeric' });
+        var cells = ''; var lead = (d0.getDay() + 6) % 7; for (var i = 0; i < lead; i++) cells += '<div></div>';
+        var dd = new Date(d0); while (dd.getMonth() === d0.getMonth()) { var s = ymd(dd); var wd = DAYS[(dd.getDay() + 6) % 7]; var cls = marks[s] || (days.indexOf(wd) < 0 ? 'off' : ''); cells += '<div class="d ' + cls + (s < today() ? ' o' : '') + '">' + dd.getDate() + '</div>'; dd.setDate(dd.getDate() + 1); }
+        months += '<div class="oo-card"><h4>' + esc(title) + '</h4><div class="oo-cal">' + DAYS.map(function (x) { return '<div class="h">' + esc(dayLabel(x)) + '</div>'; }).join('') + cells + '</div></div>';
+      }
+      return '<div class="oo-months">' + months + '</div>';
     },
-    subscribePartner() {
-      var c = sb(); var me = this.me; if (!c || !me || !me.partner) return;
-      try { if (this._cadChan) { c.removeChannel(this._cadChan); this._cadChan = null; } } catch (e) {}
-      var self = this;
-      try {
-        this._cadChan = c.channel('oo_partner_' + me.partner.id)
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'oo_bookings', filter: 'partner_id=eq.' + me.partner.id }, function () { self.cadLoad().then(function () { self.cadBadge(); var pane = document.getElementById('caddie-1on1'); if (pane && pane.classList.contains('active')) self.cadRender(); }); })
-          .subscribe();
-      } catch (e) { console.warn('[1on1] realtime partner', e); }
-    },
-    async cadLoad() {
-      var me = this.me; this.cad.partner = me && me.partner || null;
-      if (!this.cad.partner) { this.cad.bookings = []; this.cad.media = []; this.cad.blackouts = []; return; }
-      var pid = this.cad.partner.id;
-      try { var b = await sb().from('oo_bookings').select('*, oo_members(display_name)').eq('partner_id', pid).order('date_from', { ascending: false }).limit(200); this.cad.bookings = b.data || []; } catch (e) { this.cad.bookings = []; }
-      try { var m = await sb().from('oo_media').select('*').eq('partner_id', pid).neq('status', 'removed').order('sort_order').order('created_at'); this.cad.media = m.data || []; } catch (e) { this.cad.media = []; }
-      try { var k = await sb().from('oo_blackouts').select('*').eq('partner_id', pid).order('date_from'); this.cad.blackouts = k.data || []; } catch (e) { this.cad.blackouts = []; }
-    },
-    cadSeg() {
-      var v = this.cad.view; var b = function (k, key, fb) { return '<button type="button" class="' + (v === k ? 'on' : '') + '" onclick="OneOnOne.cadGo(\'' + k + '\')">' + esc(T(key, fb)) + '</button>'; };
-      return '<div class="oo-seg" style="margin-bottom:10px">' + b('requests', 'oo.seg.requests', 'Requests') + b('calendar', 'oo.seg.calendar', 'Calendar') + b('profile', 'oo.seg.profile', 'Profile') + b('earnings', 'oo.seg.earnings', 'Earnings') + '</div>';
-    },
-    cadGo(v) { this.cad.view = v; this.cadRender(); },
-    async cadRender() {
-      var root = document.getElementById('ooCadRoot'); if (!root) return;
-      var me = this.me || {};
-      if (!me.signed_in) { root.innerHTML = '<div class="oo-card" style="border-color:#fcd34d;background:#fffbeb">' + esc(T('oo.signin.msg', DICT.en['oo.signin.msg'])) + '</div>'; return; }
-      if (!me.partner) return this.cadRenderOptin();
-      var p = me.partner;
-      var banner = p.status === 'approved' ? '<div class="oo-kv" style="margin-bottom:8px;color:#15803d;font-weight:700">' + esc(T('oo.approved', 'Approved — visible to members')) + '</div>'
-        : p.status === 'suspended' ? '<div class="oo-card" style="border-color:#fca5a5;background:#fef2f2;margin-bottom:8px">' + esc(T('oo.suspended', 'Suspended')) + '</div>'
-        : '<div class="oo-card" style="border-color:#fcd34d;background:#fffbeb;margin-bottom:8px">' + esc(T('oo.awaiting', 'Awaiting approval')) + '</div>';
-      var v = this.cad.view;
-      if (v === 'calendar') return this.cadRenderCalendar(banner);
-      if (v === 'profile') return this.cadRenderProfile(banner);
-      if (v === 'earnings') return this.cadRenderEarnings(banner);
-      var list = this.cad.bookings;
-      root.innerHTML = this.cadSeg() + banner + '<div class="oo-card">' + (list.length ? list.map(function (b) { return OO.bookingRow(b, 'partner'); }).join('') : '<div class="oo-kv" style="text-align:center;padding:16px">' + esc(T('oo.norequests', 'No requests yet.')) + '</div>') + '</div>';
+
+    /* ---------- PARTNER (caddie) views ---------- */
+    cadRenderRequests(banner) {
+      var root = document.getElementById('ooRoot'); var list = this.cad.bookings;
+      root.innerHTML = banner + '<div class="oo-card">' + (list.length ? list.map(function (b) { return OO.bookingRow(b, 'partner'); }).join('') : '<div class="oo-kv" style="text-align:center;padding:16px">' + esc(T('oo.norequests', 'No requests yet.')) + '</div>') + '</div>';
     },
     profileFormHtml(p) {
       p = p || {}; var prof = this.cad.profile || {};
@@ -625,39 +836,43 @@
       return out;
     },
     cadRenderOptin() {
-      var root = document.getElementById('ooCadRoot');
-      root.innerHTML = '<div class="oo-card"><h4>' + esc(T('oo.optin.title', DICT.en['oo.optin.title'])) + '</h4><div class="oo-kv" style="margin-bottom:10px">' + esc(T('oo.optin.desc', DICT.en['oo.optin.desc'])) + '</div>' +
+      var root = document.getElementById('ooRoot');
+      root.innerHTML = '<div class="oo-card" style="max-width:720px"><h4>' + esc(T('oo.optin.title', DICT.en['oo.optin.title'])) + '</h4><div class="oo-kv" style="margin-bottom:10px">' + esc(T('oo.optin.desc', DICT.en['oo.optin.desc'])) + '</div>' +
         this.profileFormHtml(null) + '<div style="display:flex;justify-content:flex-end;margin-top:10px"><button type="button" class="oo-btn pri" id="ooOptinBtn" onclick="OneOnOne.optin()">' + esc(T('oo.optin.submit', 'Submit for approval')) + '</button></div></div>';
       this.fillCourses();
     },
     async optin() {
       var btn = document.getElementById('ooOptinBtn'); if (btn) btn.disabled = true;
-      try { await rpc('oo_partner_optin', { p: this.readProfileForm() }); toast(T('oo.saved', 'Saved'), 'success'); await this.refreshMe(true); await this.cadLoad(); this.subscribePartner(); this.cad.view = 'profile'; this.cadRender(); }
+      try { await rpc('oo_partner_optin', { p: this.readProfileForm() }); toast(T('oo.saved', 'Saved'), 'success'); await this.refreshMe(true); await this.cadLoad(); this.subscribePartner(); this.buildShell(); this.paintShell(); this.nav('profile'); }
       catch (e) { toast(errMsg(e), 'error'); if (btn) btn.disabled = false; }
     },
-    async cadRenderProfile(banner) {
-      var root = document.getElementById('ooCadRoot'); var p = this.cad.partner;
+    cadRenderProfile(banner) {
+      var root = document.getElementById('ooRoot'); var p = this.cad.partner;
+      root.innerHTML = banner + '<div class="oo-card" style="max-width:720px"><h4>' + esc(T('oo.seg.profile', 'Profile')) + '</h4>' + this.profileFormHtml(p) + '<div style="display:flex;justify-content:flex-end;margin-top:10px"><button type="button" class="oo-btn pri" onclick="OneOnOne.saveProfile()">' + esc(T('oo.save', 'Save')) + '</button></div></div>';
+      this.fillCourses();
+    },
+    async cadRenderPhotos(banner) {
+      var root = document.getElementById('ooRoot'); var p = this.cad.partner;
       var photos = this.cad.media.filter(function (m) { return m.kind === 'photo' && m.storage_path; }); var posts = this.cad.media.filter(function (m) { return m.kind === 'post'; });
       var urls = await signedUrls(photos.map(function (m) { return m.storage_path; }));
-      var h = this.cadSeg() + banner +
-        '<div class="oo-card"><h4>' + esc(T('oo.seg.profile', 'Profile')) + '</h4>' + this.profileFormHtml(p) + '<div style="display:flex;justify-content:flex-end;margin-top:10px"><button type="button" class="oo-btn pri" onclick="OneOnOne.saveProfile()">' + esc(T('oo.save', 'Save')) + '</button></div></div>' +
-        '<div class="oo-card" style="margin-top:10px"><div style="display:flex;justify-content:space-between;align-items:center"><h4 style="margin:0">' + esc(T('oo.gallery', 'Photos')) + ' (' + photos.length + '/12)</h4>' +
+      root.innerHTML = banner +
+        '<div class="oo-card"><div style="display:flex;justify-content:space-between;align-items:center"><h4 style="margin:0">' + esc(T('oo.gallery', 'Photos')) + ' (' + photos.length + '/12)</h4>' +
         '<label class="oo-btn pri" style="cursor:pointer">' + esc(T('oo.addphoto', 'Add photo')) + '<input type="file" accept="image/*" style="display:none" onchange="OneOnOne.upload(this)"></label></div>' +
         '<div id="ooUpMsg" class="oo-kv"></div>' +
         '<div class="oo-gal" style="margin-top:8px">' + photos.map(function (m) {
           var isCover = m.id === p.cover_media_id;
           return '<div class="g">' + (urls[m.storage_path] ? '<img src="' + esc(urls[m.storage_path]) + '" alt="">' : '') + (isCover ? '<span class="cv">' + esc(T('oo.cover', 'Cover')) + '</span>' : '') +
             (m.status === 'hidden' ? '<span class="cv" style="background:#b91c1c">' + esc(T('oo.adm.hide', 'Hidden')) + '</span>' : '') +
-            '<div style="position:absolute;right:4px;bottom:4px;display:flex;gap:4px">' + (isCover ? '' : '<button type="button" class="oo-btn" style="padding:3px 6px;font-size:11px" onclick="OneOnOne.setCover(\'' + m.id + '\')">' + esc(T('oo.setcover', 'Set as cover')) + '</button>') +
-            '<button type="button" class="oo-btn warn" style="padding:3px 6px;font-size:11px" onclick="OneOnOne.delMedia(\'' + m.id + '\', \'' + esc(m.storage_path) + '\')">✕</button></div></div>';
+            '<div style="position:absolute;right:4px;bottom:4px;display:flex;gap:4px">' + (isCover ? '' : '<button type="button" class="oo-btn" style="padding:3px 7px;font-size:12px;line-height:1" title="' + esc(T('oo.setcover', 'Set as cover')) + '" aria-label="' + esc(T('oo.setcover', 'Set as cover')) + '" onclick="OneOnOne.setCover(\'' + m.id + '\')">★</button>') +
+            '<button type="button" class="oo-btn warn" style="padding:3px 7px;font-size:12px;line-height:1" aria-label="' + esc(T('oo.delete', 'Delete')) + '" onclick="OneOnOne.delMedia(\'' + m.id + '\', \'' + esc(m.storage_path) + '\')">✕</button></div></div>';
         }).join('') + '</div></div>' +
         '<div class="oo-card" style="margin-top:10px"><div style="display:flex;justify-content:space-between;align-items:center"><h4 style="margin:0">' + esc(T('oo.posts', 'Posts')) + '</h4><button type="button" class="oo-btn" onclick="OneOnOne.addPost()">' + esc(T('oo.addpost', 'Add post')) + '</button></div>' +
         posts.map(function (m) { return '<div style="padding:8px 0;border-top:1px solid #f1f5f9;display:flex;gap:8px"><div style="flex:1"><div style="font-weight:700">' + esc(m.caption || '') + '</div><div style="font-size:13px;white-space:pre-wrap;color:#334155">' + esc(m.body || '') + '</div></div><button type="button" class="oo-btn warn" style="padding:3px 8px" onclick="OneOnOne.delMedia(\'' + m.id + '\', null)">✕</button></div>'; }).join('') + '</div>';
-      root.innerHTML = h; this.fillCourses();
     },
     async saveProfile() {
-      try { await rpc('oo_partner_optin', { p: this.readProfileForm() }); toast(T('oo.saved', 'Saved'), 'success'); await this.refreshMe(true); await this.cadLoad(); this.cadRender(); } catch (e) { toast(errMsg(e), 'error'); }
+      try { await rpc('oo_partner_optin', { p: this.readProfileForm() }); toast(T('oo.saved', 'Saved'), 'success'); await this.refreshMe(true); await this.cadLoad(); this.paintShell(); this.render(); } catch (e) { toast(errMsg(e), 'error'); }
     },
+    async _afterMedia() { await this.refreshMe(true); await this.cadLoad(); this.paintShell(); this.render(); },
     async upload(input) {
       var file = input.files && input.files[0]; if (!file) return; input.value = '';
       var p = this.cad.partner; if (!p) return;
@@ -670,47 +885,37 @@
         var up = await sb().storage.from('oo-media').upload(path, blob, { contentType: blob.type || 'image/jpeg', upsert: false }); if (up.error) throw up.error;
         var ins = await sb().from('oo_media').insert({ partner_id: p.id, kind: 'photo', storage_path: path, sort_order: photos.length }).select('id').single(); if (ins.error) throw ins.error;
         if (!p.cover_media_id) { await sb().from('oo_partners').update({ cover_media_id: ins.data.id }).eq('id', p.id); }
-        await this.refreshMe(true); await this.cadLoad(); this.cadRender();
+        await this._afterMedia();
       } catch (e) { toast(errMsg(e), 'error'); if (msg) msg.textContent = ''; }
     },
-    async setCover(id) { try { var r = await sb().from('oo_partners').update({ cover_media_id: id }).eq('id', this.cad.partner.id); if (r.error) throw r.error; await this.refreshMe(true); await this.cadLoad(); this.cadRender(); } catch (e) { toast(errMsg(e), 'error'); } },
+    async setCover(id) { try { var r = await sb().from('oo_partners').update({ cover_media_id: id }).eq('id', this.cad.partner.id); if (r.error) throw r.error; await this._afterMedia(); } catch (e) { toast(errMsg(e), 'error'); } },
     async delMedia(id, path) {
       var ok = await confirmSheet(T('oo.deleteq', 'Delete this photo?'), T('oo.delete', 'Delete')); if (ok === null) return;
-      try { if (path) { try { await sb().storage.from('oo-media').remove([path]); } catch (e) {} } var r = await sb().from('oo_media').delete().eq('id', id); if (r.error) throw r.error; await this.refreshMe(true); await this.cadLoad(); this.cadRender(); } catch (e) { toast(errMsg(e), 'error'); }
+      try { if (path) { try { await sb().storage.from('oo-media').remove([path]); } catch (e) {} } var r = await sb().from('oo_media').delete().eq('id', id); if (r.error) throw r.error; await this._afterMedia(); } catch (e) { toast(errMsg(e), 'error'); }
     },
     async addPost() {
       var cap = await ask(T('oo.caption', 'Caption'), ''); if (!cap) return; var body = await ask(T('oo.body', 'Text'), '', { allowEmpty: true }); if (body === null) return;
-      try { var r = await sb().from('oo_media').insert({ partner_id: this.cad.partner.id, kind: 'post', caption: cap, body: body || null }).select('id'); if (r.error) throw r.error; await this.cadLoad(); this.cadRender(); } catch (e) { toast(errMsg(e), 'error'); }
+      try { var r = await sb().from('oo_media').insert({ partner_id: this.cad.partner.id, kind: 'post', caption: cap, body: body || null }).select('id'); if (r.error) throw r.error; await this._afterMedia(); } catch (e) { toast(errMsg(e), 'error'); }
     },
     cadRenderCalendar(banner) {
-      var root = document.getElementById('ooCadRoot'); var p = this.cad.partner;
-      var marks = {}; var mark = function (a, b, cls) { var d = a; var guard = 0; while (d <= b && guard++ < 120) { marks[d] = marks[d] === 'bk' ? 'bk' : cls; d = addDays(d, 1); } };
-      this.cad.blackouts.forEach(function (k) { mark(k.date_from, k.date_to, 'off'); });
-      this.cad.bookings.forEach(function (b) { if (b.status === 'accepted') mark(b.date_from, b.date_to, 'bk'); else if (b.status === 'requested') mark(b.date_from, b.date_to, 'rq'); });
-      var days = p.availability_days || DAYS;
-      var months = ''; var base = new Date(); base.setDate(1);
-      for (var m = 0; m < 3; m++) {
-        var d0 = new Date(base.getFullYear(), base.getMonth() + m, 1); var title = d0.toLocaleDateString(loc(), { month: 'long', year: 'numeric' });
-        var cells = ''; var lead = (d0.getDay() + 6) % 7; for (var i = 0; i < lead; i++) cells += '<div></div>';
-        var dd = new Date(d0); while (dd.getMonth() === d0.getMonth()) { var s = ymd(dd); var wd = DAYS[(dd.getDay() + 6) % 7]; var cls = marks[s] || (days.indexOf(wd) < 0 ? 'off' : ''); cells += '<div class="d ' + cls + (s < today() ? ' o' : '') + '">' + dd.getDate() + '</div>'; dd.setDate(dd.getDate() + 1); }
-        months += '<div class="oo-card" style="margin-top:10px"><h4>' + esc(title) + '</h4><div class="oo-cal">' + DAYS.map(function (x) { return '<div class="h">' + esc(dayLabel(x)) + '</div>'; }).join('') + cells + '</div></div>';
-      }
-      var legend = '<div class="oo-kv" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px"><span><span class="oo-chip" style="background:#16a34a;color:#fff">&nbsp;</span> ' + esc(T('oo.legend.booked', 'Booked')) + '</span><span><span class="oo-chip" style="background:#fde68a">&nbsp;</span> ' + esc(T('oo.legend.requested', 'Requested')) + '</span><span><span class="oo-chip">&nbsp;</span> ' + esc(T('oo.legend.off', 'Unavailable')) + '</span></div>';
-      var bl = '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.blackouts', 'Unavailable dates')) + '</h4>' +
+      var root = document.getElementById('ooRoot'); var p = this.cad.partner; var marks = {};
+      this.cad.blackouts.forEach(function (k) { markRange(marks, k.date_from, k.date_to, 'off'); });
+      this.cad.bookings.forEach(function (b) { if (b.status === 'accepted') markRange(marks, b.date_from, b.date_to, 'bk'); else if (b.status === 'requested') markRange(marks, b.date_from, b.date_to, 'rq'); });
+      var bl = '<div class="oo-card" style="margin-top:10px;max-width:720px"><h4>' + esc(T('oo.blackouts', 'Unavailable dates')) + '</h4>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;align-items:end"><label class="oo-kv">' + esc(T('oo.from', 'From')) + '<input class="oo-in" type="date" id="ooKFrom" min="' + today() + '"></label><label class="oo-kv">' + esc(T('oo.to', 'To')) + '<input class="oo-in" type="date" id="ooKTo" min="' + today() + '"></label><button type="button" class="oo-btn pri" style="grid-column:1/-1" onclick="OneOnOne.addBlackout()">' + esc(T('oo.addblackout', 'Add')) + '</button></div>' +
         this.cad.blackouts.map(function (k) { return '<div class="oo-row" style="align-items:center"><div style="flex:1" class="oo-kv"><b>' + esc(fmtRange(k.date_from, k.date_to)) + '</b>' + (k.note ? ' · ' + esc(k.note) : '') + '</div><button type="button" class="oo-btn warn" style="padding:3px 8px" onclick="OneOnOne.delBlackout(\'' + k.id + '\')">✕</button></div>'; }).join('') + '</div>';
-      root.innerHTML = this.cadSeg() + banner + legend + months + bl;
+      root.innerHTML = banner + this.legendHtml(true) + this.monthsHtml(marks, p.availability_days || DAYS) + bl;
     },
     async addBlackout() {
       var f = (document.getElementById('ooKFrom') || {}).value, t = (document.getElementById('ooKTo') || {}).value || f; if (!f) return; if (t < f) t = f;
-      try { var r = await sb().from('oo_blackouts').insert({ partner_id: this.cad.partner.id, date_from: f, date_to: t }).select('id'); if (r.error) throw r.error; await this.cadLoad(); this.cadRender(); } catch (e) { toast(errMsg(e), 'error'); }
+      try { var r = await sb().from('oo_blackouts').insert({ partner_id: this.cad.partner.id, date_from: f, date_to: t }).select('id'); if (r.error) throw r.error; await this.cadLoad(); this.render(); } catch (e) { toast(errMsg(e), 'error'); }
     },
-    async delBlackout(id) { try { var r = await sb().from('oo_blackouts').delete().eq('id', id); if (r.error) throw r.error; await this.cadLoad(); this.cadRender(); } catch (e) { toast(errMsg(e), 'error'); } },
+    async delBlackout(id) { try { var r = await sb().from('oo_blackouts').delete().eq('id', id); if (r.error) throw r.error; await this.cadLoad(); this.render(); } catch (e) { toast(errMsg(e), 'error'); } },
     cadRenderEarnings(banner) {
-      var root = document.getElementById('ooCadRoot'); var rows = this.cad.bookings.filter(function (b) { return b.status === 'accepted' || b.status === 'completed'; });
+      var root = document.getElementById('ooRoot'); var rows = this.cad.bookings.filter(function (b) { return b.status === 'accepted' || b.status === 'completed'; });
       var sum = function (f) { return rows.filter(f).reduce(function (a, b) { return a + (Number(b.fee_quoted) || 0); }, 0); };
       var tile = function (k, fb, v, col) { return '<div class="oo-card" style="text-align:center"><div class="oo-kv">' + esc(T(k, fb)) + '</div><div style="font-size:22px;font-weight:800;color:' + col + '">' + esc(money(v, 'THB')) + '</div></div>'; };
-      root.innerHTML = this.cadSeg() + banner + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' + tile('oo.earn.total', 'Accepted', sum(function () { return true; }), '#0f172a') + tile('oo.earn.paid', 'Paid', sum(function (b) { return b.payment_status === 'paid'; }), '#15803d') + tile('oo.earn.unpaid', 'Unpaid', sum(function (b) { return b.payment_status !== 'paid'; }), '#b45309') + '</div>' +
+      root.innerHTML = banner + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' + tile('oo.earn.total', 'Accepted', sum(function () { return true; }), '#0f172a') + tile('oo.earn.paid', 'Paid', sum(function (b) { return b.payment_status === 'paid'; }), '#15803d') + tile('oo.earn.unpaid', 'Unpaid', sum(function (b) { return b.payment_status !== 'paid'; }), '#b45309') + '</div>' +
         '<div class="oo-card" style="margin-top:10px">' + (rows.length ? rows.map(function (b) { return OO.bookingRow(b, 'partner'); }).join('') : '<div class="oo-kv" style="text-align:center;padding:16px">' + esc(T('oo.nobookings', 'No bookings yet.')) + '</div>') + '</div>';
     },
     async respond(id, accept) {
@@ -719,12 +924,12 @@
       try {
         var row = await rpc('oo_respond', { p_booking: id, p_accept: !!accept, p_reason: reason || null });
         push(row.member_id, accept ? 'oo.push.accepted' : 'oo.push.declined', { name: (this.cad.partner && this.cad.partner.display_name) || '', range: fmtRange(row.date_from, row.date_to), course: row.course_name || '' });
-        await this.cadLoad(); this.cadBadge(); this.cadRender();
+        await this.cadLoad(); this.cadBadge(); this.paintShell(); this.render();
       } catch (e) { toast(errMsg(e), 'error'); }
     },
-    async mark(id, payment, completed) { try { await rpc('oo_partner_mark', { p_booking: id, p_payment: payment, p_completed: completed }); await this.cadLoad(); this.cadRender(); } catch (e) { toast(errMsg(e), 'error'); } },
+    async mark(id, payment, completed) { try { await rpc('oo_partner_mark', { p_booking: id, p_payment: payment, p_completed: completed }); await this.cadLoad(); this.paintShell(); this.render(); } catch (e) { toast(errMsg(e), 'error'); } },
 
-    /* ---------- ADMIN (inside the golfer 1on1 tab; oo_admins only) ---------- */
+    /* ---------- ADMIN (oo_admins only; a view of the member side) ---------- */
     adm: { members: [], partners: [], invites: [], bookings: [], media: [], reports: [] },
     async admLoad() {
       var c = sb(); var a = this.adm;
@@ -733,11 +938,11 @@
       a.bookings = await q('oo_bookings', '*, oo_partners(display_name), oo_members(display_name)', 'requested_at'); a.media = await q('oo_media', '*, oo_partners(display_name)'); a.reports = await q('oo_reports', '*');
     },
     async renderAdmin() {
-      var root = document.getElementById('ooRoot'); if (!root) return; await this.refreshMe(); if (!this.me || !this.me.admin) { this.view = 'browse'; return this.render(); }
-      root.innerHTML = this.segHtml() + '<div class="oo-kv" style="text-align:center;padding:16px">…</div>';
+      var root = document.getElementById('ooRoot'); if (!root) return; await this.refreshMe(); if (!this.me || !this.me.admin) { this.nav('browse'); return; }
+      root.innerHTML = '<div class="oo-kv" style="text-align:center;padding:16px">…</div>';
       await this.admLoad(); var a = this.adm; var s = this._sub;
       var sub = function (k, key, fb, n) { return '<button type="button" class="' + (s === k ? 'on' : '') + '" onclick="OneOnOne.admSub(\'' + k + '\')">' + esc(T(key, fb)) + (n ? ' <b>' + n + '</b>' : '') + '</button>'; };
-      var h = this.segHtml() + '<div class="oo-seg" style="margin-bottom:10px">' +
+      var h = '<div class="oo-seg" style="margin-bottom:10px">' +
         sub('members', 'oo.adm.members', 'Members', a.members.filter(function (m) { return m.status === 'pending'; }).length) + sub('partners', 'oo.adm.partners', 'Partners', a.partners.filter(function (p) { return p.status === 'pending'; }).length) +
         sub('invites', 'oo.adm.invites', 'Invites') + sub('bookings', 'oo.adm.bookings', 'Bookings') + sub('media', 'oo.adm.media', 'Photo review') + sub('reports', 'oo.adm.reports', 'Reports', a.reports.filter(function (r) { return r.status === 'open'; }).length) + '</div><div class="oo-card">';
       var none = '<div class="oo-kv" style="text-align:center;padding:16px">' + esc(T('oo.adm.none', 'Nothing here.')) + '</div>';
@@ -762,6 +967,7 @@
       }
       if (s === 'reports') h += a.reports.length ? a.reports.map(function (r) { return '<div class="oo-row"><div style="flex:1"><div style="font-weight:800">' + esc(r.reporter_id) + ' → ' + esc(r.target_user_id) + ' · ' + esc(r.status) + '</div><div class="oo-kv" style="white-space:pre-wrap">' + esc(r.details || r.reason) + '</div><div class="oo-kv">' + esc(String(r.created_at).slice(0, 16).replace('T', ' ')) + '</div></div></div>'; }).join('') : none;
       root.innerHTML = h + '</div>';
+      this.paintShell();
     },
     admSub(k) { this._sub = k; this.renderAdmin(); },
     async admMember(user, status) { try { await rpc('oo_admin_set_member', { p_user: user, p_status: status, p_expires: null, p_notes: null }); if (status === 'active') push(user, 'oo.push.member_ok', {}); this.renderAdmin(); } catch (e) { toast(errMsg(e), 'error'); } },
@@ -776,6 +982,9 @@
     copyInvite(code) { var link = 'https://mycaddipro.com/?oo=' + code; try { navigator.clipboard.writeText(link).then(function () { toast(T('oo.adm.copied', 'Link copied') + ': ' + link, 'success'); }, function () { toast(link, 'info'); }); } catch (e) { toast(link, 'info'); } },
     async admMedia(id, status) { try { await rpc('oo_admin_set_media', { p_media: id, p_status: status }); this.renderAdmin(); } catch (e) { toast(errMsg(e), 'error'); } }
   };
+
+  /* paint a date range into a marks map (accepted 'bk' always wins) */
+  function markRange(marks, a, b, cls) { var d = a; var guard = 0; while (d <= b && guard++ < 120) { marks[d] = marks[d] === 'bk' ? 'bk' : cls; d = addDays(d, 1); } }
 
   window.OneOnOne = OO;
   OO.captureInvite();

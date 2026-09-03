@@ -30630,13 +30630,15 @@ Sent from Login Page`;
             if (_food && _food.classList.contains('active') && window.FoodFGV1 && FoodFGV1.canBack && FoodFGV1.canBack()) {
                 try { if (FoodFGV1.back()) return; } catch (e) {}
             }
-            // 1on1 (v1089): browse → partner → book are internal views; step back through them first,
-            // and close the body-mounted ask sheet before anything else.
+            // 1on1 (v1091): its own dashboard screen — OneOnOne.handleBack() walks ask sheet → More sheet →
+            // internal views (browse → partner → book) → phone cube home → exit to the dashboard that opened it.
+            // Never fall through to NavHistory from inside it (that ejected users — v1032 rule).
             const _ooAsk = document.getElementById('ooAsk');
             if (_ooAsk) { try { _ooAsk.remove(); } catch (e) {} return; }
-            const _oo = document.getElementById('golfer-oo');
-            if (_oo && _oo.classList.contains('active') && window.OneOnOne && OneOnOne.canBack()) {
-                try { if (OneOnOne.back()) return; } catch (e) {}
+            const _ooScr = document.getElementById('ooDashboard');
+            if (_ooScr && _ooScr.classList.contains('active') && window.OneOnOne) {
+                try { OneOnOne.handleBack(); } catch (e) { console.warn('[1on1] back', e); }
+                return;
             }
             // Event Day Mode is shown via inline display:block — it bypasses the .active screen
             // system, so the normal back logic below doesn't recognize it and falls through to
@@ -31746,8 +31748,6 @@ Sent from Login Page`;
             // Live round catch-up: returning to the scorecard tab re-pulls group scores and
             // advances past any hole completed while this device was elsewhere in the app.
             if (tabName === 'scorecard') { try { LiveScorecardManager?.resyncAndCatchUp?.('tab'); } catch (e) {} }
-            // 1on1 (v1089): render the private partner tab on open (also marks responses seen → badge clears)
-            if (tabName === 'oo') { try { if (window.OneOnOne) OneOnOne.onTab(); } catch (e) {} }
 
             // Scroll to top when switching tabs
             window.scrollTo(0, 0);
@@ -31990,8 +31990,6 @@ Sent from Login Page`;
 
             TabManager.showTab('caddieDashboard', tabName, event);
 
-            // 1on1 (v1089): partner side (opt-in / requests / calendar / profile)
-            if (tabName === '1on1') { try { if (window.OneOnOne) OneOnOne.onCaddieTab(); } catch (e) {} }
 
             // Tracking tab: boot/refresh the live map once the pane is visible
             if (tabName === 'tracking' && typeof CaddyTrackingSystem !== 'undefined') {
@@ -32133,7 +32131,8 @@ Sent from Login Page`;
             cad: { dash: 'caddieDashboard', showTab: (t) => showCaddyTab(t), def: 'overview' },
             cm: { dash: 'caddyMasterDashboard', showTab: (t) => showCaddyMasterTab(t), def: 'overview' },
             mnt: { dash: 'maintenanceDashboard', showTab: (t) => showMaintenanceTab(t), def: 'overview' },
-            adm: { dash: 'courseAdminDashboard', showTab: (t) => CourseAdminSystem.showTab(t), def: 'overview' }
+            adm: { dash: 'courseAdminDashboard', showTab: (t) => CourseAdminSystem.showTab(t), def: 'overview' },
+            oo:  { dash: 'ooDashboard', showTab: (t) => OneOnOne.nav(t), def: 'default' } // 1on1 (v1091): its own screen, two personas
         };
         window.mhvHome = function (p) {
             const c = _mhvCfg[p]; if (!c) return;
@@ -49420,9 +49419,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     </button>
 
-                    <!-- 1on1 (v1089): JOA private playing-partner booking. Hidden unless the user has an oo_members row
+                    <!-- 1on1 (v1089→v1091): JOA private playing-partner booking. Hidden unless the user has an oo_members row
                          or is an oo_admin — OneOnOne.initGolfer() adds .oo-on to #golferDashboard. Pill/badge writers use the
-                         id + class mirror rule (lite copy below carries class="ooCube"/"ooCubeBadge"/"cubeInfo1on1"). -->
+                         id + class mirror rule (lite copy below carries class="ooCube"/"ooCubeBadge"/"cubeInfo1on1").
+                         v1091: the cube OPENS the 1on1 dashboard screen (#ooDashboard) — no golfer tab any more. -->
                     <button id="ooCube" onclick="OneOnOne.open()" class="card-hover metric-card cube-poster text-center group relative order-10" style="--p1:#dbeafe;--p2:#eff6ff">
                         <span id="ooCubeBadge" class="absolute top-1 right-1 text-[9px] font-bold text-white bg-red-500 min-w-[18px] h-[18px] flex items-center justify-center rounded-full shadow-md z-10" style="display:none;">0</span>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuPlayers"/></svg></div>
@@ -51254,19 +51254,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     <h2 style="font-size:16px;font-weight:800;color:#0f172a;margin:0;">Player of the Year</h2>
                 </div>
                 <iframe id="poyEmbedFrame" title="Player of the Year" scrolling="no" style="width:100%;border:0;display:block;min-height:75vh;background:transparent;border-radius:16px;"></iframe>
-            </div>
-
-            <!-- 1on1 (v1089): JOA private playing-partner booking — in-app tab (no page leap), rendered by oo-1on1.js.
-                 Internal views browse → partner → book step back via OneOnOne.canBack()/back() (registered in dashboardGoBack). -->
-            <div id="golfer-oo" class="tab-content">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-                    <button onclick="if (!(window.OneOnOne && OneOnOne.canBack() && OneOnOne.back())) showGolferTab('overview', event)" style="border:1px solid #e2e8f0;background:#fff;color:#64748b;border-radius:10px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;flex:0 0 34px;" aria-label="Back">
-                        <span class="material-symbols-outlined" style="font-size:20px;">arrow_back</span>
-                    </button>
-                    <span class="material-symbols-outlined" style="font-size:22px;color:#2563eb;">handshake</span>
-                    <h2 style="font-size:16px;font-weight:800;color:#0f172a;margin:0;" data-i18n="oo.title">1on1</h2>
-                </div>
-                <div id="ooRoot"></div>
             </div>
 
             <div id="golfer-societyevents" class="tab-content">
@@ -57764,7 +57751,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <span class="hidden sm:inline">Messages</span>
                         <span id="caddy-msg-badge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center" style="display: none;">0</span>
                     </button>
-                    <button onclick="showCaddyTab('1on1', event)" class="tab-button relative text-xs md:text-sm px-3 md:px-4 py-2 rounded-lg transition-all">
+                    <button onclick="OneOnOne.enter('partner')" class="tab-button relative text-xs md:text-sm px-3 md:px-4 py-2 rounded-lg transition-all">
                         <span class="material-symbols-outlined text-sm">handshake</span>
                         <span class="hidden sm:inline" data-i18n="oo.title">1on1</span>
                         <span id="cadTab1on1Badge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 min-w-4 px-1 items-center justify-center" style="display: none;">0</span>
@@ -57808,7 +57795,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuChat"/></svg></div>
                         <span class="badge" id="cadCubeMsgBadge">0</span>
                     </button>
-                    <button class="mgc" style="--p1:#dbeafe;--p2:#eff6ff" onclick="mhvGo('cad','1on1')">
+                    <button class="mgc" style="--p1:#dbeafe;--p2:#eff6ff" onclick="OneOnOne.enter('partner')">
                         <div class="t" data-i18n="oo.title">1on1</div>
                         <div class="chip" data-i18n="oo.cube.partner">Partner requests</div>
                         <div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#cuPlayers"/></svg></div>
@@ -58474,15 +58461,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 </div>
             </div>
-            <!-- 1on1 (v1089): the caddie IS the partner. Opt-in, requests (accept/decline/cancel), calendar, profile + photos,
-                 earnings — all rendered by oo-1on1.js (OneOnOne.initCaddie / onCaddieTab). Separate from caddy_bookings. -->
-            <div id="caddie-1on1" class="tab-content">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-                    <span class="material-symbols-outlined" style="font-size:22px;color:#2563eb;">handshake</span>
-                    <h2 style="font-size:16px;font-weight:800;color:#0f172a;margin:0;" data-i18n="oo.title">1on1</h2>
-                </div>
-                <div id="ooCadRoot"></div>
-            </div>
         </main>
 
         <!-- MHV shell phone: MORE sheet + bottom dock (v981) -->
@@ -58492,7 +58470,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="grid">
                 <button class="s" onclick="mhvGo('cad','earnings')"><span class="material-symbols-outlined">payments</span><span data-i18n="caddie.earnings">Earnings</span></button>
                 <button class="s" onclick="mhvGo('cad','profile')"><span class="material-symbols-outlined">person</span><span data-i18n="golfer.profile">Profile</span></button>
-                <button class="s" onclick="mhvGo('cad','1on1')"><span class="material-symbols-outlined">handshake</span><span data-i18n="oo.title">1on1</span></button>
+                <button class="s" onclick="OneOnOne.enter('partner')"><span class="material-symbols-outlined">handshake</span><span data-i18n="oo.title">1on1</span></button>
             </div>
         </div>
         <nav id="cadDock" class="mhvDock">
@@ -58502,6 +58480,44 @@ document.addEventListener('DOMContentLoaded', function() {
             <button class="mdk" data-tab="messages" onclick="mhvGo('cad','messages')"><span class="material-symbols-outlined">chat</span><span class="lbl" data-i18n="mgr.dock.chat">Chat</span><span class="badge" id="cadDockMsgBadge">0</span></button>
             <button class="mdk" id="cadDockMore" onclick="mhvMore('cad')"><span class="material-symbols-outlined">apps</span><span class="lbl" data-i18n="mgr.dock.more">More</span></button>
         </nav>
+    </div>
+
+    <!-- 1on1 (v1091): the JOA private playing-partner mini-site is its OWN dashboard screen (Pete 2026-09-03: "the dashboard
+         needs to be structured differently"). Same MHV shell as the caddie dashboard: green app bar, phone cube home + bottom
+         dock + More sheet, desktop tab strip. ONE screen, TWO personas — OneOnOne.enter('member'|'partner') builds the cubes /
+         tabs / dock for the side that opened it (golfer cube + desktop rail = member; caddie cube / tab / drawer = partner).
+         Content renders into #ooRoot (oo-1on1.js). Back = OneOnOne.handleBack() (registered in dashboardGoBack). -->
+    <div id="ooDashboard" class="screen">
+        <header class="oo-hdr">
+            <div class="max-w-7xl mx-auto px-4 lg:px-8">
+                <div class="flex justify-between items-center" style="height:52px;gap:8px;">
+                    <div class="flex items-center" style="gap:10px;min-width:0;">
+                        <button type="button" class="ib" onclick="OneOnOne.handleBack()" aria-label="Back"><span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span></button>
+                        <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.35);flex:0 0 auto;">
+                            <span class="material-symbols-outlined" style="color:#4ade80;font-size:20px;">handshake</span>
+                        </div>
+                        <div style="min-width:0;">
+                            <h1 class="font-bold text-white" style="font-size:15px;line-height:1.1;margin:0;" data-i18n="oo.title">1on1</h1>
+                            <p id="ooHdrSub" style="color:#86b898;font-size:10px;font-weight:600;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;">JOA · Private playing partners</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center" style="gap:8px;">
+                        <span id="ooHdrRole" class="role">Member</span>
+                        <button type="button" class="ib ib-desk" onclick="OneOnOne.exit()" title="Back to my dashboard" aria-label="Back to my dashboard"><span class="material-symbols-outlined" style="font-size:17px;">logout</span></button>
+                    </div>
+                </div>
+            </div>
+        </header>
+        <nav id="ooTabs" class="hidden md:block overflow-x-auto">
+            <div class="max-w-7xl mx-auto px-4 lg:px-8"><div id="ooTabsRow" class="flex flex-nowrap items-center space-x-1 overflow-x-auto py-2"></div></div>
+        </nav>
+        <main class="max-w-7xl mx-auto px-4 lg:px-8 py-4 md:py-6">
+            <div id="ooCubeHome" class="mhvCubeHome"></div>
+            <div id="ooPane" class="tab-content"><div id="ooRoot"></div></div>
+        </main>
+        <div id="ooMoreDim" class="mhvDim" onclick="mhvCloseMore('oo')"></div>
+        <div id="ooMoreSheet" class="mhvSheet"><div class="grab"></div><div class="grid"></div></div>
+        <nav id="ooDock" class="mhvDock"></nav>
     </div>
 
     <!-- Caddy Master Dashboard (CMV1 v995) — MHV shell, real data only, no mock content EVER -->
@@ -157011,7 +157027,7 @@ showOrganizerTab = function(tabName) {
                 <button class="drawer-link" onclick="showCaddyTab('earnings', event); closeMobileDrawer();"><span class="material-symbols-outlined">payments</span><span data-i18n="caddie.earnings">Earnings</span></button>
 
                 <button class="drawer-link" onclick="showCaddyTab('profile', event); closeMobileDrawer();"><span class="material-symbols-outlined">person</span><span data-i18n="golfer.profile">Profile</span></button>
-                <button class="drawer-link" onclick="showCaddyTab('1on1', event); closeMobileDrawer();"><span class="material-symbols-outlined">handshake</span><span data-i18n="oo.title">1on1</span></button>
+                <button class="drawer-link" onclick="closeMobileDrawer(); OneOnOne.enter('partner');"><span class="material-symbols-outlined">handshake</span><span data-i18n="oo.title">1on1</span></button>
 
                 <button class="drawer-link" onclick="closeMobileDrawer(); RoleSwitcher.switchToGolfer();" style="background: linear-gradient(135deg, #16a34a, #15803d); color: white; border-radius: 8px; margin-top: 8px; font-weight: 600;"><span class="material-symbols-outlined">sports_golf</span><span>Play Golf — Golfer Mode</span></button>
 
@@ -159645,9 +159661,9 @@ showOrganizerTab = function(tabName) {
     <!-- AI Caddie disabled until API key funded -->
     <!-- <script defer src="ai-caddie.js?v=20260420a"></script> -->
                                     <!-- G3 (v1080): MyCaddiPro 3.0 DESKTOP shell for the golfer dashboard (>=1024px only; phones untouched) -->
-    <!-- 1on1 (v1089): JOA private playing-partner booking — member cube/tab, caddie 1on1 tab, admin segment -->
-    <script src="oo-1on1.js?v=1089"></script>
-    <script src="g3-desk.js?v=1089"></script>
+    <!-- 1on1 (v1089→v1091): JOA private playing-partner booking — its own dashboard screen (#ooDashboard), entered from the golfer cube / desktop rail (member) and the caddie cube / tab / drawer (partner) -->
+    <script src="oo-1on1.js?v=1091"></script>
+    <script src="g3-desk.js?v=1091"></script>
     <script src="g3-org.js?v=1087"></script>
 </body>
 

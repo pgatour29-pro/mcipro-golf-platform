@@ -296,20 +296,20 @@
   Object.keys(DICT3).forEach(function (l) { Object.assign(DICT[l], DICT3[l]); });
   try { if (typeof translations !== 'undefined') Object.keys(DICT3).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT3[l]); }); } catch (e) {}
   var DICT4 = {
-    en: { 'oo.pin.title': 'Access PIN', 'oo.pin.desc': 'Enter the 1on1 access PIN you received from JOA or Pete.', 'oo.pin.enter': 'PIN', 'oo.pin.verify': 'Unlock', 'oo.pin.ok': 'Unlocked',
-      'oo.pin.wrong': 'Wrong PIN · {n} tries left', 'oo.err.pin_locked': 'Too many attempts. Try again in 15 minutes.', 'oo.err.pin_not_set': 'The access PIN has not been set yet. Ask JOA or Pete.', 'oo.err.bad_pin': 'PIN must be 4–8 digits.',
+    en: { 'oo.pin.title': 'Access PIN', 'oo.pin.desc': 'Enter the 1on1 access PIN from your admin.', 'oo.pin.enter': 'PIN', 'oo.pin.verify': 'Unlock', 'oo.pin.ok': 'Unlocked',
+      'oo.pin.wrong': 'Wrong PIN · {n} tries left', 'oo.err.pin_locked': 'Too many attempts. Try again in 15 minutes.', 'oo.err.pin_not_set': 'The access PIN has not been set yet. Ask your admin.', 'oo.err.bad_pin': 'PIN must be 4–8 digits.',
       'oo.adm.pin': 'Access PIN', 'oo.adm.pin.set': 'PIN set {date} by {name} · members re-enter it every {h} h', 'oo.adm.pin.none': 'No PIN set — members are locked out until you set one.', 'oo.adm.pin.new': 'New PIN (4–8 digits)', 'oo.adm.pin.save': 'Set PIN', 'oo.adm.pin.saved': 'PIN updated — every member must enter it again.',
       'oo.adm.grant': 'Grant access', 'oo.adm.grant.desc': 'Find a MyCaddiPro user by name or id and grant 1on1 access directly — no invite link needed.', 'oo.adm.grant.btn': 'Grant', 'oo.adm.grant.search': 'Name or id', 'oo.adm.grant.none': 'No users found', 'oo.adm.grant.done': 'Access granted' },
-    th: { 'oo.pin.title': 'รหัส PIN เข้าใช้', 'oo.pin.desc': 'กรอกรหัส PIN 1on1 ที่ได้รับจาก JOA หรือ Pete', 'oo.pin.enter': 'PIN', 'oo.pin.verify': 'ปลดล็อก', 'oo.pin.ok': 'ปลดล็อกแล้ว',
-      'oo.pin.wrong': 'PIN ไม่ถูกต้อง · เหลืออีก {n} ครั้ง', 'oo.err.pin_locked': 'ลองผิดหลายครั้งเกินไป ลองใหม่ใน 15 นาที', 'oo.err.pin_not_set': 'ยังไม่ได้ตั้งรหัส PIN กรุณาติดต่อ JOA หรือ Pete', 'oo.err.bad_pin': 'PIN ต้องเป็นตัวเลข 4–8 หลัก',
+    th: { 'oo.pin.title': 'รหัส PIN เข้าใช้', 'oo.pin.desc': 'กรอกรหัส PIN 1on1 ที่ได้รับจากผู้ดูแล', 'oo.pin.enter': 'PIN', 'oo.pin.verify': 'ปลดล็อก', 'oo.pin.ok': 'ปลดล็อกแล้ว',
+      'oo.pin.wrong': 'PIN ไม่ถูกต้อง · เหลืออีก {n} ครั้ง', 'oo.err.pin_locked': 'ลองผิดหลายครั้งเกินไป ลองใหม่ใน 15 นาที', 'oo.err.pin_not_set': 'ยังไม่ได้ตั้งรหัส PIN กรุณาติดต่อผู้ดูแล', 'oo.err.bad_pin': 'PIN ต้องเป็นตัวเลข 4–8 หลัก',
       'oo.adm.pin': 'รหัส PIN เข้าใช้', 'oo.adm.pin.set': 'ตั้ง PIN เมื่อ {date} โดย {name} · สมาชิกต้องกรอกใหม่ทุก {h} ชม.', 'oo.adm.pin.none': 'ยังไม่ได้ตั้ง PIN — สมาชิกเข้าใช้ไม่ได้จนกว่าจะตั้ง', 'oo.adm.pin.new': 'PIN ใหม่ (ตัวเลข 4–8 หลัก)', 'oo.adm.pin.save': 'ตั้ง PIN', 'oo.adm.pin.saved': 'อัปเดต PIN แล้ว — สมาชิกทุกคนต้องกรอกใหม่',
       'oo.adm.grant': 'ให้สิทธิ์เข้าใช้', 'oo.adm.grant.desc': 'ค้นหาผู้ใช้ MyCaddiPro ด้วยชื่อหรือไอดี แล้วให้สิทธิ์ 1on1 ได้ทันที ไม่ต้องใช้ลิงก์เชิญ', 'oo.adm.grant.btn': 'ให้สิทธิ์', 'oo.adm.grant.search': 'ชื่อหรือไอดี', 'oo.adm.grant.none': 'ไม่พบผู้ใช้', 'oo.adm.grant.done': 'ให้สิทธิ์แล้ว' },
-    ko: { 'oo.pin.title': '접근 PIN', 'oo.pin.desc': 'JOA 또는 Pete에게 받은 1on1 접근 PIN을 입력하세요.', 'oo.pin.enter': 'PIN', 'oo.pin.verify': '잠금 해제', 'oo.pin.ok': '잠금 해제됨',
-      'oo.pin.wrong': 'PIN이 틀렸습니다 · {n}회 남음', 'oo.err.pin_locked': '시도 횟수를 초과했습니다. 15분 후 다시 시도하세요.', 'oo.err.pin_not_set': '접근 PIN이 아직 설정되지 않았습니다. JOA 또는 Pete에게 문의하세요.', 'oo.err.bad_pin': 'PIN은 4–8자리 숫자여야 합니다.',
+    ko: { 'oo.pin.title': '접근 PIN', 'oo.pin.desc': '관리자에게 받은 1on1 접근 PIN을 입력하세요.', 'oo.pin.enter': 'PIN', 'oo.pin.verify': '잠금 해제', 'oo.pin.ok': '잠금 해제됨',
+      'oo.pin.wrong': 'PIN이 틀렸습니다 · {n}회 남음', 'oo.err.pin_locked': '시도 횟수를 초과했습니다. 15분 후 다시 시도하세요.', 'oo.err.pin_not_set': '접근 PIN이 아직 설정되지 않았습니다. 관리자에게 문의하세요.', 'oo.err.bad_pin': 'PIN은 4–8자리 숫자여야 합니다.',
       'oo.adm.pin': '접근 PIN', 'oo.adm.pin.set': '{date}에 {name}이(가) PIN 설정 · 회원은 {h}시간마다 다시 입력', 'oo.adm.pin.none': 'PIN이 없습니다 — 설정할 때까지 회원은 접근할 수 없습니다.', 'oo.adm.pin.new': '새 PIN (4–8자리 숫자)', 'oo.adm.pin.save': 'PIN 설정', 'oo.adm.pin.saved': 'PIN이 변경되었습니다 — 모든 회원이 다시 입력해야 합니다.',
       'oo.adm.grant': '접근 권한 부여', 'oo.adm.grant.desc': '이름 또는 ID로 MyCaddiPro 사용자를 찾아 초대 링크 없이 바로 1on1 권한을 부여합니다.', 'oo.adm.grant.btn': '부여', 'oo.adm.grant.search': '이름 또는 ID', 'oo.adm.grant.none': '사용자를 찾을 수 없습니다', 'oo.adm.grant.done': '권한이 부여되었습니다' },
-    ja: { 'oo.pin.title': 'アクセスPIN', 'oo.pin.desc': 'JOAまたはPeteから受け取った1on1のアクセスPINを入力してください。', 'oo.pin.enter': 'PIN', 'oo.pin.verify': '解除', 'oo.pin.ok': '解除しました',
-      'oo.pin.wrong': 'PINが違います · 残り{n}回', 'oo.err.pin_locked': '試行回数が多すぎます。15分後にもう一度お試しください。', 'oo.err.pin_not_set': 'アクセスPINがまだ設定されていません。JOAまたはPeteにお問い合わせください。', 'oo.err.bad_pin': 'PINは4〜8桁の数字です。',
+    ja: { 'oo.pin.title': 'アクセスPIN', 'oo.pin.desc': '管理者から受け取った1on1のアクセスPINを入力してください。', 'oo.pin.enter': 'PIN', 'oo.pin.verify': '解除', 'oo.pin.ok': '解除しました',
+      'oo.pin.wrong': 'PINが違います · 残り{n}回', 'oo.err.pin_locked': '試行回数が多すぎます。15分後にもう一度お試しください。', 'oo.err.pin_not_set': 'アクセスPINがまだ設定されていません。管理者にお問い合わせください。', 'oo.err.bad_pin': 'PINは4〜8桁の数字です。',
       'oo.adm.pin': 'アクセスPIN', 'oo.adm.pin.set': '{date}に{name}がPINを設定 · 会員は{h}時間ごとに再入力', 'oo.adm.pin.none': 'PIN未設定 — 設定するまで会員はアクセスできません。', 'oo.adm.pin.new': '新しいPIN（4〜8桁）', 'oo.adm.pin.save': 'PINを設定', 'oo.adm.pin.saved': 'PINを更新しました — 全会員が再入力します。',
       'oo.adm.grant': 'アクセス権を付与', 'oo.adm.grant.desc': '名前またはIDでMyCaddiProユーザーを探し、招待リンクなしで1on1のアクセス権を付与します。', 'oo.adm.grant.btn': '付与', 'oo.adm.grant.search': '名前またはID', 'oo.adm.grant.none': 'ユーザーが見つかりません', 'oo.adm.grant.done': '付与しました' }
   };

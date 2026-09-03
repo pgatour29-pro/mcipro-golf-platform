@@ -22,6 +22,10 @@
    from cached state and data loads in the background; no periodic refetch (was: every section tap after
    20s refetched six lists and blanked the page to '…'); every re-render keeps the scroll position;
    lists refresh only on enter, after an action, on realtime, or when the tab comes back after 60s.
+   v1094 ACCESS (Pete: "No regular users can access this cube. Needs a special pin for now and access
+   privilege set by JOA or me"): membership is enforced in the DB (oo_is_member = active row + fresh PIN);
+   members see a PIN sheet on entry (oo_verify_pin, 8 tries / 15 min); admins set/rotate the PIN and can
+   grant access to any MyCaddiPro user directly from Members (no invite link needed). Admins bypass the PIN.
    ===================================================================================== */
 (function () {
   'use strict';
@@ -291,6 +295,26 @@
   };
   Object.keys(DICT3).forEach(function (l) { Object.assign(DICT[l], DICT3[l]); });
   try { if (typeof translations !== 'undefined') Object.keys(DICT3).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT3[l]); }); } catch (e) {}
+  var DICT4 = {
+    en: { 'oo.pin.title': 'Access PIN', 'oo.pin.desc': 'Enter the 1on1 access PIN you received from JOA or Pete.', 'oo.pin.enter': 'PIN', 'oo.pin.verify': 'Unlock', 'oo.pin.ok': 'Unlocked',
+      'oo.pin.wrong': 'Wrong PIN · {n} tries left', 'oo.err.pin_locked': 'Too many attempts. Try again in 15 minutes.', 'oo.err.pin_not_set': 'The access PIN has not been set yet. Ask JOA or Pete.', 'oo.err.bad_pin': 'PIN must be 4–8 digits.',
+      'oo.adm.pin': 'Access PIN', 'oo.adm.pin.set': 'PIN set {date} by {name} · members re-enter it every {h} h', 'oo.adm.pin.none': 'No PIN set — members are locked out until you set one.', 'oo.adm.pin.new': 'New PIN (4–8 digits)', 'oo.adm.pin.save': 'Set PIN', 'oo.adm.pin.saved': 'PIN updated — every member must enter it again.',
+      'oo.adm.grant': 'Grant access', 'oo.adm.grant.desc': 'Find a MyCaddiPro user by name or id and grant 1on1 access directly — no invite link needed.', 'oo.adm.grant.btn': 'Grant', 'oo.adm.grant.search': 'Name or id', 'oo.adm.grant.none': 'No users found', 'oo.adm.grant.done': 'Access granted' },
+    th: { 'oo.pin.title': 'รหัส PIN เข้าใช้', 'oo.pin.desc': 'กรอกรหัส PIN 1on1 ที่ได้รับจาก JOA หรือ Pete', 'oo.pin.enter': 'PIN', 'oo.pin.verify': 'ปลดล็อก', 'oo.pin.ok': 'ปลดล็อกแล้ว',
+      'oo.pin.wrong': 'PIN ไม่ถูกต้อง · เหลืออีก {n} ครั้ง', 'oo.err.pin_locked': 'ลองผิดหลายครั้งเกินไป ลองใหม่ใน 15 นาที', 'oo.err.pin_not_set': 'ยังไม่ได้ตั้งรหัส PIN กรุณาติดต่อ JOA หรือ Pete', 'oo.err.bad_pin': 'PIN ต้องเป็นตัวเลข 4–8 หลัก',
+      'oo.adm.pin': 'รหัส PIN เข้าใช้', 'oo.adm.pin.set': 'ตั้ง PIN เมื่อ {date} โดย {name} · สมาชิกต้องกรอกใหม่ทุก {h} ชม.', 'oo.adm.pin.none': 'ยังไม่ได้ตั้ง PIN — สมาชิกเข้าใช้ไม่ได้จนกว่าจะตั้ง', 'oo.adm.pin.new': 'PIN ใหม่ (ตัวเลข 4–8 หลัก)', 'oo.adm.pin.save': 'ตั้ง PIN', 'oo.adm.pin.saved': 'อัปเดต PIN แล้ว — สมาชิกทุกคนต้องกรอกใหม่',
+      'oo.adm.grant': 'ให้สิทธิ์เข้าใช้', 'oo.adm.grant.desc': 'ค้นหาผู้ใช้ MyCaddiPro ด้วยชื่อหรือไอดี แล้วให้สิทธิ์ 1on1 ได้ทันที ไม่ต้องใช้ลิงก์เชิญ', 'oo.adm.grant.btn': 'ให้สิทธิ์', 'oo.adm.grant.search': 'ชื่อหรือไอดี', 'oo.adm.grant.none': 'ไม่พบผู้ใช้', 'oo.adm.grant.done': 'ให้สิทธิ์แล้ว' },
+    ko: { 'oo.pin.title': '접근 PIN', 'oo.pin.desc': 'JOA 또는 Pete에게 받은 1on1 접근 PIN을 입력하세요.', 'oo.pin.enter': 'PIN', 'oo.pin.verify': '잠금 해제', 'oo.pin.ok': '잠금 해제됨',
+      'oo.pin.wrong': 'PIN이 틀렸습니다 · {n}회 남음', 'oo.err.pin_locked': '시도 횟수를 초과했습니다. 15분 후 다시 시도하세요.', 'oo.err.pin_not_set': '접근 PIN이 아직 설정되지 않았습니다. JOA 또는 Pete에게 문의하세요.', 'oo.err.bad_pin': 'PIN은 4–8자리 숫자여야 합니다.',
+      'oo.adm.pin': '접근 PIN', 'oo.adm.pin.set': '{date}에 {name}이(가) PIN 설정 · 회원은 {h}시간마다 다시 입력', 'oo.adm.pin.none': 'PIN이 없습니다 — 설정할 때까지 회원은 접근할 수 없습니다.', 'oo.adm.pin.new': '새 PIN (4–8자리 숫자)', 'oo.adm.pin.save': 'PIN 설정', 'oo.adm.pin.saved': 'PIN이 변경되었습니다 — 모든 회원이 다시 입력해야 합니다.',
+      'oo.adm.grant': '접근 권한 부여', 'oo.adm.grant.desc': '이름 또는 ID로 MyCaddiPro 사용자를 찾아 초대 링크 없이 바로 1on1 권한을 부여합니다.', 'oo.adm.grant.btn': '부여', 'oo.adm.grant.search': '이름 또는 ID', 'oo.adm.grant.none': '사용자를 찾을 수 없습니다', 'oo.adm.grant.done': '권한이 부여되었습니다' },
+    ja: { 'oo.pin.title': 'アクセスPIN', 'oo.pin.desc': 'JOAまたはPeteから受け取った1on1のアクセスPINを入力してください。', 'oo.pin.enter': 'PIN', 'oo.pin.verify': '解除', 'oo.pin.ok': '解除しました',
+      'oo.pin.wrong': 'PINが違います · 残り{n}回', 'oo.err.pin_locked': '試行回数が多すぎます。15分後にもう一度お試しください。', 'oo.err.pin_not_set': 'アクセスPINがまだ設定されていません。JOAまたはPeteにお問い合わせください。', 'oo.err.bad_pin': 'PINは4〜8桁の数字です。',
+      'oo.adm.pin': 'アクセスPIN', 'oo.adm.pin.set': '{date}に{name}がPINを設定 · 会員は{h}時間ごとに再入力', 'oo.adm.pin.none': 'PIN未設定 — 設定するまで会員はアクセスできません。', 'oo.adm.pin.new': '新しいPIN（4〜8桁）', 'oo.adm.pin.save': 'PINを設定', 'oo.adm.pin.saved': 'PINを更新しました — 全会員が再入力します。',
+      'oo.adm.grant': 'アクセス権を付与', 'oo.adm.grant.desc': '名前またはIDでMyCaddiProユーザーを探し、招待リンクなしで1on1のアクセス権を付与します。', 'oo.adm.grant.btn': '付与', 'oo.adm.grant.search': '名前またはID', 'oo.adm.grant.none': 'ユーザーが見つかりません', 'oo.adm.grant.done': '付与しました' }
+  };
+  Object.keys(DICT4).forEach(function (l) { Object.assign(DICT[l], DICT4[l]); });
+  try { if (typeof translations !== 'undefined') Object.keys(DICT4).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT4[l]); }); } catch (e) {}
 
   /* ---------- CSS ---------- */
   var CSS = '#g3Rail .g3-it[data-act="oo"]{display:none}#golferDashboard.oo-on #g3Rail .g3-it[data-act="oo"]{display:flex}' +
@@ -315,6 +339,7 @@
     '.oo-months{display:grid;grid-template-columns:1fr;gap:10px}@media(min-width:768px){.oo-months{grid-template-columns:repeat(3,minmax(0,1fr))}}' +
     '.oo-row{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid #f1f5f9}.oo-row:first-child{border-top:0}.oo-row .av{width:44px;height:44px;border-radius:12px;background:#e2e8f0;flex:0 0 44px;display:flex;align-items:center;justify-content:center;font-weight:800;color:#475569;overflow:hidden}.oo-row .av img{width:100%;height:100%;object-fit:cover}' +
     '.oo-kv{font-size:12px;color:#475569}.oo-kv b{color:#0f172a}' +
+    '.oo-pin{max-width:420px;margin:0 auto}.oo-pin input{font-size:24px;letter-spacing:.35em;text-align:center;font-weight:800}' +
     '.oo-kpi{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}@media(min-width:768px){.oo-kpi{grid-template-columns:repeat(4,minmax(0,1fr))}}' +
     '.oo-two{display:grid;grid-template-columns:1fr;gap:10px}@media(min-width:1024px){.oo-two{grid-template-columns:minmax(0,3fr) minmax(0,2fr);align-items:start}}' +
     '#golferDashboard:not(.oo-on) #ooCube,#golferDashboard:not(.oo-on) .ooCube{display:none !important}';  /* the grids set display:flex with id+class specificity — hide must out-rank it; the on-state simply lets the grid CSS apply */
@@ -452,7 +477,7 @@
       if (this.side === 'admin' && !(this.me && this.me.admin)) this.side = 'member';
       this.buildShell();
       this.paintShell();
-      if (this.isPhone()) this.home(); else this.nav(this.defaultView());
+      if (this.side === 'member' && this.needsPin()) this.nav('browse'); else if (this.isPhone()) this.home(); else this.nav(this.defaultView());
       try { window.scrollTo(0, 0); } catch (e) {}
       /* data in the background; the shell is already on screen. Stale results (user left / re-entered) are dropped. */
       var load = this.side === 'member' ? this.loadMine() : (this.side === 'partner' ? this.cadLoad() : this.admLoad());
@@ -618,10 +643,34 @@
       if (!me.signed_in) return '<div class="oo-card" style="border-color:#fcd34d;background:#fffbeb">' + esc(T('oo.signin.msg', DICT.en['oo.signin.msg'])) + '</div>';
       if (me.admin && !me.member) return '';
       var m = me.member; if (!m) return '<div class="oo-card">' + esc(T('oo.err.not_a_member', DICT.en['oo.err.not_a_member'])) + '</div>';
+      if (m.status === 'active' && this.needsPin()) return this.pinHtml();
       if (m.status === 'pending') return '<div class="oo-card" style="border-color:#fcd34d;background:#fffbeb">' + esc(T('oo.pending.msg', DICT.en['oo.pending.msg'])) + '</div>';
       if (m.status === 'suspended') return '<div class="oo-card" style="border-color:#fca5a5;background:#fef2f2">' + esc(T('oo.suspended.msg', DICT.en['oo.suspended.msg'])) + '</div>';
       if (m.status === 'expired' || !me.member_active) return '<div class="oo-card" style="border-color:#fca5a5;background:#fef2f2">' + esc(T('oo.expired.msg', DICT.en['oo.expired.msg'])) + '</div>';
       return '';
+    },
+
+    /* ---------- access PIN (v1094): the DB refuses member reads/writes until oo_verify_pin passes ---------- */
+    needsPin() { var me = this.me || {}; return !!(me.signed_in && !me.admin && me.member && me.pin_required && !me.pin_ok); },
+    pinHtml() {
+      var me = this.me || {};
+      if (me.pin_set === false) return '<div class="oo-card oo-pin" style="border-color:#fcd34d;background:#fffbeb">' + esc(T('oo.err.pin_not_set', DICT.en['oo.err.pin_not_set'])) + '</div>';
+      return '<div class="oo-card oo-pin"><h4>' + esc(T('oo.pin.title', 'Access PIN')) + '</h4><div class="oo-kv" style="margin-bottom:10px">' + esc(T('oo.pin.desc', DICT.en['oo.pin.desc'])) + '</div>' +
+        '<input class="oo-in" id="ooPinIn" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off" placeholder="' + esc(T('oo.pin.enter', 'PIN')) + '" onkeydown="if(event.key===\'Enter\'){OneOnOne.verifyPin()}">' +
+        '<div id="ooPinMsg" class="oo-kv" style="min-height:18px;margin-top:6px;color:#b91c1c"></div>' +
+        '<button type="button" class="oo-btn pri" id="ooPinBtn" style="width:100%;margin-top:8px" onclick="OneOnOne.verifyPin()">' + esc(T('oo.pin.verify', 'Unlock')) + '</button></div>';
+    },
+    async verifyPin() {
+      var inp = document.getElementById('ooPinIn'), msg = document.getElementById('ooPinMsg'), btn = document.getElementById('ooPinBtn');
+      var pin = (inp && inp.value || '').trim(); if (!/^[0-9]{4,8}$/.test(pin)) { if (msg) msg.textContent = T('oo.err.bad_pin', DICT.en['oo.err.bad_pin']); return; }
+      if (btn) btn.disabled = true;
+      try {
+        var r = await rpc('oo_verify_pin', { p_pin: pin });
+        if (r && r.ok) { toast(T('oo.pin.ok', 'Unlocked'), 'success'); await this.refreshMe(true); await this.loadMine(); this.paintCube(); this.paintShell(); if (this.isPhone()) this.home(); else this.nav(this.defaultView()); return; }
+        if (msg) msg.textContent = TT('oo.pin.wrong', { n: r && r.remaining != null ? r.remaining : '?' });
+        if (inp) { inp.value = ''; try { inp.focus(); } catch (e) {} }
+      } catch (e) { if (msg) msg.textContent = errMsg(e); }
+      if (btn) btn.disabled = false;
     },
 
     /* ONE render entry for all personas. Re-renders keep the scroll position (a data refresh must never throw the
@@ -1111,8 +1160,48 @@
     },
     admRenderMembers() {
       var root = document.getElementById('ooRoot'); var a = this.adm; var s = a.stats || this.admStats();
-      root.innerHTML = this.admFilters('members', [['pending', T('oo.adm.pending', 'Pending'), s.members_pending], ['active', T('oo.adm.active', 'Active'), s.members_active], ['suspended', T('oo.suspended', 'Suspended')], ['all', T('oo.adm.all', 'All')]]) +
+      root.innerHTML = this.admAccessHtml() + this.admFilters('members', [['pending', T('oo.adm.pending', 'Pending'), s.members_pending], ['active', T('oo.adm.active', 'Active'), s.members_active], ['suspended', T('oo.suspended', 'Suspended')], ['all', T('oo.adm.all', 'All')]]) +
         this.admSearchBox() + '<div class="oo-card" id="ooAdmList">' + this.admMembersListHtml() + '</div>';
+      this.admPinInfo();
+    },
+    /* Access PIN (set/rotate; status only, never the PIN) + Grant access (any MyCaddiPro user, no invite link) */
+    admAccessHtml() {
+      return '<div class="oo-two" style="margin-bottom:10px"><div class="oo-card"><h4>' + esc(T('oo.adm.pin', 'Access PIN')) + '</h4><div id="ooPinInfo" class="oo-kv" style="margin-bottom:8px">…</div>' +
+        '<div style="display:flex;gap:6px"><input class="oo-in" id="ooAdmPin" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off" placeholder="' + esc(T('oo.adm.pin.new', 'New PIN (4–8 digits)')) + '"><button type="button" class="oo-btn pri" onclick="OneOnOne.admSetPin()">' + esc(T('oo.adm.pin.save', 'Set PIN')) + '</button></div></div>' +
+        '<div class="oo-card"><h4>' + esc(T('oo.adm.grant', 'Grant access')) + '</h4><div class="oo-kv" style="margin-bottom:8px">' + esc(T('oo.adm.grant.desc', DICT.en['oo.adm.grant.desc'])) + '</div>' +
+        '<input class="oo-in" id="ooGrantQ" placeholder="' + esc(T('oo.adm.grant.search', 'Name or id')) + '" oninput="OneOnOne.admGrantSearch(this.value)" autocomplete="off"><div id="ooGrantRes" style="margin-top:6px"></div></div></div>';
+    },
+    async admPinInfo() {
+      var el = document.getElementById('ooPinInfo'); if (!el) return;
+      try {
+        var i = await rpc('oo_admin_pin_info');
+        el.textContent = i && i.is_set ? TT('oo.adm.pin.set', { date: this.fmtDate(i.set_at), name: i.set_by || '', h: i.ttl_hours || 24 }) : T('oo.adm.pin.none', DICT.en['oo.adm.pin.none']);
+        el.style.color = i && i.is_set ? '#15803d' : '#b91c1c'; el.style.fontWeight = '700';
+      } catch (e) { el.textContent = errMsg(e); }
+    },
+    async admSetPin() {
+      var inp = document.getElementById('ooAdmPin'); var pin = (inp && inp.value || '').trim();
+      if (!/^[0-9]{4,8}$/.test(pin)) { toast(T('oo.err.bad_pin', DICT.en['oo.err.bad_pin']), 'warning'); return; }
+      try { await rpc('oo_admin_set_pin', { p_pin: pin, p_ttl_hours: null }); if (inp) inp.value = ''; toast(T('oo.adm.pin.saved', DICT.en['oo.adm.pin.saved']), 'success'); this.admPinInfo(); } catch (e) { toast(errMsg(e), 'error'); }
+    },
+    _grantSeq: 0,
+    async admGrantSearch(q) {
+      var box = document.getElementById('ooGrantRes'); if (!box) return; q = String(q || '').trim(); var seq = ++this._grantSeq;
+      if (q.length < 2) { box.innerHTML = ''; return; }
+      try {
+        var like = '%' + q.replace(/[%_]/g, '') + '%';
+        var r = await sb().from('user_profiles').select('line_user_id, name, display_name, role').or('name.ilike.' + like + ',display_name.ilike.' + like + ',line_user_id.ilike.' + like).limit(8);
+        if (seq !== this._grantSeq) return;
+        var rows = (r.data || []).filter(function (u) { return u.line_user_id; }); var self = this;
+        box.innerHTML = rows.length ? rows.map(function (u) {
+          var m = self.adm.members.find(function (x) { return x.user_id === u.line_user_id; });
+          return '<div class="oo-row" style="align-items:center"><div class="av">' + esc(initials(u.display_name || u.name || u.line_user_id)) + '</div><div style="flex:1;min-width:0"><div style="font-weight:800">' + esc(u.display_name || u.name || '') + '</div><div class="oo-kv" style="overflow-wrap:anywhere">' + esc(u.line_user_id) + (u.role ? ' · ' + esc(u.role) : '') + '</div></div>' +
+            (m ? self.admChip(m.status) : '<button type="button" class="oo-btn pri" onclick="OneOnOne.admGrant(\'' + esc(u.line_user_id) + '\')">' + esc(T('oo.adm.grant.btn', 'Grant')) + '</button>') + '</div>';
+        }).join('') : '<div class="oo-kv">' + esc(T('oo.adm.grant.none', 'No users found')) + '</div>';
+      } catch (e) { box.innerHTML = '<div class="oo-kv">' + esc(errMsg(e)) + '</div>'; }
+    },
+    async admGrant(userId) {
+      try { await rpc('oo_admin_set_member', { p_user: userId, p_status: 'active', p_expires: null, p_notes: null }); push(userId, 'oo.push.member_ok', {}); toast(T('oo.adm.grant.done', 'Access granted'), 'success'); var q = document.getElementById('ooGrantQ'); await this.admRefresh(); if (q) { var q2 = document.getElementById('ooGrantQ'); if (q2) { q2.value = q.value; this.admGrantSearch(q.value); } } } catch (e) { toast(errMsg(e), 'error'); }
     },
 
     /* --- partners --- */

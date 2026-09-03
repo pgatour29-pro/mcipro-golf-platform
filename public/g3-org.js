@@ -36,7 +36,7 @@
 
   var D = '#societyOrganizerDashboard.g3o';
   var CSS = "\n@media (min-width:1024px){\n" +
-  D + "{padding-left:232px;background:#F3F6F3}\n" +
+  D + "{padding-left:232px;background:#F3F6F3;transform:none !important}\n" + /* v1086: .screen.active transform traps the fixed rail */
   "#g3oRail{display:none}\n" +
   D + " > #g3oRail{display:flex;position:fixed;left:0;top:0;bottom:0;width:232px;z-index:40;flex-direction:column;padding:18px 14px 16px;background:#0B3B2A;color:#fff;border-right:2px solid #22c55e;font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden}\n" +
   "#g3oRail .g3-brand{font-family:'Fraunces',Georgia,serif;font-size:22px;font-weight:600;letter-spacing:-.01em;padding:4px 10px 16px;display:flex;align-items:center;gap:10px;line-height:1}\n" +
@@ -84,7 +84,8 @@
   /* cubes: the organizer's own lite grid, moved in. 4 across (5 with the TRGG Directory, Admin spans 2 — v1025 logic kept) */
   D + ".light-mode #g3oLeft > #orgLiteCubesGrid{grid-template-columns:repeat(4,1fr) !important;grid-template-rows:none !important;grid-auto-rows:150px;gap:16px !important;height:auto !important;min-height:0 !important;max-height:none !important;margin:0 !important;flex:none}\n" +
   D + ".light-mode #g3oLeft > #orgLiteCubesGrid.trgg-on{grid-template-columns:repeat(5,1fr) !important}\n" +
-  "@media (max-height:820px){" + D + ".light-mode #g3oLeft > #orgLiteCubesGrid{grid-auto-rows:126px}}\n" +
+  /* v1086: cubes are EXACTLY their row - 1.0's min-height:150px beat the old 126px short-screen rows and row 1 spilled over row 2 */
+  D + ".light-mode #g3oLeft > #orgLiteCubesGrid > .metric-card," + D + ".light-mode #g3oLeft > #orgLiteCubesGrid > .cube-split{min-height:0 !important;height:100% !important;max-height:100% !important;overflow:hidden}\n" +
   D + ".light-mode #g3oLeft > #orgLiteCubesGrid > .cube-poster .cube-art{width:104px !important;height:104px !important;right:-14px !important;bottom:-16px !important}\n" +
   D + ".light-mode #g3oLeft > #orgLiteCubesGrid .cube-split > .cube-poster .cube-art{width:54px !important;height:54px !important;right:-8px !important;bottom:-10px !important}\n" +
   D + ".light-mode #g3oLeft > #orgLiteCubesGrid .cube-split > .cube-poster h3{font-size:14px !important;margin-bottom:0 !important}\n" +

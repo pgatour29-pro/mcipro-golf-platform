@@ -18,6 +18,10 @@
    view stack → phone cube home → exit to the dashboard that opened it.
    v1092: THIRD persona 'admin' (oo_admins = Jason/JOA + Pete) — admins land on their own home
    (Overview · Members · Partners · Invites · Bookings · Photos · Reports) and can 'Browse as member'.
+   v1093 PERF (Pete: "too slow, lags too much and scrolling gets stuck"): the shell paints IMMEDIATELY
+   from cached state and data loads in the background; no periodic refetch (was: every section tap after
+   20s refetched six lists and blanked the page to '…'); every re-render keeps the scroll position;
+   lists refresh only on enter, after an action, on realtime, or when the tab comes back after 60s.
    ===================================================================================== */
 (function () {
   'use strict';
@@ -324,7 +328,7 @@
     side: 'member', view: 'home', stack: [], _sub: 'members',
     partners: [], sel: null, selMedia: [], bookings: [], courses: null, events: null,
     cad: { profile: null, partner: null, bookings: [], media: [], blackouts: [] },
-    _chan: null, _cadChan: null,
+    _chan: null, _cadChan: null, _seq: 0, _mineAt: 0, _mineLoading: null, _admLoading: null,
 
     /* ---------- identity ---------- */
     async refreshMe(force) {
@@ -390,7 +394,7 @@
       } catch (e) { console.warn('[1on1] realtime', e); }
       this.loadMine().then(function () { self.paintCube(); });
     },
-    async open() { await this.refreshMe(); return this.enter(this.me && this.me.admin ? 'admin' : 'member'); },   /* admins (Jason/Pete) land on the admin home */
+    async open() { if (!this.me || (Date.now() - this._meAt) > 60000) await this.refreshMe(); return this.enter(this.me && this.me.admin ? 'admin' : 'member'); },   /* admins (Jason/Pete) land on the admin home */
     onTab() { return this.open(); },          /* legacy hook names (v1089 tab era) */
     onCaddieTab() { return this.enter('partner'); },
 
@@ -424,7 +428,7 @@
     async cadLoad() {
       var me = this.me; this.cad.partner = me && me.partner || null;
       if (!this.cad.partner) { this.cad.bookings = []; this.cad.media = []; this.cad.blackouts = []; return; }
-      var pid = this.cad.partner.id;
+      var pid = this.cad.partner.id; this.cad.loadedAt = Date.now();
       try { var b = await sb().from('oo_bookings').select('*, oo_members(display_name)').eq('partner_id', pid).order('date_from', { ascending: false }).limit(200); this.cad.bookings = b.data || []; } catch (e) { this.cad.bookings = []; }
       try { var m = await sb().from('oo_media').select('*').eq('partner_id', pid).neq('status', 'removed').order('sort_order').order('created_at'); this.cad.media = m.data || []; } catch (e) { this.cad.media = []; }
       try { var k = await sb().from('oo_blackouts').select('*').eq('partner_id', pid).order('date_from'); this.cad.blackouts = k.data || []; } catch (e) { this.cad.blackouts = []; }
@@ -443,14 +447,17 @@
       this.stack = []; this.sel = null; this.view = 'home';
       if (!document.getElementById('ooDashboard')) return;
       try { ScreenManager.showScreen('ooDashboard'); } catch (e) { console.warn('[1on1] showScreen', e); return; }
-      var root = document.getElementById('ooRoot'); if (root) root.innerHTML = '<div class="oo-kv" style="text-align:center;padding:16px">…</div>';
-      await this.refreshMe();
+      var seq = ++this._seq; var self = this;
+      if (!this.me) await this.refreshMe();                       /* only when we know nothing yet — otherwise paint NOW */
       if (this.side === 'admin' && !(this.me && this.me.admin)) this.side = 'member';
-      if (this.side === 'member') await this.loadMine(); else if (this.side === 'partner') await this.cadLoad(); else await this.admLoad();
       this.buildShell();
       this.paintShell();
       if (this.isPhone()) this.home(); else this.nav(this.defaultView());
       try { window.scrollTo(0, 0); } catch (e) {}
+      /* data in the background; the shell is already on screen. Stale results (user left / re-entered) are dropped. */
+      var load = this.side === 'member' ? this.loadMine() : (this.side === 'partner' ? this.cadLoad() : this.admLoad());
+      Promise.resolve(load).then(function () { if (seq !== self._seq || !self.isOpen()) return; self.paintShell(); if (self.view !== 'home') self.render(); }).catch(function () {});
+      if ((Date.now() - this._meAt) > 15000) this.refreshMe().then(function () { if (seq !== self._seq || !self.isOpen()) return; if (self.view !== 'home') self.render(); }).catch(function () {});
     },
     /* leave to the dashboard that opened us; the screen's own NavHistory entries are dropped so the
        golfer/caddie back button behaves as if 1on1 was never visited */
@@ -597,12 +604,12 @@
       var d2 = bookedDays(this.bookings);
       set('ooHomeCalChip', d2 ? TT('oo.cube.cal.n', { n: d2 }) : T('oo.cube.cal.none', 'No booked dates'));
       if (me.admin && document.getElementById('ooHomeAdmChip')) {
-        try {
-          if (!this.adm.loadedAt) await this.admLoad();
-          var st2 = this.adm.stats || this.admStats(); var pend2 = st2.members_pending + st2.partners_pending;
+        var self2 = this; var applyAdm = function () {
+          var st2 = self2.adm.stats || self2.admStats(); var pend2 = st2.members_pending + st2.partners_pending;
           set('ooHomeAdmChip', pend2 ? TT('oo.cube.admin.n', { n: pend2 }) : T('oo.cube.admin.chip', 'Approvals & invites'));
           ['ooHomeAdmBadge', 'ooTabAdmBadge'].forEach(function (id) { badge(id, pend2); });
-        } catch (e) {}
+        };
+        if (this.adm.loadedAt) applyAdm(); else this.admLoad().then(applyAdm).catch(function () {});
       }
     },
 
@@ -617,8 +624,14 @@
       return '';
     },
 
-    /* ONE render entry for both personas */
+    /* ONE render entry for all personas. Re-renders keep the scroll position (a data refresh must never throw the
+       reader back to the top or shrink the page under their thumb); nav()/go() scroll to top themselves after. */
     async render() {
+      var y = 0; try { y = window.scrollY || 0; } catch (e) {}
+      await this._renderInner();
+      if (y > 0) { try { var y2 = y; requestAnimationFrame(function () { if ((window.scrollY || 0) < y2) window.scrollTo(0, Math.min(y2, Math.max(0, document.documentElement.scrollHeight - window.innerHeight))); }); } catch (e) {} }
+    },
+    async _renderInner() {
       var root = document.getElementById('ooRoot'); if (!root) return;
       var v = this.view; var me = this.me || {};
       if (this.side === 'admin') return this.renderAdminView();
@@ -785,12 +798,19 @@
     },
 
     /* ---------- MEMBER: my bookings + calendar ---------- */
-    async loadMine() {
-      try { var r = await sb().from('oo_bookings').select('*, oo_partners(display_name, home_course_name, user_id, cover_media_id)').eq('member_id', uid()).order('date_from', { ascending: false }).limit(100); this.bookings = r.data || []; } catch (e) { this.bookings = []; }
-      return this.bookings;
+    loadMine() {
+      var self = this;
+      if (this._mineLoading) return this._mineLoading;
+      this._mineLoading = (async function () {
+        try { var r = await sb().from('oo_bookings').select('*, oo_partners(display_name, home_course_name, user_id, cover_media_id)').eq('member_id', uid()).order('date_from', { ascending: false }).limit(100); self.bookings = r.data || []; self._mineAt = Date.now(); } catch (e) { self.bookings = self.bookings || []; }
+        self._mineLoading = null; return self.bookings;
+      })();
+      return this._mineLoading;
     },
     async renderMine() {
-      var root = document.getElementById('ooRoot'); await this.loadMine();
+      var root = document.getElementById('ooRoot');
+      if (!this._mineAt) { root.innerHTML = '<div class="oo-kv" style="text-align:center;padding:16px">…</div>'; await this.loadMine(); }
+      else if ((Date.now() - this._mineAt) > 60000) { var self = this; this.loadMine().then(function () { if (self.isOpen() && self.view === 'mine') { self.paintCube(); self.paintShell(); self.render(); } }); }
       var h = '<div class="oo-card">';
       if (!this.bookings.length) h += '<div class="oo-kv" style="text-align:center;padding:16px">' + esc(T('oo.nobookings', 'No bookings yet.')) + '</div>';
       else h += this.bookings.map(function (b) { return OO.bookingRow(b, 'member'); }).join('');
@@ -988,7 +1008,12 @@
        ===================================================================================== */
     adm: { members: [], partners: [], invites: [], bookings: [], media: [], reports: [], loadedAt: 0, stats: null,
       f: { members: 'pending', partners: 'pending', bookings: 'requested', reports: 'open', q: '' } },
-    async admLoad() {
+    admLoad() {
+      var self = this; if (this._admLoading) return this._admLoading;
+      this._admLoading = this._admLoadInner().then(function (a) { self._admLoading = null; return a; }, function (e) { self._admLoading = null; throw e; });
+      return this._admLoading;
+    },
+    async _admLoadInner() {
       var c = sb(); var a = this.adm;
       var q = async function (t, sel, ord) { try { var r = await c.from(t).select(sel).order(ord || 'created_at', { ascending: false }).limit(300); return r.data || []; } catch (e) { console.warn('[1on1] admin load', t, e); return []; } };
       var res = await Promise.all([
@@ -1041,7 +1066,7 @@
       if (!this.me || !this.me.admin) { this.enter('member'); return; }
       var v = this.view;
       if (v === 'partner' && this.sel) return this.renderPartner();
-      if (!this.adm.loadedAt || (Date.now() - this.adm.loadedAt) > 20000) { root.innerHTML = '<div class="oo-kv" style="text-align:center;padding:16px">…</div>'; await this.admLoad(); this.paintShell(); }
+      if (!this.adm.loadedAt) { root.innerHTML = '<div class="oo-kv" style="text-align:center;padding:16px">…</div>'; await this.admLoad(); this.paintShell(); }   /* first time only — after that the lists live in memory; actions/realtime/visibility refresh them */
       if (v === 'members') return this.admRenderMembers();
       if (v === 'partners') return this.admRenderPartners();
       if (v === 'invites') return this.admRenderInvites();
@@ -1201,6 +1226,19 @@
     async admMedia(id, status) { try { await rpc('oo_admin_set_media', { p_media: id, p_status: status }); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } },
     async admReport(id, status) { try { await rpc('oo_admin_set_report', { p_report: id, p_status: status }); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } }
   };
+
+  /* the app comes back to the foreground: refresh the open persona's lists quietly if they are older than 60s
+     (render keeps the scroll position; nothing blanks) */
+  try {
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState !== 'visible' || !OO.isOpen()) return;
+      var now = Date.now(), p;
+      if (OO.side === 'admin' && OO.adm.loadedAt && (now - OO.adm.loadedAt) > 60000) p = OO.admLoad();
+      else if (OO.side === 'member' && OO._mineAt && (now - OO._mineAt) > 60000) p = OO.loadMine();
+      else if (OO.side === 'partner' && OO.cad.loadedAt && (now - OO.cad.loadedAt) > 60000) p = OO.cadLoad();
+      if (p) Promise.resolve(p).then(function () { if (!OO.isOpen()) return; OO.paintShell(); if (OO.view !== 'home') OO.render(); }).catch(function () {});
+    });
+  } catch (e) {}
 
   /* paint a date range into a marks map (accepted 'bk' always wins) */
   function markRange(marks, a, b, cls) { var d = a; var guard = 0; while (d <= b && guard++ < 120) { marks[d] = marks[d] === 'bk' ? 'bk' : cls; d = addDays(d, 1); } }

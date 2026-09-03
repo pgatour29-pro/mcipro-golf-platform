@@ -55571,19 +55571,27 @@ document.addEventListener('DOMContentLoaded', function() {
             };
 
             // Initialize desktop drag-drop when caddies tab opens
-            // Use MutationObserver to detect when the caddies tab becomes visible
+            // Use MutationObserver to detect when the caddies tab becomes visible.
+            // v1093 PERF: this used to observe the WHOLE body subtree (childList + class/style attributes) and
+            // read offsetParent (forced layout) on EVERY DOM mutation in the app — traced at up to 48ms per
+            // batch on phones while scrolling. The pane's visibility only ever changes via its own class/style
+            // (TabManager .active / .hidden), so observe the pane alone; fall back to the old scope only if the
+            // pane doesn't exist yet at hook time.
             (function hookCaddyDragDrop() {
                 let ddInitialized = false;
-                const observer = new MutationObserver(() => {
+                const check = () => {
                     const caddiesTab = document.getElementById('golfer-caddies');
                     if (caddiesTab && !caddiesTab.classList.contains('hidden') && caddiesTab.offsetParent !== null && !ddInitialized) {
                         ddInitialized = true;
                         setTimeout(() => CaddyDragDrop.init(), 500);
                     }
                     // Re-init if tab is reshown
-                    if (caddiesTab && caddiesTab.classList.contains('hidden')) ddInitialized = false;
-                });
-                observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
+                    if (caddiesTab && (caddiesTab.classList.contains('hidden') || !caddiesTab.classList.contains('active'))) ddInitialized = false;
+                };
+                const observer = new MutationObserver(check);
+                const pane = document.getElementById('golfer-caddies');
+                if (pane) observer.observe(pane, { attributes: true, attributeFilter: ['class', 'style'] });
+                else observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
             })();
             </script>
 
@@ -159662,7 +159670,7 @@ showOrganizerTab = function(tabName) {
     <!-- <script defer src="ai-caddie.js?v=20260420a"></script> -->
                                     <!-- G3 (v1080): MyCaddiPro 3.0 DESKTOP shell for the golfer dashboard (>=1024px only; phones untouched) -->
     <!-- 1on1 (v1089→v1091): JOA private playing-partner booking — its own dashboard screen (#ooDashboard), entered from the golfer cube / desktop rail (member) and the caddie cube / tab / drawer (partner) -->
-    <script src="oo-1on1.js?v=1092"></script>
+    <script src="oo-1on1.js?v=1093"></script>
     <script src="g3-desk.js?v=1091"></script>
     <script src="g3-org.js?v=1087"></script>
 </body>

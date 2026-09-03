@@ -10543,6 +10543,8 @@
                 'pce.card.pickcourse': 'Select a course first',
                 'pce.card.enterbtn': 'ENTER SCORES — PAPER CARD',
                 'pce.kbd.save': 'save',
+                'pce.enter.next': 'SAVE → NEXT CARD',
+                'pce.enter.review': '18/18 — check the card, then Enter',
                 'pce.pts': 'PTS',
                 'pce.card.roster': 'EVENT PLAYERS',
                 'pce.card.left': 'LEFT',
@@ -12823,6 +12825,8 @@
                 'pce.card.pickcourse': 'เลือกสนามก่อน',
                 'pce.card.enterbtn': 'กรอกสกอร์ — สกอร์การ์ด',
                 'pce.kbd.save': 'บันทึก',
+                'pce.enter.next': 'บันทึก → การ์ดถัดไป',
+                'pce.enter.review': '18/18 — ตรวจสอบการ์ด แล้วกด Enter',
                 'pce.pts': 'แต้ม',
                 'pce.card.roster': 'ผู้เล่นในรายการ',
                 'pce.card.left': 'เหลือ',
@@ -14517,6 +14521,8 @@
                 'pce.card.pickcourse': '먼저 코스를 선택하세요',
                 'pce.card.enterbtn': '스코어 입력 — 스코어 카드',
                 'pce.kbd.save': '저장',
+                'pce.enter.next': '저장 → 다음 카드',
+                'pce.enter.review': '18/18 — 카드를 확인한 뒤 Enter',
                 'pce.pts': '점수',
                 'pce.card.roster': '이벤트 플레이어',
                 'pce.card.left': '남음',
@@ -17415,6 +17421,8 @@
                 'pce.card.pickcourse': 'まずコースを選択してください',
                 'pce.card.enterbtn': 'スコア入力 — スコアカード',
                 'pce.kbd.save': '保存',
+                'pce.enter.next': '保存 → 次のカード',
+                'pce.enter.review': '18/18 — カードを確認して Enter',
                 'pce.pts': 'PT',
                 'pce.card.roster': 'イベントプレーヤー',
                 'pce.card.left': '残り',
@@ -154892,8 +154900,9 @@ window.PaperCardEntry = {
             onClear: opts.onClear || null, clearLabel: opts.clearLabel || _lvT('pce.card.clear','CLEAR CARD'), busy: false,
             // playing handicap enables LIVE net/stableford on the card (v960)
             hcp: (opts.handicap === '' || opts.handicap == null) ? null : window.toPlayingHandicap(opts.handicap),
-            // v961: event roster on the card — tap to switch player; 18th hole auto-saves and
-            // rolls to the next unscored player (onPick reopens the card for them).
+            // v961: event roster on the card — tap to switch player. v1090: the 18th hole NO
+            // LONGER auto-saves — the organizer reviews the finished card, then Enter (key or
+            // pill) saves and rolls to the next unscored player (onPick reopens the card).
             // v962: ALWAYS A–Z by surname (Pete 2026-08-23) — never ranking/division order;
             // auto-advance walks the same alphabetical order. "Bacon, Randy" sorts on Bacon,
             // "Billy Shepley" on Shepley (same rule as the hole-by-hole grid).
@@ -154904,7 +154913,6 @@ window.PaperCardEntry = {
             activeId: opts.activeId != null ? opts.activeId : null,
             onPick: opts.onPick || null,
             onHcp: opts.onHcp || null,   // v963: organizer on-the-fly handicap adjust (tap the HCP chip)
-            autoSave: opts.autoSave !== false,
             snap: '' };
         this._custom.snap = JSON.stringify(this.scores);
         this.startNine = opts.startNine === 10 ? 10 : 1;
@@ -154950,7 +154958,29 @@ window.PaperCardEntry = {
             this._customRosterHTML();
     },
     _customSave: function(){ return this._customSaveFlow(true, false); },
-    _customAutoSave: function(){ return this._customSaveFlow(true, true); },
+    // v1090 (Pete 2026-09-03): a finished card STOPS for review. Nothing saves or moves on by
+    // itself — the Enter KEY and the Enter PILL both come through here, one router for every
+    // mode: custom card → save (+ next roster player), pinned name → save to them,
+    // score-first → "whose card is this?".
+    enter: function(){
+        if (this._custom) { this._customSave(); }
+        else if (this.pin) { this.saveTo(this.pin); }
+        else { this.openSheet(); }
+    },
+    _enterPillHTML: function(mob){
+        var filled = this._filled(), c = this._custom;
+        var busy = c ? !!c.busy : !!this.saving;
+        var label;
+        if (c) label = (c.players && this._rosterNext()) ? _lvT('pce.enter.next','SAVE → NEXT CARD') : c.saveLabel;
+        else if (this.pin) label = _lvT('pce.pin.save','SAVE — {name}').replace('{name}', (this._pinPlayer() || {}).player_name || '');
+        else label = _lvT('pce.whose','WHOSE CARD IS THIS?');
+        var ready = filled === 18 && !busy;
+        return '<div class="pce-enterwrap' + (mob ? ' pce-mobonly' : '') + '">'+
+            (ready ? '<div class="pce-review">✓ ' + this._esc(_lvT('pce.enter.review','18/18 — check the card, then Enter')) + '</div>' : '')+
+            '<button class="pce-enter' + (ready ? ' ready' : '') + '" ' + (filled && !busy ? '' : 'disabled') + ' onclick="PaperCardEntry.enter()">'+
+                '<span class="k">' + (busy ? '…' : 'ENTER ↵') + '</span><span class="l">' + this._esc(label) + (filled && filled < 18 ? ' (' + filled + '/18)' : '') + '</span>'+
+            '</button></div>';
+    },
     // advance: on success, roll to the next unscored roster player (or close when no roster).
     // isAuto: skip the interactive guards (18/18 completion or an already-confirmed switch).
     _customSaveFlow: async function(advance, isAuto){
@@ -155138,6 +155168,16 @@ window.PaperCardEntry = {
         '#pceOverlay .pce-key.warn{background:#fef2f2;border-color:#fecaca;color:#dc2626;font-size:12px;}'+
         '#pceOverlay .pce-cta{margin-top:10px;width:100%;background:#16a34a;color:#fff;border:none;border-radius:12px;padding:14px;font:800 14px/1 \'Instrument Sans\',sans-serif;cursor:pointer;box-shadow:0 4px 12px rgba(22,163,74,.3);}'+
         '#pceOverlay .pce-cta:disabled{background:#cbd5e1;box-shadow:none;}'+
+        // v1090 Enter pill — the one way off a finished card. Ready (18/18) = solid green.
+        '#pceOverlay .pce-enterwrap{margin-top:10px;}'+
+        '#pceOverlay .pce-review{font:800 11px/1.4 \'JetBrains Mono\',monospace;letter-spacing:.06em;color:#15803d;text-align:center;margin-bottom:6px;}'+
+        '#pceOverlay .pce-enter{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;background:#fff;color:#0f172a;border:2px solid #cbd5e1;border-radius:999px;padding:11px 16px;font:800 13px/1.2 \'Instrument Sans\',sans-serif;cursor:pointer;}'+
+        '#pceOverlay .pce-enter .k{flex-shrink:0;font:800 12px/1 \'JetBrains Mono\',monospace;background:#f1f5f9;border:1px solid #cbd5e1;border-bottom-width:3px;border-radius:8px;padding:5px 9px;color:#0f172a;}'+
+        '#pceOverlay .pce-enter .l{min-width:0;}'+
+        '#pceOverlay .pce-enter.ready{background:#16a34a;border-color:#16a34a;color:#fff;box-shadow:0 4px 14px rgba(22,163,74,.35);}'+
+        '#pceOverlay .pce-enter.ready .k{background:#fff;color:#15803d;border-color:#fff;}'+
+        '#pceOverlay .pce-enter:disabled{color:#64748b;border-color:#e2e8f0;cursor:default;box-shadow:none;}'+
+        '#pceOverlay .pce-enter:disabled .k{color:#64748b;}'+
         // name panel / sheet
         '#pceOverlay .pce-nt{padding:12px 14px 8px;border-bottom:1px solid #f1f5f9;}'+
         '#pceOverlay .pce-nt .a{font:800 14px/1.2 \'Instrument Sans\',sans-serif;color:#0f172a;}'+
@@ -155363,22 +155403,14 @@ window.PaperCardEntry = {
         var h = this._curHole();
         var wasFilled = this._filled();
         this.scores[h] = n;
-        if (this.cur < 17) { this.cur++; this.render(); }
-        else if (this._custom || this.pin) { this.cur = 17; this.render(); }
-        else { this.cur = 17; this.openSheet(); }
-        // Custom card: the tap that COMPLETES the 18th hole auto-saves (Pete 2026-08-23 —
-        // no button hunt) and, with a roster, rolls straight on to the next unscored player.
-        // Crossing 17→18 only — edit flows that OPEN at 18/18 never auto-fire.
-        if (this._custom && this._custom.autoSave && wasFilled === 17 && this._filled() === 18) {
-            var self = this;
-            setTimeout(function(){ if (self._custom) self._customAutoSave(); }, 350);
-        }
-        // Name-first paper card (v969): a pinned player's card auto-saves the moment it
-        // completes — same rhythm as the custom card, no "whose card" sheet needed.
-        if (!this._custom && this.pin && wasFilled === 17 && this._filled() === 18) {
-            var self2 = this;
-            setTimeout(function(){ if (self2.pin && !self2._custom) self2.saveTo(self2.pin); }, 350);
-        }
+        // v1090 (Pete 2026-09-03): the 18th score STOPS here — the card stays up with all 18
+        // scores + totals so the organizer can check it against the paper. Enter (key or pill)
+        // is the only way on: save → next roster player / pinned save / "whose card" sheet.
+        // The v961/v969 350ms auto-save timers are gone — they moved the card on before
+        // anyone could read it. Do not bring them back.
+        if (this.cur < 17) { this.cur++; }
+        else { this.cur = 17; }
+        this.render();
     },
     back: function(){
         var h = this._curHole();
@@ -155526,7 +155558,7 @@ window.PaperCardEntry = {
         else if (e.key === 'Backspace') { e.preventDefault(); this.back(); }
         else if (e.key === 'ArrowRight') { e.preventDefault(); if (this.cur < 17) { this.cur++; this.render(); } }
         else if (e.key === 'ArrowLeft') { e.preventDefault(); if (this.cur > 0) { this.cur--; this.render(); } }
-        else if (e.key === 'Enter') { e.preventDefault(); if (this._custom) { this._customSave(); } else if (this.pin) { this.saveTo(this.pin); } else { this.openSheet(); } }
+        else if (e.key === 'Enter') { e.preventDefault(); this.enter(); }
         else if (e.key === 'Escape') {
             if (this._custom) { if (!this._filled() || confirm(_lvT('pce.card.discard','Discard this card?'))) this.close(); }
             else if (this.sheetOpen) { this.sheetOpen = false; this.render(); }
@@ -155582,6 +155614,7 @@ window.PaperCardEntry = {
         };
         return this._pinBarHTML() + this._nineBarHTML()+
             '<table class="pce-sc">' + row(1) + row(10) + '</table>'+
+            this._enterPillHTML(false)+
             '<div class="pce-kbd">'+
                 '<span><kbd>2</kbd>–<kbd>9</kbd> ' + this._esc(_lvT('pce.kbd.adv','score → auto-advance')) + '</span>'+
                 '<span><kbd>1</kbd>+' + this._esc(_lvT('pce.kbd.ten','digit = 1 / 10-15')) + '</span>'+
@@ -155608,14 +155641,15 @@ window.PaperCardEntry = {
                 '<div class="pce-prow">' + [6,7,8,9].map(function(n){ return '<div class="pce-key" onclick="PaperCardEntry.tap(' + n + ')">' + n + '</div>'; }).join('') + '</div>'+
                 '<div class="pce-prow"><div class="pce-key dim" onclick="PaperCardEntry.tap(1)">1</div><div class="pce-key dim" onclick="PaperCardEntry.tap(10)">10</div><div class="pce-key dim" onclick="PaperCardEntry.tap(11)">11</div><div class="pce-key dim" onclick="PaperCardEntry.tap(12)">12</div><div class="pce-key warn" onclick="PaperCardEntry.back()">⌫</div></div>'+
             '</div>'+
+            // v1090: ONE Enter pill for every mode (custom / pinned / score-first with scores);
+            // only the EMPTY score-first card keeps the SELECT PLAYER starter (v969 name-first).
             (this._custom
-                ? ('<button class="pce-cta pce-mobonly" ' + (filled && !this._custom.busy ? '' : 'disabled') + ' onclick="PaperCardEntry._customSave()">' + (this._custom.busy ? '…' : this._esc(this._custom.saveLabel) + (filled && filled < 18 ? ' (' + filled + '/18)' : '')) + '</button>'
+                ? (this._enterPillHTML(true)
                     + (this._custom.onClear ? '<button class="pce-clr pce-mobonly" onclick="PaperCardEntry._customClear()">' + this._esc(this._custom.clearLabel) + '</button>' : '')
                     + (this._custom.players ? '<div class="pce-mroster pce-mobonly">' + this._customRosterHTML() + '</div>' : ''))
-                : (this.pin
-                    ? ('<button class="pce-cta pce-mobonly" ' + (filled && !this.saving ? '' : 'disabled') + ' onclick="PaperCardEntry.saveTo(PaperCardEntry.pin)">' + this._esc(_lvT('pce.pin.save','SAVE — {name}').replace('{name}', (this._pinPlayer() || {}).player_name || '')) + (filled && filled < 18 ? ' (' + filled + '/18)' : '') + '</button>')
-                    // empty card: the same button now also STARTS the name-first flow (v969)
-                    : ('<button class="pce-cta pce-mobonly" onclick="PaperCardEntry.openSheet()">' + (filled ? (this._esc(_lvT('pce.whose','WHOSE CARD IS THIS?')) + (filled < 18 ? ' (' + filled + '/18)' : '')) : this._esc(_lvT('pce.pickfirst','SELECT PLAYER (OPTIONAL)'))) + ' →</button>')));
+                : ((this.pin || filled)
+                    ? this._enterPillHTML(true)
+                    : ('<button class="pce-cta pce-mobonly" onclick="PaperCardEntry.openSheet()">' + this._esc(_lvT('pce.pickfirst','SELECT PLAYER (OPTIONAL)')) + ' →</button>')));
     },
 
     _namesHTML: function(isSheet){

@@ -16,6 +16,8 @@
            partner: requests · calendar · profile · photos · earnings · messages(exits)
    Back (FAB / hardware / header ◀) = OneOnOne.handleBack(): ask sheet → More sheet → internal
    view stack → phone cube home → exit to the dashboard that opened it.
+   v1092: THIRD persona 'admin' (oo_admins = Jason/JOA + Pete) — admins land on their own home
+   (Overview · Members · Partners · Invites · Bookings · Photos · Reports) and can 'Browse as member'.
    ===================================================================================== */
 (function () {
   'use strict';
@@ -265,6 +267,26 @@
   };
   Object.keys(DICT2).forEach(function (l) { Object.assign(DICT[l], DICT2[l]); });
   try { if (typeof translations !== 'undefined') Object.keys(DICT2).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT2[l]); }); } catch (e) {}
+  var DICT3 = {
+    en: { 'oo.adm.overview': 'Overview', 'oo.adm.asmember': 'Browse as member', 'oo.adm.needs': 'Needs you', 'oo.adm.allclear': 'All clear', 'oo.adm.active': 'Active', 'oo.adm.pending': 'Pending',
+      'oo.adm.approved': 'Approved', 'oo.adm.suspended': 'Suspended', 'oo.adm.expired': 'Expired', 'oo.adm.all': 'All', 'oo.adm.open': 'Open', 'oo.adm.reviewed': 'Reviewed', 'oo.adm.actioned': 'Actioned', 'oo.adm.dismissed': 'Dismissed', 'oo.adm.closed': 'Closed',
+      'oo.adm.search': 'Search name or id', 'oo.adm.new': 'New', 'oo.adm.share': 'Share', 'oo.adm.since': 'Since', 'oo.adm.view': 'View', 'oo.adm.suspendmember': 'Suspend member', 'oo.adm.suspendpartner': 'Suspend partner',
+      'oo.adm.codes': '{n} open codes', 'oo.adm.newphotos': '{n} new photos', 'oo.adm.approvedn': '{n} approved', 'oo.adm.activen': '{n} active', 'oo.adm.openn': '{n} open', 'oo.adm.upcomingn': '{n} upcoming', 'oo.back': 'Back' },
+    th: { 'oo.adm.overview': 'ภาพรวม', 'oo.adm.asmember': 'ดูแบบสมาชิก', 'oo.adm.needs': 'รอดำเนินการ', 'oo.adm.allclear': 'ไม่มีค้าง', 'oo.adm.active': 'ใช้งาน', 'oo.adm.pending': 'รออนุมัติ',
+      'oo.adm.approved': 'อนุมัติแล้ว', 'oo.adm.suspended': 'ถูกระงับ', 'oo.adm.expired': 'หมดอายุ', 'oo.adm.all': 'ทั้งหมด', 'oo.adm.open': 'เปิด', 'oo.adm.reviewed': 'ตรวจแล้ว', 'oo.adm.actioned': 'ดำเนินการแล้ว', 'oo.adm.dismissed': 'ยกคำร้อง', 'oo.adm.closed': 'ปิดแล้ว',
+      'oo.adm.search': 'ค้นหาชื่อหรือไอดี', 'oo.adm.new': 'ใหม่', 'oo.adm.share': 'แชร์', 'oo.adm.since': 'ตั้งแต่', 'oo.adm.view': 'ดู', 'oo.adm.suspendmember': 'ระงับสมาชิก', 'oo.adm.suspendpartner': 'ระงับคู่เล่น',
+      'oo.adm.codes': 'รหัสใช้ได้ {n}', 'oo.adm.newphotos': 'รูปใหม่ {n}', 'oo.adm.approvedn': 'อนุมัติแล้ว {n}', 'oo.adm.activen': 'ใช้งาน {n}', 'oo.adm.openn': 'เปิด {n}', 'oo.adm.upcomingn': 'กำลังมา {n}', 'oo.back': 'กลับ' },
+    ko: { 'oo.adm.overview': '개요', 'oo.adm.asmember': '회원으로 보기', 'oo.adm.needs': '처리 필요', 'oo.adm.allclear': '모두 처리됨', 'oo.adm.active': '활성', 'oo.adm.pending': '대기',
+      'oo.adm.approved': '승인됨', 'oo.adm.suspended': '정지됨', 'oo.adm.expired': '만료', 'oo.adm.all': '전체', 'oo.adm.open': '미처리', 'oo.adm.reviewed': '검토됨', 'oo.adm.actioned': '조치됨', 'oo.adm.dismissed': '기각', 'oo.adm.closed': '종료',
+      'oo.adm.search': '이름 또는 ID 검색', 'oo.adm.new': '신규', 'oo.adm.share': '공유', 'oo.adm.since': '가입', 'oo.adm.view': '보기', 'oo.adm.suspendmember': '회원 정지', 'oo.adm.suspendpartner': '파트너 정지',
+      'oo.adm.codes': '사용 가능 코드 {n}개', 'oo.adm.newphotos': '새 사진 {n}장', 'oo.adm.approvedn': '승인 {n}명', 'oo.adm.activen': '활성 {n}명', 'oo.adm.openn': '미처리 {n}건', 'oo.adm.upcomingn': '예정 {n}건', 'oo.back': '뒤로' },
+    ja: { 'oo.adm.overview': '概要', 'oo.adm.asmember': '会員として見る', 'oo.adm.needs': '対応が必要', 'oo.adm.allclear': '対応待ちなし', 'oo.adm.active': '有効', 'oo.adm.pending': '保留',
+      'oo.adm.approved': '承認済', 'oo.adm.suspended': '停止中', 'oo.adm.expired': '期限切れ', 'oo.adm.all': 'すべて', 'oo.adm.open': '未処理', 'oo.adm.reviewed': '確認済', 'oo.adm.actioned': '対応済', 'oo.adm.dismissed': '却下', 'oo.adm.closed': '終了',
+      'oo.adm.search': '名前またはIDで検索', 'oo.adm.new': '新規', 'oo.adm.share': '共有', 'oo.adm.since': '登録', 'oo.adm.view': '表示', 'oo.adm.suspendmember': '会員を停止', 'oo.adm.suspendpartner': '同伴者を停止',
+      'oo.adm.codes': '有効コード{n}件', 'oo.adm.newphotos': '新しい写真{n}枚', 'oo.adm.approvedn': '承認済{n}名', 'oo.adm.activen': '有効{n}名', 'oo.adm.openn': '未処理{n}件', 'oo.adm.upcomingn': '予定{n}件', 'oo.back': '戻る' }
+  };
+  Object.keys(DICT3).forEach(function (l) { Object.assign(DICT[l], DICT3[l]); });
+  try { if (typeof translations !== 'undefined') Object.keys(DICT3).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT3[l]); }); } catch (e) {}
 
   /* ---------- CSS ---------- */
   var CSS = '#g3Rail .g3-it[data-act="oo"]{display:none}#golferDashboard.oo-on #g3Rail .g3-it[data-act="oo"]{display:flex}' +
@@ -289,6 +311,7 @@
     '.oo-months{display:grid;grid-template-columns:1fr;gap:10px}@media(min-width:768px){.oo-months{grid-template-columns:repeat(3,minmax(0,1fr))}}' +
     '.oo-row{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid #f1f5f9}.oo-row:first-child{border-top:0}.oo-row .av{width:44px;height:44px;border-radius:12px;background:#e2e8f0;flex:0 0 44px;display:flex;align-items:center;justify-content:center;font-weight:800;color:#475569;overflow:hidden}.oo-row .av img{width:100%;height:100%;object-fit:cover}' +
     '.oo-kv{font-size:12px;color:#475569}.oo-kv b{color:#0f172a}' +
+    '.oo-kpi{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}@media(min-width:768px){.oo-kpi{grid-template-columns:repeat(4,minmax(0,1fr))}}' +
     '.oo-two{display:grid;grid-template-columns:1fr;gap:10px}@media(min-width:1024px){.oo-two{grid-template-columns:minmax(0,3fr) minmax(0,2fr);align-items:start}}' +
     '#golferDashboard:not(.oo-on) #ooCube,#golferDashboard:not(.oo-on) .ooCube{display:none !important}';  /* the grids set display:flex with id+class specificity — hide must out-rank it; the on-state simply lets the grid CSS apply */
   try { var st = document.createElement('style'); st.id = 'oo1on1CSS'; st.textContent = CSS; document.head.appendChild(st); } catch (e) {}
@@ -367,8 +390,8 @@
       } catch (e) { console.warn('[1on1] realtime', e); }
       this.loadMine().then(function () { self.paintCube(); });
     },
-    open() { return this.enter('member'); },
-    onTab() { return this.enter('member'); },          /* legacy hook names (v1089 tab era) */
+    async open() { await this.refreshMe(); return this.enter(this.me && this.me.admin ? 'admin' : 'member'); },   /* admins (Jason/Pete) land on the admin home */
+    onTab() { return this.open(); },          /* legacy hook names (v1089 tab era) */
     onCaddieTab() { return this.enter('partner'); },
 
     /* ---------- CADDIE dashboard hooks (entry cube/tab badges + realtime) ---------- */
@@ -412,17 +435,18 @@
        ===================================================================================== */
     isPhone() { try { return window.mgrIsPhone ? mgrIsPhone() : window.matchMedia('(max-width: 767px)').matches; } catch (e) { return false; } },
     isOpen() { var s = document.getElementById('ooDashboard'); return !!(s && s.classList.contains('active')); },
-    defaultView() { return this.side === 'partner' ? 'requests' : 'browse'; },
+    defaultView() { return this.side === 'partner' ? 'requests' : (this.side === 'admin' ? 'overview' : 'browse'); },
     group(v) { return (v === 'partner' || v === 'book') ? 'browse' : v; },
 
     async enter(side) {
-      this.side = side === 'partner' ? 'partner' : 'member';
+      this.side = side === 'partner' ? 'partner' : (side === 'admin' ? 'admin' : 'member');
       this.stack = []; this.sel = null; this.view = 'home';
       if (!document.getElementById('ooDashboard')) return;
       try { ScreenManager.showScreen('ooDashboard'); } catch (e) { console.warn('[1on1] showScreen', e); return; }
       var root = document.getElementById('ooRoot'); if (root) root.innerHTML = '<div class="oo-kv" style="text-align:center;padding:16px">…</div>';
       await this.refreshMe();
-      if (this.side === 'member') await this.loadMine(); else await this.cadLoad();
+      if (this.side === 'admin' && !(this.me && this.me.admin)) this.side = 'member';
+      if (this.side === 'member') await this.loadMine(); else if (this.side === 'partner') await this.cadLoad(); else await this.admLoad();
       this.buildShell();
       this.paintShell();
       if (this.isPhone()) this.home(); else this.nav(this.defaultView());
@@ -449,6 +473,8 @@
       if (view === 'default' || view === 'home' || view === 'overview') view = this.defaultView();
       if (view === 'messages') { this.exit('messages'); return; }
       if (view === 'exit') { this.exit(); return; }
+      if (view === 'asmember') { this.enter('member'); return; }
+      if (view === 'admin' && this.side !== 'admin') { this.enter('admin'); return; }
       if (!keepStack) this.stack = [];
       this.view = view;
       var h = document.getElementById('ooCubeHome'); if (h) h.style.display = 'none';
@@ -479,8 +505,8 @@
 
     /* cubes / dock / More sheet / tab strip for the persona that entered (rebuilt on every enter — cheap) */
     buildShell() {
-      var me = this.me || {}; var P = this.side === 'partner'; var admin = !!me.admin;
-      var role = P ? T('oo.adm.partner', 'Partner') : (admin && !me.member ? T('oo.role.admin', 'Admin') : T('oo.adm.member', 'Member'));
+      var me = this.me || {}; var P = this.side === 'partner'; var A = this.side === 'admin'; var admin = !!me.admin;
+      var role = P ? T('oo.adm.partner', 'Partner') : (A ? T('oo.role.admin', 'Admin') : T('oo.adm.member', 'Member'));
       var el = document.getElementById('ooHdrRole'); if (el) el.textContent = role;
       el = document.getElementById('ooHdrSub'); if (el) el.textContent = T('oo.sub', DICT.en['oo.sub']);
       var art = function (id) { return '<div class="cube-art" aria-hidden="true"><svg viewBox="0 0 96 96"><use href="#' + id + '"/></svg></div>'; };
@@ -488,7 +514,19 @@
         return '<button type="button" class="mgc" style="--p1:' + p1 + ';--p2:' + p2 + '" onclick="mhvGo(\'oo\',\'' + view + '\')"><div class="t">' + esc(title) + '</div><div class="chip"' + (chipId ? ' id="' + chipId + '"' : '') + '>' + esc(chipTxt) + '</div>' + art(artId) + (badgeId ? '<span class="badge" id="' + badgeId + '">0</span>' : '') + '</button>';
       };
       var home, tabs, dock, more;
-      if (P) {
+      if (A) {
+        home = '<button type="button" class="mgc mgc-hero" onclick="mhvGo(\'oo\',\'overview\')"><div class="t">' + esc(T('oo.adm.overview', 'Overview')) + '</div><div class="chip" id="ooHomeOvChip">' + esc(T('oo.adm.allclear', 'All clear')) + '</div>' + art('cuCog') + '<span class="badge" id="ooHomeOvBadge">0</span></button><div class="mgc-grid">' +
+          cube('members', '#dbeafe', '#eff6ff', T('oo.adm.members', 'Members'), 'ooHomeMemChip', '', 'cuPlayers', 'ooHomeMemBadge') +
+          cube('partners', '#f6e7d4', '#fdf7ef', T('oo.adm.partners', 'Partners'), 'ooHomeParChip', '', 'cuTee', 'ooHomeParBadge') +
+          cube('bookings', '#e2e7ec', '#f5f7f9', T('oo.adm.bookings', 'Bookings'), 'ooHomeBkChip', '', 'cuClip', 'ooHomeBkBadge') +
+          cube('invites', '#f4e6c8', '#fcf6e9', T('oo.adm.invites', 'Invites'), 'ooHomeInvChip', '', 'cuTag') +
+          cube('media', '#dbe4f0', '#f2f6fb', T('oo.adm.media', 'Photo review'), 'ooHomeMedChip', '', 'cuCard') +
+          cube('reports', '#f6dcd8', '#fdf3f1', T('oo.adm.reports', 'Reports'), 'ooHomeRepChip', '', 'cuFlag', 'ooHomeRepBadge') +
+          cube('asmember', '#dcfce7', '#f0fdf4', T('oo.adm.asmember', 'Browse as member'), null, T('oo.cube.open', 'Find a partner'), 'cuPlayers') + '</div>';
+        tabs = [['overview', 'dashboard', 'oo.adm.overview', 'Overview', 'ooTabOvBadge'], ['members', 'group', 'oo.adm.members', 'Members', 'ooTabMemBadge'], ['partners', 'person_pin', 'oo.adm.partners', 'Partners', 'ooTabParBadge'], ['invites', 'link', 'oo.adm.invites', 'Invites'], ['bookings', 'receipt_long', 'oo.adm.bookings', 'Bookings', 'ooTabBkBadge'], ['media', 'photo_library', 'oo.adm.media', 'Photo review'], ['reports', 'flag', 'oo.adm.reports', 'Reports', 'ooTabRepBadge'], ['asmember', 'search', 'oo.adm.asmember', 'Browse as member']];
+        dock = [['members', 'group', 'oo.adm.members', 'Members', 'ooDockMemBadge'], ['partners', 'person_pin', 'oo.adm.partners', 'Partners', 'ooDockParBadge'], ['bookings', 'receipt_long', 'oo.adm.bookings', 'Bookings', 'ooDockBkBadge']];
+        more = [['invites', 'link', 'oo.adm.invites', 'Invites'], ['media', 'photo_library', 'oo.adm.media', 'Photo review'], ['reports', 'flag', 'oo.adm.reports', 'Reports'], ['asmember', 'search', 'oo.adm.asmember', 'Browse as member'], ['exit', 'logout', 'oo.exit', 'Back to my dashboard']];
+      } else if (P) {
         home = '<button type="button" class="mgc mgc-hero" onclick="mhvGo(\'oo\',\'requests\')"><div class="t">' + esc(T('oo.seg.requests', 'Requests')) + '</div><div class="chip" id="ooHomeReqChip">' + esc(T('oo.cube.req.none', 'Nothing waiting')) + '</div>' + art('cuClip') + '<span class="badge" id="ooHomeReqBadge">0</span></button><div class="mgc-grid">' +
           cube('calendar', '#f4e6c8', '#fcf6e9', T('oo.seg.calendar', 'Calendar'), 'ooHomeCalChip', T('oo.cube.cal.chip', 'Booked dates'), 'cuCal') +
           cube('profile', '#e2e7ec', '#f5f7f9', T('oo.seg.profile', 'Profile'), null, T('oo.cube.profile.chip', 'Rate, days, bio'), 'cuPlayers') +
@@ -503,7 +541,7 @@
           cube('mine', '#dbeafe', '#eff6ff', T('oo.seg.mine', 'My bookings'), 'ooHomeMineChip', T('oo.cube.mine.chip', 'Requests & upcoming'), 'cuClip', 'ooHomeMineBadge') +
           cube('calendar', '#f4e6c8', '#fcf6e9', T('oo.seg.calendar', 'Calendar'), 'ooHomeCalChip', T('oo.cube.cal.chip', 'Booked dates'), 'cuCal') +
           cube('messages', '#dbe4f0', '#f2f6fb', T('oo.cube.msgs', 'Messages'), null, T('oo.cube.msgs.member', 'Chat with partners'), 'cuChat') +
-          (admin ? cube('admin', '#e2e7ec', '#f5f7f9', T('oo.seg.admin', 'Admin'), 'ooHomeAdmChip', T('oo.cube.admin.chip', 'Approvals & invites'), 'cuCog', 'ooHomeAdmBadge') : '') + '</div>';
+          (admin ? '<button type="button" class="mgc" style="--p1:#e2e7ec;--p2:#f5f7f9" onclick="OneOnOne.enter(\'admin\')"><div class="t">' + esc(T('oo.seg.admin', 'Admin')) + '</div><div class="chip" id="ooHomeAdmChip">' + esc(T('oo.cube.admin.chip', 'Approvals & invites')) + '</div>' + art('cuCog') + '<span class="badge" id="ooHomeAdmBadge">0</span></button>' : '') + '</div>';
         tabs = [['browse', 'search', 'oo.seg.browse', 'Browse'], ['mine', 'receipt_long', 'oo.seg.mine', 'My bookings', 'ooTabMineBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar']];
         if (admin) tabs.push(['admin', 'admin_panel_settings', 'oo.seg.admin', 'Admin', 'ooTabAdmBadge']);
         dock = [['browse', 'search', 'oo.seg.browse', 'Browse'], ['mine', 'receipt_long', 'oo.dock.bookings', 'Bookings', 'ooDockMineBadge'], ['calendar', 'calendar_month', 'oo.seg.calendar', 'Calendar']];
@@ -511,8 +549,8 @@
       }
       el = document.getElementById('ooCubeHome'); if (el) el.innerHTML = home;
       el = document.getElementById('ooTabsRow'); if (el) el.innerHTML = tabs.map(function (t) {
-        return '<button type="button" class="tab-button relative" data-view="' + t[0] + '" onclick="OneOnOne.nav(\'' + t[0] + '\')"><span class="material-symbols-outlined text-sm">' + t[1] + '</span><span>' + esc(T(t[2], t[3])) + '</span>' + (t[4] ? '<span id="' + t[4] + '" class="oo-tb" style="display:none">0</span>' : '') + '</button>';
-      }).join('') + '<button type="button" class="tab-button" style="margin-left:auto" onclick="OneOnOne.exit()"><span class="material-symbols-outlined text-sm">logout</span><span>' + esc(T('oo.exit', 'Back to my dashboard')) + '</span></button>';
+        return '<button type="button" class="tab-button relative" data-view="' + t[0] + '"' + (t[0] === 'asmember' ? ' style="margin-left:auto"' : '') + ' onclick="OneOnOne.nav(\'' + t[0] + '\')"><span class="material-symbols-outlined text-sm">' + t[1] + '</span><span>' + esc(T(t[2], t[3])) + '</span>' + (t[4] ? '<span id="' + t[4] + '" class="oo-tb" style="display:none">0</span>' : '') + '</button>';
+      }).join('') + '<button type="button" class="tab-button"' + (A ? '' : ' style="margin-left:auto"') + ' onclick="OneOnOne.exit()"><span class="material-symbols-outlined text-sm">logout</span><span>' + esc(T('oo.exit', 'Back to my dashboard')) + '</span></button>';
       el = document.getElementById('ooDock'); if (el) el.innerHTML = '<button type="button" class="mdk active" data-tab="home" onclick="mhvHome(\'oo\')"><span class="material-symbols-outlined">dashboard</span><span class="lbl">' + esc(T('oo.dock.home', 'Home')) + '</span></button>' +
         dock.map(function (d) { return '<button type="button" class="mdk" data-tab="' + d[0] + '" onclick="mhvGo(\'oo\',\'' + d[0] + '\')"><span class="material-symbols-outlined">' + d[1] + '</span><span class="lbl">' + esc(T(d[2], d[3])) + '</span>' + (d[4] ? '<span class="badge" id="' + d[4] + '">0</span>' : '') + '</button>'; }).join('') +
         '<button type="button" class="mdk" id="ooDockMore" onclick="mhvMore(\'oo\')"><span class="material-symbols-outlined">apps</span><span class="lbl">' + esc(T('oo.more', 'More')) + '</span></button>';
@@ -527,6 +565,18 @@
       var set = function (id, txt) { var el = document.getElementById(id); if (el && txt != null) el.textContent = txt; };
       var badge = function (id, n) { var el = document.getElementById(id); if (el) { el.textContent = n; el.style.display = n ? 'inline-flex' : 'none'; } };
       var bookedDays = function (rows) { var d = 0; (rows || []).forEach(function (b) { if (b.status === 'accepted' && b.date_to >= today()) d += dayCount(b.date_from < today() ? today() : b.date_from, b.date_to); }); return d; };
+      if (this.side === 'admin') {
+        var st = this.adm.stats || this.admStats(); var ap = st.members_pending + st.partners_pending;
+        set('ooHomeOvChip', ap ? TT('oo.cube.admin.n', { n: ap }) : T('oo.adm.allclear', 'All clear'));
+        ['ooHomeOvBadge', 'ooTabOvBadge'].forEach(function (id) { badge(id, ap); });
+        set('ooHomeMemChip', TT('oo.adm.activen', { n: st.members_active })); ['ooHomeMemBadge', 'ooDockMemBadge', 'ooTabMemBadge'].forEach(function (id) { badge(id, st.members_pending); });
+        set('ooHomeParChip', TT('oo.adm.approvedn', { n: st.partners_approved })); ['ooHomeParBadge', 'ooDockParBadge', 'ooTabParBadge'].forEach(function (id) { badge(id, st.partners_pending); });
+        set('ooHomeBkChip', TT('oo.adm.upcomingn', { n: st.bookings_upcoming })); ['ooHomeBkBadge', 'ooDockBkBadge', 'ooTabBkBadge'].forEach(function (id) { badge(id, st.bookings_requested); });
+        set('ooHomeInvChip', TT('oo.adm.codes', { n: st.invites_open }));
+        set('ooHomeMedChip', TT('oo.adm.newphotos', { n: st.media_new }));
+        set('ooHomeRepChip', TT('oo.adm.openn', { n: st.reports_open })); ['ooHomeRepBadge', 'ooTabRepBadge'].forEach(function (id) { badge(id, st.reports_open); });
+        return;
+      }
       if (this.side === 'partner') {
         var pend = (this.cad.bookings || []).filter(function (b) { return b.status === 'requested' && b.date_from >= today(); }).length;
         set('ooHomeReqChip', pend ? TT('oo.cube.req.chip', { n: pend }) : T('oo.cube.req.none', 'Nothing waiting'));
@@ -548,10 +598,8 @@
       set('ooHomeCalChip', d2 ? TT('oo.cube.cal.n', { n: d2 }) : T('oo.cube.cal.none', 'No booked dates'));
       if (me.admin && document.getElementById('ooHomeAdmChip')) {
         try {
-          var c = sb();
-          var m = await c.from('oo_members').select('user_id', { count: 'exact', head: true }).eq('status', 'pending');
-          var p = await c.from('oo_partners').select('id', { count: 'exact', head: true }).eq('status', 'pending');
-          var pend2 = (m.count || 0) + (p.count || 0);
+          if (!this.adm.loadedAt) await this.admLoad();
+          var st2 = this.adm.stats || this.admStats(); var pend2 = st2.members_pending + st2.partners_pending;
           set('ooHomeAdmChip', pend2 ? TT('oo.cube.admin.n', { n: pend2 }) : T('oo.cube.admin.chip', 'Approvals & invites'));
           ['ooHomeAdmBadge', 'ooTabAdmBadge'].forEach(function (id) { badge(id, pend2); });
         } catch (e) {}
@@ -573,6 +621,7 @@
     async render() {
       var root = document.getElementById('ooRoot'); if (!root) return;
       var v = this.view; var me = this.me || {};
+      if (this.side === 'admin') return this.renderAdminView();
       if (this.side === 'partner') {
         if (!me.signed_in) { root.innerHTML = '<div class="oo-card" style="border-color:#fcd34d;background:#fffbeb">' + esc(T('oo.signin.msg', DICT.en['oo.signin.msg'])) + '</div>'; return; }
         if (!me.partner) return this.cadRenderOptin();
@@ -586,7 +635,7 @@
         if (v === 'earnings') return this.cadRenderEarnings(banner);
         return this.cadRenderRequests(banner);
       }
-      if (v === 'admin') return this.renderAdmin();
+      if (v === 'admin') { this.enter('admin'); return; }
       var gate = this.gateHtml();
       if (gate) { root.innerHTML = gate; return; }
       if (v === 'mine') return this.renderMine();
@@ -647,7 +696,7 @@
             '<div class="sub" style="margin-top:4px">' + (p.day_rate != null ? '<b style="color:#15803d">' + esc(money(p.day_rate, p.currency)) + '</b>' + esc(T('oo.perday', '/day')) + ' · ' : '') + esc(TT('oo.photos', { n: p.photo_count || 0 })) + '</div></div></button>';
         }).join('') + '</div>';
     },
-    backChip() { return '<button type="button" class="oo-btn" style="margin-bottom:10px" onclick="OneOnOne.back()">‹ ' + esc(T('oo.back.browse', 'Back to results')) + '</button>'; },
+    backChip() { return '<button type="button" class="oo-btn" style="margin-bottom:10px" onclick="OneOnOne.back()">‹ ' + esc(this.side === 'admin' ? T('oo.back', 'Back') : T('oo.back.browse', 'Back to results')) + '</button>'; },
 
     /* partner detail */
     async openPartner(id) {
@@ -672,7 +721,9 @@
         '<div class="oo-kv">' + esc(T('oo.langs', 'Languages')) + ': ' + (p.languages || []).map(function (l) { return '<span class="oo-chip">' + esc(l) + '</span>'; }).join('') + '</div>' +
         (p.day_rate != null ? '<div class="oo-kv" style="margin-top:4px">' + esc(T('oo.rate', 'Day rate')) + ': <b style="color:#15803d;font-size:15px">' + esc(money(p.day_rate, p.currency)) + '</b></div>' : '') +
         '</div></div>' +
-        '<div style="display:flex;gap:8px;margin-top:12px"><button type="button" class="oo-btn pri" style="flex:1" onclick="OneOnOne.go(\'book\')">' + esc(T('oo.book', 'Book')) + ' · ' + esc(fmtRange(this.q.from, this.q.to)) + '</button></div></div>';
+        (this.side === 'admin'
+          ? '<div style="display:flex;gap:8px;margin-top:12px;align-items:center">' + this.admChip(p.status) + (p.status === 'approved' ? '<button type="button" class="oo-btn warn" onclick="OneOnOne.admPartner(\'' + p.id + '\', \'suspended\', null)">' + esc(T('oo.adm.suspend', 'Suspend')) + '</button>' : '<button type="button" class="oo-btn pri" onclick="OneOnOne.admPartner(\'' + p.id + '\', \'approved\', \'' + esc(p.user_id) + '\')">' + esc(T(p.status === 'pending' ? 'oo.adm.approve' : 'oo.adm.reactivate', 'Approve')) + '</button>') + '</div></div>'
+          : '<div style="display:flex;gap:8px;margin-top:12px"><button type="button" class="oo-btn pri" style="flex:1" onclick="OneOnOne.go(\'book\')">' + esc(T('oo.book', 'Book')) + ' · ' + esc(fmtRange(this.q.from, this.q.to)) + '</button></div></div>');
       if (p.bio) left += '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.bio', 'About')) + '</h4><div style="font-size:14px;white-space:pre-wrap">' + esc(p.bio) + '</div></div>';
       if ((p.courses_known || []).length || p.area_tips) left += '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.tips', 'Local knowledge')) + '</h4>' +
         ((p.courses_known || []).length ? '<div class="oo-kv" style="margin-bottom:6px">' + esc(T('oo.knows', 'Courses I know')) + ': ' + p.courses_known.map(function (c) { return '<span class="oo-chip">' + esc(c) + '</span>'; }).join('') + '</div>' : '') +
@@ -782,7 +833,7 @@
         push(to, 'oo.push.cancelled', { name: (window.AppState && AppState.currentUser && (AppState.currentUser.displayName || AppState.currentUser.name)) || '', range: fmtRange(row.date_from, row.date_to) });
         if (side === 'member') { await this.loadMine(); this.paintCube(); this.paintShell(); this.render(); }
         else if (side === 'partner') { await this.cadLoad(); this.cadBadge(); this.paintShell(); this.render(); }
-        else this.renderAdmin();
+        else await this.admRefresh();
       } catch (e) { toast(errMsg(e), 'error'); }
     },
     async report(bookingId, targetId) {
@@ -929,58 +980,226 @@
     },
     async mark(id, payment, completed) { try { await rpc('oo_partner_mark', { p_booking: id, p_payment: payment, p_completed: completed }); await this.cadLoad(); this.paintShell(); this.render(); } catch (e) { toast(errMsg(e), 'error'); } },
 
-    /* ---------- ADMIN (oo_admins only; a view of the member side) ---------- */
-    adm: { members: [], partners: [], invites: [], bookings: [], media: [], reports: [] },
+    /* =====================================================================================
+       ADMIN persona (v1092) — oo_admins only (Jason/JOA + Pete). Its own home: Overview · Members ·
+       Partners · Invites · Bookings · Photos · Reports, plus "Browse as member" to switch persona.
+       Everything reads the six lists in ONE load (admLoad); counts come from those lists, not extra
+       queries. Writes go through the oo_admin_* RPCs (report status = oo_admin_set_report, v1092).
+       ===================================================================================== */
+    adm: { members: [], partners: [], invites: [], bookings: [], media: [], reports: [], loadedAt: 0, stats: null,
+      f: { members: 'pending', partners: 'pending', bookings: 'requested', reports: 'open', q: '' } },
     async admLoad() {
       var c = sb(); var a = this.adm;
-      var q = async function (t, sel, ord) { try { var r = await c.from(t).select(sel).order(ord || 'created_at', { ascending: false }).limit(200); return r.data || []; } catch (e) { return []; } };
-      a.members = await q('oo_members', '*'); a.partners = await q('oo_partners', '*'); a.invites = await q('oo_invites', '*');
-      a.bookings = await q('oo_bookings', '*, oo_partners(display_name), oo_members(display_name)', 'requested_at'); a.media = await q('oo_media', '*, oo_partners(display_name)'); a.reports = await q('oo_reports', '*');
+      var q = async function (t, sel, ord) { try { var r = await c.from(t).select(sel).order(ord || 'created_at', { ascending: false }).limit(300); return r.data || []; } catch (e) { console.warn('[1on1] admin load', t, e); return []; } };
+      var res = await Promise.all([
+        q('oo_members', '*'), q('oo_partners', '*'), q('oo_invites', '*'),
+        q('oo_bookings', '*, oo_partners(display_name, user_id), oo_members(display_name)', 'requested_at'),
+        q('oo_media', '*, oo_partners(display_name)'), q('oo_reports', '*, oo_bookings(date_from, date_to, course_name)')
+      ]);
+      a.members = res[0]; a.partners = res[1]; a.invites = res[2]; a.bookings = res[3]; a.media = res[4]; a.reports = res[5];
+      a.stats = this.admStats(); a.loadedAt = Date.now();
+      return a;
     },
-    async renderAdmin() {
-      var root = document.getElementById('ooRoot'); if (!root) return; await this.refreshMe(); if (!this.me || !this.me.admin) { this.nav('browse'); return; }
-      root.innerHTML = '<div class="oo-kv" style="text-align:center;padding:16px">…</div>';
-      await this.admLoad(); var a = this.adm; var s = this._sub;
-      var sub = function (k, key, fb, n) { return '<button type="button" class="' + (s === k ? 'on' : '') + '" onclick="OneOnOne.admSub(\'' + k + '\')">' + esc(T(key, fb)) + (n ? ' <b>' + n + '</b>' : '') + '</button>'; };
-      var h = '<div class="oo-seg" style="margin-bottom:10px">' +
-        sub('members', 'oo.adm.members', 'Members', a.members.filter(function (m) { return m.status === 'pending'; }).length) + sub('partners', 'oo.adm.partners', 'Partners', a.partners.filter(function (p) { return p.status === 'pending'; }).length) +
-        sub('invites', 'oo.adm.invites', 'Invites') + sub('bookings', 'oo.adm.bookings', 'Bookings') + sub('media', 'oo.adm.media', 'Photo review') + sub('reports', 'oo.adm.reports', 'Reports', a.reports.filter(function (r) { return r.status === 'open'; }).length) + '</div><div class="oo-card">';
-      var none = '<div class="oo-kv" style="text-align:center;padding:16px">' + esc(T('oo.adm.none', 'Nothing here.')) + '</div>';
-      if (s === 'members') h += a.members.length ? a.members.map(function (m) {
-        return '<div class="oo-row" style="align-items:center"><div style="flex:1;min-width:0"><div style="font-weight:800">' + esc(m.display_name || m.user_id) + '</div><div class="oo-kv">' + esc(m.user_id) + ' · ' + esc(m.status) + (m.expires_at ? ' · ' + esc(T('oo.adm.expires', 'Expires')) + ' ' + esc(m.expires_at) : '') + (m.invite_code ? ' · ' + esc(m.invite_code) : '') + '</div></div>' +
-          (m.status !== 'active' ? '<button type="button" class="oo-btn pri" onclick="OneOnOne.admMember(\'' + esc(m.user_id) + '\', \'active\')">' + esc(T('oo.adm.approve', 'Approve')) + '</button>' : '<button type="button" class="oo-btn warn" onclick="OneOnOne.admMember(\'' + esc(m.user_id) + '\', \'suspended\')">' + esc(T('oo.adm.suspend', 'Suspend')) + '</button>') + '</div>';
-      }).join('') : none;
-      if (s === 'partners') h += a.partners.length ? a.partners.map(function (p) {
-        return '<div class="oo-row" style="align-items:center"><div style="flex:1;min-width:0"><div style="font-weight:800">' + esc(p.display_name) + '</div><div class="oo-kv">' + esc(p.user_id) + ' · ' + esc(p.home_course_name || '') + ' · ' + esc(p.status) + (p.day_rate != null ? ' · ' + esc(money(p.day_rate, p.currency)) : '') + '</div></div>' +
-          (p.status !== 'approved' ? '<button type="button" class="oo-btn pri" onclick="OneOnOne.admPartner(\'' + p.id + '\', \'approved\', \'' + esc(p.user_id) + '\')">' + esc(T('oo.adm.approve', 'Approve')) + '</button>' : '<button type="button" class="oo-btn warn" onclick="OneOnOne.admPartner(\'' + p.id + '\', \'suspended\', null)">' + esc(T('oo.adm.suspend', 'Suspend')) + '</button>') + '</div>';
-      }).join('') : none;
-      if (s === 'invites') h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;align-items:end;margin-bottom:8px">' +
+    admStats() {
+      var a = this.adm; var t = today(); var wk = Date.now() - 7 * 86400000;
+      var n = function (arr, f) { return (arr || []).filter(f).length; };
+      return {
+        members_active: n(a.members, function (m) { return m.status === 'active'; }), members_pending: n(a.members, function (m) { return m.status === 'pending'; }),
+        partners_approved: n(a.partners, function (p) { return p.status === 'approved'; }), partners_pending: n(a.partners, function (p) { return p.status === 'pending'; }),
+        bookings_requested: n(a.bookings, function (b) { return b.status === 'requested' && b.date_to >= t; }), bookings_upcoming: n(a.bookings, function (b) { return b.status === 'accepted' && b.date_to >= t; }),
+        invites_open: n(a.invites, function (i) { return i.used < i.max_uses && (!i.expires_at || i.expires_at >= new Date().toISOString()); }),
+        media_new: n(a.media, function (m) { return m.kind === 'photo' && m.status !== 'removed' && new Date(m.created_at).getTime() > wk; }),
+        reports_open: n(a.reports, function (r) { return r.status === 'open'; })
+      };
+    },
+    async admRefresh() { await this.admLoad(); this.paintShell(); this.render(); },
+    admChip(status) {
+      var cls = { pending: 'bg-amber-50 text-amber-800', active: 'bg-green-50 text-green-700', approved: 'bg-green-50 text-green-700', suspended: 'bg-red-50 text-red-700', expired: 'bg-gray-100 text-gray-700',
+        open: 'bg-amber-50 text-amber-800', reviewed: 'bg-sky-50 text-sky-700', actioned: 'bg-green-50 text-green-700', dismissed: 'bg-gray-100 text-gray-700' }[status] || 'bg-gray-100 text-gray-700';
+      return '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full ' + cls + '">' + esc(T('oo.adm.' + status, status)) + '</span>';
+    },
+    admName(userId) {
+      var a = this.adm;
+      var m = (a.members || []).find(function (x) { return x.user_id === userId; }); if (m && m.display_name) return m.display_name;
+      var p = (a.partners || []).find(function (x) { return x.user_id === userId; }); if (p && p.display_name) return p.display_name;
+      return userId || '';
+    },
+    admFilters(kind, opts) {
+      var self = this; var cur = this.adm.f[kind];
+      return '<div class="oo-seg" style="margin-bottom:10px">' + opts.map(function (o) {
+        return '<button type="button" class="' + (cur === o[0] ? 'on' : '') + '" onclick="OneOnOne.admFilter(\'' + kind + '\',\'' + o[0] + '\')">' + esc(o[1]) + (o[2] ? ' <b>' + o[2] + '</b>' : '') + '</button>';
+      }).join('') + '</div>';
+    },
+    admFilter(kind, v) { this.adm.f[kind] = v; this.render(); },
+    admSearch(v) { this.adm.f.q = String(v || '').trim().toLowerCase(); var box = document.getElementById('ooAdmList'); if (box) box.innerHTML = this.admMembersListHtml(); },
+    admSearchBox() { return '<input class="oo-in" style="margin-bottom:10px" placeholder="' + esc(T('oo.adm.search', 'Search name or id')) + '" value="' + esc(this.adm.f.q) + '" oninput="OneOnOne.admSearch(this.value)">'; },
+    admNone() { return '<div class="oo-kv" style="text-align:center;padding:16px">' + esc(T('oo.adm.none', 'Nothing here.')) + '</div>'; },
+    fmtDate(s) { try { return new Date(s).toLocaleDateString(loc(), { month: 'short', day: 'numeric' }); } catch (e) { return String(s || '').slice(0, 10); } },
+
+    async renderAdminView() {
+      var root = document.getElementById('ooRoot'); if (!root) return;
+      if (!this.me || !this.me.admin) { this.enter('member'); return; }
+      var v = this.view;
+      if (v === 'partner' && this.sel) return this.renderPartner();
+      if (!this.adm.loadedAt || (Date.now() - this.adm.loadedAt) > 20000) { root.innerHTML = '<div class="oo-kv" style="text-align:center;padding:16px">…</div>'; await this.admLoad(); this.paintShell(); }
+      if (v === 'members') return this.admRenderMembers();
+      if (v === 'partners') return this.admRenderPartners();
+      if (v === 'invites') return this.admRenderInvites();
+      if (v === 'bookings') return this.admRenderBookings();
+      if (v === 'media') return this.admRenderMedia();
+      if (v === 'reports') return this.admRenderReports();
+      return this.admRenderOverview();
+    },
+
+    /* --- overview: KPI tiles + "Needs you" --- */
+    admRenderOverview() {
+      var root = document.getElementById('ooRoot'); var a = this.adm; var s = a.stats || this.admStats(); var t = today();
+      var tile = function (view, label, big, sub, col) { return '<button type="button" class="oo-card" style="text-align:left;cursor:pointer" onclick="OneOnOne.nav(\'' + view + '\')"><div class="oo-kv">' + esc(label) + '</div><div style="font-size:24px;font-weight:800;color:' + col + ';line-height:1.1">' + big + '</div><div class="oo-kv">' + sub + '</div></button>'; };
+      var h = '<div class="oo-kpi">' +
+        tile('members', T('oo.adm.members', 'Members'), s.members_active, '<b style="color:#b45309">' + s.members_pending + '</b> ' + esc(T('oo.adm.pending', 'Pending')), '#0f172a') +
+        tile('partners', T('oo.adm.partners', 'Partners'), s.partners_approved, '<b style="color:#b45309">' + s.partners_pending + '</b> ' + esc(T('oo.adm.pending', 'Pending')), '#15803d') +
+        tile('bookings', T('oo.adm.bookings', 'Bookings'), s.bookings_upcoming, '<b style="color:#b45309">' + s.bookings_requested + '</b> ' + esc(T('oo.st.requested', 'Requested')), '#0f172a') +
+        tile('reports', T('oo.adm.reports', 'Reports'), s.reports_open, esc(T('oo.adm.open', 'Open')) + ' · ' + esc(TT('oo.adm.newphotos', { n: s.media_new })), s.reports_open ? '#b91c1c' : '#0f172a') + '</div>';
+      var pm = a.members.filter(function (m) { return m.status === 'pending'; }), pp = a.partners.filter(function (p) { return p.status === 'pending'; });
+      var rq = a.bookings.filter(function (b) { return b.status === 'requested' && b.date_to >= t; }), rp = a.reports.filter(function (r) { return r.status === 'open'; });
+      var sec = function (title, n, rows) { return n ? '<div class="oo-kv" style="font-weight:800;color:#0f172a;margin:8px 0 2px">' + esc(title) + ' · ' + n + '</div>' + rows : ''; };
+      var body = sec(T('oo.adm.members', 'Members'), pm.length, pm.map(this.admMemberRow, this).join('')) + sec(T('oo.adm.partners', 'Partners'), pp.length, pp.map(this.admPartnerRow, this).join('')) +
+        sec(T('oo.adm.bookings', 'Bookings'), rq.length, rq.map(this.admBookingRow, this).join('')) + sec(T('oo.adm.reports', 'Reports'), rp.length, rp.map(this.admReportRow, this).join(''));
+      h += '<div class="oo-card" style="margin-top:10px"><h4>' + esc(T('oo.adm.needs', 'Needs you')) + '</h4>' + (body || '<div class="oo-kv" style="text-align:center;padding:12px;color:#15803d;font-weight:700">' + esc(T('oo.adm.allclear', 'All clear')) + '</div>') + '</div>';
+      root.innerHTML = h;
+    },
+
+    /* --- members --- */
+    admMemberRow(m) {
+      var act = m.status === 'active'
+        ? '<button type="button" class="oo-btn warn" onclick="OneOnOne.admMember(\'' + esc(m.user_id) + '\', \'suspended\')">' + esc(T('oo.adm.suspend', 'Suspend')) + '</button>'
+        : '<button type="button" class="oo-btn pri" onclick="OneOnOne.admMember(\'' + esc(m.user_id) + '\', \'active\')">' + esc(T(m.status === 'pending' ? 'oo.adm.approve' : 'oo.adm.reactivate', 'Approve')) + '</button>';
+      return '<div class="oo-row"><div class="av">' + esc(initials(m.display_name || m.user_id)) + '</div><div style="flex:1;min-width:0">' +
+        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div style="font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(m.display_name || m.user_id) + '</div>' + this.admChip(m.status) + '</div>' +
+        '<div class="oo-kv" style="overflow-wrap:anywhere">' + esc(m.user_id) + ' · ' + esc(T('oo.adm.since', 'Since')) + ' ' + esc(this.fmtDate(m.created_at)) + (m.expires_at ? ' · ' + esc(T('oo.adm.expires', 'Expires')) + ' ' + esc(m.expires_at) : '') + (m.invite_code ? ' · ' + esc(m.invite_code) : '') + '</div>' +
+        (m.notes ? '<div class="oo-kv">' + esc(m.notes) + '</div>' : '') + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' + act + '</div></div></div>';
+    },
+    admMembersListHtml() {
+      var a = this.adm; var f = a.f.members; var q = a.f.q;
+      var rows = a.members.filter(function (m) { return f === 'all' || m.status === f; }).filter(function (m) { return !q || String(m.display_name || '').toLowerCase().indexOf(q) >= 0 || String(m.user_id).toLowerCase().indexOf(q) >= 0; });
+      return rows.length ? rows.map(this.admMemberRow, this).join('') : this.admNone();
+    },
+    admRenderMembers() {
+      var root = document.getElementById('ooRoot'); var a = this.adm; var s = a.stats || this.admStats();
+      root.innerHTML = this.admFilters('members', [['pending', T('oo.adm.pending', 'Pending'), s.members_pending], ['active', T('oo.adm.active', 'Active'), s.members_active], ['suspended', T('oo.suspended', 'Suspended')], ['all', T('oo.adm.all', 'All')]]) +
+        this.admSearchBox() + '<div class="oo-card" id="ooAdmList">' + this.admMembersListHtml() + '</div>';
+    },
+
+    /* --- partners --- */
+    admPartnerRow(p) {
+      var photos = (this.adm.media || []).filter(function (m) { return m.partner_id === p.id && m.kind === 'photo' && m.status !== 'removed'; }).length;
+      var act = p.status === 'approved'
+        ? '<button type="button" class="oo-btn warn" onclick="OneOnOne.admPartner(\'' + p.id + '\', \'suspended\', null)">' + esc(T('oo.adm.suspend', 'Suspend')) + '</button>'
+        : '<button type="button" class="oo-btn pri" onclick="OneOnOne.admPartner(\'' + p.id + '\', \'approved\', \'' + esc(p.user_id) + '\')">' + esc(T(p.status === 'pending' ? 'oo.adm.approve' : 'oo.adm.reactivate', 'Approve')) + '</button>';
+      return '<div class="oo-row"><div class="av">' + esc(initials(p.display_name)) + '</div><div style="flex:1;min-width:0">' +
+        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div style="font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.display_name) + '</div>' + this.admChip(p.status) + '</div>' +
+        '<div class="oo-kv">' + esc(p.home_course_name || '—') + (p.day_rate != null ? ' · ' + esc(money(p.day_rate, p.currency)) + esc(T('oo.perday', '/day')) : '') + ' · ' + esc(TT('oo.photos', { n: photos })) + (p.languages && p.languages.length ? ' · ' + esc(p.languages.join(', ')) : '') + '</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button type="button" class="oo-btn" onclick="OneOnOne.admView(\'' + p.id + '\')">' + esc(T('oo.adm.view', 'View')) + '</button>' + act + '</div></div></div>';
+    },
+    admRenderPartners() {
+      var root = document.getElementById('ooRoot'); var a = this.adm; var f = a.f.partners; var s = a.stats || this.admStats();
+      var rows = a.partners.filter(function (p) { return f === 'all' || p.status === f; });
+      root.innerHTML = this.admFilters('partners', [['pending', T('oo.adm.pending', 'Pending'), s.partners_pending], ['approved', T('oo.adm.approved', 'Approved'), s.partners_approved], ['suspended', T('oo.suspended', 'Suspended')], ['all', T('oo.adm.all', 'All')]]) +
+        '<div class="oo-card">' + (rows.length ? rows.map(this.admPartnerRow, this).join('') : this.admNone()) + '</div>';
+    },
+    async admView(id) {
+      var p = this.adm.partners.find(function (x) { return x.id === id; }); if (!p) return;
+      this.sel = p; this.selMedia = this.adm.media.filter(function (m) { return m.partner_id === id && m.status !== 'removed'; });
+      this.go('partner');
+    },
+
+    /* --- invites --- */
+    admRenderInvites() {
+      var root = document.getElementById('ooRoot'); var a = this.adm; var self = this; var nowIso = new Date().toISOString();
+      var canShare = !!(navigator.share);
+      var h = '<div class="oo-card" style="max-width:720px"><h4>' + esc(T('oo.adm.newinvite', 'New invite')) + '</h4><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;align-items:end">' +
         '<label class="oo-kv">' + esc(T('oo.adm.kind', 'Type')) + '<select class="oo-in" id="ooIKind"><option value="member">' + esc(T('oo.adm.member', 'Member')) + '</option><option value="partner">' + esc(T('oo.adm.partner', 'Partner')) + '</option></select></label>' +
         '<label class="oo-kv">' + esc(T('oo.adm.uses', 'Uses')) + '<input class="oo-in" id="ooIUses" type="number" min="1" value="1"></label><label class="oo-kv">' + esc(T('oo.adm.days', 'Valid days')) + '<input class="oo-in" id="ooIDays" type="number" min="1" value="30"></label>' +
-        '<label class="oo-kv" style="display:flex;align-items:center;gap:4px;padding-bottom:10px"><input type="checkbox" id="ooIAuto"> ' + esc(T('oo.adm.auto', 'Auto-approve')) + '</label></div>' +
-        '<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button type="button" class="oo-btn pri" onclick="OneOnOne.admInvite()">' + esc(T('oo.adm.create', 'Create')) + '</button></div>' +
-        (a.invites.length ? a.invites.map(function (i) { return '<div class="oo-row" style="align-items:center"><div style="flex:1;min-width:0"><div style="font-weight:800;font-family:monospace;font-size:16px">' + esc(i.code) + '</div><div class="oo-kv">' + esc(i.kind) + ' · ' + esc(i.used + '/' + i.max_uses) + (i.auto_approve ? ' · auto' : '') + (i.expires_at ? ' · ' + esc(T('oo.adm.expires', 'Expires')) + ' ' + esc(String(i.expires_at).slice(0, 10)) : '') + (i.note ? ' · ' + esc(i.note) : '') + '</div></div><button type="button" class="oo-btn" onclick="OneOnOne.copyInvite(\'' + esc(i.code) + '\')">' + esc(T('oo.adm.copy', 'Copy link')) + '</button></div>'; }).join('') : none);
-      if (s === 'bookings') h += a.bookings.length ? a.bookings.map(function (b) { return '<div class="oo-row"><div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:8px"><div style="font-weight:800">' + esc((b.oo_members && b.oo_members.display_name) || b.member_id) + ' → ' + esc((b.oo_partners && b.oo_partners.display_name) || '') + '</div>' + stChip(b.status) + '</div><div class="oo-kv"><b>' + esc(fmtRange(b.date_from, b.date_to)) + '</b>' + (b.course_name ? ' · ' + esc(b.course_name) : '') + (b.fee_quoted != null ? ' · ' + esc(money(b.fee_quoted, b.currency)) + ' ' + esc(b.payment_status) : '') + '</div>' + ((b.status === 'requested' || b.status === 'accepted') ? '<div style="margin-top:4px"><button type="button" class="oo-btn warn" onclick="OneOnOne.cancel(\'' + b.id + '\', \'admin\')">' + esc(T('oo.cancel', 'Cancel')) + '</button></div>' : '') + '</div></div>'; }).join('') : none;
-      if (s === 'media') {
-        var photos = a.media.filter(function (m) { return m.kind === 'photo' && m.storage_path; }); var urls = await signedUrls(photos.map(function (m) { return m.storage_path; }));
-        h += photos.length ? '<div class="oo-gal">' + photos.map(function (m) { return '<div class="g">' + (urls[m.storage_path] ? '<img src="' + esc(urls[m.storage_path]) + '" alt="">' : '') + '<span class="cv" style="background:' + (m.status === 'visible' ? '#16a34a' : '#b91c1c') + '">' + esc((m.oo_partners && m.oo_partners.display_name) || '') + '</span><div style="position:absolute;right:4px;bottom:4px"><button type="button" class="oo-btn" style="padding:3px 6px;font-size:11px" onclick="OneOnOne.admMedia(\'' + m.id + '\', \'' + (m.status === 'visible' ? 'hidden' : 'visible') + '\')">' + esc(T(m.status === 'visible' ? 'oo.adm.hide' : 'oo.adm.show', 'Hide')) + '</button></div></div>'; }).join('') + '</div>' : none;
-      }
-      if (s === 'reports') h += a.reports.length ? a.reports.map(function (r) { return '<div class="oo-row"><div style="flex:1"><div style="font-weight:800">' + esc(r.reporter_id) + ' → ' + esc(r.target_user_id) + ' · ' + esc(r.status) + '</div><div class="oo-kv" style="white-space:pre-wrap">' + esc(r.details || r.reason) + '</div><div class="oo-kv">' + esc(String(r.created_at).slice(0, 16).replace('T', ' ')) + '</div></div></div>'; }).join('') : none;
-      root.innerHTML = h + '</div>';
-      this.paintShell();
+        '<label class="oo-kv" style="display:flex;align-items:center;gap:6px;padding-bottom:10px"><input type="checkbox" id="ooIAuto"> ' + esc(T('oo.adm.auto', 'Auto-approve')) + '</label>' +
+        '<label class="oo-kv" style="grid-column:1/-1">' + esc(T('oo.note', 'Note')) + '<input class="oo-in" id="ooINote" placeholder="e.g. Kim Min-jun"></label></div>' +
+        '<div style="display:flex;justify-content:flex-end;margin-top:8px"><button type="button" class="oo-btn pri" onclick="OneOnOne.admInvite()">' + esc(T('oo.adm.create', 'Create')) + '</button></div></div>';
+      h += '<div class="oo-card" style="margin-top:10px">' + (a.invites.length ? a.invites.map(function (i) {
+        var dead = i.used >= i.max_uses || (i.expires_at && i.expires_at < nowIso);
+        return '<div class="oo-row" style="align-items:center' + (dead ? ';opacity:.55' : '') + '"><div style="flex:1;min-width:0"><div style="font-weight:800;font-family:monospace;font-size:16px">' + esc(i.code) + ' <span class="oo-chip">' + esc(T('oo.adm.' + i.kind, i.kind)) + '</span></div>' +
+          '<div class="oo-kv">' + esc(i.used + '/' + i.max_uses) + (i.auto_approve ? ' · ' + esc(T('oo.adm.auto', 'Auto-approve')) : '') + (i.expires_at ? ' · ' + esc(T('oo.adm.expires', 'Expires')) + ' ' + esc(self.fmtDate(i.expires_at)) : '') + (i.note ? ' · ' + esc(i.note) : '') + '</div></div>' +
+          (dead ? '' : '<div style="display:flex;gap:4px"><button type="button" class="oo-btn" onclick="OneOnOne.copyInvite(\'' + esc(i.code) + '\')">' + esc(T('oo.adm.copy', 'Copy link')) + '</button>' + (canShare ? '<button type="button" class="oo-btn pri" onclick="OneOnOne.shareInvite(\'' + esc(i.code) + '\')">' + esc(T('oo.adm.share', 'Share')) + '</button>' : '') + '</div>') + '</div>';
+      }).join('') : this.admNone()) + '</div>';
+      root.innerHTML = h;
     },
-    admSub(k) { this._sub = k; this.renderAdmin(); },
-    async admMember(user, status) { try { await rpc('oo_admin_set_member', { p_user: user, p_status: status, p_expires: null, p_notes: null }); if (status === 'active') push(user, 'oo.push.member_ok', {}); this.renderAdmin(); } catch (e) { toast(errMsg(e), 'error'); } },
-    async admPartner(id, status, userId) { try { await rpc('oo_admin_set_partner', { p_partner: id, p_status: status, p_active: null }); if (status === 'approved' && userId) push(userId, 'oo.push.partner_ok', {}); this.renderAdmin(); } catch (e) { toast(errMsg(e), 'error'); } },
     async admInvite() {
       try {
         var days = parseInt((document.getElementById('ooIDays') || {}).value, 10) || 30;
-        var row = await rpc('oo_admin_create_invite', { p_kind: (document.getElementById('ooIKind') || {}).value || 'member', p_max_uses: parseInt((document.getElementById('ooIUses') || {}).value, 10) || 1, p_auto_approve: !!((document.getElementById('ooIAuto') || {}).checked), p_expires: new Date(Date.now() + days * 86400000).toISOString(), p_note: null });
-        this.copyInvite(row.code); this.renderAdmin();
+        var row = await rpc('oo_admin_create_invite', { p_kind: (document.getElementById('ooIKind') || {}).value || 'member', p_max_uses: parseInt((document.getElementById('ooIUses') || {}).value, 10) || 1, p_auto_approve: !!((document.getElementById('ooIAuto') || {}).checked), p_expires: new Date(Date.now() + days * 86400000).toISOString(), p_note: ((document.getElementById('ooINote') || {}).value || '').trim() || null });
+        this.copyInvite(row.code); await this.admRefresh();
       } catch (e) { toast(errMsg(e), 'error'); }
     },
     copyInvite(code) { var link = 'https://mycaddipro.com/?oo=' + code; try { navigator.clipboard.writeText(link).then(function () { toast(T('oo.adm.copied', 'Link copied') + ': ' + link, 'success'); }, function () { toast(link, 'info'); }); } catch (e) { toast(link, 'info'); } },
-    async admMedia(id, status) { try { await rpc('oo_admin_set_media', { p_media: id, p_status: status }); this.renderAdmin(); } catch (e) { toast(errMsg(e), 'error'); } }
+    shareInvite(code) { var link = 'https://mycaddipro.com/?oo=' + code; try { navigator.share({ title: '1on1', text: link, url: link }).catch(function () {}); } catch (e) { this.copyInvite(code); } },
+
+    /* --- bookings --- */
+    admBookingRow(b) {
+      var open = (b.status === 'requested' || b.status === 'accepted') && b.date_to >= today();
+      return '<div class="oo-row"><div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div style="font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc((b.oo_members && b.oo_members.display_name) || this.admName(b.member_id)) + ' → ' + esc((b.oo_partners && b.oo_partners.display_name) || '') + '</div>' + stChip(b.status) + '</div>' +
+        '<div class="oo-kv"><b>' + esc(fmtRange(b.date_from, b.date_to)) + '</b>' + (b.course_name ? ' · ' + esc(b.course_name) : '') + ' · ' + esc(b.holes) + ' ' + esc(T('oo.holes', 'holes')) + (b.fee_quoted != null ? ' · ' + esc(money(b.fee_quoted, b.currency)) + ' ' + esc(T(b.payment_status === 'paid' ? 'oo.paid' : 'oo.unpaid', b.payment_status)) : '') + '</div>' +
+        (b.notes ? '<div class="oo-kv" style="white-space:pre-wrap">' + esc(b.notes) + '</div>' : '') + (b.decline_reason ? '<div class="oo-kv">' + esc(T('oo.reasonlbl', 'Reason')) + ': ' + esc(b.decline_reason) + '</div>' : '') + (b.cancel_reason ? '<div class="oo-kv">' + esc(T('oo.cancel', 'Cancel')) + ' ' + esc(T('oo.by', 'by')) + ' ' + esc(b.cancelled_by || '') + ': ' + esc(b.cancel_reason) + '</div>' : '') +
+        (open ? '<div style="margin-top:6px"><button type="button" class="oo-btn warn" onclick="OneOnOne.cancel(\'' + b.id + '\', \'admin\')">' + esc(T('oo.cancel', 'Cancel')) + '</button></div>' : '') + '</div></div>';
+    },
+    admRenderBookings() {
+      var root = document.getElementById('ooRoot'); var a = this.adm; var f = a.f.bookings; var t = today(); var s = a.stats || this.admStats();
+      var rows = a.bookings.filter(function (b) {
+        if (f === 'all') return true; if (f === 'requested') return b.status === 'requested' && b.date_to >= t; if (f === 'accepted') return b.status === 'accepted' && b.date_to >= t;
+        if (f === 'closed') return b.status === 'cancelled' || b.status === 'declined' || b.status === 'expired' || b.status === 'completed' || b.date_to < t; return true;
+      });
+      root.innerHTML = this.admFilters('bookings', [['requested', T('oo.st.requested', 'Requested'), s.bookings_requested], ['accepted', T('oo.upcoming.title', 'Upcoming'), s.bookings_upcoming], ['closed', T('oo.adm.closed', 'Closed')], ['all', T('oo.adm.all', 'All')]]) +
+        '<div class="oo-card">' + (rows.length ? rows.map(this.admBookingRow, this).join('') : this.admNone()) + '</div>';
+    },
+
+    /* --- photos --- */
+    async admRenderMedia() {
+      var root = document.getElementById('ooRoot'); var a = this.adm; var wk = Date.now() - 7 * 86400000;
+      var photos = a.media.filter(function (m) { return m.kind === 'photo' && m.storage_path && m.status !== 'removed'; });
+      var urls = await signedUrls(photos.map(function (m) { return m.storage_path; }));
+      root.innerHTML = '<div class="oo-card"><h4>' + esc(T('oo.adm.media', 'Photo review')) + ' · ' + photos.length + '</h4>' + (photos.length ? '<div class="oo-gal">' + photos.map(function (m) {
+        var isNew = new Date(m.created_at).getTime() > wk;
+        return '<div class="g">' + (urls[m.storage_path] ? '<img src="' + esc(urls[m.storage_path]) + '" alt="" loading="lazy">' : '') +
+          '<span class="cv" style="background:' + (m.status === 'visible' ? '#16a34a' : '#b91c1c') + '">' + esc((m.oo_partners && m.oo_partners.display_name) || '') + (isNew ? ' · ' + esc(T('oo.adm.new', 'New')) : '') + '</span>' +
+          '<div style="position:absolute;right:4px;bottom:4px"><button type="button" class="oo-btn" style="padding:3px 6px;font-size:11px" onclick="OneOnOne.admMedia(\'' + m.id + '\', \'' + (m.status === 'visible' ? 'hidden' : 'visible') + '\')">' + esc(T(m.status === 'visible' ? 'oo.adm.hide' : 'oo.adm.show', 'Hide')) + '</button></div></div>';
+      }).join('') + '</div>' : this.admNone()) + '</div>';
+    },
+
+    /* --- reports --- */
+    admReportRow(r) {
+      var a = this.adm; var self = this;
+      var tm = a.members.find(function (m) { return m.user_id === r.target_user_id; }), tp = a.partners.find(function (p) { return p.user_id === r.target_user_id; });
+      var acts = '';
+      if (r.status !== 'reviewed') acts += '<button type="button" class="oo-btn" onclick="OneOnOne.admReport(\'' + r.id + '\', \'reviewed\')">' + esc(T('oo.adm.reviewed', 'Reviewed')) + '</button>';
+      if (r.status !== 'actioned') acts += '<button type="button" class="oo-btn pri" onclick="OneOnOne.admReport(\'' + r.id + '\', \'actioned\')">' + esc(T('oo.adm.actioned', 'Actioned')) + '</button>';
+      if (r.status !== 'dismissed') acts += '<button type="button" class="oo-btn" onclick="OneOnOne.admReport(\'' + r.id + '\', \'dismissed\')">' + esc(T('oo.adm.dismissed', 'Dismissed')) + '</button>';
+      if (tm && tm.status === 'active') acts += '<button type="button" class="oo-btn warn" onclick="OneOnOne.admMember(\'' + esc(tm.user_id) + '\', \'suspended\')">' + esc(T('oo.adm.suspendmember', 'Suspend member')) + '</button>';
+      if (tp && tp.status === 'approved') acts += '<button type="button" class="oo-btn warn" onclick="OneOnOne.admPartner(\'' + tp.id + '\', \'suspended\', null)">' + esc(T('oo.adm.suspendpartner', 'Suspend partner')) + '</button>';
+      var bk = r.oo_bookings;
+      return '<div class="oo-row"><div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div style="font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(self.admName(r.reporter_id)) + ' → ' + esc(self.admName(r.target_user_id)) + '</div>' + this.admChip(r.status) + '</div>' +
+        '<div class="oo-kv" style="white-space:pre-wrap;color:#0f172a">' + esc(r.details || r.reason) + '</div>' +
+        '<div class="oo-kv">' + esc(self.fmtDate(r.created_at)) + (bk ? ' · ' + esc(T('oo.adm.bookings', 'Bookings')) + ': ' + esc(fmtRange(bk.date_from, bk.date_to)) + (bk.course_name ? ' · ' + esc(bk.course_name) : '') : '') + '</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' + acts + '</div></div></div>';
+    },
+    admRenderReports() {
+      var root = document.getElementById('ooRoot'); var a = this.adm; var f = a.f.reports; var s = a.stats || this.admStats();
+      var rows = a.reports.filter(function (r) { return f === 'all' || r.status === 'open'; });
+      root.innerHTML = this.admFilters('reports', [['open', T('oo.adm.open', 'Open'), s.reports_open], ['all', T('oo.adm.all', 'All')]]) +
+        '<div class="oo-card">' + (rows.length ? rows.map(this.admReportRow, this).join('') : this.admNone()) + '</div>';
+    },
+
+    /* --- actions (all admin-gated RPCs) --- */
+    async admMember(user, status) { try { await rpc('oo_admin_set_member', { p_user: user, p_status: status, p_expires: null, p_notes: null }); if (status === 'active') push(user, 'oo.push.member_ok', {}); toast(T('oo.saved', 'Saved'), 'success'); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } },
+    async admPartner(id, status, userId) { try { await rpc('oo_admin_set_partner', { p_partner: id, p_status: status, p_active: null }); if (status === 'approved' && userId) push(userId, 'oo.push.partner_ok', {}); toast(T('oo.saved', 'Saved'), 'success'); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } },
+    async admMedia(id, status) { try { await rpc('oo_admin_set_media', { p_media: id, p_status: status }); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } },
+    async admReport(id, status) { try { await rpc('oo_admin_set_report', { p_report: id, p_status: status }); await this.admRefresh(); } catch (e) { toast(errMsg(e), 'error'); } }
   };
 
   /* paint a date range into a marks map (accepted 'bk' always wins) */

@@ -7,6 +7,9 @@
    one-screen home: today's-event status band, the organizer's own poster cubes (MOVED, never cloned),
    a this-week table (reg · paid · groups · vans · status per event) and a "needs you" + latest
    registrations column. Read-only: every write still goes through the existing cockpits.
+   v1087 (Pete, 2026-09-03: 'do the same with the organizers dashboard'): band 88->74px; the home flows instead of
+   locking to the viewport; This week / Needs you / Latest registrations are EXPANDABLE (header chevron, .xp,
+   persisted in localStorage g3oxp) - mirrors v1086 on the golfer shell. Cube rows were fixed in v1086.
    ========================================================================== */
 (function () {
   'use strict';
@@ -35,7 +38,9 @@
   try { if (typeof translations !== 'undefined') Object.keys(DICT).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT[l]); }); } catch (e) {}
 
   var D = '#societyOrganizerDashboard.g3o';
-  var CSS = "\n@media (min-width:1024px){\n" +
+  /* v1087: base hides live OUTSIDE the media query - a desktop window resized under 1024px (or a tablet rotating to
+     portrait) drops .g3o but keeps the built rail/cards in the DOM; without this they rendered as raw blocks. */
+  var CSS = "#g3oRail,#g3oTitle,#g3oView,#g3oBand,#g3oRight,#g3oWeek{display:none}#g3oHome,#g3oLeft{display:contents}\n@media (min-width:1024px){\n" +
   D + "{padding-left:232px;background:#F3F6F3;transform:none !important}\n" + /* v1086: .screen.active transform traps the fixed rail */
   "#g3oRail{display:none}\n" +
   D + " > #g3oRail{display:flex;position:fixed;left:0;top:0;bottom:0;width:232px;z-index:40;flex-direction:column;padding:18px 14px 16px;background:#0B3B2A;color:#fff;border-right:2px solid #22c55e;font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden}\n" +
@@ -67,18 +72,23 @@
   D + " > main{max-width:none !important;padding:20px 24px 24px !important;margin:0 !important}\n" +
   D + " .org-full-nav{display:none !important}\n" +
   "#g3oHome{display:contents}#g3oBand,#g3oRight,#g3oWeek{display:none}#g3oLeft{display:contents}\n" +
-  D + ".light-mode #g3oHome{display:grid;grid-template-columns:minmax(0,1fr) 380px;grid-template-rows:auto minmax(0,1fr);gap:18px 20px;height:calc(100vh - 64px - 64px);min-height:540px}\n" +
+  /* v1087: the home FLOWS (no viewport lock). Collapsed cards cap their own lists; .xp (header chevron, persisted) = whole list, page scrolls.
+     This week never shows under ~6 rows and grows to fill a taller screen; Needs you / Latest registrations ~4 rows. */
+  D + ".light-mode #g3oHome{display:grid;grid-template-columns:minmax(0,1fr) 380px;grid-template-rows:auto auto;gap:18px 20px;align-items:start}\n" +
+  "#g3oWeek .g3-list{max-height:max(268px,calc(100vh - 608px))}\n" +
+  "#g3oNeeds .g3-list{max-height:216px}#g3oRegs .g3-list{max-height:max(216px,calc(100vh - 372px))}\n" +
+  "body:has(#societyOrganizerDashboard.g3o.active) #globalScrollToTopBtn{display:none !important}\n" +
   "@media (max-width:1499px){" + D + ".light-mode #g3oHome{grid-template-columns:minmax(0,1fr) 340px}}\n" +
-  D + ".light-mode #g3oBand{display:flex;grid-column:1 / -1;align-items:stretch;background:#fff;border:1px solid #DDE5DE;border-radius:14px;box-shadow:0 1px 2px rgba(11,59,42,.06),0 6px 18px rgba(11,59,42,.07);overflow:hidden;height:88px;font-family:'Instrument Sans',sans-serif}\n" +
+  D + ".light-mode #g3oBand{display:flex;grid-column:1 / -1;align-items:stretch;background:#fff;border:1px solid #DDE5DE;border-radius:14px;box-shadow:0 1px 2px rgba(11,59,42,.06),0 6px 18px rgba(11,59,42,.07);overflow:hidden;height:74px;font-family:'Instrument Sans',sans-serif}\n" +
   D + ".light-mode #g3oLeft{display:flex;flex-direction:column;gap:16px;min-height:0;min-width:0}" + D + ".light-mode #g3oRight{display:flex;flex-direction:column;gap:16px;min-height:0;min-width:0}" + D + ".light-mode #g3oWeek{display:flex}\n" +
-  "#g3oBand .g3-leave{flex:none;width:170px;background:#0B3B2A;color:#fff;padding:12px 18px;display:flex;flex-direction:column;justify-content:center}#g3oBand .g3-leave .k{font-size:12px;color:rgba(255,255,255,.75);font-weight:600;white-space:nowrap}#g3oBand .g3-leave .t{font-family:'Fraunces',Georgia,serif;font-size:42px;font-weight:600;line-height:1;letter-spacing:-.02em}\n" +
-  "#g3oBand .g3-cell{padding:12px 18px;display:flex;flex-direction:column;justify-content:center;gap:2px;border-right:1px solid #DDE5DE;min-width:0;flex:none}#g3oBand .g3-cell:last-of-type{border-right:0}\n" +
-  "#g3oBand .g3-cell .k{font-size:11.5px;color:#6B7A70;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#g3oBand .g3-cell .v{font-size:16px;font-weight:600;color:#17221C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n" +
-  "#g3oBand .g3-cell .v.disp{font-family:'Fraunces',Georgia,serif;font-size:20px}#g3oBand .g3-cell .v.mono,#g3oBand .g3-cell .v .mono{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}\n" +
-  "#g3oBand .g3-bar{height:6px;border-radius:3px;background:#E9EFEA;overflow:hidden;margin:5px 0 3px;width:150px}#g3oBand .g3-bar i{display:block;height:100%;background:#22c55e;border-radius:3px}\n" +
+  "#g3oBand .g3-leave{flex:none;width:160px;background:#0B3B2A;color:#fff;padding:6px 16px;display:flex;flex-direction:column;justify-content:center}#g3oBand .g3-leave .k{font-size:11px;color:rgba(255,255,255,.75);font-weight:600;white-space:nowrap}#g3oBand .g3-leave .t{font-family:'Fraunces',Georgia,serif;font-size:32px;font-weight:600;line-height:1;letter-spacing:-.02em}\n" +
+  "#g3oBand .g3-cell{padding:6px 16px;display:flex;flex-direction:column;justify-content:center;gap:1px;border-right:1px solid #DDE5DE;min-width:0;flex:none}#g3oBand .g3-cell:last-of-type{border-right:0}\n" +
+  "#g3oBand .g3-cell .k{font-size:11px;color:#6B7A70;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#g3oBand .g3-cell .v{font-size:15px;font-weight:600;color:#17221C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n" +
+  "#g3oBand .g3-cell .v.disp{font-family:'Fraunces',Georgia,serif;font-size:18px}#g3oBand .g3-cell .v.mono,#g3oBand .g3-cell .v .mono{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}\n" +
+  "#g3oBand .g3-bar{height:6px;border-radius:3px;background:#E9EFEA;overflow:hidden;margin:3px 0 2px;width:150px}#g3oBand .g3-bar i{display:block;height:100%;background:#22c55e;border-radius:3px}\n" +
   "#g3oBand .g3-ev{flex:1 1 220px;min-width:180px}#g3oBand .g3-ar{width:120px}#g3oBand .g3-rp{width:200px}#g3oBand .g3-gr{width:140px}#g3oBand .g3-tr{width:190px}\n" +
-  "#g3oBand .g3-acts{display:flex;align-items:center;gap:8px;padding:0 16px;flex:none;margin-left:auto}\n" +
-  "@media (max-width:1499px){#g3oBand .g3-leave{width:150px}#g3oBand .g3-leave .t{font-size:36px}#g3oBand .g3-tr{width:150px}#g3oBand .g3-gr{width:110px}#g3oBand .g3-rp{width:170px}#g3oBand .g3-ar{width:104px}#g3oBand .g3-cell{padding:10px 14px}#g3oBand .g3-arr{display:none}#g3oWeek .g3o-fmt{display:none}}\n" +
+  "#g3oBand .g3-acts{display:flex;align-items:center;gap:8px;padding:0 16px;flex:none;margin-left:auto}#g3oBand .g3-btn{height:32px}\n" +
+  "@media (max-width:1499px){#g3oBand .g3-leave{width:140px}#g3oBand .g3-leave .t{font-size:30px}#g3oBand .g3-tr{width:150px}#g3oBand .g3-gr{width:110px}#g3oBand .g3-rp{width:170px}#g3oBand .g3-ar{width:104px}#g3oBand .g3-cell{padding:6px 12px}#g3oBand .g3-arr{display:none}#g3oWeek .g3o-fmt{display:none}}\n" +
   "#g3oWeek .g3-tbl .nm{max-width:260px;overflow:hidden;text-overflow:ellipsis}\n" +
   "#g3oBand.g3-empty .g3-leave .t{font-size:20px;font-family:'Instrument Sans',sans-serif;font-weight:700}\n" +
   /* cubes: the organizer's own lite grid, moved in. 4 across (5 with the TRGG Directory, Admin spans 2 — v1025 logic kept) */
@@ -180,12 +190,27 @@
         home.innerHTML = '<div id="g3oBand"></div><div id="g3oLeft"></div><div id="g3oRight"></div>';
         grid.parentNode.insertBefore(home, grid);
         var left = home.querySelector('#g3oLeft'); left.appendChild(grid);
-        left.insertAdjacentHTML('beforeend', '<div class="g3-card fill" id="g3oWeek"><div class="g3-hd"><h3 id="g3oWeekTitle">' + esc(T('g3o.thisweek', 'This week')) + '</h3><span class="g3-pill turf" id="g3oWeekN" style="display:none"></span><span class="hint">' + esc(T('g3o.tapopen', 'Tap a row to open its roster')) + '</span></div><div class="g3-list" id="g3oWeekBody"><div class="g3-empty">…</div></div></div>');
+        var xp = function (id) { return '<button type="button" class="g3-xp" data-xp="' + id + '" title="' + esc(T('g3.expand', 'Expand')) + '" aria-label="' + esc(T('g3.expand', 'Expand')) + '" aria-expanded="false"><span class="material-symbols-outlined">expand_more</span></button>'; };
+        left.insertAdjacentHTML('beforeend', '<div class="g3-card fill" id="g3oWeek"><div class="g3-hd"><h3 id="g3oWeekTitle">' + esc(T('g3o.thisweek', 'This week')) + '</h3><span class="g3-pill turf" id="g3oWeekN" style="display:none"></span><span class="hint">' + esc(T('g3o.tapopen', 'Tap a row to open its roster')) + '</span>' + xp('g3oWeek') + '</div><div class="g3-list" id="g3oWeekBody"><div class="g3-empty">…</div></div></div>');
         home.querySelector('#g3oRight').innerHTML =
-          '<div class="g3-card" id="g3oNeeds"><div class="g3-hd"><h3>' + esc(T('g3o.needsyou', 'Needs you')) + '</h3><span class="g3-pill signal" id="g3oNeedsN" style="display:none"></span></div><div class="g3-list" id="g3oNeedsBody"><div class="g3-empty">…</div></div></div>' +
-          '<div class="g3-card fill" id="g3oRegs"><div class="g3-hd"><h3>' + esc(T('g3o.latestregs', 'Latest registrations')) + '</h3><span class="hint" id="g3oRegsHint"></span></div><div class="g3-list" id="g3oRegsBody"><div class="g3-empty">…</div></div></div>';
+          '<div class="g3-card" id="g3oNeeds"><div class="g3-hd"><h3>' + esc(T('g3o.needsyou', 'Needs you')) + '</h3><span class="g3-pill signal" id="g3oNeedsN" style="display:none"></span>' + xp('g3oNeeds') + '</div><div class="g3-list" id="g3oNeedsBody"><div class="g3-empty">…</div></div></div>' +
+          '<div class="g3-card fill" id="g3oRegs"><div class="g3-hd"><h3>' + esc(T('g3o.latestregs', 'Latest registrations')) + '</h3><span class="hint" id="g3oRegsHint"></span>' + xp('g3oRegs') + '</div><div class="g3-list" id="g3oRegsBody"><div class="g3-empty">…</div></div></div>';
+        /* expand/collapse: one delegated handler; the state survives reloads (localStorage g3oxp = {cardId:1}) */
+        home.addEventListener('click', function (ev) { var b = ev.target.closest('.g3-xp'); if (!b) return; ev.preventDefault(); ev.stopPropagation(); G.toggle(b.getAttribute('data-xp')); });
+        var saved = {}; try { saved = JSON.parse(localStorage.getItem('g3oxp') || '{}') || {}; } catch (e) { saved = {}; }
+        Object.keys(saved).forEach(function (id) { if (saved[id]) G.toggle(id, true); });
       }
       this.renderBand(null);
+    },
+
+    /* expand / collapse one home card. toggle(id) flips; toggle(id, true|false) sets. */
+    toggle: function (id, force) {
+      var card = document.getElementById(id); if (!card) return;
+      var on = (typeof force === 'boolean') ? force : !card.classList.contains('xp');
+      card.classList.toggle('xp', on);
+      var b = card.querySelector('.g3-xp');
+      if (b) { var lbl = on ? T('g3.collapse', 'Collapse') : T('g3.expand', 'Expand'); b.title = lbl; b.setAttribute('aria-label', lbl); b.setAttribute('aria-expanded', on ? 'true' : 'false'); var ic = b.querySelector('.material-symbols-outlined'); if (ic) ic.textContent = on ? 'expand_less' : 'expand_more'; }
+      try { var m = JSON.parse(localStorage.getItem('g3oxp') || '{}') || {}; if (on) m[id] = 1; else delete m[id]; localStorage.setItem('g3oxp', JSON.stringify(m)); } catch (e) {}
     },
 
     go: function (tab, act) {
@@ -328,7 +353,7 @@
     renderRegs: function (regs, events) {
       var body = document.getElementById('g3oRegsBody'), hint = document.getElementById('g3oRegsHint'); if (!body) return;
       var evMap = {}; events.forEach(function (e) { evMap[e.id] = e; });
-      var list = regs.slice().sort(function (a, b) { return new Date(b.created_at) - new Date(a.created_at); }).slice(0, 8);
+      var list = regs.slice().sort(function (a, b) { return new Date(b.created_at) - new Date(a.created_at); }).slice(0, 30);
       if (hint) hint.textContent = regs.length ? (regs.length + ' ' + T('g3o.thisweek', 'This week').toLowerCase()) : '';
       if (!list.length) { body.innerHTML = '<div class="g3-empty">' + esc(T('g3o.noregs', 'No registrations yet')) + '</div>'; return; }
       body.innerHTML = list.map(function (x) {

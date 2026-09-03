@@ -37,7 +37,9 @@
   try { if (typeof translations !== 'undefined') Object.keys(DICT).forEach(function (l) { if (translations[l]) Object.assign(translations[l], DICT[l]); }); } catch (e) {}
 
   /* ---------- CSS (desktop only) ---------- */
-  var CSS = "\n@media (min-width:1024px){\n" +
+  /* v1087: base hides live OUTSIDE the media query - a desktop window resized under 1024px (or a tablet rotating to
+     portrait) drops .g3 but keeps the built rail/cards in the DOM; without this they rendered as raw blocks. */
+  var CSS = "#g3Rail,#g3Title,#g3Band,#g3Right,#g3Week{display:none}#g3Home,#g3Left{display:contents}\n@media (min-width:1024px){\n" +
   /* v1086: transform:none is LOAD-BEARING - .screen.active leaves a transform on the dashboard, which traps position:fixed
      (the rail) inside the dashboard box. Harmless while the home was viewport-locked; once the page can scroll the rail
      grew with the page and the me-card slid off the bottom. */
@@ -136,7 +138,7 @@
   /* v1086: EXPANDABLE cards. Collapsed = a cap (This week grows with the viewport, never under ~6 rows; Live/Messages ~4 rows),
      the list scrolls inside. .xp (header toggle, persisted) = no cap, the whole list shows and the page scrolls. */
   "#g3Week .g3-list{max-height:max(268px,calc(100vh - 664px))}\n" +
-  "#g3Live .g3-list,#g3Msgs .g3-list{max-height:216px}\n" +
+  "#g3Live .g3-list{max-height:216px}#g3Msgs .g3-list{max-height:max(216px,calc(100vh - 604px))}\n" +
   "#g3Hcp .g3-hcpl{display:none}\n" +
   ".g3-card.xp .g3-list,.g3-card.xp .g3-bd{max-height:none !important}\n" +
   "#g3Hcp.xp .g3-hcpl{display:block}\n" +
